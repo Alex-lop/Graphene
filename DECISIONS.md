@@ -10,3 +10,19 @@
 - Cloud/model access is not verified: `gcloud`, ADC/project configuration, and Gemini credentials are absent locally. No cloud or model result is claimed.
 - The credit request, Devpost draft, and saved Collaborative Partner selection are not evidenced locally and need Alex's confirmation.
 - Native hooks, MCP, SQLite, multi-vendor adapters, graph UI, import analysis, invalidation/repair, A/B evaluation, arbitrary repositories, and multi-user auth remain explicitly cut.
+
+## 2026-08-11 — Post-Phase-0 graph contract
+
+- `POST_PHASE0_GRAPH_MVP_ULTRA_PLAN.md` restores one bounded evidence/context graph and overrides the older graph-UI cut without reviving a general graph platform.
+- `contracts/graph_mvp.json` freezes three server-owned profiles, four read endpoints, graph vocabulary, 25-node/40-edge caps, a 100 KB patch cap, and deterministic Billing denial.
+- After all five read-only role reviews, the single contract revision added authoritative feedback anchoring, fixed task/profile bindings, receipt and decision digests, packet/graph-bound promotion, exact per-kind graph fields, and honest truncation. The final canonical contract hash is `eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed`.
+- The graph remains a projection. Existing run, memory, candidate, test, decision, and promotion records remain authoritative.
+- Use platform-native SVG/HTML unless a frontend dependency becomes necessary. No graph database, force layout, WebSocket, or model-authored relationship is permitted.
+
+## 2026-08-11 — Local vertical slice and cloud seams
+
+- Deterministic-local remains the default and verified demo mode. The Google ADK 2.5.0 runner is opt-in through `REVIEWLATCH_EXECUTION_MODE=google-adk`; model text never supplies scope, graph facts, tests, approval, or promotion truth.
+- Local restart proof uses an atomic JSON snapshot. The Firestore adapter stores the bounded demo namespace in one transactionally updated document; its explicit 1 MiB ceiling is acceptable for this fixture and requires collection-level storage before broader use.
+- The dependency-free frontend owns the complete six-action golden loop and keeps the mutation token only in JavaScript memory.
+- One Python 3.13 container installs Git, runs unprivileged, serves API and static UI together, and binds `0.0.0.0:$PORT`.
+- Local tests, ten deterministic loops, and the container are evidence-backed. Gemini, real Firestore, Cloud Run, and browser visual QA remain unverified and may not be shown or described as completed.

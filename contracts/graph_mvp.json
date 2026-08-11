@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "repo_id": "reviewlatch-demo",
+  "graph_revision": 1,
+  "caps": {
+    "default_depth": 1,
+    "max_depth": 2,
+    "max_nodes": 25,
+    "max_edges": 40,
+    "max_related_files": 8,
+    "max_hunks": 12,
+    "max_memories": 3,
+    "max_origin_runs_per_memory": 1,
+    "max_patch_bytes": 102400
+  },
+  "catalog": [
+    {
+      "agent_profile_id": "platform-maintainer@1",
+      "owner_team": "engineering-platform",
+      "purpose": "Produce the bounded origin authentication change.",
+      "model_policy": "Eligible Gemini model; project access remains unverified.",
+      "framework": "Google ADK",
+      "repo_ids": ["reviewlatch-demo"],
+      "allowed_paths": ["app/auth/**", "tests/test_security_policy.py"],
+      "allowed_tools": ["read_file", "write_file", "run_fixture_tests"],
+      "memory_access": ["authentication", "security"],
+      "data_classification": "sanitized_fixture",
+      "policy_revision": 1,
+      "status": "active"
+    },
+    {
+      "agent_profile_id": "auth-maintainer@1",
+      "owner_team": "engineering-security",
+      "purpose": "Consume approved context and make bounded authentication changes.",
+      "model_policy": "Eligible Gemini model; project access remains unverified.",
+      "framework": "Google ADK",
+      "repo_ids": ["reviewlatch-demo"],
+      "allowed_paths": ["app/auth/**", "tests/test_security_policy.py"],
+      "allowed_tools": ["read_file", "write_file", "run_fixture_tests"],
+      "memory_access": ["authentication", "security"],
+      "data_classification": "sanitized_fixture",
+      "policy_revision": 1,
+      "status": "active"
+    },
+    {
+      "agent_profile_id": "billing-observer@1",
+      "owner_team": "finance-systems",
+      "purpose": "Provide a deterministic negative-scope catalog fixture.",
+      "model_policy": "No model invocation in the graph MVP.",
+      "framework": "Google ADK",
+      "repo_ids": ["reviewlatch-demo"],
+      "allowed_paths": ["billing/**"],
+      "allowed_tools": ["read_file"],
+      "memory_access": ["billing"],
+      "data_classification": "sanitized_fixture",
+      "policy_revision": 1,
+      "status": "active"
+    }
+  ],
+  "task_profiles": [
+    {
+      "task_id": "baseline_max_attempts",
+      "agent_profile_id": "platform-maintainer@1",
+      "fresh_session": false
+    },
+    {
+      "task_id": "adapted_window_seconds",
+      "agent_profile_id": "auth-maintainer@1",
+      "fresh_session": true
+    }
+  ],
+  "node_kinds": [
+    "agent_run",
+    "changeset",
+    "file",
+    "hunk",
+    "feedback",
+    "memory_revision",
+    "context_packet",
+    "policy_check",
+    "test_receipt",
+    "human_decision",
+    "promotion_receipt"
+  ],
+  "edge_kinds": [
+    "PRODUCED",
+    "CONTAINS",
+    "MODIFIES",
+    "IMPORTS",
+    "TRIGGERED",
+    "LEARNED_AS",
+    "APPROVED",
+    "PACKED_IN",
+    "INJECTED_INTO",
+    "VALIDATED",
+    "DENIED",
+    "ALLOWED",
+    "AUTHORIZED",
+    "PROMOTED_AS"
+  ],
+  "node_data_fields": {
+    "agent_run": [
+      "agent_profile_id",
+      "task_id",
+      "base_sha",
+      "allowed_paths",
+      "allowed_tools",
+      "session_id",
+      "fresh_session",
+      "model_id"
+    ],
+    "changeset": [
+      "candidate_revision",
+      "base_commit_sha",
+      "candidate_patch_sha256",
+      "candidate_tree_sha256",
+      "changed_file_count",
+      "changed_paths",
+      "lifecycle_state"
+    ],
+    "file": [
+      "path",
+      "before_sha256",
+      "after_sha256",
+      "language"
+    ],
+    "hunk": [
+      "path",
+      "old_start",
+      "old_lines",
+      "new_start",
+      "new_lines",
+      "before_sha256",
+      "after_sha256",
+      "candidate_patch_sha256",
+      "exact_hunk_sha256",
+      "candidate_revision",
+      "unified_diff"
+    ],
+    "feedback": [
+      "feedback_id",
+      "exact_correction",
+      "correction_sha256",
+      "selected_hunk_id",
+      "selected_scope_id"
+    ],
+    "memory_revision": [
+      "memory_id",
+      "revision",
+      "exact_text",
+      "approval_state",
+      "repo_id",
+      "path_globs",
+      "task_tags",
+      "supersession_state"
+    ],
+    "context_packet": [
+      "packet_id",
+      "consumer_run_id",
+      "consumer_agent_profile_id",
+      "task_id",
+      "repo_id",
+      "base_sha",
+      "allowed_paths",
+      "allowed_tools",
+      "approved_memories",
+      "related_files",
+      "required_test_profile",
+      "source_graph_revision",
+      "source_graph_hash",
+      "selected_node_ids",
+      "decision",
+      "packet_sha256"
+    ],
+    "policy_check": [
+      "policy_revision",
+      "decision",
+      "reason_codes",
+      "candidate_patch_sha256",
+      "context_packet_sha256",
+      "test_receipt_sha256"
+    ],
+    "test_receipt": [
+      "required_test_profile",
+      "command",
+      "candidate_exit_code",
+      "base_with_new_test_exit_code",
+      "timed_out",
+      "output_sha256",
+      "output_truncated",
+      "base_commit_sha",
+      "candidate_patch_sha256",
+      "receipt_sha256"
+    ],
+    "human_decision": [
+      "decision_id",
+      "actor",
+      "purpose",
+      "decision",
+      "bound_digest",
+      "occurred_at"
+    ],
+    "promotion_receipt": [
+      "base_commit_sha",
+      "candidate_patch_sha256",
+      "candidate_tree_sha256",
+      "memory_id",
+      "memory_revision",
+      "context_packet_id",
+      "context_packet_sha256",
+      "source_graph_revision",
+      "source_graph_hash",
+      "selected_node_ids",
+      "test_receipt_sha256",
+      "human_decision_id",
+      "commit_sha",
+      "commit_metadata"
+    ]
+  },
+  "binding_requirements": {
+    "test_receipt": [
+      "required_test_profile",
+      "base_commit_sha",
+      "candidate_patch_sha256",
+      "receipt_sha256"
+    ],
+    "human_decision": [
+      "purpose",
+      "bound_digest",
+      "actor"
+    ],
+    "promotion": [
+      "base_commit_sha",
+      "candidate_patch_sha256",
+      "candidate_tree_sha256",
+      "memory_id",
+      "memory_revision",
+      "context_packet_id",
+      "context_packet_sha256",
+      "source_graph_revision",
+      "source_graph_hash",
+      "selected_node_ids",
+      "test_receipt_sha256",
+      "human_decision_id",
+      "expected_run_revision"
+    ],
+    "adapted_run": [
+      "auth-maintainer@1",
+      "fresh_session",
+      "context_packet_id",
+      "context_packet_sha256",
+      "source_graph_revision",
+      "source_graph_hash",
+      "selected_node_ids",
+      "injection_receipt"
+    ]
+  },
+  "depth_semantics": "mandatory_evidence_spine_plus_optional_neighbors",
+  "api": [
+    {
+      "method": "GET",
+      "path": "/api/runs/{run_id}/graph",
+      "request_model": null,
+      "response_model": "GraphResponse",
+      "requires_demo_token": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/{run_id}/graph/nodes/{node_id}",
+      "request_model": null,
+      "response_model": "GraphNode",
+      "requires_demo_token": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/{run_id}/context-packet",
+      "request_model": null,
+      "response_model": "ContextPacket",
+      "requires_demo_token": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent-catalog",
+      "request_model": null,
+      "response_model": "list[AgentProfile]",
+      "requires_demo_token": false
+    }
+  ],
+  "negative_profile_id": "billing-observer@1",
+  "required_test_profile": "auth-fixture-v1"
+}

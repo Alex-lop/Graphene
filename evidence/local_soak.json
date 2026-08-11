@@ -1,0 +1,40 @@
+{
+  "contract_hash": "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed",
+  "edge_counts": [
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19
+  ],
+  "execution_mode": "deterministic-local",
+  "node_counts": [
+    20,
+    20,
+    20,
+    20,
+    20,
+    20,
+    20,
+    20,
+    20,
+    20
+  ],
+  "observed_at": "2026-08-11T22:04:49.224395Z",
+  "pass_count": 10,
+  "requested_count": 10,
+  "sanitized": true,
+  "schema_version": 1,
+  "verification": {
+    "cloud_run": "unverified",
+    "firestore": "unverified",
+    "gemini": "unverified",
+    "json_file_restart": "verified",
+    "local_vertical_slice": "verified"
+  }
+}

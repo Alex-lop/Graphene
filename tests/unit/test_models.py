@@ -19,6 +19,7 @@ from reviewlatch.models import (
     MemoryRevision,
     MemoryState,
     MEMORY_TRANSITIONS,
+    PolicyCheck,
     ProofItem,
     ProofType,
     PromotionReceipt,
@@ -31,7 +32,13 @@ from reviewlatch.models import (
 
 
 def _candidate() -> CandidateArtifact:
+    patch = b"diff --git a/a b/a\n"
+    base_sha = "a" * 40
+    patch_sha = sha256_hex(patch)
     receipt_data = {
+        "required_test_profile": "auth-fixture-v1",
+        "base_commit_sha": base_sha,
+        "candidate_patch_sha256": patch_sha,
         "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"],
         "candidate_exit_code": 0,
         "base_with_new_test_exit_code": 1,
@@ -43,13 +50,13 @@ def _candidate() -> CandidateArtifact:
         **receipt_data,
         receipt_sha256=canonical_json_sha256(receipt_data),
     )
-    patch = b"diff --git a/a b/a\n"
     limiter_after = b"changed\n"
     test_after = b"def test_policy(): assert True\n"
     return CandidateArtifact(
-        base_commit_sha="a" * 40,
+        candidate_revision=1,
+        base_commit_sha=base_sha,
         canonical_patch_base64=base64.b64encode(patch).decode(),
-        candidate_patch_sha256=sha256_hex(patch),
+        candidate_patch_sha256=patch_sha,
         candidate_tree_sha256=candidate_tree_sha256(
             {
                 "app/auth/limiter.py": limiter_after,
@@ -130,6 +137,7 @@ def test_only_a_matching_human_decision_can_approve_memory():
         "required_test_path": "tests/test_security_policy.py",
         "required_check": "new_test_fails_on_base_and_passes_on_candidate",
         "evidence_run_id": "baseline_run",
+        "feedback_id": "feedback_1",
     }
     with pytest.raises(ValidationError):
         MemoryRevision(**fields)
@@ -138,12 +146,19 @@ def test_only_a_matching_human_decision_can_approve_memory():
             decision_id="decision_1",
             value=MemoryDecisionValue.APPROVE,
             actor="agent",
+            purpose="memory",
+            bound_digest="a" * 64,
             occurred_at=datetime.now(timezone.utc),
         )
 
+    proposed = MemoryRevision(**{**fields, "state": MemoryState.PROPOSED})
     decision = HumanDecision(
         decision_id="decision_1",
         value=MemoryDecisionValue.APPROVE,
+        purpose="memory",
+        bound_digest=canonical_json_sha256(
+            proposed.model_dump(mode="json", exclude={"state", "decision"})
+        ),
         occurred_at=datetime.now(timezone.utc),
     )
     assert MemoryRevision(**fields, decision=decision).state == MemoryState.APPROVED
@@ -155,6 +170,8 @@ def test_completed_run_binds_the_human_promotion_decision():
     decision = HumanDecision(
         decision_id="promotion_1",
         value=MemoryDecisionValue.APPROVE,
+        purpose="promotion",
+        bound_digest=candidate.candidate_patch_sha256,
         occurred_at=now,
     )
     proof = tuple(
@@ -181,6 +198,11 @@ def test_completed_run_binds_the_human_promotion_decision():
         candidate_tree_sha256=candidate.candidate_tree_sha256,
         memory_id="mem_auth_review",
         memory_revision=1,
+        context_packet_id="ctx_1",
+        context_packet_sha256="d" * 64,
+        source_graph_revision=1,
+        source_graph_hash="e" * 64,
+        selected_node_ids=("memory_1",),
         test_receipt_sha256=candidate.test_receipt.receipt_sha256,
         human_decision_id=decision.decision_id,
         expected_run_revision=2,
@@ -192,8 +214,32 @@ def test_completed_run_binds_the_human_promotion_decision():
         "repo_id": "reviewlatch-demo",
         "state": RunState.COMPLETED,
         "revision": 4,
+        "agent_profile_id": "auth-maintainer@1",
+        "base_sha": candidate.base_commit_sha,
+        "allowed_paths": ("app/auth/limiter.py", "tests/test_security_policy.py"),
+        "allowed_tools": ("read_file", "write_file", "run_fixture_tests"),
+        "fresh_session": True,
+        "context_packet_id": "ctx_1",
+        "context_packet_sha256": "d" * 64,
+        "source_graph_revision": 1,
+        "source_graph_hash": "e" * 64,
+        "selected_node_ids": ("memory_1",),
+        "session_id": "session_1",
         "injected_memories": (MemoryRef(memory_id="mem_auth_review", revision=1),),
         "proof": proof,
+        "policy_checks": (
+            PolicyCheck(
+                policy_check_id="policy_1",
+                run_id="run_1",
+                policy_revision=1,
+                decision="denied",
+                reason_codes=("human_approval_missing",),
+                candidate_patch_sha256=candidate.candidate_patch_sha256,
+                context_packet_sha256="d" * 64,
+                test_receipt_sha256=candidate.test_receipt.receipt_sha256,
+                occurred_at=now,
+            ),
+        ),
         "candidate": candidate,
         "promotion_receipt": receipt,
     }

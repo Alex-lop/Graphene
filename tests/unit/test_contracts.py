@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from reviewlatch.models import GoldenContract, RepoPath
+from reviewlatch.hashing import canonical_json_sha256
+from reviewlatch.models import GoldenContract, GraphMvpContract, RepoPath
 
 ROOT = Path(__file__).parents[2]
 CONTRACT_PATH = ROOT / "contracts/golden_path.json"
@@ -158,3 +159,21 @@ def test_repo_paths_reject_escape(path: str):
 def test_contract_json_contains_no_secret_values():
     raw = json.loads(CONTRACT_PATH.read_text())
     assert not any(key in json.dumps(raw).lower() for key in ("api_key", "bearer ", "password"))
+
+
+def test_post_phase_zero_graph_contract_is_final_and_bounded():
+    graph = GraphMvpContract.model_validate_json(
+        (ROOT / "contracts/graph_mvp.json").read_text()
+    )
+    assert canonical_json_sha256(graph.model_dump(mode="json")) == (
+        "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed"
+    )
+    assert graph.caps.max_patch_bytes == 102_400
+    assert graph.caps.max_nodes == 25
+    assert graph.caps.max_edges == 40
+    contract_max = GoldenContract.model_validate_json(
+        CONTRACT_PATH.read_text()
+    ).fixture.max_patch_bytes
+    assert contract_max == graph.caps.max_patch_bytes
+    assert graph.task_profiles[1].agent_profile_id == "auth-maintainer@1"
+    assert "context_packet_sha256" in graph.binding_requirements["promotion"]
