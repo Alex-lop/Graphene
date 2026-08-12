@@ -1,8 +1,8 @@
-# ReviewLatch decision log
+# Graphene decision log
 
 ## 2026-08-11 — Phase 0 scope lock
 
-- `ULTRA_MVP_EXECUTION.md` is authoritative. ReviewLatch targets Collaborative Partner with one controlled Python fixture and one ADK/Gemini path.
+- `ULTRA_MVP_EXECUTION.md` is authoritative. Graphene targets Collaborative Partner with one controlled Python fixture and one ADK/Gemini path.
 - `contracts/golden_path.json` is the machine-readable source of truth for tasks, prompt, tools, scope, tests, retrieval, API, and lifecycle. Implementation may not silently revise it.
 - Python is pinned to 3.13, Node to 22, Google ADK to 2.5.0, the model policy to `gemini-3.5-flash`, Cloud Run to `us-central1`, and Vertex to `global`.
 - The fixture runner executes only `python -m pytest -q -p no:cacheprovider`; writes are limited to `app/auth/limiter.py` and `tests/test_security_policy.py`.
@@ -15,13 +15,13 @@
 
 - `POST_PHASE0_GRAPH_MVP_ULTRA_PLAN.md` restores one bounded evidence/context graph and overrides the older graph-UI cut without reviving a general graph platform.
 - `contracts/graph_mvp.json` freezes three server-owned profiles, four read endpoints, graph vocabulary, 25-node/40-edge caps, a 100 KB patch cap, and deterministic Billing denial.
-- After all five read-only role reviews, the single contract revision added authoritative feedback anchoring, fixed task/profile bindings, receipt and decision digests, packet/graph-bound promotion, exact per-kind graph fields, and honest truncation. The final canonical contract hash is `eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed`.
+- After all five read-only role reviews, the single contract revision added authoritative feedback anchoring, fixed task/profile bindings, receipt and decision digests, packet/graph-bound promotion, exact per-kind graph fields, and honest truncation. The final canonical contract hash is `74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2`.
 - The graph remains a projection. Existing run, memory, candidate, test, decision, and promotion records remain authoritative.
 - Use platform-native SVG/HTML unless a frontend dependency becomes necessary. No graph database, force layout, WebSocket, or model-authored relationship is permitted.
 
 ## 2026-08-11 — Local vertical slice and cloud seams
 
-- Deterministic-local remains the default and verified demo mode. The Google ADK 2.5.0 runner is opt-in through `REVIEWLATCH_EXECUTION_MODE=google-adk`; model text never supplies scope, graph facts, tests, approval, or promotion truth.
+- Deterministic-local remains the default and verified demo mode. The Google ADK 2.5.0 runner is opt-in through `GRAPHENE_EXECUTION_MODE=google-adk`; model text never supplies scope, graph facts, tests, approval, or promotion truth.
 - Local restart proof uses an atomic JSON snapshot. The Firestore adapter stores the bounded demo namespace in one transactionally updated document; its explicit 1 MiB ceiling is acceptable for this fixture and requires collection-level storage before broader use.
 - The dependency-free frontend owns the complete six-action golden loop and keeps the mutation token only in JavaScript memory.
 - One Python 3.13 container installs Git, runs unprivileged, serves API and static UI together, and binds `0.0.0.0:$PORT`.

@@ -18,17 +18,17 @@ from demo.graph_mvp import (  # noqa: E402
     prepare_waiting_demo,
     promotion_request,
 )
-from reviewlatch.app import FIXTURE_ROOT, GOLDEN, GRAPH_CONTRACT, create_app  # noqa: E402
-from reviewlatch.context import build_context_packet  # noqa: E402
-from reviewlatch.execution import FixtureAccessError, ScopedFixtureTools  # noqa: E402
-from reviewlatch.hashing import canonical_json_sha256  # noqa: E402
-from reviewlatch.models import (  # noqa: E402
+from graphene.app import FIXTURE_ROOT, GOLDEN, GRAPH_CONTRACT, create_app  # noqa: E402
+from graphene.context import build_context_packet  # noqa: E402
+from graphene.execution import FixtureAccessError, ScopedFixtureTools  # noqa: E402
+from graphene.hashing import canonical_json_sha256  # noqa: E402
+from graphene.models import (  # noqa: E402
     ExecuteRunRequest,
     GraphResponse,
     PromoteRunRequest,
     TaskSpec,
 )
-from reviewlatch.store import InMemoryStore, JsonFileStore  # noqa: E402
+from graphene.store import InMemoryStore, JsonFileStore  # noqa: E402
 
 
 def _flip(value: str) -> str:
@@ -308,7 +308,7 @@ def test_generated_local_evidence_is_sanitized_and_claims_no_cloud_or_model_run(
     evidence = json.loads((ROOT / "evidence/local_vertical_slice.json").read_text())
     soak = json.loads((ROOT / "evidence/local_soak.json").read_text())
     assert evidence["contract_hash"] == (
-        "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed"
+        "74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2"
     )
     assert evidence["execution_mode"] == "deterministic-local"
     assert evidence["adapted"]["model_id"] is None

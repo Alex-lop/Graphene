@@ -1,14 +1,14 @@
-# ReviewLatch implementation status
+# Graphene implementation status
 
 Updated: 2026-08-11 (America/Los_Angeles)
 
 ## Gate 1 baseline
 
-- Branch: `agent/reviewlatch-mvp`
+- Branch: `agent/graphene-mvp`
 - Baseline SHA: `72760f88c3b6b95128e392d3346bd3547b6e8bbb`
 - Phase-0 verification: `uv run pytest -q` → 14 passed, 1 expected xfail
 - Graph contract candidate: `contracts/graph_mvp.json`
-- Final contract hash: `eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed`
+- Final contract hash: `74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2`
 - User-authored input preserved: untracked `POST_PHASE0_GRAPH_MVP_ULTRA_PLAN.md`
 - Local blockers: `gcloud` absent; no Google/Gemini environment configuration detected; cloud, Firestore, and real-model runs remain unverified
 
@@ -16,10 +16,10 @@ Updated: 2026-08-11 (America/Los_Angeles)
 
 | Identity | Exclusive paths | First wave |
 |---|---|---|
-| Root | `backend/reviewlatch/app.py`, `backend/reviewlatch/models.py`, `backend/reviewlatch/store.py`, `backend/reviewlatch/hashing.py`, `contracts/**`, root manifests/docs/config | contract/integration |
-| Ultra 1 — Graph Core | `backend/reviewlatch/graph/**`, `tests/unit/graph/**` | wave A |
-| Ultra 2 — Catalog/Context | `backend/reviewlatch/context/**`, `tests/unit/context/**` | wave A |
-| Ultra 3 — Execution | `backend/reviewlatch/execution/**`, `tests/unit/execution/**` | wave A |
+| Root | `backend/graphene/app.py`, `backend/graphene/models.py`, `backend/graphene/store.py`, `backend/graphene/hashing.py`, `contracts/**`, root manifests/docs/config | contract/integration |
+| Ultra 1 — Graph Core | `backend/graphene/graph/**`, `tests/unit/graph/**` | wave A |
+| Ultra 2 — Catalog/Context | `backend/graphene/context/**`, `tests/unit/context/**` | wave A |
+| Ultra 3 — Execution | `backend/graphene/execution/**`, `tests/unit/execution/**` | wave A |
 | Ultra 4 — Graph Experience | `frontend/**` | wave B |
 | Ultra 5 — Verification | `tests/integration/**`, `tests/adversarial/**`, `demo/**`, `evidence/**` | wave B |
 
@@ -36,7 +36,7 @@ All five identities are fixed and may not spawn children, edit shared contracts,
 
 ## Current gate
 
-Gates 1–3 and the deterministic portions of Gates 5–6 pass locally against contract hash `eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed`:
+Gates 1–3 and the deterministic portions of Gates 5–6 pass locally against contract hash `74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2`:
 
 - clean API/UI golden loop through exact promotion;
 - deterministic graph, exact hunk detail, catalog scope, and Billing/path denial;
@@ -54,4 +54,4 @@ External Gate 4 remains open: Google credentials/project/model eligibility, a re
 - `node --test frontend/test/*.test.mjs` → 8 passed.
 - `evidence/local_vertical_slice.json` → SHA-256 `cbfb189941641ec542493cacd17eec865e1de85de5802fb9ba60cb6fc9ff2a5b`.
 - `evidence/local_soak.json` → SHA-256 `00d3c0012d559ec84fa82dc856caefe2f7184ce53c4db24dd90589c44b1feaa4`.
-- Final `reviewlatch:local` image build passed; container smoke returned health and frontend assets with 200, rejected an unauthenticated mutation with 401, and accepted the same authorized bounded create request.
+- Final `graphene:local` image build passed; container smoke returned health and frontend assets with 200, rejected an unauthenticated mutation with 401, and accepted the same authorized bounded create request.

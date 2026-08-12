@@ -438,7 +438,7 @@ class FirestoreStore(InMemoryStore):
     records into collections if the snapshot approaches Firestore's 1 MiB limit.
     """
 
-    _COLLECTION = "reviewlatch_demo"
+    _COLLECTION = "graphene_demo"
 
     def __init__(self, client=None, namespace: str = "hackathon") -> None:
         if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", namespace) is None:

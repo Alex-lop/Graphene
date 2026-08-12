@@ -75,8 +75,8 @@ class DeterministicExecution:
 class GoogleAdkConfig:
     mode: str
     model_id: str
-    app_name: str = "reviewlatch"
-    user_id: str = "reviewlatch-demo"
+    app_name: str = "graphene"
+    user_id: str = "graphene-demo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,11 +237,11 @@ def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
 def _git_environment() -> dict[str, str]:
     return {
         "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+0000",
-        "GIT_AUTHOR_EMAIL": "fixture@reviewlatch.invalid",
-        "GIT_AUTHOR_NAME": "ReviewLatch Fixture",
+        "GIT_AUTHOR_EMAIL": "fixture@graphene.invalid",
+        "GIT_AUTHOR_NAME": "Graphene Fixture",
         "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+0000",
-        "GIT_COMMITTER_EMAIL": "fixture@reviewlatch.invalid",
-        "GIT_COMMITTER_NAME": "ReviewLatch Fixture",
+        "GIT_COMMITTER_EMAIL": "fixture@graphene.invalid",
+        "GIT_COMMITTER_NAME": "Graphene Fixture",
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
@@ -295,14 +295,14 @@ def _initialize_repository(
         "commit-tree",
         tree,
         "-m",
-        "ReviewLatch deterministic fixture baseline",
+        "Graphene deterministic fixture baseline",
     ).decode().strip()
     _git(destination, "update-ref", "refs/heads/main", commit)
     return commit
 
 
 def fixture_base_sha(contract: GoldenContract, fixture_root: Path) -> str:
-    with tempfile.TemporaryDirectory(prefix="reviewlatch-base-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="graphene-base-") as temporary:
         return _initialize_repository(contract, fixture_root, Path(temporary) / "fixture")
 
 
@@ -647,7 +647,7 @@ def execute_deterministic_local(
         store, packet, session_id=session_id, occurred_at=timestamp
     )
 
-    with tempfile.TemporaryDirectory(prefix="reviewlatch-execution-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="graphene-execution-") as temporary:
         temporary_root = Path(temporary)
         candidate_root = temporary_root / "candidate"
         base_sha = _initialize_repository(golden_contract, fixture_root, candidate_root)
@@ -758,7 +758,7 @@ async def _installed_google_adk_invoker(
         session_id=session_id,
     )
     agent = LlmAgent(
-        name="reviewlatch_agent",
+        name="graphene_agent",
         model=config.model_id,
         instruction=prompt,
         tools=list(tools),
@@ -813,7 +813,7 @@ async def execute_google_adk(
     runtime_verified = invoker is None
     invoke = invoker or _installed_google_adk_invoker
 
-    with tempfile.TemporaryDirectory(prefix="reviewlatch-adk-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="graphene-adk-") as temporary:
         temporary_root = Path(temporary)
         candidate_root = temporary_root / "candidate"
         base_sha = _initialize_repository(golden_contract, fixture_root, candidate_root)

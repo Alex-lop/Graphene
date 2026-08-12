@@ -1,4 +1,4 @@
-# ReviewLatch — Post-Phase-0 Graph MVP Ultra Execution Plan
+# Graphene — Post-Phase-0 Graph MVP Ultra Execution Plan
 
 Status: binding post-Phase-0 implementation brief  
 Repository: `Alex-lop/AllThingsAgenticHackathon`  
@@ -25,7 +25,7 @@ You are the root implementation agent. Begin implementation immediately; do not 
 
 The two ideas reinforce each other, but they must not be presented as two equal hackathon promises.
 
-ReviewLatch is currently a strong **Collaborative Partner**: it captures exact human feedback, asks one meaningful clarification, turns the correction into approved scoped memory, and uses that memory in a fresh session.
+Graphene is currently a strong **Collaborative Partner**: it captures exact human feedback, asks one meaningful clarification, turns the correction into approved scoped memory, and uses that memory in a fresh session.
 
 It is not yet a complete **Fortified Enterprise Fleet**. A graph alone does not prove a scalable cross-department network, multi-week orchestration, production-data connectors, data sovereignty, or enterprise administration. The official hackathon asks entrants to pick a track, so the submission category remains Collaborative Partner.
 
@@ -44,14 +44,14 @@ The graph is useful only if it changes the actual fresh-agent invocation. A grap
 
 ### One-sentence pitch
 
-> ReviewLatch turns a developer correction into approved repository memory, shows exactly how that memory connects to code and proof, and gives each fresh coding agent only the graph slice it is authorized to use.
+> Graphene turns a developer correction into approved repository memory, shows exactly how that memory connects to code and proof, and gives each fresh coding agent only the graph slice it is authorized to use.
 
 ### Golden loop
 
 ```text
 Agent A changes auth code and misses a required test
 → user selects the exact hunk and gives a correction
-→ ReviewLatch asks one scope clarification
+→ Graphene asks one scope clarification
 → human approves immutable memory revision 1
 → server builds a bounded context packet from trusted graph records
 → fresh cataloged Agent B receives the exact packet and memory revision
@@ -143,7 +143,7 @@ No graph mutation endpoint exists. Gemini cannot submit nodes or edges.
   "id": "stable server-issued or deterministic ID",
   "kind": "agent_run | changeset | file | hunk | feedback | memory_revision | context_packet | policy_check | test_receipt | human_decision | promotion_receipt",
   "label": "server-generated label",
-  "repo_id": "reviewlatch-demo",
+  "repo_id": "graphene-demo",
   "run_id": "optional run ID",
   "provenance": "server_observed | server_derived | human_attested | model_proposed",
   "source_ref": "authoritative record reference",
@@ -221,7 +221,7 @@ Clicking a hunk loads the exact unified diff from the authoritative candidate ar
   "purpose": "Make bounded authentication changes",
   "model_policy": "verified eligible Gemini model",
   "framework": "Google ADK",
-  "repo_ids": ["reviewlatch-demo"],
+  "repo_ids": ["graphene-demo"],
   "allowed_paths": ["app/auth/**", "tests/test_security_policy.py"],
   "allowed_tools": ["read_file", "write_file", "run_fixture_tests"],
   "memory_access": ["authentication", "security"],
@@ -248,7 +248,7 @@ It then persists this packet:
   "packet_id": "ctx_...",
   "consumer_agent_profile_id": "auth-maintainer@1",
   "task_id": "change_window_seconds",
-  "repo_id": "reviewlatch-demo",
+  "repo_id": "graphene-demo",
   "base_sha": "...",
   "allowed_paths": ["app/auth/**", "tests/test_security_policy.py"],
   "allowed_tools": ["read_file", "write_file", "run_fixture_tests"],
@@ -373,7 +373,7 @@ The root writes the additive graph/catalog/context contracts before implementati
 Exclusive logical ownership:
 
 ```text
-backend/reviewlatch/graph/**
+backend/graphene/graph/**
 tests/unit/graph/**
 ```
 
@@ -391,7 +391,7 @@ Deliver:
 Exclusive logical ownership:
 
 ```text
-backend/reviewlatch/context/**
+backend/graphene/context/**
 tests/unit/context/**
 ```
 
@@ -409,7 +409,7 @@ Deliver:
 Exclusive logical ownership:
 
 ```text
-backend/reviewlatch/execution/**
+backend/graphene/execution/**
 tests/unit/execution/**
 ```
 

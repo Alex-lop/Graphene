@@ -222,7 +222,7 @@ async function mutateJson(path, payload, token) {
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "X-ReviewLatch-Token": token,
+      "X-Graphene-Token": token,
     },
     body: JSON.stringify(payload),
   });

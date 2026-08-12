@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from reviewlatch.models import RunRecord, RunState, TaskId
-from reviewlatch import store as store_module
-from reviewlatch.store import FirestoreStore, IdempotencyConflict, JsonFileStore
+from graphene.models import RunRecord, RunState, TaskId
+from graphene import store as store_module
+from graphene.store import FirestoreStore, IdempotencyConflict, JsonFileStore
 
 
 def test_json_store_restarts_and_keeps_idempotency(tmp_path: Path):
-    path = tmp_path / "reviewlatch.json"
+    path = tmp_path / "graphene.json"
     run = RunRecord(
         run_id="run_1",
         task_id=TaskId.ADAPTED_WINDOW_SECONDS,
-        repo_id="reviewlatch-demo",
+        repo_id="graphene-demo",
         state=RunState.QUEUED,
         revision=0,
     )
@@ -60,7 +60,7 @@ def test_firestore_store_restarts_and_keeps_idempotency(monkeypatch):
             self.document = Document()
 
         def collection(self, name):
-            assert name == "reviewlatch_demo"
+            assert name == "graphene_demo"
             return Collection(self.document)
 
         def transaction(self):
@@ -75,7 +75,7 @@ def test_firestore_store_restarts_and_keeps_idempotency(monkeypatch):
     run = RunRecord(
         run_id="run_firestore",
         task_id=TaskId.ADAPTED_WINDOW_SECONDS,
-        repo_id="reviewlatch-demo",
+        repo_id="graphene-demo",
         state=RunState.QUEUED,
         revision=0,
     )

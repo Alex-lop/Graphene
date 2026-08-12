@@ -16,11 +16,11 @@ COPY demo/fixture ./demo/fixture
 COPY frontend ./frontend
 
 RUN uv sync --frozen --no-dev \
-    && useradd --create-home --uid 10001 reviewlatch \
-    && chown -R reviewlatch:reviewlatch /app
+    && useradd --create-home --uid 10001 graphene \
+    && chown -R graphene:graphene /app
 
-USER reviewlatch
+USER graphene
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-CMD ["sh", "-c", "exec uvicorn reviewlatch.app:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["sh", "-c", "exec uvicorn graphene.app:app --host 0.0.0.0 --port ${PORT:-8080}"]

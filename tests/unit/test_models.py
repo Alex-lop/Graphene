@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from reviewlatch.hashing import (
+from graphene.hashing import (
     canonical_json_bytes,
     canonical_json_sha256,
     candidate_tree_sha256,
     sha256_hex,
 )
-from reviewlatch.models import (
+from graphene.models import (
     CandidateArtifact,
     FileChange,
     HumanDecision,
@@ -131,7 +131,7 @@ def test_only_a_matching_human_decision_can_approve_memory():
         "revision": 1,
         "state": MemoryState.APPROVED,
         "rule": "Auth changes require a regression test.",
-        "repo_id": "reviewlatch-demo",
+        "repo_id": "graphene-demo",
         "path_globs": ("app/auth/**",),
         "task_tags": ("authentication", "security"),
         "required_test_path": "tests/test_security_policy.py",
@@ -211,7 +211,7 @@ def test_completed_run_binds_the_human_promotion_decision():
     fields = {
         "run_id": "run_1",
         "task_id": TaskId.ADAPTED_WINDOW_SECONDS,
-        "repo_id": "reviewlatch-demo",
+        "repo_id": "graphene-demo",
         "state": RunState.COMPLETED,
         "revision": 4,
         "agent_profile_id": "auth-maintainer@1",

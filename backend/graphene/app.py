@@ -189,7 +189,7 @@ def _reconstruct_and_commit(candidate, execution_mode: str) -> tuple[str, dict[s
     patch = base64.b64decode(candidate.canonical_patch_base64, validate=True)
     if sha256_hex(patch) != candidate.candidate_patch_sha256:
         raise StoreConflict("candidate patch bytes changed")
-    with tempfile.TemporaryDirectory(prefix="reviewlatch-promotion-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="graphene-promotion-") as temporary:
         root = Path(temporary) / "fixture"
         base_sha = _initialize_repository(GOLDEN, FIXTURE_ROOT, root)
         if base_sha != candidate.base_commit_sha:
@@ -222,24 +222,24 @@ def _reconstruct_and_commit(candidate, execution_mode: str) -> tuple[str, dict[s
             "-p",
             base_sha,
             "-m",
-            "ReviewLatch approved candidate",
+            "Graphene approved candidate",
         ).decode().strip()
         return commit_sha, {
-            "message": "ReviewLatch approved candidate",
+            "message": "Graphene approved candidate",
             "tree_sha": tree_sha,
             "execution_mode": execution_mode,
         }
 
 
 def create_app(store: Store | None = None, demo_token: str | None = None) -> FastAPI:
-    application = FastAPI(title="ReviewLatch", version="0.2.0")
+    application = FastAPI(title="Graphene", version="0.2.0")
     application.state.store = store or InMemoryStore()
-    application.state.demo_token = demo_token or os.getenv("REVIEWLATCH_DEMO_TOKEN")
+    application.state.demo_token = demo_token or os.getenv("GRAPHENE_DEMO_TOKEN")
     application.state.execution_mode = os.getenv(
-        "REVIEWLATCH_EXECUTION_MODE", "deterministic-local"
+        "GRAPHENE_EXECUTION_MODE", "deterministic-local"
     )
     if application.state.execution_mode not in {"deterministic-local", "google-adk"}:
-        raise RuntimeError("REVIEWLATCH_EXECUTION_MODE must be deterministic-local or google-adk")
+        raise RuntimeError("GRAPHENE_EXECUTION_MODE must be deterministic-local or google-adk")
 
     async def handled_conflict(_, error: Exception):
         from fastapi.responses import JSONResponse
@@ -255,11 +255,11 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
         application.add_exception_handler(error_type, handled_conflict)
     application.add_exception_handler(GraphBuildError, handled_graph)
 
-    def require_token(x_reviewlatch_token: str | None = Header(default=None)) -> None:
+    def require_token(x_graphene_token: str | None = Header(default=None)) -> None:
         expected = application.state.demo_token
         if expected is None:
             raise HTTPException(503, "mutation token is not configured")
-        if x_reviewlatch_token is None or not secrets.compare_digest(x_reviewlatch_token, expected):
+        if x_graphene_token is None or not secrets.compare_digest(x_graphene_token, expected):
             raise HTTPException(401, "invalid demo token")
 
     @application.get("/healthz")
@@ -365,7 +365,7 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
                 result = await execute_google_adk(
                     config=GoogleAdkConfig(
                         mode="google-adk",
-                        model_id=os.getenv("REVIEWLATCH_MODEL", GOLDEN.model.model_id),
+                        model_id=os.getenv("GRAPHENE_MODEL", GOLDEN.model.model_id),
                     ),
                     store=store,
                     golden_contract=GOLDEN,
@@ -690,17 +690,17 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
 
 
 def _default_store() -> Store:
-    backend = os.getenv("REVIEWLATCH_STORE_BACKEND", "memory")
+    backend = os.getenv("GRAPHENE_STORE_BACKEND", "memory")
     if backend == "firestore":
-        return FirestoreStore(namespace=os.getenv("REVIEWLATCH_NAMESPACE", "hackathon"))
+        return FirestoreStore(namespace=os.getenv("GRAPHENE_NAMESPACE", "hackathon"))
     if backend == "json":
-        path = os.getenv("REVIEWLATCH_STORE_PATH")
+        path = os.getenv("GRAPHENE_STORE_PATH")
         if not path:
-            raise RuntimeError("REVIEWLATCH_STORE_PATH is required for the json store")
+            raise RuntimeError("GRAPHENE_STORE_PATH is required for the json store")
         return JsonFileStore(path)
     if backend == "memory":
         return InMemoryStore()
-    raise RuntimeError(f"unknown REVIEWLATCH_STORE_BACKEND: {backend}")
+    raise RuntimeError(f"unknown GRAPHENE_STORE_BACKEND: {backend}")
 
 
 app = create_app(_default_store())

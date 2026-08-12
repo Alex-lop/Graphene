@@ -18,7 +18,7 @@
     "session_id": "session_1802a7ba13000827d8f5",
     "test_receipt_sha256": "c0436f68ff51da4015eb843307410353483ad19d612dafa738aba8bb7a71e7a5"
   },
-  "contract_hash": "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed",
+  "contract_hash": "74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2",
   "execution_mode": "deterministic-local",
   "graph": {
     "edge_count": 19,

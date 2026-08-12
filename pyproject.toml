@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "reviewlatch"
+name = "graphene"
 version = "0.1.0"
 description = "Approved repository-scoped memory for a controlled coding workflow"
 readme = "README.md"
@@ -20,7 +20,7 @@ dependencies = [
 dev = ["pytest>=8,<10"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend/reviewlatch"]
+packages = ["backend/graphene"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run and verify the deterministic-local ReviewLatch graph demo."""
+"""Run and verify the deterministic-local Graphene graph demo."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from reviewlatch.app import GOLDEN, GRAPH_CONTRACT, create_app
-from reviewlatch.hashing import canonical_json_sha256, sha256_hex
-from reviewlatch.store import JsonFileStore
+from graphene.app import GOLDEN, GRAPH_CONTRACT, create_app
+from graphene.hashing import canonical_json_sha256, sha256_hex
+from graphene.store import JsonFileStore
 
-TOKEN = "reviewlatch-local-demo"
-HEADERS = {"x-reviewlatch-token": TOKEN}
+TOKEN = "graphene-local-demo"
+HEADERS = {"x-graphene-token": TOKEN}
 
 
 def _json(response, expected: int = 200) -> dict[str, Any]:
@@ -330,7 +330,7 @@ def run_local_soak(count: int) -> dict[str, Any]:
     if count < 1:
         raise ValueError("soak count must be positive")
     results: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(prefix="reviewlatch-soak-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="graphene-soak-") as temporary:
         root = Path(temporary)
         for number in range(1, count + 1):
             results.append(run_local_demo(root / str(number) / "store.json"))
@@ -370,7 +370,7 @@ def main() -> None:
     elif args.store:
         manifest = run_local_demo(args.store)
     else:
-        with tempfile.TemporaryDirectory(prefix="reviewlatch-demo-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="graphene-demo-") as temporary:
             manifest = run_local_demo(Path(temporary) / "store.json")
     rendered = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     if args.evidence:

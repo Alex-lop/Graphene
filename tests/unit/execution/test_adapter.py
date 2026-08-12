@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-import reviewlatch.execution.adapter as adapter
-from reviewlatch.context import build_context_packet
-from reviewlatch.execution import (
+import graphene.execution.adapter as adapter
+from graphene.context import build_context_packet
+from graphene.execution import (
     EXECUTION_MODE,
     ExecutionError,
     FixtureAccessError,
@@ -21,8 +21,8 @@ from reviewlatch.execution import (
     execute_google_adk,
     fixture_base_sha,
 )
-from reviewlatch.hashing import canonical_json_sha256, sha256_hex
-from reviewlatch.models import (
+from graphene.hashing import canonical_json_sha256, sha256_hex
+from graphene.models import (
     GoldenContract,
     GraphMvpContract,
     HumanDecision,
@@ -34,7 +34,7 @@ from reviewlatch.models import (
     RunState,
     TaskId,
 )
-from reviewlatch.store import InMemoryStore
+from graphene.store import InMemoryStore
 
 ROOT = Path(__file__).parents[3]
 FIXTURE = ROOT / "demo/fixture"

@@ -18,7 +18,7 @@ function node(id, kind, runId, data = {}) {
     id,
     kind,
     label: id,
-    repo_id: "reviewlatch-demo",
+    repo_id: "graphene-demo",
     run_id: runId,
     provenance: "server_observed",
     source_ref: `records/${id}`,

@@ -304,7 +304,7 @@ class GoldenContract(FrozenModel):
 
     @model_validator(mode="after")
     def contract_is_self_consistent(self) -> GoldenContract:
-        if self.product != "ReviewLatch":
+        if self.product != "Graphene":
             raise ValueError("P0 product name is locked")
         if self.tool_names != ("read_file", "write_file", "run_fixture_tests"):
             raise ValueError("P0 exposes exactly three scoped tools")

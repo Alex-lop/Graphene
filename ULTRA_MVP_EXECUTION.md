@@ -1,4 +1,4 @@
-# ReviewLatch — Ultra MVP Execution Brief
+# Graphene — Ultra MVP Execution Brief
 
 Status: binding build brief for the All Things Agentic submission  
 Repository: `Alex-lop/AllThingsAgenticHackathon`  
@@ -15,7 +15,7 @@ You are the root implementation agent. Execute this brief; do not begin another 
 2. Treat this file as the scope authority wherever it conflicts with `IMPLEMENTATION_PLAN.md`.
 3. Implement only in `Alex-lop/AllThingsAgenticHackathon`. `Alex-lop/AgenticCinemaFramework` is contextual input, not an implementation target.
 4. Inspect the repository, current branch, and working tree before editing. Preserve unrelated or user-authored work.
-5. Create a focused implementation branch such as `agent/reviewlatch-mvp` unless the user has already chosen a branch.
+5. Create a focused implementation branch such as `agent/graphene-mvp` unless the user has already chosen a branch.
 6. Use at most three subagents with non-overlapping file ownership. The root owns contracts, integration, scope decisions, and the final demo.
 7. Build a thin end-to-end slice before polishing any individual layer.
 8. Use configured credentials normally, but never print, copy, commit, or repurpose them. Ask Alex only when a real account, billing, project, or deployment decision blocks further progress.
@@ -41,11 +41,11 @@ There is also a product contradiction: `IDEA_EVALUATION.md` recommends a researc
 
 ## 2. Locked thesis
 
-**Working-name lock:** use **ReviewLatch** through P0 and do not reopen branding work. The earlier name `Proofline` was rejected because an [existing agent-verification product](https://github.com/sfayka/Proofline) already uses it for an adjacent completion-gating concept.
+**Working-name lock:** use **Graphene** through P0 and do not reopen branding work. The earlier name `Proofline` was rejected because an [existing agent-verification product](https://github.com/sfayka/Proofline) already uses it for an adjacent completion-gating concept.
 
 ### One-sentence pitch
 
-> ReviewLatch turns a developer's correction into approved, repository-scoped memory, injects the exact revision into a fresh Gemini session, and refuses to promote work that violates it.
+> Graphene turns a developer's correction into approved, repository-scoped memory, injects the exact revision into a fresh Gemini session, and refuses to promote work that violates it.
 
 This is not generic prompt memory. The approved revision participates in a deterministic promotion gate: the candidate cannot become completed unless the bound base commit, candidate artifact hash, active memory revision, required regression-test receipt, file scope, and human decision all match.
 
@@ -164,7 +164,7 @@ The user anchors this correction to the baseline run or changed hunk:
 
 > When security-sensitive authentication behavior changes, add or update `tests/test_security_policy.py` with a regression test covering that behavior.
 
-ReviewLatch asks exactly one material clarification: **“Should this apply to every `app/auth/**` change, or only rate-limiter changes?”** The user chooses from those two server-defined scopes. There is no open-ended planning loop.
+Graphene asks exactly one material clarification: **“Should this apply to every `app/auth/**` change, or only rate-limiter changes?”** The user chooses from those two server-defined scopes. There is no open-ended planning loop.
 
 Feedback submission then deterministically creates a proposed memory from the human's exact correction, selected evidence hunk, and selected server-owned repository, path, and task scope. Gemini does not generate, rewrite, approve, or reject memory in P0. Minimum fields:
 
@@ -174,7 +174,7 @@ Feedback submission then deterministically creates a proposed memory from the hu
   "revision": 1,
   "state": "proposed",
   "rule": "Auth changes require a regression test in tests/test_security_policy.py covering the changed security behavior.",
-  "repo_id": "reviewlatch-demo",
+  "repo_id": "graphene-demo",
   "path_globs": ["app/auth/**"],
   "task_tags": ["authentication", "security"],
   "required_test_path": "tests/test_security_policy.py",
@@ -205,7 +205,7 @@ The runner then automatically attempts completion without a human decision and p
 }
 ```
 
-Gemini cannot approve or promote. Human promotion is a universal ReviewLatch invariant, not learned behavior: the approved memory defines the required security test, while base policy causes the review pause. Promotion is denied when any input is absent, stale, or mismatched.
+Gemini cannot approve or promote. Human promotion is a universal Graphene invariant, not learned behavior: the approved memory defines the required security test, while base policy causes the review pause. Promotion is denied when any input is absent, stale, or mismatched.
 
 Successful promotion creates a commit only in the reconstructed ephemeral managed worktree, then persists the canonical patch, tree hash, commit metadata, commit SHA, and receipt in Firestore. It never creates a durable branch or pushes to a user's repository. An approved memory may add procedural requirements but may never grant new permissions or weaken the fixture's base policy.
 
@@ -258,7 +258,7 @@ flowchart TD
 - Use `gemini-3.5-flash` after confirming availability for the configured project and record the exact returned model ID. If it is unexpectedly unavailable, inspect the official eligible-model listing and record any substitute decision; never invent or silently substitute an ID.
 - Keep deployment and model locations separate: default `CLOUD_RUN_REGION=us-central1` and `GOOGLE_CLOUD_LOCATION=global`, then verify both in the target project.
 - Firestore is the only durable database.
-- Custom ReviewLatch memory lives in Firestore and is injected through ADK; do not also implement ADK `MemoryService` in P0.
+- Custom Graphene memory lives in Firestore and is injected through ADK; do not also implement ADK `MemoryService` in P0.
 - Create a clean managed Git worktree from the bundled fixture for each run. Ignore dirty-worktree, rename, and untracked-file generality outside this controlled case.
 - Use request/response plus short polling. Do not build SSE until the whole golden path works.
 - Generate the candidate diff and changed-path set from the controlled worktree; no arbitrary Git-repository support.
@@ -356,7 +356,7 @@ Use stable layout, readable type, honest loading/error states, keyboard-accessib
 The root agent may adjust names slightly, but it must keep one deployable service and clear ownership:
 
 ```text
-backend/reviewlatch/
+backend/graphene/
 ├── app.py
 ├── agent.py
 ├── tools.py

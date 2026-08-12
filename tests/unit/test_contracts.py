@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from reviewlatch.hashing import canonical_json_sha256
-from reviewlatch.models import GoldenContract, GraphMvpContract, RepoPath
+from graphene.hashing import canonical_json_sha256
+from graphene.models import GoldenContract, GraphMvpContract, RepoPath
 
 ROOT = Path(__file__).parents[2]
 CONTRACT_PATH = ROOT / "contracts/golden_path.json"
@@ -62,7 +62,7 @@ def _fixture_inventory(root: Path) -> set[str]:
 
 
 def test_contract_freezes_the_only_golden_path(contract: GoldenContract):
-    assert contract.product == "ReviewLatch"
+    assert contract.product == "Graphene"
     assert contract.model.model_id == "gemini-3.5-flash"
     assert contract.model.adk_version == "2.5.0"
     assert contract.tool_names == ("read_file", "write_file", "run_fixture_tests")
@@ -166,7 +166,7 @@ def test_post_phase_zero_graph_contract_is_final_and_bounded():
         (ROOT / "contracts/graph_mvp.json").read_text()
     )
     assert canonical_json_sha256(graph.model_dump(mode="json")) == (
-        "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed"
+        "74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2"
     )
     assert graph.caps.max_patch_bytes == 102_400
     assert graph.caps.max_nodes == 25

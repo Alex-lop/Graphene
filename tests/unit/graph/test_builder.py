@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from reviewlatch.graph import GraphBuildError, GraphBuilder
-from reviewlatch.hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
-from reviewlatch.models import (
+from graphene.graph import GraphBuildError, GraphBuilder
+from graphene.hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
+from graphene.models import (
     CandidateArtifact,
     ContextDecision,
     ContextPacket,
@@ -180,7 +180,7 @@ def _origin_run(candidate: CandidateArtifact) -> RunRecord:
     return RunRecord(
         run_id="origin_run",
         task_id=TaskId.BASELINE_MAX_ATTEMPTS,
-        repo_id="reviewlatch-demo",
+        repo_id="graphene-demo",
         state=RunState.WAITING_FOR_PROMOTION,
         revision=2,
         agent_profile_id="platform-maintainer@1",
@@ -213,7 +213,7 @@ def _approved_memory(selected_hunk_id: str) -> tuple[FeedbackRecord, MemoryRevis
         "memory_id": "mem_auth_review",
         "revision": 1,
         "rule": "Auth changes require a regression test in tests/test_security_policy.py.",
-        "repo_id": "reviewlatch-demo",
+        "repo_id": "graphene-demo",
         "path_globs": ("app/auth/**",),
         "task_tags": ("authentication", "security"),
         "required_test_path": "tests/test_security_policy.py",
@@ -278,7 +278,7 @@ def _bundle(contract: GraphMvpContract):
         "consumer_run_id": "adapted_run",
         "consumer_agent_profile_id": "auth-maintainer@1",
         "task_id": TaskId.ADAPTED_WINDOW_SECONDS,
-        "repo_id": "reviewlatch-demo",
+        "repo_id": "graphene-demo",
         "base_sha": BASE_SHA,
         "allowed_paths": ALLOWED_PATHS,
         "allowed_tools": ALLOWED_TOOLS,
@@ -354,7 +354,7 @@ def _bundle(contract: GraphMvpContract):
     adapted = RunRecord(
         run_id="adapted_run",
         task_id=TaskId.ADAPTED_WINDOW_SECONDS,
-        repo_id="reviewlatch-demo",
+        repo_id="graphene-demo",
         state=RunState.COMPLETED,
         revision=4,
         agent_profile_id="auth-maintainer@1",

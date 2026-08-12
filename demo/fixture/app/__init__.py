@@ -1,1 +1,1 @@
-"""ReviewLatch demo application."""
+"""Graphene demo application."""
