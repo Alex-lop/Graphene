@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>ReviewLatch · Context &amp; Evidence Graph</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#proof-heading">Skip to accessible proof list</a>
+
+    <header class="masthead">
+      <div class="brand" aria-label="ReviewLatch">
+        <span class="brand__mark" aria-hidden="true">RL</span>
+        <span>ReviewLatch</span>
+      </div>
+      <div class="masthead__copy">
+        <p class="eyebrow">Governed agent handoff</p>
+        <h1>Context you can trace.<br>Proof you can trust.</h1>
+        <p class="lede">
+          A bounded view of the correction, approved memory, fresh agent context,
+          code evidence, and human promotion decision.
+        </p>
+      </div>
+      <dl class="run-meta" aria-label="Graph receipt">
+        <div><dt>Run</dt><dd id="run-id">Not selected</dd></div>
+        <div><dt>Revision</dt><dd id="graph-revision">—</dd></div>
+        <div><dt>Graph hash</dt><dd><code id="graph-hash">—</code></dd></div>
+      </dl>
+    </header>
+
+    <main>
+      <section class="demo-console" aria-labelledby="demo-heading">
+        <header class="section-heading">
+          <div>
+            <p class="eyebrow">Operable golden loop</p>
+            <h2 id="demo-heading">Teach once, hand off safely</h2>
+          </div>
+          <p id="workflow-state" class="workflow-state" role="status" aria-live="polite">
+            Enter the runtime demo token to begin.
+          </p>
+        </header>
+
+        <div class="demo-console__body">
+          <form id="token-form" class="token-control">
+            <label for="demo-token">Runtime demo token</label>
+            <input id="demo-token" type="password" autocomplete="off" spellcheck="false" required>
+            <button class="button" type="submit">Hold in memory</button>
+            <button id="forget-token" class="button button--quiet" type="button">Forget token</button>
+            <span id="token-state">Not held</span>
+          </form>
+
+          <div class="run-switcher" role="group" aria-label="Visible run">
+            <span>Visible run</span>
+            <button id="show-baseline" type="button" disabled>Baseline</button>
+            <button id="show-adapted" type="button" disabled>Fresh adapted</button>
+          </div>
+
+          <div class="outcome-strip" aria-label="Golden-loop outcomes">
+            <article>
+              <span>Baseline</span>
+              <strong id="baseline-outcome">Not created</strong>
+              <small id="baseline-proof">No server evidence yet</small>
+            </article>
+            <article>
+              <span>Approved memory</span>
+              <strong id="memory-outcome">Not proposed</strong>
+              <small id="memory-proof">Human approval required</small>
+            </article>
+            <article>
+              <span>Fresh adapted run</span>
+              <strong id="adapted-outcome">Not created</strong>
+              <small id="adapted-proof">No context injected yet</small>
+            </article>
+          </div>
+
+          <ol class="action-list" aria-label="Golden demo actions">
+            <li>
+              <div><strong>Reset</strong><span>Clear only the fixed demo namespace.</span></div>
+              <button id="reset-demo" class="button button--quiet" type="button" disabled>Reset demo</button>
+            </li>
+            <li>
+              <div><strong>Record the miss</strong><span>Create and execute the bounded baseline task.</span></div>
+              <button id="run-baseline" class="button" type="button" disabled>Run baseline</button>
+            </li>
+            <li class="action-list__feedback">
+              <div>
+                <strong>Anchor the correction</strong>
+                <span id="exact-correction" class="exact-correction"></span>
+              </div>
+              <label>
+                <span>Apply this to</span>
+                <select id="scope-choice"></select>
+              </label>
+              <button id="submit-feedback" class="button" type="button" disabled>Submit exact feedback</button>
+            </li>
+            <li>
+              <div><strong>Approve memory</strong><span>Approve immutable revision 1 as a human.</span></div>
+              <button id="approve-memory" class="button" type="button" disabled>Approve memory</button>
+            </li>
+            <li>
+              <div><strong>Fresh handoff</strong><span>Create and execute the adapted task with its persisted packet.</span></div>
+              <button id="run-adapted" class="button" type="button" disabled>Run fresh agent</button>
+            </li>
+            <li>
+              <div><strong>Approve &amp; promote</strong><span>Bind the exact candidate, packet, memory, test, and run revision.</span></div>
+              <button id="promote-run" class="button" type="button" disabled>Approve &amp; promote</button>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <div id="global-state" class="global-state" role="status" aria-live="polite">
+        Waiting for a run ID.
+      </div>
+      <div id="denied-state" class="denied-state" role="status" hidden></div>
+
+      <section class="toolbar" aria-labelledby="filters-heading">
+        <div class="toolbar__heading">
+          <p class="eyebrow">Focus the evidence</p>
+          <h2 id="filters-heading">Graph filters</h2>
+        </div>
+        <fieldset id="filter-fields" disabled>
+          <label class="check-control">
+            <input id="current-run-filter" type="checkbox">
+            <span>Current run only</span>
+          </label>
+          <label>
+            <span>Path prefix</span>
+            <input id="path-filter" type="search" placeholder="app/auth" autocomplete="off" spellcheck="false">
+          </label>
+          <label>
+            <span>Node kind</span>
+            <select id="kind-filter">
+              <option value="">All node kinds</option>
+            </select>
+          </label>
+          <label class="check-control">
+            <input id="origin-filter" type="checkbox" checked>
+            <span>Show memory origin</span>
+          </label>
+          <button id="clear-filters" class="button button--quiet" type="button">Clear filters</button>
+          <button id="refresh-graph" class="button" type="button">Refresh proof</button>
+        </fieldset>
+      </section>
+
+      <section class="notice" aria-label="Graph bounds">
+        <div>
+          <strong id="bounded-count">Bounded response: 0 / 25 nodes · 0 / 40 edges</strong>
+          <span>This projection is evidence for one run, not a complete codebase map.</span>
+        </div>
+        <div id="truncation-notice" class="notice__truncation" hidden></div>
+      </section>
+
+      <section class="graph-card" aria-labelledby="graph-title">
+        <header class="section-heading">
+          <div>
+            <p class="eyebrow">Focused constellation</p>
+            <h2 id="graph-title">Context &amp; evidence</h2>
+          </div>
+          <ul class="legend" aria-label="Graph legend">
+            <li><span class="legend__dot legend__dot--observed"></span>Observed</li>
+            <li><span class="legend__dot legend__dot--derived"></span>Derived</li>
+            <li><span class="legend__dot legend__dot--human"></span>Human</li>
+            <li><span class="legend__line"></span>Advisory</li>
+          </ul>
+        </header>
+
+        <div id="graph-empty" class="empty-state" hidden>
+          <strong>No graph evidence to show</strong>
+          <span id="graph-empty-message">This run returned no nodes.</span>
+        </div>
+        <div id="graph-scroll" class="graph-scroll" hidden>
+          <svg id="graph" role="group" aria-labelledby="graph-title graph-description">
+            <desc id="graph-description">
+              Directional graph of API-provided run, memory, context, code, test,
+              policy, decision, and promotion evidence. Use Tab to reach nodes.
+            </desc>
+          </svg>
+        </div>
+      </section>
+
+      <section class="proof-card" aria-labelledby="proof-heading">
+        <header class="section-heading">
+          <div>
+            <p class="eyebrow">Same evidence, linearized</p>
+            <h2 id="proof-heading">Accessible proof list</h2>
+          </div>
+          <p id="proof-count" class="proof-count">0 API relationships</p>
+        </header>
+        <ol id="proof-list" class="proof-list"></ol>
+        <p id="proof-empty" class="empty-inline">No visible API relationships.</p>
+      </section>
+    </main>
+
+    <aside id="evidence-drawer" class="drawer" aria-labelledby="drawer-title" hidden>
+      <header class="drawer__header">
+        <div>
+          <p id="drawer-kind" class="eyebrow">Evidence</p>
+          <h2 id="drawer-title">Node detail</h2>
+        </div>
+        <button id="close-drawer" class="icon-button" type="button" aria-label="Close evidence drawer">×</button>
+      </header>
+      <div id="drawer-state" class="drawer__state" role="status" aria-live="polite"></div>
+      <div id="drawer-content" class="drawer__content"></div>
+    </aside>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>

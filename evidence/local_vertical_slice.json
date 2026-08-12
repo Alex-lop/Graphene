@@ -1,0 +1,62 @@
+{
+  "adapted": {
+    "agent_profile_id": "auth-maintainer@1",
+    "base_commit_sha": "d702baf6e69a95a28a4707f2da10d510a9ebecbb",
+    "base_with_new_test_exit_code": 1,
+    "candidate_patch_sha256": "7c56969faf6f0d88d84caf7eae1a084cfe6c08c2647179c63e48d029ab8452a7",
+    "candidate_test_exit_code": 0,
+    "candidate_tree_sha256": "f94e80e85c816744ced8bf44fedc26780164c034dde188a73afbb5882fdb6357",
+    "changed_paths": [
+      "app/auth/limiter.py",
+      "tests/test_security_policy.py"
+    ],
+    "completion": "denied_before_human_promotion",
+    "context_packet_sha256": "4e6616a4e58584637ece2d95ec4d764621f831b663d7875981eac4eff92db2ff",
+    "fresh_session": true,
+    "model_id": null,
+    "run_id": "run_bc1b2fd8f97646318655",
+    "session_id": "session_1802a7ba13000827d8f5",
+    "test_receipt_sha256": "c0436f68ff51da4015eb843307410353483ad19d612dafa738aba8bb7a71e7a5"
+  },
+  "contract_hash": "eec06d1cfdfacd7c3656a8bda6025434db5fd693be1475e0574e0717694e8bed",
+  "execution_mode": "deterministic-local",
+  "graph": {
+    "edge_count": 19,
+    "exact_hunk_sha256": "613fea51c350351e9b66cb3a2e3acffe185defd67f2a11091fb54984ef6c022d",
+    "graph_detail_and_receipt_stable_after_restart": true,
+    "graph_hash": "b519fbc6f37b8ac78bc5fa0b357848a5b42cca7dc7c24e8d4eede7f583e682d5",
+    "node_count": 20,
+    "omitted_counts": {},
+    "revision": 1,
+    "truncated": false
+  },
+  "memory": {
+    "correction_sha256": "310c99348b3243a1a165fd2de9fcb3868314f0faec80a794079239c2e26a7ffc",
+    "memory_id": "mem_auth_review",
+    "revision": 1,
+    "state": "approved"
+  },
+  "observed_at": "2026-08-11T22:05:40.355186Z",
+  "origin": {
+    "agent_profile_id": "platform-maintainer@1",
+    "completion": "denied",
+    "run_id": "run_189bfa1158ba27c40a96",
+    "selected_hunk_id": "hunk:e1ef33ab03239d50c1ba3e2763999515878b91bbb0f5cfbeae2202b7cf312d2f",
+    "session_id": "session_7eecfb295fd017a8a0a3"
+  },
+  "promotion": {
+    "commit_sha": "79091f580ad261395917f7607f8c92011bc38f56",
+    "human_decision_id": "promotion_07fd2ad501f91db15cb1",
+    "receipt_bindings_verified_after_restart": true,
+    "state": "completed"
+  },
+  "sanitized": true,
+  "schema_version": 1,
+  "verification": {
+    "cloud_run": "unverified",
+    "firestore": "unverified",
+    "gemini": "unverified",
+    "json_file_restart": "verified",
+    "local_vertical_slice": "verified"
+  }
+}
