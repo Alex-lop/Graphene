@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Graphene_main_img.png" alt="Graphene" width="720">
+</p>
+
 # ReviewLatch
 
 > ReviewLatch turns a developer correction into approved repository memory, shows exactly how that memory connects to code and proof, and gives each fresh coding agent only the graph slice it is authorized to use.
