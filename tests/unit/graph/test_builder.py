@@ -123,8 +123,10 @@ def _candidate(
         "candidate_exit_code": 0,
         "base_with_new_test_exit_code": base_exit,
         "timed_out": False,
-        "output": "4 passed",
+        "output_sha256": sha256_hex(b"4 passed"),
+        "output_byte_count": len(b"4 passed"),
         "output_truncated": False,
+        "duration_bucket": "under_1s",
     }
     receipt = Receipt(
         **receipt_data,
@@ -204,6 +206,7 @@ def _approved_memory(selected_hunk_id: str) -> tuple[FeedbackRecord, MemoryRevis
     feedback = FeedbackRecord(
         feedback_id="feedback_1",
         run_id="origin_run",
+        evidence_event_id="event_1",
         exact_correction="Auth changes require the repository security regression test.",
         selected_hunk_id=selected_hunk_id,
         selected_scope_id=ScopeId.ALL_AUTH,

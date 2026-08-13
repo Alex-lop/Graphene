@@ -10,7 +10,7 @@ def test_clean_reset_golden_loop_survives_two_store_restarts(tmp_path):
     manifest = run_local_demo(tmp_path / "store.json")
 
     assert manifest["contract_hash"] == (
-        "74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2"
+        "b10f9a3e3ac357441e0e6ed36b24d5af95076eb36558cb297c6dc9ea78d23ac8"
     )
     assert manifest["verification"] == {
         "local_vertical_slice": "verified",

@@ -366,7 +366,7 @@ class GraphBuilder:
                 "candidate_exit_code": receipt.candidate_exit_code,
                 "base_with_new_test_exit_code": receipt.base_with_new_test_exit_code,
                 "timed_out": receipt.timed_out,
-                "output_sha256": sha256_hex(receipt.output.encode()),
+                "output_sha256": receipt.output_sha256,
                 "output_truncated": receipt.output_truncated,
                 "base_commit_sha": receipt.base_commit_sha,
                 "candidate_patch_sha256": receipt.candidate_patch_sha256,
@@ -501,6 +501,7 @@ class GraphBuilder:
             created_at=feedback.occurred_at,
             data={
                 "feedback_id": feedback.feedback_id,
+                "evidence_event_id": feedback.evidence_event_id,
                 "exact_correction": feedback.exact_correction,
                 "correction_sha256": sha256_hex(feedback.exact_correction.encode()),
                 "selected_hunk_id": feedback.selected_hunk_id,

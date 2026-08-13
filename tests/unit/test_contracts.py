@@ -166,7 +166,7 @@ def test_post_phase_zero_graph_contract_is_final_and_bounded():
         (ROOT / "contracts/graph_mvp.json").read_text()
     )
     assert canonical_json_sha256(graph.model_dump(mode="json")) == (
-        "74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2"
+        "b10f9a3e3ac357441e0e6ed36b24d5af95076eb36558cb297c6dc9ea78d23ac8"
     )
     assert graph.caps.max_patch_bytes == 102_400
     assert graph.caps.max_nodes == 25

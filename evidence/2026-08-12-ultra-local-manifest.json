@@ -1,0 +1,87 @@
+{
+  "audited_base_sha": "9057e405c32559628ce5a800d8f1d3aef1d907e3",
+  "claim_status": {
+    "billing_denial_zero_invocation": "LOCAL_GREEN",
+    "evidence_bound_promotion": "LOCAL_GREEN",
+    "fresh_agent_context_binding": "LOCAL_GREEN",
+    "live_runtime_lineage": "LOCAL_GREEN",
+    "mcp_common_service_adapter": "LOCAL_GREEN",
+    "privacy_safe_firestore_adapter": "LOCAL_GREEN",
+    "real_cloud_run_firestore": "EXTERNAL_BLOCKED",
+    "real_gemini_google_adk": "EXTERNAL_BLOCKED"
+  },
+  "critical_artifacts": {
+    "backend/graphene/cli/main.py": "8fc4251cb98b155a841af6a8ab7812e252650783520ef50faf82ceadc48ebd3a",
+    "backend/graphene/context/handoff.py": "1194dc955656fce60dabf79f06f6b99c64b1fbff9b18c8e665b6f8908b54c51c",
+    "backend/graphene/context/runtime.py": "bc9e7932fecac10ebc82d64643848c867f6c2aabde14eb3de151b6b1d0af8a70",
+    "backend/graphene/execution/adapter.py": "374833ed05c3fc41fc3a91c87e4bfda93e1ca75c881a40af0d5c38ffa6f8e288",
+    "backend/graphene/integrations/adk.py": "91e2460e906c943cadf44a9ee2a0513ff9bf8d55e43244852a1b6586f59a269e",
+    "backend/graphene/integrations/mcp.py": "344bb5b65148a4d6beae02b01c4a06a10249e96018f62ea21866013b0fd01825",
+    "backend/graphene/lineage/artifacts.py": "a48ed9fe665b861fd66a140deef313cbe207fb153445166a5e7ba10318b63e69",
+    "backend/graphene/lineage/firestore.py": "114de98236325c51201a80ab68c262532b035b5a55144b66114e01d8d401bcb5",
+    "backend/graphene/lineage/promotion.py": "d23b807787f3a2f7005385299e9ccf856b642352432b7393724a565810e84652",
+    "backend/graphene/lineage/recovery.py": "f2313c1ca7de15578ec4188ba47de1880acf43eee7fa52b94999e166c0f0c2e7",
+    "backend/graphene/lineage/reducer.py": "f8859ae2503298b23ece3a3dc57066236e813d9e9734ca05a34c735392f4d9e3",
+    "backend/graphene/lineage/service.py": "c05d2812afb9e26adaa9cda1574491e0c965b18ad6a6aaa9122fd479bcd131e9",
+    "backend/graphene/lineage/store.py": "7fb6c74aa75989d693e83e50638b47eb4c8abe04f0282904374ea719fd70fb72",
+    "backend/graphene/models.py": "16c60e7fe611ff47e57dc5b8de7a8bb08b066353664608d5e2fe4928a8284ef8",
+    "contracts/lineage_v2.json": "923aee5bf1d428a0860ee081357c072cfa3b2676d31568c75af923d8fe8aa3dd",
+    "tests/adversarial/test_stage0_security_boundaries.py": "4cfa033f0227458db3d84fb2f08ebd4deb586b3b11610cc25514f38e7e314dc4",
+    "tests/unit/lineage/test_promotion.py": "5fdec45888fc2fa847806bad31c8120a2ff8cc720c375be12be8433a47697561"
+  },
+  "external_blockers": [
+    "No authorized Google Cloud project or Application Default Credentials were available.",
+    "No authorized Gemini 3.5 Flash model call, Cloud Run deployment, Firestore write, or cloud spend was performed."
+  ],
+  "historical_evidence_unchanged": {
+    "evidence/local_soak.json": "a71fc420a24693df855c32931f52518f628d4d36c9afde06b4a9982cb221ef3a",
+    "evidence/local_vertical_slice.json": "238551713a68807db9bf46cf284b60c3b9abed036290986495a39f0e87bd4fa1"
+  },
+  "limitations": [
+    "The Google ADK adapter was exercised with the real installed ADK Runner and a fake local LLM; this is not real Gemini proof.",
+    "The Firestore adapter was exercised against an adversarial transactional fake; this is not real Firestore proof.",
+    "The MCP adapter passed official in-memory client protocol tests; OS-level STDIO framing and disconnect tests remain unproved.",
+    "The fixed-test sandbox is fail-closed outside macOS and is not a general multi-tenant sandbox.",
+    "CLI watch, inspect, why, and replay are operational; mutation commands deliberately return UNAVAILABLE pending product wiring.",
+    "Digest-chain verification assumes an honest host; deletion before an independently retained checkpoint and an uncheckpointed tail remain explicit limits."
+  ],
+  "redacted": true,
+  "runtime": {
+    "node": "23.11.0",
+    "python": "3.13.9",
+    "uv": "0.11.29"
+  },
+  "schema_version": 1,
+  "timestamp": "2026-08-12T19:03:58-07:00",
+  "verification": [
+    {
+      "command": ".venv/bin/pytest -q",
+      "passes": 2,
+      "result_each": "208 passed, 5 warnings",
+      "status": "passed_without_cleanup"
+    },
+    {
+      "command": "node --test frontend/test/*.test.mjs",
+      "passes": 2,
+      "result_each": "8 passed",
+      "status": "passed_without_cleanup"
+    },
+    {
+      "command": "node --check frontend/src/app.mjs && node --check frontend/src/graph.mjs && node --check frontend/src/workflow.mjs",
+      "passes": 2,
+      "status": "passed"
+    },
+    {
+      "artifact_sha256": "3ee26724fedd151a024cfc2f84208547df3f55e07ab58498700403a8eae12de5",
+      "command": "uv run python demo/graph_mvp.py --evidence /tmp/graphene-stage0-demo.json",
+      "passes": 2,
+      "status": "local_restart_and_promotion_verified"
+    },
+    {
+      "command": "git diff --check && uv lock --check",
+      "passes": 1,
+      "status": "passed"
+    }
+  ],
+  "working_tree": "unstaged implementation over audited base; no commit, push, deploy, or publication"
+}

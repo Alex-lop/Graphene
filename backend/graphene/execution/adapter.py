@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 import os
 import re
-import shutil
+import stat
 import subprocess
+import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -44,6 +46,7 @@ _FIXED_TEST_COMMAND = (
     "no:cacheprovider",
 )
 _DURATION = re.compile(r"\bin \d+(?:\.\d+)?s\b")
+_OPEN_SUPPORTS_DIR_FD = os.open in os.supports_dir_fd
 
 
 class ExecutionError(RuntimeError):
@@ -60,6 +63,7 @@ class TestRun:
     timed_out: bool
     output: str
     output_truncated: bool
+    duration_bucket: str = "under_1s"
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,7 +179,51 @@ class ScopedFixtureTools:
             raise FixtureAccessError("parent directory does not exist")
         if path.exists() and not path.is_file():
             raise FixtureAccessError("write target must be a file")
-        path.write_bytes(encoded)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        temporary_name = f".graphene-write-{os.urandom(12).hex()}"
+        parent_fd: int | None = None
+        try:
+            if _OPEN_SUPPORTS_DIR_FD:
+                parent_fd = os.open(
+                    path.parent,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                if path.exists() and not stat.S_ISREG(
+                    os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False).st_mode
+                ):
+                    raise FixtureAccessError("write target must be a regular file")
+                fd = os.open(temporary_name, flags, 0o666, dir_fd=parent_fd)
+            else:
+                fd = os.open(path.parent / temporary_name, flags, 0o666)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if parent_fd is None:
+                os.replace(path.parent / temporary_name, path)
+            else:
+                os.replace(
+                    temporary_name,
+                    path.name,
+                    src_dir_fd=parent_fd,
+                    dst_dir_fd=parent_fd,
+                )
+                os.fsync(parent_fd)
+        except OSError as error:
+            raise FixtureAccessError("write target could not be opened safely") from error
+        finally:
+            try:
+                if parent_fd is None:
+                    (path.parent / temporary_name).unlink(missing_ok=True)
+                else:
+                    os.unlink(temporary_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            finally:
+                if parent_fd is not None:
+                    os.close(parent_fd)
         return sha256_hex(encoded)
 
 
@@ -185,6 +233,7 @@ def _sanitized_environment() -> dict[str, str]:
         "LC_ALL": "C.UTF-8",
         "NO_COLOR": "1",
         "PATH": os.environ.get("PATH", os.defpath),
+        "PYTHONPATH": ".",
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONHASHSEED": "0",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
@@ -205,33 +254,112 @@ def _sanitize_output(output: str, root: Path, cap: int) -> tuple[str, bool]:
     return raw[:cap].decode(errors="ignore"), True
 
 
+def _sandbox_quote(path: Path) -> str:
+    value = str(path)
+    if "\0" in value or "\n" in value or "\r" in value:
+        raise ExecutionError("sandbox path is invalid")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _sandboxed_test_command(root: Path, temporary: Path) -> tuple[str, ...]:
+    if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
+        raise ExecutionError("fixed tests require an available OS sandbox")
+    readable = (
+        root,
+        temporary,
+        Path(sys.prefix).resolve(),
+        Path(sys.base_prefix).resolve(),
+        Path("/System"),
+        Path("/usr/lib"),
+        Path("/dev"),
+    )
+    ancestors = {Path("/")}
+    for path in readable:
+        ancestors.update(path.parents)
+    profile = "".join(
+        (
+            '(version 1)(import "system.sb")',
+            "(allow process-exec)(deny process-fork)",
+            "(deny sysctl-read)",
+            "(deny syscall-unix (syscall-number SYS_sysctl))",
+            "(deny process-info*)",
+            "(allow process-info* (target self))",
+            "(deny mach-lookup)",
+            "(allow file-read-metadata "
+            + " ".join(f"(literal {_sandbox_quote(path)})" for path in sorted(ancestors))
+            + ")",
+            "(allow file-read* "
+            + " ".join(f"(subpath {_sandbox_quote(path)})" for path in readable)
+            + ")",
+            f"(allow file-write* (subpath {_sandbox_quote(temporary)}))",
+            "(deny network*)",
+        )
+    )
+    return (
+        "/usr/bin/sandbox-exec",
+        "-p",
+        profile,
+        sys.executable,
+        *_FIXED_TEST_COMMAND[1:],
+        "--rootdir",
+        ".",
+        "-c",
+        str(root / ".graphene-pytest.ini"),
+    )
+
+
 def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
     if policy.fixed_test_command != _FIXED_TEST_COMMAND:
         raise ExecutionError("fixture test command is not the frozen command")
-    try:
-        result = subprocess.run(
-            policy.fixed_test_command,
-            cwd=root,
-            env=_sanitized_environment(),
-            capture_output=True,
-            text=True,
-            timeout=policy.test_timeout_seconds,
-            check=False,
-        )
-        exit_code = result.returncode
-        timed_out = False
-        output = result.stdout + result.stderr
-    except subprocess.TimeoutExpired as error:
-        exit_code = -1
-        timed_out = True
-        output = _text(error.stdout) + _text(error.stderr)
+    root = root.resolve(strict=True)
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="graphene-test-sandbox-") as value:
+        temporary = Path(value).resolve(strict=True)
+        config = root / ".graphene-pytest.ini"
+        try:
+            with config.open("x", encoding="utf-8") as stream:
+                stream.write("[pytest]\n")
+        except FileExistsError as error:
+            raise ExecutionError("fixture contains the reserved test config path") from error
+        environment = _sanitized_environment()
+        environment["TMPDIR"] = str(temporary)
+        try:
+            result = subprocess.run(
+                _sandboxed_test_command(root, temporary),
+                cwd=root,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=policy.test_timeout_seconds,
+                check=False,
+            )
+            exit_code = result.returncode
+            timed_out = False
+            output = result.stdout + result.stderr
+        except subprocess.TimeoutExpired as error:
+            exit_code = -1
+            timed_out = True
+            output = _text(error.stdout) + _text(error.stderr)
+        finally:
+            config.unlink()
 
     output, truncated = _sanitize_output(
         output,
         root,
         min(policy.max_test_output_bytes, MAX_TEST_OUTPUT_BYTES),
     )
-    return TestRun(exit_code, timed_out, output, truncated)
+    duration = time.monotonic() - started
+    duration_bucket = (
+        "under_1s"
+        if duration < 1
+        else "1_to_5s"
+        if duration < 5
+        else "5_to_15s"
+        if duration <= 15
+        else "over_15s"
+    )
+    return TestRun(exit_code, timed_out, output, truncated, duration_bucket)
 
 
 def _git_environment() -> dict[str, str]:
@@ -265,19 +393,77 @@ def _git(root: Path, *args: str) -> bytes:
     return result.stdout
 
 
-def _validate_fixture(contract: GoldenContract, fixture_root: Path) -> None:
+def _validate_fixture(contract: GoldenContract, fixture_root: Path) -> dict[str, bytes]:
     tracked = set(contract.fixture.tracked_paths)
-    actual: set[str] = set()
-    for path in fixture_root.rglob("*"):
-        if path.is_symlink():
-            raise ExecutionError("source fixture cannot contain symlinks")
-        if path.is_file():
-            actual.add(path.relative_to(fixture_root).as_posix())
-    if actual != tracked:
-        raise ExecutionError("source fixture inventory does not match the frozen contract")
-    files = {path: (fixture_root / path).read_bytes() for path in tracked}
+    if len(tracked) != len(contract.fixture.tracked_paths):
+        raise ExecutionError("source fixture paths must be unique")
+    try:
+        root = fixture_root.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ExecutionError("source fixture root does not exist") from error
+    if fixture_root.is_symlink() or not root.is_dir():
+        raise ExecutionError("source fixture root must be a real directory")
+
+    files: dict[str, bytes] = {}
+    for value in contract.fixture.tracked_paths:
+        try:
+            relative = _relative_path(value)
+        except FixtureAccessError as error:
+            raise ExecutionError("source fixture path is not canonical") from error
+        path = root.joinpath(*relative.parts)
+        cursor = root
+        for part in relative.parts:
+            cursor /= part
+            if cursor.is_symlink():
+                raise ExecutionError("source fixture named paths cannot contain symlinks")
+        try:
+            metadata = path.stat(follow_symlinks=False)
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise ExecutionError("source fixture named path does not exist") from error
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ExecutionError("source fixture named path must be a regular file")
+        if resolved == root or root not in resolved.parents:
+            raise ExecutionError("source fixture named path escapes the fixture root")
+        if metadata.st_size > contract.fixture.max_write_bytes:
+            raise ExecutionError("source fixture named file exceeds the byte cap")
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            raise ExecutionError("source fixture named path could not be read") from error
+        if len(data) != metadata.st_size:
+            raise ExecutionError("source fixture named file changed during validation")
+        if b"\0" in data:
+            raise ExecutionError("source fixture named file cannot be binary")
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ExecutionError("source fixture named file must be UTF-8") from error
+        files[value] = data
+
     if candidate_tree_sha256(files) != contract.fixture.tree_sha256:
         raise ExecutionError("source fixture bytes do not match the frozen contract")
+    return files
+
+
+def _materialize_fixture(
+    contract: GoldenContract,
+    fixture_root: Path,
+    destination: Path,
+) -> None:
+    files = _validate_fixture(contract, fixture_root)
+    destination.mkdir(parents=True)
+    for value, data in files.items():
+        path = destination.joinpath(*PurePosixPath(value).parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    actual = {
+        path.relative_to(destination).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file()
+    }
+    if actual != set(contract.fixture.tracked_paths):
+        raise ExecutionError("materialized fixture inventory does not match the contract")
 
 
 def _initialize_repository(
@@ -285,8 +471,7 @@ def _initialize_repository(
     fixture_root: Path,
     destination: Path,
 ) -> str:
-    _validate_fixture(contract, fixture_root)
-    shutil.copytree(fixture_root, destination)
+    _materialize_fixture(contract, fixture_root, destination)
     _git(destination, "init", "--quiet", "--initial-branch=main")
     _git(destination, "add", "--all")
     tree = _git(destination, "write-tree").decode().strip()
@@ -415,7 +600,7 @@ def _base_test_result(
     test_content: bytes,
     destination: Path,
 ) -> TestRun:
-    shutil.copytree(fixture_root, destination)
+    _materialize_fixture(golden, fixture_root, destination)
     test_path = destination / golden.memory.required_test_path
     test_path.write_bytes(test_content)
     return run_fixture_tests(destination, golden.fixture)
@@ -568,8 +753,10 @@ def _finalize_candidate(
         "candidate_exit_code": candidate_test.exit_code,
         "base_with_new_test_exit_code": base_test_exit,
         "timed_out": candidate_test.timed_out,
-        "output": candidate_test.output,
+        "output_sha256": sha256_hex(candidate_test.output.encode()),
+        "output_byte_count": len(candidate_test.output.encode()),
         "output_truncated": candidate_test.output_truncated,
+        "duration_bucket": candidate_test.duration_bucket,
     }
     test_receipt = TestReceipt.model_validate(
         {

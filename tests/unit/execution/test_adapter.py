@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import asyncio
 import inspect
+import subprocess
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,6 +148,183 @@ def test_scoped_tools_reject_escape_symlinks_scope_and_oversized_writes(
     target.symlink_to(outside)
     with pytest.raises(FixtureAccessError):
         tools.write_file("tests/test_security_policy.py", "overwritten")
+    assert outside.read_text() == "secret"
+
+
+def test_fixture_materialization_ignores_ambient_bytecode_on_second_run(
+    tmp_path: Path,
+):
+    source = tmp_path / "source"
+    shutil.copytree(FIXTURE, source)
+    first = adapter._initialize_repository(GOLDEN, source, tmp_path / "first")
+
+    bytecode = source / "app/__pycache__/ignored.pyc"
+    bytecode.parent.mkdir(exist_ok=True)
+    bytecode.write_bytes(b"ambient bytecode")
+    second_root = tmp_path / "second"
+    second = adapter._initialize_repository(GOLDEN, source, second_root)
+
+    assert first == second
+    assert not (second_root / "app/__pycache__").exists()
+    assert set(adapter._git(second_root, "ls-files").decode().splitlines()) == set(
+        GOLDEN.fixture.tracked_paths
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("missing", "does not exist"),
+        ("mutated", "bytes do not match"),
+        ("directory", "regular file"),
+        ("symlink", "symlinks"),
+        ("binary", "binary"),
+        ("non_utf8", "UTF-8"),
+        ("oversized", "byte cap"),
+    ],
+)
+def test_fixture_materialization_rejects_unsafe_named_paths(
+    tmp_path: Path,
+    case: str,
+    message: str,
+):
+    source = tmp_path / "source"
+    shutil.copytree(FIXTURE, source)
+    target = source / "app/config.py"
+    if case == "missing":
+        target.unlink()
+    elif case == "mutated":
+        target.write_bytes(target.read_bytes() + b"# mutation\n")
+    elif case == "directory":
+        target.unlink()
+        target.mkdir()
+    elif case == "symlink":
+        target.unlink()
+        target.symlink_to(tmp_path / "outside")
+    elif case == "binary":
+        target.write_bytes(b"text\0binary")
+    elif case == "non_utf8":
+        target.write_bytes(b"\xff")
+    else:
+        target.write_bytes(b"x" * (GOLDEN.fixture.max_write_bytes + 1))
+
+    with pytest.raises(ExecutionError, match=message):
+        adapter._initialize_repository(GOLDEN, source, tmp_path / "destination")
+
+
+def test_fixture_materialization_rejects_noncanonical_named_path(tmp_path: Path):
+    fixture = GOLDEN.fixture.model_copy(update={"tracked_paths": ("../outside",)})
+    contract = GOLDEN.model_copy(update={"fixture": fixture})
+
+    with pytest.raises(ExecutionError, match="canonical"):
+        adapter._initialize_repository(contract, FIXTURE, tmp_path / "destination")
+
+
+def test_fixed_tests_cannot_read_or_write_host_files_or_use_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "fixture"
+    root.mkdir()
+    outside = tmp_path / "outside-canary.txt"
+    marker = tmp_path / "outside-marker.txt"
+    canary = "FIXED_TEST_HOST_CANARY"
+    outside.write_text(canary)
+    monkeypatch.setenv("GRAPHENE_TEST_SECRET", "ENVIRONMENT_CANARY")
+    (root / "test_isolation.py").write_text(
+        "\n".join(
+            (
+                "import os",
+                "import socket",
+                "from pathlib import Path",
+                "import pytest",
+                "",
+                "def test_isolated():",
+                "    assert 'GRAPHENE_TEST_SECRET' not in os.environ",
+                "    assert os.read(0, 1) == b''",
+                "    with pytest.raises(PermissionError): os.uname()",
+                f"    with pytest.raises(PermissionError): Path({str(outside)!r}).read_text()",
+                f"    with pytest.raises(PermissionError): Path({str(marker)!r}).write_text('escaped')",
+                "    with pytest.raises(PermissionError):",
+                "        socket.create_connection(('127.0.0.1', 9), timeout=0.1)",
+                "    with pytest.raises(PermissionError): os.fork()",
+            )
+        )
+    )
+
+    if adapter.sys.platform != "darwin":
+        with pytest.raises(ExecutionError, match="OS sandbox"):
+            adapter.run_fixture_tests(root, GOLDEN.fixture)
+        return
+    result = adapter.run_fixture_tests(root, GOLDEN.fixture)
+    assert result.exit_code == 0
+    assert result.timed_out is False
+    assert canary not in result.output
+    assert not marker.exists()
+
+    probe = tmp_path / "procargs.c"
+    binary = tmp_path / "procargs"
+    probe.write_text(
+        "#include <sys/sysctl.h>\n"
+        "#include <unistd.h>\n"
+        "int main(void){int mib[3]={CTL_KERN,KERN_PROCARGS2,getppid()};"
+        "size_t n=0;return sysctl(mib,3,0,&n,0,0)==-1?0:1;}\n"
+    )
+    subprocess.run(("/usr/bin/cc", str(probe), "-o", str(binary)), check=True)
+    temporary = Path(adapter.tempfile.mkdtemp(prefix="graphene-native-probe-")).resolve()
+    try:
+        command = adapter._sandboxed_test_command(root, temporary)
+        native = subprocess.run(
+            (*command[:3], str(binary)),
+            cwd=root,
+            env={**adapter._sanitized_environment(), "TMPDIR": str(temporary)},
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+        )
+        assert native.returncode == 0
+    finally:
+        shutil.rmtree(temporary)
+
+
+def test_final_write_is_atomic_directory_relative_and_no_follow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    if not adapter._OPEN_SUPPORTS_DIR_FD or not hasattr(adapter.os, "O_NOFOLLOW"):
+        pytest.skip("directory-relative O_NOFOLLOW is not supported")
+    root = tmp_path / "fixture"
+    shutil.copytree(FIXTURE, root)
+    tools = ScopedFixtureTools(
+        root,
+        allowed_paths=GOLDEN.fixture.mutable_paths,
+        policy=GOLDEN.fixture,
+    )
+    outside = tmp_path / "outside.py"
+    outside.write_text("secret")
+    resolve = tools._resolve
+
+    def race_target(relative_path: str, *, write: bool):
+        path = resolve(relative_path, write=write)
+        path.symlink_to(outside)
+        return path
+
+    calls: list[tuple[object, int, int | None]] = []
+    real_open = adapter.os.open
+
+    def record_open(path, flags, mode=0o777, *, dir_fd=None):
+        calls.append((path, flags, dir_fd))
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(tools, "_resolve", race_target)
+    monkeypatch.setattr(adapter.os, "open", record_open)
+    with pytest.raises(FixtureAccessError, match="regular file"):
+        tools.write_file("tests/test_security_policy.py", "overwritten")
+
+    parent = next(call for call in calls if call[0] == root / "tests")
+    assert parent[1] & adapter.os.O_NOFOLLOW
+    assert parent[1] & adapter.os.O_DIRECTORY
+    assert not any(str(call[0]).startswith(".graphene-write-") for call in calls)
     assert outside.read_text() == "secret"
 
 

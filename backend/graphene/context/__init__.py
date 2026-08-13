@@ -15,6 +15,17 @@ from ..models import (
     TaskId,
     TaskSpec,
 )
+from .handoff import (
+    AUTH_CAPABILITIES,
+    CompiledHandoff,
+    HandoffCandidate,
+    HandoffCompileError,
+    build_injection_receipt,
+    compile_handoff,
+    render_fresh_prompt,
+    source_candidate_set_sha256,
+    start_handoff,
+)
 
 _PROFILE_IDS = (
     "platform-maintainer@1",
@@ -147,4 +158,17 @@ def build_context_packet(
     )
 
 
-__all__ = ["build_context_packet", "load_catalog", "profile_for_task"]
+__all__ = [
+    "AUTH_CAPABILITIES",
+    "CompiledHandoff",
+    "HandoffCandidate",
+    "HandoffCompileError",
+    "build_context_packet",
+    "build_injection_receipt",
+    "compile_handoff",
+    "load_catalog",
+    "profile_for_task",
+    "render_fresh_prompt",
+    "source_candidate_set_sha256",
+    "start_handoff",
+]

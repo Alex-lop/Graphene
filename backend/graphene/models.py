@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from .hashing import canonical_json_sha256, sha256_hex
+from .hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 
 
 def _relative_posix_path(value: str) -> str:
@@ -349,8 +349,11 @@ class GoldenContract(FrozenModel):
             raise ValueError("retrieval cases must use the server-owned repository")
         if self.retrieval.states != (MemoryState.APPROVED,):
             raise ValueError("only approved memory may be retrieved")
-        if any(endpoint.requires_demo_token != (endpoint.method == "POST") for endpoint in self.api):
-            raise ValueError("every mutation requires the runtime demo token")
+        if any(
+            endpoint.requires_demo_token != (endpoint.path != "/healthz")
+            for endpoint in self.api
+        ):
+            raise ValueError("every non-health endpoint requires the runtime demo token")
         if tuple(step.sequence for step in self.loop) != tuple(range(1, len(self.loop) + 1)):
             raise ValueError("loop steps must be contiguous")
         return self
@@ -374,6 +377,7 @@ class ProofItem(FrozenModel):
 class FeedbackRecord(FrozenModel):
     feedback_id: Identifier
     run_id: Identifier
+    evidence_event_id: Identifier
     exact_correction: BoundedText
     selected_hunk_id: Identifier
     selected_scope_id: ScopeId
@@ -432,8 +436,10 @@ class TestReceipt(FrozenModel):
     candidate_exit_code: int
     base_with_new_test_exit_code: int | None
     timed_out: bool
-    output: str
+    output_sha256: Sha256
+    output_byte_count: int = Field(ge=0, le=MAX_TEST_OUTPUT_BYTES)
     output_truncated: bool
+    duration_bucket: Literal["under_1s", "1_to_5s", "5_to_15s", "over_15s"]
     receipt_sha256: Sha256
 
     @model_validator(mode="after")
@@ -447,8 +453,6 @@ class TestReceipt(FrozenModel):
             "no:cacheprovider",
         ):
             raise ValueError("test receipt command must match the fixed runner")
-        if len(self.output.encode()) > MAX_TEST_OUTPUT_BYTES:
-            raise ValueError("test output exceeds the UTF-8 byte cap")
         expected = canonical_json_sha256(
             self.model_dump(mode="json", exclude={"receipt_sha256"})
         )
@@ -988,7 +992,833 @@ class GraphMvpContract(FrozenModel):
             or self.negative_profile_id not in {
                 item.agent_profile_id for item in self.catalog
             }
-            or any(endpoint.method != "GET" for endpoint in self.api)
+            or any(
+                endpoint.method != "GET" or not endpoint.requires_demo_token
+                for endpoint in self.api
+            )
         ):
             raise ValueError("post-Phase-0 graph contract is frozen")
+        return self
+
+
+# Version 2 is additive while the legacy browser receipt contracts remain readable.
+class LineageEventType(StrEnum):
+    RUN_STARTED = "run.started"
+    INVOCATION_STARTED = "invocation.started"
+    INVOCATION_COMPLETED = "invocation.completed"
+    INVOCATION_FAILED = "invocation.failed"
+    RUN_INTERRUPTED = "run.interrupted"
+    RUN_FAILED = "run.failed"
+    RUN_ENDED = "run.ended"
+    TOOL_STARTED = "tool.started"
+    TOOL_COMPLETED = "tool.completed"
+    TOOL_FAILED = "tool.failed"
+    CLARIFICATION_ASKED = "clarification.asked"
+    CLARIFICATION_ANSWERED = "clarification.answered"
+    COMPLETION_ATTEMPTED = "completion.attempted"
+    CANDIDATE_CREATED = "candidate.created"
+    CHANGESET_PARSED = "changeset.parsed"
+    TEST_RECEIPT_CREATED = "test.receipt.created"
+    FEEDBACK_RECORDED = "feedback.recorded"
+    MEMORY_PROPOSED = "memory.proposed"
+    MEMORY_APPROVED = "memory.approved"
+    MEMORY_REJECTED = "memory.rejected"
+    PROMOTION_APPROVED = "promotion.approved"
+    CONTEXT_COMPILED = "context.compiled"
+    CONTEXT_INJECTED = "context.injected"
+    HANDOFF_DENIED = "handoff.denied"
+    SCOPE_ALLOWED = "scope.allowed"
+    SCOPE_DENIED = "scope.denied"
+    COMPLETION_DENIED = "completion.denied"
+    PROMOTION_DENIED = "promotion.denied"
+    PROMOTION_COMPLETED = "promotion.completed"
+
+
+class TruthKind(StrEnum):
+    RUNTIME_OBSERVED = "runtime_observed"
+    SERVER_DERIVED = "server_derived"
+    HUMAN_ATTESTED = "human_attested"
+    POLICY_AUTHORITATIVE = "policy_authoritative"
+    MODEL_PROPOSED = "model_proposed"
+
+
+class LineageAuthority(StrEnum):
+    SCOPED_TOOL_WRAPPER = "scoped_tool_wrapper"
+    ADK_ADAPTER = "adk_adapter"
+    LIFECYCLE_SERVICE = "lifecycle_service"
+    POLICY_ENGINE = "policy_engine"
+    OPERATOR_REQUEST = "operator_request"
+    CONTEXT_COMPILER = "context_compiler"
+    ARTIFACT_PARSER = "artifact_parser"
+    PROMOTION_SERVICE = "promotion_service"
+
+
+class LineageOperation(StrEnum):
+    SEARCH_REPO = "search_repo"
+    READ_FILE = "read_file"
+    OPEN_EVIDENCE = "open_evidence"
+    WRITE_FILE = "write_file"
+    RUN_FIXED_TEST = "run_fixed_test"
+    REQUEST_COMPLETION = "request_completion"
+
+
+class LineageRunState(StrEnum):
+    STARTING = "STARTING"
+    LIVE = "LIVE"
+    WAITING_INPUT = "WAITING_INPUT"
+    ACCESS_DENIED = "ACCESS_DENIED"
+    NEEDS_HUMAN = "NEEDS_HUMAN"
+    FAILED = "FAILED"
+    INTERRUPTED = "INTERRUPTED"
+    PROMOTED = "PROMOTED"
+    EVIDENCE_INVALID = "EVIDENCE_INVALID"
+
+
+class EvidenceKind(StrEnum):
+    EVENT = "event"
+    FILE_VERSION = "file_version"
+    CHANGESET = "changeset"
+    HUNK = "hunk"
+    TOOL_RECEIPT = "tool_receipt"
+    TEST_RECEIPT = "test_receipt"
+    FEEDBACK = "feedback"
+    MEMORY_REVISION = "memory_revision"
+    CHECKPOINT = "checkpoint"
+    HANDOFF_DECISION = "handoff_decision"
+    CONTEXT_BRIEF = "context_brief"
+    INJECTION_RECEIPT = "injection_receipt"
+    PROMOTION_RECEIPT = "promotion_receipt"
+    EVIDENCE_BLOB = "evidence_blob"
+    POLICY_RECEIPT = "policy_receipt"
+    OPERATOR_REQUEST = "operator_request"
+    ADK_EVENT_RECEIPT = "adk_event_receipt"
+
+
+class SourceKind(StrEnum):
+    TOOL_RECEIPT = "tool_receipt"
+    LIFECYCLE_REQUEST = "lifecycle_request"
+    POLICY_EVALUATION = "policy_evaluation"
+    OPERATOR_REQUEST = "operator_request"
+    REDUCER_RECEIPT = "reducer_receipt"
+    CONTEXT_COMPILER_RECEIPT = "context_compiler_receipt"
+    ADK_EVENT_RECEIPT = "adk_event_receipt"
+    PROMOTION_RECEIPT = "promotion_receipt"
+
+
+class EvidenceReference(FrozenModel):
+    kind: EvidenceKind
+    id: Identifier
+    sha256: Sha256
+
+
+class SourceReference(FrozenModel):
+    kind: SourceKind
+    id: Identifier
+    sha256: Sha256
+
+
+_EVENT_AUTHORITY = {
+    LineageEventType.RUN_STARTED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
+    LineageEventType.INVOCATION_STARTED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
+    LineageEventType.INVOCATION_COMPLETED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
+    LineageEventType.INVOCATION_FAILED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
+    LineageEventType.RUN_INTERRUPTED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
+    LineageEventType.RUN_FAILED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
+    LineageEventType.RUN_ENDED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
+    LineageEventType.TOOL_STARTED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
+    LineageEventType.TOOL_COMPLETED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
+    LineageEventType.TOOL_FAILED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
+    LineageEventType.CLARIFICATION_ASKED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
+    LineageEventType.CLARIFICATION_ANSWERED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
+    LineageEventType.COMPLETION_ATTEMPTED: (TruthKind.MODEL_PROPOSED, LineageAuthority.ADK_ADAPTER),
+    LineageEventType.CANDIDATE_CREATED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
+    LineageEventType.CHANGESET_PARSED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
+    LineageEventType.TEST_RECEIPT_CREATED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
+    LineageEventType.FEEDBACK_RECORDED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
+    LineageEventType.MEMORY_PROPOSED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
+    LineageEventType.MEMORY_APPROVED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
+    LineageEventType.MEMORY_REJECTED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
+    LineageEventType.PROMOTION_APPROVED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
+    LineageEventType.CONTEXT_COMPILED: (TruthKind.SERVER_DERIVED, LineageAuthority.CONTEXT_COMPILER),
+    LineageEventType.CONTEXT_INJECTED: (TruthKind.SERVER_DERIVED, LineageAuthority.CONTEXT_COMPILER),
+    LineageEventType.HANDOFF_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.CONTEXT_COMPILER),
+    LineageEventType.SCOPE_ALLOWED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
+    LineageEventType.SCOPE_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
+    LineageEventType.COMPLETION_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
+    LineageEventType.PROMOTION_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
+    LineageEventType.PROMOTION_COMPLETED: (TruthKind.SERVER_DERIVED, LineageAuthority.PROMOTION_SERVICE),
+}
+
+_SOURCE_KIND_BY_AUTHORITY = {
+    LineageAuthority.SCOPED_TOOL_WRAPPER: SourceKind.TOOL_RECEIPT,
+    LineageAuthority.ADK_ADAPTER: SourceKind.ADK_EVENT_RECEIPT,
+    LineageAuthority.LIFECYCLE_SERVICE: SourceKind.LIFECYCLE_REQUEST,
+    LineageAuthority.POLICY_ENGINE: SourceKind.POLICY_EVALUATION,
+    LineageAuthority.OPERATOR_REQUEST: SourceKind.OPERATOR_REQUEST,
+    LineageAuthority.CONTEXT_COMPILER: SourceKind.CONTEXT_COMPILER_RECEIPT,
+    LineageAuthority.ARTIFACT_PARSER: SourceKind.REDUCER_RECEIPT,
+    LineageAuthority.PROMOTION_SERVICE: SourceKind.PROMOTION_RECEIPT,
+}
+
+
+_FORBIDDEN_EVENT_PAYLOAD_KEYS = frozenset(
+    {
+        "authorization",
+        "content",
+        "diff",
+        "model_output",
+        "patch",
+        "prompt",
+        "raw_source",
+        "secret",
+        "stderr",
+        "stdout",
+        "token",
+    }
+)
+
+_TOOL_COMPLETED_PAYLOAD_FIELDS = frozenset(
+    {
+        "added_lines",
+        "after_file_version_id",
+        "baseline_bytes",
+        "baseline_lines",
+        "before_file_version_id",
+        "bound_paths",
+        "byte_count",
+        "candidate_written_versions_sha256",
+        "content_sha256",
+        "deleted_lines",
+        "duration_bucket",
+        "evidence_id",
+        "exit_code",
+        "file_version_id",
+        "line_count",
+        "match_count",
+        "operation",
+        "output_byte_count",
+        "output_sha256",
+        "output_truncated",
+        "passed",
+        "path",
+        "paths",
+        "state",
+        "status",
+        "timed_out",
+        "truncated",
+    }
+)
+_EVENT_PAYLOAD_FIELDS = {
+    LineageEventType.RUN_STARTED: frozenset(
+        {"context_compiled_event_sha256", "source_run_id", "state"}
+    ),
+    LineageEventType.INVOCATION_STARTED: frozenset(
+        {"framework", "framework_version", "status"}
+    ),
+    LineageEventType.INVOCATION_COMPLETED: frozenset({"status"}),
+    LineageEventType.INVOCATION_FAILED: frozenset({"error_code", "status"}),
+    LineageEventType.RUN_INTERRUPTED: frozenset(
+        {
+            "checkout_binding_sha256",
+            "reason_code",
+            "recovery_kind",
+            "state",
+            "status",
+            "unmatched_invocations",
+            "unmatched_tool_starts",
+        }
+    ),
+    LineageEventType.RUN_FAILED: frozenset({"error_code", "reason_code", "state", "status"}),
+    LineageEventType.RUN_ENDED: frozenset({"reason_code", "state", "status"}),
+    LineageEventType.TOOL_STARTED: frozenset({"operation", "status"}),
+    LineageEventType.TOOL_COMPLETED: _TOOL_COMPLETED_PAYLOAD_FIELDS,
+    LineageEventType.TOOL_FAILED: frozenset({"error_code", "operation", "status"}),
+    LineageEventType.CLARIFICATION_ASKED: frozenset(
+        {"choice_count", "question_id", "question_sha256", "status"}
+    ),
+    LineageEventType.CLARIFICATION_ANSWERED: frozenset(
+        {"answer_id", "answer_sha256", "choice", "question_id", "status"}
+    ),
+    LineageEventType.COMPLETION_ATTEMPTED: frozenset({"operation", "status"}),
+    LineageEventType.CANDIDATE_CREATED: frozenset(
+        {
+            "candidate_id",
+            "candidate_patch_sha256",
+            "candidate_tree_sha256",
+            "changed_path_count",
+            "status",
+        }
+    ),
+    LineageEventType.CHANGESET_PARSED: frozenset(
+        {"candidate_patch_sha256", "changed_paths", "changeset_id", "hunk_count", "status"}
+    ),
+    LineageEventType.TEST_RECEIPT_CREATED: frozenset(
+        {
+            "bound_paths",
+            "passed",
+            "receipt_id",
+            "receipt_sha256",
+            "status",
+        }
+    ),
+    LineageEventType.FEEDBACK_RECORDED: frozenset(
+        {
+            "correction_sha256",
+            "evidence_event_id",
+            "feedback_id",
+            "hunk_id",
+            "scope_id",
+            "status",
+        }
+    ),
+    LineageEventType.MEMORY_PROPOSED: frozenset(
+        {"memory_id", "memory_sha256", "revision", "status"}
+    ),
+    LineageEventType.MEMORY_APPROVED: frozenset(
+        {"decision_id", "memory_id", "memory_sha256", "revision", "status"}
+    ),
+    LineageEventType.MEMORY_REJECTED: frozenset(
+        {"decision_id", "memory_id", "memory_sha256", "revision", "status"}
+    ),
+    LineageEventType.PROMOTION_APPROVED: frozenset(
+        {
+            "candidate_patch_sha256",
+            "decision_id",
+            "decision_sha256",
+            "expected_head_sha256",
+            "status",
+        }
+    ),
+    LineageEventType.CONTEXT_COMPILED: frozenset(
+        {
+            "brief_artifact_sha256",
+            "brief_sha256",
+            "candidate_set_sha256",
+            "decision_artifact_sha256",
+            "decision_sha256",
+            "source_graph_sha256",
+            "status",
+        }
+    ),
+    LineageEventType.CONTEXT_INJECTED: frozenset(
+        {
+            "brief_sha256",
+            "decision_sha256",
+            "injection_receipt_sha256",
+            "prior_message_count",
+            "prompt_sha256",
+            "source_head_seq",
+            "source_run_id",
+            "status",
+        }
+    ),
+    LineageEventType.HANDOFF_DENIED: frozenset(
+        {
+            "evidence_count",
+            "memory_count",
+            "model_dispatch_count",
+            "reason_code",
+            "source_path_count",
+            "status",
+            "target_profile_id",
+            "task_id",
+            "tool_count",
+        }
+    ),
+    LineageEventType.SCOPE_ALLOWED: frozenset({"operation", "reason_code", "status"}),
+    LineageEventType.SCOPE_DENIED: frozenset({"operation", "reason_code", "status"}),
+    LineageEventType.COMPLETION_DENIED: frozenset(
+        {"operation", "reason_code", "state", "status"}
+    ),
+    LineageEventType.PROMOTION_DENIED: frozenset(
+        {"candidate_patch_sha256", "reason_code", "status"}
+    ),
+    LineageEventType.PROMOTION_COMPLETED: frozenset(
+        {
+            "candidate_patch_sha256",
+            "promotion_receipt_id",
+            "promotion_receipt_sha256",
+            "status",
+        }
+    ),
+}
+
+
+def _event_payload_is_safe(value: Any) -> bool:
+    if isinstance(value, dict):
+        return all(
+            str(key).lower() not in _FORBIDDEN_EVENT_PAYLOAD_KEYS
+            and _event_payload_is_safe(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return all(_event_payload_is_safe(item) for item in value)
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+class EventInput(FrozenModel):
+    session_id: Identifier | None
+    invocation_id: Identifier | None
+    model_id: BoundedText | None
+    tool_call_id: Identifier | None
+    repo_id: Identifier
+    base_sha: GitSha
+    agent_profile_id: AgentProfileId
+    policy_revision: int = Field(ge=1)
+    event_type: LineageEventType
+    truth_kind: TruthKind
+    authority: LineageAuthority
+    references: tuple[EvidenceReference, ...] = Field(max_length=16)
+    source_ref: SourceReference
+    payload: dict[str, Any]
+
+    @model_validator(mode="after")
+    def event_input_is_bounded(self) -> EventInput:
+        if len(canonical_json_bytes(self.payload)) > 4_096 or not _event_payload_is_safe(
+            self.payload
+        ):
+            raise ValueError("event payload is unsafe or exceeds the byte cap")
+        if not set(self.payload) <= _EVENT_PAYLOAD_FIELDS[self.event_type]:
+            raise ValueError("event payload contains fields outside its public allowlist")
+        reference_keys = tuple((item.kind, item.id, item.sha256) for item in self.references)
+        if len(reference_keys) != len(set(reference_keys)):
+            raise ValueError("event references must be unique")
+        if (self.truth_kind, self.authority) != _EVENT_AUTHORITY[self.event_type]:
+            raise ValueError("event truth and authority do not match its type")
+        if self.source_ref.kind != _SOURCE_KIND_BY_AUTHORITY[self.authority]:
+            raise ValueError("event source reference does not match its authority")
+        tool_event = self.event_type in {
+            LineageEventType.TOOL_STARTED,
+            LineageEventType.TOOL_COMPLETED,
+            LineageEventType.TOOL_FAILED,
+        }
+        if tool_event and (
+            self.tool_call_id is None
+            or self.truth_kind != TruthKind.RUNTIME_OBSERVED
+            or self.authority != LineageAuthority.SCOPED_TOOL_WRAPPER
+            or self.payload.get("operation") not in {item.value for item in LineageOperation}
+        ):
+            raise ValueError("ordinary tool events require wrapper identity and operation")
+        if self.event_type in {
+            LineageEventType.INVOCATION_STARTED,
+            LineageEventType.INVOCATION_COMPLETED,
+            LineageEventType.INVOCATION_FAILED,
+            LineageEventType.COMPLETION_ATTEMPTED,
+        } and (self.session_id is None or self.invocation_id is None or self.model_id is None):
+            raise ValueError("invocation events require session, invocation, and model IDs")
+        if self.event_type == LineageEventType.COMPLETION_ATTEMPTED and (
+            self.truth_kind != TruthKind.MODEL_PROPOSED
+            or self.authority != LineageAuthority.ADK_ADAPTER
+            or self.tool_call_id is None
+        ):
+            raise ValueError("completion attempts require model proposal identity")
+        return self
+
+
+class Event(EventInput):
+    schema_version: Literal[2]
+    event_id: Identifier
+    run_id: Identifier
+    seq: int = Field(ge=1)
+    server_recorded_at: UtcDateTime
+    idempotency_key: IdempotencyKey
+    payload_sha256: Sha256
+    previous_event_sha256: Sha256 | None
+    event_sha256: Sha256
+
+    @model_validator(mode="after")
+    def event_hashes_are_canonical(self) -> Event:
+        if self.payload_sha256 != canonical_json_sha256(self.payload):
+            raise ValueError("event payload digest does not match")
+        if (self.seq == 1) != (self.previous_event_sha256 is None):
+            raise ValueError("only the first event may omit its previous digest")
+        expected = canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"event_sha256"})
+        )
+        if self.event_sha256 != expected:
+            raise ValueError("event digest does not match its canonical envelope")
+        return self
+
+
+class FileVersion(FrozenModel):
+    schema_version: Literal[2]
+    file_id: Sha256
+    file_version_id: Sha256
+    repo_id: Identifier
+    path: RepoPath
+    content_sha256: Sha256
+    byte_count: int = Field(ge=0, le=262_144)
+    line_count: int = Field(ge=0, le=100_000)
+    artifact_sha256: Sha256
+
+    @model_validator(mode="after")
+    def identifiers_match_content(self) -> FileVersion:
+        file_id = sha256_hex(f"{self.repo_id}\0{self.path}".encode())
+        version_id = sha256_hex(f"{file_id}\0{self.content_sha256}".encode())
+        if self.file_id != file_id or self.file_version_id != version_id:
+            raise ValueError("file version identifiers do not match")
+        return self
+
+
+class ToolReceipt(FrozenModel):
+    schema_version: Literal[2]
+    receipt_id: Identifier
+    run_id: Identifier
+    session_id: Identifier
+    invocation_id: Identifier
+    model_id: BoundedText | None
+    tool_call_id: Identifier
+    operation: LineageOperation
+    phase: Literal["started", "completed", "failed"]
+    status: Identifier
+    input_sha256: Sha256
+    output_sha256: Sha256 | None
+    output_byte_count: int | None = Field(default=None, ge=0)
+    error_code: Identifier | None
+    receipt_sha256: Sha256
+
+    @model_validator(mode="after")
+    def receipt_is_canonical(self) -> ToolReceipt:
+        completed = self.phase == "completed"
+        if completed != (self.output_sha256 is not None) or completed != (
+            self.output_byte_count is not None
+        ):
+            raise ValueError("only completed receipts bind bounded output metadata")
+        if (self.phase == "failed") != (self.error_code is not None):
+            raise ValueError("only failed receipts require an error code")
+        if self.receipt_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"receipt_sha256"})
+        ):
+            raise ValueError("tool receipt digest does not match")
+        return self
+
+
+class VerifiedHead(FrozenModel):
+    run_id: Identifier
+    seq: int = Field(ge=0)
+    event_sha256: Sha256 | None
+    event_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def head_is_consistent(self) -> VerifiedHead:
+        if self.event_count != self.seq or (self.seq == 0) != (
+            self.event_sha256 is None
+        ):
+            raise ValueError("verified head sequence, count, and digest disagree")
+        return self
+
+
+class EvidenceInvalidState(FrozenModel):
+    run_id: Identifier
+    first_invalid_seq: int | None = Field(default=None, ge=1)
+    reason: BoundedText
+
+
+class HeadCheckpoint(FrozenModel):
+    schema_version: Literal[2]
+    checkpoint_id: Identifier
+    run_id: Identifier
+    expected_seq: int = Field(ge=1)
+    event_head_sha256: Sha256
+    purpose: Identifier
+    bound_artifact_kind: EvidenceKind
+    bound_artifact_id: Identifier
+    bound_artifact_sha256: Sha256
+    server_recorded_at: UtcDateTime
+    checkpoint_sha256: Sha256
+
+    @model_validator(mode="after")
+    def checkpoint_is_canonical(self) -> HeadCheckpoint:
+        expected = canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"checkpoint_sha256"})
+        )
+        if self.checkpoint_sha256 != expected:
+            raise ValueError("checkpoint digest does not match")
+        return self
+
+
+class HandoffDecisionItem(FrozenModel):
+    candidate_kind: Identifier
+    id: Identifier
+    sha256: Sha256
+    include: bool
+    reason_code: Identifier
+
+
+class HandoffDecision(FrozenModel):
+    schema_version: Literal[2]
+    decision_id: Identifier
+    source_run_id: Identifier
+    source_head: VerifiedHead
+    repo_id: Identifier
+    base_sha: GitSha
+    target_profile_id: AgentProfileId
+    target_profile_revision: int = Field(ge=1)
+    task_id: Identifier
+    policy_revision: int = Field(ge=1)
+    candidate_set_sha256: Sha256
+    entries: tuple[HandoffDecisionItem, ...] = Field(max_length=256)
+    decision: Literal["allowed", "denied"]
+    safe_reason_codes: tuple[Identifier, ...]
+    safe_counts: dict[str, int]
+    server_recorded_at: UtcDateTime
+    decision_sha256: Sha256
+
+    @model_validator(mode="after")
+    def decision_is_complete_and_canonical(self) -> HandoffDecision:
+        keys = tuple((item.candidate_kind, item.id) for item in self.entries)
+        if not keys or keys != tuple(sorted(set(keys))):
+            raise ValueError("handoff candidates must be nonempty, sorted, and unique")
+        candidate_set = [
+            {
+                "candidate_kind": item.candidate_kind,
+                "id": item.id,
+                "sha256": item.sha256,
+            }
+            for item in self.entries
+        ]
+        if self.candidate_set_sha256 != canonical_json_sha256(candidate_set):
+            raise ValueError("handoff candidate-set digest does not match")
+        included = sum(item.include for item in self.entries)
+        expected_counts = {
+            "candidates": len(self.entries),
+            "excluded": len(self.entries) - included,
+            "included": included,
+        }
+        if self.safe_counts != expected_counts:
+            raise ValueError("handoff safe counts must match the complete decision")
+        if self.safe_reason_codes != tuple(
+            sorted({item.reason_code for item in self.entries})
+        ):
+            raise ValueError("handoff reason codes must be canonical")
+        if self.decision == "denied" and included:
+            raise ValueError("denied handoffs cannot include candidates")
+        if (
+            self.source_head.run_id != self.source_run_id
+            or self.target_profile_id.rsplit("@", 1)[-1]
+            != str(self.target_profile_revision)
+        ):
+            raise ValueError("handoff source head or target profile identity does not match")
+        if self.decision_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"decision_sha256"})
+        ):
+            raise ValueError("handoff decision digest does not match")
+        return self
+
+
+class BriefMemory(FrozenModel):
+    memory_id: Identifier
+    revision: int = Field(ge=1)
+    exact_text: BoundedText
+
+
+class BriefEvidence(FrozenModel):
+    evidence_id: Identifier
+    summary: BoundedText
+    reference: EvidenceReference
+
+
+class ContextBrief(FrozenModel):
+    schema_version: Literal[2]
+    brief_id: Identifier
+    repo_id: Identifier
+    base_sha: GitSha
+    task_id: Identifier
+    task_text: BoundedText
+    target_profile_id: AgentProfileId
+    target_profile_revision: int = Field(ge=1)
+    policy_revision: int = Field(ge=1)
+    approved_memories: tuple[BriefMemory, ...] = Field(max_length=3)
+    selected_evidence: tuple[BriefEvidence, ...] = Field(max_length=16)
+    required_paths: tuple[RepoPath, ...] = Field(max_length=16)
+    read_scope: tuple[RepoPath, ...] = Field(max_length=32)
+    write_scope: tuple[RepoPath, ...] = Field(max_length=8)
+    tools: tuple[LineageOperation, ...] = Field(max_length=6)
+    fixed_test_profile: Identifier
+    byte_caps: dict[str, int]
+    event_caps: dict[str, int]
+    source_run_id: Identifier
+    source_session_id: Identifier | None
+    source_head: VerifiedHead
+    source_graph_sha256: Sha256
+    fresh_session_required: Literal[True]
+    brief_sha256: Sha256
+
+    @model_validator(mode="after")
+    def brief_is_included_only_and_canonical(self) -> ContextBrief:
+        if (
+            self.source_head.run_id != self.source_run_id
+            or self.target_profile_id.rsplit("@", 1)[-1]
+            != str(self.target_profile_revision)
+        ):
+            raise ValueError("context brief source head or target profile identity does not match")
+        for values in (
+            self.required_paths,
+            self.read_scope,
+            self.write_scope,
+        ):
+            if values != tuple(sorted(set(values))):
+                raise ValueError("context brief paths must be sorted and unique")
+        if len(self.tools) != len(set(self.tools)):
+            raise ValueError("context brief tools must be unique")
+        if tuple((item.memory_id, item.revision) for item in self.approved_memories) != tuple(
+            sorted({(item.memory_id, item.revision) for item in self.approved_memories})
+        ) or tuple(item.evidence_id for item in self.selected_evidence) != tuple(
+            sorted({item.evidence_id for item in self.selected_evidence})
+        ):
+            raise ValueError("context brief memories and evidence must be canonical")
+        if not set(self.required_paths) <= set(self.read_scope):
+            raise ValueError("required paths must be readable")
+        if not set(self.write_scope) <= set(self.read_scope):
+            raise ValueError("write scope must be a subset of read scope")
+        if (
+            not self.byte_caps
+            or not self.event_caps
+            or any(value <= 0 for value in (*self.byte_caps.values(), *self.event_caps.values()))
+        ):
+            raise ValueError("context brief caps must be positive")
+        if self.brief_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"brief_sha256"})
+        ):
+            raise ValueError("context brief digest does not match")
+        return self
+
+
+class ClarificationQuestion(FrozenModel):
+    schema_version: Literal[2]
+    question_id: Identifier
+    source_run_id: Identifier
+    feedback_id: Identifier
+    question_text: BoundedText
+    choices: tuple[ScopeId, ...]
+    policy_revision: int = Field(ge=1)
+    created_at: UtcDateTime
+    question_sha256: Sha256
+
+    @model_validator(mode="after")
+    def question_is_canonical(self) -> ClarificationQuestion:
+        if len(self.choices) < 2 or len(self.choices) != len(set(self.choices)):
+            raise ValueError("clarification choices must be unique")
+        if self.question_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"question_sha256"})
+        ):
+            raise ValueError("clarification question digest does not match")
+        return self
+
+
+class ClarificationAnswer(FrozenModel):
+    schema_version: Literal[2]
+    answer_id: Identifier
+    question_id: Identifier
+    choice: ScopeId
+    actor: Literal["human"]
+    answered_at: UtcDateTime
+    answer_sha256: Sha256
+
+    @model_validator(mode="after")
+    def answer_is_canonical(self) -> ClarificationAnswer:
+        if self.answer_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"answer_sha256"})
+        ):
+            raise ValueError("clarification answer digest does not match")
+        return self
+
+
+class ContextInjectionReceipt(FrozenModel):
+    schema_version: Literal[2]
+    receipt_id: Identifier
+    consumer_run_id: Identifier
+    decision_sha256: Sha256
+    brief_sha256: Sha256
+    prompt_sha256: Sha256
+    session_id: Identifier
+    invocation_id: Identifier
+    target_profile_id: AgentProfileId
+    target_profile_revision: int = Field(ge=1)
+    policy_revision: int = Field(ge=1)
+    model_id: BoundedText
+    prior_message_count: Literal[0]
+    persisted_before_dispatch: Literal[True]
+    injected_at: UtcDateTime
+    receipt_sha256: Sha256
+
+    @model_validator(mode="after")
+    def injection_is_canonical(self) -> ContextInjectionReceipt:
+        if self.receipt_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"receipt_sha256"})
+        ):
+            raise ValueError("context injection receipt digest does not match")
+        return self
+
+
+class HandoffDenied(FrozenModel):
+    schema_version: Literal[2]
+    source_run_id: Identifier
+    target_profile_id: AgentProfileId
+    task_id: Identifier
+    reason_code: Identifier
+    memory_count: Literal[0]
+    evidence_count: Literal[0]
+    source_path_count: Literal[0]
+    tool_count: Literal[0]
+    consumer_run_id: Literal[None]
+    session_id: Literal[None]
+    invocation_id: Literal[None]
+    model_dispatch_count: Literal[0]
+
+
+class ProjectionFile(FrozenModel):
+    path: RepoPath
+    state: Literal["DISCOVERED", "READ", "EDITED", "NEW", "DELETED"]
+    file_version_id: Sha256 | None
+    baseline_bytes: int | None = Field(default=None, ge=0)
+    baseline_lines: int | None = Field(default=None, ge=0)
+    size_bucket: int | None = Field(default=None, ge=1, le=4)
+    first_seq: int = Field(ge=1)
+    last_seq: int = Field(ge=1)
+    read_count: int = Field(ge=0)
+    added_lines: int = Field(ge=0)
+    deleted_lines: int = Field(ge=0)
+    bound_test_pass: bool
+
+
+class ProjectionEvent(FrozenModel):
+    seq: int = Field(ge=1)
+    event_id: Identifier
+    event_type: LineageEventType
+    truth_kind: TruthKind
+    operation: LineageOperation | None
+    status: BoundedText
+    path: RepoPath | None
+
+
+class ProjectionObligation(FrozenModel):
+    obligation_id: Identifier
+    status: Literal["SATISFIED", "MISSING", "NOT_APPLICABLE"]
+    evidence_event_ids: tuple[Identifier, ...]
+
+
+class LineageProjection(FrozenModel):
+    schema_version: Literal[2]
+    run_id: Identifier
+    state: LineageRunState
+    head_seq: int = Field(ge=1)
+    head_sha256: Sha256
+    files: tuple[ProjectionFile, ...] = Field(max_length=15)
+    event_rail: tuple[ProjectionEvent, ...] = Field(max_length=1_000)
+    obligations: tuple[ProjectionObligation, ...]
+    omitted_counts: dict[str, int]
+    unknowns: tuple[BoundedText, ...]
+    projection_sha256: Sha256
+
+    @model_validator(mode="after")
+    def projection_is_bounded_and_canonical(self) -> LineageProjection:
+        if tuple(item.path for item in self.files) != tuple(
+            sorted(item.path for item in self.files)
+        ) or any(value < 0 for value in self.omitted_counts.values()):
+            raise ValueError("projection files and omissions must be canonical")
+        if self.projection_sha256 != canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"projection_sha256"})
+        ):
+            raise ValueError("projection digest does not match")
         return self

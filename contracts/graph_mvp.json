@@ -139,6 +139,7 @@
     ],
     "feedback": [
       "feedback_id",
+      "evidence_event_id",
       "exact_correction",
       "correction_sha256",
       "selected_hunk_id",
@@ -262,28 +263,28 @@
       "path": "/api/runs/{run_id}/graph",
       "request_model": null,
       "response_model": "GraphResponse",
-      "requires_demo_token": false
+      "requires_demo_token": true
     },
     {
       "method": "GET",
       "path": "/api/runs/{run_id}/graph/nodes/{node_id}",
       "request_model": null,
       "response_model": "GraphNode",
-      "requires_demo_token": false
+      "requires_demo_token": true
     },
     {
       "method": "GET",
       "path": "/api/runs/{run_id}/context-packet",
       "request_model": null,
       "response_model": "ContextPacket",
-      "requires_demo_token": false
+      "requires_demo_token": true
     },
     {
       "method": "GET",
       "path": "/api/agent-catalog",
       "request_model": null,
       "response_model": "list[AgentProfile]",
-      "requires_demo_token": false
+      "requires_demo_token": true
     }
   ],
   "negative_profile_id": "billing-observer@1",

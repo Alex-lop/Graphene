@@ -48,6 +48,7 @@ def _assert_empty_context(packet) -> None:
 def waiting(tmp_path):
     path = tmp_path / "store.json"
     client = TestClient(create_app(JsonFileStore(path), TOKEN))
+    client.headers.update(HEADERS)
     data = prepare_waiting_demo(client)
     yield client, data, path
     client.close()
@@ -287,6 +288,7 @@ def test_fake_environment_cannot_upgrade_unverified_truth_labels(monkeypatch):
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
 
     with TestClient(create_app(InMemoryStore(), TOKEN)) as client:
+        client.headers.update(HEADERS)
         health = client.get("/healthz").json()
         catalog = client.get("/api/agent-catalog").json()
     assert health == {

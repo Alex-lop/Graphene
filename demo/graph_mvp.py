@@ -17,7 +17,7 @@ from graphene.hashing import canonical_json_sha256, sha256_hex
 from graphene.store import JsonFileStore
 
 TOKEN = "graphene-local-demo"
-HEADERS = {"x-graphene-token": TOKEN}
+HEADERS = {"authorization": f"Bearer {TOKEN}"}
 
 
 def _json(response, expected: int = 200) -> dict[str, Any]:
@@ -28,6 +28,10 @@ def _json(response, expected: int = 200) -> dict[str, Any]:
 
 def _post(client: TestClient, path: str, payload: dict[str, Any]) -> dict[str, Any]:
     return _json(client.post(path, json=payload, headers=HEADERS))
+
+
+def _get(client: TestClient, path: str) -> dict[str, Any]:
+    return _json(client.get(path, headers=HEADERS))
 
 
 def _require(condition: bool, message: str) -> None:
@@ -43,7 +47,7 @@ def prepare_waiting_demo(client: TestClient) -> dict[str, Any]:
         "/api/demo/reset",
         {"idempotency_key": f"demo_reset_{uuid.uuid4().hex}"},
     )
-    _require(_json(client.get("/api/runs")) == [], "reset left persisted runs")
+    _require(_get(client, "/api/runs") == [], "reset left persisted runs")
 
     baseline = _post(
         client,
@@ -64,12 +68,11 @@ def prepare_waiting_demo(client: TestClient) -> dict[str, Any]:
     _require(baseline["promotion_receipt"] is None, "denied baseline was promoted")
     _require(baseline["proof"][-1]["type"] == "completion.denied", "missing baseline denial")
 
-    baseline_graph = _json(client.get(f"/api/runs/{baseline['run_id']}/graph"))
+    baseline_graph = _get(client, f"/api/runs/{baseline['run_id']}/graph")
     baseline_hunk = next(node for node in baseline_graph["nodes"] if node["kind"] == "hunk")
-    baseline_detail = _json(
-        client.get(
-            f"/api/runs/{baseline['run_id']}/graph/nodes/{baseline_hunk['id']}"
-        )
+    baseline_detail = _get(
+        client,
+        f"/api/runs/{baseline['run_id']}/graph/nodes/{baseline_hunk['id']}",
     )
     _require(
         sha256_hex(baseline_detail["data"]["unified_diff"].encode())
@@ -125,7 +128,7 @@ def prepare_waiting_demo(client: TestClient) -> dict[str, Any]:
         == adapted,
         "exact execute replay did not return its persisted result",
     )
-    packet = _json(client.get(f"/api/runs/{adapted['run_id']}/context-packet"))
+    packet = _get(client, f"/api/runs/{adapted['run_id']}/context-packet")
     injection = client.app.state.store.get_injection_receipt(adapted["run_id"])
 
     _require(adapted["state"] == "waiting_for_promotion", "adapted run did not pause")
@@ -160,15 +163,13 @@ def prepare_waiting_demo(client: TestClient) -> dict[str, Any]:
     _require(test["candidate_exit_code"] == 0, "candidate tests failed")
     _require(test["base_with_new_test_exit_code"] not in (None, 0), "new test passed on base")
 
-    graph = _json(client.get(f"/api/runs/{adapted['run_id']}/graph"))
+    graph = _get(client, f"/api/runs/{adapted['run_id']}/graph")
     hunk = next(
         node
         for node in graph["nodes"]
         if node["kind"] == "hunk" and node["run_id"] == adapted["run_id"]
     )
-    detail = _json(
-        client.get(f"/api/runs/{adapted['run_id']}/graph/nodes/{hunk['id']}")
-    )
+    detail = _get(client, f"/api/runs/{adapted['run_id']}/graph/nodes/{hunk['id']}")
     feedback = next(node for node in graph["nodes"] if node["kind"] == "feedback")
     _require(feedback["data"]["exact_correction"] == GOLDEN.memory.correction, "feedback was rewritten")
     _require(
@@ -219,11 +220,11 @@ def run_local_demo(store_path: Path) -> dict[str, Any]:
 
     with TestClient(create_app(JsonFileStore(store_path), TOKEN)) as client:
         _require(
-            _json(client.get(f"/api/runs/{run_id}/graph")) == pre_graph,
+            _get(client, f"/api/runs/{run_id}/graph") == pre_graph,
             "pre-promotion graph changed after restart",
         )
         _require(
-            _json(client.get(f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}"))
+            _get(client, f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}")
             == pre_detail,
             "pre-promotion detail changed after restart",
         )
@@ -238,17 +239,17 @@ def run_local_demo(store_path: Path) -> dict[str, Any]:
         _require(receipt["candidate_patch_sha256"] == request["candidate_patch_sha256"], "receipt patch mismatch")
         _require(receipt["context_packet_sha256"] == request["context_packet_sha256"], "receipt packet mismatch")
         _require(receipt["test_receipt_sha256"] == request["test_receipt_sha256"], "receipt test mismatch")
-        final_graph = _json(client.get(f"/api/runs/{run_id}/graph"))
-        final_detail = _json(
-            client.get(f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}")
+        final_graph = _get(client, f"/api/runs/{run_id}/graph")
+        final_detail = _get(
+            client, f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}"
         )
 
     with TestClient(create_app(JsonFileStore(store_path), TOKEN)) as client:
-        rebuilt_graph = _json(client.get(f"/api/runs/{run_id}/graph"))
-        rebuilt_detail = _json(
-            client.get(f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}")
+        rebuilt_graph = _get(client, f"/api/runs/{run_id}/graph")
+        rebuilt_detail = _get(
+            client, f"/api/runs/{run_id}/graph/nodes/{waiting['hunk']['id']}"
         )
-        rebuilt_run = _json(client.get(f"/api/runs/{run_id}"))
+        rebuilt_run = _get(client, f"/api/runs/{run_id}")
         health = _json(client.get("/healthz"))
 
     _require(rebuilt_graph == final_graph, "final graph changed after restart")

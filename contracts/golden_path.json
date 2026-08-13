@@ -115,14 +115,14 @@
   "api": [
     {"method": "GET", "path": "/healthz", "request_model": null, "response_model": "dict", "requires_demo_token": false},
     {"method": "POST", "path": "/api/demo/reset", "request_model": "DemoResetRequest", "response_model": "dict", "requires_demo_token": true},
-    {"method": "GET", "path": "/api/runs", "request_model": null, "response_model": "list[RunRecord]", "requires_demo_token": false},
+    {"method": "GET", "path": "/api/runs", "request_model": null, "response_model": "list[RunRecord]", "requires_demo_token": true},
     {"method": "POST", "path": "/api/runs", "request_model": "CreateRunRequest", "response_model": "RunRecord", "requires_demo_token": true},
     {"method": "POST", "path": "/api/runs/{run_id}/execute", "request_model": "ExecuteRunRequest", "response_model": "RunRecord", "requires_demo_token": true},
-    {"method": "GET", "path": "/api/runs/{run_id}", "request_model": null, "response_model": "RunRecord", "requires_demo_token": false},
+    {"method": "GET", "path": "/api/runs/{run_id}", "request_model": null, "response_model": "RunRecord", "requires_demo_token": true},
     {"method": "POST", "path": "/api/runs/{run_id}/feedback", "request_model": "FeedbackRequest", "response_model": "MemoryRevision", "requires_demo_token": true},
     {"method": "POST", "path": "/api/memories/{memory_id}/decision", "request_model": "MemoryDecisionRequest", "response_model": "MemoryRevision", "requires_demo_token": true},
     {"method": "POST", "path": "/api/runs/{run_id}/promote", "request_model": "PromoteRunRequest", "response_model": "RunRecord", "requires_demo_token": true},
-    {"method": "GET", "path": "/api/runs/{run_id}/proof", "request_model": null, "response_model": "list[ProofItem]", "requires_demo_token": false}
+    {"method": "GET", "path": "/api/runs/{run_id}/proof", "request_model": null, "response_model": "list[ProofItem]", "requires_demo_token": true}
   ],
   "loop": [
     {"sequence": 1, "actor": "system", "action": "load dated real baseline evidence", "resulting_state": "baseline visible", "proof_type": null},

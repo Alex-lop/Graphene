@@ -20,6 +20,7 @@ import {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+let readToken = "";
 
 const DETAIL_FIELDS = Object.freeze({
   agent_run: [
@@ -36,7 +37,7 @@ const DETAIL_FIELDS = Object.freeze({
     "after_sha256", "candidate_patch_sha256", "exact_hunk_sha256", "candidate_revision",
   ],
   feedback: [
-    "feedback_id", "exact_correction", "correction_sha256", "selected_hunk_id",
+    "feedback_id", "evidence_event_id", "exact_correction", "correction_sha256", "selected_hunk_id",
     "selected_scope_id",
   ],
   memory_revision: [
@@ -204,7 +205,10 @@ async function fetchJson(url) {
   const response = await fetch(url, {
     cache: "no-store",
     credentials: "same-origin",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${readToken}`,
+    },
   });
   if (!response.ok) throw new Error(`Read endpoint returned HTTP ${response.status}`);
   try {
@@ -222,7 +226,7 @@ async function mutateJson(path, payload, token) {
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "X-Graphene-Token": token,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
   });
@@ -948,10 +952,15 @@ elements.refresh.addEventListener("click", () => {
 elements.closeDrawer.addEventListener("click", () => closeDrawer());
 elements.tokenForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  demo.setToken(elements.tokenInput.value);
+  readToken = elements.tokenInput.value;
+  demo.setToken(readToken);
   elements.tokenInput.value = "";
+  void initialize();
 });
-elements.forgetToken.addEventListener("click", () => demo.clearToken());
+elements.forgetToken.addEventListener("click", () => {
+  readToken = "";
+  demo.clearToken();
+});
 elements.resetDemo.addEventListener("click", () => runAction(
   () => demo.reset(),
   async () => {

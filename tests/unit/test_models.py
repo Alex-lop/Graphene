@@ -11,6 +11,7 @@ from graphene.hashing import (
     sha256_hex,
 )
 from graphene.models import (
+    MAX_TEST_OUTPUT_BYTES,
     CandidateArtifact,
     FileChange,
     HumanDecision,
@@ -43,8 +44,10 @@ def _candidate() -> CandidateArtifact:
         "candidate_exit_code": 0,
         "base_with_new_test_exit_code": 1,
         "timed_out": False,
-        "output": "4 passed",
+        "output_sha256": sha256_hex(b"4 passed"),
+        "output_byte_count": len(b"4 passed"),
         "output_truncated": False,
+        "duration_bucket": "under_1s",
     }
     receipt = Receipt(
         **receipt_data,
@@ -117,7 +120,7 @@ def test_candidate_binds_patch_file_hashes_and_passing_receipt():
             }
         )
     oversized_receipt = candidate.test_receipt.model_dump(exclude={"receipt_sha256"})
-    oversized_receipt["output"] = "🔒" * 16_384
+    oversized_receipt["output_byte_count"] = MAX_TEST_OUTPUT_BYTES + 1
     with pytest.raises(ValidationError):
         Receipt(
             **oversized_receipt,

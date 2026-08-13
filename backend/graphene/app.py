@@ -8,7 +8,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .context import build_context_packet, load_catalog, profile_for_task
@@ -242,25 +243,32 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
         raise RuntimeError("GRAPHENE_EXECUTION_MODE must be deterministic-local or google-adk")
 
     async def handled_conflict(_, error: Exception):
-        from fastapi.responses import JSONResponse
-
         return JSONResponse(status_code=409, content={"detail": str(error)})
 
     async def handled_graph(_, error: Exception):
-        from fastapi.responses import JSONResponse
-
         return JSONResponse(status_code=400, content={"detail": str(error)})
 
     for error_type in (StoreConflict, IdempotencyConflict, ExecutionError):
         application.add_exception_handler(error_type, handled_conflict)
     application.add_exception_handler(GraphBuildError, handled_graph)
 
-    def require_token(x_graphene_token: str | None = Header(default=None)) -> None:
+    @application.middleware("http")
+    async def authenticate(request: Request, call_next):
+        if request.url.path == "/healthz":
+            return await call_next(request)
         expected = application.state.demo_token
         if expected is None:
-            raise HTTPException(503, "mutation token is not configured")
-        if x_graphene_token is None or not secrets.compare_digest(x_graphene_token, expected):
-            raise HTTPException(401, "invalid demo token")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "authentication is not configured"},
+            )
+        authorization = request.headers.get("authorization", "")
+        if not authorization.startswith("Bearer "):
+            return JSONResponse(status_code=401, content={"detail": "invalid bearer token"})
+        token = authorization.removeprefix("Bearer ")
+        if not token or " " in token or not secrets.compare_digest(token, expected):
+            return JSONResponse(status_code=401, content={"detail": "invalid bearer token"})
+        return await call_next(request)
 
     @application.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -276,7 +284,7 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
         }
 
     @application.post("/api/demo/reset")
-    def reset(request: DemoResetRequest, _: None = Depends(require_token)):
+    def reset(request: DemoResetRequest):
         application.state.store.reset_demo(request.idempotency_key, _request_hash(request))
         return {"status": "reset"}
 
@@ -287,7 +295,6 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
     @application.post("/api/runs", response_model=RunRecord)
     def create_run(
         request: CreateRunRequest,
-        _: None = Depends(require_token),
     ):
         task = _task(request.task_id)
         profile = profile_for_task(GRAPH_CONTRACT, request.task_id)
@@ -322,7 +329,6 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
     async def execute(
         run_id: str,
         request: ExecuteRunRequest,
-        _: None = Depends(require_token),
     ):
         store = application.state.store
         run = store.get_run(run_id)
@@ -403,7 +409,7 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
                 revision=running.revision + 1,
                 injected_memories=(() if injection is None else injection.memory_revisions),
                 proof=(failed_proof,),
-                error=str(error)[:1024] or type(error).__name__,
+                error=f"{type(error).__name__} during bounded execution",
             )
             store.save_run(
                 failed,
@@ -411,7 +417,7 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
                 _key("execution_failed", request.idempotency_key),
                 _request_hash(request),
             )
-            raise
+            raise ExecutionError("bounded execution failed") from None
         waiting = _replace(
             running,
             state=RunState.WAITING_FOR_PROMOTION,
@@ -433,7 +439,6 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
     def feedback(
         run_id: str,
         request: FeedbackRequest,
-        _: None = Depends(require_token),
     ):
         store = application.state.store
         run = store.get_run(run_id)
@@ -444,15 +449,52 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
         detail = _records(store, run_id).node_detail(run_id, request.selected_hunk_id)
         if detail is None or detail.kind != GraphNodeKind.HUNK or detail.run_id != run_id:
             raise StoreConflict("selected hunk does not belong to the run")
+        write_event = next(
+            (
+                item
+                for item in run.proof
+                if item.event_id == request.evidence_event_id
+                and item.type == ProofType.FILE_WRITTEN
+            ),
+            None,
+        )
+        candidate = run.candidate
+        hunk_path = detail.data.get("path")
+        file_change = next(
+            (
+                item
+                for item in (() if candidate is None else candidate.file_changes)
+                if item.path == hunk_path
+            ),
+            None,
+        )
+        if (
+            write_event is None
+            or candidate is None
+            or file_change is None
+            or write_event.run_id != run.run_id
+            or write_event.payload.get("path") != hunk_path
+            or write_event.payload.get("before_sha256") != file_change.before_sha256
+            or write_event.payload.get("after_sha256") != file_change.after_sha256
+            or detail.data.get("before_sha256") != file_change.before_sha256
+            or detail.data.get("after_sha256") != file_change.after_sha256
+            or detail.data.get("candidate_patch_sha256")
+            != candidate.candidate_patch_sha256
+            or detail.data.get("candidate_revision") != candidate.candidate_revision
+        ):
+            raise StoreConflict("feedback evidence must be the matching observed write")
         scope = next(
             (item for item in GOLDEN.memory.scope_options if item.scope_id == request.scope_id),
             None,
         )
         if scope is None:
             raise StoreConflict("unknown server-owned scope option")
+        if store.get_memory(GOLDEN.memory.memory_id, GOLDEN.memory.revision) is not None:
+            raise StoreConflict("memory revision already exists")
         record = FeedbackRecord(
             feedback_id=_stable_id("feedback", run_id, request.idempotency_key),
             run_id=run_id,
+            evidence_event_id=request.evidence_event_id,
             exact_correction=request.correction,
             selected_hunk_id=request.selected_hunk_id,
             selected_scope_id=request.scope_id,
@@ -486,7 +528,6 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
     def decide_memory(
         memory_id: str,
         request: MemoryDecisionRequest,
-        _: None = Depends(require_token),
     ):
         store = application.state.store
         memory = store.get_memory(memory_id, request.expected_revision)
@@ -513,7 +554,6 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
     def promote(
         run_id: str,
         request: PromoteRunRequest,
-        _: None = Depends(require_token),
     ):
         store = application.state.store
         run = store.get_run(run_id)
