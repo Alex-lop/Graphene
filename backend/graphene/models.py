@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
 from string import Formatter
@@ -52,16 +52,14 @@ BoundedText = Annotated[str, Field(min_length=1, max_length=1024)]
 def _utc_datetime(value: datetime) -> datetime:
     if value.utcoffset() is None:
         raise ValueError("timestamp must include a timezone")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 UtcDateTime = Annotated[datetime, AfterValidator(_utc_datetime)]
 MAX_PATCH_BYTES = 102_400
 MAX_TEST_OUTPUT_BYTES = 16_384
 MAX_PATCH_BASE64_CHARS = ((MAX_PATCH_BYTES + 2) // 3) * 4
-P0_MUTABLE_PATHS = frozenset(
-    {"app/auth/limiter.py", "tests/test_security_policy.py"}
-)
+P0_MUTABLE_PATHS = frozenset({"app/auth/limiter.py", "tests/test_security_policy.py"})
 P0_REQUIRED_TEST_PATH = "tests/test_security_policy.py"
 GRAPH_MAX_DEPTH = 2
 GRAPH_MAX_NODES = 25
@@ -215,7 +213,9 @@ class PromptPolicy(FrozenModel):
     def placeholders_are_fixed(self) -> PromptPolicy:
         fields = {field for _, field, _, _ in Formatter().parse(self.template) if field}
         if fields != {"task", "memory_context"}:
-            raise ValueError("prompt template may contain only task and memory_context placeholders")
+            raise ValueError(
+                "prompt template may contain only task and memory_context placeholders"
+            )
         return self
 
 
@@ -320,13 +320,18 @@ class GoldenContract(FrozenModel):
         if frozenset(self.fixture.mutable_paths) != P0_MUTABLE_PATHS:
             raise ValueError("P0 write allowlist is fixed")
         allowed_new_paths = {self.memory.required_test_path}
-        if not set(self.fixture.mutable_paths) <= set(self.fixture.tracked_paths) | allowed_new_paths:
+        if (
+            not set(self.fixture.mutable_paths)
+            <= set(self.fixture.tracked_paths) | allowed_new_paths
+        ):
             raise ValueError("mutable paths must be tracked or the required new test")
         if len({task.task_id for task in self.tasks}) != len(self.tasks):
             raise ValueError("task IDs must be unique")
         if any(task.repo_id != self.repo_id for task in self.tasks):
             raise ValueError("task repository IDs are server-owned")
-        if any(not set(task.target_paths) <= set(self.fixture.tracked_paths) for task in self.tasks):
+        if any(
+            not set(task.target_paths) <= set(self.fixture.tracked_paths) for task in self.tasks
+        ):
             raise ValueError("task targets must exist in the base fixture")
         if any(
             not set(task.expected_changed_paths) <= set(self.fixture.mutable_paths)
@@ -334,7 +339,11 @@ class GoldenContract(FrozenModel):
         ):
             raise ValueError("expected changes must remain inside the write allowlist")
         selected_scope = next(
-            (scope for scope in self.memory.scope_options if scope.scope_id == self.memory.selected_scope_id),
+            (
+                scope
+                for scope in self.memory.scope_options
+                if scope.scope_id == self.memory.selected_scope_id
+            ),
             None,
         )
         if (
@@ -350,8 +359,7 @@ class GoldenContract(FrozenModel):
         if self.retrieval.states != (MemoryState.APPROVED,):
             raise ValueError("only approved memory may be retrieved")
         if any(
-            endpoint.requires_demo_token != (endpoint.path != "/healthz")
-            for endpoint in self.api
+            endpoint.requires_demo_token != (endpoint.path != "/healthz") for endpoint in self.api
         ):
             raise ValueError("every non-health endpoint requires the runtime demo token")
         if tuple(step.sequence for step in self.loop) != tuple(range(1, len(self.loop) + 1)):
@@ -420,9 +428,7 @@ class MemoryRevision(FrozenModel):
         if self.decision is not None and (
             self.decision.purpose != "memory"
             or self.decision.bound_digest
-            != canonical_json_sha256(
-                self.model_dump(mode="json", exclude={"state", "decision"})
-            )
+            != canonical_json_sha256(self.model_dump(mode="json", exclude={"state", "decision"}))
         ):
             raise ValueError("memory decision must bind the immutable memory content")
         return self
@@ -453,9 +459,7 @@ class TestReceipt(FrozenModel):
             "no:cacheprovider",
         ):
             raise ValueError("test receipt command must match the fixed runner")
-        expected = canonical_json_sha256(
-            self.model_dump(mode="json", exclude={"receipt_sha256"})
-        )
+        expected = canonical_json_sha256(self.model_dump(mode="json", exclude={"receipt_sha256"}))
         if self.receipt_sha256 != expected:
             raise ValueError("test receipt hash must cover canonical receipt JSON")
         return self
@@ -607,17 +611,25 @@ class RunRecord(FrozenModel):
             raise ValueError("memory injection requires a fresh, packet-bound session")
         if self.state in {RunState.QUEUED, RunState.RUNNING} and self.candidate is not None:
             raise ValueError("candidate artifacts appear only after bounded execution")
-        if self.state in {
-            RunState.WAITING_FOR_PROMOTION,
-            RunState.PROMOTING,
-            RunState.COMPLETED,
-        } and self.candidate is None:
+        if (
+            self.state
+            in {
+                RunState.WAITING_FOR_PROMOTION,
+                RunState.PROMOTING,
+                RunState.COMPLETED,
+            }
+            and self.candidate is None
+        ):
             raise ValueError("promotion states require a persisted candidate")
-        if self.state in {
-            RunState.WAITING_FOR_PROMOTION,
-            RunState.PROMOTING,
-            RunState.COMPLETED,
-        } and ProofType.COMPLETION_DENIED not in proof_types:
+        if (
+            self.state
+            in {
+                RunState.WAITING_FOR_PROMOTION,
+                RunState.PROMOTING,
+                RunState.COMPLETED,
+            }
+            and ProofType.COMPLETION_DENIED not in proof_types
+        ):
             raise ValueError("promotion states require the automatic completion denial")
         if self.candidate is not None and self.injected_memories:
             base_exit = self.candidate.test_receipt.base_with_new_test_exit_code
@@ -642,8 +654,7 @@ class RunRecord(FrozenModel):
             or self.promotion_decision.value != MemoryDecisionValue.APPROVE
             or self.promotion_decision.purpose != "promotion"
             or self.candidate is None
-            or self.promotion_decision.bound_digest
-            != self.candidate.candidate_patch_sha256
+            or self.promotion_decision.bound_digest != self.candidate.candidate_patch_sha256
         ):
             raise ValueError("promoting runs require explicit human approval")
         if self.promotion_decision is not None and self.state not in {
@@ -652,10 +663,7 @@ class RunRecord(FrozenModel):
             RunState.FAILED,
         }:
             raise ValueError("human promotion decisions belong only to promotion attempts")
-        if (
-            self.promotion_decision is not None
-            and ProofType.PROMOTION_APPROVED not in proof_types
-        ):
+        if self.promotion_decision is not None and ProofType.PROMOTION_APPROVED not in proof_types:
             raise ValueError("human promotion decisions require matching proof")
         if self.state in {RunState.PROMOTING, RunState.COMPLETED} and (
             ProofType.PROMOTION_APPROVED not in proof_types
@@ -813,9 +821,7 @@ class ContextPacket(FrozenModel):
             or self.selected_node_ids
         ):
             raise ValueError("denied packets cannot disclose context or permissions")
-        expected = canonical_json_sha256(
-            self.model_dump(mode="json", exclude={"packet_sha256"})
-        )
+        expected = canonical_json_sha256(self.model_dump(mode="json", exclude={"packet_sha256"}))
         if self.packet_sha256 != expected:
             raise ValueError("packet hash must cover canonical packet JSON")
         return self
@@ -838,9 +844,7 @@ class InjectionReceipt(FrozenModel):
 
     @model_validator(mode="after")
     def receipt_is_canonical(self) -> InjectionReceipt:
-        expected = canonical_json_sha256(
-            self.model_dump(mode="json", exclude={"receipt_sha256"})
-        )
+        expected = canonical_json_sha256(self.model_dump(mode="json", exclude={"receipt_sha256"}))
         if self.receipt_sha256 != expected:
             raise ValueError("injection receipt hash must cover canonical JSON")
         return self
@@ -910,14 +914,14 @@ class GraphResponse(FrozenModel):
         if (
             node_ids != tuple(sorted(set(node_ids)))
             or edge_ids != tuple(sorted(set(edge_ids)))
-            or any(edge.source not in node_ids or edge.target not in node_ids for edge in self.edges)
+            or any(
+                edge.source not in node_ids or edge.target not in node_ids for edge in self.edges
+            )
             or any(value < 0 for value in self.omitted_counts.values())
             or self.truncated != any(value > 0 for value in self.omitted_counts.values())
         ):
             raise ValueError("graph nodes and edges must be sorted, unique, and resolvable")
-        expected = canonical_json_sha256(
-            self.model_dump(mode="json", exclude={"graph_hash"})
-        )
+        expected = canonical_json_sha256(self.model_dump(mode="json", exclude={"graph_hash"}))
         if self.graph_hash != expected:
             raise ValueError("graph hash must cover canonical response JSON")
         return self
@@ -989,9 +993,7 @@ class GraphMvpContract(FrozenModel):
             or set(self.binding_requirements)
             != {"test_receipt", "human_decision", "promotion", "adapted_run"}
             or self.negative_profile_id != "billing-observer@1"
-            or self.negative_profile_id not in {
-                item.agent_profile_id for item in self.catalog
-            }
+            or self.negative_profile_id not in {item.agent_profile_id for item in self.catalog}
             or any(
                 endpoint.method != "GET" or not endpoint.requires_demo_token
                 for endpoint in self.api
@@ -1045,6 +1047,8 @@ class TruthKind(StrEnum):
 class LineageAuthority(StrEnum):
     SCOPED_TOOL_WRAPPER = "scoped_tool_wrapper"
     ADK_ADAPTER = "adk_adapter"
+    MCP_ADAPTER = "mcp_adapter"
+    LOCAL_ADAPTER = "local_adapter"
     LIFECYCLE_SERVICE = "lifecycle_service"
     POLICY_ENGINE = "policy_engine"
     OPERATOR_REQUEST = "operator_request"
@@ -1092,6 +1096,8 @@ class EvidenceKind(StrEnum):
     POLICY_RECEIPT = "policy_receipt"
     OPERATOR_REQUEST = "operator_request"
     ADK_EVENT_RECEIPT = "adk_event_receipt"
+    MCP_REQUEST_RECEIPT = "mcp_request_receipt"
+    LOCAL_ADAPTER_RECEIPT = "local_adapter_receipt"
 
 
 class SourceKind(StrEnum):
@@ -1102,6 +1108,8 @@ class SourceKind(StrEnum):
     REDUCER_RECEIPT = "reducer_receipt"
     CONTEXT_COMPILER_RECEIPT = "context_compiler_receipt"
     ADK_EVENT_RECEIPT = "adk_event_receipt"
+    MCP_REQUEST_RECEIPT = "mcp_request_receipt"
+    LOCAL_ADAPTER_RECEIPT = "local_adapter_receipt"
     PROMOTION_RECEIPT = "promotion_receipt"
 
 
@@ -1118,46 +1126,147 @@ class SourceReference(FrozenModel):
 
 
 _EVENT_AUTHORITY = {
-    LineageEventType.RUN_STARTED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
-    LineageEventType.INVOCATION_STARTED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
-    LineageEventType.INVOCATION_COMPLETED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
-    LineageEventType.INVOCATION_FAILED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.ADK_ADAPTER),
-    LineageEventType.RUN_INTERRUPTED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
-    LineageEventType.RUN_FAILED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
-    LineageEventType.RUN_ENDED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
-    LineageEventType.TOOL_STARTED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
-    LineageEventType.TOOL_COMPLETED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
-    LineageEventType.TOOL_FAILED: (TruthKind.RUNTIME_OBSERVED, LineageAuthority.SCOPED_TOOL_WRAPPER),
-    LineageEventType.CLARIFICATION_ASKED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
-    LineageEventType.CLARIFICATION_ANSWERED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
-    LineageEventType.COMPLETION_ATTEMPTED: (TruthKind.MODEL_PROPOSED, LineageAuthority.ADK_ADAPTER),
-    LineageEventType.CANDIDATE_CREATED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
-    LineageEventType.CHANGESET_PARSED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
-    LineageEventType.TEST_RECEIPT_CREATED: (TruthKind.SERVER_DERIVED, LineageAuthority.ARTIFACT_PARSER),
-    LineageEventType.FEEDBACK_RECORDED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
-    LineageEventType.MEMORY_PROPOSED: (TruthKind.SERVER_DERIVED, LineageAuthority.LIFECYCLE_SERVICE),
-    LineageEventType.MEMORY_APPROVED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
-    LineageEventType.MEMORY_REJECTED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
-    LineageEventType.PROMOTION_APPROVED: (TruthKind.HUMAN_ATTESTED, LineageAuthority.OPERATOR_REQUEST),
-    LineageEventType.CONTEXT_COMPILED: (TruthKind.SERVER_DERIVED, LineageAuthority.CONTEXT_COMPILER),
-    LineageEventType.CONTEXT_INJECTED: (TruthKind.SERVER_DERIVED, LineageAuthority.CONTEXT_COMPILER),
-    LineageEventType.HANDOFF_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.CONTEXT_COMPILER),
-    LineageEventType.SCOPE_ALLOWED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
-    LineageEventType.SCOPE_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
-    LineageEventType.COMPLETION_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
-    LineageEventType.PROMOTION_DENIED: (TruthKind.POLICY_AUTHORITATIVE, LineageAuthority.POLICY_ENGINE),
-    LineageEventType.PROMOTION_COMPLETED: (TruthKind.SERVER_DERIVED, LineageAuthority.PROMOTION_SERVICE),
+    LineageEventType.RUN_STARTED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.LIFECYCLE_SERVICE,
+    ),
+    LineageEventType.INVOCATION_STARTED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.ADK_ADAPTER,
+    ),
+    LineageEventType.INVOCATION_COMPLETED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.ADK_ADAPTER,
+    ),
+    LineageEventType.INVOCATION_FAILED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.ADK_ADAPTER,
+    ),
+    LineageEventType.RUN_INTERRUPTED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.LIFECYCLE_SERVICE,
+    ),
+    LineageEventType.RUN_FAILED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.LIFECYCLE_SERVICE,
+    ),
+    LineageEventType.RUN_ENDED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.LIFECYCLE_SERVICE,
+    ),
+    LineageEventType.TOOL_STARTED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.SCOPED_TOOL_WRAPPER,
+    ),
+    LineageEventType.TOOL_COMPLETED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.SCOPED_TOOL_WRAPPER,
+    ),
+    LineageEventType.TOOL_FAILED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.SCOPED_TOOL_WRAPPER,
+    ),
+    LineageEventType.CLARIFICATION_ASKED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.POLICY_ENGINE,
+    ),
+    LineageEventType.CLARIFICATION_ANSWERED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
+    LineageEventType.COMPLETION_ATTEMPTED: (
+        TruthKind.MODEL_PROPOSED,
+        LineageAuthority.ADK_ADAPTER,
+    ),
+    LineageEventType.CANDIDATE_CREATED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.ARTIFACT_PARSER,
+    ),
+    LineageEventType.CHANGESET_PARSED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.ARTIFACT_PARSER,
+    ),
+    LineageEventType.TEST_RECEIPT_CREATED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.ARTIFACT_PARSER,
+    ),
+    LineageEventType.FEEDBACK_RECORDED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
+    LineageEventType.MEMORY_PROPOSED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.LIFECYCLE_SERVICE,
+    ),
+    LineageEventType.MEMORY_APPROVED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
+    LineageEventType.MEMORY_REJECTED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
+    LineageEventType.PROMOTION_APPROVED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
+    LineageEventType.CONTEXT_COMPILED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.CONTEXT_COMPILER,
+    ),
+    LineageEventType.CONTEXT_INJECTED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.CONTEXT_COMPILER,
+    ),
+    LineageEventType.HANDOFF_DENIED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.CONTEXT_COMPILER,
+    ),
+    LineageEventType.SCOPE_ALLOWED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.POLICY_ENGINE,
+    ),
+    LineageEventType.SCOPE_DENIED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.POLICY_ENGINE,
+    ),
+    LineageEventType.COMPLETION_DENIED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.POLICY_ENGINE,
+    ),
+    LineageEventType.PROMOTION_DENIED: (
+        TruthKind.POLICY_AUTHORITATIVE,
+        LineageAuthority.POLICY_ENGINE,
+    ),
+    LineageEventType.PROMOTION_COMPLETED: (
+        TruthKind.SERVER_DERIVED,
+        LineageAuthority.PROMOTION_SERVICE,
+    ),
 }
 
 _SOURCE_KIND_BY_AUTHORITY = {
     LineageAuthority.SCOPED_TOOL_WRAPPER: SourceKind.TOOL_RECEIPT,
     LineageAuthority.ADK_ADAPTER: SourceKind.ADK_EVENT_RECEIPT,
+    LineageAuthority.MCP_ADAPTER: SourceKind.MCP_REQUEST_RECEIPT,
+    LineageAuthority.LOCAL_ADAPTER: SourceKind.LOCAL_ADAPTER_RECEIPT,
     LineageAuthority.LIFECYCLE_SERVICE: SourceKind.LIFECYCLE_REQUEST,
     LineageAuthority.POLICY_ENGINE: SourceKind.POLICY_EVALUATION,
     LineageAuthority.OPERATOR_REQUEST: SourceKind.OPERATOR_REQUEST,
     LineageAuthority.CONTEXT_COMPILER: SourceKind.CONTEXT_COMPILER_RECEIPT,
     LineageAuthority.ARTIFACT_PARSER: SourceKind.REDUCER_RECEIPT,
     LineageAuthority.PROMOTION_SERVICE: SourceKind.PROMOTION_RECEIPT,
+}
+
+_ADAPTER_AUTHORITIES = {
+    "adk": LineageAuthority.ADK_ADAPTER,
+    "mcp": LineageAuthority.MCP_ADAPTER,
+    "local": LineageAuthority.LOCAL_ADAPTER,
+}
+_ADAPTER_EVENT_TYPES = {
+    LineageEventType.INVOCATION_STARTED,
+    LineageEventType.INVOCATION_COMPLETED,
+    LineageEventType.INVOCATION_FAILED,
+    LineageEventType.COMPLETION_ATTEMPTED,
 }
 
 
@@ -1213,10 +1322,10 @@ _EVENT_PAYLOAD_FIELDS = {
         {"context_compiled_event_sha256", "source_run_id", "state"}
     ),
     LineageEventType.INVOCATION_STARTED: frozenset(
-        {"framework", "framework_version", "status"}
+        {"adapter_kind", "framework", "framework_version", "status"}
     ),
-    LineageEventType.INVOCATION_COMPLETED: frozenset({"status"}),
-    LineageEventType.INVOCATION_FAILED: frozenset({"error_code", "status"}),
+    LineageEventType.INVOCATION_COMPLETED: frozenset({"adapter_kind", "status"}),
+    LineageEventType.INVOCATION_FAILED: frozenset({"adapter_kind", "error_code", "status"}),
     LineageEventType.RUN_INTERRUPTED: frozenset(
         {
             "checkout_binding_sha256",
@@ -1239,7 +1348,7 @@ _EVENT_PAYLOAD_FIELDS = {
     LineageEventType.CLARIFICATION_ANSWERED: frozenset(
         {"answer_id", "answer_sha256", "choice", "question_id", "status"}
     ),
-    LineageEventType.COMPLETION_ATTEMPTED: frozenset({"operation", "status"}),
+    LineageEventType.COMPLETION_ATTEMPTED: frozenset({"adapter_kind", "operation", "status"}),
     LineageEventType.CANDIDATE_CREATED: frozenset(
         {
             "candidate_id",
@@ -1250,7 +1359,13 @@ _EVENT_PAYLOAD_FIELDS = {
         }
     ),
     LineageEventType.CHANGESET_PARSED: frozenset(
-        {"candidate_patch_sha256", "changed_paths", "changeset_id", "hunk_count", "status"}
+        {
+            "candidate_patch_sha256",
+            "changed_paths",
+            "changeset_id",
+            "hunk_count",
+            "status",
+        }
     ),
     LineageEventType.TEST_RECEIPT_CREATED: frozenset(
         {
@@ -1327,9 +1442,7 @@ _EVENT_PAYLOAD_FIELDS = {
     ),
     LineageEventType.SCOPE_ALLOWED: frozenset({"operation", "reason_code", "status"}),
     LineageEventType.SCOPE_DENIED: frozenset({"operation", "reason_code", "status"}),
-    LineageEventType.COMPLETION_DENIED: frozenset(
-        {"operation", "reason_code", "state", "status"}
-    ),
+    LineageEventType.COMPLETION_DENIED: frozenset({"operation", "reason_code", "state", "status"}),
     LineageEventType.PROMOTION_DENIED: frozenset(
         {"candidate_patch_sha256", "reason_code", "status"}
     ),
@@ -1347,8 +1460,7 @@ _EVENT_PAYLOAD_FIELDS = {
 def _event_payload_is_safe(value: Any) -> bool:
     if isinstance(value, dict):
         return all(
-            str(key).lower() not in _FORBIDDEN_EVENT_PAYLOAD_KEYS
-            and _event_payload_is_safe(item)
+            str(key).lower() not in _FORBIDDEN_EVENT_PAYLOAD_KEYS and _event_payload_is_safe(item)
             for key, item in value.items()
         )
     if isinstance(value, (list, tuple)):
@@ -1383,7 +1495,15 @@ class EventInput(FrozenModel):
         reference_keys = tuple((item.kind, item.id, item.sha256) for item in self.references)
         if len(reference_keys) != len(set(reference_keys)):
             raise ValueError("event references must be unique")
-        if (self.truth_kind, self.authority) != _EVENT_AUTHORITY[self.event_type]:
+        expected_truth, expected_authority = _EVENT_AUTHORITY[self.event_type]
+        adapter_kind = self.payload.get("adapter_kind")
+        adapter_authority = _ADAPTER_AUTHORITIES.get(adapter_kind)
+        authority_matches = self.authority == expected_authority or (
+            self.event_type in _ADAPTER_EVENT_TYPES
+            and adapter_authority is not None
+            and self.authority == adapter_authority
+        )
+        if self.truth_kind != expected_truth or not authority_matches:
             raise ValueError("event truth and authority do not match its type")
         if self.source_ref.kind != _SOURCE_KIND_BY_AUTHORITY[self.authority]:
             raise ValueError("event source reference does not match its authority")
@@ -1408,7 +1528,7 @@ class EventInput(FrozenModel):
             raise ValueError("invocation events require session, invocation, and model IDs")
         if self.event_type == LineageEventType.COMPLETION_ATTEMPTED and (
             self.truth_kind != TruthKind.MODEL_PROPOSED
-            or self.authority != LineageAuthority.ADK_ADAPTER
+            or self.authority not in set(_ADAPTER_AUTHORITIES.values())
             or self.tool_call_id is None
         ):
             raise ValueError("completion attempts require model proposal identity")
@@ -1432,9 +1552,7 @@ class Event(EventInput):
             raise ValueError("event payload digest does not match")
         if (self.seq == 1) != (self.previous_event_sha256 is None):
             raise ValueError("only the first event may omit its previous digest")
-        expected = canonical_json_sha256(
-            self.model_dump(mode="json", exclude={"event_sha256"})
-        )
+        expected = canonical_json_sha256(self.model_dump(mode="json", exclude={"event_sha256"}))
         if self.event_sha256 != expected:
             raise ValueError("event digest does not match its canonical envelope")
         return self
@@ -1501,9 +1619,7 @@ class VerifiedHead(FrozenModel):
 
     @model_validator(mode="after")
     def head_is_consistent(self) -> VerifiedHead:
-        if self.event_count != self.seq or (self.seq == 0) != (
-            self.event_sha256 is None
-        ):
+        if self.event_count != self.seq or (self.seq == 0) != (self.event_sha256 is None):
             raise ValueError("verified head sequence, count, and digest disagree")
         return self
 
@@ -1587,17 +1703,13 @@ class HandoffDecision(FrozenModel):
         }
         if self.safe_counts != expected_counts:
             raise ValueError("handoff safe counts must match the complete decision")
-        if self.safe_reason_codes != tuple(
-            sorted({item.reason_code for item in self.entries})
-        ):
+        if self.safe_reason_codes != tuple(sorted({item.reason_code for item in self.entries})):
             raise ValueError("handoff reason codes must be canonical")
         if self.decision == "denied" and included:
             raise ValueError("denied handoffs cannot include candidates")
-        if (
-            self.source_head.run_id != self.source_run_id
-            or self.target_profile_id.rsplit("@", 1)[-1]
-            != str(self.target_profile_revision)
-        ):
+        if self.source_head.run_id != self.source_run_id or self.target_profile_id.rsplit("@", 1)[
+            -1
+        ] != str(self.target_profile_revision):
             raise ValueError("handoff source head or target profile identity does not match")
         if self.decision_sha256 != canonical_json_sha256(
             self.model_dump(mode="json", exclude={"decision_sha256"})
@@ -1646,11 +1758,9 @@ class ContextBrief(FrozenModel):
 
     @model_validator(mode="after")
     def brief_is_included_only_and_canonical(self) -> ContextBrief:
-        if (
-            self.source_head.run_id != self.source_run_id
-            or self.target_profile_id.rsplit("@", 1)[-1]
-            != str(self.target_profile_revision)
-        ):
+        if self.source_head.run_id != self.source_run_id or self.target_profile_id.rsplit("@", 1)[
+            -1
+        ] != str(self.target_profile_revision):
             raise ValueError("context brief source head or target profile identity does not match")
         for values in (
             self.required_paths,

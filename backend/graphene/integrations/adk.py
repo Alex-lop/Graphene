@@ -12,6 +12,7 @@ from google.adk.runners import Runner
 from google.adk.tools import ToolContext
 from google.genai import types
 
+from ..hashing import sha256_hex
 from ..lineage.service import (
     RuntimeHandle,
     RuntimeIdentityError,
@@ -48,7 +49,7 @@ class AdkRuntimeAdapter:
             session_id=callback_context.session.id,
             invocation_id=callback_context.invocation_id,
             model_id=self.handle.model_id,
-            adk_version=ADK_VERSION,
+            framework_version=ADK_VERSION,
         )
         return None
 
@@ -84,6 +85,7 @@ class AdkRuntimeAdapter:
                 "file_version_id": result.file_version_id,
                 "byte_count": result.byte_count,
                 "line_count": result.line_count,
+                "state": result.state,
             }
 
         async def open_evidence(
@@ -164,13 +166,55 @@ class AdkRuntimeAdapter:
         user_id: str,
         new_message: types.Content,
     ) -> AsyncIterator[AdkEvent]:
-        async for event in runner.run_async(
-            user_id=user_id,
+        self.service.ensure_invocation_started(
+            self.handle,
             session_id=self.handle.session_id,
             invocation_id=self.handle.invocation_id,
-            new_message=new_message,
-        ):
-            yield event
+            model_id=self.handle.model_id,
+            framework_version=ADK_VERSION,
+        )
+        returned_model_observed = False
+        yielded = False
+        try:
+            async for event in runner.run_async(
+                user_id=user_id,
+                session_id=self.handle.session_id,
+                invocation_id=self.handle.invocation_id,
+                new_message=new_message,
+            ):
+                yielded = True
+                if event.model_version:
+                    if event.model_version != self.handle.model_id:
+                        raise RuntimeIdentityError(
+                            "ADK returned model identity mismatch"
+                        )
+                    returned_model_observed = True
+                yield event
+        except Exception as error:
+            self.service.fail_invocation(
+                self.handle,
+                session_id=self.handle.session_id,
+                invocation_id=self.handle.invocation_id,
+                error=error,
+            )
+            raise
+        if self.handle.needs_human or not yielded:
+            return
+        if not returned_model_observed:
+            error = RuntimeIdentityError("ADK returned model identity is ambiguous")
+            self.service.fail_invocation(
+                self.handle,
+                session_id=self.handle.session_id,
+                invocation_id=self.handle.invocation_id,
+                error=error,
+            )
+            raise error
+        self.service.complete_invocation(
+            self.handle,
+            session_id=self.handle.session_id,
+            invocation_id=self.handle.invocation_id,
+            returned_model_id=self.handle.model_id,
+        )
 
     def _validate_context(self, context: CallbackContext | ToolContext) -> None:
         if (
@@ -182,13 +226,18 @@ class AdkRuntimeAdapter:
 
     def _tool_identity(self, tool_context: ToolContext) -> ToolCallIdentity:
         self._validate_context(tool_context)
-        if not tool_context.function_call_id:
+        if (
+            not tool_context.function_call_id
+            or len(tool_context.function_call_id.encode()) > 1_024
+        ):
             raise RuntimeIdentityError("ADK function call identity is missing")
         return ToolCallIdentity(
             session_id=tool_context.session.id,
             invocation_id=tool_context.invocation_id,
             model_id=self.handle.model_id,
-            tool_call_id=tool_context.function_call_id,
+            tool_call_id=(
+                "adk_call_" + sha256_hex(tool_context.function_call_id.encode())[:32]
+            ),
             agent_name=tool_context.agent_name,
             adapter_kind="adk",
         )

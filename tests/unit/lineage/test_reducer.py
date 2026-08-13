@@ -36,11 +36,21 @@ def _events(*specs: tuple[LineageEventType, dict[str, object], str | None]) -> t
             LineageEventType.COMPLETION_DENIED,
             LineageEventType.PROMOTION_DENIED,
         }
+        adapter = event_type in {
+            LineageEventType.INVOCATION_STARTED,
+            LineageEventType.INVOCATION_COMPLETED,
+            LineageEventType.INVOCATION_FAILED,
+            LineageEventType.COMPLETION_ATTEMPTED,
+        }
+        completion = event_type in {
+            LineageEventType.COMPLETION_ATTEMPTED,
+            LineageEventType.COMPLETION_DENIED,
+        }
         promotion = event_type == LineageEventType.PROMOTION_COMPLETED
         draft = EventInput(
-            session_id="session_1" if tool else None,
-            invocation_id="invocation_1" if tool else None,
-            model_id="model-test" if tool else None,
+            session_id="session_1" if tool or adapter or completion else None,
+            invocation_id="invocation_1" if tool or adapter or completion else None,
+            model_id="model-test" if tool or adapter or completion else None,
             tool_call_id=call_id,
             repo_id="graphene-demo",
             base_sha=BASE_SHA,
@@ -50,6 +60,8 @@ def _events(*specs: tuple[LineageEventType, dict[str, object], str | None]) -> t
             truth_kind=(
                 TruthKind.RUNTIME_OBSERVED
                 if tool
+                else TruthKind.MODEL_PROPOSED
+                if event_type == LineageEventType.COMPLETION_ATTEMPTED
                 else TruthKind.POLICY_AUTHORITATIVE
                 if policy
                 else TruthKind.SERVER_DERIVED
@@ -57,6 +69,8 @@ def _events(*specs: tuple[LineageEventType, dict[str, object], str | None]) -> t
             authority=(
                 LineageAuthority.SCOPED_TOOL_WRAPPER
                 if tool
+                else LineageAuthority.LOCAL_ADAPTER
+                if event_type == LineageEventType.COMPLETION_ATTEMPTED
                 else LineageAuthority.POLICY_ENGINE
                 if policy
                 else LineageAuthority.PROMOTION_SERVICE
@@ -68,6 +82,8 @@ def _events(*specs: tuple[LineageEventType, dict[str, object], str | None]) -> t
                 kind=(
                     SourceKind.TOOL_RECEIPT
                     if tool
+                    else SourceKind.LOCAL_ADAPTER_RECEIPT
+                    if event_type == LineageEventType.COMPLETION_ATTEMPTED
                     else SourceKind.POLICY_EVALUATION
                     if policy
                     else SourceKind.PROMOTION_RECEIPT
@@ -268,7 +284,35 @@ def test_visible_file_cap_has_an_exact_omission_count():
     ],
 )
 def test_terminal_states_are_explicit(event_type, expected):
-    projection = reduce_events(_events(_run_started(), (event_type, {"status": expected.value}, None)))
+    specs = [_run_started()]
+    if event_type == LineageEventType.COMPLETION_DENIED:
+        specs.extend(
+            (
+                (
+                    LineageEventType.COMPLETION_ATTEMPTED,
+                    {"adapter_kind": "local", "operation": "request_completion"},
+                    "completion_1",
+                ),
+                (event_type, {"status": expected.value}, "completion_1"),
+            )
+        )
+        events = list(_events(*specs))
+        attempt = events[-2]
+        denial = events[-1]
+        reference = {
+            "kind": "event",
+            "id": attempt.event_id,
+            "sha256": attempt.event_sha256,
+        }
+        values = denial.model_dump(mode="json")
+        values["references"] = [reference]
+        values["event_sha256"] = canonical_json_sha256(
+            {key: value for key, value in values.items() if key != "event_sha256"}
+        )
+        events[-1] = Event.model_validate(values)
+        projection = reduce_events(tuple(events))
+    else:
+        projection = reduce_events(_events(*specs, (event_type, {"status": expected.value}, None)))
     assert projection.state == expected
 
 

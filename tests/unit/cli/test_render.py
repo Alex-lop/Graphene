@@ -69,10 +69,21 @@ def _events() -> tuple[Event, ...]:
             },
         ),
         (
+            LineageEventType.COMPLETION_ATTEMPTED,
+            TruthKind.MODEL_PROPOSED,
+            LineageAuthority.LOCAL_ADAPTER,
+            "call_completion",
+            {
+                "adapter_kind": "local",
+                "operation": "request_completion",
+                "status": "attempted",
+            },
+        ),
+        (
             LineageEventType.COMPLETION_DENIED,
             TruthKind.POLICY_AUTHORITATIVE,
             LineageAuthority.POLICY_ENGINE,
-            None,
+            "call_completion",
             {"operation": "request_completion", "status": "denied"},
         ),
     )
@@ -80,6 +91,18 @@ def _events() -> tuple[Event, ...]:
     previous = None
     for seq, (event_type, truth, authority, call_id, payload) in enumerate(specs, 1):
         tool = call_id is not None
+        completion_attempt = event_type == LineageEventType.COMPLETION_ATTEMPTED
+        references = (
+            (
+                {
+                    "kind": "event",
+                    "id": events[-1].event_id,
+                    "sha256": events[-1].event_sha256,
+                },
+            )
+            if event_type == LineageEventType.COMPLETION_DENIED
+            else ()
+        )
         draft = EventInput(
             session_id="session_1" if tool else None,
             invocation_id="invocation_1" if tool else None,
@@ -92,13 +115,17 @@ def _events() -> tuple[Event, ...]:
             event_type=event_type,
             truth_kind=truth,
             authority=authority,
-            references=(),
+            references=references,
             source_ref=SourceReference(
                 kind=(
-                    SourceKind.TOOL_RECEIPT
-                    if tool
+                    SourceKind.LOCAL_ADAPTER_RECEIPT
+                    if completion_attempt
                     else SourceKind.POLICY_EVALUATION
                     if event_type == LineageEventType.COMPLETION_DENIED
+                    else SourceKind.TOOL_RECEIPT
+                    if tool
+                    else SourceKind.POLICY_EVALUATION
+                    if event_type == LineageEventType.SCOPE_DENIED
                     else SourceKind.LIFECYCLE_REQUEST
                 ),
                 id=f"source_{seq}",

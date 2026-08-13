@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import __version__
 from .context import build_context_packet, load_catalog, profile_for_task
 from .execution import (
     ExecutionError,
@@ -233,7 +234,7 @@ def _reconstruct_and_commit(candidate, execution_mode: str) -> tuple[str, dict[s
 
 
 def create_app(store: Store | None = None, demo_token: str | None = None) -> FastAPI:
-    application = FastAPI(title="Graphene", version="0.2.0")
+    application = FastAPI(title="Graphene", version=__version__)
     application.state.store = store or InMemoryStore()
     application.state.demo_token = demo_token or os.getenv("GRAPHENE_DEMO_TOKEN")
     application.state.execution_mode = os.getenv(

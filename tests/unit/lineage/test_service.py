@@ -7,18 +7,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from graphene.hashing import canonical_json_bytes, sha256_hex
+from graphene.lineage.reducer import reduce_events
 from graphene.lineage.service import (
     EvidenceItem,
     RuntimeAccessDenied,
+    RuntimeIdentityError,
     RuntimeIntegrityError,
     RuntimeOperationError,
     RuntimeTerminalError,
     ScopedApplicationService,
     ToolCallIdentity,
 )
-from graphene.lineage.reducer import reduce_events
 from graphene.lineage.store import SQLiteLineageStore
 from graphene.models import (
     EventInput,
@@ -73,7 +73,9 @@ class ArtifactLedger:
         exact = self.records.get((kind, artifact_id))
         if exact is not None:
             return exact
-        matches = [raw for (_, item_id), raw in self.records.items() if item_id == artifact_id]
+        matches = [
+            raw for (_, item_id), raw in self.records.items() if item_id == artifact_id
+        ]
         return matches[0] if len(matches) == 1 else None
 
 
@@ -119,7 +121,9 @@ def runtime(
     )
     seed_run(store, ledger, run_id)
     evidence_content = "approved memory evidence"
-    evidence_ref = ledger.bytes_ref(EvidenceKind.EVIDENCE_BLOB, evidence_content.encode())
+    evidence_ref = ledger.bytes_ref(
+        EvidenceKind.EVIDENCE_BLOB, evidence_content.encode()
+    )
     service = ScopedApplicationService(store, ledger)
     read_scope = tuple(
         sorted(set(GOLDEN.fixture.tracked_paths) | set(GOLDEN.fixture.mutable_paths))
@@ -170,13 +174,24 @@ def test_six_operations_commit_before_return_and_completion_is_terminal(tmp_path
         model_id=handle.model_id,
         adk_version="2.5.0",
     )
-    assert service.ensure_invocation_started(
-        handle,
-        session_id=handle.session_id,
-        invocation_id=handle.invocation_id,
-        model_id=handle.model_id,
-        adk_version="2.5.0",
-    ) == invocation
+    assert (
+        service.ensure_invocation_started(
+            handle,
+            session_id=handle.session_id,
+            invocation_id=handle.invocation_id,
+            model_id=handle.model_id,
+            adk_version="2.5.0",
+        )
+        == invocation
+    )
+    with pytest.raises(RuntimeIdentityError, match="identity"):
+        service.complete_invocation(
+            handle,
+            session_id=handle.session_id,
+            invocation_id=handle.invocation_id,
+            returned_model_id="provider-controlled-value",
+        )
+    assert handle.head.event_sha256 == invocation.event_sha256
 
     search = service.search_repo(handle, call(handle, 1), query="MAX_ATTEMPTS")
     assert search.paths == ("app/auth/limiter.py", "tests/test_rate_limit.py")
@@ -239,9 +254,12 @@ def test_six_operations_commit_before_return_and_completion_is_terminal(tmp_path
     assert write_event.payload["baseline_bytes"] == read.byte_count
     assert write_event.payload["baseline_lines"] == read.line_count
     assert events[11].payload["bound_paths"] == ["app/auth/limiter.py"]
-    assert json.dumps([event.model_dump(mode="json") for event in events]).find(
-        "service lineage test"
-    ) == -1
+    assert (
+        json.dumps([event.model_dump(mode="json") for event in events]).find(
+            "service lineage test"
+        )
+        == -1
+    )
     artifact_refs = (
         item
         for event in events
@@ -251,7 +269,9 @@ def test_six_operations_commit_before_return_and_completion_is_terminal(tmp_path
     assert all(ledger.resolve(item.kind.value, item.id) for item in artifact_refs)
     projection = reduce_events(events)
     assert projection.state == "NEEDS_HUMAN"
-    limiter = next(item for item in projection.files if item.path == "app/auth/limiter.py")
+    limiter = next(
+        item for item in projection.files if item.path == "app/auth/limiter.py"
+    )
     assert limiter.bound_test_pass is True
 
 
@@ -274,6 +294,55 @@ def test_scope_denial_is_the_only_event_and_does_not_disclose_requested_path(
     assert receipt is not None and requested.encode() not in receipt
 
 
+def test_absent_read_allows_only_atomic_first_write(tmp_path: Path):
+    service, handle, store, _, _ = runtime(tmp_path)
+    path = "tests/test_security_policy.py"
+
+    observed = service.read_file(handle, call(handle, 1), path=path)
+    assert observed.state == "ABSENT"
+    assert observed.content == ""
+    written = service.write_file(
+        handle,
+        call(handle, 2),
+        path=path,
+        content="def test_policy():\n    assert True\n",
+    )
+
+    assert written.state == "NEW"
+    assert (handle.checkout_root / path).is_file()
+    read_event = next(
+        event
+        for event in store.tail(handle.run_id, 0, 256)
+        if event.event_type == LineageEventType.TOOL_COMPLETED
+        and event.payload.get("operation") == "read_file"
+    )
+    assert read_event.payload["state"] == "ABSENT"
+    assert tuple(reference.kind for reference in read_event.references) == (
+        EvidenceKind.EVIDENCE_BLOB,
+    )
+
+
+def test_absent_read_race_cannot_overwrite_appearing_file(tmp_path: Path):
+    service, handle, store, _, _ = runtime(tmp_path)
+    path = "tests/test_security_policy.py"
+    service.read_file(handle, call(handle, 1), path=path)
+    target = handle.checkout_root / path
+    target.write_text("DO_NOT_OVERWRITE\n")
+
+    with pytest.raises(RuntimeAccessDenied):
+        service.write_file(
+            handle,
+            call(handle, 2),
+            path=path,
+            content="replacement\n",
+        )
+
+    assert target.read_text() == "DO_NOT_OVERWRITE\n"
+    assert store.tail(handle.run_id, 0, 256)[-1].payload["reason_code"] == (
+        "stale_file_version"
+    )
+
+
 def test_operation_error_commits_exactly_one_failed_terminal_event(tmp_path: Path):
     service, handle, store, _, _ = runtime(tmp_path)
     before = handle.head.seq
@@ -293,7 +362,10 @@ def test_post_write_persistence_failure_interrupts_and_quarantines_checkout(
     record = service.record_artifact
 
     def fail_completion(kind, payload):
-        if kind == EvidenceKind.TOOL_RECEIPT and payload.get("phase") == "tool.completed":
+        if (
+            kind == EvidenceKind.TOOL_RECEIPT
+            and payload.get("phase") == "tool.completed"
+        ):
             raise OSError("simulated receipt outage")
         return record(kind, payload)
 
@@ -310,9 +382,7 @@ def test_post_write_persistence_failure_interrupts_and_quarantines_checkout(
     assert not handle.checkout_root.exists()
     quarantines = tuple(tmp_path.glob(".graphene-interrupted-*"))
     assert len(quarantines) == 1
-    assert "uncertain mutation" in (
-        quarantines[0] / "app/auth/limiter.py"
-    ).read_text()
+    assert "uncertain mutation" in (quarantines[0] / "app/auth/limiter.py").read_text()
     events = store.tail(handle.run_id, 0, 256)
     assert events[-2].event_type == LineageEventType.TOOL_STARTED
     assert events[-1].event_type == LineageEventType.RUN_INTERRUPTED

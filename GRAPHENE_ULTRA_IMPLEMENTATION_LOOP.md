@@ -7,7 +7,7 @@ This file is the implementation prompt for a fresh high-reasoning root coding ag
 Run the terminal agent under `caffeinate` on macOS. Replace the placeholder with the command you normally use to launch the agent; do not add a detached shell loop around it.
 
 ```bash
-cd /Users/alexlopez/Desktop/AllThingsAgenticHackathon
+cd /absolute/path/to/Graphene
 caffeinate -dimsu -- <terminal-agent-command>
 ```
 

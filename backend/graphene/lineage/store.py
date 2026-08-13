@@ -193,9 +193,7 @@ class SQLiteLineageStore:
             **fields,
             event_sha256="0" * 64,
         ).model_dump(mode="json", exclude={"event_sha256"})
-        return Event.model_validate(
-            {**canonical, "event_sha256": canonical_json_sha256(canonical)}
-        )
+        return Event.model_validate({**canonical, "event_sha256": canonical_json_sha256(canonical)})
 
     def _verify_connection(
         self,
@@ -251,7 +249,9 @@ class SQLiteLineageStore:
                 event.event_sha256,
             )
             if row_values != event_values or event.run_id != run_id:
-                return _invalid(run_id, "event index does not match its canonical bytes", expected_seq), ()
+                return _invalid(
+                    run_id, "event index does not match its canonical bytes", expected_seq
+                ), ()
             if event.previous_event_sha256 != previous_sha256:
                 return _invalid(run_id, "event digest chain is broken", expected_seq), ()
             if expected_seq == 1 and event.event_type != LineageEventType.RUN_STARTED:
@@ -265,17 +265,15 @@ class SQLiteLineageStore:
             )
             identity = identity or current_identity
             if current_identity != identity:
-                return _invalid(run_id, "run identity changed within the event stream", expected_seq), ()
+                return _invalid(
+                    run_id, "run identity changed within the event stream", expected_seq
+                ), ()
 
             references = (*event.references, event.source_ref)
             for reference in references:
                 if reference.kind == "event":
                     resolved = next(
-                        (
-                            item.event_sha256
-                            for item in events
-                            if item.event_id == reference.id
-                        ),
+                        (item.event_sha256 for item in events if item.event_id == reference.id),
                         None,
                     )
                     if resolved != reference.sha256:
@@ -349,12 +347,21 @@ class SQLiteLineageStore:
             if (
                 checkpoint.run_id != run_id
                 or checkpoint.expected_seq not in by_seq
-                or by_seq[checkpoint.expected_seq].event_sha256
-                != checkpoint.event_head_sha256
+                or by_seq[checkpoint.expected_seq].event_sha256 != checkpoint.event_head_sha256
                 or artifact is None
                 or sha256_hex(artifact) != checkpoint.bound_artifact_sha256
             ):
                 return _invalid(run_id, "checkpointed prefix is unresolved"), ()
+        try:
+            from .reducer import ProjectionError, reduce_events
+
+            reduce_events(tuple(events))
+        except ProjectionError as error:
+            return _invalid(
+                run_id,
+                f"event stream is semantically invalid: {error}",
+                error.first_invalid_seq,
+            ), ()
         return verified, tuple(events)
 
     def append(
@@ -473,6 +480,18 @@ class SQLiteLineageStore:
                         raise LineageConflict("event does not match the frozen run identity")
 
                 event = self._event(run_id, state, idempotency_key, draft)
+                try:
+                    from .reducer import ProjectionError, reduce_events
+
+                    reduce_events((*events, event))
+                except ProjectionError as error:
+                    raise EvidenceInvalid(
+                        _invalid(
+                            run_id,
+                            f"event stream is semantically invalid: {error}",
+                            error.first_invalid_seq or event.seq,
+                        )
+                    ) from error
                 event_bytes = canonical_json_bytes(event.model_dump(mode="json"))
                 try:
                     connection.execute(
@@ -497,7 +516,9 @@ class SQLiteLineageStore:
                         ),
                     )
                 except sqlite3.IntegrityError as error:
-                    raise LineageConflict("event uniqueness constraint rejected the append") from error
+                    raise LineageConflict(
+                        "event uniqueness constraint rejected the append"
+                    ) from error
                 updated = connection.execute(
                     """
                     UPDATE run_heads

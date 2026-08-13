@@ -6,8 +6,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-from mcp import Client, MCPError
-
 from graphene.hashing import sha256_hex
 from graphene.integrations.mcp import create_mcp_server
 from graphene.lineage import SQLiteArtifactStore, SQLiteLineageStore
@@ -24,6 +22,7 @@ from graphene.models import (
     TruthKind,
     VerifiedHead,
 )
+from mcp import Client, MCPError
 
 ROOT = Path(__file__).parents[3]
 GOLDEN = GoldenContract.model_validate_json(
@@ -92,7 +91,9 @@ def _runtime(tmp_path: Path, run_id: str):
         invocation_id=f"invocation_{run_id}",
         model_id="mcp-runtime-model",
         read_scope=tuple(
-            sorted(set(GOLDEN.fixture.tracked_paths) | set(GOLDEN.fixture.mutable_paths))
+            sorted(
+                set(GOLDEN.fixture.tracked_paths) | set(GOLDEN.fixture.mutable_paths)
+            )
         ),
         write_scope=GOLDEN.fixture.mutable_paths,
         tools=tuple(LineageOperation),
@@ -173,9 +174,7 @@ def test_official_client_sees_six_strict_tools_and_common_service_events(
             assert opened.structured_content["content"] == "approved memory evidence"
             assert write.structured_content["state"] == "EDITED"
             assert tested.structured_content["passed"] is True
-            assert tested.structured_content["bound_paths"] == [
-                "app/auth/limiter.py"
-            ]
+            assert tested.structured_content["bound_paths"] == ["app/auth/limiter.py"]
             assert completion.structured_content == {
                 "status": "denied",
                 "reason_code": "human_promotion_required",
@@ -194,6 +193,7 @@ def test_official_client_sees_six_strict_tools_and_common_service_events(
         events = store.tail(handle.run_id, 0, 256)
         assert [event.event_type for event in events] == [
             LineageEventType.RUN_STARTED,
+            LineageEventType.INVOCATION_STARTED,
             LineageEventType.TOOL_STARTED,
             LineageEventType.TOOL_COMPLETED,
             LineageEventType.TOOL_STARTED,
@@ -207,14 +207,14 @@ def test_official_client_sees_six_strict_tools_and_common_service_events(
             LineageEventType.COMPLETION_ATTEMPTED,
             LineageEventType.COMPLETION_DENIED,
         ]
-        calls = [event.tool_call_id for event in events[1:]]
+        assert events[1].authority == LineageAuthority.MCP_ADAPTER
+        assert events[1].source_ref.kind == SourceKind.MCP_REQUEST_RECEIPT
+        calls = [event.tool_call_id for event in events[2:]]
         assert all(value and value.startswith("mcp_call_") for value in calls)
         assert calls[::2] == calls[1::2]
         assert len(set(calls[::2])) == 6
         assert {event.session_id for event in events[1:]} == {handle.session_id}
-        assert {event.invocation_id for event in events[1:]} == {
-            handle.invocation_id
-        }
+        assert {event.invocation_id for event in events[1:]} == {handle.invocation_id}
         assert {event.model_id for event in events[1:]} == {handle.model_id}
         public = json.dumps([event.model_dump(mode="json") for event in events])
         assert "MCP_WRITE_CANARY" not in public
@@ -269,8 +269,8 @@ def test_forged_arguments_and_errors_are_rejected_without_identity_leaks(
 
         denial = store.tail(handle.run_id, before, 256)
         assert [event.event_type for event in denial] == [
-            LineageEventType.SCOPE_DENIED
+            LineageEventType.SCOPE_DENIED,
         ]
-        assert canary not in json.dumps(denial[0].model_dump(mode="json"))
+        assert canary not in json.dumps(denial[-1].model_dump(mode="json"))
 
     asyncio.run(scenario())

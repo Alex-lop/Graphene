@@ -8,6 +8,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
 from mcp_types import INVALID_PARAMS
 
+from .. import __version__
 from ..hashing import sha256_hex
 from ..lineage.service import (
     RuntimeHandle,
@@ -16,6 +17,7 @@ from ..lineage.service import (
 )
 
 _T = TypeVar("_T")
+MCP_VERSION = "2.0.0"
 _ARGUMENTS = {
     "search_repo": frozenset({"query"}),
     "read_file": frozenset({"path"}),
@@ -31,6 +33,7 @@ def create_mcp_server(
     handle: RuntimeHandle,
     *,
     agent_name: str = "graphene_mcp",
+    after_commit: Callable[[int], None] | None = None,
 ) -> MCPServer:
     """Expose the common scoped runtime through exactly six MCP tools."""
 
@@ -53,15 +56,21 @@ def create_mcp_server(
     server = MCPServer(
         name="graphene",
         description="Wrapper-authoritative Graphene runtime",
-        version="2",
+        version=__version__,
         middleware=(reject_forged_arguments,),
+    )
+    service.ensure_invocation_started(
+        handle,
+        session_id=handle.session_id,
+        invocation_id=handle.invocation_id,
+        model_id=handle.model_id,
+        adapter_kind="mcp",
+        framework_version=MCP_VERSION,
     )
 
     def identity(ctx: Context) -> ToolCallIdentity:
         request_digest = sha256_hex(
-            "\0".join(
-                (handle.run_id, handle.invocation_id, ctx.request_id)
-            ).encode()
+            "\0".join((handle.run_id, handle.invocation_id, ctx.request_id)).encode()
         )
         return ToolCallIdentity(
             session_id=handle.session_id,
@@ -74,14 +83,27 @@ def create_mcp_server(
 
     def execute(operation: Callable[[], _T]) -> _T:
         try:
-            return operation()
+            result = operation()
+        except Exception:
+            if after_commit is not None:
+                try:
+                    after_commit(handle.head.seq)
+                except Exception:
+                    pass
+            raise RuntimeError("Graphene tool request failed") from None
+        try:
+            if after_commit is not None:
+                after_commit(handle.head.seq)
         except Exception:
             raise RuntimeError("Graphene tool request failed") from None
+        return result
 
     @server.tool(structured_output=True)
     async def search_repo(query: str, ctx: Context) -> dict[str, Any]:
         """Search scoped repository files for an exact text query."""
-        result = execute(lambda: service.search_repo(handle, identity(ctx), query=query))
+        result = execute(
+            lambda: service.search_repo(handle, identity(ctx), query=query)
+        )
         return {
             "paths": list(result.paths),
             "matches": [
@@ -107,6 +129,7 @@ def create_mcp_server(
             "file_version_id": result.file_version_id,
             "byte_count": result.byte_count,
             "line_count": result.line_count,
+            "state": result.state,
         }
 
     @server.tool(structured_output=True)

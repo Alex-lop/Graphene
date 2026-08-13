@@ -12,8 +12,6 @@ from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.adk.sessions import InMemorySessionService
 from google.adk.tools import FunctionTool
 from google.genai import types
-from pydantic import PrivateAttr
-
 from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.integrations.adk import ADK_VERSION, AdkRuntimeAdapter
 from graphene.lineage.service import ScopedApplicationService
@@ -31,6 +29,7 @@ from graphene.models import (
     TruthKind,
     VerifiedHead,
 )
+from pydantic import PrivateAttr
 
 ROOT = Path(__file__).parents[3]
 GOLDEN = GoldenContract.model_validate_json(
@@ -65,7 +64,9 @@ class _Artifacts:
         exact = self.values.get((kind, artifact_id))
         if exact is not None:
             return exact
-        matches = [raw for (_, item_id), raw in self.values.items() if item_id == artifact_id]
+        matches = [
+            raw for (_, item_id), raw in self.values.items() if item_id == artifact_id
+        ]
         return matches[0] if len(matches) == 1 else None
 
 
@@ -109,7 +110,7 @@ class _TwoTurnLlm(BaseLlm):
         self,
         llm_request: LlmRequest,
         stream: bool = False,
-    ) -> AsyncGenerator[LlmResponse, None]:
+    ) -> AsyncGenerator[LlmResponse]:
         del stream
         self._turns += 1
         declarations = {
@@ -241,15 +242,13 @@ def test_installed_adk_correlates_real_tool_context_and_stops_after_denial(
             LineageEventType.COMPLETION_DENIED,
         ]
         assert [event.tool_call_id for event in lineage[2:]] == [
-            "adk_read_call_001",
-            "adk_read_call_001",
-            "adk_completion_call_001",
-            "adk_completion_call_001",
+            "adk_call_" + sha256_hex(b"adk_read_call_001")[:32],
+            "adk_call_" + sha256_hex(b"adk_read_call_001")[:32],
+            "adk_call_" + sha256_hex(b"adk_completion_call_001")[:32],
+            "adk_call_" + sha256_hex(b"adk_completion_call_001")[:32],
         ]
         assert {event.session_id for event in lineage[1:]} == {handle.session_id}
-        assert {event.invocation_id for event in lineage[1:]} == {
-            handle.invocation_id
-        }
+        assert {event.invocation_id for event in lineage[1:]} == {handle.invocation_id}
         assert {event.model_id for event in lineage[1:]} == {handle.model_id}
 
     asyncio.run(scenario())

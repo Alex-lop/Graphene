@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "graphene": {
+      "args": [
+        "--task",
+        "baseline_max_attempts",
+        "--profile",
+        "platform-maintainer@1"
+      ],
+      "command": "/absolute/path/to/Graphene/.venv/bin/graphene-mcp",
+      "env": {
+        "GRAPHENE_LINEAGE_DB": "/absolute/private/runtime/lineage.sqlite3"
+      }
+    }
+  }
+}

@@ -51,7 +51,7 @@ The decision reverses automatically to `KILL` for this submission if either of t
 - Current HEAD and `origin/main` are `d36ff4b6a37f160e1122307f3e48cea953fcd223` on `main`, tree `597a06941cd73a82df80e44611b663dd1b9d205e`. `d36ff4b` adds the tracked `Graphene_main_img.png`; parent `6a57016` merges the README-only `b2c8f6c` commit. The worktree contains only the two untracked judge documents at this checkpoint.
 - The implementation was audited at ancestor `ce9dfbe0d0e2910b0c1f7216bf944fbc5987d206`. The last-known public baseline `c3d4bbd50ba6f0c0b2e9a729b78ba9ac50cece03` and `ce9dfbe` shared implementation tree `62a30dc989590f28d1b8f082cf980c256515b834`; `ce9dfbe` itself adds only the post-Phase-0 plan, and the latest implementation commit remains `eadc2e7`.
 - `git diff --name-status ce9dfbe..d36ff4b` shows only `M README.md` and `A Graphene_main_img.png`. All implementation/test claims bind `ce9dfbe`; current repository/branding status binds `d36ff4b`.
-- During this judge pass the repository directory was externally relocated from `Desktop/repos/AllThingsAgenticHackathon` to `Desktop/AllThingsAgenticHackathon`. The Git identity remained intact. Existing user-side `README.md` and image changes were not modified by this pass.
+- During this judge pass the repository directory was relocated on disk. The Git identity remained intact. Existing user-side `README.md` and image changes were not modified by this pass.
 - Submission name is **Graphene**, matching `Graphene_main_img.png`.
 
 ### What is implemented and verified
@@ -1052,7 +1052,7 @@ The enterprise vision is not the hackathon roadmap. It is a boundary that preven
 You are the root implementation agent for Graphene. Work autonomously and use parallel subagents for bounded audits/implementation/review. Your job is to implement and falsify the singular PIVOT in CLI_LINEAGE_JUDGE_DECISION.md, not to write another broad plan.
 
 Repository and truth baseline
-- Start in the actual Graphene checkout. It was last observed at /Users/alexlopez/Desktop/AllThingsAgenticHackathon after an external directory relocation.
+- Start in the actual Graphene checkout.
 - Read GRAPHENE_CLI_LINEAGE_JUDGE_PROMPT.md and CLI_LINEAGE_JUDGE_DECISION.md completely before changing code.
 - Current HEAD at handoff: d36ff4b6a37f160e1122307f3e48cea953fcd223 on main, matching origin/main.
 - Audited implementation parent: ce9dfbe0d0e2910b0c1f7216bf944fbc5987d206.

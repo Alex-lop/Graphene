@@ -14,6 +14,8 @@ from graphene.lineage.promotion import (
     PromotionRequest,
     PromotionRetestError,
     PromotionRetestRequest,
+    PromotionRetestResult,
+    SQLiteCheckpointRecorder,
     promote,
 )
 from graphene.lineage.reducer import reduce_events
@@ -21,6 +23,7 @@ from graphene.lineage.store import SQLiteLineageStore
 from graphene.models import (
     EventInput,
     EvidenceKind,
+    EvidenceReference,
     HeadCheckpoint,
     HumanDecision,
     LineageAuthority,
@@ -56,18 +59,36 @@ def _source(artifacts, evidence_kind, source_kind, record):
     )
 
 
+class _Checkpoints:
+    def __init__(self):
+        self.values: list[HeadCheckpoint] = []
+
+    def __call__(self, checkpoint):
+        self.values.append(checkpoint)
+
+    def read(self, run_id):
+        return tuple(self.values) if run_id == RUN_ID else ()
+
+
+class _DroppedCheckpoints:
+    def __call__(self, checkpoint):
+        pass
+
+    def read(self, run_id):
+        return ()
+
+
 class Harness:
     def __init__(self, tmp_path: Path):
         tmp_path.mkdir(parents=True, exist_ok=True)
         self.path = tmp_path / "promotion.sqlite3"
         self.artifacts = SQLiteArtifactStore(self.path)
-        self.checkpoints: list[HeadCheckpoint] = []
+        self.checkpoint = _Checkpoints()
+        self.checkpoints = self.checkpoint.values
         self.store = SQLiteLineageStore(
             self.path,
             artifact_resolver=self.artifacts.resolve,
-            checkpoint_reader=lambda run_id: (
-                tuple(self.checkpoints) if run_id == RUN_ID else ()
-            ),
+            checkpoint_reader=self.checkpoint.read,
         )
         empty = VerifiedHead(
             run_id=RUN_ID,
@@ -101,15 +122,45 @@ class Harness:
                 payload={"state": "STARTING"},
             ),
         )
-        denied = self.store.append(
+        attempted = self.store.append(
             RUN_ID,
             _head(started),
+            "promotion_attempted_key_001",
+            EventInput(
+                session_id="session_promotion_001",
+                invocation_id="invocation_promotion_001",
+                model_id="model-test",
+                tool_call_id="call_completion_001",
+                repo_id="graphene-demo",
+                base_sha=BASE_SHA,
+                agent_profile_id="auth-maintainer@1",
+                policy_revision=1,
+                event_type=LineageEventType.COMPLETION_ATTEMPTED,
+                truth_kind=TruthKind.MODEL_PROPOSED,
+                authority=LineageAuthority.LOCAL_ADAPTER,
+                references=(),
+                source_ref=_source(
+                    self.artifacts,
+                    EvidenceKind.LOCAL_ADAPTER_RECEIPT,
+                    SourceKind.LOCAL_ADAPTER_RECEIPT,
+                    {"schema_version": 2, "action": "attempt_completion"},
+                ),
+                payload={
+                    "adapter_kind": "local",
+                    "operation": "request_completion",
+                    "status": "attempted",
+                },
+            ),
+        )
+        denied = self.store.append(
+            RUN_ID,
+            _head(attempted),
             "promotion_denied_key_001",
             EventInput(
-                session_id=None,
-                invocation_id=None,
-                model_id=None,
-                tool_call_id=None,
+                session_id="session_promotion_001",
+                invocation_id="invocation_promotion_001",
+                model_id="model-test",
+                tool_call_id="call_completion_001",
                 repo_id="graphene-demo",
                 base_sha=BASE_SHA,
                 agent_profile_id="auth-maintainer@1",
@@ -117,7 +168,13 @@ class Harness:
                 event_type=LineageEventType.COMPLETION_DENIED,
                 truth_kind=TruthKind.POLICY_AUTHORITATIVE,
                 authority=LineageAuthority.POLICY_ENGINE,
-                references=(),
+                references=(
+                    EvidenceReference(
+                        kind=EvidenceKind.EVENT,
+                        id=attempted.event_id,
+                        sha256=attempted.event_sha256,
+                    ),
+                ),
                 source_ref=_source(
                     self.artifacts,
                     EvidenceKind.POLICY_RECEIPT,
@@ -366,19 +423,13 @@ class Harness:
 
     def receipt(self, retest, **changes):
         values = {
-            **retest.model_dump(mode="json"),
-            "receipt_id": "promotion_receipt_001",
             "authoritative_test_receipt_sha256": "3" * 64,
             "reconstructed_commit_sha": "b" * 40,
             "passed": True,
             "timed_out": False,
             **changes,
         }
-        return PromotionReceiptV2.create(**values)
-
-    def checkpoint(self, value):
-        self.checkpoints.append(value)
-        return value
+        return PromotionRetestResult.model_validate(values)
 
     def events(self):
         head = self.store.verify(RUN_ID)
@@ -386,7 +437,7 @@ class Harness:
         return self.store.tail(RUN_ID, 0, head.seq)
 
 
-def test_exact_non_circular_sequence_and_final_checkpoint(tmp_path):
+def test_exact_non_circular_sequence_and_precommit_checkpoint(tmp_path):
     harness = Harness(tmp_path)
     observed = []
 
@@ -394,6 +445,7 @@ def test_exact_non_circular_sequence_and_final_checkpoint(tmp_path):
         observed.append("callback")
         assert harness.store.verify(RUN_ID) == retest.approval_head
         assert harness.events()[-1].event_type == LineageEventType.PROMOTION_APPROVED
+        assert not harness.checkpoints
         return harness.receipt(retest)
 
     outcome = promote(
@@ -413,20 +465,53 @@ def test_exact_non_circular_sequence_and_final_checkpoint(tmp_path):
     assert outcome.approval_event.seq == harness.expected.seq + 1
     assert outcome.receipt.approval_head == _head(outcome.approval_event)
     assert outcome.completion_event.seq == harness.expected.seq + 2
-    assert outcome.completion_event.references == (
+    assert outcome.completion_event.references[:2] == (
         outcome.completion_event.references[0],
         outcome.receipt_reference,
+    )
+    assert len(outcome.completion_event.references) == 3
+    checkpoint_reference = outcome.completion_event.references[2]
+    assert checkpoint_reference.kind == EvidenceKind.CHECKPOINT
+    assert checkpoint_reference.sha256 == canonical_json_sha256(
+        outcome.checkpoint.model_dump(mode="json")
     )
     assert outcome.approval_event.authority == LineageAuthority.OPERATOR_REQUEST
     assert outcome.approval_event.truth_kind == TruthKind.HUMAN_ATTESTED
     assert outcome.approval_event.source_ref.kind == SourceKind.OPERATOR_REQUEST
     assert outcome.completion_event.source_ref.kind == SourceKind.PROMOTION_RECEIPT
     assert harness.checkpoints == [outcome.checkpoint]
-    assert outcome.checkpoint.expected_seq == outcome.final_head.seq
-    assert outcome.checkpoint.event_head_sha256 == outcome.final_head.event_sha256
+    assert outcome.checkpoint.expected_seq == outcome.approval_event.seq
+    assert outcome.checkpoint.event_head_sha256 == outcome.approval_event.event_sha256
     assert outcome.checkpoint.bound_artifact_id == outcome.receipt_reference.id
     assert harness.store.verify(RUN_ID) == outcome.final_head
     assert reduce_events(events).state == LineageRunState.PROMOTED
+
+
+def test_sqlite_checkpoint_exact_replay_and_read_only_restart(tmp_path):
+    harness = Harness(tmp_path)
+    checkpoints = SQLiteCheckpointRecorder(harness.path)
+    outcome = promote(
+        harness.store,
+        harness.request,
+        record_artifact=harness.artifacts,
+        reconstruct_and_retest=harness.receipt,
+        record_checkpoint=checkpoints,
+    )
+
+    checkpoints(outcome.checkpoint)
+    assert checkpoints.read(RUN_ID) == (outcome.checkpoint,)
+    read_only_checkpoints = SQLiteCheckpointRecorder(harness.path, read_only=True)
+    read_only_artifacts = SQLiteArtifactStore(harness.path, read_only=True)
+    restarted = SQLiteLineageStore(
+        harness.path,
+        artifact_resolver=read_only_artifacts.resolve,
+        checkpoint_reader=read_only_checkpoints.read,
+        read_only=True,
+    )
+    assert restarted.verify(RUN_ID) == outcome.final_head
+    assert reduce_events(restarted.tail(RUN_ID, 0, outcome.final_head.seq)).state == (
+        LineageRunState.PROMOTED
+    )
 
 
 @pytest.mark.parametrize(
@@ -445,14 +530,24 @@ def test_exact_non_circular_sequence_and_final_checkpoint(tmp_path):
 def test_substituted_retest_binding_is_denied_and_never_completed(tmp_path, field):
     harness = Harness(tmp_path)
 
-    with pytest.raises(PromotionRetestError, match="does not match"):
+    def forged(retest):
+        bindings = retest.model_dump(mode="json")
+        bindings[field] = "f" * 64
+        return PromotionReceiptV2.create(
+            **bindings,
+            receipt_id="promotion_receipt_forged",
+            authoritative_test_receipt_sha256="3" * 64,
+            reconstructed_commit_sha="b" * 40,
+            passed=True,
+            timed_out=False,
+        )
+
+    with pytest.raises(PromotionRetestError, match="core-owned"):
         promote(
             harness.store,
             harness.request,
             record_artifact=harness.artifacts,
-            reconstruct_and_retest=lambda retest: harness.receipt(
-                retest, **{field: "f" * 64}
-            ),
+            reconstruct_and_retest=forged,
             record_checkpoint=harness.checkpoint,
         )
 
@@ -482,18 +577,14 @@ def test_callback_failure_and_nonpassing_receipt_fail_closed(tmp_path):
     second = Harness(tmp_path / "retest")
 
     def nonpassing(retest):
-        valid = second.receipt(retest)
-        return PromotionReceiptV2.model_construct(
-            **{
-                **{
-                    name: getattr(valid, name)
-                    for name in PromotionReceiptV2.model_fields
-                },
-                "passed": False,
-            }
+        return PromotionRetestResult(
+            authoritative_test_receipt_sha256="3" * 64,
+            reconstructed_commit_sha="b" * 40,
+            passed=False,
+            timed_out=False,
         )
 
-    with pytest.raises(PromotionRetestError, match="does not match"):
+    with pytest.raises(PromotionRetestError, match="did not pass"):
         promote(
             second.store,
             second.request,
@@ -506,18 +597,14 @@ def test_callback_failure_and_nonpassing_receipt_fail_closed(tmp_path):
     third = Harness(tmp_path / "digest")
 
     def bad_digest(retest):
-        valid = third.receipt(retest)
-        return PromotionReceiptV2.model_construct(
-            **{
-                **{
-                    name: getattr(valid, name)
-                    for name in PromotionReceiptV2.model_fields
-                },
-                "receipt_sha256": "0" * 64,
-            }
+        return PromotionRetestResult.model_construct(
+            authoritative_test_receipt_sha256="not-a-digest",
+            reconstructed_commit_sha="b" * 40,
+            passed=True,
+            timed_out=False,
         )
 
-    with pytest.raises(PromotionRetestError, match="does not match"):
+    with pytest.raises(PromotionRetestError, match="core-owned"):
         promote(
             third.store,
             third.request,
@@ -628,11 +715,43 @@ def test_checkpoint_failure_never_returns_success(tmp_path):
             harness.request,
             record_artifact=harness.artifacts,
             reconstruct_and_retest=harness.receipt,
-            record_checkpoint=lambda checkpoint: None,
+            record_checkpoint=_DroppedCheckpoints(),
         )
 
-    assert harness.events()[-1].event_type == LineageEventType.PROMOTION_COMPLETED
+    assert harness.events()[-1].event_type == LineageEventType.PROMOTION_APPROVED
     assert not harness.checkpoints
+    assert reduce_events(harness.events()).state == LineageRunState.NEEDS_HUMAN
+
+
+def test_checkpoint_failure_retries_the_exact_retained_approval(tmp_path):
+    harness = Harness(tmp_path)
+    calls = 0
+
+    def retest(request):
+        nonlocal calls
+        calls += 1
+        return harness.receipt(request)
+
+    with pytest.raises(PromotionCheckpointError):
+        promote(
+            harness.store,
+            harness.request,
+            record_artifact=harness.artifacts,
+            reconstruct_and_retest=retest,
+            record_checkpoint=_DroppedCheckpoints(),
+        )
+
+    outcome = promote(
+        harness.store,
+        harness.request,
+        record_artifact=harness.artifacts,
+        reconstruct_and_retest=retest,
+        record_checkpoint=harness.checkpoint,
+    )
+
+    assert calls == 2
+    assert outcome.completion_event.event_type == LineageEventType.PROMOTION_COMPLETED
+    assert reduce_events(harness.events()).state == LineageRunState.PROMOTED
 
 
 def test_request_and_receipt_types_are_strict_and_human_only(tmp_path):
@@ -686,7 +805,16 @@ def test_request_and_receipt_types_are_strict_and_human_only(tmp_path):
             harness.request.memory_reference,
         ),
     )
-    receipt = harness.receipt(retest)
+    result = harness.receipt(retest)
+    with pytest.raises(ValidationError):
+        PromotionRetestResult.model_validate(
+            {**result.model_dump(mode="json"), "unexpected": True}
+        )
+    receipt = PromotionReceiptV2.create(
+        **retest.model_dump(mode="json"),
+        receipt_id="promotion_receipt_strict",
+        **result.model_dump(mode="json"),
+    )
     with pytest.raises(ValidationError):
         PromotionReceiptV2.model_validate(
             {

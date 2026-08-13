@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-macos:
+    name: Python 3.13 / macOS sandbox
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install locked environment
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.11.29
+          uv lock --check
+          uv sync --frozen
+      - name: Require the supported host sandbox
+        run: test -x /usr/bin/sandbox-exec
+      - name: Unit, integration, process, and adversarial tests
+        run: >-
+          uv run --frozen pytest -q
+          tests/unit tests/integration tests/process tests/adversarial
+          --ignore=tests/process/test_mcp_stdio.py
+      - name: MCP STDIO process tests
+        run: uv run --frozen pytest -q tests/process/test_mcp_stdio.py
+      - name: CLI help and canonical NDJSON smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen graphene --help >/dev/null
+          runtime="$RUNNER_TEMP/graphene-cli-smoke"
+          install -d -m 700 "$runtime"
+          export GRAPHENE_LINEAGE_DB="$runtime/lineage.sqlite3"
+          created="$(uv run --frozen graphene --json run baseline_max_attempts --profile platform-maintainer@1)"
+          run_id="$(uv run --frozen python -c 'import json,sys; print(json.load(sys.stdin)["run_id"])' <<<"$created")"
+          events="$runtime/events.ndjson"
+          uv run --frozen graphene --json watch "$run_id" --snapshot >"$events"
+          uv run --frozen python - "$events" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+          events = [json.loads(line) for line in lines]
+          assert events and [event["seq"] for event in events] == list(range(1, len(events) + 1))
+          assert all(event["run_id"] == events[0]["run_id"] for event in events)
+          assert lines == [
+              json.dumps(event, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+              for event in events
+          ]
+          PY
+
+  linux-fixed-test-boundary:
+    name: Python 3.13 / Linux fixed tests fail closed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install locked environment
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.11.29
+          uv lock --check
+          uv sync --frozen
+      - name: Prove unsupported executor fails closed
+        run: >-
+          uv run --frozen pytest -q
+          tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_ambient_checkout_files
+          tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_or_write_host_files_or_use_network
+
+  frontend:
+    name: Node 22 frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node --test frontend/test/*.test.mjs
+      - run: node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs

@@ -20,7 +20,7 @@ from ..models import (
     SourceReference,
     VerifiedHead,
 )
-from .store import EvidenceInvalid, LineageConflict, _NO_APPEND_AFTER
+from .store import _NO_APPEND_AFTER, EvidenceInvalid, LineageConflict
 
 ArtifactResolver = Callable[[str, str], bytes | None]
 CheckpointReader = Callable[[str], Iterable[HeadCheckpoint]]
@@ -478,6 +478,16 @@ class FirestoreLineageStore:
                 or sha256_hex(artifact) != checkpoint.bound_artifact_sha256
             ):
                 return _invalid(run_id, "checkpointed prefix is unresolved"), ()
+        try:
+            from .reducer import ProjectionError, reduce_events
+
+            reduce_events(tuple(events))
+        except ProjectionError as error:
+            return _invalid(
+                run_id,
+                f"event stream is semantically invalid: {error}",
+                error.first_invalid_seq,
+            ), ()
         return verified, tuple(events)
 
     def _read_verified(
@@ -601,6 +611,18 @@ class FirestoreLineageStore:
                 event_id=event_id,
                 recorded_at=recorded_at,
             )
+            try:
+                from .reducer import ProjectionError, reduce_events
+
+                reduce_events((*events, event))
+            except ProjectionError as error:
+                raise EvidenceInvalid(
+                    _invalid(
+                        run_id,
+                        f"event stream is semantically invalid: {error}",
+                        error.first_invalid_seq or event.seq,
+                    )
+                ) from error
             event_bytes = canonical_json_bytes(event.model_dump(mode="json"))
             run = self._run(run_id)
             event_ref = run.collection(_EVENTS).document(_sequence_id(event.seq))

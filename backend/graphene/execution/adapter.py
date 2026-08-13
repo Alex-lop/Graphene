@@ -168,9 +168,18 @@ class ScopedFixtureTools:
             raise FixtureAccessError("file does not exist")
         return path.read_text(encoding="utf-8")
 
-    def write_file(self, relative_path: str, content: str) -> str:
+    def write_file(
+        self,
+        relative_path: str,
+        content: str,
+        *,
+        expected_sha256: str | None = None,
+        expected_absent: bool = False,
+    ) -> str:
         """Write UTF-8 content to one allowlisted fixture path."""
 
+        if expected_absent and expected_sha256 is not None:
+            raise FixtureAccessError("write precondition is ambiguous")
         encoded = content.encode()
         if len(encoded) > self.max_write_bytes:
             raise FixtureAccessError("write exceeds the fixture byte cap")
@@ -186,22 +195,52 @@ class ScopedFixtureTools:
             if _OPEN_SUPPORTS_DIR_FD:
                 parent_fd = os.open(
                     path.parent,
-                    os.O_RDONLY
-                    | getattr(os, "O_DIRECTORY", 0)
-                    | getattr(os, "O_NOFOLLOW", 0),
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
                 )
-                if path.exists() and not stat.S_ISREG(
-                    os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False).st_mode
+                try:
+                    current_metadata = os.stat(
+                        path.name, dir_fd=parent_fd, follow_symlinks=False
+                    )
+                except FileNotFoundError:
+                    current_metadata = None
+                if current_metadata is not None and not stat.S_ISREG(
+                    current_metadata.st_mode
                 ):
                     raise FixtureAccessError("write target must be a regular file")
+                if expected_absent and current_metadata is not None:
+                    raise FixtureAccessError("write target appeared after it was observed absent")
+                if expected_sha256 is not None:
+                    current_fd = os.open(
+                        path.name,
+                        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                        dir_fd=parent_fd,
+                    )
+                    with os.fdopen(current_fd, "rb") as current:
+                        if sha256_hex(current.read()) != expected_sha256:
+                            raise FixtureAccessError("write target changed after it was read")
                 fd = os.open(temporary_name, flags, 0o666, dir_fd=parent_fd)
             else:
+                if expected_sha256 is not None and sha256_hex(path.read_bytes()) != expected_sha256:
+                    raise FixtureAccessError("write target changed after it was read")
                 fd = os.open(path.parent / temporary_name, flags, 0o666)
             with os.fdopen(fd, "wb") as stream:
                 stream.write(encoded)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if parent_fd is None:
+            if expected_absent and parent_fd is None:
+                os.link(path.parent / temporary_name, path, follow_symlinks=False)
+                (path.parent / temporary_name).unlink()
+            elif expected_absent:
+                os.link(
+                    temporary_name,
+                    path.name,
+                    src_dir_fd=parent_fd,
+                    dst_dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+                os.unlink(temporary_name, dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            elif parent_fd is None:
                 os.replace(path.parent / temporary_name, path)
             else:
                 os.replace(
@@ -225,6 +264,27 @@ class ScopedFixtureTools:
                 if parent_fd is not None:
                     os.close(parent_fd)
         return sha256_hex(encoded)
+
+    def is_absent(self, relative_path: str) -> bool:
+        """Observe that an allowlisted file name is absent without following links."""
+
+        path = self._resolve(relative_path, write=False)
+        parent_fd = os.open(
+            path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            try:
+                metadata = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return True
+            if not stat.S_ISREG(metadata.st_mode):
+                raise FixtureAccessError("read target must be a regular file")
+            return False
+        except OSError as error:
+            raise FixtureAccessError("read target could not be observed safely") from error
+        finally:
+            os.close(parent_fd)
 
 
 def _sanitized_environment() -> dict[str, str]:
@@ -308,25 +368,100 @@ def _sandboxed_test_command(root: Path, temporary: Path) -> tuple[str, ...]:
     )
 
 
+def _read_test_view_file(root_fd: int, relative: PurePosixPath, limit: int) -> bytes:
+    parent_fd = os.dup(root_fd)
+    file_fd: int | None = None
+    try:
+        for part in relative.parts[:-1]:
+            child_fd = os.open(
+                part,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=parent_fd,
+            )
+            os.close(parent_fd)
+            parent_fd = child_fd
+        file_fd = os.open(
+            relative.name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent_fd,
+        )
+        metadata = os.fstat(file_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ExecutionError("test view named path must be a regular file")
+        if metadata.st_size > limit:
+            raise ExecutionError("test view named file exceeds the byte cap")
+        with os.fdopen(file_fd, "rb") as stream:
+            file_fd = None
+            data = stream.read(limit + 1)
+        if len(data) != metadata.st_size:
+            raise ExecutionError("test view named file changed during materialization")
+        return data
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        os.close(parent_fd)
+
+
+def _materialize_test_view(root: Path, destination: Path, policy: FixturePolicy) -> None:
+    if not _OPEN_SUPPORTS_DIR_FD:
+        raise ExecutionError("safe test materialization requires directory-relative open")
+    root_fd = os.open(
+        root,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+    )
+    tracked = frozenset(policy.tracked_paths)
+    named_paths = (
+        *policy.tracked_paths,
+        *(value for value in policy.mutable_paths if value not in tracked),
+    )
+    try:
+        for value in named_paths:
+            try:
+                relative = _relative_path(value)
+                data = _read_test_view_file(
+                    root_fd,
+                    relative,
+                    policy.max_write_bytes,
+                )
+            except FileNotFoundError as error:
+                if value not in tracked:
+                    continue
+                raise ExecutionError("test view tracked path does not exist") from error
+            except OSError as error:
+                raise ExecutionError("test view named path could not be opened safely") from error
+            target = destination.joinpath(*relative.parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+    finally:
+        os.close(root_fd)
+
+
 def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
     if policy.fixed_test_command != _FIXED_TEST_COMMAND:
         raise ExecutionError("fixture test command is not the frozen command")
+    if root.is_symlink():
+        raise ExecutionError("fixture test root cannot be a symlink")
     root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise ExecutionError("fixture test root must be a directory")
     started = time.monotonic()
+    output = ""
+    sanitize_root = root
     with tempfile.TemporaryDirectory(prefix="graphene-test-sandbox-") as value:
         temporary = Path(value).resolve(strict=True)
-        config = root / ".graphene-pytest.ini"
-        try:
-            with config.open("x", encoding="utf-8") as stream:
-                stream.write("[pytest]\n")
-        except FileExistsError as error:
-            raise ExecutionError("fixture contains the reserved test config path") from error
+        test_root = temporary / "fixture"
+        sanitize_root = test_root
+        scratch = temporary / "tmp"
+        _materialize_test_view(root, test_root, policy)
+        scratch.mkdir()
+        config = test_root / ".graphene-pytest.ini"
+        config.write_text("[pytest]\n", encoding="utf-8")
         environment = _sanitized_environment()
-        environment["TMPDIR"] = str(temporary)
+        environment["TMPDIR"] = str(scratch)
         try:
             result = subprocess.run(
-                _sandboxed_test_command(root, temporary),
-                cwd=root,
+                _sandboxed_test_command(test_root, scratch),
+                cwd=test_root,
                 env=environment,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
@@ -341,12 +476,10 @@ def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
             exit_code = -1
             timed_out = True
             output = _text(error.stdout) + _text(error.stderr)
-        finally:
-            config.unlink()
 
     output, truncated = _sanitize_output(
         output,
-        root,
+        sanitize_root,
         min(policy.max_test_output_bytes, MAX_TEST_OUTPUT_BYTES),
     )
     duration = time.monotonic() - started
@@ -475,13 +608,17 @@ def _initialize_repository(
     _git(destination, "init", "--quiet", "--initial-branch=main")
     _git(destination, "add", "--all")
     tree = _git(destination, "write-tree").decode().strip()
-    commit = _git(
-        destination,
-        "commit-tree",
-        tree,
-        "-m",
-        "Graphene deterministic fixture baseline",
-    ).decode().strip()
+    commit = (
+        _git(
+            destination,
+            "commit-tree",
+            tree,
+            "-m",
+            "Graphene deterministic fixture baseline",
+        )
+        .decode()
+        .strip()
+    )
     _git(destination, "update-ref", "refs/heads/main", commit)
     return commit
 

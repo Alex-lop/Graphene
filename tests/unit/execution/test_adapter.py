@@ -220,18 +220,42 @@ def test_fixture_materialization_rejects_noncanonical_named_path(tmp_path: Path)
         adapter._initialize_repository(contract, FIXTURE, tmp_path / "destination")
 
 
+def test_fixed_tests_cannot_read_ambient_checkout_files(tmp_path: Path):
+    root = tmp_path / "fixture"
+    shutil.copytree(FIXTURE, root)
+    canary = "GRAPHENE_OUT_OF_SCOPE_CHECKOUT_CANARY"
+    (root / "out-of-scope-secret.txt").write_text(canary)
+    (root / "tests/test_security_policy.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_checkout_scope():\n"
+        "    try:\n"
+        "        secret = Path('out-of-scope-secret.txt').read_text()\n"
+        "    except FileNotFoundError:\n"
+        "        return\n"
+        "    raise AssertionError(secret)\n"
+    )
+
+    if adapter.sys.platform != "darwin":
+        with pytest.raises(ExecutionError, match="OS sandbox"):
+            adapter.run_fixture_tests(root, GOLDEN.fixture)
+        return
+    result = adapter.run_fixture_tests(root, GOLDEN.fixture)
+    assert result.exit_code == 0
+    assert canary not in result.output
+
+
 def test_fixed_tests_cannot_read_or_write_host_files_or_use_network(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
     root = tmp_path / "fixture"
-    root.mkdir()
+    shutil.copytree(FIXTURE, root)
     outside = tmp_path / "outside-canary.txt"
     marker = tmp_path / "outside-marker.txt"
     canary = "FIXED_TEST_HOST_CANARY"
     outside.write_text(canary)
     monkeypatch.setenv("GRAPHENE_TEST_SECRET", "ENVIRONMENT_CANARY")
-    (root / "test_isolation.py").write_text(
+    (root / "tests/test_security_policy.py").write_text(
         "\n".join(
             (
                 "import os",

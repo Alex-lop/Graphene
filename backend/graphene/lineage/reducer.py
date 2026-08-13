@@ -68,6 +68,19 @@ _TERMINAL_STATES = {
     LineageRunState.PROMOTED,
 }
 
+_RUNTIME_EVENTS = {
+    LineageEventType.INVOCATION_STARTED,
+    LineageEventType.INVOCATION_COMPLETED,
+    LineageEventType.INVOCATION_FAILED,
+    LineageEventType.TOOL_STARTED,
+    LineageEventType.TOOL_COMPLETED,
+    LineageEventType.TOOL_FAILED,
+    LineageEventType.SCOPE_ALLOWED,
+    LineageEventType.SCOPE_DENIED,
+    LineageEventType.COMPLETION_ATTEMPTED,
+    LineageEventType.COMPLETION_DENIED,
+}
+
 
 def _fail(reason: str, event: Event | None = None) -> ProjectionError:
     return ProjectionError(
@@ -98,8 +111,10 @@ def _path(value: object, event: Event) -> str:
 def _digest(value: object, event: Event, *, nullable: bool = False) -> str | None:
     if value is None and nullable:
         return None
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise _fail("event payload file-version digest is invalid", event)
     return value
@@ -132,7 +147,10 @@ def _status(event: Event, operation: LineageOperation | None) -> str:
         LineageEventType.TOOL_FAILED,
     }:
         return "FAILED"
-    if operation == LineageOperation.RUN_FIXED_TEST and event.event_type == LineageEventType.TOOL_COMPLETED:
+    if (
+        operation == LineageOperation.RUN_FIXED_TEST
+        and event.event_type == LineageEventType.TOOL_COMPLETED
+    ):
         return "PASS" if event.payload.get("passed") is True else "FAIL"
     return {
         LineageEventType.RUN_STARTED: "STARTING",
@@ -157,14 +175,26 @@ def _verify(events: tuple[Event, ...]) -> None:
     if not events:
         raise ProjectionError("a projection requires at least one event")
     first = events[0]
-    identity = (first.run_id, first.repo_id, first.base_sha, first.agent_profile_id, first.policy_revision)
+    identity = (
+        first.run_id,
+        first.repo_id,
+        first.base_sha,
+        first.agent_profile_id,
+        first.policy_revision,
+    )
     previous: str | None = None
     event_ids: set[str] = set()
     reference_digests: dict[tuple[str, str], str] = {}
     for expected_seq, event in enumerate(events, 1):
         if event.seq != expected_seq:
             raise _fail("event sequence is not contiguous and ordered", event)
-        if (event.run_id, event.repo_id, event.base_sha, event.agent_profile_id, event.policy_revision) != identity:
+        if (
+            event.run_id,
+            event.repo_id,
+            event.base_sha,
+            event.agent_profile_id,
+            event.policy_revision,
+        ) != identity:
             raise _fail("event stream identity changed within the run", event)
         if event.event_id in event_ids:
             raise _fail("event ID is duplicated within the run", event)
@@ -194,12 +224,15 @@ def _read(files: dict[str, _File], event: Event) -> None:
     version = _digest(payload["file_version_id"], event)
     byte_count = _integer(payload["byte_count"], event)
     line_count = _integer(payload["line_count"], event)
+    absent = payload.get("state") == "ABSENT"
+    if absent and (byte_count != 0 or line_count != 0):
+        raise _fail("absent read has nonzero file metadata", event)
     item = files.get(path)
     if item is None:
         files[path] = _File(
             path=path,
             state="READ",
-            file_version_id=version,
+            file_version_id=None if absent else version,
             baseline_bytes=byte_count,
             baseline_lines=line_count,
             first_seq=event.seq,
@@ -207,13 +240,15 @@ def _read(files: dict[str, _File], event: Event) -> None:
             read_count=1,
         )
         return
-    if item.file_version_id not in {None, version}:
+    if not absent and item.file_version_id not in {None, version}:
         raise _fail("read observed an unexpected file version", event)
-    if item.state in {"DISCOVERED", "READ"} and item.baseline_bytes is not None and (
-        item.baseline_bytes != byte_count or item.baseline_lines != line_count
+    if (
+        item.state in {"DISCOVERED", "READ"}
+        and item.baseline_bytes is not None
+        and (item.baseline_bytes != byte_count or item.baseline_lines != line_count)
     ):
         raise _fail("read changed frozen baseline metadata", event)
-    item.file_version_id = version
+    item.file_version_id = None if absent else version
     item.baseline_bytes = byte_count if item.baseline_bytes is None else item.baseline_bytes
     item.baseline_lines = line_count if item.baseline_lines is None else item.baseline_lines
     if item.state == "DISCOVERED":
@@ -270,11 +305,15 @@ def _write(files: dict[str, _File], event: Event) -> None:
     added = _integer(payload["added_lines"], event)
     deleted = _integer(payload["deleted_lines"], event)
     state = payload["state"]
-    if state not in {"EDITED", "NEW", "DELETED"} or {
-        "EDITED": before is not None and after is not None,
-        "NEW": before is None and after is not None,
-        "DELETED": before is not None and after is None,
-    }[state] is False:
+    if (
+        state not in {"EDITED", "NEW", "DELETED"}
+        or {
+            "EDITED": before is not None and after is not None,
+            "NEW": before is None and after is not None,
+            "DELETED": before is not None and after is None,
+        }[state]
+        is False
+    ):
         raise _fail("write file-version bindings do not match its state", event)
     item = files.get(path)
     if item is not None:
@@ -314,9 +353,7 @@ def _test(files: dict[str, _File], event: Event) -> None:
     paths = tuple(_path(value, event) for value in raw_paths)
     if paths != tuple(sorted(set(paths))):
         raise _fail("fixed-test bound paths must be sorted and unique", event)
-    changed = {
-        path for path, item in files.items() if item.state in {"EDITED", "NEW", "DELETED"}
-    }
+    changed = {path for path, item in files.items() if item.state in {"EDITED", "NEW", "DELETED"}}
     if set(paths) != changed:
         raise _fail("fixed test does not bind the current changed-path set", event)
     for item in files.values():
@@ -328,6 +365,10 @@ def _test(files: dict[str, _File], event: Event) -> None:
 def _next_state(state: LineageRunState, event: Event) -> LineageRunState:
     if state in _TERMINAL_STATES:
         raise _fail("an event follows a terminal run state", event)
+    if state in {LineageRunState.ACCESS_DENIED, LineageRunState.NEEDS_HUMAN} and (
+        event.event_type in _RUNTIME_EVENTS
+    ):
+        raise _fail("a runtime event follows a terminal runtime decision", event)
     event_type = event.event_type
     if event_type == LineageEventType.RUN_STARTED:
         return LineageRunState.STARTING
@@ -335,7 +376,10 @@ def _next_state(state: LineageRunState, event: Event) -> LineageRunState:
         return LineageRunState.WAITING_INPUT
     if event_type in {LineageEventType.SCOPE_DENIED, LineageEventType.HANDOFF_DENIED}:
         return LineageRunState.ACCESS_DENIED
-    if event_type in {LineageEventType.COMPLETION_DENIED, LineageEventType.PROMOTION_DENIED}:
+    if event_type in {
+        LineageEventType.COMPLETION_DENIED,
+        LineageEventType.PROMOTION_DENIED,
+    }:
         return LineageRunState.NEEDS_HUMAN
     if event_type in {LineageEventType.RUN_FAILED, LineageEventType.INVOCATION_FAILED}:
         return LineageRunState.FAILED
@@ -402,14 +446,25 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
     decisions: list[str] = []
     started_calls: dict[str, LineageOperation] = {}
     finished_calls: set[str] = set()
+    started_invocations: dict[str, Event] = {}
+    finished_invocations: set[str] = set()
+    completion_attempts: dict[str, Event] = {}
+    completion_denials: set[str] = set()
+    ended = False
 
     for event in events:
+        if ended:
+            raise _fail("an event follows an explicit run end", event)
         operation = _operation(event)
-        if event.event_type in {
-            LineageEventType.TOOL_STARTED,
-            LineageEventType.TOOL_COMPLETED,
-            LineageEventType.TOOL_FAILED,
-        } and operation is None:
+        if (
+            event.event_type
+            in {
+                LineageEventType.TOOL_STARTED,
+                LineageEventType.TOOL_COMPLETED,
+                LineageEventType.TOOL_FAILED,
+            }
+            and operation is None
+        ):
             raise _fail("ordinary tool events require an operation", event)
         if (
             event.event_type
@@ -423,7 +478,54 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
             raise _fail("request_completion cannot use ordinary tool events", event)
         if event.event_type == LineageEventType.RUN_STARTED and event.seq != 1:
             raise _fail("run.started may appear only at sequence one", event)
-        if event.event_type == LineageEventType.TOOL_STARTED:
+        if event.event_type == LineageEventType.INVOCATION_STARTED:
+            assert event.invocation_id is not None
+            if event.invocation_id in started_invocations:
+                raise _fail("invocation started more than once", event)
+            started_invocations[event.invocation_id] = event
+        elif event.event_type in {
+            LineageEventType.INVOCATION_COMPLETED,
+            LineageEventType.INVOCATION_FAILED,
+        }:
+            assert event.invocation_id is not None
+            start = started_invocations.get(event.invocation_id)
+            if (
+                start is None
+                or event.invocation_id in finished_invocations
+                or event.session_id != start.session_id
+                or event.payload.get("adapter_kind")
+                != start.payload.get("adapter_kind")
+            ):
+                raise _fail("invocation result does not match one unfinished start", event)
+            finished_invocations.add(event.invocation_id)
+        elif event.event_type == LineageEventType.COMPLETION_ATTEMPTED:
+            assert event.tool_call_id is not None
+            if event.tool_call_id in completion_attempts:
+                raise _fail("completion was attempted more than once", event)
+            completion_attempts[event.tool_call_id] = event
+        elif event.event_type == LineageEventType.COMPLETION_DENIED:
+            if event.tool_call_id is None:
+                raise _fail("completion denial lacks a tool-call identity", event)
+            attempt = completion_attempts.get(event.tool_call_id)
+            matching_reference = (
+                attempt is not None
+                and any(
+                    reference.kind.value == "event"
+                    and reference.id == attempt.event_id
+                    and reference.sha256 == attempt.event_sha256
+                    for reference in event.references
+                )
+            )
+            if (
+                attempt is None
+                or event.tool_call_id in completion_denials
+                or event.session_id != attempt.session_id
+                or event.invocation_id != attempt.invocation_id
+                or not matching_reference
+            ):
+                raise _fail("completion denial does not match one attempt", event)
+            completion_denials.add(event.tool_call_id)
+        elif event.event_type == LineageEventType.TOOL_STARTED:
             assert event.tool_call_id is not None and operation is not None
             if event.tool_call_id in started_calls:
                 raise _fail("tool call started more than once", event)
@@ -440,6 +542,7 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
                 raise _fail("tool result does not match one unfinished start", event)
             finished_calls.add(event.tool_call_id)
         state = _next_state(state, event)
+        ended = event.event_type == LineageEventType.RUN_ENDED
         accepted_path: str | None = None
         if event.event_type == LineageEventType.TOOL_COMPLETED:
             if operation == LineageOperation.SEARCH_REPO:
@@ -521,10 +624,18 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
     )
     edited = any(item.state in {"EDITED", "NEW", "DELETED"} for item in files.values())
     obligations = (
-        _obligation("canonical_changeset", applicable=edited or bool(candidates), evidence=changesets),
+        _obligation(
+            "canonical_changeset",
+            applicable=edited or bool(candidates),
+            evidence=changesets,
+        ),
         _obligation("bound_fixed_test", applicable=edited, evidence=tests),
         _obligation("approved_memory_injected", applicable=bool(memories), evidence=injections),
-        _obligation("human_promotion_decision", applicable=edited or bool(candidates), evidence=decisions),
+        _obligation(
+            "human_promotion_decision",
+            applicable=edited or bool(candidates),
+            evidence=decisions,
+        ),
     )
     payload = {
         "schema_version": 2,

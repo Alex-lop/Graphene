@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -23,12 +23,14 @@ from ..models import (
     LineageAuthority,
     LineageEventType,
     LineageOperation,
+    LineageRunState,
     SourceKind,
     SourceReference,
     TruthKind,
     VerifiedHead,
 )
 from .recovery import quarantine_checkout, recover_interrupted_run
+from .reducer import ProjectionError, reduce_events
 
 
 class LineageStore(Protocol):
@@ -45,9 +47,12 @@ class LineageStore(Protocol):
     def verify(self, run_id: str) -> VerifiedHead | EvidenceInvalidState: ...
 
 
-ArtifactRecorder = Callable[
-    [EvidenceKind, Mapping[str, Any]], EvidenceReference
-]
+class ArtifactRecorder(Protocol):
+    def __call__(
+        self, kind: EvidenceKind, record: Mapping[str, Any]
+    ) -> EvidenceReference: ...
+
+    def resolve(self, kind: str, artifact_id: str) -> bytes | None: ...
 
 
 class RuntimeServiceError(RuntimeError):
@@ -119,6 +124,7 @@ class ReadResult:
     byte_count: int
     line_count: int
     artifact_sha256: str
+    state: Literal["PRESENT", "ABSENT"] = "PRESENT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,11 +194,20 @@ class RuntimeHandle:
     _invocation_started: Event | None = field(
         default=None, init=False, repr=False, compare=False
     )
+    _invocation_finished: Event | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     _finished_calls: set[str] = field(
         default_factory=set, init=False, repr=False, compare=False
     )
     _baselines: dict[str, tuple[int, int]] = field(
         default_factory=dict, init=False, repr=False, compare=False
+    )
+    _observed_versions: dict[str, str] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _observed_absences: set[str] = field(
+        default_factory=set, init=False, repr=False, compare=False
     )
     _written_versions: dict[str, str] = field(
         default_factory=dict, init=False, repr=False, compare=False
@@ -255,7 +270,111 @@ class ScopedApplicationService:
         head = self.store.verify(run_id)
         if isinstance(head, EvidenceInvalidState):
             raise RuntimeIntegrityError("lineage store did not verify the run head")
-        return RuntimeHandle(initial_head=head, **identity)
+        events: list[Event] = []
+        after_seq = 0
+        while after_seq < head.seq:
+            batch = self.store.tail(run_id, after_seq, min(256, head.seq - after_seq))
+            if not batch:
+                raise RuntimeIntegrityError("lineage store returned an incomplete run")
+            events.extend(batch)
+            after_seq = batch[-1].seq
+        try:
+            projection = reduce_events(tuple(events))
+        except ProjectionError as error:
+            raise RuntimeIntegrityError(
+                "lineage stream is semantically invalid"
+            ) from error
+        if (
+            len(events) != head.event_count
+            or events[-1].event_sha256 != head.event_sha256
+        ):
+            raise RuntimeIntegrityError(
+                "lineage stream does not match its verified head"
+            )
+        handle = RuntimeHandle(initial_head=head, **identity)
+        handle._finished_calls.update(
+            event.tool_call_id
+            for event in events
+            if event.tool_call_id is not None
+            and event.event_type
+            in {LineageEventType.TOOL_COMPLETED, LineageEventType.TOOL_FAILED}
+        )
+        for event in events:
+            if (
+                event.event_type != LineageEventType.TOOL_COMPLETED
+                or event.invocation_id != handle.invocation_id
+            ):
+                continue
+            operation = event.payload.get("operation")
+            path = event.payload.get("path")
+            if operation == LineageOperation.READ_FILE and isinstance(path, str):
+                version = event.payload.get("file_version_id")
+                if event.payload.get("state") == "ABSENT":
+                    handle._observed_absences.add(path)
+                elif isinstance(version, str):
+                    handle._observed_versions[path] = version
+                byte_count = event.payload.get("byte_count")
+                line_count = event.payload.get("line_count")
+                if isinstance(byte_count, int) and isinstance(line_count, int):
+                    handle._baselines.setdefault(path, (byte_count, line_count))
+            elif operation == LineageOperation.WRITE_FILE and isinstance(path, str):
+                version = event.payload.get("after_file_version_id")
+                if isinstance(version, str):
+                    handle._written_versions[path] = version
+                    handle._observed_versions[path] = version
+                byte_count = event.payload.get("baseline_bytes")
+                line_count = event.payload.get("baseline_lines")
+                if isinstance(byte_count, int) and isinstance(line_count, int):
+                    handle._baselines.setdefault(path, (byte_count, line_count))
+        started = next(
+            (
+                event
+                for event in reversed(events)
+                if event.event_type == LineageEventType.INVOCATION_STARTED
+                and event.invocation_id == handle.invocation_id
+            ),
+            None,
+        )
+        finished = next(
+            (
+                event
+                for event in reversed(events)
+                if event.event_type
+                in {
+                    LineageEventType.INVOCATION_COMPLETED,
+                    LineageEventType.INVOCATION_FAILED,
+                }
+                and event.invocation_id == handle.invocation_id
+            ),
+            None,
+        )
+        unfinished_calls = {
+            event.tool_call_id
+            for event in events
+            if event.event_type == LineageEventType.TOOL_STARTED
+        } - handle._finished_calls
+        if unfinished_calls or (
+            started is not None
+            and finished is None
+            and projection.state != LineageRunState.NEEDS_HUMAN
+        ):
+            raise RuntimeIntegrityError("runtime has an unfinished durable dispatch")
+        object.__setattr__(handle, "_invocation_started", started)
+        object.__setattr__(handle, "_invocation_finished", finished)
+        if projection.state == LineageRunState.NEEDS_HUMAN:
+            object.__setattr__(handle, "needs_human", True)
+        elif (
+            projection.state
+            in {
+                LineageRunState.ACCESS_DENIED,
+                LineageRunState.FAILED,
+                LineageRunState.INTERRUPTED,
+                LineageRunState.PROMOTED,
+            }
+            or finished is not None
+        ):
+            object.__setattr__(handle, "closed", True)
+        return handle
 
     def ensure_invocation_started(
         self,
@@ -264,7 +383,9 @@ class ScopedApplicationService:
         session_id: str,
         invocation_id: str,
         model_id: str,
-        adk_version: str,
+        adapter_kind: Literal["adk", "mcp"] = "adk",
+        framework_version: str | None = None,
+        adk_version: str | None = None,
     ) -> Event:
         with handle._lock:
             self._validate_invocation(
@@ -274,16 +395,29 @@ class ScopedApplicationService:
                 model_id=model_id,
             )
             if handle._invocation_started is not None:
+                if (
+                    handle._invocation_started.payload.get("adapter_kind")
+                    != adapter_kind
+                ):
+                    raise RuntimeIdentityError("runtime adapter identity changed")
                 return handle._invocation_started
             self._ensure_active(handle)
+            if framework_version is None:
+                framework_version = adk_version
+            if not framework_version:
+                raise RuntimeIdentityError("runtime framework version is missing")
+            authority, evidence_kind, source_kind = self._adapter_provenance(
+                adapter_kind
+            )
             payload = {
-                "framework": "google_adk",
-                "framework_version": adk_version,
+                "adapter_kind": adapter_kind,
+                "framework": "google_adk" if adapter_kind == "adk" else "mcp",
+                "framework_version": framework_version,
                 "status": "started",
             }
             source = self._source(
-                EvidenceKind.ADK_EVENT_RECEIPT,
-                SourceKind.ADK_EVENT_RECEIPT,
+                evidence_kind,
+                source_kind,
                 self._receipt_record(
                     handle,
                     phase="invocation.started",
@@ -304,13 +438,130 @@ class ScopedApplicationService:
                     policy_revision=handle.policy_revision,
                     event_type=LineageEventType.INVOCATION_STARTED,
                     truth_kind=TruthKind.RUNTIME_OBSERVED,
-                    authority=LineageAuthority.ADK_ADAPTER,
+                    authority=authority,
                     references=(),
                     source_ref=source,
                     payload=payload,
                 ),
             )
             object.__setattr__(handle, "_invocation_started", event)
+            return event
+
+    def complete_invocation(
+        self,
+        handle: RuntimeHandle,
+        *,
+        session_id: str,
+        invocation_id: str,
+        returned_model_id: str,
+    ) -> Event | None:
+        with handle._lock:
+            self._validate_invocation(
+                handle,
+                session_id=session_id,
+                invocation_id=invocation_id,
+                model_id=handle.model_id,
+            )
+            if handle.needs_human:
+                return None
+            self._ensure_started(handle)
+            if handle._invocation_finished is not None:
+                return handle._invocation_finished
+            if returned_model_id != handle.model_id:
+                raise RuntimeIdentityError(
+                    "returned model identity does not match runtime"
+                )
+            payload = {"adapter_kind": "adk", "status": "completed"}
+            source = self._source(
+                EvidenceKind.ADK_EVENT_RECEIPT,
+                SourceKind.ADK_EVENT_RECEIPT,
+                self._receipt_record(
+                    handle,
+                    phase="invocation.completed",
+                    payload=payload,
+                    model_id=returned_model_id,
+                ),
+            )
+            event = self._append(
+                handle,
+                self._key(handle, "invocation.completed"),
+                EventInput(
+                    session_id=session_id,
+                    invocation_id=invocation_id,
+                    model_id=returned_model_id,
+                    tool_call_id=None,
+                    repo_id=handle.repo_id,
+                    base_sha=handle.base_sha,
+                    agent_profile_id=handle.agent_profile_id,
+                    policy_revision=handle.policy_revision,
+                    event_type=LineageEventType.INVOCATION_COMPLETED,
+                    truth_kind=TruthKind.RUNTIME_OBSERVED,
+                    authority=LineageAuthority.ADK_ADAPTER,
+                    references=(),
+                    source_ref=source,
+                    payload=payload,
+                ),
+            )
+            object.__setattr__(handle, "_invocation_finished", event)
+            object.__setattr__(handle, "closed", True)
+            return event
+
+    def fail_invocation(
+        self,
+        handle: RuntimeHandle,
+        *,
+        session_id: str,
+        invocation_id: str,
+        error: Exception,
+    ) -> Event | None:
+        with handle._lock:
+            self._validate_invocation(
+                handle,
+                session_id=session_id,
+                invocation_id=invocation_id,
+                model_id=handle.model_id,
+            )
+            if handle.needs_human:
+                return None
+            self._ensure_started(handle)
+            if handle._invocation_finished is not None:
+                return handle._invocation_finished
+            payload = {
+                "adapter_kind": "adk",
+                "error_code": self._error_code(error),
+                "status": "failed",
+            }
+            source = self._source(
+                EvidenceKind.ADK_EVENT_RECEIPT,
+                SourceKind.ADK_EVENT_RECEIPT,
+                self._receipt_record(
+                    handle,
+                    phase="invocation.failed",
+                    payload=payload,
+                ),
+            )
+            event = self._append(
+                handle,
+                self._key(handle, "invocation.failed"),
+                EventInput(
+                    session_id=session_id,
+                    invocation_id=invocation_id,
+                    model_id=handle.model_id,
+                    tool_call_id=None,
+                    repo_id=handle.repo_id,
+                    base_sha=handle.base_sha,
+                    agent_profile_id=handle.agent_profile_id,
+                    policy_revision=handle.policy_revision,
+                    event_type=LineageEventType.INVOCATION_FAILED,
+                    truth_kind=TruthKind.RUNTIME_OBSERVED,
+                    authority=LineageAuthority.ADK_ADAPTER,
+                    references=(),
+                    source_ref=source,
+                    payload=payload,
+                ),
+            )
+            object.__setattr__(handle, "_invocation_finished", event)
+            object.__setattr__(handle, "closed", True)
             return event
 
     def search_repo(
@@ -398,7 +649,47 @@ class ScopedApplicationService:
             )
             self._started(handle, call, operation)
             try:
-                content = self._tools(handle).read_file(path)
+                tools = self._tools(handle)
+                if tools.is_absent(path):
+                    content_sha256 = sha256_hex(b"")
+                    file_id = sha256_hex(f"{handle.repo_id}\0{path}".encode())
+                    version_id = sha256_hex(f"{file_id}\0ABSENT".encode())
+                    reference = self._record(
+                        EvidenceKind.EVIDENCE_BLOB,
+                        {
+                            "schema_version": 2,
+                            "repo_id": handle.repo_id,
+                            "path": path,
+                            "state": "ABSENT",
+                            "file_version_id": version_id,
+                            "content_sha256": content_sha256,
+                            "byte_count": 0,
+                            "line_count": 0,
+                        },
+                    )
+                    payload = {
+                        "operation": operation.value,
+                        "status": "completed",
+                        "state": "ABSENT",
+                        "path": path,
+                        "file_version_id": version_id,
+                        "byte_count": 0,
+                        "line_count": 0,
+                    }
+                    self._complete(handle, call, operation, payload, (reference,))
+                    handle._observed_absences.add(path)
+                    handle._baselines.setdefault(path, (0, 0))
+                    return ReadResult(
+                        path=path,
+                        content="",
+                        content_sha256=content_sha256,
+                        file_version_id=version_id,
+                        byte_count=0,
+                        line_count=0,
+                        artifact_sha256=reference.sha256,
+                        state="ABSENT",
+                    )
+                content = tools.read_file(path)
                 metadata, reference = self._file_version(handle, path, content)
                 payload = {
                     "operation": operation.value,
@@ -413,6 +704,8 @@ class ScopedApplicationService:
                     path,
                     (int(metadata["byte_count"]), int(metadata["line_count"])),
                 )
+                handle._observed_versions[path] = str(metadata["file_version_id"])
+                handle._observed_absences.discard(path)
                 return ReadResult(
                     path=path,
                     content=content,
@@ -435,7 +728,11 @@ class ScopedApplicationService:
         operation = LineageOperation.OPEN_EVIDENCE
         with handle._lock:
             item = next(
-                (value for value in handle.evidence if value.reference.id == evidence_id),
+                (
+                    value
+                    for value in handle.evidence
+                    if value.reference.id == evidence_id
+                ),
                 None,
             )
             self._authorize(
@@ -475,37 +772,71 @@ class ScopedApplicationService:
     ) -> WriteResult:
         operation = LineageOperation.WRITE_FILE
         with handle._lock:
+            tools = self._tools(handle)
+            allowed = (
+                operation in handle.tools
+                and path in handle.write_scope
+                and (
+                    path in handle._observed_versions
+                    or path in handle._observed_absences
+                )
+            )
+            before: str | None = None
+            before_sha256: str | None = None
+            if allowed:
+                if path in handle._observed_absences:
+                    allowed = tools.is_absent(path)
+                else:
+                    try:
+                        before = tools.read_file(path)
+                    except FixtureAccessError:
+                        allowed = False
+                    else:
+                        before_sha256 = sha256_hex(before.encode())
+                        file_id = sha256_hex(f"{handle.repo_id}\0{path}".encode())
+                        allowed = (
+                            sha256_hex(f"{file_id}\0{before_sha256}".encode())
+                            == handle._observed_versions[path]
+                        )
             self._authorize(
                 handle,
                 call,
                 operation,
-                operation in handle.tools and path in handle.write_scope,
+                allowed,
+                reason_code=(
+                    "stale_file_version"
+                    if path in handle._observed_versions
+                    or path in handle._observed_absences
+                    else "read_required"
+                ),
             )
             self._started(handle, call, operation)
-            tools = self._tools(handle)
             try:
-                try:
-                    before = tools.read_file(path)
-                except FixtureAccessError:
-                    target = handle.checkout_root.joinpath(*path.split("/"))
-                    if target.exists():
-                        raise
-                    before = None
                 before_metadata: dict[str, Any] | None = None
                 before_ref: EvidenceReference | None = None
                 if before is not None:
+                    assert before_sha256 is not None
                     before_metadata, before_ref = self._file_version(
                         handle, path, before
                     )
                 after_metadata, after_ref = self._file_version(handle, path, content)
-                after_sha256 = tools.write_file(path, content)
+                after_sha256 = tools.write_file(
+                    path,
+                    content,
+                    expected_sha256=before_sha256,
+                    expected_absent=before is None,
+                )
                 added, deleted = self._line_changes(before, content)
                 state = "NEW" if before is None else "EDITED"
                 baseline = handle._baselines.get(path)
                 if baseline is None:
                     baseline = (
-                        0 if before_metadata is None else int(before_metadata["byte_count"]),
-                        0 if before_metadata is None else int(before_metadata["line_count"]),
+                        0
+                        if before_metadata is None
+                        else int(before_metadata["byte_count"]),
+                        0
+                        if before_metadata is None
+                        else int(before_metadata["line_count"]),
                     )
                 payload = {
                     "operation": operation.value,
@@ -527,6 +858,8 @@ class ScopedApplicationService:
                 self._complete(handle, call, operation, payload, references)
                 handle._baselines.setdefault(path, baseline)
                 handle._written_versions[path] = str(after_metadata["file_version_id"])
+                handle._observed_versions[path] = str(after_metadata["file_version_id"])
+                handle._observed_absences.discard(path)
                 return WriteResult(
                     path=path,
                     before_file_version_id=(
@@ -629,12 +962,16 @@ class ScopedApplicationService:
         with handle._lock:
             self._authorize(handle, call, operation, operation in handle.tools)
             attempted_payload = {
+                "adapter_kind": call.adapter_kind,
                 "operation": operation.value,
                 "status": "attempted",
             }
+            authority, evidence_kind, source_kind = self._adapter_provenance(
+                call.adapter_kind
+            )
             attempted_source = self._source(
-                EvidenceKind.ADK_EVENT_RECEIPT,
-                SourceKind.ADK_EVENT_RECEIPT,
+                evidence_kind,
+                source_kind,
                 self._receipt_record(
                     handle,
                     phase="completion.attempted",
@@ -650,7 +987,7 @@ class ScopedApplicationService:
                     call,
                     event_type=LineageEventType.COMPLETION_ATTEMPTED,
                     truth_kind=TruthKind.MODEL_PROPOSED,
-                    authority=LineageAuthority.ADK_ADAPTER,
+                    authority=authority,
                     source_ref=attempted_source,
                     payload=attempted_payload,
                 ),
@@ -705,6 +1042,7 @@ class ScopedApplicationService:
         call: ToolCallIdentity,
         operation: LineageOperation,
         allowed: bool,
+        reason_code: str = "outside_runtime_scope",
     ) -> None:
         self._validate_call(handle, call)
         self._ensure_active(handle)
@@ -714,7 +1052,7 @@ class ScopedApplicationService:
         payload = {
             "operation": operation.value,
             "status": "denied",
-            "reason_code": "outside_runtime_scope",
+            "reason_code": reason_code,
         }
         source = self._source(
             EvidenceKind.POLICY_RECEIPT,
@@ -740,6 +1078,7 @@ class ScopedApplicationService:
             ),
         )
         handle._finished_calls.add(call.tool_call_id)
+        object.__setattr__(handle, "closed", True)
         raise RuntimeAccessDenied("operation denied by runtime scope")
 
     def _started(
@@ -886,7 +1225,9 @@ class ScopedApplicationService:
                 "mutated checkout was quarantined without a durable interruption"
             ) from recovery_error
         if interrupted is None:
-            raise RuntimeIntegrityError("mutated checkout lacked an uncertain tool start")
+            raise RuntimeIntegrityError(
+                "mutated checkout lacked an uncertain tool start"
+            )
         object.__setattr__(
             handle,
             "_head",
@@ -967,11 +1308,10 @@ class ScopedApplicationService:
         record: Mapping[str, Any],
     ) -> EvidenceReference:
         reference = self.record_artifact(kind, record)
-        if (
-            reference.kind != kind
-            or reference.sha256 != canonical_json_sha256(record)
-        ):
-            raise RuntimeIntegrityError("artifact recorder returned a mismatched digest")
+        if reference.kind != kind or reference.sha256 != canonical_json_sha256(record):
+            raise RuntimeIntegrityError(
+                "artifact recorder returned a mismatched digest"
+            )
         return reference
 
     def _source(
@@ -994,6 +1334,7 @@ class ScopedApplicationService:
         phase: str,
         payload: Mapping[str, Any],
         call: ToolCallIdentity | None = None,
+        model_id: str | None = None,
         references: tuple[EvidenceReference, ...] = (),
     ) -> dict[str, Any]:
         return {
@@ -1001,7 +1342,7 @@ class ScopedApplicationService:
             "run_id": handle.run_id,
             "session_id": handle.session_id,
             "invocation_id": handle.invocation_id,
-            "model_id": handle.model_id,
+            "model_id": handle.model_id if model_id is None else model_id,
             "agent_name": None if call is None else call.agent_name,
             "tool_call_id": None if call is None else call.tool_call_id,
             "phase": phase,
@@ -1021,9 +1362,7 @@ class ScopedApplicationService:
         metadata: dict[str, Any] = {
             "schema_version": 2,
             "file_id": file_id,
-            "file_version_id": sha256_hex(
-                f"{file_id}\0{content_sha256}".encode()
-            ),
+            "file_version_id": sha256_hex(f"{file_id}\0{content_sha256}".encode()),
             "repo_id": handle.repo_id,
             "path": path,
             "content_sha256": content_sha256,
@@ -1072,7 +1411,10 @@ class ScopedApplicationService:
             for item in references
             if item is not None
         }
-        return tuple(by_key[key] for key in sorted(by_key, key=lambda item: tuple(map(str, item))))
+        return tuple(
+            by_key[key]
+            for key in sorted(by_key, key=lambda item: tuple(map(str, item)))
+        )
 
     @staticmethod
     def _error_code(error: Exception) -> str:
@@ -1134,6 +1476,33 @@ class ScopedApplicationService:
     def _ensure_active(handle: RuntimeHandle) -> None:
         if handle.closed or handle.needs_human:
             raise RuntimeTerminalError("runtime invocation is terminal")
+
+    @staticmethod
+    def _ensure_started(handle: RuntimeHandle) -> None:
+        if handle._invocation_started is None:
+            raise RuntimeIntegrityError("runtime invocation was not durably started")
+
+    @staticmethod
+    def _adapter_provenance(
+        adapter_kind: Literal["adk", "mcp", "local"],
+    ) -> tuple[LineageAuthority, EvidenceKind, SourceKind]:
+        return {
+            "adk": (
+                LineageAuthority.ADK_ADAPTER,
+                EvidenceKind.ADK_EVENT_RECEIPT,
+                SourceKind.ADK_EVENT_RECEIPT,
+            ),
+            "mcp": (
+                LineageAuthority.MCP_ADAPTER,
+                EvidenceKind.MCP_REQUEST_RECEIPT,
+                SourceKind.MCP_REQUEST_RECEIPT,
+            ),
+            "local": (
+                LineageAuthority.LOCAL_ADAPTER,
+                EvidenceKind.LOCAL_ADAPTER_RECEIPT,
+                SourceKind.LOCAL_ADAPTER_RECEIPT,
+            ),
+        }[adapter_kind]
 
     @staticmethod
     def _ensure_new_call(

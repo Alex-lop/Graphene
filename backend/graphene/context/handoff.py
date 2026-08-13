@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from fnmatch import fnmatchcase
-from typing import TypeVar
+from typing import Protocol, TypeVar
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..models import (
@@ -13,9 +14,15 @@ from ..models import (
     BriefMemory,
     ContextBrief,
     ContextInjectionReceipt,
+    Event,
+    EvidenceInvalidState,
+    EvidenceKind,
+    EvidenceReference,
     HandoffDecision,
     HandoffDecisionItem,
     HandoffDenied,
+    HunkEvidence,
+    LineageEventType,
     LineageOperation,
     MemoryRevision,
     MemoryState,
@@ -71,7 +78,9 @@ class HandoffCandidate:
             len(self.dependency_ids) != len(set(self.dependency_ids))
             or self.id in self.dependency_ids
         ):
-            raise HandoffCompileError("candidate dependencies must be unique and external")
+            raise HandoffCompileError(
+                "candidate dependencies must be unique and external"
+            )
         if self.evidence is not None and (
             self.evidence.evidence_id != self.id
             or self.evidence.reference.sha256 != self.sha256
@@ -90,6 +99,26 @@ class CompiledHandoff:
         if self.brief is None:
             return ()
         return tuple(item.evidence_id for item in self.brief.selected_evidence)
+
+
+class _VerifiedStore(Protocol):
+    def verify(self, run_id: str) -> VerifiedHead | EvidenceInvalidState: ...
+
+    def tail(self, run_id: str, after_seq: int, limit: int) -> tuple[Event, ...]: ...
+
+
+class _ArtifactReader(Protocol):
+    def resolve(self, kind: str, artifact_id: str) -> bytes | None: ...
+
+
+@dataclass(slots=True)
+class _BoundArtifact:
+    candidate_kind: str
+    id: str
+    sha256: str
+    value: object
+    reference: EvidenceReference | None
+    dependency_ids: set[str]
 
 
 def _candidate_id(kind: str, value: str) -> str:
@@ -111,6 +140,308 @@ def source_candidate_set_sha256(
         key=lambda item: (item["candidate_kind"], item["id"]),
     )
     return canonical_json_sha256(triples)
+
+
+def _verified_events(
+    store: _VerifiedStore, run_id: str
+) -> tuple[VerifiedHead, tuple[Event, ...]]:
+    before = store.verify(run_id)
+    if isinstance(before, EvidenceInvalidState) or before.seq == 0:
+        raise HandoffCompileError("source lineage is absent or invalid")
+    events: list[Event] = []
+    after_seq = 0
+    while after_seq < before.seq:
+        page = store.tail(run_id, after_seq, 256)
+        if not page or page[0].seq != after_seq + 1:
+            raise HandoffCompileError("source lineage enumeration is incomplete")
+        events.extend(page)
+        after_seq = page[-1].seq
+    after = store.verify(run_id)
+    if after != before or tuple(event.seq for event in events) != tuple(
+        range(1, before.seq + 1)
+    ):
+        raise HandoffCompileError("source head changed during handoff compilation")
+    return before, tuple(events)
+
+
+def _resolve_artifact(
+    artifacts: _ArtifactReader,
+    kind: str,
+    artifact_id: str,
+    expected_sha256: str,
+) -> object:
+    raw = artifacts.resolve(kind, artifact_id)
+    if raw is None or sha256_hex(raw) != expected_sha256:
+        raise HandoffCompileError("source artifact is unresolved")
+    try:
+        value = json.loads(raw)
+        if canonical_json_bytes(value) != raw:
+            raise ValueError("artifact bytes are not canonical")
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise HandoffCompileError("source artifact is malformed") from error
+    return value
+
+
+def _bound_artifacts(
+    events: tuple[Event, ...],
+    artifacts: _ArtifactReader,
+) -> tuple[_BoundArtifact, ...]:
+    event_ids = {event.event_id for event in events}
+    dependencies: dict[str, set[str]] = {event.event_id: set() for event in events}
+    by_id: dict[str, _BoundArtifact] = {
+        event.event_id: _BoundArtifact(
+            candidate_kind="source_event",
+            id=event.event_id,
+            sha256=event.event_sha256,
+            value=event,
+            reference=None,
+            dependency_ids=dependencies[event.event_id],
+        )
+        for event in events
+    }
+    for event in events:
+        for reference in event.references:
+            if reference.kind == EvidenceKind.EVENT:
+                if reference.id not in event_ids:
+                    raise HandoffCompileError("source event dependency is unresolved")
+                dependencies[event.event_id].add(reference.id)
+                continue
+            value = _resolve_artifact(
+                artifacts,
+                reference.kind.value,
+                reference.id,
+                reference.sha256,
+            )
+            existing = by_id.get(reference.id)
+            if existing is not None and (
+                existing.candidate_kind != "source_artifact"
+                or (existing.reference is not None and existing.reference != reference)
+                or existing.sha256 != reference.sha256
+                or existing.value != value
+            ):
+                raise HandoffCompileError("source artifact identity was substituted")
+            if existing is None:
+                existing = _BoundArtifact(
+                    candidate_kind="source_artifact",
+                    id=reference.id,
+                    sha256=reference.sha256,
+                    value=value,
+                    reference=reference,
+                    dependency_ids=set(),
+                )
+                by_id[reference.id] = existing
+            else:
+                existing.reference = reference
+            if not existing.dependency_ids:
+                existing.dependency_ids.add(event.event_id)
+
+        source = event.source_ref
+        value = _resolve_artifact(
+            artifacts,
+            source.kind.value,
+            source.id,
+            source.sha256,
+        )
+        existing = by_id.get(source.id)
+        if existing is not None and (
+            existing.candidate_kind != "source_artifact"
+            or existing.sha256 != source.sha256
+            or existing.value != value
+        ):
+            raise HandoffCompileError("source artifact identity was substituted")
+        if existing is None:
+            existing = _BoundArtifact(
+                candidate_kind="source_artifact",
+                id=source.id,
+                sha256=source.sha256,
+                value=value,
+                reference=None,
+                dependency_ids=set(),
+            )
+            by_id[source.id] = existing
+        if not existing.dependency_ids:
+            existing.dependency_ids.add(event.event_id)
+    return tuple(by_id.values())
+
+
+def _approved_memories(
+    events: tuple[Event, ...],
+    artifacts: tuple[_BoundArtifact, ...],
+) -> tuple[MemoryRevision, ...]:
+    by_id = {item.id: item for item in artifacts}
+    memories: dict[tuple[str, int], MemoryRevision] = {}
+    for event in events:
+        if event.event_type != LineageEventType.MEMORY_APPROVED:
+            continue
+        references = [
+            reference
+            for reference in event.references
+            if reference.kind == EvidenceKind.MEMORY_REVISION
+        ]
+        parsed: list[tuple[_BoundArtifact, MemoryRevision]] = []
+        for reference in references:
+            bound = by_id[reference.id]
+            try:
+                parsed.append(
+                    (bound, MemoryRevision.model_validate(bound.value))
+                )
+            except (TypeError, ValueError) as error:
+                raise HandoffCompileError(
+                    "approved memory artifact is malformed"
+                ) from error
+        selected = [
+            item
+            for item in parsed
+            if item[0].sha256 == event.payload.get("memory_sha256")
+        ]
+        if len(selected) != 1:
+            raise HandoffCompileError(
+                "approved memory must select one decided revision artifact"
+            )
+        _, memory = selected[0]
+        immutable = memory.model_dump(mode="json", exclude={"state", "decision"})
+        if (
+            memory.state != MemoryState.APPROVED
+            or memory.memory_id != event.payload.get("memory_id")
+            or memory.revision != event.payload.get("revision")
+            or memory.evidence_run_id != event.run_id
+            or memory.decision is None
+            or memory.decision.decision_id != event.payload.get("decision_id")
+            or any(
+                revision.memory_id != memory.memory_id
+                or revision.revision != memory.revision
+                or revision.evidence_run_id != event.run_id
+                or revision.state not in {MemoryState.PROPOSED, MemoryState.APPROVED}
+                or revision.model_dump(
+                    mode="json", exclude={"state", "decision"}
+                )
+                != immutable
+                for _, revision in parsed
+            )
+            or len({revision.state for _, revision in parsed}) != len(parsed)
+        ):
+            raise HandoffCompileError("approved memory event and artifact disagree")
+        key = (memory.memory_id, memory.revision)
+        if key in memories and memories[key] != memory:
+            raise HandoffCompileError("approved memory identity was substituted")
+        memories[key] = memory
+    return tuple(memories[key] for key in sorted(memories))
+
+
+def _source_candidates(
+    artifacts: tuple[_BoundArtifact, ...],
+) -> tuple[HandoffCandidate, ...]:
+    candidates: list[HandoffCandidate] = []
+    for item in artifacts:
+        if item.candidate_kind == "source_event":
+            candidates.append(
+                HandoffCandidate(
+                    candidate_kind="source_event",
+                    id=item.id,
+                    sha256=item.sha256,
+                    dependency_ids=tuple(sorted(item.dependency_ids)),
+                )
+            )
+            continue
+        summary = None
+        if isinstance(item.value, dict):
+            value = item.value.get("summary")
+            if isinstance(value, str) and value:
+                summary = value
+            elif item.reference is not None and item.reference.kind == EvidenceKind.HUNK:
+                try:
+                    hunk = HunkEvidence.model_validate(item.value)
+                except (TypeError, ValueError) as error:
+                    raise HandoffCompileError("source hunk artifact is malformed") from error
+                summary = (
+                    f"Observed hunk in {hunk.path} at new lines "
+                    f"{hunk.new_start}-{hunk.new_start + max(hunk.new_lines - 1, 0)}."
+                )
+        candidates.append(
+            HandoffCandidate(
+                candidate_kind="source_artifact",
+                id=item.id,
+                sha256=item.sha256,
+                evidence=(
+                    None
+                    if summary is None
+                    or item.reference is None
+                    or item.reference.kind != EvidenceKind.HUNK
+                    else BriefEvidence(
+                        evidence_id=item.id,
+                        summary=summary,
+                        reference=item.reference,
+                    )
+                ),
+                dependency_ids=tuple(sorted(item.dependency_ids)),
+            )
+        )
+    return tuple(sorted(candidates, key=lambda item: (item.candidate_kind, item.id)))
+
+
+def compile_verified_handoff(
+    *,
+    store: _VerifiedStore,
+    artifacts: _ArtifactReader,
+    decision_id: str,
+    brief_id: str,
+    source_run_id: str,
+    source_session_id: str | None,
+    source_graph_sha256: str,
+    repo_id: str,
+    base_sha: str,
+    task: TaskSpec,
+    target_profile: AgentProfile,
+    target_profile_revision: int,
+    policy_revision: int,
+    selected_evidence_ids: Iterable[str],
+    policy_required_paths: Iterable[str],
+    read_scope: Iterable[str],
+    write_scope: Iterable[str],
+    capabilities: Iterable[LineageOperation],
+    fixed_test_profile: str,
+    byte_caps: dict[str, int],
+    event_caps: dict[str, int],
+    server_recorded_at: datetime,
+) -> CompiledHandoff:
+    """Compile from a stable, verified, event-bound source universe."""
+
+    head, events = _verified_events(store, source_run_id)
+    first = events[0]
+    if (
+        first.repo_id != repo_id
+        or first.base_sha != base_sha
+        or first.policy_revision != policy_revision
+    ):
+        raise HandoffCompileError("source identity does not match the compilation")
+    bound = _bound_artifacts(events, artifacts)
+    candidates = _source_candidates(bound)
+    return compile_handoff(
+        decision_id=decision_id,
+        brief_id=brief_id,
+        source_run_id=source_run_id,
+        source_session_id=source_session_id,
+        source_head=head,
+        source_graph_sha256=source_graph_sha256,
+        repo_id=repo_id,
+        base_sha=base_sha,
+        task=task,
+        target_profile=target_profile,
+        target_profile_revision=target_profile_revision,
+        policy_revision=policy_revision,
+        source_candidates=candidates,
+        expected_source_candidate_set_sha256=source_candidate_set_sha256(candidates),
+        selected_evidence_ids=selected_evidence_ids,
+        approved_memories=_approved_memories(events, bound),
+        policy_required_paths=policy_required_paths,
+        read_scope=read_scope,
+        write_scope=write_scope,
+        capabilities=capabilities,
+        fixed_test_profile=fixed_test_profile,
+        byte_caps=byte_caps,
+        event_caps=event_caps,
+        server_recorded_at=server_recorded_at,
+    )
 
 
 def _candidate(
@@ -161,7 +492,9 @@ def _memory_applies(
 
 def _paths_match(paths: Iterable[str], patterns: Iterable[str]) -> bool:
     patterns = tuple(patterns)
-    return all(any(fnmatchcase(path, pattern) for pattern in patterns) for path in paths)
+    return all(
+        any(fnmatchcase(path, pattern) for pattern in patterns) for path in paths
+    )
 
 
 def compile_handoff(
@@ -212,7 +545,9 @@ def compile_handoff(
         raise HandoffCompileError("verified evidence IDs must be unique")
     selected_candidates = set(evidence_ids)
     if not selected_ids <= selected_candidates:
-        raise HandoffCompileError("selected evidence is absent from verified candidates")
+        raise HandoffCompileError(
+            "selected evidence is absent from verified candidates"
+        )
     source_by_id = {item.id: item for item in source}
     selected_closure = set(selected_ids)
     pending = list(selected_ids)
@@ -303,7 +638,9 @@ def compile_handoff(
         or not set(required_paths) <= set(read_paths)
         or set(write_paths) != set(task.expected_changed_paths)
     ):
-        raise HandoffCompileError("Auth handoff scope or v2 capabilities are not frozen")
+        raise HandoffCompileError(
+            "Auth handoff scope or v2 capabilities are not frozen"
+        )
 
     entries: list[HandoffDecisionItem] = []
     included_candidates: list[HandoffCandidate] = []
@@ -485,7 +822,9 @@ def build_injection_receipt(
     ):
         raise HandoffCompileError("decision and brief bindings do not match")
     if prompt != render_fresh_prompt(brief):
-        raise HandoffCompileError("prompt is not the exact canonical fresh-agent prompt")
+        raise HandoffCompileError(
+            "prompt is not the exact canonical fresh-agent prompt"
+        )
     fresh_ids = {consumer_run_id, session_id, invocation_id}
     source_ids = {brief.source_run_id}
     if brief.source_session_id is not None:
@@ -525,7 +864,7 @@ def build_injection_receipt(
 _T = TypeVar("_T")
 
 
-def start_handoff(
+def start_handoff(  # noqa: UP047 - public syntax remains Python 3.11-compatible
     compiled: CompiledHandoff,
     start_callback: Callable[[ContextBrief], _T],
 ) -> _T | HandoffDenied:

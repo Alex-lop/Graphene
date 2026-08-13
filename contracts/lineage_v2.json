@@ -109,7 +109,9 @@
     "evidence_blob",
     "policy_receipt",
     "operator_request",
-    "adk_event_receipt"
+    "adk_event_receipt",
+    "mcp_request_receipt",
+    "local_adapter_receipt"
   ],
   "source_kinds": [
     "tool_receipt",
@@ -119,6 +121,8 @@
     "reducer_receipt",
     "context_compiler_receipt",
     "adk_event_receipt",
+    "mcp_request_receipt",
+    "local_adapter_receipt",
     "promotion_receipt"
   ],
   "hashing": "canonical JSON UTF-8 with sorted keys, compact separators, ensure_ascii=false, allow_nan=false; SHA-256"

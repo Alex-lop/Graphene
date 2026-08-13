@@ -425,8 +425,9 @@ def test_restart_tail_and_per_event_documents():
                 event_type=(
                     LineageEventType.RUN_STARTED
                     if number == 1
-                    else LineageEventType.RUN_FAILED
+                    else LineageEventType.MEMORY_PROPOSED
                 ),
+                payload=(None if number == 1 else {"status": "proposed"}),
             ),
         )
         events.append(event)
@@ -548,6 +549,48 @@ def test_global_event_id_collision_across_runs_is_rejected(monkeypatch):
             draft(ledger, "second"),
         )
     assert restarted.verify("run_collision_b") == empty_head("run_collision_b")
+
+
+def test_semantically_impossible_event_is_rejected_before_firestore_writes():
+    lineage, client, ledger = store()
+    run_id = "run_semantic_guard_001"
+    first = lineage.append(
+        run_id,
+        empty_head(run_id),
+        "semantic_start_key_001",
+        draft(ledger, "first"),
+    )
+    source = ledger.source(
+        SourceKind.TOOL_RECEIPT,
+        {"schema_version": 2, "phase": "completed-without-start"},
+    )
+    malformed = EventInput(
+        session_id="session_semantic_001",
+        invocation_id="invocation_semantic_001",
+        model_id="model-test",
+        tool_call_id="tool_semantic_001",
+        repo_id="graphene-demo",
+        base_sha="a" * 40,
+        agent_profile_id="auth-maintainer@1",
+        policy_revision=1,
+        event_type=LineageEventType.TOOL_COMPLETED,
+        truth_kind=TruthKind.RUNTIME_OBSERVED,
+        authority=LineageAuthority.SCOPED_TOOL_WRAPPER,
+        references=(),
+        source_ref=source,
+        payload={"operation": "search_repo", "paths": []},
+    )
+    before = deepcopy(client.documents)
+
+    with pytest.raises(EvidenceInvalid, match="semantically invalid"):
+        lineage.append(
+            run_id,
+            head(first),
+            "semantic_result_key_001",
+            malformed,
+        )
+
+    assert client.documents == before
 
 
 def test_references_artifacts_and_checkpoints_are_verified():

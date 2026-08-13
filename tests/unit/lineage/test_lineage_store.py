@@ -3,18 +3,17 @@ from __future__ import annotations
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 import graphene.lineage.store as store_module
+import pytest
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage import EvidenceInvalid, LineageConflict, SQLiteLineageStore
 from graphene.models import (
     EventInput,
-    EvidenceReference,
     EvidenceInvalidState,
+    EvidenceReference,
     HeadCheckpoint,
     LineageAuthority,
     LineageEventType,
@@ -79,7 +78,7 @@ def _append_three(store: SQLiteLineageStore, run_id: str = "run_001"):
             event_count=1,
         ),
         "idempotency_key_002",
-        _draft(LineageEventType.RUN_ENDED),
+        _draft(LineageEventType.MEMORY_PROPOSED, payload={}),
     )
     third = store.append(
         run_id,
@@ -90,7 +89,7 @@ def _append_three(store: SQLiteLineageStore, run_id: str = "run_001"):
             event_count=2,
         ),
         "idempotency_key_003",
-        _draft(LineageEventType.RUN_FAILED),
+        _draft(LineageEventType.MEMORY_PROPOSED, payload={}),
     )
     return first, second, third
 
@@ -375,7 +374,7 @@ def test_retained_checkpoint_binds_prefix_and_artifact(tmp_path: Path):
         "bound_artifact_kind": "context_brief",
         "bound_artifact_id": "brief_001",
         "bound_artifact_sha256": sha256_hex(brief),
-        "server_recorded_at": datetime(2026, 8, 12, tzinfo=timezone.utc)
+        "server_recorded_at": datetime(2026, 8, 12, tzinfo=UTC)
         .isoformat()
         .replace("+00:00", "Z"),
     }

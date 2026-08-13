@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS lineage_artifacts (
 
 _SOURCE_ARTIFACT_KINDS = {
     "adk_event_receipt": frozenset({"adk_event_receipt"}),
+    "mcp_request_receipt": frozenset({"mcp_request_receipt"}),
+    "local_adapter_receipt": frozenset({"local_adapter_receipt"}),
     "context_compiler_receipt": frozenset(
         {"context_brief", "handoff_decision", "injection_receipt", "policy_receipt"}
     ),
@@ -53,10 +55,13 @@ class SQLiteArtifactStore:
         self._immutable = immutable
         with closing(self._connect()) as connection:
             if read_only:
-                if connection.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' "
-                    "AND name = 'lineage_artifacts'"
-                ).fetchone() is None:
+                if (
+                    connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'lineage_artifacts'"
+                    ).fetchone()
+                    is None
+                ):
                     raise LineageConflict("lineage artifact table is missing")
                 return
             connection.execute("PRAGMA journal_mode=WAL")
@@ -105,7 +110,11 @@ class SQLiteArtifactStore:
                     "WHERE artifact_id = ?",
                     (artifact_id,),
                 ).fetchone()
-                if row is None or (row["kind"], row["sha256"], row["artifact_bytes"]) != (
+                if row is None or (
+                    row["kind"],
+                    row["sha256"],
+                    row["artifact_bytes"],
+                ) != (
                     kind.value,
                     digest,
                     raw,

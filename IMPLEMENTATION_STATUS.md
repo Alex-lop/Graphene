@@ -1,57 +1,56 @@
 # Graphene implementation status
 
-Updated: 2026-08-11 (America/Los_Angeles)
+Updated: 2026-08-13T01:07:29-07:00 (America/Los_Angeles)
 
-## Gate 1 baseline
+## Repository truth
 
-- Branch: `agent/graphene-mvp`
-- Baseline SHA: `72760f88c3b6b95128e392d3346bd3547b6e8bbb`
-- Phase-0 verification: `uv run pytest -q` → 14 passed, 1 expected xfail
-- Graph contract candidate: `contracts/graph_mvp.json`
-- Final contract hash: `74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2`
-- User-authored input preserved: untracked `POST_PHASE0_GRAPH_MVP_ULTRA_PLAN.md`
-- Local blockers: `gcloud` absent; no Google/Gemini environment configuration detected; cloud, Firestore, and real-model runs remain unverified
+- Branch/upstream: `main` / `origin/main`; base HEAD `7d19fdbd5084ad106ab5208a02504ebea89752cc`; zero commits ahead/behind.
+- The continuation implementation is an uncommitted working tree. No reset, commit, push, deployment, model call, cloud mutation, or spend was performed.
+- The user-owned `GRAPHENE_ULTRA_CONTINUATION_LOOP.md` remains unchanged at SHA-256 `e3341837f4261e4eebe69e5666c29f591766eda17fa4d7b8b688b9f66a549148`.
+- Host: macOS 26.5.2 arm64; Python 3.13.9; Node 23.11.0; uv 0.11.29; SQLite 3.51.0; Google ADK 2.5.0; MCP 2.0.0.
+- No Google Cloud project/ADC, `gcloud`, deployment authority, or spend authorization was used. Real Gemini/Firestore/Cloud Run claims are `EXTERNAL_BLOCKED`.
 
-## Frozen ownership ledger
+## Executable v2 product path
 
-| Identity | Exclusive paths | First wave |
-|---|---|---|
-| Root | `backend/graphene/app.py`, `backend/graphene/models.py`, `backend/graphene/store.py`, `backend/graphene/hashing.py`, `contracts/**`, root manifests/docs/config | contract/integration |
-| Ultra 1 — Graph Core | `backend/graphene/graph/**`, `tests/unit/graph/**` | wave A |
-| Ultra 2 — Catalog/Context | `backend/graphene/context/**`, `tests/unit/context/**` | wave A |
-| Ultra 3 — Execution | `backend/graphene/execution/**`, `tests/unit/execution/**` | wave A |
-| Ultra 4 — Graph Experience | `frontend/**` | wave B |
-| Ultra 5 — Verification | `tests/integration/**`, `tests/adversarial/**`, `demo/**`, `evidence/**` | wave B |
+The terminal v2 path is the authority for new product work:
 
-All five identities are fixed and may not spawn children, edit shared contracts, stage, commit, branch, push, deploy, or write outside their ownership. The two waves exist only because the environment permits three subagents alongside the root.
+1. `graphene --json run` creates or exactly replays a private SQLite/artifact store, frozen checkout, and durable `run.started`.
+2. A separate `graphene --json watch` continuously verifies and flushes committed NDJSON; inert `replay --speed` is timestamp-paced.
+3. The installed `graphene-mcp` uses the official MCP STDIO transport, exposes exactly six strict tools, and routes the same scoped service used by ADK.
+4. Starts/results commit before return; an active watcher acknowledges the exact result sequence before the MCP response is delivered.
+5. Runtime state rehydrates consumed calls, file versions, writes, changed paths, terminal status, and ambiguous dispatch from verified events.
+6. Public `review`, `feedback`, `answer`, and `memory` commands derive exact changesets/hunks/test receipts, store the private correction, and bind approval to an immutable scoped memory.
+7. Verified handoff enumerates its candidate universe from stored events/artifacts. Billing denial constructs no consumer runtime. Auth `handoff --start` persists the decision, included-only brief, fresh run, zero-prior-message injection receipt, and exact checkout binding.
+8. The consumer must open only selected evidence, reread current source, bind writes to same-invocation file versions, pass the frozen test, and request human review.
+9. `why` traverses explicit source/consumer evidence relations; `inspect` resolves only items bound to the selected verified run.
+10. `promote` reconstructs current evidence, runs the fixed test, persists and rereads a checkpoint, then appends the final promotion. Exact retry replays; restart reproduces the projection.
 
-## Contract facts
+The legacy FastAPI/browser store is frozen compatibility-only and remains outside v2 proof. It is still a separate mutable demo path and is listed as migration debt, not hidden as canonical behavior.
 
-- Profiles: `platform-maintainer@1`, `auth-maintainer@1`, `billing-observer@1`
-- Mutable fixture paths: `app/auth/limiter.py`, `tests/test_security_policy.py`
-- Scoped tools: `read_file`, `write_file`, `run_fixture_tests`
-- Graph limits: depth 1 default/2 maximum, 25 nodes, 40 edges, 8 related files, 12 hunks, 3 memories, 100 KB patch
-- New read endpoints: run graph, graph node detail, run context packet, agent catalog
-- Negative proof: Billing or a non-intersecting path yields no memory, related files, paths, tools, or selected graph nodes and returns `denied_out_of_scope`
+## Integrity, privacy, and platform state
 
-## Current gate
+- SQLite append/verify enforces CAS heads, exact idempotency replay, canonical digest chains, reciprocal identities, semantic transitions, source/reference resolution, and retained checkpoints. The Firestore adapter mirrors these event semantics against an adversarial transactional fake.
+- Public events contain bounded metadata and digests, never raw source/diff/prompt/model output/test stdout. Provider model metadata must exactly match the configured server identity; arbitrary function-call IDs are hashed before persistence.
+- The macOS fixed-test executor builds a minimal no-follow view of frozen fixture bytes, supplies `/dev/null` stdin, and denies ambient checkout/host reads, network, fork, raw sysctl/process inspection, and external writes. Ambiguous writes interrupt and quarantine.
+- Linux and the shipped Linux container do not have an equivalent sandbox. The v2 fixed-test workflow fails closed there; only the legacy HTTP process can start.
+- Local artifacts have no TTL, reachability GC, delete API, or secure erase. Firestore has no durable private-artifact ledger, so cloud cold-restart proof is unavailable.
 
-Gates 1–3 and the deterministic portions of Gates 5–6 pass locally against contract hash `74c871a9f06b1dbd2c54a2837d0cfc4812177b780425300d41497b0a24655be2`:
+## Verification snapshot
 
-- clean API/UI golden loop through exact promotion;
-- deterministic graph, exact hunk detail, catalog scope, and Billing/path denial;
-- packet-before-injection, fresh session, fixed tests, completion denial, and bound receipt;
-- JSON-process restart before and after promotion;
-- 10/10 clean-reset local soak runs at 20 nodes/19 edges;
-- adversarial substitution, traversal, symlink, caps, auth, and idempotency checks;
-- Firestore adapter contract test and successful production-container smoke test.
+- Final local Python matrix: `.venv/bin/pytest -q tests/unit tests/integration tests/process tests/adversarial` → exit `0`; `279 passed`.
+- Fresh consumer/MCP/recovery joined gate: `21 passed`; the official STDIO subprocess performs evidence open, source reread, version-bound writes, fixed retest, and completion denial.
+- Final promotion reliability gate: `28 passed`; a retained checkpoint plus failed final append is recovered by exact public retry.
+- Frontend: `8 passed`; JavaScript syntax passed.
+- `uv lock --check`, Python compilation, JSON parsing, documentation/CI contract tests, touched-lane Ruff checks, evidence-hash verification, and `git diff --check` passed.
+- GitHub Actions was added for macOS full workflow, Linux fail-closed sentinels, and Node 22. It has not run on hosted runners.
 
-External Gate 4 remains open: Google credentials/project/model eligibility, a real Gemini/ADK run, real Firestore, `gcloud`, and Cloud Run are unavailable and therefore unverified. Automated browser visual/keyboard QA is also unavailable because this environment exposes no browser instance.
+Final claim definitions, commands, proof levels, and 36 verified evidence hashes are in `evidence/claim_ledger.json`.
 
-## Accepted local evidence
+## Known limits and next gates
 
-- `uv run pytest -q -p no:cacheprovider` → 55 passed; one upstream TestClient deprecation warning.
-- `node --test frontend/test/*.test.mjs` → 8 passed.
-- `evidence/local_vertical_slice.json` → SHA-256 `cbfb189941641ec542493cacd17eec865e1de85de5802fb9ba60cb6fc9ff2a5b`.
-- `evidence/local_soak.json` → SHA-256 `00d3c0012d559ec84fa82dc856caefe2f7184ce53c4db24dd90589c44b1feaa4`.
-- Final `graphene:local` image build passed; container smoke returned health and frontend assets with 200, rejected an unauthenticated mutation with 401, and accepted the same authorized bounded create request.
+1. Run the checked workflow once on GitHub-hosted macOS/Linux runners; do not weaken the executor if the host image differs.
+2. A safe Linux executor, real Gemini, durable cloud artifacts/Firestore, and Cloud Run remain separate gates requiring platform work or explicit external authorization.
+3. Promotion is a local evidence/checkpoint receipt; it does not create or push a durable Git commit.
+4. A five-person terminal comprehension study, retention/GC design, and legacy browser read-only migration remain incomplete local P2/P1 work.
+
+Questions: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md). Claims: [`evidence/claim_ledger.json`](evidence/claim_ledger.json). Privacy: [`docs/data_residency.md`](docs/data_residency.md). Executor boundary: [`docs/EXECUTOR_THREAT_MODEL.md`](docs/EXECUTOR_THREAT_MODEL.md).

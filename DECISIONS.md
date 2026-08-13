@@ -26,3 +26,44 @@
 - The dependency-free frontend owns the complete six-action golden loop and keeps the mutation token only in JavaScript memory.
 - One Python 3.13 container installs Git, runs unprivileged, serves API and static UI together, and binds `0.0.0.0:$PORT`.
 - Local tests, ten deterministic loops, and the container are evidence-backed. Gemini, real Firestore, Cloud Run, and browser visual QA remain unverified and may not be shown or described as completed.
+
+## 2026-08-12 — ADR: v2 terminal lineage supersedes the legacy mutable product path
+
+- Status: accepted for new work; migration is in progress.
+- The v2 SQLite lineage, private artifact store, verified reducer, scoped six-operation service, handoff, recovery, promotion, ADK, and MCP components are the sole target authority for all new mutations.
+- The FastAPI/browser `RunRecord`/`ProofItem`/legacy `Store` path remains compatibility-only until its reads move to the v2 projection. It may receive security repairs but no new product mutation or proof claim.
+- The first public mode is deterministic local bootstrap. It creates a v2 run and checkout but does not claim model execution. MCP and ADK must share that same composition root.
+- Proof levels are split into UNIT, COMPONENT, PROCESS, REAL_MODEL, and REAL_CLOUD. Narrow success cannot imply a broader level.
+- The current fixed-test executor supports only the frozen sanitized fixture on macOS. Linux/container workflow claims are withdrawn until an isolation boundary runs the full fixture loop.
+- A 2026-08-12 adversarial probe showed an agent-written test could echo an ambient checkout canary. Cloud/source demonstrations remain halted until a minimal test-view regression passes.
+- Historical decisions and evidence remain unchanged. This ADR supersedes their MCP/SQLite cuts and legacy-as-canonical implications; it does not rewrite them.
+
+## 2026-08-12 — Live display ordering is explicitly acknowledged
+
+- An MCP result is evidence-visible only after the scoped service commits and an active public watcher flushes that exact sequence.
+- The watcher records a cursor in a private locked sidecar; the STDIO adapter waits for it only when a watcher is active. Fixed sleeps are rejected because elapsed time does not prove display ordering.
+- The sidecar is coordination, never lineage truth. ADK, MCP, and local scripted proposals use distinct authorities/source receipts.
+- A fake ADK runner remains component proof even when its returned model identity and terminal receipt are recorded.
+
+## 2026-08-13 — Human authority and fresh handoff are event-derived
+
+- Exact changesets, hunks, and test receipts are derived from the verified source stream; callers cannot submit them as authority.
+- A correction is stored privately, followed by a human clarification answer, exact feedback, immutable memory proposal, and explicit approve/reject decision. The mandatory scope comes from the selected frozen option, not caller-supplied memory fields.
+- Handoff enumerates the stable source event/artifact universe itself. It persists a complete server-only decision and an included-only `ContextBrief`; Billing denial occurs before any consumer runtime construction.
+- An allowed Auth handoff creates disjoint run/session/invocation identities, binds zero prior messages and the exact prompt digest, verifies the frozen checkout before returning a service, and requires same-invocation reads before writes.
+- Exact repeated public handoff requests resolve their already-committed decision/brief/consumer instead of deriving identity from the advanced mutable head.
+
+## 2026-08-13 — Promotion is checkpoint-before-final, not a hosted commit
+
+- The coordinator validates the verified source/consumer bindings, reconstructs current candidate evidence, invokes only the frozen fixed-test seam, and core-mints the receipt. A caller-created self-hashed promotion receipt is rejected.
+- The approval-head checkpoint is persisted as a private artifact and retained through the same reader used by lineage verification before the final `promotion.completed` event is appended.
+- The reducer calls a run `PROMOTED` only after that final event, and exact retry reuses the retained checkpoint/receipt. Checkpoint failure cannot expose a completed state.
+- The reconstructed commit field is an evidence receipt for the local frozen candidate. Graphene does not create, push, or claim a durable hosted commit.
+
+## 2026-08-13 — Supported platform and privacy boundary are deliberately narrow
+
+- Full fixed-test execution is supported only for the frozen sanitized fixture on macOS with `/usr/bin/sandbox-exec`. Linux/Docker fail closed until an equivalent isolation boundary exists.
+- Fixed tests execute from a no-follow minimal view containing only contract-listed bytes; stdin, ambient checkout/host files, network, fork, raw process/sysctl inspection, and outside writes are denied. Successful bounded output is private tool-visible data, not public event content.
+- Provider-reported model metadata is not public authority. ADK accepts it only when it exactly equals the configured server-owned model identity; provider call IDs are digested before persistence.
+- SQLite is the complete local composition root. Firestore remains a metadata adapter until private artifacts/checkpoints have a durable, privacy-reviewed cloud strategy.
+- GitHub Actions separates the macOS positive workflow, Linux fail-closed sentinels, and frontend checks. No CI step uses secrets, models, cloud mutations, or deploy permissions.

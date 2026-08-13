@@ -14,11 +14,12 @@ from ..lineage.store import SQLiteLineageStore
 from ..models import (
     ContextBrief,
     Event,
+    EventInput,
     EvidenceInvalidState,
     EvidenceKind,
-    EventInput,
     FixturePolicy,
     HandoffDenied,
+    HunkEvidence,
     LineageAuthority,
     LineageEventType,
     SourceKind,
@@ -105,8 +106,10 @@ def _runtime_evidence(
             raise RuntimeBindingError("selected evidence artifact is unresolved")
         try:
             record = json.loads(raw)
-            content = record["content"]
-        except (KeyError, TypeError, ValueError, UnicodeError) as error:
+            content = record.get("content")
+            if content is None and reference.kind == EvidenceKind.HUNK:
+                content = HunkEvidence.model_validate(record).unified_diff
+        except (AttributeError, TypeError, ValueError, UnicodeError) as error:
             raise RuntimeBindingError(
                 "selected evidence artifact has no authorized content"
             ) from error

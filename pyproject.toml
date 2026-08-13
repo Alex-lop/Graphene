@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 graphene = "graphene.cli.main:main"
+graphene-mcp = "graphene.integrations.stdio:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10"]

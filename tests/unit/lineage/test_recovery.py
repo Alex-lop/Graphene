@@ -5,9 +5,13 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
 from graphene.hashing import sha256_hex
-from graphene.lineage import LineageConflict, SQLiteArtifactStore, SQLiteLineageStore
+from graphene.lineage import (
+    EvidenceInvalid,
+    LineageConflict,
+    SQLiteArtifactStore,
+    SQLiteLineageStore,
+)
 from graphene.lineage.recovery import (
     RecoveryCheckoutError,
     RecoveryEvidenceError,
@@ -368,18 +372,12 @@ def test_stale_cas_conflict_never_discards_checkout(
     )
 
 
-def test_malformed_or_evidence_invalid_stream_refuses_recovery(tmp_path: Path):
+def test_malformed_append_and_evidence_invalid_stream_fail_closed(tmp_path: Path):
     malformed_root = tmp_path / "malformed"
     malformed_root.mkdir()
     malformed = _Run(malformed_root, "run_malformed_001")
-    _tool_completed(malformed)
-    with pytest.raises(RecoveryEvidenceError, match="semantically invalid"):
-        recover_interrupted_run(
-            malformed.store,
-            run_id=malformed.run_id,
-            checkout_path=malformed.checkout,
-            record_source=malformed.source,
-        )
+    with pytest.raises(EvidenceInvalid, match="semantically invalid"):
+        _tool_completed(malformed)
     assert malformed.checkout.exists()
 
     denial_root = tmp_path / "unpaired-denial"
@@ -390,22 +388,16 @@ def test_malformed_or_evidence_invalid_stream_refuses_recovery(tmp_path: Path):
         {"status": "started"},
         invocation_id="invocation_unpaired_001",
     )
-    unpaired.append(
-        LineageEventType.COMPLETION_DENIED,
-        {
-            "operation": "request_completion",
-            "status": "denied",
-            "state": "NEEDS_HUMAN",
-        },
-        invocation_id="invocation_unpaired_001",
-        tool_call_id="completion_unpaired_001",
-    )
-    with pytest.raises(RecoveryEvidenceError, match="matching attempt"):
-        recover_interrupted_run(
-            unpaired.store,
-            run_id=unpaired.run_id,
-            checkout_path=unpaired.checkout,
-            record_source=unpaired.source,
+    with pytest.raises(EvidenceInvalid, match="one attempt"):
+        unpaired.append(
+            LineageEventType.COMPLETION_DENIED,
+            {
+                "operation": "request_completion",
+                "status": "denied",
+                "state": "NEEDS_HUMAN",
+            },
+            invocation_id="invocation_unpaired_001",
+            tool_call_id="completion_unpaired_001",
         )
     assert unpaired.checkout.exists()
 
