@@ -70,6 +70,7 @@ from ..models import (
     MemoryDecisionValue,
     ScopeId,
     TaskId,
+    TruthKind,
     VerifiedHead,
 )
 from .render import render_human
@@ -179,6 +180,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     promote = commands.add_parser("promote", allow_abbrev=False)
     promote.add_argument("consumer_run_id")
+
+    demo = commands.add_parser("demo", allow_abbrev=False)
+    demo.add_argument("--driver", choices=("scripted-local",), default="scripted-local")
+    demo.add_argument("--speed", type=_positive_number, default=1.0)
+    demo.add_argument("--no-open", action="store_true")
+    demo.add_argument("--cleanup", action="store_true")
+    demo.add_argument("--exit-after-demo", action="store_true", help=argparse.SUPPRESS)
+    demo.add_argument("--automated-fixture", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
@@ -594,7 +603,12 @@ def _feedback(path: Path, args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-def _answer(path: Path, args: argparse.Namespace) -> dict[str, object]:
+def _answer(
+    path: Path,
+    args: argparse.Namespace,
+    *,
+    simulated_fixture: bool = False,
+) -> dict[str, object]:
     run_id = _find_run(
         path,
         LineageEventType.CLARIFICATION_ASKED,
@@ -634,10 +648,13 @@ def _answer(path: Path, args: argparse.Namespace) -> dict[str, object]:
             question_id=args.question_id,
             choice=args.choice,
             idempotency_key=_key("answer", run_id, args.question_id, args.choice),
+            simulated_fixture=simulated_fixture,
         )
         events, projection = _load(path, run_id)
     elif answered.payload.get("choice") != args.choice:
         raise HumanWorkflowError("the clarification already has another answer")
+    elif (answered.truth_kind == TruthKind.SIMULATED_FIXTURE) != simulated_fixture:
+        raise HumanWorkflowError("the clarification has another provenance")
     feedback = next(
         (
             event
@@ -653,6 +670,7 @@ def _answer(path: Path, args: argparse.Namespace) -> dict[str, object]:
             _verified_head(projection),
             question_id=args.question_id,
             idempotency_key=_key("feedback_record", run_id, feedback_id),
+            simulated_fixture=simulated_fixture,
         )
         events, projection = _load(path, run_id)
     proposed = next(
@@ -681,7 +699,12 @@ def _answer(path: Path, args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-def _memory(path: Path, args: argparse.Namespace) -> dict[str, object]:
+def _memory(
+    path: Path,
+    args: argparse.Namespace,
+    *,
+    simulated_fixture: bool = False,
+) -> dict[str, object]:
     run_id = _find_run(
         path,
         LineageEventType.MEMORY_PROPOSED,
@@ -712,6 +735,10 @@ def _memory(path: Path, args: argparse.Namespace) -> dict[str, object]:
     )
     if decided is not None and decided.event_type != expected_type:
         raise HumanWorkflowError("the memory already has another decision")
+    if decided is not None and (
+        decided.truth_kind == TruthKind.SIMULATED_FIXTURE
+    ) != simulated_fixture:
+        raise HumanWorkflowError("the memory already has another provenance")
     if decided is None:
         workflow, _ = _workflow(path)
         decided = workflow.decide_memory(
@@ -723,6 +750,7 @@ def _memory(path: Path, args: argparse.Namespace) -> dict[str, object]:
             idempotency_key=_key(
                 "memory_decide", run_id, args.memory_id, args.memory_action
             ),
+            simulated_fixture=simulated_fixture,
         )
         _, projection = _load(path, run_id)
     return {
@@ -831,7 +859,12 @@ def _existing_consumer_result(
     return matches[0] if matches else None
 
 
-def _promote(path: Path, run_id: str) -> dict[str, object]:
+def _promote(
+    path: Path,
+    run_id: str,
+    *,
+    simulated_fixture: bool = False,
+) -> dict[str, object]:
     events, projection = _load(path, run_id)
     artifacts = SQLiteArtifactStore(path)
     checkpoints = SQLiteCheckpointRecorder(path)
@@ -841,6 +874,15 @@ def _promote(path: Path, run_id: str) -> dict[str, object]:
         checkpoint_reader=checkpoints.read,
     )
     if projection.state == LineageRunState.PROMOTED:
+        if (
+            next(
+                event
+                for event in events
+                if event.event_type == LineageEventType.PROMOTION_APPROVED
+            ).truth_kind
+            == TruthKind.SIMULATED_FIXTURE
+        ) != simulated_fixture:
+            raise PromotionError("completed promotion has another provenance")
         retained = checkpoints.read(run_id)
         if len(retained) != 1 or store.verify(run_id) != _verified_head(projection):
             raise PromotionError("completed promotion checkpoint is unavailable")
@@ -878,6 +920,7 @@ def _promote(path: Path, run_id: str) -> dict[str, object]:
         run_id,
         decision_id="promotion_" + sha256_hex(run_id.encode())[:24],
         occurred_at=datetime.now(UTC),
+        decision_actor=("simulated_fixture" if simulated_fixture else "human"),
     )
 
     def trusted_retest(retest) -> PromotionRetestResult:
@@ -903,6 +946,7 @@ def _promote(path: Path, run_id: str) -> dict[str, object]:
         record_artifact=artifacts,
         reconstruct_and_retest=trusted_retest,
         record_checkpoint=checkpoints,
+        allow_simulated_fixture=simulated_fixture,
     )
     return {
         "run_id": run_id,
@@ -1064,6 +1108,20 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "run":
         return _run(args)
+    if args.command == "demo":
+        from ..demo import DemoError, run_demo
+
+        try:
+            return run_demo(
+                speed=args.speed,
+                no_open=args.no_open,
+                cleanup=args.cleanup,
+                keep_open=not args.exit_after_demo,
+                automated_fixture=args.automated_fixture,
+            )
+        except DemoError as error:
+            sys.stderr.write(f"DEMO_ERROR: {error}\n")
+            return 1
 
     try:
         path = _database_path()

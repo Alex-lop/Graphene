@@ -769,6 +769,23 @@ def test_request_and_receipt_types_are_strict_and_human_only(tmp_path):
                 },
             }
         )
+    simulated = PromotionRequest.model_validate(
+        {
+            **values,
+            "human_approval": {
+                **values["human_approval"],
+                "actor": "simulated_fixture",
+            },
+        }
+    )
+    with pytest.raises(PromotionConflict, match="explicitly enabled"):
+        promote(
+            harness.store,
+            simulated,
+            record_artifact=harness.artifacts,
+            reconstruct_and_retest=harness.receipt,
+            record_checkpoint=harness.checkpoint,
+        )
     approval_head = VerifiedHead(
         run_id=RUN_ID,
         seq=harness.expected.seq + 1,

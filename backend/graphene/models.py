@@ -150,6 +150,7 @@ class GraphProvenance(StrEnum):
     SERVER_OBSERVED = "server_observed"
     SERVER_DERIVED = "server_derived"
     HUMAN_ATTESTED = "human_attested"
+    SIMULATED_FIXTURE = "simulated_fixture"
     MODEL_PROPOSED = "model_proposed"
 
 
@@ -395,7 +396,7 @@ class FeedbackRecord(FrozenModel):
 class HumanDecision(FrozenModel):
     decision_id: Identifier
     value: MemoryDecisionValue
-    actor: Literal["human"] = "human"
+    actor: Literal["human", "simulated_fixture"] = "human"
     purpose: Literal["memory", "promotion"]
     bound_digest: Sha256
     occurred_at: UtcDateTime
@@ -1040,6 +1041,7 @@ class TruthKind(StrEnum):
     RUNTIME_OBSERVED = "runtime_observed"
     SERVER_DERIVED = "server_derived"
     HUMAN_ATTESTED = "human_attested"
+    SIMULATED_FIXTURE = "simulated_fixture"
     POLICY_AUTHORITATIVE = "policy_authoritative"
     MODEL_PROPOSED = "model_proposed"
 
@@ -1052,6 +1054,7 @@ class LineageAuthority(StrEnum):
     LIFECYCLE_SERVICE = "lifecycle_service"
     POLICY_ENGINE = "policy_engine"
     OPERATOR_REQUEST = "operator_request"
+    SIMULATED_FIXTURE = "simulated_fixture"
     CONTEXT_COMPILER = "context_compiler"
     ARTIFACT_PARSER = "artifact_parser"
     PROMOTION_SERVICE = "promotion_service"
@@ -1095,6 +1098,7 @@ class EvidenceKind(StrEnum):
     EVIDENCE_BLOB = "evidence_blob"
     POLICY_RECEIPT = "policy_receipt"
     OPERATOR_REQUEST = "operator_request"
+    SIMULATED_FIXTURE = "simulated_fixture"
     ADK_EVENT_RECEIPT = "adk_event_receipt"
     MCP_REQUEST_RECEIPT = "mcp_request_receipt"
     LOCAL_ADAPTER_RECEIPT = "local_adapter_receipt"
@@ -1105,6 +1109,7 @@ class SourceKind(StrEnum):
     LIFECYCLE_REQUEST = "lifecycle_request"
     POLICY_EVALUATION = "policy_evaluation"
     OPERATOR_REQUEST = "operator_request"
+    SIMULATED_FIXTURE = "simulated_fixture"
     REDUCER_RECEIPT = "reducer_receipt"
     CONTEXT_COMPILER_RECEIPT = "context_compiler_receipt"
     ADK_EVENT_RECEIPT = "adk_event_receipt"
@@ -1252,6 +1257,7 @@ _SOURCE_KIND_BY_AUTHORITY = {
     LineageAuthority.LIFECYCLE_SERVICE: SourceKind.LIFECYCLE_REQUEST,
     LineageAuthority.POLICY_ENGINE: SourceKind.POLICY_EVALUATION,
     LineageAuthority.OPERATOR_REQUEST: SourceKind.OPERATOR_REQUEST,
+    LineageAuthority.SIMULATED_FIXTURE: SourceKind.SIMULATED_FIXTURE,
     LineageAuthority.CONTEXT_COMPILER: SourceKind.CONTEXT_COMPILER_RECEIPT,
     LineageAuthority.ARTIFACT_PARSER: SourceKind.REDUCER_RECEIPT,
     LineageAuthority.PROMOTION_SERVICE: SourceKind.PROMOTION_RECEIPT,
@@ -1267,6 +1273,13 @@ _ADAPTER_EVENT_TYPES = {
     LineageEventType.INVOCATION_COMPLETED,
     LineageEventType.INVOCATION_FAILED,
     LineageEventType.COMPLETION_ATTEMPTED,
+}
+_SIMULATED_FIXTURE_EVENT_TYPES = {
+    LineageEventType.CLARIFICATION_ANSWERED,
+    LineageEventType.FEEDBACK_RECORDED,
+    LineageEventType.MEMORY_APPROVED,
+    LineageEventType.MEMORY_REJECTED,
+    LineageEventType.PROMOTION_APPROVED,
 }
 
 
@@ -1503,7 +1516,14 @@ class EventInput(FrozenModel):
             and adapter_authority is not None
             and self.authority == adapter_authority
         )
-        if self.truth_kind != expected_truth or not authority_matches:
+        simulated_fixture = (
+            self.event_type in _SIMULATED_FIXTURE_EVENT_TYPES
+            and self.truth_kind == TruthKind.SIMULATED_FIXTURE
+            and self.authority == LineageAuthority.SIMULATED_FIXTURE
+        )
+        if not simulated_fixture and (
+            self.truth_kind != expected_truth or not authority_matches
+        ):
             raise ValueError("event truth and authority do not match its type")
         if self.source_ref.kind != _SOURCE_KIND_BY_AUTHORITY[self.authority]:
             raise ValueError("event source reference does not match its authority")
@@ -1821,7 +1841,7 @@ class ClarificationAnswer(FrozenModel):
     answer_id: Identifier
     question_id: Identifier
     choice: ScopeId
-    actor: Literal["human"]
+    actor: Literal["human", "simulated_fixture"]
     answered_at: UtcDateTime
     answer_sha256: Sha256
 

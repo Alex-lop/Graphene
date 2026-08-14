@@ -30,6 +30,7 @@ def test_readme_matches_the_public_cli_mcp_auth_and_version_contract() -> None:
         "memory",
         "handoff",
         "promote",
+        "demo",
     }
     assert all(f"`graphene {command}" in readme for command in commands)
     assert mcp_parser().parse_args(entry["args"]).task == "baseline_max_attempts"

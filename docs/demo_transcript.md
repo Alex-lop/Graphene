@@ -1,33 +1,55 @@
-# Redacted v2 terminal transcript
+# Redacted one-command demo transcript
 
-Captured on 2026-08-13 on macOS with Python 3.13.9, `google-adk==2.5.0`, and `mcp==2.0.0`. IDs, digests, timestamps, and absolute temporary paths below are redacted; the executable assertion is [`tests/process/test_mcp_stdio.py`](../tests/process/test_mcp_stdio.py).
-
-Terminal A bootstraps the private run:
+The values below are redacted examples. The executable process proof is `tests/process/test_demo_cli.py`; the MCP-specific proof remains `tests/process/test_mcp_stdio.py`.
 
 ```text
-$ graphene --json run baseline_max_attempts --profile platform-maintainer@1
-{"database":"<private-runtime>/lineage.sqlite3","projection_sha256":"<sha256>","run_id":"<run-id>","verified_head":{"event_count":1,"event_sha256":"<sha256>","run_id":"<run-id>","seq":1}}
+$ uv run --frozen graphene demo --driver scripted-local
+
+SCRIPTED LOCAL
+Google ADK Runner: not used
+Gemini calls: 0
+Evidence source: committed and verified v2 SQLite lineage
+Viewer: http://127.0.0.1:<free-port>/viewer/<run-id>
+Private runtime: <owner-private-runtime>
+
+DECISION PACKET — SCOPE
+Correction: <bounded exact correction>
+Proposed Scope: all_auth (app/auth/**)
+Hunk: app/auth/limiter.py:<line> +<count> lines
+Why: The exact correction must be explicitly scoped before memory is proposed.
+SCOPE GATE: apply this correction to every app/auth/** change?
+Type 'all_auth' or press Enter for this safe default: <Enter>
+
+DECISION PACKET — MEMORY
+Rule: <bounded proposed rule>
+Scope: all_auth (app/auth/**)
+Revision: 1
+Digest: <sha256>
+Why: Only this immutable scoped revision may enter an authorized handoff.
+MEMORY GATE: approve the displayed scoped memory revision?
+Type 'approve' or press Enter for this safe default: <Enter>
+
+DECISION PACKET — PROMOTION
+Changed Paths: app/auth/limiter.py, tests/test_security_policy.py
+Test Receipt: <receipt-id> sha256=<sha256> passed=true
+Candidate Digest: <sha256>
+Why: Promotion binds these exact paths and candidate digest to the passing fixed-test receipt.
+PROMOTION GATE: promote the verified bounded candidate?
+Type 'promote' or press Enter for this safe default: <Enter>
+
+DEMO COMPLETE — committed lineage verified
+Origin run: <run-id>
+Consumer run: <different-run-id>
+Promotion state: PROMOTED
+Viewer: http://127.0.0.1:<free-port>/viewer/<run-id>
+Runtime retained: <owner-private-runtime>
+Press Ctrl-C to stop the viewer. Evidence remains on disk.
+^C
+Viewer stopped. Runtime retained: <owner-private-runtime>
 ```
 
-Terminal B starts before the agent call and follows canonical committed NDJSON:
+The browser observes sanitized projections derived from verified committed v2 events. It cannot submit a database path, mutate lineage, or expose private source/diff/prompt/test-output bytes. Billing denial records zero model dispatch; the fresh Auth consumer opens authorized evidence, rereads source, edits only allowed files, runs the fixed test, and reaches a human promotion checkpoint.
 
-```text
-$ graphene --json watch <run-id>
-{"event_type":"run.started","run_id":"<run-id>","seq":1,...}
-{"event_type":"invocation.started","run_id":"<run-id>","seq":2,...}
-{"event_type":"tool.started","payload":{"operation":"read_file","status":"started"},"run_id":"<run-id>","seq":3,...}
-{"event_type":"tool.completed","payload":{"operation":"read_file","path":"app/auth/limiter.py","status":"completed",...},"run_id":"<run-id>","seq":4,...}
-```
+For manual MCP integration, export the printed database path after the demo and use `graphene watch`, `graphene inspect`, `graphene why`, or `graphene replay`. The primary demo itself requires no export, copied IDs, or extra terminals.
 
-Terminal C is an official MCP `ClientSession` connected to the installed `graphene-mcp` STDIO executable:
-
-```text
-stderr: GRAPHENE_MCP_STDIO_READY
-client calls: read_file({"path":"app/auth/limiter.py"})
-client receives, only after Terminal B flushes seq 4:
-{"path":"app/auth/limiter.py","state":"PRESENT","content":"<authorized bounded bytes>",...}
-```
-
-The full test also proves exact six-tool schemas, protocol-only stdout, denial privacy, zero-argument completion, terminal rejection, restart verification, and interruption on uncertain EOF. The full human-loop process proof continues from exact feedback and approved memory into a fresh consumer, a fixed retest, checkpointed promotion, `why`, `inspect`, and restart-stable projection in [`tests/process/test_human_loop.py`](../tests/process/test_human_loop.py).
-
-The abbreviated event lines above are explanatory excerpts, not stored-event exports. Use `watch --json` or `replay --json` for full canonical envelopes.
+Process tests use a hidden `--automated-fixture --exit-after-demo` seam instead of sending fake keystrokes. Its terminal and viewer repeatedly say `SIMULATED OPERATOR — NOT HUMAN ATTESTATION`; its clarification answer, feedback, memory decision, and promotion approval are stored with `truth_kind=simulated_fixture`, `authority=simulated_fixture`, and a `simulated_fixture` source—not `human_attested`. It exercises the fixed downstream transitions but cannot support any claim that a person reviewed or decided them. Normal demo runs never select this seam, still wait for operator input at all three packets, and retain human-attested provenance.

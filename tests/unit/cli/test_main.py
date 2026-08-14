@@ -220,6 +220,11 @@ def _append_access_denied(path: Path, previous) -> object:
             None,
         ),
         (["promote", "run_consumer_001"], "promote", None),
+        (
+            ["demo", "--driver", "scripted-local", "--no-open", "--speed", "8"],
+            "demo",
+            None,
+        ),
     ],
 )
 def test_parser_accepts_the_frozen_command_grammar(argv, command, memory_action):
@@ -249,6 +254,40 @@ def test_project_installs_the_graphene_console_entry_point():
     assert project["scripts"] == {
         "graphene": "graphene.cli.main:main",
         "graphene-mcp": "graphene.integrations.stdio:main",
+    }
+
+
+def test_demo_owns_its_database_and_forwards_options(monkeypatch):
+    demo = importlib.import_module("graphene.demo")
+    received = {}
+
+    def run_demo(**options):
+        received.update(options)
+        return 0
+
+    monkeypatch.delenv("GRAPHENE_LINEAGE_DB", raising=False)
+    monkeypatch.setattr(demo, "run_demo", run_demo)
+
+    assert (
+        main(
+            [
+                "demo",
+                "--no-open",
+                "--cleanup",
+                "--speed",
+                "4",
+                "--exit-after-demo",
+                "--automated-fixture",
+            ]
+        )
+        == 0
+    )
+    assert received == {
+        "speed": 4.0,
+        "no_open": True,
+        "cleanup": True,
+        "keep_open": False,
+        "automated_fixture": True,
     }
 
 

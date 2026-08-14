@@ -75,7 +75,8 @@
     "memory approve",
     "memory reject",
     "handoff",
-    "promote"
+    "promote",
+    "demo"
   ],
   "mcp_tools": {
     "search_repo": ["query"],
@@ -89,6 +90,7 @@
     "runtime_observed",
     "server_derived",
     "human_attested",
+    "simulated_fixture",
     "policy_authoritative",
     "model_proposed"
   ],
@@ -109,6 +111,7 @@
     "evidence_blob",
     "policy_receipt",
     "operator_request",
+    "simulated_fixture",
     "adk_event_receipt",
     "mcp_request_receipt",
     "local_adapter_receipt"
@@ -118,6 +121,7 @@
     "lifecycle_request",
     "policy_evaluation",
     "operator_request",
+    "simulated_fixture",
     "reducer_receipt",
     "context_compiler_receipt",
     "adk_event_receipt",

@@ -104,7 +104,7 @@ class PromotionRequest(_Frozen):
     human_approval: HumanDecision
 
     @model_validator(mode="after")
-    def bindings_are_exact_and_human(self) -> PromotionRequest:
+    def bindings_are_exact_and_decided(self) -> PromotionRequest:
         expected = (
             (
                 self.candidate_reference,
@@ -148,12 +148,14 @@ class PromotionRequest(_Frozen):
         ):
             raise ValueError("promotion artifact and head bindings do not match")
         if (
-            self.human_approval.actor != "human"
+            self.human_approval.actor not in {"human", "simulated_fixture"}
             or self.human_approval.value != MemoryDecisionValue.APPROVE
             or self.human_approval.purpose != "promotion"
             or self.human_approval.bound_digest != self.candidate_patch_sha256
         ):
-            raise ValueError("promotion requires exact human approval")
+            raise ValueError(
+                "promotion requires exact human approval or explicit simulated fixture"
+            )
         return self
 
 
@@ -931,10 +933,20 @@ def _request_from_approval(
     if len(events) < 2 or events[-1].event_type != LineageEventType.PROMOTION_APPROVED:
         raise PromotionConflict("promotion approval is not recoverable")
     approval = events[-1]
-    if approval.source_ref.kind != SourceKind.OPERATOR_REQUEST:
+    source_kind = (
+        SourceKind.SIMULATED_FIXTURE
+        if approval.truth_kind == TruthKind.SIMULATED_FIXTURE
+        else SourceKind.OPERATOR_REQUEST
+    )
+    evidence_kind = (
+        EvidenceKind.SIMULATED_FIXTURE
+        if approval.truth_kind == TruthKind.SIMULATED_FIXTURE
+        else EvidenceKind.OPERATOR_REQUEST
+    )
+    if approval.source_ref.kind != source_kind:
         raise PromotionEvidenceError("promotion approval source is invalid")
     source_reference = EvidenceReference(
-        kind=EvidenceKind.OPERATOR_REQUEST,
+        kind=evidence_kind,
         id=approval.source_ref.id,
         sha256=approval.source_ref.sha256,
     )
@@ -973,6 +985,12 @@ def _request_from_approval(
     )
     if (
         record != expected_record
+        or approval.truth_kind
+        != (
+            TruthKind.SIMULATED_FIXTURE
+            if request.human_approval.actor == "simulated_fixture"
+            else TruthKind.HUMAN_ATTESTED
+        )
         or request.run_id != approval.run_id
         or request.expected_head != _head(events[-2])
         or approval.references != expected_references
@@ -998,6 +1016,7 @@ def prepare_verified_promotion(
     *,
     decision_id: str,
     occurred_at: datetime,
+    decision_actor: Literal["human", "simulated_fixture"] = "human",
 ) -> PromotionRequest:
     """Derive and persist one promotion candidate from verified production evidence."""
 
@@ -1084,6 +1103,15 @@ def prepare_verified_promotion(
         brief_reference,
         decision_reference,
     )
+    expected_memory_truth = (
+        TruthKind.SIMULATED_FIXTURE
+        if decision_actor == "simulated_fixture"
+        else TruthKind.HUMAN_ATTESTED
+    )
+    if memory_event.truth_kind != expected_memory_truth:
+        raise PromotionEvidenceError(
+            "promotion approval provenance does not match its approved memory"
+        )
     raw_changed_paths = changeset.get("changed_paths")
     raw_bound_paths = test_receipt.get("bound_paths")
     if (
@@ -1232,6 +1260,7 @@ def prepare_verified_promotion(
         purpose="promotion",
         bound_digest=changeset["candidate_patch_sha256"],
         occurred_at=occurred_at,
+        actor=decision_actor,
     )
     return PromotionRequest(
         run_id=run_id,
@@ -1524,12 +1553,18 @@ def promote(
     record_artifact: PromotionArtifacts,
     reconstruct_and_retest: ReconstructAndRetest,
     record_checkpoint: CheckpointRecorder,
+    allow_simulated_fixture: bool = False,
 ) -> PromotionOutcome:
     """Run the non-circular N / N+1 / N+2 promotion protocol."""
 
     if not isinstance(request, PromotionRequest):
         raise TypeError("promote requires a validated PromotionRequest")
     request = PromotionRequest.model_validate(request.model_dump(mode="json"))
+    if (
+        request.human_approval.actor == "simulated_fixture"
+        and not allow_simulated_fixture
+    ):
+        raise PromotionConflict("simulated fixture promotion was not explicitly enabled")
     current = store.verify(request.run_id)
     if isinstance(current, EvidenceInvalidState):
         raise PromotionEvidenceError("lineage evidence is invalid")
@@ -1552,9 +1587,30 @@ def promote(
     _validate_promotion_evidence(record_artifact, request, events)
 
     approval_digest, approval_record = _approval_record(request)
+    simulated_fixture = request.human_approval.actor == "simulated_fixture"
+    truth = (
+        TruthKind.SIMULATED_FIXTURE
+        if simulated_fixture
+        else TruthKind.HUMAN_ATTESTED
+    )
+    authority = (
+        LineageAuthority.SIMULATED_FIXTURE
+        if simulated_fixture
+        else LineageAuthority.OPERATOR_REQUEST
+    )
+    evidence_kind = (
+        EvidenceKind.SIMULATED_FIXTURE
+        if simulated_fixture
+        else EvidenceKind.OPERATOR_REQUEST
+    )
+    source_kind = (
+        SourceKind.SIMULATED_FIXTURE
+        if simulated_fixture
+        else SourceKind.OPERATOR_REQUEST
+    )
     operator = _record(
         record_artifact,
-        EvidenceKind.OPERATOR_REQUEST,
+        evidence_kind,
         approval_record,
     )
     try:
@@ -1574,8 +1630,8 @@ def promote(
                 agent_profile_id=request.agent_profile_id,
                 policy_revision=request.policy_revision,
                 event_type=LineageEventType.PROMOTION_APPROVED,
-                truth_kind=TruthKind.HUMAN_ATTESTED,
-                authority=LineageAuthority.OPERATOR_REQUEST,
+                truth_kind=truth,
+                authority=authority,
                 references=(
                     request.candidate_reference,
                     request.changeset_reference,
@@ -1585,7 +1641,7 @@ def promote(
                     request.memory_reference,
                 ),
                 source_ref=SourceReference(
-                    kind=SourceKind.OPERATOR_REQUEST,
+                    kind=source_kind,
                     id=operator.id,
                     sha256=operator.sha256,
                 ),

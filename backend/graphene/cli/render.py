@@ -62,6 +62,7 @@ def _event_row(item: ProjectionEvent, width: int) -> str:
         TruthKind.RUNTIME_OBSERVED: "O",
         TruthKind.SERVER_DERIVED: "D",
         TruthKind.HUMAN_ATTESTED: "H",
+        TruthKind.SIMULATED_FIXTURE: "S",
         TruthKind.POLICY_AUTHORITATIVE: "P",
         TruthKind.MODEL_PROPOSED: "M",
     }[item.truth_kind]

@@ -1,9 +1,20 @@
 .DS_Store
 .env
 .pytest_cache/
+.ruff_cache/
 .venv/
 __pycache__/
 *.py[cod]
 frontend/dist/
 frontend/node_modules/
 demo/runs/
+
+# Internal agent prompts and local process notes
+GRAPHENE_ULTRA_CONTINUATION_LOOP.md
+GRAPHENE_VISUALIZATION_SPRINT_PROMPT.md
+OPEN_QUESTIONS.md
+
+# Local cycle diaries and proof ledger
+evidence/checkpoints/*-cycle-*.md
+evidence/claim_ledger.json
+

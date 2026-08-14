@@ -78,6 +78,26 @@ def _event_ref(event: Event) -> EvidenceReference:
     )
 
 
+def _decision_provenance(
+    simulated_fixture: bool,
+) -> tuple[TruthKind, LineageAuthority, EvidenceKind, SourceKind, str]:
+    if simulated_fixture:
+        return (
+            TruthKind.SIMULATED_FIXTURE,
+            LineageAuthority.SIMULATED_FIXTURE,
+            EvidenceKind.SIMULATED_FIXTURE,
+            SourceKind.SIMULATED_FIXTURE,
+            "simulated_fixture",
+        )
+    return (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+        EvidenceKind.OPERATOR_REQUEST,
+        SourceKind.OPERATOR_REQUEST,
+        "human",
+    )
+
+
 class HumanWorkflowService:
     """Exact evidence-to-human-record transitions for the frozen demo memory."""
 
@@ -484,6 +504,7 @@ class HumanWorkflowService:
         question_id: str,
         choice: ScopeId | str,
         idempotency_key: str,
+        simulated_fixture: bool = False,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         asked, question, pending_ref, _ = self._question(events, question_id)
@@ -500,12 +521,15 @@ class HumanWorkflowService:
         if selected not in question.choices:
             raise HumanConflict("clarification choice was not offered")
         answered_at = _now()
+        truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
+            simulated_fixture
+        )
         answer_values = {
             "schema_version": 2,
             "answer_id": _stable_id("answer", run_id, question_id, selected.value),
             "question_id": question_id,
             "choice": selected,
-            "actor": "human",
+            "actor": actor,
             "answered_at": answered_at,
         }
         answer = ClarificationAnswer.model_validate(
@@ -533,16 +557,16 @@ class HumanWorkflowService:
             "question_reference": question_ref.model_dump(mode="json"),
             "pending_feedback_reference": pending_ref.model_dump(mode="json"),
         }
-        source_ref = self._record(EvidenceKind.OPERATOR_REQUEST, record)
+        source_ref = self._record(evidence_kind, record)
         return self._append(
             events,
             expected_head,
             idempotency_key,
             LineageEventType.CLARIFICATION_ANSWERED,
-            TruthKind.HUMAN_ATTESTED,
-            LineageAuthority.OPERATOR_REQUEST,
+            truth,
+            authority,
             SourceReference(
-                kind=SourceKind.OPERATOR_REQUEST,
+                kind=source_kind,
                 id=source_ref.id,
                 sha256=source_ref.sha256,
             ),
@@ -563,10 +587,16 @@ class HumanWorkflowService:
         *,
         question_id: str,
         idempotency_key: str,
+        simulated_fixture: bool = False,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         asked, question, pending_ref, pending = self._question(events, question_id)
         answered, answer = self._answer(events, question)
+        truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
+            simulated_fixture
+        )
+        if answer.actor != actor:
+            raise HumanConflict("feedback provenance does not match its answer")
         feedback_id = str(pending["feedback_id"])
         if any(
             event.event_type == LineageEventType.FEEDBACK_RECORDED
@@ -616,16 +646,16 @@ class HumanWorkflowService:
             "feedback_reference": feedback_ref.model_dump(mode="json"),
             "answer_event": _event_ref(answered).model_dump(mode="json"),
         }
-        source_ref = self._record(EvidenceKind.OPERATOR_REQUEST, source_record)
+        source_ref = self._record(evidence_kind, source_record)
         return self._append(
             events,
             expected_head,
             idempotency_key,
             LineageEventType.FEEDBACK_RECORDED,
-            TruthKind.HUMAN_ATTESTED,
-            LineageAuthority.OPERATOR_REQUEST,
+            truth,
+            authority,
             SourceReference(
-                kind=SourceKind.OPERATOR_REQUEST,
+                kind=source_kind,
                 id=source_ref.id,
                 sha256=source_ref.sha256,
             ),
@@ -782,6 +812,7 @@ class HumanWorkflowService:
         revision: int,
         decision: MemoryDecisionValue | str,
         idempotency_key: str,
+        simulated_fixture: bool = False,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         proposed_event = next(
@@ -828,6 +859,16 @@ class HumanWorkflowService:
         bound_digest = canonical_json_sha256(
             proposed.model_dump(mode="json", exclude={"state", "decision"})
         )
+        truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
+            simulated_fixture
+        )
+        feedback_event = next(
+            event
+            for event in events
+            if event.event_type == LineageEventType.FEEDBACK_RECORDED
+        )
+        if feedback_event.truth_kind != truth or feedback_event.authority != authority:
+            raise HumanConflict("memory decision provenance does not match its feedback")
         human_decision = HumanDecision(
             decision_id=_stable_id(
                 "decision", run_id, memory_id, str(revision), value.value, bound_digest
@@ -836,6 +877,7 @@ class HumanWorkflowService:
             purpose="memory",
             bound_digest=bound_digest,
             occurred_at=_now(),
+            actor=actor,
         )
         state = (
             MemoryState.APPROVED
@@ -866,16 +908,16 @@ class HumanWorkflowService:
             "decided_reference": decided_ref.model_dump(mode="json"),
             "human_decision": human_decision.model_dump(mode="json"),
         }
-        source_ref = self._record(EvidenceKind.OPERATOR_REQUEST, source_record)
+        source_ref = self._record(evidence_kind, source_record)
         return self._append(
             events,
             expected_head,
             idempotency_key,
             event_type,
-            TruthKind.HUMAN_ATTESTED,
-            LineageAuthority.OPERATOR_REQUEST,
+            truth,
+            authority,
             SourceReference(
-                kind=SourceKind.OPERATOR_REQUEST,
+                kind=source_kind,
                 id=source_ref.id,
                 sha256=source_ref.sha256,
             ),
@@ -1275,7 +1317,11 @@ class HumanWorkflowService:
             raise HumanEvidenceError("clarification answer is not unique in this run")
         event = matches[0]
         source = EvidenceReference(
-            kind=EvidenceKind.OPERATOR_REQUEST,
+            kind=(
+                EvidenceKind.SIMULATED_FIXTURE
+                if event.source_ref.kind == SourceKind.SIMULATED_FIXTURE
+                else EvidenceKind.OPERATOR_REQUEST
+            ),
             id=event.source_ref.id,
             sha256=event.source_ref.sha256,
         )
@@ -1294,6 +1340,8 @@ class HumanWorkflowService:
             or answer.answer_id != event.payload.get("answer_id")
             or answer.answer_sha256 != event.payload.get("answer_sha256")
             or answer.choice.value != event.payload.get("choice")
+            or (answer.actor == "simulated_fixture")
+            != (event.truth_kind == TruthKind.SIMULATED_FIXTURE)
         ):
             raise HumanEvidenceError("clarification answer does not match its event")
         return event, answer

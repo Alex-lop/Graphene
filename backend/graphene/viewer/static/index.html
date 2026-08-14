@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#252a2e">
+    <link rel="icon" href="data:,">
+    <title>Graphene · Bubble Lineage</title>
+    <link rel="stylesheet" href="/static/viewer.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#lineage-list">Skip to relationship list</a>
+    <header class="status-strip" aria-label="Verified viewer status">
+      <a class="brand" href="#canvas" aria-label="Graphene Bubble Lineage"><span aria-hidden="true">G</span> Graphene</a>
+      <dl>
+        <div><dt>Mode</dt><dd id="mode">LOCAL VIEWER</dd></div>
+        <div><dt>Run</dt><dd id="run-state">Loading</dd></div>
+        <div><dt>Verified head</dt><dd id="verified-head">—</dd></div>
+        <div><dt>Connection</dt><dd id="connection" data-state="connecting">Connecting</dd></div>
+        <div class="truth"><dt>Truth</dt><dd id="truth-label">Committed and verified v2 SQLite lineage</dd></div>
+      </dl>
+      <p id="driver-truth" class="driver-truth">Google ADK Runner: not used · Gemini calls: 0 · Evidence source: committed and verified v2 SQLite lineage</p>
+    </header>
+
+    <main>
+      <section class="workspace" aria-labelledby="viewer-heading">
+        <header class="viewer-heading">
+          <div>
+            <p class="eyebrow">Bubble Lineage</p>
+            <h1 id="viewer-heading">See the verified story unfold.</h1>
+          </div>
+          <p id="bounds" class="bounds" role="status">Loading bounded public view…</p>
+        </header>
+
+        <nav class="filter-bar" aria-label="Lineage filters">
+          <div id="filters" class="filters"></div>
+          <div class="actions" aria-label="Canvas actions">
+            <button id="fit" type="button">Fit</button>
+            <button id="organize" type="button">Organize</button>
+            <button id="focus-current" type="button">Current action</button>
+            <button id="evidence-path" type="button">Evidence path</button>
+            <button id="reset-filters" type="button">Reset filters</button>
+          </div>
+        </nav>
+
+        <div class="canvas-shell">
+          <div id="canvas" role="application" tabindex="0" aria-label="Interactive lineage graph. Use arrow keys to select a bubble and Enter for details."></div>
+          <div id="canvas-state" class="canvas-state" role="status" aria-live="polite">Loading verified lineage…</div>
+          <div id="invalid" class="invalid" role="alert" hidden>
+            <strong>EVIDENCE_INVALID</strong>
+            <span id="invalid-reason">Verified evidence changed. Streaming stopped.</span>
+          </div>
+          <p class="activity-note">Bubble size = capped log of verified <strong>activity</strong>, never importance, impact, or correctness.</p>
+        </div>
+
+        <section class="replay" aria-label="Replay controls">
+          <button id="play" type="button" aria-label="Pause replay">Pause</button>
+          <button id="step" type="button">Step</button>
+          <label>Speed
+            <select id="speed">
+              <option value="2000">0.5×</option>
+              <option value="1000" selected>1×</option>
+              <option value="500">2×</option>
+              <option value="250">4×</option>
+            </select>
+          </label>
+          <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Replay timeline">
+          <output id="timeline-label" for="timeline">0 / 0</output>
+          <span id="live-badge" class="badge">LIVE</span>
+        </section>
+      </section>
+
+      <section id="lineage-list" class="lineage-list" aria-labelledby="lineage-heading" tabindex="-1">
+        <header><div><p class="eyebrow">Accessible mirror</p><h2 id="lineage-heading">Verified relationships</h2></div><span id="relationship-count">0 relationships</span></header>
+        <ol id="relationships"></ol>
+        <p id="relationships-empty">No visible relationships.</p>
+      </section>
+    </main>
+
+    <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+      <header><div><p id="drawer-kind" class="eyebrow">Node</p><h2 id="drawer-title">Lineage detail</h2></div><button id="drawer-close" type="button" aria-label="Close details">×</button></header>
+      <div id="drawer-state" role="status" aria-live="polite"></div>
+      <dl id="drawer-fields"></dl>
+      <section><h3>Known limitations</h3><p id="drawer-limitations">This is a bounded public projection. Private artifact bytes, prompts, raw diffs, and test output are not shown.</p></section>
+    </aside>
+
+    <script type="module" src="/static/viewer.mjs"></script>
+  </body>
+</html>

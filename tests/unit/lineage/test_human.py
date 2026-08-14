@@ -27,6 +27,9 @@ from graphene.models import (
     MemoryRevision,
     MemoryState,
     ScopeId,
+    SourceKind,
+    TruthKind,
+    LineageAuthority,
     VerifiedHead,
 )
 
@@ -315,6 +318,81 @@ def test_real_run_derives_exact_private_review_and_explicit_memory_decision(
     assert GOLDEN.memory.correction.encode() not in canonical_json_bytes(
         [event.model_dump(mode="json") for event in run.store.tail(run.run_id, 0, 256)]
     )
+
+
+def test_simulated_fixture_decisions_are_explicit_and_provenance_locked(tmp_path):
+    ready = _review_ready(tmp_path)
+    run, workflow = ready.run, ready.workflow
+    asked = workflow.ask_clarification(
+        run.run_id,
+        _head(ready.test_receipt),
+        write_event_id=ready.write.event_id,
+        hunk_id=ready.hunk.hunk_id,
+        correction=GOLDEN.memory.correction,
+        idempotency_key="fixture_question_001",
+    )
+    question = ClarificationQuestion.model_validate(
+        json.loads(
+            run.artifacts.resolve(asked.source_ref.kind.value, asked.source_ref.id)
+        )["question"]
+    )
+    answered = workflow.answer_clarification(
+        run.run_id,
+        _head(asked),
+        question_id=question.question_id,
+        choice=ScopeId.ALL_AUTH,
+        idempotency_key="fixture_answer_001",
+        simulated_fixture=True,
+    )
+    with pytest.raises(HumanConflict, match="provenance"):
+        workflow.record_feedback(
+            run.run_id,
+            _head(answered),
+            question_id=question.question_id,
+            idempotency_key="fixture_feedback_wrong_001",
+        )
+    feedback = workflow.record_feedback(
+        run.run_id,
+        _head(answered),
+        question_id=question.question_id,
+        idempotency_key="fixture_feedback_001",
+        simulated_fixture=True,
+    )
+    proposed = workflow.propose_memory(
+        run.run_id,
+        _head(feedback),
+        feedback_id=feedback.payload["feedback_id"],
+        idempotency_key="fixture_proposed_001",
+    )
+    decided = workflow.decide_memory(
+        run.run_id,
+        _head(proposed),
+        memory_id=proposed.payload["memory_id"],
+        revision=proposed.payload["revision"],
+        decision=MemoryDecisionValue.APPROVE,
+        idempotency_key="fixture_memory_001",
+        simulated_fixture=True,
+    )
+
+    for event in (answered, feedback, decided):
+        assert event.truth_kind == TruthKind.SIMULATED_FIXTURE
+        assert event.authority == LineageAuthority.SIMULATED_FIXTURE
+        assert event.source_ref.kind == SourceKind.SIMULATED_FIXTURE
+    answer_record = json.loads(
+        run.artifacts.resolve(answered.source_ref.kind.value, answered.source_ref.id)
+    )
+    assert answer_record["answer"]["actor"] == "simulated_fixture"
+    decided_ref = next(
+        reference
+        for reference in decided.references
+        if reference.kind == EvidenceKind.MEMORY_REVISION
+        and reference.sha256 == decided.payload["memory_sha256"]
+    )
+    memory = MemoryRevision.model_validate_json(
+        run.artifacts.resolve(decided_ref.kind.value, decided_ref.id)
+    )
+    assert memory.decision is not None
+    assert memory.decision.actor == "simulated_fixture"
 
 
 def test_stale_cross_run_wrong_hunk_test_and_substitution_fail_before_append(

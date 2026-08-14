@@ -1,4 +1,6 @@
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -8,14 +10,24 @@ from graphene.models import (
     ContextBrief,
     Event,
     EventInput,
+    EvidenceKind,
     EvidenceReference,
     FileVersion,
     LineageAuthority,
     LineageEventType,
     LineageOperation,
     SourceReference,
+    SourceKind,
     TruthKind,
 )
+
+
+def test_v2_contract_tracks_runtime_public_enums_and_demo_command():
+    contract = json.loads(Path("contracts/lineage_v2.json").read_text())
+    assert contract["truth_kinds"] == [item.value for item in TruthKind]
+    assert contract["evidence_kinds"] == [item.value for item in EvidenceKind]
+    assert contract["source_kinds"] == [item.value for item in SourceKind]
+    assert "demo" in contract["cli"]
 
 
 def _source() -> SourceReference:
@@ -109,6 +121,43 @@ def test_tool_events_require_wrapper_identity_and_reject_raw_payloads():
 
     with pytest.raises(ValidationError, match="truth and authority"):
         _draft(authority=LineageAuthority.OPERATOR_REQUEST)
+
+
+def test_simulated_fixture_provenance_is_limited_to_gate_events():
+    simulated_source = SourceReference(
+        kind="simulated_fixture", id="fixture_1", sha256="f" * 64
+    )
+    answer = _draft(
+        event_type=LineageEventType.CLARIFICATION_ANSWERED,
+        truth_kind=TruthKind.SIMULATED_FIXTURE,
+        authority=LineageAuthority.SIMULATED_FIXTURE,
+        source_ref=simulated_source,
+        payload={
+            "answer_id": "answer_1",
+            "answer_sha256": "a" * 64,
+            "choice": "all_auth",
+            "question_id": "question_1",
+            "status": "answered",
+        },
+    )
+    assert answer.truth_kind == TruthKind.SIMULATED_FIXTURE
+
+    with pytest.raises(ValidationError, match="truth and authority"):
+        _draft(
+            truth_kind=TruthKind.SIMULATED_FIXTURE,
+            authority=LineageAuthority.SIMULATED_FIXTURE,
+            source_ref=simulated_source,
+        )
+    with pytest.raises(ValidationError, match="source reference"):
+        _draft(
+            event_type=LineageEventType.CLARIFICATION_ANSWERED,
+            truth_kind=TruthKind.SIMULATED_FIXTURE,
+            authority=LineageAuthority.SIMULATED_FIXTURE,
+            source_ref=SourceReference(
+                kind="operator_request", id="fixture_1", sha256="f" * 64
+            ),
+            payload=answer.payload,
+        )
 
 
 def test_file_version_ids_are_content_bound():

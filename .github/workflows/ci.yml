@@ -81,7 +81,7 @@ jobs:
           tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_or_write_host_files_or_use_network
 
   frontend:
-    name: Node 22 frontend
+    name: Node 22 legacy + v2 viewer
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -90,4 +90,6 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: node --test frontend/test/*.test.mjs
+      - run: node --test tests/frontend/*.mjs
       - run: node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs
+      - run: node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs

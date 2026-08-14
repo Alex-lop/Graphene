@@ -29,5 +29,5 @@ packages = ["backend/graphene"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-pythonpath = ["backend"]
+pythonpath = ["backend", "."]
 testpaths = ["tests"]
