@@ -80,12 +80,21 @@ export function normalizeNode(raw) {
     runId: text(node.run_id) || null,
     sequence: Number.isInteger(node.sequence ?? node.seq) ? (node.sequence ?? node.seq) : null,
     eventId: text(node.event_id) || null,
+    recordedAt: text(node.recorded_at) || null,
     stage: text(node.stage) || null,
     activity: Math.min(1000, count(node.activity_count ?? node.activity, 1)),
     sourceRef: reference(node.source_ref ?? node.evidence_ref),
     digest: text(node.digest ?? node.sha256 ?? node.source_ref?.sha256 ?? node.evidence_ref?.sha256) || null,
     metadata,
   };
+}
+
+export function latestNodeId(nodes) {
+  return [...nodes].sort((left, right) =>
+    (Date.parse(left.recordedAt) || -Infinity) - (Date.parse(right.recordedAt) || -Infinity) ||
+    Number(!left.id.startsWith("run:")) - Number(!right.id.startsWith("run:")) ||
+    left.id.localeCompare(right.id)
+  ).at(-1)?.id ?? null;
 }
 
 export function normalizeEdge(raw) {
@@ -137,7 +146,7 @@ export function createState(snapshot = {}) {
     attention: record(reviewBrief.attention ?? snapshot.attention),
     stages: Array.isArray(snapshot.stages) ? snapshot.stages : [],
     currentNeighborhood: Array.isArray(snapshot.current_neighborhood) ? snapshot.current_neighborhood.filter((id) => typeof id === "string") : [],
-    currentId: text(snapshot.current_id) || null,
+    currentId: text(snapshot.current_id) || latestNodeId(nodes.values()),
     supportPaths: Array.isArray(snapshot.support_paths) ? snapshot.support_paths.map(record) : [],
     captureBoundary: Array.isArray(snapshot.capture_boundary) ? snapshot.capture_boundary : [],
     nodes,

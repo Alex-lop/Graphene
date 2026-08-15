@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   activityRadius, applyDelta, applyThrough, attentionFact, createState, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
-  reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
+  latestNodeId, reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
   truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
@@ -152,6 +152,20 @@ test("atomic reset envelopes replace the complete graph", () => {
   assert.deepEqual([...reset.nodes], [["agent-a", reset.nodes.get("agent-a")]]);
   assert.equal(reset.cursor, "reset-2");
   assert.equal(deltaSubjectId({ type: "reset", current_id: "agent-a", snapshot: replacement }), "agent-a");
+});
+
+test("settled snapshots derive the same latest visible decision anchor", () => {
+  const state = createState({
+    nodes: [
+      { id: "run:z", kind: "agent", label: "Run", recorded_at: "2026-08-15T12:00:02Z" },
+      { id: "event:a", kind: "promotion", label: "Decision A", recorded_at: "2026-08-15T12:00:02Z" },
+      { id: "event:z", kind: "promotion", label: "Decision Z", recorded_at: "2026-08-15T12:00:02Z" },
+      { id: "event:old", kind: "test", label: "Older", recorded_at: "2026-08-15T12:00:01Z" },
+    ],
+    edges: [],
+  });
+  assert.equal(state.currentId, "event:z", "ties prefer a non-run node and then stable ID");
+  assert.equal(latestNodeId(state.nodes.values()), "event:z");
 });
 
 test("HTTP invalid-evidence responses are parsed as terminal reasons", async () => {
@@ -308,6 +322,7 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(source, /VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION/);
   assert.match(source, /config\.replay === true \? "VERIFIED REPLAY" : live \? "LIVE"/);
   assert.match(source, /event\.target !== \$\("canvas"\)/, "graph keys are intercepted only while the canvas is focused");
+  assert.match(source, /replayIndex = deltaLog\.length;\s*state = applyThrough\(initialSnapshot, deltaLog, replayIndex\)/, "verified replay opens on the final decision checkpoint");
 });
 
 test("the checked-in sanitized replay traverses the live reducer", () => {

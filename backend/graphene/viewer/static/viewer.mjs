@@ -428,7 +428,17 @@ async function stream() {
 async function start() {
   buildFilters();
   let payload;
-  if (config.rootRunId) {
+  if (config.replay === true) {
+    const response = await fetch(config.replayUrl ?? "/static/replay.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`replay unavailable (${response.status})`);
+    payload = await response.json();
+    initialSnapshot = payload.snapshot;
+    deltaLog = payload.deltas ?? [];
+    live = false;
+    paused = true;
+    replayIndex = deltaLog.length;
+    state = applyThrough(initialSnapshot, deltaLog, replayIndex);
+  } else if (config.rootRunId) {
     const response = await request(endpoint(`/runs/${encodeURIComponent(config.rootRunId)}/snapshot`));
     const invalidDetail = await evidenceInvalidResponse(response);
     if (invalidDetail) {
@@ -458,7 +468,9 @@ async function start() {
     initialSnapshot = payload.snapshot;
     deltaLog = payload.deltas ?? [];
     live = false;
-    paused = false;
+    paused = true;
+    replayIndex = deltaLog.length;
+    state = applyThrough(initialSnapshot, deltaLog, replayIndex);
   }
   state ??= createState(initialSnapshot);
   currentId = state.currentId;
