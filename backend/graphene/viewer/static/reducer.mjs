@@ -404,6 +404,25 @@ export function verifiedSupportPath(state, selectedId) {
   return { nodeIds, edgeIds };
 }
 
+export function relationshipReceipt(state, edgeId) {
+  const edge = state.edges.get(edgeId);
+  const source = edge && state.nodes.get(edge.source);
+  const target = edge && state.nodes.get(edge.target);
+  if (!edge || !source || !target) return null;
+  return {
+    source: source.label,
+    target: target.label,
+    kind: edge.kind,
+    relationshipClass: edge.relationshipClass ?? "not established",
+    supportPath: edge.supportPath,
+    runId: edge.runId,
+    sequence: edge.sequence,
+    eventId: edge.eventId,
+    sourceRef: edge.sourceRef,
+    digest: edge.digest,
+  };
+}
+
 export function storyNodeIds(state, currentId, selectedId = null, focusedFact = null) {
   const ids = new Set();
   if (focusedFact) {

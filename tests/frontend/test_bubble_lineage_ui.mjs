@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   activityRadius, applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
-  latestNodeId, reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
+  latestNodeId, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
   truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
@@ -230,6 +230,15 @@ test("verified support paths use only projected directed allowlisted relationshi
   assert.equal(verifiedSupportPath(fallback, "result-a").edgeIds.has("invented"), false);
 });
 
+test("relationship receipts expose only committed public provenance", () => {
+  const receipt = relationshipReceipt(createState(proofSnapshot), "support-4");
+  assert.deepEqual(receipt, {
+    source: "Bound test", target: "app/example.py", kind: "binds_path", relationshipClass: "verified_support", supportPath: true,
+    runId: null, sequence: null, eventId: null, sourceRef: null, digest: null,
+  });
+  assert.equal(relationshipReceipt(createState(proofSnapshot), "missing"), null);
+});
+
 test("Review Brief renders contract facts, exact unknowns, attention, stages, and truth labels", () => {
   const state = createState(proofSnapshot);
   const brief = reviewBriefFacts(state);
@@ -331,6 +340,7 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /Candidate \/ changed paths/);
   assert.match(html, /Inherited context: included and excluded/);
   assert.match(html, /Verified support relationships/);
+  assert.match(html, /Focused review fact/);
   assert.doesNotMatch(html, />Evidence path</);
   assert.match(source, /existing\.data\(element\.data\)/, "normal updates reconcile existing Cytoscape elements");
   assert.doesNotMatch(source, /cy\.elements\(\)\.remove\(\)/, "normal updates do not rebuild the graph");
@@ -339,6 +349,8 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(source, /VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION/);
   assert.match(source, /config\.replay === true \? "VERIFIED REPLAY" : live \? "LIVE"/);
   assert.match(source, /event\.target !== \$\("canvas"\)/, "graph keys are intercepted only while the canvas is focused");
+  assert.match(source, /selectEdge\(edge\.id\)/, "relationship rows open their own provenance receipt");
+  assert.match(source, /detail\.source_ref\?\.sha256/, "node detail compares the structured public reference digest");
   assert.match(source, /replayIndex = deltaLog\.length;\s*state = applyThrough\(initialSnapshot, deltaLog, replayIndex\)/, "verified replay opens on the final decision checkpoint");
 });
 

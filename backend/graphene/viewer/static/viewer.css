@@ -99,6 +99,11 @@ h2 { margin: 0; font-size: 18px; }
 .filter-dot--handoff { background: #9a88bd; }
 .filters button[aria-pressed="false"] { opacity: .38; filter: grayscale(1); }
 button:hover, button:focus-visible, select:focus-visible, input:focus-visible { color: var(--ink); border-color: var(--silver); outline: 2px solid transparent; }
+.focus-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px; background: rgba(111,143,166,.13); border-bottom: 1px solid var(--line); }
+.focus-summary div { display: grid; gap: 3px; min-width: 0; }
+.focus-summary strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.focus-summary span { color: var(--muted); font-size: 10px; }
+.focus-summary button { flex: none; min-height: 32px; padding: 6px 9px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 10px; }
 .truth-legend { display: flex; gap: 7px; padding: 7px 14px; overflow-x: auto; color: var(--muted); border-bottom: 1px solid var(--line); font-size: 8px; white-space: nowrap; }
 .truth-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .truth-legend b { padding: 2px 4px; color: var(--silver); border: 1px solid currentColor; border-radius: 3px; font-size: 7px; }

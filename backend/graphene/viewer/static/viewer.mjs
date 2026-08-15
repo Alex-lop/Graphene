@@ -1,7 +1,7 @@
 import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
   REVIEW_SECTIONS, activityRadius, applyDelta, applyThrough, attentionFact, createState,
-  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, projectionCounts, reviewBriefFacts,
+  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, projectionCounts, relationshipReceipt, reviewBriefFacts,
   stageGroups, statePositions, statusBadgeData, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
@@ -176,6 +176,13 @@ function renderDecisionReceipt() {
   }
 }
 
+function renderFocusSummary() {
+  if (!focusedFact) { $("focus-summary").hidden = true; return; }
+  $("focus-summary").hidden = false;
+  setText("focus-title", focusedFact.value);
+  setText("focus-counts", `${focusedFact.nodeIds.length} record${focusedFact.nodeIds.length === 1 ? "" : "s"} · ${focusedFact.edgeIds.length} explicit relationship${focusedFact.edgeIds.length === 1 ? "" : "s"}`);
+}
+
 function renderStages() {
   $("stage-story").replaceChildren();
   for (const stage of stageGroups(state)) {
@@ -202,7 +209,7 @@ function renderList(view) {
     const relationship = edge.relationshipLabel ?? edge.relationshipClass?.replaceAll("_", " ") ?? "untyped explicit relationship";
     button.dataset.focusId = `relationship:${edge.id}`;
     button.textContent = `${nodes.get(edge.source).label} — ${relationship} / ${edge.kind} → ${nodes.get(edge.target).label}`;
-    button.addEventListener("click", () => selectNode(edge.target));
+    button.addEventListener("click", () => selectEdge(edge.id));
     item.append(button);
     $("relationships").append(item);
   }
@@ -238,6 +245,7 @@ function render(organize = false) {
       ],
     });
     cy.on("tap", "node", (event) => selectNode(event.target.id()));
+    cy.on("tap", "edge", (event) => selectEdge(event.target.id()));
     cy.on("tap", (event) => { if (event.target === cy) clearPath(); });
   } else {
     cy.batch(() => {
@@ -258,6 +266,7 @@ function render(organize = false) {
   if (organize) cy.fit(undefined, 62);
   renderBrief();
   renderDecisionReceipt();
+  renderFocusSummary();
   renderStages();
   renderList(view);
   $("canvas-state").hidden = view.nodes.length > 0;
@@ -321,52 +330,67 @@ function focusFact(fact) {
 function clearPath() {
   const changed = selectedId !== null || focusedFact !== null;
   cy?.elements().removeClass("faded path"); selectedId = null; focusedFact = null;
-  if (changed && topologyScope === "decision") render();
+  if (changed && topologyScope === "decision") render(); else renderFocusSummary();
+}
+
+function openDrawer(kind, title, fields, limitations, status) {
+  lastFocused = document.activeElement;
+  lastFocusId = document.activeElement?.dataset?.focusId ?? null;
+  setText("drawer-kind", kind);
+  setText("drawer-title", title);
+  $("drawer-fields").replaceChildren();
+  for (const [label, value] of fields) {
+    const term = document.createElement("dt"); const description = document.createElement("dd");
+    term.textContent = String(label).replaceAll("_", " "); description.textContent = String(value ?? "Not exposed");
+    $("drawer-fields").append(term, description);
+  }
+  setText("drawer-limitations", limitations);
+  setText("drawer-state", status);
+  $("drawer").hidden = false;
+  $("drawer-close").focus();
+}
+
+function selectEdge(id) {
+  const receipt = relationshipReceipt(state, id);
+  if (!receipt) return;
+  openDrawer("EXPLICIT RELATIONSHIP", `${receipt.source} → ${receipt.target}`, [
+    ["Source", receipt.source], ["Relationship class", receipt.relationshipClass], ["Recorded kind", receipt.kind], ["Target", receipt.target],
+    ["Decision support path", receipt.supportPath ? "Included" : "Not included"], ["Run", receipt.runId], ["Sequence", receipt.sequence],
+    ["Event", receipt.eventId], ["Source reference", receipt.sourceRef], ["Digest", receipt.digest],
+  ], "This receipt records an explicit relationship; it does not establish causality, correctness, relevance, or hidden reasoning. Private artifact bytes remain outside this public view.", "Showing a sanitized relationship receipt.");
 }
 
 async function selectNode(id, highlightSupport = true) {
   selectedId = id;
   if (highlightSupport) focusedFact = null;
+  renderFocusSummary();
   const node = state.nodes.get(id);
   if (!node) return;
-  lastFocused = document.activeElement;
-  lastFocusId = document.activeElement?.dataset?.focusId ?? null;
   cy.getElementById(id).select();
   if (highlightSupport) highlightVerifiedSupport(id);
-  setText("drawer-kind", node.kind.replaceAll("_", " ").toUpperCase());
-  setText("drawer-title", node.label);
-  $("drawer-fields").replaceChildren();
   const fields = [
     ["Meaning", node.label], ["Status", node.status], ["Stage", node.stage ?? "not established by captured evidence"], ["Run", node.runId ?? "Shared across run family"],
     ["Sequence", node.sequence ?? "Not exposed"], ["Truth kind", truthLabel(node.truthKind)], ["Activity", node.activity],
     ["Source reference", node.sourceRef ?? "Not exposed"], ["Digest", node.digest ?? "Not exposed"], ...metadataLines(node.metadata),
   ];
-  for (const [label, value] of fields) {
-    const term = document.createElement("dt"); const description = document.createElement("dd");
-    term.textContent = String(label).replaceAll("_", " "); description.textContent = String(value);
-    $("drawer-fields").append(term, description);
-  }
   const limitations = Array.isArray(node.metadata.limitations) && node.metadata.limitations.length
     ? node.metadata.limitations.join(" ")
     : "Node-specific limitations were not established by captured evidence.";
-  setText("drawer-limitations", `${limitations} This bounded public view does not expose private artifact bytes, prompts, raw diffs, or test output.`);
-  $("drawer").hidden = false;
-  setText("drawer-state", "Showing sanitized projection data. Loading bounded server detail…");
-  $("drawer-close").focus();
+  openDrawer(node.kind.replaceAll("_", " ").toUpperCase(), node.label, fields, `${limitations} This bounded public view does not expose private artifact bytes, prompts, raw diffs, or test output.`, "Showing sanitized projection data. Loading bounded server detail…");
   if (live && state.rootRunId) {
     try {
       const response = await request(rootPath(`/nodes/${encodeURIComponent(id)}`));
       if (!response.ok) throw new Error(`detail unavailable (${response.status})`);
       const detail = await response.json();
       if (selectedId !== id) return;
-      setText("drawer-state", detail.digest && node.digest && detail.digest !== node.digest ? "Detail digest differs; projection remains authoritative." : "Bounded detail matches the selected public node.");
+      const detailDigest = detail.source_ref?.sha256;
+      setText("drawer-state", detailDigest && node.digest && detailDigest !== node.digest ? "Server detail digest differs; reverify authoritative lineage before relying on it." : "Bounded detail matches the selected public reference.");
     } catch (error) { if (selectedId === id) setText("drawer-state", `Public summary shown; ${error.message}.`); }
   } else setText("drawer-state", "Checked-in sanitized replay detail.");
 }
 
 function closeDrawer() {
   $("drawer").hidden = true;
-  selectedId = null;
   clearPath();
   const replacement = lastFocusId ? [...document.querySelectorAll("[data-focus-id]")].find((element) => element.dataset.focusId === lastFocusId) : null;
   (replacement ?? lastFocused)?.focus();
@@ -515,6 +539,7 @@ $("evidence-path").addEventListener("click", () => selectedId ? highlightVerifie
 $("decision-view").addEventListener("click", () => { topologyScope = "decision"; $("decision-view").setAttribute("aria-pressed", "true"); $("full-view").setAttribute("aria-pressed", "false"); render(); cy?.fit(undefined, 62); });
 $("full-view").addEventListener("click", () => { topologyScope = "full"; $("decision-view").setAttribute("aria-pressed", "false"); $("full-view").setAttribute("aria-pressed", "true"); render(); cy?.fit(undefined, 62); });
 $("reset-filters").addEventListener("click", () => { enabledGroups.clear(); groups.forEach(([id]) => enabledGroups.add(id)); document.querySelectorAll("[data-group]").forEach((button) => button.setAttribute("aria-pressed", "true")); clearPath(); render(); });
+$("clear-focus").addEventListener("click", clearPath);
 $("drawer-close").addEventListener("click", closeDrawer);
 $("play").addEventListener("click", () => { paused = !paused; if (live && !paused) { rebuild(deltaLog.length); pending = []; } updatePlay(); });
 $("step").addEventListener("click", () => { paused = true; step(); });
