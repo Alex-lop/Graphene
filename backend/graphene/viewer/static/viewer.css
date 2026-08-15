@@ -59,6 +59,17 @@ main { width: min(1600px, calc(100% - 28px)); margin: 14px auto 40px; }
 .truth-chip[data-truth="simulated_fixture"] { border-style: dashed; }
 .truth-chip[data-truth="human_attested"] { border-width: 2px; }
 .attention .brief-fact { background: transparent; padding: 0; }
+.decision-receipt { margin: 12px 0; padding: 13px; background: rgba(37,42,46,.48); border: 1px solid var(--line); border-radius: 12px; }
+.decision-receipt h2 { margin-bottom: 9px; font-size: 13px; }
+.decision-receipt dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 11px; }
+.decision-receipt dl div { min-width: 0; padding: 7px; background: rgba(75,83,90,.2); border-radius: 7px; }
+.decision-receipt dd { white-space: normal; }
+.decision-receipt h3 { margin: 0 0 6px; color: var(--silver); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.decision-receipt ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.decision-receipt li { display: grid; gap: 3px; padding: 7px; background: rgba(75,83,90,.16); border-radius: 7px; }
+.decision-receipt code { overflow-wrap: anywhere; font-size: 10px; }
+.decision-receipt li span { color: var(--muted); font-size: 9px; }
+.decision-receipt li span[data-state="bound"] { color: var(--ink); font-weight: 650; }
 .viewer-heading { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 20px; }
 .eyebrow { margin: 0 0 5px; }
 h1, h2, h3, p { margin-top: 0; }

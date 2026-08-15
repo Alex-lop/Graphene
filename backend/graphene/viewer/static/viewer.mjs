@@ -1,7 +1,7 @@
 import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
   REVIEW_SECTIONS, activityRadius, applyDelta, applyThrough, attentionFact, createState,
-  deltaSubjectId, evidenceInvalidResponse, headSummary, projectionCounts, reviewBriefFacts,
+  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, projectionCounts, reviewBriefFacts,
   stageGroups, statePositions, statusBadgeData, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
@@ -156,6 +156,26 @@ function renderBrief() {
   }
 }
 
+function renderDecisionReceipt() {
+  const receipt = decisionReceipt(state);
+  const labels = { required: "Decision required", recorded: "Terminal outcome recorded", not_open: "No decision gate open yet" };
+  setText("receipt-gate", labels[receipt.state]);
+  setText("receipt-outcome", receipt.outcomeKind.replaceAll("_", " "));
+  setText("receipt-limits", receipt.explicitLimitCount);
+  $("path-bindings").replaceChildren();
+  const paths = receipt.paths.length ? receipt.paths : [{ path: "Exact changed paths not established", boundToPassingReceipt: false }];
+  for (const item of paths) {
+    const row = document.createElement("li");
+    const path = document.createElement("code");
+    const status = document.createElement("span");
+    path.textContent = item.path;
+    status.textContent = item.boundToPassingReceipt ? "Passing fixed-test receipt bound" : "Bound passing receipt not established";
+    status.dataset.state = item.boundToPassingReceipt ? "bound" : "gap";
+    row.append(path, status);
+    $("path-bindings").append(row);
+  }
+}
+
 function renderStages() {
   $("stage-story").replaceChildren();
   for (const stage of stageGroups(state)) {
@@ -237,6 +257,7 @@ function render(organize = false) {
   }
   if (organize) cy.fit(undefined, 62);
   renderBrief();
+  renderDecisionReceipt();
   renderStages();
   renderList(view);
   $("canvas-state").hidden = view.nodes.length > 0;

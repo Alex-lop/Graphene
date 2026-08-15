@@ -36,6 +36,17 @@
             <h2 id="attention-heading">Decision state</h2>
             <div id="attention-fact" role="status" aria-live="polite"></div>
           </section>
+          <section class="decision-receipt" aria-labelledby="receipt-heading">
+            <p class="eyebrow">Candidate receipt</p>
+            <h2 id="receipt-heading">Decision provenance</h2>
+            <dl>
+              <div><dt>Gate</dt><dd id="receipt-gate">Loading</dd></div>
+              <div><dt>Outcome</dt><dd id="receipt-outcome">not established</dd></div>
+              <div><dt>Explicit limits</dt><dd id="receipt-limits">0</dd></div>
+            </dl>
+            <h3>Changed path / fixed-test bindings</h3>
+            <ul id="path-bindings"></ul>
+          </section>
           <div id="brief-sections" class="brief-sections">
             <section aria-labelledby="brief-candidate-heading"><h2 id="brief-candidate-heading">Candidate / changed paths</h2><ul id="brief-candidate"></ul></section>
             <section aria-labelledby="brief-evidence-heading"><h2 id="brief-evidence-heading">Verified evidence</h2><ul id="brief-evidence"></ul></section>

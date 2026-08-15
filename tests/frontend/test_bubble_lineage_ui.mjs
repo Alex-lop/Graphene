@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  activityRadius, applyDelta, applyThrough, attentionFact, createState, deltaSubjectId,
+  activityRadius, applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
   latestNodeId, reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
   truthLabel, verifiedSupportPath, visibleGraph,
@@ -244,6 +244,18 @@ test("Review Brief renders contract facts, exact unknowns, attention, stages, an
   assert.notEqual(truthLabel("simulated_fixture"), truthLabel("human_attested"));
 });
 
+test("decision receipt distinguishes gates, terminal outcomes, and exact test bindings", () => {
+  const recorded = decisionReceipt(createState(proofSnapshot));
+  assert.equal(recorded.state, "recorded");
+  assert.equal(recorded.outcomeKind, "isolated_local_commit");
+  assert.deepEqual(recorded.paths, [{ path: "app/example.py", boundToPassingReceipt: false }]);
+  assert.equal(recorded.explicitLimitCount, 1);
+
+  const bound = structuredClone(proofSnapshot);
+  bound.review_brief.sections.find(({ key }) => key === "candidate").facts.push({ id: "candidate:bound_test", section: "candidate", status: "established", text: "Passing receipt is bound.", truth_kind: "runtime_observed", node_ids: ["test-a", "file-a"], edge_ids: ["support-4"], metadata: { passed: true } });
+  assert.equal(decisionReceipt(createState(bound)).paths[0].boundToPassingReceipt, true);
+});
+
 test("decision neighborhood and counts distinguish visible, filtered, collapsed, and omitted", () => {
   const state = createState(proofSnapshot);
   const story = storyNodeIds(state, "result-a");
@@ -334,11 +346,13 @@ test("the checked-in sanitized replay traverses the live reducer", () => {
   const replay = JSON.parse(readFileSync(new URL("../../backend/graphene/viewer/static/replay.json", import.meta.url), "utf8"));
   let state = createState(replay.snapshot);
   const attention = [state.attention];
+  const receipts = [decisionReceipt(state)];
   for (const envelope of replay.deltas) {
     assert.equal(envelope.type, "delta");
     assert.ok(Array.isArray(envelope.deltas));
     state = applyDelta(state, envelope);
     attention.push(state.attention);
+    receipts.push(decisionReceipt(state));
   }
   const replayTruth = "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION";
   assert.equal(replay.meta.mode, replayTruth);
@@ -351,6 +365,9 @@ test("the checked-in sanitized replay traverses the live reducer", () => {
   assert.ok([...state.nodes.values()].some((node) => node.metadata.operation === "open_evidence"));
   assert.ok([...state.edges.values()].some((edge) => edge.kind === "opens_reference" && edge.relationshipClass === "context_transfer"));
   assert.ok(attention.some((fact) => fact.status === "pending" && fact.metadata.pending_count === 1));
+  assert.ok(receipts.some((receipt) => receipt.state === "required"));
+  assert.equal(receipts.at(-1).state, "recorded");
+  assert.ok(receipts.at(-1).paths.every(({ boundToPassingReceipt }) => boundToPassingReceipt));
   assert.deepEqual(state.reviewBrief.changed_paths, ["app/auth/limiter.py", "tests/test_security_policy.py"]);
   assert.match(reviewBriefFacts(state).context.find((fact) => fact.id === "context:included").value, /all_auth applies to app\/auth\/\*\*/);
   assert.match(attentionFact(state).value, /No unresolved Graphene decision/);

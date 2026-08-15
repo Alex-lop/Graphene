@@ -338,6 +338,23 @@ export function reviewBriefFacts(state) {
   return sections;
 }
 
+export function decisionReceipt(state) {
+  const sections = reviewBriefFacts(state);
+  const attention = attentionFact(state);
+  const outcomeKind = text(state.reviewBrief.outcome_kind, "not_established");
+  const changedPaths = Array.isArray(state.reviewBrief.changed_paths) ? state.reviewBrief.changed_paths.filter((path) => typeof path === "string") : [];
+  const boundPaths = new Set(Array.isArray(state.reviewBrief.bound_paths) ? state.reviewBrief.bound_paths.filter((path) => typeof path === "string") : []);
+  const testFact = sections.candidate.find((fact) => fact.id === "candidate:bound_test");
+  const receiptPassed = testFact?.status === "established" && testFact.metadata?.passed === true;
+  const pending = attention.status === "pending" || count(attention.metadata?.pending_count, 0) > 0;
+  return {
+    state: pending ? "required" : outcomeKind === "not_established" ? "not_open" : "recorded",
+    outcomeKind,
+    paths: changedPaths.map((path) => ({ path, boundToPassingReceipt: receiptPassed && boundPaths.has(path) })),
+    explicitLimitCount: sections.unknown.filter((fact) => fact.status === "not_established").length,
+  };
+}
+
 export function stageGroups(state) {
   if (state.stages.length) return state.stages.map((stage, index) => {
     const item = record(stage);
