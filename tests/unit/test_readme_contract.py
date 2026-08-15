@@ -16,7 +16,6 @@ ROOT = Path(__file__).parents[2]
 
 def test_canonical_docs_match_cli_driver_product_and_compatibility_contracts() -> None:
     readme = (ROOT / "README.md").read_text()
-    simple = (ROOT / "simplreadme.md").read_text()
     product = json.loads((ROOT / "contracts/product_proof.json").read_text())
     parser = cli_parser()
     commands = parser._subparsers._group_actions[0].choices
@@ -56,9 +55,7 @@ def test_canonical_docs_match_cli_driver_product_and_compatibility_contracts() -
     }
     for driver in product["drivers"].values():
         assert driver["command"] in readme
-        assert driver["command"] in simple
         assert driver["truth_label"] in readme
-        assert driver["truth_label"] in simple
 
     assert product["product_thesis"] in readme
     assert package["description"] == "Evidence-backed review and handoff for bounded coding-agent work"

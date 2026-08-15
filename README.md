@@ -114,7 +114,7 @@ scripted fixture / Google ADK fake / MCP
 
 The current path is `graphene` / `graphene-mcp`, the v2 lineage services, and the read-only viewer. `contracts/golden_path.json` and `contracts/graph_mvp.json` are shared operational fixture inputs; their legacy three-tool, API, loop, catalog-framework, and graph fields are not current product, driver, runtime, or outcome truth. `backend/graphene/app.py`, the root `frontend/`, and the root `Dockerfile` are compatibility-only legacy surfaces. The Docker image starts the mutable legacy HTTP demo with a persistent compatibility banner; it is not authoritative v2 and does not provide Linux fixed-test support.
 
-See the current [implementation status](IMPLEMENTATION_STATUS.md), [decision log](DECISIONS.md), [documentation history index](docs/HISTORY.md), [privacy boundary](docs/data_residency.md), and [executor threat model](docs/EXECUTOR_THREAT_MODEL.md).
+See the [documentation history index](docs/HISTORY.md), [privacy boundary](docs/data_residency.md), and [executor threat model](docs/EXECUTOR_THREAT_MODEL.md).
 
 ## CLI reference
 
@@ -155,7 +155,7 @@ node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/
 git diff --check
 ```
 
-The detailed implementation audit, proof matrix, local verification record, and remaining product blockers are in [`GRAPHENE_PRODUCT_PROOF_SPRINT_REVIEW.md`](GRAPHENE_PRODUCT_PROOF_SPRINT_REVIEW.md). Automated local gates pass; hosted Ubuntu CI, real-browser visual QA, and the five-person graph-necessity study are not claimed until they are actually run.
+Automated local gates pass; hosted Ubuntu CI, real-browser visual QA, and the five-person graph-necessity study are not claimed until they are actually run.
 
 ## Roadmap
 
@@ -165,5 +165,3 @@ The detailed implementation audit, proof matrix, local verification record, and 
 - **Later:** design equivalent Linux isolation and durable artifact retention only after evidence warrants them.
 
 Graph-to-agent retrieval, graph-generated prompts, and automatic context selection remain explicitly deferred.
-
-For the shortest path, read [`simplreadme.md`](simplreadme.md).
