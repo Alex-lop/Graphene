@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  activityRadius, applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
+  applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
-  latestNodeId, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
+  latestNodeId, outcomeLabel, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
   truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
@@ -210,8 +210,6 @@ test("filtering keeps only resolvable explicit relationships", () => {
   assert.deepEqual(view.edges, []);
   const after = statePositions(state, before);
   assert.deepEqual(after.get("file-a"), before.get("file-a"), "hide/show does not discard hidden positions");
-  assert.ok(activityRadius(1000) <= 72);
-  assert.ok(activityRadius(8) > activityRadius(1));
 });
 
 test("verified support paths use only projected directed allowlisted relationships", () => {
@@ -250,7 +248,11 @@ test("Review Brief renders contract facts, exact unknowns, attention, stages, an
   assert.deepEqual(stageGroups(state).map(({ id }) => id), ["source_work", "human_correction_scope", "approved_handoff", "consumer_work", "candidate_decision", "local_result"]);
   assert.equal(stageGroups(state)[0].status, "not established");
   assert.equal(truthLabel("simulated_fixture"), "SIMULATED FIXTURE — NOT HUMAN ATTESTATION");
+  assert.equal(truthLabel("model_proposed"), "MODEL PROPOSED");
+  assert.equal(truthLabel("evidence_bound"), "EVIDENCE BOUND");
   assert.notEqual(truthLabel("simulated_fixture"), truthLabel("human_attested"));
+  assert.equal(stageGroups(state)[2].label, "Handoff boundary");
+  assert.equal(outcomeLabel("graphene_receipt_only"), "Graphene receipt recorded · no commit established");
 });
 
 test("decision receipt distinguishes gates, terminal outcomes, and exact test bindings", () => {
@@ -297,13 +299,6 @@ test("scrub and resume rebuild through every received delta", () => {
   assert.equal(applyThrough(snapshot, deltas, deltas.length).nodes.get("agent-a").status, "completed");
 });
 
-test("status badges are fully encoded data URLs", () => {
-  const badge = statusBadgeData("#ef746f");
-  assert.match(badge, /^data:image\/svg\+xml,%3Csvg/);
-  assert.doesNotMatch(badge, /[\s"']/);
-  assert.match(decodeURIComponent(badge), /fill="#ef746f"/);
-});
-
 test("invalid evidence freezes the reducer", () => {
   const state = createState(snapshot);
   applyDelta(state, { op: "evidence_invalid", identity: "invalid:1", reason: "hash mismatch" });
@@ -339,7 +334,12 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /Needs attention now/);
   assert.match(html, /Candidate \/ changed paths/);
   assert.match(html, /Inherited context: included and excluded/);
-  assert.match(html, /Verified support relationships/);
+  assert.match(html, /Decision Provenance/);
+  assert.match(html, /Decision support bindings/);
+  assert.match(html, /Recorded decisions and corrections/);
+  assert.match(html, /aria-describedby="bounds selection-status"/);
+  assert.match(html, /id="selection-status"[^>]*aria-live="polite"/);
+  assert.doesNotMatch(html, /aria-modal="true"/);
   assert.match(html, /Focused review fact/);
   assert.doesNotMatch(html, />Evidence path</);
   assert.match(source, /existing\.data\(element\.data\)/, "normal updates reconcile existing Cytoscape elements");
@@ -347,7 +347,12 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(source, /config\.replay === true \? VERIFIED_REPLAY_LABEL/);
   assert.match(source, /VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION/);
-  assert.match(source, /config\.replay === true \? "VERIFIED REPLAY" : live \? "LIVE"/);
+  assert.match(source, /config\.replay === true \? "VERIFIED REPLAY" : live \? "EVENT FEED"/);
+  assert.doesNotMatch(source, /pulseCurrent|setInterval/);
+  assert.doesNotMatch(source, /activityRadius\(node\.activity\)/);
+  assert.match(source, /setAttribute\("aria-current", "step"\)/);
+  assert.match(source, /evidence class \$\{truthLabel\(node\.truthKind\)\}/);
+  assert.match(css, /\[tabindex\]:focus-visible/);
   assert.match(source, /event\.target !== \$\("canvas"\)/, "graph keys are intercepted only while the canvas is focused");
   assert.match(source, /selectEdge\(edge\.id\)/, "relationship rows open their own provenance receipt");
   assert.match(source, /detail\.source_ref\?\.sha256/, "node detail compares the structured public reference digest");
@@ -371,8 +376,8 @@ test("the checked-in sanitized replay traverses the live reducer", () => {
   assert.equal(replay.meta.truth_label, replayTruth);
   assert.equal(replay.meta.decision_proof, "SIMULATED FIXTURE — NOT HUMAN ATTESTATION");
   assert.equal(state.graphSha256, replay.meta.final_graph_sha256);
-  assert.ok([...state.nodes.values()].some((node) => node.id.startsWith("run:") && node.status === "PROMOTED"));
-  assert.ok([...state.nodes.values()].some((node) => node.kind === "promotion" && node.status === "PROMOTED"));
+  assert.ok([...state.nodes.values()].some((node) => node.id.startsWith("run:") && node.status === "PROMOTED" && node.displayStatus === "GRAPHENE RECEIPT RECORDED"));
+  assert.ok([...state.nodes.values()].some((node) => node.kind === "promotion" && node.label === "Graphene Receipt Recorded"));
   assert.ok([...state.edges.values()].some((edge) => edge.kind === "continued_as"));
   assert.ok([...state.nodes.values()].some((node) => node.metadata.operation === "open_evidence"));
   assert.ok([...state.edges.values()].some((edge) => edge.kind === "opens_reference" && edge.relationshipClass === "context_transfer"));

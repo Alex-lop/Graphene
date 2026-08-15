@@ -1,8 +1,8 @@
 import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
-  REVIEW_SECTIONS, activityRadius, applyDelta, applyThrough, attentionFact, createState,
-  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, projectionCounts, relationshipReceipt, reviewBriefFacts,
-  stageGroups, statePositions, statusBadgeData, storyNodeIds, truthLabel,
+  REVIEW_SECTIONS, applyDelta, applyThrough, attentionFact, createState,
+  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, outcomeLabel, projectionCounts, relationshipReceipt, reviewBriefFacts,
+  stageGroups, statePositions, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
 
@@ -11,7 +11,7 @@ const config = Object.freeze(window.__GRAPHENE_VIEWER__ ?? {});
 const VERIFIED_REPLAY_LABEL = "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION";
 const groups = Object.freeze([
   ["agent", "Agent", "#6f8fa6"], ["tool", "Tool", "#a9b4bc"], ["evidence", "File / evidence", "#7b9bb2"],
-  ["human", "Human / memory", "#d5ae73"], ["policy", "Policy", "#d77b75"], ["test", "Test", "#73aa91"], ["handoff", "Handoff / promotion", "#9a88bd"],
+  ["human", "Decision / memory", "#d5ae73"], ["policy", "Policy", "#d77b75"], ["test", "Test", "#73aa91"], ["handoff", "Handoff / outcome", "#9a88bd"],
 ]);
 const enabledGroups = new Set(groups.map(([id]) => id));
 const colorByGroup = Object.fromEntries(groups.map(([id, , color]) => [id, color]));
@@ -34,8 +34,6 @@ let lastFocusId = null;
 let topologyScope = "decision";
 let focusedFact = null;
 let renderFrame = null;
-let pulseTimer = null;
-let pulsingId = null;
 
 function setText(id, value) { $(id).textContent = String(value ?? "—"); }
 function request(url, options = {}) {
@@ -53,7 +51,7 @@ function metadataLines(metadata) {
 }
 
 function truthMark(truthKind) {
-  return ({ simulated_fixture: "SIM", human_attested: "HUMAN", policy_authoritative: "POLICY", runtime_observed: "OBS", server_derived: "DERIVED", evidence_bound: "BOUND" })[truthKind] ?? "FACT";
+  return ({ simulated_fixture: "SIM", human_attested: "HUMAN", policy_authoritative: "POLICY", runtime_observed: "OBS", server_derived: "DERIVED", evidence_bound: "BOUND", model_proposed: "MODEL" })[truthKind] ?? "UNKNOWN";
 }
 
 function restoreFocus(focusId) {
@@ -61,6 +59,8 @@ function restoreFocus(focusId) {
   [...document.querySelectorAll("[data-focus-id]")].find((element) => element.dataset.focusId === focusId)?.focus();
 }
 function runState() {
+  const outcome = outcomeLabel(state.reviewBrief.outcome_kind);
+  if (outcome) return outcome;
   const runs = [...state.nodes.values()].filter((node) => node.id.startsWith("run:"));
   return runs.find((node) => node.runId !== state.rootRunId)?.status
     ?? runs.find((node) => node.runId === state.rootRunId)?.status
@@ -89,38 +89,36 @@ function graphElements(view) {
   return [
     ...view.nodes.map((node) => {
       const negative = /denied|failed|invalid|rejected|blocked/.test(node.status.toLowerCase());
-      const positive = /passed|approved|promoted|completed|committed|allowed|verified/.test(node.status.toLowerCase());
-      const statusColor = negative ? "#ef746f" : node.truthKind === "simulated_fixture" ? "#9a88bd" : node.truthKind === "human_attested" ? "#d5ae73" : positive ? "#73aa91" : "#a9b4bc";
       return ({
       group: "nodes",
       data: {
         ...node,
-        displayLabel: `[${truthMark(node.truthKind)}] ${node.label}`,
-        size: activityRadius(node.activity),
+        displayLabel: `[${truthMark(node.truthKind)}] ${node.label}\n${node.displayStatus}`,
+        size: 58,
         color: colorByGroup[node.group],
-        borderColor: statusColor,
-        badge: statusBadgeData(statusColor),
+        borderColor: negative ? "#ef746f" : "#a9b4bc",
       },
       position: positions.get(node.id),
       classes: [node.id === currentId ? "current" : "", negative ? "negative" : "", `truth-${node.truthKind}`].filter(Boolean).join(" "),
     }); }),
     ...view.edges.map((edge) => ({
       group: "edges",
-      data: { ...edge, width: Math.min(8, 1.4 + Math.log2(1 + edge.activity) * 1.2) },
+      data: { ...edge, width: edge.supportPath ? 3 : 2 },
       classes: [edge.target === currentId ? "current" : "", edge.relationshipClass ? `relationship-${edge.relationshipClass}` : "relationship-untyped", edge.supportPath ? "support" : ""].filter(Boolean).join(" "),
     })),
   ];
 }
 
 function factButton(fact, prefix) {
-  const button = document.createElement("button");
+  const hasSupport = fact.nodeIds.length > 0 || fact.edgeIds.length > 0;
+  const button = document.createElement(hasSupport ? "button" : "div");
   const label = document.createElement("span");
   const value = document.createElement("span");
   const truth = document.createElement("span");
   const status = document.createElement("span");
-  button.type = "button";
+  if (hasSupport) button.type = "button";
   button.className = "brief-fact";
-  button.dataset.focusId = `${prefix}:${fact.id}`;
+  if (hasSupport) button.dataset.focusId = `${prefix}:${fact.id}`;
   label.className = "brief-fact__label";
   value.className = "brief-fact__value";
   truth.className = "truth-chip";
@@ -131,8 +129,6 @@ function factButton(fact, prefix) {
   truth.textContent = truthLabel(fact.truthKind);
   status.textContent = fact.status ? fact.status.replaceAll("_", " ").toUpperCase() : "CAPTURED";
   button.append(label, value, status, truth);
-  const hasSupport = fact.nodeIds.length > 0 || fact.edgeIds.length > 0;
-  button.disabled = !hasSupport;
   if (hasSupport) button.addEventListener("click", () => focusFact(fact));
   return button;
 }
@@ -140,7 +136,7 @@ function factButton(fact, prefix) {
 function renderBrief() {
   const attention = attentionFact(state);
   $("attention-fact").replaceChildren(factButton(attention, "attention"));
-  const pending = attention.id === "evidence-invalid" ? "invalid" : attention.status === "pending" ? "pending" : attention.value.replace(/\.$/, "") === "No unresolved Graphene decision" ? "clear" : "pending";
+  const pending = attention.id === "evidence-invalid" ? "invalid" : attention.status === "pending" || Number(attention.metadata?.pending_count) > 0 ? "pending" : "clear";
   document.querySelector(".attention").dataset.state = pending;
   $("brief-sections").hidden = pending === "invalid";
   if (pending === "invalid") return;
@@ -191,6 +187,7 @@ function renderStages() {
     button.type = "button";
     button.dataset.focusId = `stage:${stage.id}`;
     button.dataset.current = String(stage.id === state.reviewBrief.stage || stage.nodeIds.includes(currentId));
+    if (button.dataset.current === "true") button.setAttribute("aria-current", "step");
     button.textContent = stage.status ? `${stage.label} · ${stage.status}` : stage.label;
     button.disabled = stage.nodeIds.length === 0;
     if (stage.nodeIds.length) button.addEventListener("click", () => highlightElements(stage.nodeIds, []));
@@ -228,7 +225,7 @@ function render(organize = false) {
       container: $("canvas"), elements, layout: { name: "preset", fit: true, padding: 64 }, minZoom: 0.25, maxZoom: 2.4,
       wheelSensitivity: 0.25,
       style: [
-        { selector: "node", style: { "background-color": "data(color)", "background-image": "data(badge)", "background-fit": "none", "background-width": "18px", "background-height": "18px", "background-position-x": "78%", "background-position-y": "20%", width: "data(size)", height: "data(size)", label: "data(displayLabel)", color: "#f7fafb", "font-size": 10, "font-weight": 650, "text-wrap": "wrap", "text-max-width": 100, "text-valign": "center", "text-halign": "center", "border-width": 4, "border-color": "data(borderColor)", "border-opacity": 0.9, "overlay-opacity": 0 } },
+        { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: "data(displayLabel)", color: "#172026", "font-size": 9, "font-weight": 700, "text-wrap": "wrap", "text-max-width": 105, "text-valign": "center", "text-halign": "center", "border-width": 4, "border-color": "data(borderColor)", "border-opacity": 0.9, "overlay-opacity": 0 } },
         { selector: "edge", style: { width: "data(width)", "line-color": "#71808a", "target-arrow-color": "#71808a", "target-arrow-shape": "triangle", "curve-style": "bezier", opacity: 0.68, "arrow-scale": 0.72 } },
         { selector: "edge.support", style: { "line-color": "#dbe7ec", "target-arrow-color": "#dbe7ec", "line-style": "solid" } },
         { selector: "edge.relationship-authorization", style: { "line-style": "dashed", width: 5, "line-color": "#d5ae73", "target-arrow-color": "#d5ae73" } },
@@ -270,42 +267,28 @@ function render(organize = false) {
   renderStages();
   renderList(view);
   $("canvas-state").hidden = view.nodes.length > 0;
-  if (!view.nodes.length) setText("canvas-state", "No lineage matches the active filters.");
+  if (!view.nodes.length) setText("canvas-state", state.nodes.size ? "No lineage matches the active filters." : "No committed lineage records are available.");
   const counts = projectionCounts(state, view, enabledGroups, storyIds);
   setText("count-total", counts.total);
   setText("count-visible", counts.visible);
   setText("count-filtered", counts.filtered);
   setText("count-collapsed", counts.collapsed);
-  setText("bounds", `${counts.visible} / ${counts.total} nodes visible · ${counts.visibleEdges} / ${counts.totalEdges} edges · ${counts.filtered} filtered · ${counts.collapsed} collapsed · ${counts.omitted} omitted by cap`);
+  setText("bounds", `${counts.visible} / ${counts.total} records visible · ${counts.visibleEdges} / ${counts.totalEdges} relationships · ${counts.filtered} filtered · ${counts.collapsed} collapsed · ${counts.omitted} omitted by cap. Sequence does not prove causality.`);
   setText("verified-head", formatHead());
   setText("run-state", state.invalidReason ? "Evidence invalid" : runState());
   $("timeline").max = String(deltaLog.length);
   $("timeline").value = String(replayIndex);
+  $("timeline").setAttribute("aria-valuetext", `Checkpoint ${replayIndex} of ${deltaLog.length}`);
   setText("timeline-label", `${replayIndex} / ${deltaLog.length}`);
   if (state.invalidReason) showInvalid(state.invalidReason);
   else if (focusedFact) highlightElements(focusedFact.nodeIds, focusedFact.edgeIds);
   else if (selectedId) highlightVerifiedSupport(selectedId);
-  pulseCurrent();
   restoreFocus(focusId);
 }
 
 function scheduleRender() {
   if (renderFrame !== null) return;
   renderFrame = requestAnimationFrame(() => { renderFrame = null; render(); });
-}
-
-function pulseCurrent() {
-  if (prefersReducedMotion || pulsingId === currentId) return;
-  clearInterval(pulseTimer);
-  cy?.nodes().removeStyle("border-width");
-  cy?.edges().removeStyle("opacity");
-  pulsingId = currentId;
-  let bright = false;
-  pulseTimer = currentId ? setInterval(() => {
-    bright = !bright;
-    cy?.getElementById(currentId).style("border-width", bright ? 9 : 5);
-    cy?.edges().filter((edge) => edge.target().id() === currentId).style("opacity", bright ? 1 : .65);
-  }, 650) : null;
 }
 
 function highlightElements(nodeIds, edgeIds) {
@@ -369,8 +352,8 @@ async function selectNode(id, highlightSupport = true) {
   cy.getElementById(id).select();
   if (highlightSupport) highlightVerifiedSupport(id);
   const fields = [
-    ["Meaning", node.label], ["Status", node.status], ["Stage", node.stage ?? "not established by captured evidence"], ["Run", node.runId ?? "Shared across run family"],
-    ["Sequence", node.sequence ?? "Not exposed"], ["Truth kind", truthLabel(node.truthKind)], ["Activity", node.activity],
+    ["Meaning", node.label], ["Status", node.displayStatus], ["Stage", node.stage ?? "not established by captured evidence"], ["Run", node.runId ?? "Shared across run family"],
+    ["Sequence", node.sequence ?? "Not exposed"], ["Evidence class", truthLabel(node.truthKind)],
     ["Source reference", node.sourceRef ?? "Not exposed"], ["Digest", node.digest ?? "Not exposed"], ...metadataLines(node.metadata),
   ];
   const limitations = Array.isArray(node.metadata.limitations) && node.metadata.limitations.length
@@ -397,10 +380,6 @@ function closeDrawer() {
 }
 function showInvalid(reason) {
   if (state) state.invalidReason ??= reason;
-  clearInterval(pulseTimer);
-  pulsingId = null;
-  cy?.nodes().removeStyle("border-width");
-  cy?.edges().removeStyle("opacity");
   $("invalid").hidden = false;
   setText("invalid-reason", reason);
   setText("connection", "Stopped");
@@ -446,7 +425,7 @@ async function stream() {
       const invalidDetail = await evidenceInvalidResponse(response);
       if (invalidDetail) { showInvalid(invalidDetail); return; }
       if (!response.ok || !response.body) throw new Error(`stream rejected (${response.status})`);
-      setText("connection", config.replay === true ? "Verified replay" : "Live");
+      setText("connection", config.replay === true ? "Verified replay" : "Watching committed records");
       $("connection").dataset.state = config.replay === true ? "replay" : "live";
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffer = "";
@@ -525,8 +504,8 @@ async function start() {
   setText("mode", config.replay === true ? VERIFIED_REPLAY_LABEL : (payload.meta?.mode ?? "LOCAL VIEWER"));
   setText("truth-label", config.replay === true ? VERIFIED_REPLAY_LABEL : (payload.meta?.truth_label ?? "Committed and verified v2 SQLite lineage"));
   setText("driver-truth", `Google ADK Runner: ${payload.meta?.adk_runner ?? config.adkRunner ?? (config.driver === "adk-fake" ? "real Google ADK 2.5.0" : "not used")} · Gemini calls: ${payload.meta?.gemini_calls ?? config.geminiCalls ?? 0} · Evidence source: ${payload.meta?.evidence_source ?? config.evidenceSource ?? "committed and verified v2 SQLite lineage"}`);
-  setText("live-badge", config.replay === true ? "VERIFIED REPLAY" : live ? "LIVE" : "REPLAY");
-  setText("connection", config.replay === true ? "Verified replay" : live ? "Live" : "Offline fixture");
+  setText("live-badge", config.replay === true ? "VERIFIED REPLAY" : live ? "EVENT FEED" : "EVENT HISTORY");
+  setText("connection", config.replay === true ? "Verified replay" : live ? "Watching committed records" : "Offline fixture");
   $("connection").dataset.state = config.replay === true || !live ? "replay" : "live";
   render(true);
   if (live) stream(); else updatePlay();
@@ -547,7 +526,6 @@ $("speed").addEventListener("change", updatePlay);
 $("timeline").addEventListener("input", (event) => { paused = true; rebuild(Number(event.target.value)); updatePlay(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("drawer").hidden) closeDrawer();
-  if (event.key === "Tab" && !$("drawer").hidden) { event.preventDefault(); $("drawer-close").focus(); return; }
   if (event.target !== $("canvas")) return;
   if (!cy || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return;
   if (event.key === "Enter" && selectedId) { selectNode(selectedId); return; }
@@ -555,9 +533,13 @@ document.addEventListener("keydown", (event) => {
   const nodes = cy.nodes().sort((left, right) => left.id().localeCompare(right.id()));
   if (!nodes.length) return;
   event.preventDefault();
-  const index = Math.max(0, nodes.findIndex((node) => node.id() === selectedId));
-  selectedId = nodes[(index + (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) + nodes.length) % nodes.length].id();
+  const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+  const currentIndex = nodes.findIndex((node) => node.id() === selectedId);
+  const index = currentIndex < 0 ? (direction > 0 ? 0 : nodes.length - 1) : (currentIndex + direction + nodes.length) % nodes.length;
+  selectedId = nodes[index].id();
   cy.nodes().unselect(); cy.getElementById(selectedId).select();
+  const node = state.nodes.get(selectedId);
+  setText("selection-status", `${index + 1} of ${nodes.length}: ${node.kind}, ${node.label}, status ${node.displayStatus}, evidence class ${truthLabel(node.truthKind)}`);
 });
 
 start().catch((error) => {

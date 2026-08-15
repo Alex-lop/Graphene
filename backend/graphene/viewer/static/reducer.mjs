@@ -30,6 +30,7 @@ const KIND_GROUPS = Object.freeze({
 const text = (value, fallback = "") => typeof value === "string" && value.trim() ? value.trim() : fallback;
 const count = (value, fallback = 1) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : fallback;
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const displayStatus = (value) => value === "PROMOTED" ? "GRAPHENE RECEIPT RECORDED" : value;
 const reference = (value) => {
   if (typeof value === "string") return text(value) || null;
   const item = record(value);
@@ -40,7 +41,7 @@ const reference = (value) => {
 export const REVIEW_SECTIONS = Object.freeze([
   ["candidate", "Candidate / changed paths"],
   ["evidence", "Verified evidence"],
-  ["human", "Human intervention"],
+  ["human", "Recorded decisions and corrections"],
   ["context", "Inherited context: included and excluded"],
   ["outcome", "Outcome"],
   ["unknown", "Unknown / not captured"],
@@ -59,6 +60,7 @@ export function truthLabel(value) {
     runtime_observed: "RUNTIME OBSERVED",
     server_derived: "SERVER DERIVED",
     evidence_bound: "EVIDENCE BOUND",
+    model_proposed: "MODEL PROPOSED",
   })[text(value).toLowerCase()] ?? text(value, "NOT ESTABLISHED").replaceAll("_", " ").toUpperCase();
 }
 
@@ -70,12 +72,19 @@ export function normalizeNode(raw) {
   const node = record(raw);
   if (!text(node.id)) throw new TypeError("node needs a stable id");
   const metadata = record(node.metadata ?? node.data);
+  const label = text(node.public_label ?? node.label, "Unlabelled evidence")
+    .replaceAll("Approved Handoff", "Handoff Boundary")
+    .replace("Promotion Completed", "Graphene Receipt Recorded")
+    .replace("Promotion Approved", "Candidate Approval Recorded")
+    .replace("Promotion Denied", "Candidate Approval Denied");
+  const rawStatus = text(node.status, "observed");
   return {
     id: text(node.id),
     kind: text(node.kind, "evidence"),
     group: kindGroup(node.kind),
-    label: text(node.public_label ?? node.label, "Unlabelled evidence"),
-    status: text(node.status, "observed"),
+    label,
+    status: rawStatus,
+    displayStatus: displayStatus(rawStatus),
     truthKind: text(node.truth_kind ?? node.provenance, "verified_event"),
     runId: text(node.run_id) || null,
     sequence: Number.isInteger(node.sequence ?? node.seq) ? (node.sequence ?? node.seq) : null,
@@ -238,7 +247,8 @@ export function applyDelta(state, rawDelta) {
     const id = text(payload.id ?? payload.node_id);
     const existing = state.nodes.get(id);
     if (!existing) throw new TypeError(`status references an unknown node: ${id || "(missing)"}`);
-    state.nodes.set(id, { ...existing, status: text(payload.status, existing.status) });
+    const status = text(payload.status, existing.status);
+    state.nodes.set(id, { ...existing, status, displayStatus: displayStatus(status) });
   } else if (operation === "remove") {
     const id = text(payload.id);
     const removeKind = text(payload.remove_kind ?? delta.remove_kind).toLowerCase();
@@ -272,9 +282,14 @@ function nodeFact(node, value = node.label) {
 function normalizeFact(raw, key, index) {
   if (typeof raw === "string") return { id: `${key}:${index}`, label: raw, value: raw, truthKind: "server_derived", nodeIds: [], edgeIds: [] };
   const fact = record(raw);
+  const labels = {
+    "candidate:paths": "Changed paths", "candidate:hunks": "Hunk receipt", "candidate:bound_test": "Fixed-test binding",
+    "context:included": "Included context", "context:opened": "Opened context", "context:excluded": "Excluded context",
+    "outcome:current": "Recorded outcome",
+  };
   return {
     id: text(fact.id, `${key}:${index}`),
-    label: text(fact.label ?? fact.title ?? fact.section, "Captured fact"),
+    label: text(fact.label ?? fact.title, labels[fact.id] ?? (String(fact.id ?? "").startsWith("human:") ? "Recorded decision / correction" : "Captured fact")),
     value: text(fact.value ?? fact.text ?? fact.summary, "not established by captured evidence"),
     status: text(fact.status),
     truthKind: text(fact.truth_kind, "server_derived"),
@@ -355,6 +370,15 @@ export function decisionReceipt(state) {
   };
 }
 
+export function outcomeLabel(value) {
+  return ({
+    graphene_receipt_only: "Graphene receipt recorded · no commit established",
+    isolated_local_commit: "Isolated local commit recorded",
+    rejected: "Candidate rejected",
+    failed: "Run failed",
+  })[text(value)] ?? null;
+}
+
 export function stageGroups(state) {
   if (state.stages.length) return state.stages.map((stage, index) => {
     const item = record(stage);
@@ -363,7 +387,7 @@ export function stageGroups(state) {
   const stageLabels = {
     source_work: "Source work",
     human_correction_scope: "Human correction / scope",
-    approved_handoff: "Approved handoff",
+    approved_handoff: "Handoff boundary",
     consumer_work: "Isolated consumer work",
     candidate_decision: "Candidate decision",
     local_result: "Local result",
@@ -480,16 +504,6 @@ export function headSummary(heads, rootRunId) {
   const root = heads.find((head) => head.run_id === rootRunId) ?? heads[0];
   const sequence = root.seq ?? root.sequence ?? root.verified_sequence;
   return `Root ${root.run_id} · seq ${sequence ?? "—"} · ${heads.length} family head${heads.length === 1 ? "" : "s"}`;
-}
-
-export function activityRadius(activity) {
-  return Math.round(Math.min(72, 38 + Math.log2(1 + Math.max(0, activity)) * 7));
-}
-
-export function statusBadgeData(color) {
-  const fill = /^#[0-9a-f]{6}$/i.test(color) ? color : "#73aa91";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><circle cx="9" cy="9" r="7" fill="${fill}" stroke="#252a2e" stroke-width="3"/></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function hash(value) {

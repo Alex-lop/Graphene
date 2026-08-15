@@ -6,26 +6,26 @@
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#252a2e">
     <link rel="icon" href="data:,">
-    <title>Graphene · Bubble Lineage</title>
+    <title>Graphene · Decision Provenance</title>
     <link rel="stylesheet" href="/static/viewer.css">
   </head>
   <body>
     <a class="skip-link" href="#review-brief">Skip to Review Brief</a>
     <header class="status-strip" aria-label="Verified viewer status">
-      <a class="brand" href="#canvas" aria-label="Graphene Bubble Lineage"><span aria-hidden="true">G</span> Graphene</a>
+      <a class="brand" href="#canvas" aria-label="Graphene Decision Provenance"><span aria-hidden="true">G</span> Graphene</a>
       <dl>
         <div><dt>Mode</dt><dd id="mode">LOCAL VIEWER</dd></div>
         <div><dt>Run</dt><dd id="run-state">Loading</dd></div>
         <div><dt>Verified head</dt><dd id="verified-head">—</dd></div>
-        <div><dt>Connection</dt><dd id="connection" data-state="connecting">Connecting</dd></div>
-        <div class="truth"><dt>Truth</dt><dd id="truth-label">Committed and verified v2 SQLite lineage</dd></div>
+        <div><dt>Event feed</dt><dd id="connection" data-state="connecting">Connecting</dd></div>
+        <div class="truth"><dt>Proof boundary</dt><dd id="truth-label">Committed and verified v2 SQLite lineage</dd></div>
       </dl>
       <p id="driver-truth" class="driver-truth">Google ADK Runner: not used · Gemini calls: 0 · Evidence source: committed and verified v2 SQLite lineage</p>
     </header>
 
     <main>
       <div class="decision-layout">
-        <aside id="review-brief" class="review-brief" aria-labelledby="review-heading">
+        <aside id="review-brief" class="review-brief" aria-labelledby="review-heading" tabindex="-1">
           <header>
             <p class="eyebrow">Decision-first evidence</p>
             <h1 id="review-heading">Review Brief</h1>
@@ -50,7 +50,7 @@
           <div id="brief-sections" class="brief-sections">
             <section aria-labelledby="brief-candidate-heading"><h2 id="brief-candidate-heading">Candidate / changed paths</h2><ul id="brief-candidate"></ul></section>
             <section aria-labelledby="brief-evidence-heading"><h2 id="brief-evidence-heading">Verified evidence</h2><ul id="brief-evidence"></ul></section>
-            <section aria-labelledby="brief-human-heading"><h2 id="brief-human-heading">Human intervention</h2><ul id="brief-human"></ul></section>
+            <section aria-labelledby="brief-human-heading"><h2 id="brief-human-heading">Recorded decisions and corrections</h2><ul id="brief-human"></ul></section>
             <section aria-labelledby="brief-context-heading"><h2 id="brief-context-heading">Inherited context: included and excluded</h2><ul id="brief-context"></ul></section>
             <section aria-labelledby="brief-outcome-heading"><h2 id="brief-outcome-heading">Outcome</h2><ul id="brief-outcome"></ul></section>
             <section aria-labelledby="brief-unknown-heading"><h2 id="brief-unknown-heading">Unknown / not captured</h2><ul id="brief-unknown"></ul></section>
@@ -60,8 +60,8 @@
         <section class="workspace" aria-labelledby="viewer-heading">
         <header class="viewer-heading">
           <div>
-            <p class="eyebrow">Bubble Lineage · inspectable evidence</p>
-            <h2 id="viewer-heading">Current decision neighborhood</h2>
+            <p class="eyebrow">Decision provenance · inspectable evidence</p>
+            <h2 id="viewer-heading">Decision evidence</h2>
           </div>
           <dl id="view-counts" class="view-counts" aria-label="Projection counts">
             <div><dt>Total</dt><dd id="count-total">0</dd></div><div><dt>Visible</dt><dd id="count-visible">0</dd></div>
@@ -69,19 +69,19 @@
           </dl>
         </header>
 
-        <ol id="stage-story" class="stage-story" aria-label="Verified stage story"></ol>
+        <ol id="stage-story" class="stage-story" aria-label="Committed stage sequence"></ol>
 
         <nav class="filter-bar" aria-label="Lineage filters">
           <div class="view-switch" role="group" aria-label="Topology scope">
-            <button id="decision-view" type="button" aria-pressed="true">Current decision</button>
-            <button id="full-view" type="button" aria-pressed="false">Full bounded topology</button>
+            <button id="decision-view" type="button" aria-pressed="true">Decision evidence</button>
+            <button id="full-view" type="button" aria-pressed="false">Capture audit</button>
           </div>
-          <div id="filters" class="filters" aria-label="Semantic filters"></div>
-          <div class="actions" aria-label="Canvas actions">
+          <div id="filters" class="filters" role="group" aria-label="Semantic filters"></div>
+          <div class="actions" role="group" aria-label="Canvas actions">
             <button id="fit" type="button">Fit</button>
             <button id="organize" type="button">Organize</button>
-            <button id="focus-current" type="button">Current action</button>
-            <button id="evidence-path" type="button">Verified support relationships</button>
+            <button id="focus-current" type="button">Decision anchor</button>
+            <button id="evidence-path" type="button">Decision support bindings</button>
             <button id="reset-filters" type="button">Reset filters</button>
           </div>
         </nav>
@@ -91,22 +91,23 @@
           <button id="clear-focus" type="button">Clear focus</button>
         </div>
 
-        <div class="truth-legend" aria-label="Truth and relationship legend">
+        <div class="truth-legend" aria-label="Evidence class and relationship legend">
           <span><b>SIM</b> simulated_fixture</span><span><b>HUMAN</b> human_attested</span><span><b>POLICY</b> policy_authoritative</span>
-          <span><b>OBS</b> runtime_observed</span><span><b>DERIVED</b> server_derived</span><span><i></i> Verified support relationship</span>
+          <span><b>OBS</b> runtime_observed</span><span><b>DERIVED</b> server_derived</span><span><b>BOUND</b> evidence_bound</span><span><b>MODEL</b> model_proposed</span><span><i></i> Explicit decision support</span>
         </div>
 
         <div class="canvas-shell">
-          <div id="canvas" role="application" tabindex="0" aria-label="Interactive lineage graph. Use arrow keys to select a bubble and Enter for details."></div>
+          <div id="canvas" role="application" tabindex="0" aria-label="Interactive decision evidence graph. Use arrow keys to select a record and Enter for details." aria-describedby="bounds selection-status"></div>
+          <p id="selection-status" class="sr-only" role="status" aria-live="polite"></p>
           <div id="canvas-state" class="canvas-state" role="status" aria-live="polite">Loading verified lineage…</div>
           <div id="invalid" class="invalid" role="alert" hidden>
             <strong>EVIDENCE_INVALID</strong>
             <span id="invalid-reason">Verified evidence changed. Streaming stopped.</span>
           </div>
-          <p id="bounds" class="activity-note" role="status">Bubble size = capped verified activity; not importance, impact, or correctness.</p>
+          <p id="bounds" class="activity-note">Only explicit committed records are shown; sequence does not prove causality.</p>
         </div>
 
-        <section class="replay" aria-label="Replay controls">
+        <section class="replay" aria-label="Captured evidence history controls">
           <button id="play" type="button" aria-label="Pause replay">Pause</button>
           <button id="step" type="button">Step</button>
           <label>Speed
@@ -119,7 +120,7 @@
           </label>
           <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Replay timeline">
           <output id="timeline-label" for="timeline">0 / 0</output>
-          <span id="live-badge" class="badge">LIVE</span>
+          <span id="live-badge" class="badge">EVENT HISTORY</span>
         </section>
         </section>
       </div>
@@ -131,7 +132,7 @@
       </section>
     </main>
 
-    <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+    <aside id="drawer" class="drawer" role="dialog" aria-labelledby="drawer-title" hidden>
       <header><div><p id="drawer-kind" class="eyebrow">Node</p><h2 id="drawer-title">Lineage detail</h2></div><button id="drawer-close" type="button" aria-label="Close details">×</button></header>
       <div id="drawer-state" role="status" aria-live="polite"></div>
       <dl id="drawer-fields"></dl>

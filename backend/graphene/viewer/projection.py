@@ -45,7 +45,7 @@ MAX_REVIEW_PATHS = 30
 UNKNOWN_LIMITS = (
     "Timing does not prove causality.",
     "The view includes only explicit committed Graphene evidence.",
-    "Bubble activity is bounded interaction count, not importance or correctness.",
+    "Graph layout and sequence do not prove importance, correctness, or causality.",
     "No pull request, push, deployment, or activity outside Graphene's six scoped operations was observed.",
     "An isolated local Git commit is not established without an explicit local-result event.",
 )
@@ -991,12 +991,12 @@ def _build_review_brief(
             "candidate",
             (
                 _path_fact_text(
-                    "Passing bound test covers",
+                    "Passing fixed-test receipt is bound to",
                     bound_paths,
                     len(all_bound_paths),
                 )
                 if any(event.payload.get("passed") is True for event in tests) and bound_paths
-                else "A passing bound test was not established by captured evidence."
+                else "A passing fixed-test receipt bound to candidate paths was not established by captured evidence."
             ),
             status=(
                 "established"
