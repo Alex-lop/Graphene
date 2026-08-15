@@ -33,9 +33,9 @@ const proofSnapshot = {
   ],
   edges: [
     { id: "support-1", source: "result-a", target: "approval-a", kind: "supported_by", relationship_class: "verified_support", support_path: true, activity_count: 1 },
-    { id: "support-2", source: "approval-a", target: "candidate-a", kind: "authorized", relationship_class: "authorization", support_path: true, activity_count: 1 },
-    { id: "support-3", source: "candidate-a", target: "test-a", kind: "validated_by", relationship_class: "verified_support", support_path: true, activity_count: 1 },
-    { id: "support-4", source: "test-a", target: "file-a", kind: "bound_to", relationship_class: "verified_support", support_path: true, activity_count: 1 },
+    { id: "support-2", source: "approval-a", target: "candidate-a", kind: "authorized_by", relationship_class: "authorization", support_path: true, activity_count: 1 },
+    { id: "support-3", source: "candidate-a", target: "test-a", kind: "supported_by", relationship_class: "verified_support", support_path: true, activity_count: 1 },
+    { id: "support-4", source: "test-a", target: "file-a", kind: "binds_path", relationship_class: "verified_support", support_path: true, activity_count: 1 },
     { id: "membership-billing", source: "billing-a", target: "candidate-a", kind: "recorded", relationship_class: "membership", support_path: false, activity_count: 1 },
   ],
   unknowns: ["No PR, push, deployment, or activity outside captured operations was observed."],
@@ -131,13 +131,18 @@ test("stale and conflicting batched delta heads fail before mutation", () => {
 });
 
 test("remove deltas delete only their typed target and dangling node relationships", () => {
-  let state = createState(proofSnapshot);
+  const collision = {
+    ...proofSnapshot,
+    nodes: [...proofSnapshot.nodes, { id: "membership-billing", kind: "evidence", label: "Same ID as edge" }],
+  };
+  let state = createState(collision);
   state = applyDelta(state, { op: "remove", id: "membership-billing", remove_kind: "edge", run_id: "run", seq: 8, event_id: "remove-edge" });
   assert.equal(state.edges.has("membership-billing"), false);
-  assert.equal(state.nodes.has("billing-a"), true);
+  assert.equal(state.nodes.has("membership-billing"), true, "edge removal preserves a same-ID node");
   state = applyDelta(state, { op: "remove", id: "billing-a", remove_kind: "node", run_id: "run", seq: 9, event_id: "remove-node" });
   assert.equal(state.nodes.has("billing-a"), false);
   assert.ok([...state.edges.values()].every((edge) => edge.source !== "billing-a" && edge.target !== "billing-a"));
+  assert.throws(() => applyDelta(state, { op: "remove", id: "candidate-a" }), /typed target/);
 });
 
 test("atomic reset envelopes replace the complete graph", () => {
@@ -201,8 +206,14 @@ test("verified support paths use only projected directed allowlisted relationshi
   assert.deepEqual([...path.nodeIds].sort(), ["approval-a", "candidate-a", "file-a", "result-a", "test-a"]);
   assert.deepEqual([...path.edgeIds].sort(), ["support-1", "support-2", "support-3", "support-4"]);
   assert.equal(path.nodeIds.has("billing-a"), false, "membership-only Billing branch is not support");
-  const fallback = createState({ ...proofSnapshot, support_paths: [] });
+  assert.deepEqual([...verifiedSupportPath(state, "file-a").edgeIds].sort(), ["support-1", "support-2", "support-3", "support-4"], "selecting a leaf keeps its projected decision chain");
+  const fallback = createState({
+    ...proofSnapshot,
+    support_paths: [],
+    edges: [...proofSnapshot.edges, { id: "invented", source: "result-a", target: "billing-a", kind: "invented_relation", relationship_class: "verified_support", support_path: true }],
+  });
   assert.deepEqual([...verifiedSupportPath(fallback, "result-a").edgeIds].sort(), ["support-1", "support-2", "support-3", "support-4"]);
+  assert.equal(verifiedSupportPath(fallback, "result-a").edgeIds.has("invented"), false);
 });
 
 test("Review Brief renders contract facts, exact unknowns, attention, stages, and truth labels", () => {

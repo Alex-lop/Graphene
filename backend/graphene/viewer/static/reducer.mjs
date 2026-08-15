@@ -47,6 +47,7 @@ export const REVIEW_SECTIONS = Object.freeze([
 ]);
 
 const SUPPORT_CLASSES = new Set(["verified_support", "authorization"]);
+const SUPPORT_KINDS = new Set(["supported_by", "authorized_by", "changes_path", "binds_path", "result_supported_by"]);
 const PENDING_STATUSES = new Set(["asked", "awaiting_decision", "pending", "proposed", "ready_for_decision"]);
 const DECISION_KINDS = new Set(["human", "feedback", "memory", "promotion"]);
 
@@ -231,9 +232,12 @@ export function applyDelta(state, rawDelta) {
     state.nodes.set(id, { ...existing, status: text(payload.status, existing.status) });
   } else if (operation === "remove") {
     const id = text(payload.id);
-    state.nodes.delete(id);
-    state.edges.delete(id);
-    for (const [edgeId, edge] of state.edges) if (edge.source === id || edge.target === id) state.edges.delete(edgeId);
+    const removeKind = text(payload.remove_kind ?? delta.remove_kind).toLowerCase();
+    if (removeKind === "edge") state.edges.delete(id);
+    else if (removeKind === "node") {
+      state.nodes.delete(id);
+      for (const [edgeId, edge] of state.edges) if (edge.source === id || edge.target === id) state.edges.delete(edgeId);
+    } else throw new TypeError(`remove needs a typed target: ${removeKind || "(missing)"}`);
   } else throw new TypeError(`unknown delta operation: ${operation || "(missing)"}`);
   return state;
 }
@@ -355,7 +359,7 @@ export function stageGroups(state) {
 
 export function verifiedSupportPath(state, selectedId) {
   if (!state.nodes.has(selectedId)) return { nodeIds: new Set(), edgeIds: new Set() };
-  const projected = state.supportPaths.find((path) => path.root_node_id === selectedId);
+  const projected = state.supportPaths.find((path) => (path.node_ids ?? []).includes(selectedId));
   if (projected) return {
     nodeIds: new Set((projected.node_ids ?? []).filter((id) => state.nodes.has(id))),
     edgeIds: new Set((projected.edge_ids ?? []).filter((id) => state.edges.has(id))),
@@ -366,7 +370,7 @@ export function verifiedSupportPath(state, selectedId) {
   while (queue.length) {
     const source = queue.shift();
     for (const edge of state.edges.values()) {
-      if (!SUPPORT_CLASSES.has(edge.relationshipClass) || edge.supportPath !== true || edge.supportDirection !== "source_to_target" || edge.source !== source) continue;
+      if (!SUPPORT_CLASSES.has(edge.relationshipClass) || !SUPPORT_KINDS.has(edge.kind) || edge.supportPath !== true || edge.supportDirection !== "source_to_target" || edge.source !== source) continue;
       edgeIds.add(edge.id);
       if (!nodeIds.has(edge.target)) { nodeIds.add(edge.target); queue.push(edge.target); }
     }
