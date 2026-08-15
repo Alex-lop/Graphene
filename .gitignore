@@ -8,6 +8,7 @@ __pycache__/
 frontend/dist/
 frontend/node_modules/
 demo/runs/
+dist/
 
 # Local planning, prompts, and reviews
 All_md_files/

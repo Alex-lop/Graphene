@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Graphene_main_img.png" alt="Graphene" width="720">
+  <img src="docs/assets/Graphene_main_img.png" alt="Graphene" width="720">
 </p>
 
 # Graphene
