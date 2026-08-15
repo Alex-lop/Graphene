@@ -316,6 +316,24 @@ def test_terminal_states_are_explicit(event_type, expected):
     assert projection.state == expected
 
 
+def test_explicit_rejection_is_terminal():
+    projection = reduce_events(
+        _events(
+            _run_started(),
+            (
+                LineageEventType.RUN_ENDED,
+                {
+                    "reason_code": "memory_rejected",
+                    "state": "REJECTED",
+                    "status": "ended",
+                },
+                None,
+            ),
+        )
+    )
+    assert projection.state == LineageRunState.REJECTED
+
+
 def test_digest_failure_has_an_explicit_evidence_invalid_representation():
     events = _events(_run_started())
     damaged = events[0].model_copy(update={"event_sha256": "f" * 64})

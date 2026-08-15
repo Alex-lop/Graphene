@@ -7,12 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import graphene.lineage.store as store_module
+import graphene.lineage.reducer as reducer_module
 import pytest
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage import EvidenceInvalid, LineageConflict, SQLiteLineageStore
 from graphene.models import (
     EventInput,
     EvidenceInvalidState,
+    EvidenceKind,
     EvidenceReference,
     HeadCheckpoint,
     LineageAuthority,
@@ -348,6 +350,172 @@ def test_references_are_resolved_before_commit_and_on_replay(tmp_path: Path):
             bad,
         )
     assert store.verify("run_001").seq == 1
+
+
+def test_forged_local_result_receipt_is_rejected_on_append_and_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    artifacts = {("lifecycle_request", "request_001"): SOURCE_BYTES}
+
+    def artifact(kind: EvidenceKind, artifact_id: str, value: dict[str, object]):
+        raw = canonical_json_bytes(value)
+        artifacts[(kind.value, artifact_id)] = raw
+        return EvidenceReference(kind=kind, id=artifact_id, sha256=sha256_hex(raw))
+
+    store = SQLiteLineageStore(
+        tmp_path / "lineage.sqlite3",
+        artifact_resolver=lambda kind, artifact_id: artifacts.get((kind, artifact_id)),
+    )
+    started = store.append("run_001", _head("run_001"), "forged_start_001", _draft())
+    approval_source = artifact(
+        EvidenceKind.OPERATOR_REQUEST,
+        "approval_source_001",
+        {"action": "promotion.approved"},
+    )
+    approval = store.append(
+        "run_001",
+        VerifiedHead(
+            run_id="run_001",
+            seq=1,
+            event_sha256=started.event_sha256,
+            event_count=1,
+        ),
+        "forged_approval_001",
+        _draft(
+            LineageEventType.PROMOTION_APPROVED,
+            truth_kind=TruthKind.HUMAN_ATTESTED,
+            authority=LineageAuthority.OPERATOR_REQUEST,
+            source_ref=SourceReference(
+                kind="operator_request",
+                id=approval_source.id,
+                sha256=approval_source.sha256,
+            ),
+            payload={
+                "candidate_patch_sha256": "1" * 64,
+                "decision_id": "decision_001",
+                "decision_sha256": "2" * 64,
+                "expected_head_sha256": started.event_sha256,
+                "status": "approved",
+            },
+        ),
+    )
+    promotion_reference = artifact(
+        EvidenceKind.PROMOTION_RECEIPT,
+        "promotion_receipt_001",
+        {"result": "promoted"},
+    )
+    promotion = store.append(
+        "run_001",
+        VerifiedHead(
+            run_id="run_001",
+            seq=2,
+            event_sha256=approval.event_sha256,
+            event_count=2,
+        ),
+        "forged_promotion_001",
+        _draft(
+            LineageEventType.PROMOTION_COMPLETED,
+            authority=LineageAuthority.PROMOTION_SERVICE,
+            references=(
+                EvidenceReference(
+                    kind=EvidenceKind.EVENT,
+                    id=approval.event_id,
+                    sha256=approval.event_sha256,
+                ),
+                promotion_reference,
+            ),
+            source_ref=SourceReference(
+                kind="promotion_receipt",
+                id=promotion_reference.id,
+                sha256=promotion_reference.sha256,
+            ),
+            payload={
+                "candidate_patch_sha256": "1" * 64,
+                "promotion_receipt_id": promotion_reference.id,
+                "promotion_receipt_sha256": "3" * 64,
+                "status": "completed",
+            },
+        ),
+    )
+    test_reference = artifact(
+        EvidenceKind.TEST_RECEIPT, "test_receipt_001", {"passed": True}
+    )
+    local_reference = artifact(
+        EvidenceKind.LOCAL_COMMIT_RECEIPT,
+        "local_commit_receipt_001",
+        {"result": "verified"},
+    )
+    local = _draft(
+        LineageEventType.LOCAL_RESULT_RECORDED,
+        truth_kind=TruthKind.RUNTIME_OBSERVED,
+        authority=LineageAuthority.LOCAL_COMMIT_SERVICE,
+        references=(
+            EvidenceReference(
+                kind=EvidenceKind.EVENT,
+                id=approval.event_id,
+                sha256=approval.event_sha256,
+            ),
+            promotion_reference,
+            test_reference,
+            local_reference,
+        ),
+        source_ref=SourceReference(
+            kind="local_commit_receipt",
+            id=local_reference.id,
+            sha256=local_reference.sha256,
+        ),
+        payload={
+            "approval_event_id": approval.event_id,
+            "approval_event_sha256": approval.event_sha256,
+            "candidate_patch_sha256": "1" * 64,
+            "candidate_tree_sha256": "4" * 64,
+            "changed_paths": ["app/auth/limiter.py"],
+            "deployed": False,
+            "local_commit_receipt_id": local_reference.id,
+            "local_commit_receipt_sha256": local_reference.sha256,
+            "local_commit_sha": "5" * 40,
+            "outcome": "local_isolated_commit",
+            "parent_sha": BASE_SHA,
+            "pull_request_created": False,
+            "pushed": False,
+            "status": "recorded",
+            "test_receipt_id": test_reference.id,
+            "test_receipt_sha256": test_reference.sha256,
+            "tree_sha": "6" * 40,
+        },
+    )
+
+    with pytest.raises(EvidenceInvalid, match="semantic artifacts"):
+        store.append(
+            "run_001",
+            VerifiedHead(
+                run_id="run_001",
+                seq=3,
+                event_sha256=promotion.event_sha256,
+                event_count=3,
+            ),
+            "forged_local_result_001",
+            local,
+        )
+    assert store.verify("run_001").seq == 3
+
+    validate = reducer_module.validate_semantic_artifacts
+    monkeypatch.setattr(reducer_module, "validate_semantic_artifacts", lambda *_: None)
+    store.append(
+        "run_001",
+        VerifiedHead(
+            run_id="run_001",
+            seq=3,
+            event_sha256=promotion.event_sha256,
+            event_count=3,
+        ),
+        "forged_local_result_001",
+        local,
+    )
+    monkeypatch.setattr(reducer_module, "validate_semantic_artifacts", validate)
+    replay = store.verify("run_001")
+    assert isinstance(replay, EvidenceInvalidState)
+    assert replay.reason.endswith("local result semantic artifacts are invalid")
 
 
 def test_retained_checkpoint_binds_prefix_and_artifact(tmp_path: Path):

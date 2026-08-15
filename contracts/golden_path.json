@@ -3,9 +3,9 @@
   "product": "Graphene",
   "repo_id": "graphene-demo",
   "model": {
-    "model_id": "gemini-3.5-flash",
+    "model_id": "graphene-compatibility-fixture",
     "adk_version": "2.5.0",
-    "cloud_location": "global",
+    "cloud_location": "not-used-by-scripted-fixture",
     "project_access_verified": false
   },
   "hashes": {
@@ -40,7 +40,7 @@
   },
   "tool_names": ["read_file", "write_file", "run_fixture_tests"],
   "prompt": {
-    "template": "You are the coding agent inside the controlled Graphene demo fixture.\nUse only the provided read_file, write_file, and run_fixture_tests tools.\nRead the relevant files, make the smallest change that completes the task, and run the fixed tests.\nDo not add dependencies or edit files outside the tool's write allowlist.\n\nRepository memory:\n{memory_context}\n\nTask:\n{task}\n",
+    "template": "You are the deterministic workflow fixture inside Graphene's compatibility-only executor.\nUse only its provided read_file, write_file, and run_fixture_tests tools.\nApply the frozen bounded task and run the fixed tests. This fixture does not prove independent-agent, Google ADK, or external-model behavior.\nDo not add dependencies or edit files outside the tool's write allowlist.\n\nApproved context delivered to this fixture:\n{memory_context}\n\nTask:\n{task}\n",
     "no_memory_context": "No approved memory applies.",
     "approved_memory_template": "[{memory_id} revision {revision}] {rule}"
   },
@@ -125,17 +125,17 @@
     {"method": "GET", "path": "/api/runs/{run_id}/proof", "request_model": null, "response_model": "list[ProofItem]", "requires_demo_token": true}
   ],
   "loop": [
-    {"sequence": 1, "actor": "system", "action": "load dated real baseline evidence", "resulting_state": "baseline visible", "proof_type": null},
-    {"sequence": 2, "actor": "human", "action": "anchor exact correction and choose all_auth scope", "resulting_state": "scope selected", "proof_type": null},
+    {"sequence": 1, "actor": "system", "action": "load the bounded compatibility baseline fixture", "resulting_state": "baseline visible", "proof_type": null},
+    {"sequence": 2, "actor": "simulated_fixture_operator", "action": "record the frozen all_auth compatibility scope choice", "resulting_state": "scope selected", "proof_type": null},
     {"sequence": 3, "actor": "system", "action": "create exact deterministic memory proposal", "resulting_state": "memory proposed", "proof_type": "memory.proposed"},
-    {"sequence": 4, "actor": "human", "action": "approve immutable memory revision 1", "resulting_state": "memory approved", "proof_type": "memory.approved"},
-    {"sequence": 5, "actor": "system", "action": "create fresh adapted run with new session ID", "resulting_state": "queued", "proof_type": null},
-    {"sequence": 6, "actor": "system", "action": "retrieve and inject exact approved memory revision", "resulting_state": "running", "proof_type": "memory.injected"},
-    {"sequence": 7, "actor": "gemini", "action": "write only allowlisted candidate files", "resulting_state": "running", "proof_type": "tool.file_written"},
-    {"sequence": 8, "actor": "system", "action": "prove the new test fails on base and all tests pass on candidate", "resulting_state": "running", "proof_type": "test.completed"},
+    {"sequence": 4, "actor": "simulated_fixture_operator", "action": "record compatibility approval of immutable memory revision 1", "resulting_state": "memory approved", "proof_type": "memory.approved"},
+    {"sequence": 5, "actor": "system", "action": "create fresh compatibility fixture run with a new session ID", "resulting_state": "queued", "proof_type": null},
+    {"sequence": 6, "actor": "system", "action": "include the exact approved memory revision in bounded fixture context", "resulting_state": "running", "proof_type": "memory.injected"},
+    {"sequence": 7, "actor": "workflow_fixture", "action": "write only the frozen allowlisted candidate files", "resulting_state": "running", "proof_type": "tool.file_written"},
+    {"sequence": 8, "actor": "system", "action": "record the bounded fixed-test result without claiming context causality", "resulting_state": "running", "proof_type": "test.completed"},
     {"sequence": 9, "actor": "system", "action": "persist immutable candidate and attempt completion", "resulting_state": "waiting_for_promotion", "proof_type": "completion.denied"},
-    {"sequence": 10, "actor": "human", "action": "approve exact bound candidate", "resulting_state": "promoting", "proof_type": "promotion.approved"},
-    {"sequence": 11, "actor": "system", "action": "reconstruct, revalidate, and commit in ephemeral fixture", "resulting_state": "promoting", "proof_type": "candidate.committed"},
-    {"sequence": 12, "actor": "system", "action": "persist promotion receipt before completion", "resulting_state": "completed", "proof_type": null}
+    {"sequence": 10, "actor": "simulated_fixture_operator", "action": "record compatibility approval of the exact bound candidate for a Graphene promotion receipt", "resulting_state": "promoting", "proof_type": "promotion.approved"},
+    {"sequence": 11, "actor": "system", "action": "reconstruct and revalidate the bounded compatibility candidate", "resulting_state": "promoting", "proof_type": null},
+    {"sequence": 12, "actor": "system", "action": "persist the Graphene promotion receipt before completion", "resulting_state": "graphene_promotion_receipt_recorded", "proof_type": null}
   ]
 }

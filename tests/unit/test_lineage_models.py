@@ -16,6 +16,7 @@ from graphene.models import (
     LineageAuthority,
     LineageEventType,
     LineageOperation,
+    LineageRunState,
     SourceReference,
     SourceKind,
     TruthKind,
@@ -24,6 +25,8 @@ from graphene.models import (
 
 def test_v2_contract_tracks_runtime_public_enums_and_demo_command():
     contract = json.loads(Path("contracts/lineage_v2.json").read_text())
+    assert contract["run_states"] == [item.value for item in LineageRunState]
+    assert contract["event_types"] == [item.value for item in LineageEventType]
     assert contract["truth_kinds"] == [item.value for item in TruthKind]
     assert contract["evidence_kinds"] == [item.value for item in EvidenceKind]
     assert contract["source_kinds"] == [item.value for item in SourceKind]
@@ -157,6 +160,59 @@ def test_simulated_fixture_provenance_is_limited_to_gate_events():
                 kind="operator_request", id="fixture_1", sha256="f" * 64
             ),
             payload=answer.payload,
+        )
+
+
+def test_local_commit_result_binds_runtime_receipt_and_supporting_evidence():
+    approval = EvidenceReference(kind="event", id="approval_1", sha256="1" * 64)
+    promotion = EvidenceReference(
+        kind="promotion_receipt", id="promotion_1", sha256="2" * 64
+    )
+    test = EvidenceReference(kind="test_receipt", id="test_1", sha256="3" * 64)
+    receipt = EvidenceReference(
+        kind="local_commit_receipt", id="local_commit_1", sha256="4" * 64
+    )
+    payload = {
+        "local_commit_sha": "c" * 40,
+        "parent_sha": "b" * 40,
+        "tree_sha": "d" * 40,
+        "candidate_patch_sha256": "5" * 64,
+        "candidate_tree_sha256": "6" * 64,
+        "changed_paths": ["app/auth/limiter.py"],
+        "test_receipt_id": test.id,
+        "test_receipt_sha256": test.sha256,
+        "approval_event_id": approval.id,
+        "approval_event_sha256": approval.sha256,
+        "local_commit_receipt_id": receipt.id,
+        "local_commit_receipt_sha256": receipt.sha256,
+        "outcome": "local_isolated_commit",
+        "pushed": False,
+        "pull_request_created": False,
+        "deployed": False,
+        "status": "recorded",
+    }
+    result = _draft(
+        event_type=LineageEventType.LOCAL_RESULT_RECORDED,
+        truth_kind=TruthKind.RUNTIME_OBSERVED,
+        authority=LineageAuthority.LOCAL_COMMIT_SERVICE,
+        source_ref=SourceReference(
+            kind="local_commit_receipt", id=receipt.id, sha256=receipt.sha256
+        ),
+        references=(approval, promotion, test, receipt),
+        payload=payload,
+    )
+    assert result.payload["local_commit_sha"] == "c" * 40
+
+    with pytest.raises(ValidationError, match="local commit result bindings"):
+        _draft(
+            event_type=LineageEventType.LOCAL_RESULT_RECORDED,
+            truth_kind=TruthKind.RUNTIME_OBSERVED,
+            authority=LineageAuthority.LOCAL_COMMIT_SERVICE,
+            source_ref=SourceReference(
+                kind="local_commit_receipt", id="other", sha256=receipt.sha256
+            ),
+            references=(approval, promotion, test, receipt),
+            payload=payload,
         )
 
 

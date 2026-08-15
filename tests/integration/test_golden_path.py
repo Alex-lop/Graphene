@@ -3,14 +3,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
-from demo.graph_mvp import run_local_demo, run_local_soak
+from demo.graph_mvp import GRAPH_CONTRACT, run_local_demo, run_local_soak
+from graphene.hashing import canonical_json_sha256
 
 
 def test_clean_reset_golden_loop_survives_two_store_restarts(tmp_path):
     manifest = run_local_demo(tmp_path / "store.json")
 
-    assert manifest["contract_hash"] == (
-        "b10f9a3e3ac357441e0e6ed36b24d5af95076eb36558cb297c6dc9ea78d23ac8"
+    assert manifest["contract_hash"] == canonical_json_sha256(
+        GRAPH_CONTRACT.model_dump(mode="json")
     )
     assert manifest["verification"] == {
         "local_vertical_slice": "verified",

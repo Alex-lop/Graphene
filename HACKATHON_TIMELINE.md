@@ -1,5 +1,7 @@
 # All Things Agentic Hackathon — Timeline and Requirements
 
+> **Historical schedule snapshot — not current product truth.** Recheck the official rules and current deadlines before acting. Product authority is indexed in [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Source snapshot: August 10, 2026 (Pacific Time). The [Official Rules](https://allthingsagentichackathon.devpost.com/rules) are binding; recheck them before submitting.
 
 ## At a glance

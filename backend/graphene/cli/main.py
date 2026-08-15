@@ -47,8 +47,14 @@ from ..lineage.explain import (
     inspect_run_item,
 )
 from ..lineage.observation import ObservationError, register_watch
+from ..lineage.local_commit import (
+    LocalCommitError,
+    commit_promoted_run,
+)
 from ..lineage.promotion import (
+    PreparedPromotionCandidate,
     PromotionError,
+    PromotionRequest,
     PromotionRetestResult,
     SQLiteCheckpointRecorder,
     prepare_verified_promotion,
@@ -58,17 +64,22 @@ from ..lineage.reducer import ProjectionError, reduce_events
 from ..models import (
     ContextBrief,
     Event,
+    EventInput,
     EvidenceInvalidState,
     EvidenceKind,
+    EvidenceReference,
     HandoffDecision,
     HandoffDenied,
     HunkEvidence,
     LineageEventType,
+    LineageAuthority,
     LineageOperation,
     LineageProjection,
     LineageRunState,
     MemoryDecisionValue,
     ScopeId,
+    SourceKind,
+    SourceReference,
     TaskId,
     TruthKind,
     VerifiedHead,
@@ -89,6 +100,7 @@ _WATCH_STOP_STATES = frozenset(
         LineageRunState.FAILED,
         LineageRunState.INTERRUPTED,
         LineageRunState.PROMOTED,
+        LineageRunState.REJECTED,
     }
 )
 
@@ -163,12 +175,16 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--choice", required=True, choices=tuple(item.value for item in ScopeId)
     )
+    answer.add_argument("--operator-label", default="local-operator")
+    answer.add_argument("--rationale")
 
     memory = commands.add_parser("memory", allow_abbrev=False)
     memory_commands = memory.add_subparsers(dest="memory_action", required=True)
     for action in ("approve", "reject"):
         decision = memory_commands.add_parser(action, allow_abbrev=False)
         decision.add_argument("memory_id")
+        decision.add_argument("--operator-label", default="local-operator")
+        decision.add_argument("--rationale")
 
     handoff = commands.add_parser("handoff", allow_abbrev=False)
     handoff.add_argument("source_run_id")
@@ -180,14 +196,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     promote = commands.add_parser("promote", allow_abbrev=False)
     promote.add_argument("consumer_run_id")
+    promote.add_argument("--decision", required=True, choices=("commit", "reject"))
+    promote.add_argument("--operator-label", default="local-operator")
+    promote.add_argument("--rationale")
 
-    demo = commands.add_parser("demo", allow_abbrev=False)
-    demo.add_argument("--driver", choices=("scripted-local",), default="scripted-local")
+    demo = commands.add_parser(
+        "demo",
+        allow_abbrev=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Driver proof boundaries:\n"
+            "  verified-replay  VERIFIED REPLAY — NO LIVE AGENT, HUMAN "
+            "ATTESTATION, OR NEW TEST EXECUTION\n"
+            "  scripted-local   SCRIPTED LOCAL WORKFLOW FIXTURE — NOT "
+            "INDEPENDENT-AGENT OR GOOGLE ADK PROOF\n"
+            "  adk-fake         REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — "
+            "NOT GEMINI OR INDEPENDENT-AGENT PROOF"
+        ),
+    )
+    demo.add_argument(
+        "--driver",
+        choices=("verified-replay", "scripted-local", "adk-fake"),
+        default="scripted-local",
+    )
     demo.add_argument("--speed", type=_positive_number, default=1.0)
     demo.add_argument("--no-open", action="store_true")
     demo.add_argument("--cleanup", action="store_true")
     demo.add_argument("--exit-after-demo", action="store_true", help=argparse.SUPPRESS)
-    demo.add_argument("--automated-fixture", action="store_true", help=argparse.SUPPRESS)
+    demo.add_argument(
+        "--automated-fixture", action="store_true", help=argparse.SUPPRESS
+    )
     return parser
 
 
@@ -608,6 +646,9 @@ def _answer(
     args: argparse.Namespace,
     *,
     simulated_fixture: bool = False,
+    human_attestation: bool = False,
+    operator_label: str = "local-operator",
+    operator_rationale: str | None = None,
 ) -> dict[str, object]:
     run_id = _find_run(
         path,
@@ -649,6 +690,9 @@ def _answer(
             choice=args.choice,
             idempotency_key=_key("answer", run_id, args.question_id, args.choice),
             simulated_fixture=simulated_fixture,
+            human_attestation=human_attestation,
+            operator_label=operator_label,
+            operator_rationale=operator_rationale,
         )
         events, projection = _load(path, run_id)
     elif answered.payload.get("choice") != args.choice:
@@ -671,6 +715,9 @@ def _answer(
             question_id=args.question_id,
             idempotency_key=_key("feedback_record", run_id, feedback_id),
             simulated_fixture=simulated_fixture,
+            human_attestation=human_attestation,
+            operator_label=operator_label,
+            operator_rationale=operator_rationale,
         )
         events, projection = _load(path, run_id)
     proposed = next(
@@ -692,6 +739,7 @@ def _answer(
         _, projection = _load(path, run_id)
     return {
         "run_id": run_id,
+        "answer_event_id": answered.event_id,
         "feedback_id": feedback_id,
         "memory_id": proposed.payload["memory_id"],
         "revision": proposed.payload["revision"],
@@ -704,6 +752,9 @@ def _memory(
     args: argparse.Namespace,
     *,
     simulated_fixture: bool = False,
+    human_attestation: bool = False,
+    operator_label: str = "local-operator",
+    operator_rationale: str | None = None,
 ) -> dict[str, object]:
     run_id = _find_run(
         path,
@@ -735,9 +786,10 @@ def _memory(
     )
     if decided is not None and decided.event_type != expected_type:
         raise HumanWorkflowError("the memory already has another decision")
-    if decided is not None and (
-        decided.truth_kind == TruthKind.SIMULATED_FIXTURE
-    ) != simulated_fixture:
+    if (
+        decided is not None
+        and (decided.truth_kind == TruthKind.SIMULATED_FIXTURE) != simulated_fixture
+    ):
         raise HumanWorkflowError("the memory already has another provenance")
     if decided is None:
         workflow, _ = _workflow(path)
@@ -751,14 +803,278 @@ def _memory(
                 "memory_decide", run_id, args.memory_id, args.memory_action
             ),
             simulated_fixture=simulated_fixture,
+            human_attestation=human_attestation,
+            operator_label=operator_label,
+            operator_rationale=operator_rationale,
         )
         _, projection = _load(path, run_id)
     return {
         "run_id": run_id,
         "memory_id": args.memory_id,
+        "decision_event_id": decided.event_id,
         "revision": decided.payload["revision"],
         "state": decided.payload["status"],
         "head": _verified_head(projection).model_dump(mode="json"),
+    }
+
+
+def _decision_actor(*, simulated_fixture: bool, human_attestation: bool) -> str:
+    if simulated_fixture:
+        return "simulated_fixture"
+    if not human_attestation:
+        raise HumanWorkflowError("human attestation requires an interactive TTY")
+    return "human"
+
+
+def _end_rejected_run(
+    path: Path,
+    run_id: str,
+    decision_event_id: str,
+    reason_code: str,
+) -> Event:
+    events, projection = _load(path, run_id)
+    ended = next(
+        (event for event in events if event.event_type == LineageEventType.RUN_ENDED),
+        None,
+    )
+    if ended is not None:
+        if (
+            projection.state != LineageRunState.REJECTED
+            or ended.payload.get("reason_code") != reason_code
+            or not any(
+                reference.id == decision_event_id for reference in ended.references
+            )
+        ):
+            raise HumanWorkflowError("the run already ended with another decision")
+        return ended
+    decision = next(
+        (event for event in events if event.event_id == decision_event_id),
+        None,
+    )
+    if decision is None or decision is not events[-1]:
+        raise HumanWorkflowError("the rejection decision is not the current run head")
+    artifacts = SQLiteArtifactStore(path)
+    store = SQLiteLineageStore(path, artifact_resolver=artifacts.resolve)
+    record = {
+        "schema_version": 2,
+        "action": "run.ended",
+        "run_id": run_id,
+        "decision_event_id": decision.event_id,
+        "decision_event_sha256": decision.event_sha256,
+        "reason_code": reason_code,
+        "state": LineageRunState.REJECTED.value,
+    }
+    source = artifacts(EvidenceKind.OPERATOR_REQUEST, record)
+    try:
+        ended = store.append(
+            run_id,
+            _verified_head(projection),
+            _key("run_rejected", run_id, decision.event_id, reason_code),
+            EventInput(
+                session_id=None,
+                invocation_id=None,
+                model_id=None,
+                tool_call_id=None,
+                repo_id=events[0].repo_id,
+                base_sha=events[0].base_sha,
+                agent_profile_id=events[0].agent_profile_id,
+                policy_revision=events[0].policy_revision,
+                event_type=LineageEventType.RUN_ENDED,
+                truth_kind=TruthKind.SERVER_DERIVED,
+                authority=LineageAuthority.LIFECYCLE_SERVICE,
+                references=(
+                    EvidenceReference(
+                        kind=EvidenceKind.EVENT,
+                        id=decision.event_id,
+                        sha256=decision.event_sha256,
+                    ),
+                ),
+                source_ref=SourceReference(
+                    kind=SourceKind.LIFECYCLE_REQUEST,
+                    id=source.id,
+                    sha256=source.sha256,
+                ),
+                payload={
+                    "reason_code": reason_code,
+                    "state": LineageRunState.REJECTED.value,
+                    "status": "ended",
+                },
+            ),
+        )
+    except (EvidenceInvalid, LineageStoreError) as error:
+        raise HumanWorkflowError("the rejected run could not end durably") from error
+    if reduce_events((*events, ended)).state != LineageRunState.REJECTED:
+        raise HumanWorkflowError("the rejected run did not reach a terminal state")
+    return ended
+
+
+def _prepare_candidate(
+    path: Path,
+    run_id: str,
+) -> PreparedPromotionCandidate:
+    artifacts = SQLiteArtifactStore(path)
+    store = SQLiteLineageStore(path, artifact_resolver=artifacts.resolve)
+    prepared = prepare_verified_promotion(
+        store,
+        artifacts,
+        run_id,
+        decision_id="promotion_" + sha256_hex(run_id.encode())[:24],
+        occurred_at=datetime.now(UTC),
+        decision_actor=None,
+    )
+    if not isinstance(prepared, PreparedPromotionCandidate):
+        raise PromotionError("promotion candidate preparation returned a decision")
+    return prepared
+
+
+def _reject_candidate(
+    path: Path,
+    run_id: str,
+    *,
+    simulated_fixture: bool,
+    human_attestation: bool,
+    operator_label: str,
+    operator_rationale: str | None,
+) -> dict[str, object]:
+    events, projection = _load(path, run_id)
+    existing = next(
+        (
+            event
+            for event in events
+            if event.event_type == LineageEventType.CANDIDATE_REJECTED
+        ),
+        None,
+    )
+    if existing is not None:
+        expected_truth = (
+            TruthKind.SIMULATED_FIXTURE
+            if simulated_fixture
+            else TruthKind.HUMAN_ATTESTED
+        )
+        if (
+            existing.truth_kind != expected_truth
+            or existing.payload.get("operator_label") != operator_label
+            or existing.payload.get("operator_rationale") != operator_rationale
+        ):
+            raise HumanWorkflowError("the candidate already has another rejection")
+        ended = _end_rejected_run(path, run_id, existing.event_id, "candidate_rejected")
+        return {
+            "run_id": run_id,
+            "candidate_id": existing.payload["candidate_id"],
+            "decision_event_id": existing.event_id,
+            "end_event_id": ended.event_id,
+            "state": LineageRunState.REJECTED.value,
+            "head": _verified_head(_load(path, run_id)[1]).model_dump(mode="json"),
+        }
+    _review(path, run_id)
+    request = _prepare_candidate(
+        path,
+        run_id,
+    )
+    actor = _decision_actor(
+        simulated_fixture=simulated_fixture,
+        human_attestation=human_attestation,
+    )
+    events, projection = _load(path, run_id)
+    truth = (
+        TruthKind.SIMULATED_FIXTURE
+        if actor == "simulated_fixture"
+        else TruthKind.HUMAN_ATTESTED
+    )
+    authority = (
+        LineageAuthority.SIMULATED_FIXTURE
+        if actor == "simulated_fixture"
+        else LineageAuthority.OPERATOR_REQUEST
+    )
+    evidence_kind = (
+        EvidenceKind.SIMULATED_FIXTURE
+        if actor == "simulated_fixture"
+        else EvidenceKind.OPERATOR_REQUEST
+    )
+    source_kind = (
+        SourceKind.SIMULATED_FIXTURE
+        if actor == "simulated_fixture"
+        else SourceKind.OPERATOR_REQUEST
+    )
+    decision_id = "candidate_rejection_" + sha256_hex(run_id.encode())[:24]
+    record = {
+        "schema_version": 2,
+        "action": "candidate.rejected",
+        "run_id": run_id,
+        "expected_head": _verified_head(projection).model_dump(mode="json"),
+        "candidate_id": request.candidate_id,
+        "candidate_patch_sha256": request.candidate_patch_sha256,
+        "decision_id": decision_id,
+        "actor": actor,
+        "operator_label": operator_label,
+        "operator_rationale": operator_rationale,
+        "bindings": [
+            reference.model_dump(mode="json")
+            for reference in (
+                request.candidate_reference,
+                request.changeset_reference,
+                request.test_reference,
+                request.brief_reference,
+                request.decision_reference,
+                request.memory_reference,
+            )
+        ],
+    }
+    artifacts = SQLiteArtifactStore(path)
+    source = artifacts(evidence_kind, record)
+    store = SQLiteLineageStore(path, artifact_resolver=artifacts.resolve)
+    payload: dict[str, object] = {
+        "candidate_id": request.candidate_id,
+        "candidate_patch_sha256": request.candidate_patch_sha256,
+        "decision_id": decision_id,
+        "operator_label": operator_label,
+        "status": "rejected",
+    }
+    if operator_rationale is not None:
+        payload["operator_rationale"] = operator_rationale
+    try:
+        rejected = store.append(
+            run_id,
+            _verified_head(projection),
+            _key("candidate_reject", run_id, request.candidate_id, decision_id),
+            EventInput(
+                session_id=None,
+                invocation_id=None,
+                model_id=None,
+                tool_call_id=None,
+                repo_id=request.repo_id,
+                base_sha=request.base_sha,
+                agent_profile_id=request.agent_profile_id,
+                policy_revision=request.policy_revision,
+                event_type=LineageEventType.CANDIDATE_REJECTED,
+                truth_kind=truth,
+                authority=authority,
+                references=(
+                    request.candidate_reference,
+                    request.changeset_reference,
+                    request.test_reference,
+                    request.brief_reference,
+                    request.decision_reference,
+                    request.memory_reference,
+                ),
+                source_ref=SourceReference(
+                    kind=source_kind,
+                    id=source.id,
+                    sha256=source.sha256,
+                ),
+                payload=payload,
+            ),
+        )
+    except (EvidenceInvalid, LineageStoreError) as error:
+        raise HumanWorkflowError("candidate rejection could not be recorded") from error
+    ended = _end_rejected_run(path, run_id, rejected.event_id, "candidate_rejected")
+    return {
+        "run_id": run_id,
+        "candidate_id": request.candidate_id,
+        "decision_event_id": rejected.event_id,
+        "end_event_id": ended.event_id,
+        "state": LineageRunState.REJECTED.value,
+        "head": _verified_head(_load(path, run_id)[1]).model_dump(mode="json"),
     }
 
 
@@ -864,6 +1180,9 @@ def _promote(
     run_id: str,
     *,
     simulated_fixture: bool = False,
+    human_attestation: bool = False,
+    operator_label: str = "local-operator",
+    operator_rationale: str | None = None,
 ) -> dict[str, object]:
     events, projection = _load(path, run_id)
     artifacts = SQLiteArtifactStore(path)
@@ -874,26 +1193,38 @@ def _promote(
         checkpoint_reader=checkpoints.read,
     )
     if projection.state == LineageRunState.PROMOTED:
-        if (
-            next(
-                event
-                for event in events
-                if event.event_type == LineageEventType.PROMOTION_APPROVED
-            ).truth_kind
-            == TruthKind.SIMULATED_FIXTURE
-        ) != simulated_fixture:
+        approval = next(
+            event
+            for event in events
+            if event.event_type == LineageEventType.PROMOTION_APPROVED
+        )
+        if (approval.truth_kind == TruthKind.SIMULATED_FIXTURE) != simulated_fixture:
             raise PromotionError("completed promotion has another provenance")
         retained = checkpoints.read(run_id)
         if len(retained) != 1 or store.verify(run_id) != _verified_head(projection):
             raise PromotionError("completed promotion checkpoint is unavailable")
+        completion = next(
+            event
+            for event in events
+            if event.event_type == LineageEventType.PROMOTION_COMPLETED
+        )
+        local = commit_promoted_run(
+            path,
+            run_id,
+            allow_simulated_fixture=simulated_fixture,
+        )
         return {
             "run_id": run_id,
             "state": LineageRunState.PROMOTED.value,
-            "head": _verified_head(projection).model_dump(mode="json"),
+            "head": local.final_head.model_dump(mode="json"),
             "checkpoint_id": retained[0].checkpoint_id,
             "checkpoint_sha256": retained[0].checkpoint_sha256,
-            "promotion_receipt_id": events[-1].payload["promotion_receipt_id"],
-            "promotion_receipt_sha256": events[-1].payload["promotion_receipt_sha256"],
+            "promotion_receipt_id": completion.payload["promotion_receipt_id"],
+            "promotion_receipt_sha256": completion.payload["promotion_receipt_sha256"],
+            "outcome": local.receipt.outcome,
+            "local_commit_sha": local.receipt.local_commit_sha,
+            "local_commit_receipt_id": local.receipt_reference.id,
+            "local_commit_receipt_sha256": local.receipt_reference.sha256,
         }
 
     _review(path, run_id)
@@ -914,14 +1245,22 @@ def _promote(
         ),
         max_file_bytes=golden.fixture.max_write_bytes,
     )
+    actor = _decision_actor(
+        simulated_fixture=simulated_fixture,
+        human_attestation=human_attestation,
+    )
     request = prepare_verified_promotion(
         store,
         artifacts,
         run_id,
         decision_id="promotion_" + sha256_hex(run_id.encode())[:24],
         occurred_at=datetime.now(UTC),
-        decision_actor=("simulated_fixture" if simulated_fixture else "human"),
+        decision_actor=actor,
+        operator_label=operator_label,
+        operator_rationale=operator_rationale,
     )
+    if not isinstance(request, PromotionRequest):
+        raise PromotionError("promotion approval was not prepared")
 
     def trusted_retest(retest) -> PromotionRetestResult:
         rerun = run_fixture_tests(checkout, golden.fixture)
@@ -935,7 +1274,7 @@ def _promote(
                     "timed_out": rerun.timed_out,
                 }
             ),
-            reconstructed_commit_sha=retest.base_sha,
+            retest_base_sha=retest.base_sha,
             passed=rerun.exit_code == 0,
             timed_out=rerun.timed_out,
         )
@@ -948,14 +1287,23 @@ def _promote(
         record_checkpoint=checkpoints,
         allow_simulated_fixture=simulated_fixture,
     )
+    local = commit_promoted_run(
+        path,
+        run_id,
+        allow_simulated_fixture=simulated_fixture,
+    )
     return {
         "run_id": run_id,
         "state": LineageRunState.PROMOTED.value,
-        "head": outcome.final_head.model_dump(mode="json"),
+        "head": local.final_head.model_dump(mode="json"),
         "checkpoint_id": outcome.checkpoint.checkpoint_id,
         "checkpoint_sha256": outcome.checkpoint.checkpoint_sha256,
         "promotion_receipt_id": outcome.receipt_reference.id,
         "promotion_receipt_sha256": outcome.receipt.receipt_sha256,
+        "outcome": local.receipt.outcome,
+        "local_commit_sha": local.receipt.local_commit_sha,
+        "local_commit_receipt_id": local.receipt_reference.id,
+        "local_commit_receipt_sha256": local.receipt_reference.sha256,
     }
 
 
@@ -1113,6 +1461,7 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             return run_demo(
+                driver=args.driver,
                 speed=args.speed,
                 no_open=args.no_open,
                 cleanup=args.cleanup,
@@ -1132,17 +1481,66 @@ def main(argv: list[str] | None = None) -> int:
             _write_result(_feedback(path, args), json_mode=args.json_mode)
             return 0
         if args.command == "answer":
-            _write_result(_answer(path, args), json_mode=args.json_mode)
+            _write_result(
+                _answer(
+                    path,
+                    args,
+                    human_attestation=(sys.stdin.isatty() and sys.stdout.isatty()),
+                    operator_label=args.operator_label,
+                    operator_rationale=args.rationale,
+                ),
+                json_mode=args.json_mode,
+            )
             return 0
         if args.command == "memory":
-            _write_result(_memory(path, args), json_mode=args.json_mode)
+            result = _memory(
+                path,
+                args,
+                human_attestation=(sys.stdin.isatty() and sys.stdout.isatty()),
+                operator_label=args.operator_label,
+                operator_rationale=args.rationale,
+            )
+            if args.memory_action == "reject":
+                ended = _end_rejected_run(
+                    path,
+                    str(result["run_id"]),
+                    str(result["decision_event_id"]),
+                    "memory_rejected",
+                )
+                result.update(
+                    state=LineageRunState.REJECTED.value,
+                    end_event_id=ended.event_id,
+                    head=_verified_head(
+                        _load(path, str(result["run_id"]))[1]
+                    ).model_dump(mode="json"),
+                )
+            _write_result(result, json_mode=args.json_mode)
             return 0
         if args.command == "handoff":
             _write_result(_handoff(path, args), json_mode=args.json_mode)
             return 0
         if args.command == "promote":
+            human_attestation = sys.stdin.isatty() and sys.stdout.isatty()
+            result = (
+                _promote(
+                    path,
+                    args.consumer_run_id,
+                    human_attestation=human_attestation,
+                    operator_label=args.operator_label,
+                    operator_rationale=args.rationale,
+                )
+                if args.decision == "commit"
+                else _reject_candidate(
+                    path,
+                    args.consumer_run_id,
+                    simulated_fixture=False,
+                    human_attestation=human_attestation,
+                    operator_label=args.operator_label,
+                    operator_rationale=args.rationale,
+                )
+            )
             _write_result(
-                _promote(path, args.consumer_run_id),
+                result,
                 json_mode=args.json_mode,
             )
             return 0
@@ -1210,6 +1608,7 @@ def main(argv: list[str] | None = None) -> int:
         ConsumerStartError,
         HandoffCompileError,
         HumanWorkflowError,
+        LocalCommitError,
         PromotionError,
         RuntimeBindingError,
     ):

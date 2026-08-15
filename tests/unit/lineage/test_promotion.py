@@ -424,7 +424,7 @@ class Harness:
     def receipt(self, retest, **changes):
         values = {
             "authoritative_test_receipt_sha256": "3" * 64,
-            "reconstructed_commit_sha": "b" * 40,
+            "retest_base_sha": "b" * 40,
             "passed": True,
             "timed_out": False,
             **changes,
@@ -537,7 +537,7 @@ def test_substituted_retest_binding_is_denied_and_never_completed(tmp_path, fiel
             **bindings,
             receipt_id="promotion_receipt_forged",
             authoritative_test_receipt_sha256="3" * 64,
-            reconstructed_commit_sha="b" * 40,
+            retest_base_sha="b" * 40,
             passed=True,
             timed_out=False,
         )
@@ -579,7 +579,7 @@ def test_callback_failure_and_nonpassing_receipt_fail_closed(tmp_path):
     def nonpassing(retest):
         return PromotionRetestResult(
             authoritative_test_receipt_sha256="3" * 64,
-            reconstructed_commit_sha="b" * 40,
+            retest_base_sha="b" * 40,
             passed=False,
             timed_out=False,
         )
@@ -599,7 +599,7 @@ def test_callback_failure_and_nonpassing_receipt_fail_closed(tmp_path):
     def bad_digest(retest):
         return PromotionRetestResult.model_construct(
             authoritative_test_receipt_sha256="not-a-digest",
-            reconstructed_commit_sha="b" * 40,
+            retest_base_sha="b" * 40,
             passed=True,
             timed_out=False,
         )
@@ -839,6 +839,17 @@ def test_request_and_receipt_types_are_strict_and_human_only(tmp_path):
                 "unexpected": True,
             }
         )
+    legacy = receipt.model_dump(mode="json")
+    legacy["reconstructed_commit_sha"] = legacy.pop("retest_base_sha")
+    legacy["receipt_sha256"] = canonical_json_sha256(
+        {key: value for key, value in legacy.items() if key != "receipt_sha256"}
+    )
+    parsed = PromotionReceiptV2.model_validate(legacy)
+    assert parsed.retest_base_sha is None
+    assert parsed.legacy_reconstructed_commit_sha == "b" * 40
+    assert parsed.receipt_sha256 == legacy["receipt_sha256"]
+    with pytest.raises(ValueError, match="require retest_base_sha"):
+        PromotionReceiptV2.create(**legacy)
 
 
 @pytest.mark.parametrize(

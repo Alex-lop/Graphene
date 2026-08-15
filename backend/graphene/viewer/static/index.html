@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/static/viewer.css">
   </head>
   <body>
-    <a class="skip-link" href="#lineage-list">Skip to relationship list</a>
+    <a class="skip-link" href="#review-brief">Skip to Review Brief</a>
     <header class="status-strip" aria-label="Verified viewer status">
       <a class="brand" href="#canvas" aria-label="Graphene Bubble Lineage"><span aria-hidden="true">G</span> Graphene</a>
       <dl>
@@ -24,25 +24,61 @@
     </header>
 
     <main>
-      <section class="workspace" aria-labelledby="viewer-heading">
+      <div class="decision-layout">
+        <aside id="review-brief" class="review-brief" aria-labelledby="review-heading">
+          <header>
+            <p class="eyebrow">Decision-first evidence</p>
+            <h1 id="review-heading">Review Brief</h1>
+            <p>Review or hand off this bounded candidate. Every fact links to captured support; missing facts stay explicit.</p>
+          </header>
+          <section class="attention" aria-labelledby="attention-heading">
+            <p class="eyebrow">Needs attention now</p>
+            <h2 id="attention-heading">Decision state</h2>
+            <div id="attention-fact" role="status" aria-live="polite"></div>
+          </section>
+          <div id="brief-sections" class="brief-sections">
+            <section aria-labelledby="brief-candidate-heading"><h2 id="brief-candidate-heading">Candidate / changed paths</h2><ul id="brief-candidate"></ul></section>
+            <section aria-labelledby="brief-evidence-heading"><h2 id="brief-evidence-heading">Verified evidence</h2><ul id="brief-evidence"></ul></section>
+            <section aria-labelledby="brief-human-heading"><h2 id="brief-human-heading">Human intervention</h2><ul id="brief-human"></ul></section>
+            <section aria-labelledby="brief-context-heading"><h2 id="brief-context-heading">Inherited context: included and excluded</h2><ul id="brief-context"></ul></section>
+            <section aria-labelledby="brief-outcome-heading"><h2 id="brief-outcome-heading">Outcome</h2><ul id="brief-outcome"></ul></section>
+            <section aria-labelledby="brief-unknown-heading"><h2 id="brief-unknown-heading">Unknown / not captured</h2><ul id="brief-unknown"></ul></section>
+          </div>
+        </aside>
+
+        <section class="workspace" aria-labelledby="viewer-heading">
         <header class="viewer-heading">
           <div>
-            <p class="eyebrow">Bubble Lineage</p>
-            <h1 id="viewer-heading">See the verified story unfold.</h1>
+            <p class="eyebrow">Bubble Lineage · inspectable evidence</p>
+            <h2 id="viewer-heading">Current decision neighborhood</h2>
           </div>
-          <p id="bounds" class="bounds" role="status">Loading bounded public view…</p>
+          <dl id="view-counts" class="view-counts" aria-label="Projection counts">
+            <div><dt>Total</dt><dd id="count-total">0</dd></div><div><dt>Visible</dt><dd id="count-visible">0</dd></div>
+            <div><dt>Filtered</dt><dd id="count-filtered">0</dd></div><div><dt>Collapsed</dt><dd id="count-collapsed">0</dd></div>
+          </dl>
         </header>
 
+        <ol id="stage-story" class="stage-story" aria-label="Verified stage story"></ol>
+
         <nav class="filter-bar" aria-label="Lineage filters">
-          <div id="filters" class="filters"></div>
+          <div class="view-switch" role="group" aria-label="Topology scope">
+            <button id="decision-view" type="button" aria-pressed="true">Current decision</button>
+            <button id="full-view" type="button" aria-pressed="false">Full bounded topology</button>
+          </div>
+          <div id="filters" class="filters" aria-label="Semantic filters"></div>
           <div class="actions" aria-label="Canvas actions">
             <button id="fit" type="button">Fit</button>
             <button id="organize" type="button">Organize</button>
             <button id="focus-current" type="button">Current action</button>
-            <button id="evidence-path" type="button">Evidence path</button>
+            <button id="evidence-path" type="button">Verified support relationships</button>
             <button id="reset-filters" type="button">Reset filters</button>
           </div>
         </nav>
+
+        <div class="truth-legend" aria-label="Truth and relationship legend">
+          <span><b>SIM</b> simulated_fixture</span><span><b>HUMAN</b> human_attested</span><span><b>POLICY</b> policy_authoritative</span>
+          <span><b>OBS</b> runtime_observed</span><span><b>DERIVED</b> server_derived</span><span><i></i> Verified support relationship</span>
+        </div>
 
         <div class="canvas-shell">
           <div id="canvas" role="application" tabindex="0" aria-label="Interactive lineage graph. Use arrow keys to select a bubble and Enter for details."></div>
@@ -51,7 +87,7 @@
             <strong>EVIDENCE_INVALID</strong>
             <span id="invalid-reason">Verified evidence changed. Streaming stopped.</span>
           </div>
-          <p class="activity-note">Bubble size = capped log of verified <strong>activity</strong>, never importance, impact, or correctness.</p>
+          <p id="bounds" class="activity-note" role="status">Bubble size = capped verified activity; not importance, impact, or correctness.</p>
         </div>
 
         <section class="replay" aria-label="Replay controls">
@@ -69,10 +105,11 @@
           <output id="timeline-label" for="timeline">0 / 0</output>
           <span id="live-badge" class="badge">LIVE</span>
         </section>
-      </section>
+        </section>
+      </div>
 
       <section id="lineage-list" class="lineage-list" aria-labelledby="lineage-heading" tabindex="-1">
-        <header><div><p class="eyebrow">Accessible mirror</p><h2 id="lineage-heading">Verified relationships</h2></div><span id="relationship-count">0 relationships</span></header>
+        <header><div><p class="eyebrow">Accessible mirror</p><h2 id="lineage-heading">Typed explicit relationships</h2></div><span id="relationship-count">0 relationships</span></header>
         <ol id="relationships"></ol>
         <p id="relationships-empty">No visible relationships.</p>
       </section>

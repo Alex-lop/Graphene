@@ -353,8 +353,13 @@ class SQLiteLineageStore:
             ):
                 return _invalid(run_id, "checkpointed prefix is unresolved"), ()
         try:
-            from .reducer import ProjectionError, reduce_events
+            from .reducer import (
+                ProjectionError,
+                reduce_events,
+                validate_semantic_artifacts,
+            )
 
+            validate_semantic_artifacts(tuple(events), self._artifact)
             reduce_events(tuple(events))
         except ProjectionError as error:
             return _invalid(
@@ -481,8 +486,13 @@ class SQLiteLineageStore:
 
                 event = self._event(run_id, state, idempotency_key, draft)
                 try:
-                    from .reducer import ProjectionError, reduce_events
+                    from .reducer import (
+                        ProjectionError,
+                        reduce_events,
+                        validate_semantic_artifacts,
+                    )
 
+                    validate_semantic_artifacts((*events, event), self._artifact)
                     reduce_events((*events, event))
                 except ProjectionError as error:
                     raise EvidenceInvalid(

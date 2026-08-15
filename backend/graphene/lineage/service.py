@@ -370,6 +370,7 @@ class ScopedApplicationService:
                 LineageRunState.FAILED,
                 LineageRunState.INTERRUPTED,
                 LineageRunState.PROMOTED,
+                LineageRunState.REJECTED,
             }
             or finished is not None
         ):
@@ -1046,6 +1047,8 @@ class ScopedApplicationService:
     ) -> None:
         self._validate_call(handle, call)
         self._ensure_active(handle)
+        if call.adapter_kind != "local":
+            self._ensure_started(handle)
         self._ensure_new_call(handle, call)
         if allowed:
             return
@@ -1162,17 +1165,17 @@ class ScopedApplicationService:
             "status": "failed",
             "error_code": self._error_code(error),
         }
-        source = self._source(
-            EvidenceKind.TOOL_RECEIPT,
-            SourceKind.TOOL_RECEIPT,
-            self._receipt_record(
-                handle,
-                phase="tool.failed",
-                call=call,
-                payload=payload,
-            ),
-        )
         try:
+            source = self._source(
+                EvidenceKind.TOOL_RECEIPT,
+                SourceKind.TOOL_RECEIPT,
+                self._receipt_record(
+                    handle,
+                    phase="tool.failed",
+                    call=call,
+                    payload=payload,
+                ),
+            )
             self._append(
                 handle,
                 self._key(handle, f"{operation.value}.failed", call),

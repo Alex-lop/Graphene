@@ -1,5 +1,7 @@
 # Graphene — Ultra MVP Execution Brief
 
+> **Historical record — not current product truth.** This Phase-0 brief contains dated scope, model, platform, and deadline assumptions. Use [`README.md`](README.md), [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), and [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Status: binding build brief for the All Things Agentic submission  
 Repository: `Alex-lop/AllThingsAgenticHackathon`  
 Starting point reviewed: `main` at `64bca65df9bbd90bd7ec69be75e79ed361f7490e`  

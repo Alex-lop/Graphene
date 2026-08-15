@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "status": "canonical",
+  "product_thesis": "Graphene is an evidence-backed review and handoff layer for a developer supervising bounded coding-agent work. It shows the captured edits, tests, human corrections, approved context, and explicit unknowns behind a candidate, then passes only approved evidence into the next run.",
+  "primary_user": "A developer supervising or taking over a coding-agent change.",
+  "painful_moment": "Deciding whether a candidate is trustworthy after a long run, correction, or handoff without reconstructing a transcript.",
+  "decision": "Approve, reject, or hand off that exact candidate and its bounded evidence.",
+  "result": "A faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.",
+  "drivers": {
+    "verified-replay": {
+      "command": "uv run --frozen graphene demo --driver verified-replay",
+      "truth_label": "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION",
+      "platform": "cross-platform",
+      "proves": "A checked-in event fixture materialized through v2 verification, its hash-checked public projection, explicit context opening/reference, and the decision-view experience.",
+      "does_not_prove": [
+        "live execution",
+        "human attestation",
+        "Google ADK execution",
+        "Gemini execution",
+        "new test execution"
+      ]
+    },
+    "scripted-local": {
+      "command": "uv run --frozen graphene demo --driver scripted-local",
+      "truth_label": "SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF",
+      "platform": "macOS with /usr/bin/sandbox-exec",
+      "proves": "The bounded v2 protocol, policy enforcement, interactive TTY choices, isolated fixed retest, and approved isolated local Git result.",
+      "does_not_prove": [
+        "independent coding-agent behavior",
+        "Google ADK execution",
+        "Gemini execution",
+        "memory caused or improved a later edit",
+        "push, pull request, or deployment"
+      ]
+    },
+    "adk-fake": {
+      "command": "uv run --frozen graphene demo --driver adk-fake",
+      "truth_label": "REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — NOT GEMINI OR INDEPENDENT-AGENT PROOF",
+      "platform": "macOS with /usr/bin/sandbox-exec",
+      "proves": "Real Google ADK Runner, session, and Graphene tool routing with a deterministic fake model through the same bounded review protocol.",
+      "does_not_prove": [
+        "Gemini execution",
+        "autonomous intelligence",
+        "independent-agent quality",
+        "push, pull request, or deployment"
+      ]
+    }
+  },
+  "capture_boundary": {
+    "operations": [
+      "search_repo",
+      "read_file",
+      "open_evidence",
+      "write_file",
+      "run_fixed_test",
+      "request_completion"
+    ],
+    "fixture": "Sanitized Auth source and consumer work with a Billing zero-dispatch denial.",
+    "live_execution_platform": "macOS with /usr/bin/sandbox-exec",
+    "browser_authority": "Read-only public projection; terminal and v2 services remain authoritative.",
+    "privately_captured": [
+      "authorized source and evidence bytes",
+      "bounded diffs and approved context",
+      "bounded fixed-test output"
+    ],
+    "not_publicly_projected": [
+      "raw source or diff bytes",
+      "prompt or approved-context text",
+      "test stdout or stderr",
+      "secrets, credentials, or private artifact bytes"
+    ],
+    "not_observed": [
+      "arbitrary shell or editor activity",
+      "whole-repository activity",
+      "hidden reasoning or chain of thought",
+      "push, pull request, deployment, or cloud state"
+    ]
+  },
+  "authority": {
+    "current": [
+      "backend/graphene/cli/main.py",
+      "backend/graphene/demo.py",
+      "backend/graphene/demo_adk.py",
+      "backend/graphene/lineage",
+      "backend/graphene/viewer",
+      "contracts/lineage_v2.json",
+      "contracts/golden_path.json",
+      "contracts/graph_mvp.json"
+    ],
+    "compatibility_only": [
+      "backend/graphene/app.py",
+      "frontend",
+      "Dockerfile"
+    ],
+    "fixture_mechanics": "contracts/golden_path.json and contracts/graph_mvp.json are shared operational fixture inputs. V2 consumes their frozen task, file, test, profile, and scope data; their legacy three-tool, API, loop, framework/model-policy, and graph fields are not current product, driver, runtime, or outcome truth."
+  },
+  "deferred": [
+    "graph-to-agent retrieval or graph-generated context",
+    "real Gemini or other external live model",
+    "Linux fixed-test execution",
+    "whole-repository or arbitrary-repository capture",
+    "push, pull request, deployment, or cloud hosting"
+  ]
+}

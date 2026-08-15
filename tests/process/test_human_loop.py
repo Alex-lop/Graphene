@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import pty
+import select
 import subprocess
 import tempfile
 from datetime import UTC, datetime
@@ -43,6 +45,41 @@ GRAPH = GraphMvpContract.model_validate_json(
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 GRAPHENE = ROOT / ".venv/bin/graphene"
 GRAPHENE_MCP = ROOT / ".venv/bin/graphene-mcp"
+
+
+def _tty_cli(environment: dict[str, str], cwd: Path, *arguments: str) -> dict:
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
+        [str(GRAPHENE), "--json", *arguments],
+        cwd=cwd,
+        env=environment,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+    )
+    os.close(slave)
+    output = bytearray()
+    try:
+        while process.poll() is None:
+            ready, _, _ = select.select([master], [], [], 20)
+            if not ready:
+                process.kill()
+                raise AssertionError("TTY CLI command timed out")
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+        while select.select([master], [], [], 0)[0]:
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+    except OSError:
+        pass
+    finally:
+        os.close(master)
+    assert process.wait(timeout=1) == 0, output.decode(errors="replace")
+    return json.loads(output.decode().replace("\r", "").splitlines()[-1])
 
 
 def _head(event) -> VerifiedHead:
@@ -231,12 +268,14 @@ def test_public_human_loop_reaches_a_fresh_verified_consumer(tmp_path: Path):
         question_id=asked.payload["question_id"],
         choice=ScopeId.ALL_AUTH,
         idempotency_key="human_loop_answer_001",
+        human_attestation=True,
     )
     feedback = workflow.record_feedback(
         source.run_id,
         _head(answered),
         question_id=asked.payload["question_id"],
         idempotency_key="human_loop_feedback_001",
+        human_attestation=True,
     )
     proposed = workflow.propose_memory(
         source.run_id,
@@ -251,6 +290,7 @@ def test_public_human_loop_reaches_a_fresh_verified_consumer(tmp_path: Path):
         revision=proposed.payload["revision"],
         decision=MemoryDecisionValue.APPROVE,
         idempotency_key="human_loop_memory_approved_001",
+        human_attestation=True,
     )
 
     task = GOLDEN.tasks[1]
@@ -376,29 +416,24 @@ def test_public_human_loop_reaches_a_fresh_verified_consumer(tmp_path: Path):
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     environment["GRAPHENE_LINEAGE_DB"] = str(database)
-    promoted_process = subprocess.run(
-        [str(GRAPHENE), "--json", "promote", consumer.run_id],
-        cwd=database.parent,
-        env=environment,
-        capture_output=True,
-        timeout=20,
-        check=False,
+    promoted_result = _tty_cli(
+        environment,
+        database.parent,
+        "promote",
+        consumer.run_id,
+        "--decision",
+        "commit",
     )
-    assert promoted_process.returncode == 0, promoted_process.stderr.decode()
-    assert promoted_process.stderr == b""
-    promoted_result = json.loads(promoted_process.stdout)
     assert promoted_result["state"] == "PROMOTED"
-    promoted_retry = subprocess.run(
-        [str(GRAPHENE), "--json", "promote", consumer.run_id],
-        cwd=database.parent,
-        env=environment,
-        capture_output=True,
-        timeout=20,
-        check=False,
+    promoted_retry = _tty_cli(
+        environment,
+        database.parent,
+        "promote",
+        consumer.run_id,
+        "--decision",
+        "commit",
     )
-    assert promoted_retry.returncode == 0
-    assert promoted_retry.stderr == b""
-    assert json.loads(promoted_retry.stdout) == promoted_result
+    assert promoted_retry == promoted_result
     explained_process = subprocess.run(
         [
             str(GRAPHENE),

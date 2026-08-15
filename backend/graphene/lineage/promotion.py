@@ -78,7 +78,7 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PromotionRequest(_Frozen):
+class PreparedPromotionCandidate(_Frozen):
     schema_version: Literal[2] = 2
     run_id: Identifier
     expected_head: VerifiedHead
@@ -101,41 +101,24 @@ class PromotionRequest(_Frozen):
     brief_reference: EvidenceReference
     decision_reference: EvidenceReference
     memory_reference: EvidenceReference
-    human_approval: HumanDecision
 
     @model_validator(mode="after")
-    def bindings_are_exact_and_decided(self) -> PromotionRequest:
+    def bindings_are_exact(self) -> PreparedPromotionCandidate:
         expected = (
             (
                 self.candidate_reference,
                 EvidenceKind.EVIDENCE_BLOB,
                 self.candidate_sha256,
             ),
-            (
-                self.changeset_reference,
-                EvidenceKind.CHANGESET,
-                self.changeset_sha256,
-            ),
-            (
-                self.test_reference,
-                EvidenceKind.TEST_RECEIPT,
-                self.test_receipt_sha256,
-            ),
-            (
-                self.brief_reference,
-                EvidenceKind.CONTEXT_BRIEF,
-                self.brief_sha256,
-            ),
+            (self.changeset_reference, EvidenceKind.CHANGESET, self.changeset_sha256),
+            (self.test_reference, EvidenceKind.TEST_RECEIPT, self.test_receipt_sha256),
+            (self.brief_reference, EvidenceKind.CONTEXT_BRIEF, self.brief_sha256),
             (
                 self.decision_reference,
                 EvidenceKind.HANDOFF_DECISION,
                 self.decision_sha256,
             ),
-            (
-                self.memory_reference,
-                EvidenceKind.MEMORY_REVISION,
-                self.memory_sha256,
-            ),
+            (self.memory_reference, EvidenceKind.MEMORY_REVISION, self.memory_sha256),
         )
         if (
             self.expected_head.run_id != self.run_id
@@ -147,6 +130,16 @@ class PromotionRequest(_Frozen):
             or len({reference.id for reference, _, _ in expected}) != len(expected)
         ):
             raise ValueError("promotion artifact and head bindings do not match")
+        return self
+
+
+class PromotionRequest(PreparedPromotionCandidate):
+    human_approval: HumanDecision
+    operator_label: str | None = Field(default=None, min_length=1, max_length=64)
+    operator_rationale: str | None = Field(default=None, max_length=280)
+
+    @model_validator(mode="after")
+    def bindings_are_exact_and_decided(self) -> PromotionRequest:
         if (
             self.human_approval.actor not in {"human", "simulated_fixture"}
             or self.human_approval.value != MemoryDecisionValue.APPROVE
@@ -156,6 +149,8 @@ class PromotionRequest(_Frozen):
             raise ValueError(
                 "promotion requires exact human approval or explicit simulated fixture"
             )
+        if self.operator_rationale is not None and self.operator_label is None:
+            raise ValueError("promotion rationale requires an operator label")
         return self
 
 
@@ -186,7 +181,7 @@ class PromotionRetestResult(_Frozen):
     """Narrow authoritative observations; the coordinator owns the receipt proof."""
 
     authoritative_test_receipt_sha256: Sha256
-    reconstructed_commit_sha: GitSha
+    retest_base_sha: GitSha
     passed: bool = Field(strict=True)
     timed_out: bool = Field(strict=True)
 
@@ -214,17 +209,35 @@ class PromotionReceiptV2(_Frozen):
     human_approval_sha256: Sha256
     artifact_references: tuple[EvidenceReference, ...]
     authoritative_test_receipt_sha256: Sha256
-    reconstructed_commit_sha: GitSha
+    retest_base_sha: GitSha | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    legacy_reconstructed_commit_sha: GitSha | None = Field(
+        default=None,
+        validation_alias="reconstructed_commit_sha",
+        exclude_if=lambda value: value is None,
+    )
     passed: Literal[True]
     timed_out: Literal[False]
     receipt_sha256: Sha256
 
     @model_validator(mode="after")
     def receipt_is_canonical(self) -> PromotionReceiptV2:
-        if self.approval_head.run_id != self.run_id or self.receipt_sha256 != (
-            canonical_json_sha256(
-                self.model_dump(mode="json", exclude={"receipt_sha256"})
+        if (self.retest_base_sha is None) == (
+            self.legacy_reconstructed_commit_sha is None
+        ):
+            raise ValueError("promotion receipt must use one retest base field")
+        canonical = self.model_dump(
+            mode="json",
+            exclude={"receipt_sha256", "legacy_reconstructed_commit_sha"},
+        )
+        if self.legacy_reconstructed_commit_sha is not None:
+            canonical["reconstructed_commit_sha"] = (
+                self.legacy_reconstructed_commit_sha
             )
+        if (
+            self.approval_head.run_id != self.run_id
+            or self.receipt_sha256 != canonical_json_sha256(canonical)
         ):
             raise ValueError("promotion receipt binding or digest does not match")
         return self
@@ -232,6 +245,8 @@ class PromotionReceiptV2(_Frozen):
     @classmethod
     def create(cls, **values: Any) -> PromotionReceiptV2:
         values = {**values}
+        if "reconstructed_commit_sha" in values:
+            raise ValueError("new promotion receipts require retest_base_sha")
         values.pop("receipt_sha256", None)
         values["approval_head"] = VerifiedHead.model_validate(
             values["approval_head"]
@@ -751,6 +766,14 @@ def _approved_memory(
         or memory.repo_id != brief.repo_id
         or memory.decision is None
         or memory.decision.decision_id != event.payload.get("decision_id")
+        or (
+            selected.scope_id is not None
+            and (
+                memory.scope_id != selected.scope_id
+                or memory.path_globs != selected.path_globs
+                or memory.task_tags != selected.task_tags
+            )
+        )
     ):
         raise PromotionEvidenceError("approved memory does not match the context")
     candidate_id = (
@@ -815,6 +838,14 @@ def _prepared_candidate_matches(
 
 def _approval_record(request: PromotionRequest) -> tuple[str, dict[str, Any]]:
     digest = canonical_json_sha256(request.human_approval.model_dump(mode="json"))
+    bindings = {
+        key: value
+        for key, value in request.model_dump(mode="json").items()
+        if key not in {"schema_version", "expected_head", "human_approval"}
+    }
+    if request.operator_label is None:
+        bindings.pop("operator_label")
+        bindings.pop("operator_rationale")
     return digest, {
         "schema_version": 2,
         "action": "promotion.approved",
@@ -822,12 +853,23 @@ def _approval_record(request: PromotionRequest) -> tuple[str, dict[str, Any]]:
         "expected_head": request.expected_head.model_dump(mode="json"),
         "human_approval": request.human_approval.model_dump(mode="json"),
         "human_approval_sha256": digest,
-        "bindings": {
-            key: value
-            for key, value in request.model_dump(mode="json").items()
-            if key not in {"schema_version", "expected_head", "human_approval"}
-        },
+        "bindings": bindings,
     }
+
+
+def _approval_payload(request: PromotionRequest, digest: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "candidate_patch_sha256": request.candidate_patch_sha256,
+        "decision_id": request.human_approval.decision_id,
+        "decision_sha256": digest,
+        "expected_head_sha256": request.expected_head.event_sha256,
+        "status": "approved",
+    }
+    if request.operator_label is not None:
+        payload["operator_label"] = request.operator_label
+        if request.operator_rationale is not None:
+            payload["operator_rationale"] = request.operator_rationale
+    return payload
 
 
 def _validate_promotion_evidence(
@@ -994,14 +1036,7 @@ def _request_from_approval(
         or request.run_id != approval.run_id
         or request.expected_head != _head(events[-2])
         or approval.references != expected_references
-        or approval.payload
-        != {
-            "candidate_patch_sha256": request.candidate_patch_sha256,
-            "decision_id": request.human_approval.decision_id,
-            "decision_sha256": digest,
-            "expected_head_sha256": request.expected_head.event_sha256,
-            "status": "approved",
-        }
+        or approval.payload != _approval_payload(request, digest)
     ):
         raise PromotionEvidenceError("promotion approval binding does not match")
     _successor(approval, request.expected_head, LineageEventType.PROMOTION_APPROVED)
@@ -1016,8 +1051,10 @@ def prepare_verified_promotion(
     *,
     decision_id: str,
     occurred_at: datetime,
-    decision_actor: Literal["human", "simulated_fixture"] = "human",
-) -> PromotionRequest:
+    decision_actor: Literal["human", "simulated_fixture"] | None = None,
+    operator_label: str | None = None,
+    operator_rationale: str | None = None,
+) -> PromotionRequest | PreparedPromotionCandidate:
     """Derive and persist one promotion candidate from verified production evidence."""
 
     head, events = _stable_run(store, run_id)
@@ -1036,7 +1073,15 @@ def prepare_verified_promotion(
         and decisions[0] is events[-1]
         and (decisions[0].event_type == LineageEventType.PROMOTION_APPROVED)
     ):
-        return _request_from_approval(artifacts, events)
+        recovered = _request_from_approval(artifacts, events)
+        if decision_actor is None:
+            return PreparedPromotionCandidate.model_validate(
+                recovered.model_dump(
+                    mode="json",
+                    exclude={"human_approval", "operator_label", "operator_rationale"},
+                )
+            )
+        return recovered
     if decisions:
         raise PromotionConflict("promotion preparation follows a promotion decision")
     try:
@@ -1104,11 +1149,16 @@ def prepare_verified_promotion(
         decision_reference,
     )
     expected_memory_truth = (
-        TruthKind.SIMULATED_FIXTURE
+        None
+        if decision_actor is None
+        else TruthKind.SIMULATED_FIXTURE
         if decision_actor == "simulated_fixture"
         else TruthKind.HUMAN_ATTESTED
     )
-    if memory_event.truth_kind != expected_memory_truth:
+    if (
+        expected_memory_truth is not None
+        and memory_event.truth_kind != expected_memory_truth
+    ):
         raise PromotionEvidenceError(
             "promotion approval provenance does not match its approved memory"
         )
@@ -1254,15 +1304,7 @@ def prepare_verified_promotion(
         if store.verify(run_id) != _head(candidate_event):
             raise PromotionEvidenceError("prepared promotion candidate did not verify")
 
-    approval = HumanDecision(
-        decision_id=decision_id,
-        value=MemoryDecisionValue.APPROVE,
-        purpose="promotion",
-        bound_digest=changeset["candidate_patch_sha256"],
-        occurred_at=occurred_at,
-        actor=decision_actor,
-    )
-    return PromotionRequest(
+    prepared = PreparedPromotionCandidate(
         run_id=run_id,
         expected_head=_head(candidate_event),
         repo_id=events[0].repo_id,
@@ -1284,7 +1326,22 @@ def prepare_verified_promotion(
         brief_reference=brief_reference,
         decision_reference=decision_reference,
         memory_reference=memory_reference,
+    )
+    if decision_actor is None:
+        return prepared
+    approval = HumanDecision(
+        decision_id=decision_id,
+        value=MemoryDecisionValue.APPROVE,
+        purpose="promotion",
+        bound_digest=changeset["candidate_patch_sha256"],
+        occurred_at=occurred_at,
+        actor=decision_actor,
+    )
+    return PromotionRequest(
+        **prepared.model_dump(mode="python"),
         human_approval=approval,
+        operator_label=operator_label,
+        operator_rationale=operator_rationale,
     )
 
 
@@ -1564,7 +1621,9 @@ def promote(
         request.human_approval.actor == "simulated_fixture"
         and not allow_simulated_fixture
     ):
-        raise PromotionConflict("simulated fixture promotion was not explicitly enabled")
+        raise PromotionConflict(
+            "simulated fixture promotion was not explicitly enabled"
+        )
     current = store.verify(request.run_id)
     if isinstance(current, EvidenceInvalidState):
         raise PromotionEvidenceError("lineage evidence is invalid")
@@ -1588,11 +1647,7 @@ def promote(
 
     approval_digest, approval_record = _approval_record(request)
     simulated_fixture = request.human_approval.actor == "simulated_fixture"
-    truth = (
-        TruthKind.SIMULATED_FIXTURE
-        if simulated_fixture
-        else TruthKind.HUMAN_ATTESTED
-    )
+    truth = TruthKind.SIMULATED_FIXTURE if simulated_fixture else TruthKind.HUMAN_ATTESTED
     authority = (
         LineageAuthority.SIMULATED_FIXTURE
         if simulated_fixture
@@ -1645,13 +1700,7 @@ def promote(
                     id=operator.id,
                     sha256=operator.sha256,
                 ),
-                payload={
-                    "candidate_patch_sha256": request.candidate_patch_sha256,
-                    "decision_id": request.human_approval.decision_id,
-                    "decision_sha256": approval_digest,
-                    "expected_head_sha256": request.expected_head.event_sha256,
-                    "status": "approved",
-                },
+                payload=_approval_payload(request, approval_digest),
             ),
         )
     except (LineageConflict, EvidenceInvalid) as error:
@@ -1684,6 +1733,7 @@ def promote(
 
 
 __all__ = [
+    "PreparedPromotionCandidate",
     "PromotionArtifacts",
     "PromotionCheckpointError",
     "PromotionConflict",

@@ -1,5 +1,7 @@
 # Proofline — Hackathon Implementation Plan
 
+> **Historical record — not current product truth.** This original plan was superseded by later ADRs and implementation. Use [`README.md`](README.md), [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), and [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Target artifact: `IMPLEMENTATION_PLAN.md`
 
 ## 1. Summary

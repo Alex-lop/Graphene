@@ -4,130 +4,166 @@
 
 # Graphene
 
-**See what a coding agent actually did, what evidence backs it, and what a human approved.** Graphene is a terminal-first lineage layer for committed, scoped coding-agent operations—not a screen recorder, repository crawler, or inferred knowledge graph.
+**Graphene is an evidence-backed review and handoff layer for a developer supervising bounded coding-agent work. It shows the captured edits, tests, human corrections, approved context, and explicit unknowns behind a candidate, then passes only approved evidence into the next run.**
 
-## One-command demo
+- **Primary user:** a developer supervising or taking over a coding-agent change.
+- **Painful moment:** deciding whether a candidate is trustworthy after a long run, correction, or handoff without reconstructing a transcript.
+- **Decision:** approve, reject, or hand off that exact candidate and its bounded evidence.
+- **Result:** a faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.
 
-Supported path: macOS, Python 3.13, Git, `uv`, executable `/usr/bin/sandbox-exec`, and this repository's sanitized Auth fixture.
+The graph is a read-only decision surface, not the authority. Verified v2 events, private artifacts, policy, and terminal decisions remain authoritative.
+
+## See it quickly: verified replay
 
 ```bash
 uv sync --frozen
+uv run --frozen graphene demo --driver verified-replay
+```
+
+This cross-platform path opens a checked-in public event fixture materialized through the v2 verifier and protected by a checked-in SHA-256 digest. It requires no macOS isolation, credentials, model dispatch, authoritative writes, human attestation, or new test execution. Terminal and viewer stay labeled:
+
+> **VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION**
+
+## Run the interactive protocol
+
+On macOS with Python 3.13, Git, `uv`, and executable `/usr/bin/sandbox-exec`:
+
+```bash
 uv run --frozen graphene demo --driver scripted-local
 ```
 
-Graphene creates a fresh owner-private runtime, starts the loopback read-only viewer on a free port, and opens it. The terminal shows a bounded evidence packet and asks for a real decision at each gate: correction scope, memory approval, and final promotion. Pressing Enter accepts the clearly displayed safe demo default. No database export, copied ID, second terminal, provider credential, or model call is needed.
+`scripted-local` is a deterministic **workflow fixture**, not independent-agent or Google ADK proof. It creates a private runtime, starts the authenticated loopback viewer, and pauses at real terminal branches for correction scope, memory approval/rejection, and candidate commit/rejection. Only an interactive TTY can create `human_attested`; automation is labeled `simulated_fixture` or fails closed. An approved final branch creates a verifiable Git commit only inside the retained isolated fixture checkout—never in the user's checkout, and never pushed.
 
-The default keeps the private runtime after Ctrl-C. Add `--cleanup` only when you want it deleted, `--no-open` when you want the URL without launching a browser, and `--speed N` to change pacing.
+Terminal and viewer stay labeled:
 
-## 30-second story
+> **SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF**
 
-1. Agent A reads Auth code, makes a bounded edit, runs the fixed tests, and is denied completion pending human review.
-2. A human anchors a correction to the exact hunk, chooses its scope, and approves one immutable memory revision.
-3. A Billing handoff is denied with zero model dispatch; an Auth handoff receives only the authorized evidence and brief.
-4. A genuinely fresh consumer opens the evidence, rereads source, makes the bounded change, adds the required regression test, and retests.
-5. A human promotes the verified candidate; `why`, `inspect`, replay, and the viewer explain only explicit committed relationships.
+The Google ADK integration proof uses the same bounded protocol:
 
-## Visualization
-
-- **Bubbles:** runs, scoped tools, files/evidence, human decisions, memory, policy, handoffs, tests, and promotion.
-- **Color:** semantic kind or cluster—not correctness or importance.
-- **Size:** capped logarithmic **activity** from observed verified interactions.
-- **Lines:** explicit evidence/source relationships; width is a capped observed edge activity count.
-- **Status:** the top strip shows the driver, verified head, connection, omissions, and exact truth label. Browser rendering is observational and never lineage authority.
-
-## Demo truth
-
-| Mode | Runner | Model | What it proves |
-|---|---|---|---|
-| `SCRIPTED LOCAL` | Not used | None; Gemini calls: 0 | Production v2 services, SQLite evidence, human gates, fixed local tests, handoff, and promotion |
-| `ADK COMPONENT DEMO` | Real Google ADK 2.5.0 | Deterministic fake; Gemini calls: 0 | ADK adapter/Runner composition only; not Gemini proof |
-| `VERIFIED REPLAY — NO LIVE AGENT` | None | None | Deterministic playback of verified v2 fixture events; simulated gates are not human proof |
-| Real Gemini | Not shipped as a demo driver | Credential/spend gated | Future gate; no fallback and no claim without observed model identity |
-
-Only `scripted-local` is exposed by `graphene demo` today. The repository has component tests for the ADK fake seam, but the one-command ADK/replay drivers are intentionally not claimed until they are integrated into the same viewer lifecycle.
-
-The hidden process-test seam records gate events as `truth_kind=simulated_fixture`, `authority=simulated_fixture`, and `source_ref.kind=simulated_fixture`; it never records `human_attested`. Normal interactive decisions retain `human_attested` provenance.
-
-## Architecture
-
-```text
-scripted local / MCP / Google ADK adapter
-                  |
-                  v
-       ScopedApplicationService
-                  |
-                  v
-   committed + verified SQLite events ---> private artifacts
-                  |
-                  v
- deterministic read-only projection ---> loopback stream ---> Cytoscape viewer
+```bash
+uv run --frozen graphene demo --driver adk-fake
 ```
 
-Cytoscape.js provides a mature offline Canvas renderer for Graphene's arbitrary lineage. Bubblemaps is a token-holder product/API and cannot represent this domain; Graphene borrows only its visual grammar. The browser receives bounded sanitized projection data and cannot mutate lineage, artifacts, checkouts, feedback, memory, handoffs, or promotion.
+It uses the real Google ADK Runner, session, and Graphene tool routing with a deterministic fake model and zero external model calls. It is always labeled:
 
-## Current status
+> **REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — NOT GEMINI OR INDEPENDENT-AGENT PROOF**
 
-This working tree is based on `41a5686236ec6dba60e413b30a8512be31f3c00a`. The one-command path is exercised by [`tests/process/test_demo_cli.py`](tests/process/test_demo_cli.py); projection/privacy and frontend reducer behavior have focused tests under `tests/unit/viewer` and `tests/frontend`.
+There is no silent driver fallback.
 
-| Boundary | Status |
-|---|---|
-| Sanitized local v2 flow | Supported on macOS with private SQLite/artifacts and fixed-test isolation |
-| Read-only v2 viewer | Deterministic, bounded, privacy-filtered, loopback-only observation |
-| Google ADK | Real Runner + fake LLM component proof; not real Gemini proof |
-| Real Gemini / Firestore / Cloud Run | Not authorized or claimed |
-| Linux / Docker fixed tests | Unsupported and fail closed |
-| Promotion | Local evidence receipt/checkpoint, not a hosted Git commit |
+## Immediate boundaries
 
-Graphene captures only its six closed operations: `search_repo`, `read_file`, `open_evidence`, `write_file`, `run_fixed_test`, and zero-argument `request_completion`. Shell/editor activity outside them is unknown. Exact source, diffs, prompts, test stdout, and private artifacts never enter public viewer payloads. See [`docs/data_residency.md`](docs/data_residency.md) and [`docs/EXECUTOR_THREAT_MODEL.md`](docs/EXECUTOR_THREAT_MODEL.md).
+- **Captured operations:** exactly `search_repo`, `read_file`, `open_evidence`, `write_file`, `run_fixed_test`, and zero-argument `request_completion` through the scoped v2 service.
+- **Live execution:** only the sanitized Auth fixture on macOS with `/usr/bin/sandbox-exec`; Linux and Docker cannot run the v2 fixed-test workflow.
+- **Negative proof:** the Billing handoff is denied before consumer construction and records zero model dispatch.
+- **Privately captured:** authorized source/evidence bytes, bounded diffs, approved context, and bounded test output may exist in owner-private local artifacts.
+- **Not publicly projected:** raw source, diffs, prompts/context text, test stdout, secrets, credentials, and private artifact bytes never enter the viewer or replay fixture.
+- **Not observed:** arbitrary shell/editor activity, whole-repository activity, hidden reasoning, pushes, pull requests, deployments, and cloud state remain outside the six-operation boundary.
+- **Causality:** Graphene verifies context compilation, inclusion, injection, opening/reference, and later actions; it does not claim approved context caused or improved an edit.
+- **Deferred:** the viewer remains read-only. Graph-derived context is not fed back into an agent.
+
+The machine-readable version of this current truth is [`contracts/product_proof.json`](contracts/product_proof.json).
+
+## Review story
+
+1. A deterministic source workflow fixture reads the bounded Auth files, makes an allowlisted edit, records a fixed-test receipt, and reaches a review gate.
+2. A developer anchors a correction to captured evidence and chooses the broad or narrow frozen scope.
+3. The developer approves or rejects one immutable memory revision. Rejection remains inspectable and does not create an approved-context claim.
+4. Billing is denied with zero dispatch. An allowed Auth handoff compiles included and excluded evidence for a fresh isolated consumer runtime.
+5. The consumer runtime explicitly opens/references allowed evidence, rereads source, performs bounded operations, and records a bound retest. The checked-in replay includes the explicit `open_evidence` relationship while remaining a fixture rather than a captured live run.
+6. The developer rejects the candidate or explicitly chooses **Approve and create isolated local commit**. The approved result is local-only: no push, PR, deployment, or user-checkout mutation.
+
+Delivery and ordering do not prove that context caused the later edit. The viewer renders explicit support, authorization, inclusion, and handoff relationships; it does not infer relevance, importance, correctness, or hidden causality.
+
+## Driver proof matrix
+
+| Driver | What it proves | What it does not prove |
+|---|---|---|
+| `verified-replay` | Checked-in event fixture materialized through v2 verification, hash-checked public projection, explicit context opening/reference, and the decision-view experience | Captured live execution, human attestation, ADK, Gemini, or new tests |
+| `scripted-local` | Bounded v2 protocol, policy, real TTY choices, isolated retest, and approved isolated local Git result | Independent model behavior, ADK, Gemini, context efficacy, push, PR, or deployment |
+| `adk-fake` | Real Google ADK Runner/session/tool routing with a deterministic fake model | Gemini, autonomous intelligence, independent-agent quality, push, PR, or deployment |
+| Future external-live mode | Only behavior observed in a separately authorized, credentialed run | Any silent substitution by replay, fake, or scripted execution |
+
+No real Gemini driver, provider-credential workflow, or cloud deployment is shipped.
+
+## Decision surface
+
+The first viewport leads with a deterministic Review Brief: current attention, changed paths, bound tests, human intervention and truth level, included/excluded handoff context, final outcome, and explicit unknowns. Each fact focuses its committed support. Missing facts render as **not established by captured evidence**.
+
+The bounded Cytoscape canvas remains available for inspection:
+
+- color encodes semantic kind, never correctness;
+- size and line width encode capped observed **activity**, never importance or impact;
+- non-color badges distinguish `human_attested`, `simulated_fixture`, policy, runtime, and server-derived truth;
+- **Verified support path** excludes generic membership and unrelated denial branches;
+- invalid evidence replaces normal state with `EVIDENCE_INVALID`.
+
+## Architecture and authority
+
+```text
+scripted fixture / Google ADK fake / MCP
+                  |
+                  v
+        ScopedApplicationService
+                  |
+                  v
+ committed + verified v2 SQLite events ---> private artifacts
+                  |
+                  v
+ deterministic public projection ---> authenticated loopback viewer
+```
+
+The current path is `graphene` / `graphene-mcp`, the v2 lineage services, and the read-only viewer. `contracts/golden_path.json` and `contracts/graph_mvp.json` are shared operational fixture inputs; their legacy three-tool, API, loop, catalog-framework, and graph fields are not current product, driver, runtime, or outcome truth. `backend/graphene/app.py`, the root `frontend/`, and the root `Dockerfile` are compatibility-only legacy surfaces. The Docker image starts the mutable legacy HTTP demo with a persistent compatibility banner; it is not authoritative v2 and does not provide Linux fixed-test support.
+
+See the current [implementation status](IMPLEMENTATION_STATUS.md), [decision log](DECISIONS.md), [documentation history index](docs/HISTORY.md), [privacy boundary](docs/data_residency.md), and [executor threat model](docs/EXECUTOR_THREAT_MODEL.md).
 
 ## CLI reference
 
-The demo owns its database. All other commands use an absolute owner-private `GRAPHENE_LINEAGE_DB`. `--json` emits canonical JSON/NDJSON, handled errors go to stderr, and `NO_COLOR=1` disables color.
+The demo owns its runtime. Advanced commands use an absolute owner-private `GRAPHENE_LINEAGE_DB`; `--json` emits canonical JSON/NDJSON.
 
 | Command | Purpose |
 |---|---|
-| `graphene demo --driver scripted-local` | Create and guide the complete local visual story |
+| `graphene demo --driver verified-replay` | Open the cross-platform verified public replay |
+| `graphene demo --driver scripted-local` | Run the macOS deterministic workflow fixture and interactive review branches |
+| `graphene demo --driver adk-fake` | Run the real ADK Runner with a deterministic fake model |
 | `graphene run TASK --profile PROFILE` | Bootstrap or exactly replay one frozen v2 run |
 | `graphene watch RUN [--after-seq N] [--snapshot]` | Follow a verified committed suffix |
-| `graphene inspect EVIDENCE --run RUN` | Resolve an item authorized by that run |
+| `graphene inspect EVIDENCE --run RUN` | Resolve an item authorized by that verified run |
 | `graphene why PATH --run RUN` | Show explicit evidence relationships and unknowns |
-| `graphene replay RUN --speed N` | Pace verified committed events without executing work |
-| `graphene review RUN` | Derive the exact changeset, hunks, and test receipt |
+| `graphene replay RUN --speed N` | Pace committed events without executing work |
+| `graphene review RUN` | Derive bounded changeset, hunk, and test evidence |
 | `graphene feedback HUNK --event EVENT --run RUN --message TEXT` | Anchor a private correction |
-| `graphene answer QUESTION --choice CHOICE` | Record the operator's scope choice |
+| `graphene answer QUESTION --choice CHOICE` | Record the bounded scope branch |
 | `graphene memory approve|reject MEMORY` | Decide one immutable memory revision |
-| `graphene handoff RUN --to PROFILE --task TASK [--start]` | Compile a denial or included-only brief |
-| `graphene promote CONSUMER_RUN` | Retest, checkpoint, and record local promotion |
+| `graphene handoff RUN --to PROFILE --task TASK [--start]` | Compile a denial or included-only handoff |
+| `graphene promote CONSUMER_RUN --decision commit\|reject` | Record the explicit bounded final decision; commit creates only the isolated local result |
 
-## Advanced/manual integration
+`graphene-mcp` is the official STDIO integration for the same six scoped operations. The [MCP client template](docs/mcp_client_config.example.json) and [redacted demo transcript](docs/demo_transcript.md) are advanced references. The legacy HTTP compatibility API uses `Authorization: Bearer <GRAPHENE_DEMO_TOKEN>` and must not be treated as v2 authority.
 
-`graphene-mcp` is the official STDIO server for the same six production v2 operations. The manual multi-terminal procedure remains useful for integration work, not the primary demo:
+## Local verification
 
-1. Export an absolute private `GRAPHENE_LINEAGE_DB` and run `graphene run`.
-2. Start `graphene watch` in a second terminal.
-3. Attach `graphene-mcp --task ... --profile ...`, or resume with `graphene-mcp --run ...`.
-
-See the [MCP client template](docs/mcp_client_config.example.json) and [redacted transcript](docs/demo_transcript.md). The frozen legacy HTTP demo still uses `Authorization: Bearer <GRAPHENE_DEMO_TOKEN>`; it is compatibility-only and not v2 authority.
-
-## Developer gates
+The checked-in workflow defines the exact gates; this README does not claim a hosted run for the current commit.
 
 ```bash
 uv lock --check
 uv sync --frozen
-uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial
-uv run --frozen graphene --help
+uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial --ignore=tests/process/test_mcp_stdio.py
+uv run --frozen pytest -q tests/process/test_mcp_stdio.py
+node --test frontend/test/*.test.mjs
 node --test tests/frontend/*.mjs
+node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs
 node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs
 git diff --check
 ```
 
-The CI workflow separates the supported macOS process gate from Ubuntu fail-closed isolation tests and uses no cloud credentials, model calls, or deployment permissions.
+The detailed implementation audit, proof matrix, local verification record, and remaining product blockers are in [`GRAPHENE_PRODUCT_PROOF_SPRINT_REVIEW.md`](GRAPHENE_PRODUCT_PROOF_SPRINT_REVIEW.md). Automated local gates pass; hosted Ubuntu CI, real-browser visual QA, and the five-person graph-necessity study are not claimed until they are actually run.
 
 ## Roadmap
 
-- **Now:** visual observer over verified commits.
-- **Next:** complete and prove the v2 Google ADK/Gemini execution path.
-- **Then:** provide an agent only a bounded, authorized graph-derived context brief and evaluate continuation quality.
-- **Later:** Linux isolation, durable cloud artifacts, retention, and scale only after evidence warrants them.
+- **Now:** prove evidence-backed review, bounded handoff, and local-only approval outcomes.
+- **Next:** run the graph-necessity comparison with real unfamiliar developers; demote the graph if it does not reduce errors or time.
+- **Then:** separately authorize and prove an external live-model path without fallback.
+- **Later:** design equivalent Linux isolation and durable artifact retention only after evidence warrants them.
 
-For the shortest explanation and troubleshooting, read [`simplreadme.md`](simplreadme.md).
+Graph-to-agent retrieval, graph-generated prompts, and automatic context selection remain explicitly deferred.
+
+For the shortest path, read [`simplreadme.md`](simplreadme.md).

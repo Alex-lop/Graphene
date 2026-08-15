@@ -63,7 +63,7 @@ def _fixture_inventory(root: Path) -> set[str]:
 
 def test_contract_freezes_the_only_golden_path(contract: GoldenContract):
     assert contract.product == "Graphene"
-    assert contract.model.model_id == "gemini-3.5-flash"
+    assert contract.model.model_id == "graphene-compatibility-fixture"
     assert contract.model.adk_version == "2.5.0"
     assert contract.tool_names == ("read_file", "write_file", "run_fixture_tests")
     assert contract.fixture.mutable_paths == (
@@ -75,7 +75,7 @@ def test_contract_freezes_the_only_golden_path(contract: GoldenContract):
         "adapted_window_seconds",
     ]
     assert contract.negative_retrieval_case.expected_memory_ids == ()
-    assert contract.loop[-1].resulting_state == "completed"
+    assert contract.loop[-1].resulting_state == "graphene_promotion_receipt_recorded"
 
 
 def test_prompts_and_retrieval_cases_are_deterministic(contract: GoldenContract):
@@ -166,7 +166,7 @@ def test_post_phase_zero_graph_contract_is_final_and_bounded():
         (ROOT / "contracts/graph_mvp.json").read_text()
     )
     assert canonical_json_sha256(graph.model_dump(mode="json")) == (
-        "b10f9a3e3ac357441e0e6ed36b24d5af95076eb36558cb297c6dc9ea78d23ac8"
+        "686376767e7284d95d4823ea4b8f2967704f4538b0c829dd802e91ec9770ae71"
     )
     assert graph.caps.max_patch_bytes == 102_400
     assert graph.caps.max_nodes == 25
@@ -176,4 +176,11 @@ def test_post_phase_zero_graph_contract_is_final_and_bounded():
     ).fixture.max_patch_bytes
     assert contract_max == graph.caps.max_patch_bytes
     assert graph.task_profiles[1].agent_profile_id == "auth-maintainer@1"
+    assert {profile.framework for profile in graph.catalog} == {"driver-selected"}
+    assert all(
+        "gemini" not in profile.model_policy.lower()
+        and "adk" not in profile.model_policy.lower()
+        for profile in graph.catalog
+    )
+    assert "denied before runtime construction" in graph.catalog[2].model_policy
     assert "context_packet_sha256" in graph.binding_requirements["promotion"]

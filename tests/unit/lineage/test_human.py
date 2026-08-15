@@ -230,20 +230,31 @@ def test_real_run_derives_exact_private_review_and_explicit_memory_decision(
         question_id=question.question_id,
         choice=ScopeId.ALL_AUTH,
         idempotency_key="human_clarification_answer_01",
+        human_attestation=True,
+        operator_label="reviewer-a",
+        operator_rationale="scope matches the affected auth policy",
     )
     answer_raw = run.artifacts.resolve(
         answered.source_ref.kind.value,
         answered.source_ref.id,
     )
     assert answer_raw is not None
-    answer = ClarificationAnswer.model_validate(json.loads(answer_raw)["answer"])
+    answer_record = json.loads(answer_raw)
+    answer = ClarificationAnswer.model_validate(answer_record["answer"])
     assert answer.actor == "human" and answer.choice == ScopeId.ALL_AUTH
+    assert answer_record["operator_label"] == "reviewer-a"
+    assert answer_record["operator_rationale"] == (
+        "scope matches the affected auth policy"
+    )
 
     feedback_event = workflow.record_feedback(
         run.run_id,
         _head(answered),
         question_id=question.question_id,
         idempotency_key="human_feedback_record_01",
+        human_attestation=True,
+        operator_label="reviewer-a",
+        operator_rationale="scope matches the affected auth policy",
     )
     feedback = FeedbackRecord.model_validate(
         _artifact(run, EvidenceKind.FEEDBACK, feedback_event)
@@ -294,6 +305,9 @@ def test_real_run_derives_exact_private_review_and_explicit_memory_decision(
         revision=proposed.revision,
         decision=decision,
         idempotency_key=f"human_memory_{decision.value}_01",
+        human_attestation=True,
+        operator_label="reviewer-a",
+        operator_rationale="bounded review completed",
     )
     decided_refs = [
         item
@@ -314,6 +328,14 @@ def test_real_run_derives_exact_private_review_and_explicit_memory_decision(
     assert decided.decision.bound_digest == canonical_json_sha256(
         proposed.model_dump(mode="json", exclude={"state", "decision"})
     )
+    decision_record = json.loads(
+        run.artifacts.resolve(
+            decided_event.source_ref.kind.value,
+            decided_event.source_ref.id,
+        )
+    )
+    assert decision_record["operator_label"] == "reviewer-a"
+    assert decision_record["operator_rationale"] == "bounded review completed"
     assert run.store.verify(run.run_id) == _head(decided_event)
     assert GOLDEN.memory.correction.encode() not in canonical_json_bytes(
         [event.model_dump(mode="json") for event in run.store.tail(run.run_id, 0, 256)]
@@ -350,6 +372,7 @@ def test_simulated_fixture_decisions_are_explicit_and_provenance_locked(tmp_path
             _head(answered),
             question_id=question.question_id,
             idempotency_key="fixture_feedback_wrong_001",
+            human_attestation=True,
         )
     feedback = workflow.record_feedback(
         run.run_id,
@@ -393,6 +416,102 @@ def test_simulated_fixture_decisions_are_explicit_and_provenance_locked(tmp_path
     )
     assert memory.decision is not None
     assert memory.decision.actor == "simulated_fixture"
+
+
+def test_human_provenance_requires_explicit_verified_tty_attestation(tmp_path):
+    ready = _review_ready(tmp_path)
+    run, workflow = ready.run, ready.workflow
+    asked = workflow.ask_clarification(
+        run.run_id,
+        _head(ready.test_receipt),
+        write_event_id=ready.write.event_id,
+        hunk_id=ready.hunk.hunk_id,
+        correction=GOLDEN.memory.correction,
+        idempotency_key="tty_question_0001",
+    )
+    head = _head(asked)
+
+    with pytest.raises(HumanConflict, match="verified interactive TTY"):
+        workflow.answer_clarification(
+            run.run_id,
+            head,
+            question_id=asked.payload["question_id"],
+            choice=ScopeId.ALL_AUTH,
+            idempotency_key="tty_missing_0001",
+        )
+    with pytest.raises(HumanConflict, match="both human and simulated"):
+        workflow.answer_clarification(
+            run.run_id,
+            head,
+            question_id=asked.payload["question_id"],
+            choice=ScopeId.ALL_AUTH,
+            idempotency_key="tty_conflict_0001",
+            simulated_fixture=True,
+            human_attestation=True,
+        )
+    with pytest.raises(HumanConflict, match="1 to 64 UTF-8 bytes"):
+        workflow.answer_clarification(
+            run.run_id,
+            head,
+            question_id=asked.payload["question_id"],
+            choice=ScopeId.ALL_AUTH,
+            idempotency_key="tty_label_000001",
+            human_attestation=True,
+            operator_label="x" * 65,
+        )
+    with pytest.raises(HumanConflict, match="rationale exceeds"):
+        workflow.answer_clarification(
+            run.run_id,
+            head,
+            question_id=asked.payload["question_id"],
+            choice=ScopeId.ALL_AUTH,
+            idempotency_key="tty_reason_00001",
+            human_attestation=True,
+            operator_rationale="x" * 257,
+        )
+
+    assert run.store.verify(run.run_id) == head
+
+
+def test_rate_limiter_scope_has_a_durable_narrower_memory_consequence(tmp_path):
+    ready = _review_ready(tmp_path)
+    run, workflow = ready.run, ready.workflow
+    asked = workflow.ask_clarification(
+        run.run_id,
+        _head(ready.test_receipt),
+        write_event_id=ready.write.event_id,
+        hunk_id=ready.hunk.hunk_id,
+        correction=GOLDEN.memory.correction,
+        idempotency_key="narrow_question_01",
+    )
+    answered = workflow.answer_clarification(
+        run.run_id,
+        _head(asked),
+        question_id=asked.payload["question_id"],
+        choice=ScopeId.RATE_LIMITER_ONLY,
+        idempotency_key="narrow_answer_0001",
+        human_attestation=True,
+    )
+    feedback = workflow.record_feedback(
+        run.run_id,
+        _head(answered),
+        question_id=asked.payload["question_id"],
+        idempotency_key="narrow_feedback_01",
+        human_attestation=True,
+    )
+    proposed = workflow.propose_memory(
+        run.run_id,
+        _head(feedback),
+        feedback_id=feedback.payload["feedback_id"],
+        idempotency_key="narrow_proposed_01",
+    )
+    revision = MemoryRevision.model_validate(
+        _artifact(run, EvidenceKind.MEMORY_REVISION, proposed)
+    )
+
+    assert feedback.payload["scope_id"] == ScopeId.RATE_LIMITER_ONLY.value
+    assert revision.scope_id == ScopeId.RATE_LIMITER_ONLY
+    assert revision.path_globs == ("app/auth/limiter.py",)
 
 
 def test_stale_cross_run_wrong_hunk_test_and_substitution_fail_before_append(

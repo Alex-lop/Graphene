@@ -1,5 +1,21 @@
 # Graphene decision log
 
+## 2026-08-14 — ADR: one product truth and proof-level demo contract
+
+- **Status:** accepted. This ADR supersedes earlier product-positioning, legacy-as-canonical, Gemini-by-default, three-tool-as-product, and promotion-without-local-result implications. Historical evidence remains historical; it is not rewritten into current proof.
+- **Product:** Graphene is an evidence-backed review and handoff layer for a developer supervising bounded coding-agent work. The decision is to approve, reject, or hand off one exact candidate and its bounded evidence.
+- **Canonical sources:** `README.md` is the user path, `IMPLEMENTATION_STATUS.md` is current behavior, this log owns decisions, and `contracts/product_proof.json` is machine-readable product/demo truth. `docs/HISTORY.md` classifies superseded narratives.
+- **Compatibility split:** `backend/graphene/app.py`, root `frontend/`, and the root Docker entry point are compatibility-only. `contracts/golden_path.json` and `contracts/graph_mvp.json` remain shared operational fixture inputs because v2 consumes their frozen task/profile/scope data; their legacy API/loop/framework/model-policy/graph fields are not current product, driver, runtime, or outcome truth.
+- **Driver truth:** `verified-replay` proves only a checked-in event fixture materialized through v2 verification and its hash-checked public decision view; `scripted-local` proves the deterministic bounded protocol and isolated local result; `adk-fake` proves the real ADK Runner/session/tool seam with a deterministic fake model. No driver silently falls back.
+- **Capture boundary:** current v2 authority covers exactly `search_repo`, `read_file`, `open_evidence`, `write_file`, `run_fixed_test`, and zero-argument `request_completion` in the sanitized Auth/Billing fixture. macOS with `/usr/bin/sandbox-exec` is the only live fixed-test platform; replay is the portable view.
+- **Claim boundary:** Live drivers and the checked-in replay fixture can establish context compilation, inclusion/exclusion, injection, explicit opening/reference, and later operations at their labeled proof levels. Replay fixture relationships are not captured-live evidence. Owner-private artifacts may contain authorized content that the public projection excludes. Graphene cannot claim context caused or improved an edit, nor can it claim unobserved shell/editor activity, push, PR, deployment, cloud state, or external-model quality.
+- **Endpoint:** explicit final approval may create a Git commit only inside the retained isolated fixture checkout. Rejection creates no commit. The user's checkout, remotes, and global Git configuration remain untouched. The legacy `reconstructed_commit_sha` promotion-receipt field contains the reconstructed base SHA and is not a Git outcome; only `local_commit_receipt.local_commit_sha` establishes the isolated commit.
+- **Deferred:** graph-to-agent retrieval, graph-generated prompts, inferred relevance, external-live models, Linux fixed-test execution, arbitrary repositories, and cloud deployment remain outside this sprint.
+
+## Superseded historical decisions
+
+The entries below preserve what was decided and observed at earlier checkpoints. Their model names, tool counts, SHAs, test results, platform status, product framing, and authority statements are historical snapshots; the accepted ADR above controls any conflict with current product truth.
+
 ## 2026-08-11 — Phase 0 scope lock
 
 - `ULTRA_MVP_EXECUTION.md` is authoritative. Graphene targets Collaborative Partner with one controlled Python fixture and one ADK/Gemini path.

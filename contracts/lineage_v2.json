@@ -18,6 +18,7 @@
     "FAILED",
     "INTERRUPTED",
     "PROMOTED",
+    "REJECTED",
     "EVIDENCE_INVALID"
   ],
   "event_types": [
@@ -35,6 +36,7 @@
     "clarification.answered",
     "completion.attempted",
     "candidate.created",
+    "candidate.rejected",
     "changeset.parsed",
     "test.receipt.created",
     "feedback.recorded",
@@ -49,7 +51,8 @@
     "scope.denied",
     "completion.denied",
     "promotion.denied",
-    "promotion.completed"
+    "promotion.completed",
+    "local_result.recorded"
   ],
   "operations": [
     "search_repo",
@@ -114,7 +117,8 @@
     "simulated_fixture",
     "adk_event_receipt",
     "mcp_request_receipt",
-    "local_adapter_receipt"
+    "local_adapter_receipt",
+    "local_commit_receipt"
   ],
   "source_kinds": [
     "tool_receipt",
@@ -127,7 +131,8 @@
     "adk_event_receipt",
     "mcp_request_receipt",
     "local_adapter_receipt",
-    "promotion_receipt"
+    "promotion_receipt",
+    "local_commit_receipt"
   ],
   "hashing": "canonical JSON UTF-8 with sorted keys, compact separators, ensure_ascii=false, allow_nan=false; SHA-256"
 }

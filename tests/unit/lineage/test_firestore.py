@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from threading import RLock
 
 import graphene.lineage.firestore as firestore_module
+import graphene.lineage.reducer as reducer_module
 import pytest
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage.firestore import FirestoreLineageStore
@@ -289,6 +290,29 @@ def test_first_append_exact_replay_conflict_and_document_layout():
         lineage.append(run_id, expected, key, changed)
     with pytest.raises(LineageConflict, match="expected head"):
         lineage.append(run_id, expected, "firestore_append_002", changed)
+
+
+def test_shared_semantic_validator_runs_on_firestore_append_and_verify(monkeypatch):
+    lineage, _, ledger = store()
+    observed = []
+    validate = reducer_module.validate_semantic_artifacts
+
+    def observe(events, resolver):
+        observed.append(tuple(event.event_id for event in events))
+        validate(events, resolver)
+
+    monkeypatch.setattr(reducer_module, "validate_semantic_artifacts", observe)
+    event = lineage.append(
+        "run_semantic_validator_001",
+        empty_head("run_semantic_validator_001"),
+        "semantic_validator_append_001",
+        draft(ledger, "semantic-validator"),
+    )
+    assert observed == [(event.event_id,)]
+
+    observed.clear()
+    assert lineage.verify(event.run_id) == head(event)
+    assert observed == [(event.event_id,)]
 
 
 def test_interrupted_run_rejects_later_events_but_allows_exact_replay():

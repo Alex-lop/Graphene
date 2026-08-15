@@ -219,7 +219,11 @@ def _append_access_denied(path: Path, previous) -> object:
             "handoff",
             None,
         ),
-        (["promote", "run_consumer_001"], "promote", None),
+        (
+            ["promote", "run_consumer_001", "--decision", "commit"],
+            "promote",
+            None,
+        ),
         (
             ["demo", "--driver", "scripted-local", "--no-open", "--speed", "8"],
             "demo",
@@ -283,6 +287,7 @@ def test_demo_owns_its_database_and_forwards_options(monkeypatch):
         == 0
     )
     assert received == {
+        "driver": "scripted-local",
         "speed": 4.0,
         "no_open": True,
         "cleanup": True,
@@ -610,7 +615,7 @@ def test_run_requires_database_without_echoing_credentials(monkeypatch, capsys):
 
 def test_promote_requires_the_lineage_database(monkeypatch, capsys):
     monkeypatch.delenv("GRAPHENE_LINEAGE_DB", raising=False)
-    assert main(["promote", "run_consumer_001"]) == 1
+    assert main(["promote", "run_consumer_001", "--decision", "commit"]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "CONFIG_ERROR: GRAPHENE_LINEAGE_DB is required\n"

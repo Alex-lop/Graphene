@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { activityRadius, applyDelta, applyThrough, createState, deltaSubjectId, deterministicPositions, directedEvidenceIds, evidenceInvalidResponse, headSummary, statePositions, statusBadgeData, visibleGraph } from "../../backend/graphene/viewer/static/reducer.mjs";
+import {
+  activityRadius, applyDelta, applyThrough, attentionFact, createState, deltaSubjectId,
+  deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
+  reviewBriefFacts, stageGroups, statePositions, statusBadgeData, storyNodeIds,
+  truthLabel, verifiedSupportPath, visibleGraph,
+} from "../../backend/graphene/viewer/static/reducer.mjs";
 
 const snapshot = {
   view_version: 1,
@@ -13,6 +18,42 @@ const snapshot = {
     { id: "file-a", kind: "file", public_label: "auth.py", run_id: "run-a", activity_count: 4 },
   ],
   edges: [{ id: "read-a", source: "agent-a", target: "file-a", kind: "READ", interaction_count: 2 }],
+};
+
+const proofSnapshot = {
+  ...snapshot,
+  current_id: "result-a",
+  nodes: [
+    { id: "result-a", kind: "result", label: "Isolated local result", status: "committed", truth_kind: "runtime_observed", stage: "local_result", activity_count: 1 },
+    { id: "approval-a", kind: "promotion", label: "Candidate approval", status: "approved", truth_kind: "simulated_fixture", stage: "candidate_decision", activity_count: 1 },
+    { id: "candidate-a", kind: "changeset", label: "Candidate", status: "verified", truth_kind: "runtime_observed", stage: "candidate_decision", activity_count: 2 },
+    { id: "test-a", kind: "test", label: "Bound test", status: "passed", truth_kind: "runtime_observed", stage: "consumer_work", activity_count: 1 },
+    { id: "file-a", kind: "file", label: "app/example.py", status: "changed", truth_kind: "runtime_observed", stage: "consumer_work", activity_count: 3, metadata: { path: "app/example.py", added_lines: 2, bound_test_pass: true } },
+    { id: "billing-a", kind: "policy", label: "Excluded handoff", status: "denied", truth_kind: "policy_authoritative", stage: "approved_handoff", activity_count: 1 },
+  ],
+  edges: [
+    { id: "support-1", source: "result-a", target: "approval-a", kind: "supported_by", relationship_class: "verified_support", support_path: true, activity_count: 1 },
+    { id: "support-2", source: "approval-a", target: "candidate-a", kind: "authorized", relationship_class: "authorization", support_path: true, activity_count: 1 },
+    { id: "support-3", source: "candidate-a", target: "test-a", kind: "validated_by", relationship_class: "verified_support", support_path: true, activity_count: 1 },
+    { id: "support-4", source: "test-a", target: "file-a", kind: "bound_to", relationship_class: "verified_support", support_path: true, activity_count: 1 },
+    { id: "membership-billing", source: "billing-a", target: "candidate-a", kind: "recorded", relationship_class: "membership", support_path: false, activity_count: 1 },
+  ],
+  unknowns: ["No PR, push, deployment, or activity outside captured operations was observed."],
+  review_brief: {
+    attention: { id: "attention:clear", section: "attention", status: "established", text: "No unresolved Graphene decision.", truth_kind: "server_derived", node_ids: [], edge_ids: [], metadata: {} },
+    sections: [
+      { key: "attention", title: "Needs attention now", facts: [] },
+      { key: "candidate", title: "Candidate / changed paths", facts: [{ id: "candidate:path", section: "candidate", status: "established", text: "Captured changed path: app/example.py.", truth_kind: "runtime_observed", node_ids: ["file-a"], edge_ids: ["support-4"], metadata: {} }] },
+      { key: "verified_evidence", title: "Verified evidence", facts: [{ id: "evidence:test", section: "verified_evidence", status: "established", text: "Bound test passed.", truth_kind: "runtime_observed", node_ids: ["test-a"], edge_ids: ["support-3"], metadata: {} }] },
+      { key: "human_intervention", title: "Human intervention", facts: [{ id: "human:approval", section: "human_intervention", status: "historical", text: "Fixture approval recorded.", truth_kind: "simulated_fixture", node_ids: ["approval-a"], edge_ids: ["support-2"], metadata: {} }] },
+      { key: "inherited_context", title: "Inherited context", facts: [{ id: "context:excluded", section: "inherited_context", status: "historical", text: "One handoff excluded with zero dispatch.", truth_kind: "policy_authoritative", node_ids: ["billing-a"], edge_ids: [], metadata: { model_dispatch_count: 0 } }] },
+      { key: "outcome", title: "Outcome", facts: [{ id: "outcome:local", section: "outcome", status: "established", text: "An isolated local commit was recorded.", truth_kind: "runtime_observed", node_ids: ["result-a"], edge_ids: ["support-1"], metadata: { outcome_kind: "isolated_local_commit" } }] },
+      { key: "unknown", title: "Unknown", facts: [{ id: "unknown:1", section: "unknown", status: "not_established", text: "No PR, push, or deployment was observed.", truth_kind: "server_derived", node_ids: [], edge_ids: [], metadata: {} }] },
+    ],
+    changed_paths: ["app/example.py"], bound_paths: ["app/example.py"], stage: "local_result", outcome_kind: "isolated_local_commit",
+    counts: { total_nodes: 8, visible_nodes: 6, filtered_nodes: 0, collapsed_nodes: 1, omitted_nodes: 1, total_edges: 7, visible_edges: 5 },
+  },
+  support_paths: [{ root_node_id: "result-a", label: "Verified support relationships", node_ids: ["result-a", "approval-a", "candidate-a", "test-a", "file-a"], edge_ids: ["support-1", "support-2", "support-3", "support-4"] }],
 };
 
 test("deltas are idempotent and status updates are stable", () => {
@@ -39,6 +80,64 @@ test("the live NDJSON envelope and structured references are accepted", () => {
   assert.match(state.nodes.get("human-a").sourceRef, /event:event-3/);
   const reset = applyDelta(state, { type: "reset", cursor: "opaque-1", snapshot });
   assert.equal(reset.nodes.has("human-a"), false);
+});
+
+test("batched live deltas reconcile atomically with summary fields and deduplication", () => {
+  const state = createState(snapshot);
+  const envelope = {
+    type: "delta", cursor: "batch-3", current_id: "test-a",
+    deltas: [
+      { op: "upsert_node", id: "test-a", run_id: "run-a", seq: 3, event_id: "event-3", node: { id: "test-a", kind: "test", label: "Bound test", status: "passed", truth_kind: "runtime_observed", activity_count: 1 } },
+      { op: "upsert_edge", id: "edge-test", run_id: "run-a", seq: 3, event_id: "event-3", edge: { id: "edge-test", source: "agent-a", target: "test-a", kind: "supported_by", relationship_class: "verified_support", support_path: true, activity_count: 1 } },
+    ],
+    heads: [{ run_id: "run-a", seq: 3 }], graph_sha256: "b".repeat(64), omitted_counts: {}, unknowns: ["Exact unknown"],
+    review_brief: proofSnapshot.review_brief, support_paths: proofSnapshot.support_paths,
+  };
+  const next = applyDelta(state, envelope);
+  const duplicate = applyDelta(next, envelope);
+  assert.equal(next.nodes.get("test-a").status, "passed");
+  assert.equal(next.edges.get("edge-test").supportPath, true);
+  assert.equal(next.currentId, "test-a");
+  assert.equal(next.reviewBrief.outcome_kind, "isolated_local_commit");
+  assert.deepEqual(duplicate.nodes, next.nodes);
+
+  const malformed = { ...envelope, cursor: "bad", deltas: [envelope.deltas[0], { op: "upsert_edge", id: "bad", edge: { id: "bad", source: "test-a", target: "missing", kind: "bad", relationship_class: "verified_support", support_path: true } }] };
+  assert.throws(() => applyDelta(state, malformed), /unknown node/);
+  assert.equal(state.nodes.has("test-a"), false, "failed batch leaves prior state untouched");
+});
+
+test("stale and conflicting batched delta heads fail before mutation", () => {
+  const prior = {
+    ...snapshot,
+    heads: [{ run_id: "run-a", seq: 3, event_sha256: "a".repeat(64) }],
+    graph_sha256: "b".repeat(64),
+  };
+  const stale = {
+    type: "delta", cursor: "stale", heads: [{ run_id: "run-a", seq: 2, event_sha256: "c".repeat(64) }],
+    deltas: [{ op: "upsert_node", id: "stale-a", node: { id: "stale-a", kind: "test", label: "Stale" } }],
+  };
+  const state = createState(prior);
+  assert.throws(() => applyDelta(state, stale), /stale or out-of-order/);
+  assert.equal(state.nodes.has("stale-a"), false);
+  assert.equal(state.heads[0].seq, 3);
+
+  const conflicting = {
+    ...stale,
+    cursor: "conflict",
+    heads: [{ run_id: "run-a", seq: 3, event_sha256: "c".repeat(64) }],
+  };
+  assert.throws(() => applyDelta(state, conflicting), /conflicting delta head/);
+  assert.equal(state.nodes.has("stale-a"), false);
+});
+
+test("remove deltas delete only their typed target and dangling node relationships", () => {
+  let state = createState(proofSnapshot);
+  state = applyDelta(state, { op: "remove", id: "membership-billing", remove_kind: "edge", run_id: "run", seq: 8, event_id: "remove-edge" });
+  assert.equal(state.edges.has("membership-billing"), false);
+  assert.equal(state.nodes.has("billing-a"), true);
+  state = applyDelta(state, { op: "remove", id: "billing-a", remove_kind: "node", run_id: "run", seq: 9, event_id: "remove-node" });
+  assert.equal(state.nodes.has("billing-a"), false);
+  assert.ok([...state.edges.values()].every((edge) => edge.source !== "billing-a" && edge.target !== "billing-a"));
 });
 
 test("atomic reset envelopes replace the complete graph", () => {
@@ -96,13 +195,41 @@ test("filtering keeps only resolvable explicit relationships", () => {
   assert.ok(activityRadius(8) > activityRadius(1));
 });
 
-test("directed evidence paths exclude unrelated undirected branches", () => {
-  const nodes = ["a", "b", "c", "d", "x"].map((id) => ({ id }));
-  const edges = [
-    { source: "a", target: "b" }, { source: "b", target: "c" }, { source: "b", target: "d" }, { source: "x", target: "a" },
-  ];
-  assert.deepEqual([...directedEvidenceIds(nodes, edges, "c")].sort(), ["a", "b", "c", "x"]);
-  assert.deepEqual([...directedEvidenceIds(nodes, edges, "b")].sort(), ["a", "b", "c", "d", "x"]);
+test("verified support paths use only projected directed allowlisted relationships", () => {
+  const state = createState(proofSnapshot);
+  const path = verifiedSupportPath(state, "result-a");
+  assert.deepEqual([...path.nodeIds].sort(), ["approval-a", "candidate-a", "file-a", "result-a", "test-a"]);
+  assert.deepEqual([...path.edgeIds].sort(), ["support-1", "support-2", "support-3", "support-4"]);
+  assert.equal(path.nodeIds.has("billing-a"), false, "membership-only Billing branch is not support");
+  const fallback = createState({ ...proofSnapshot, support_paths: [] });
+  assert.deepEqual([...verifiedSupportPath(fallback, "result-a").edgeIds].sort(), ["support-1", "support-2", "support-3", "support-4"]);
+});
+
+test("Review Brief renders contract facts, exact unknowns, attention, stages, and truth labels", () => {
+  const state = createState(proofSnapshot);
+  const brief = reviewBriefFacts(state);
+  assert.equal(brief.candidate[0].value, "Captured changed path: app/example.py.");
+  assert.equal(brief.evidence[0].value, "Bound test passed.");
+  assert.equal(brief.context[0].metadata.model_dispatch_count, 0);
+  assert.equal(brief.unknown[0].value, "No PR, push, or deployment was observed.");
+  assert.equal(attentionFact(state).value, "No unresolved Graphene decision.");
+  assert.deepEqual(stageGroups(state).map(({ id }) => id), ["source_work", "human_correction_scope", "approved_handoff", "consumer_work", "candidate_decision", "local_result"]);
+  assert.equal(stageGroups(state)[0].status, "not established");
+  assert.equal(truthLabel("simulated_fixture"), "SIMULATED FIXTURE — NOT HUMAN ATTESTATION");
+  assert.notEqual(truthLabel("simulated_fixture"), truthLabel("human_attested"));
+});
+
+test("decision neighborhood and counts distinguish visible, filtered, collapsed, and omitted", () => {
+  const state = createState(proofSnapshot);
+  const story = storyNodeIds(state, "result-a");
+  const enabled = new Set(["handoff", "tool", "test", "evidence"]);
+  const view = visibleGraph(state, enabled, story);
+  const counts = projectionCounts(state, view, enabled, story);
+  assert.equal(counts.total, 8);
+  assert.equal(counts.visible, view.nodes.length);
+  assert.ok(counts.filtered > 0);
+  assert.ok(counts.collapsed >= 1);
+  assert.equal(counts.omitted, 1);
 });
 
 test("head summary names the root and whole family", () => {
@@ -147,6 +274,7 @@ test("malformed deltas throw instead of fabricating or skipping graph truth", ()
 test("viewer rendering is DOM-safe and offline", () => {
   const source = readFileSync(new URL("../../backend/graphene/viewer/static/viewer.mjs", import.meta.url), "utf8");
   const html = readFileSync(new URL("../../backend/graphene/viewer/static/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../backend/graphene/viewer/static/viewer.css", import.meta.url), "utf8");
   assert.doesNotMatch(source, /\binnerHTML\b|insertAdjacentHTML|\.html\s*\(/);
   assert.doesNotMatch(source, /\.style\./);
   assert.doesNotMatch(html, /https?:\/\//);
@@ -156,16 +284,43 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /EVIDENCE_INVALID/);
   assert.match(html, /Google ADK Runner: not used/);
   assert.match(html, /Gemini calls: 0/);
+  assert.match(html, /Review Brief/);
+  assert.match(html, /Needs attention now/);
+  assert.match(html, /Candidate \/ changed paths/);
+  assert.match(html, /Inherited context: included and excluded/);
+  assert.match(html, /Verified support relationships/);
+  assert.doesNotMatch(html, />Evidence path</);
+  assert.match(source, /existing\.data\(element\.data\)/, "normal updates reconcile existing Cytoscape elements");
+  assert.doesNotMatch(source, /cy\.elements\(\)\.remove\(\)/, "normal updates do not rebuild the graph");
+  assert.match(css, /@media \(max-width: 620px\)/);
+  assert.match(source, /config\.replay === true \? VERIFIED_REPLAY_LABEL/);
+  assert.match(source, /VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION/);
+  assert.match(source, /config\.replay === true \? "VERIFIED REPLAY" : live \? "LIVE"/);
+  assert.match(source, /event\.target !== \$\("canvas"\)/, "graph keys are intercepted only while the canvas is focused");
 });
 
 test("the checked-in sanitized replay traverses the live reducer", () => {
   const replay = JSON.parse(readFileSync(new URL("../../backend/graphene/viewer/static/replay.json", import.meta.url), "utf8"));
   let state = createState(replay.snapshot);
-  for (const delta of replay.deltas) state = applyDelta(state, delta);
-  assert.equal(replay.meta.mode, "VERIFIED REPLAY — NO LIVE AGENT");
-  assert.equal(replay.meta.decision_proof, "SIMULATED OPERATOR — NOT HUMAN ATTESTATION");
+  const attention = [state.attention];
+  for (const envelope of replay.deltas) {
+    assert.equal(envelope.type, "delta");
+    assert.ok(Array.isArray(envelope.deltas));
+    state = applyDelta(state, envelope);
+    attention.push(state.attention);
+  }
+  const replayTruth = "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION";
+  assert.equal(replay.meta.mode, replayTruth);
+  assert.equal(replay.meta.truth_label, replayTruth);
+  assert.equal(replay.meta.decision_proof, "SIMULATED FIXTURE — NOT HUMAN ATTESTATION");
   assert.equal(state.graphSha256, replay.meta.final_graph_sha256);
   assert.ok([...state.nodes.values()].some((node) => node.id.startsWith("run:") && node.status === "PROMOTED"));
   assert.ok([...state.nodes.values()].some((node) => node.kind === "promotion" && node.status === "PROMOTED"));
   assert.ok([...state.edges.values()].some((edge) => edge.kind === "continued_as"));
+  assert.ok([...state.nodes.values()].some((node) => node.metadata.operation === "open_evidence"));
+  assert.ok([...state.edges.values()].some((edge) => edge.kind === "opens_reference" && edge.relationshipClass === "context_transfer"));
+  assert.ok(attention.some((fact) => fact.status === "pending" && fact.metadata.pending_count === 1));
+  assert.deepEqual(state.reviewBrief.changed_paths, ["app/auth/limiter.py", "tests/test_security_policy.py"]);
+  assert.match(reviewBriefFacts(state).context.find((fact) => fact.id === "context:included").value, /all_auth applies to app\/auth\/\*\*/);
+  assert.match(attentionFact(state).value, /No unresolved Graphene decision/);
 });

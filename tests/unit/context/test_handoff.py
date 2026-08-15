@@ -27,6 +27,7 @@ from graphene.models import (
     MemoryDecisionValue,
     MemoryRevision,
     MemoryState,
+    ScopeId,
     VerifiedHead,
 )
 
@@ -58,6 +59,7 @@ def _memory(
     rule: str | None = None,
     path_globs: tuple[str, ...] | None = None,
     task_tags: tuple[str, ...] | None = None,
+    scope_id: ScopeId = ScopeId.ALL_AUTH,
 ) -> MemoryRevision:
     spec = GOLDEN.memory
     proposed = MemoryRevision(
@@ -66,6 +68,7 @@ def _memory(
         state=MemoryState.PROPOSED,
         rule=rule or spec.rule,
         repo_id=spec.repo_id,
+        scope_id=scope_id,
         path_globs=path_globs or spec.path_globs,
         task_tags=task_tags or spec.task_tags,
         required_test_path=spec.required_test_path,
@@ -223,6 +226,33 @@ def test_selected_evidence_changes_decision_brief_prompt_and_open_allowlist():
     assert render_fresh_prompt(first.brief) != render_fresh_prompt(second.brief)
     assert first.open_evidence_allowlist == ("hunk_selected",)
     assert second.open_evidence_allowlist == ("hunk_excluded",)
+
+
+def test_broad_and_narrow_memory_scopes_change_included_context():
+    broad = _compile(approved_memories=(_memory(),))
+    narrow = _compile(
+        approved_memories=(
+            _memory(
+                scope_id=ScopeId.RATE_LIMITER_ONLY,
+                path_globs=("app/auth/limiter.py",),
+                task_tags=("authentication", "security", "rate-limiter"),
+            ),
+        )
+    )
+    assert broad.brief is not None and narrow.brief is not None
+
+    broad_memory = broad.brief.approved_memories[0]
+    narrow_memory = narrow.brief.approved_memories[0]
+    assert (broad_memory.scope_id, broad_memory.path_globs) == (
+        ScopeId.ALL_AUTH,
+        ("app/auth/**",),
+    )
+    assert (narrow_memory.scope_id, narrow_memory.path_globs) == (
+        ScopeId.RATE_LIMITER_ONLY,
+        ("app/auth/limiter.py",),
+    )
+    assert broad.brief.brief_sha256 != narrow.brief.brief_sha256
+    assert render_fresh_prompt(broad.brief) != render_fresh_prompt(narrow.brief)
 
 
 def test_billing_returns_only_safe_zero_context_and_never_starts():

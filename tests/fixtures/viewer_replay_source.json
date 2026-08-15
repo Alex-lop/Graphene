@@ -13,7 +13,7 @@
         {"event_type": "memory.proposed", "truth_kind": "server_derived", "authority": "lifecycle_service", "source_kind": "lifecycle_request", "evidence_kinds": ["memory_revision"], "payload": {"memory_id": "fixture_auth_memory", "memory_sha256": "$evidence:0.sha256", "revision": 1, "status": "proposed"}},
         {"event_type": "memory.approved", "truth_kind": "simulated_fixture", "authority": "simulated_fixture", "source_kind": "simulated_fixture", "evidence_kinds": ["memory_revision"], "event_references": ["source:5"], "payload": {"decision_id": "fixture_memory_decision", "memory_id": "fixture_auth_memory", "memory_sha256": "$evidence:0.sha256", "revision": 1, "status": "approved"}},
         {"event_type": "handoff.denied", "truth_kind": "policy_authoritative", "authority": "context_compiler", "source_kind": "context_compiler_receipt", "evidence_kinds": ["handoff_decision"], "payload": {"evidence_count": 0, "memory_count": 0, "model_dispatch_count": 0, "reason_code": "scope_intersection_empty", "source_path_count": 0, "status": "denied", "target_profile_id": "billing-observer@1", "task_id": "adapted_window_seconds", "tool_count": 0}},
-        {"event_type": "context.compiled", "truth_kind": "server_derived", "authority": "context_compiler", "source_kind": "context_compiler_receipt", "evidence_kinds": ["handoff_decision", "context_brief"], "payload": {"brief_artifact_sha256": "$evidence:1.sha256", "brief_sha256": "$digest:bounded-brief", "candidate_set_sha256": "$digest:candidate-set", "decision_artifact_sha256": "$evidence:0.sha256", "decision_sha256": "$digest:handoff-decision", "source_graph_sha256": "$digest:source-graph"}}
+        {"event_type": "context.compiled", "truth_kind": "server_derived", "authority": "context_compiler", "source_kind": "context_compiler_receipt", "evidence_kinds": ["handoff_decision", "context_brief"], "payload": {"brief_artifact_sha256": "$evidence:1.sha256", "brief_sha256": "$digest:bounded-brief", "candidate_set_sha256": "$digest:candidate-set", "decision_artifact_sha256": "$evidence:0.sha256", "decision_sha256": "$digest:handoff-decision", "memory_scopes": [{"memory_id": "fixture_auth_memory", "revision": 1, "scope_id": "all_auth", "path_globs": ["app/auth/**"]}], "source_graph_sha256": "$digest:source-graph"}}
       ]
     },
     "consumer": {
@@ -21,30 +21,37 @@
       "agent_profile_id": "auth-maintainer@1",
       "events": [
         {"event_type": "run.started", "truth_kind": "server_derived", "authority": "lifecycle_service", "source_kind": "lifecycle_request", "payload": {"context_compiled_event_sha256": "$event:source.8.event_sha256", "source_run_id": "replay_source_run", "state": "STARTING"}},
-        {"event_type": "context.injected", "truth_kind": "server_derived", "authority": "context_compiler", "source_kind": "context_compiler_receipt", "evidence_kinds": ["injection_receipt", "context_brief"], "payload": {"brief_sha256": "$digest:bounded-brief", "decision_sha256": "$digest:handoff-decision", "injection_receipt_sha256": "$evidence:0.sha256", "prior_message_count": 0, "source_head_seq": 8, "source_run_id": "replay_source_run", "status": "injected"}},
+        {"event_type": "context.injected", "truth_kind": "server_derived", "authority": "context_compiler", "source_kind": "context_compiler_receipt", "evidence_kinds": ["injection_receipt"], "evidence_references": ["source:8:1"], "payload": {"brief_sha256": "$digest:bounded-brief", "decision_sha256": "$digest:handoff-decision", "injection_receipt_sha256": "$evidence:0.sha256", "prior_message_count": 0, "source_head_seq": 8, "source_run_id": "replay_source_run", "status": "injected"}},
+        {"event_type": "tool.started", "truth_kind": "runtime_observed", "authority": "scoped_tool_wrapper", "source_kind": "tool_receipt", "session_id": "fixture_session", "invocation_id": "fixture_invocation", "model_id": "graphene-local-scripted", "tool_call_id": "fixture_open_context", "payload": {"operation": "open_evidence", "status": "started"}},
+        {"event_type": "tool.completed", "truth_kind": "runtime_observed", "authority": "scoped_tool_wrapper", "source_kind": "tool_receipt", "session_id": "fixture_session", "invocation_id": "fixture_invocation", "model_id": "graphene-local-scripted", "tool_call_id": "fixture_open_context", "evidence_references": ["source:8:1"], "payload": {"operation": "open_evidence", "status": "completed", "evidence_id": "$evidence:0.id", "content_sha256": "$digest:bounded-brief-content", "byte_count": 128}},
         {"event_type": "completion.attempted", "truth_kind": "model_proposed", "authority": "local_adapter", "source_kind": "local_adapter_receipt", "session_id": "fixture_session", "invocation_id": "fixture_invocation", "model_id": "graphene-local-scripted", "tool_call_id": "fixture_completion", "payload": {"adapter_kind": "local", "operation": "request_completion", "status": "requested"}},
-        {"event_type": "completion.denied", "truth_kind": "policy_authoritative", "authority": "policy_engine", "source_kind": "policy_evaluation", "session_id": "fixture_session", "invocation_id": "fixture_invocation", "model_id": "graphene-local-scripted", "tool_call_id": "fixture_completion", "event_references": ["consumer:3"], "payload": {"operation": "request_completion", "reason_code": "human_promotion_required", "state": "NEEDS_HUMAN", "status": "denied"}},
-        {"event_type": "changeset.parsed", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["changeset", "hunk"], "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "changed_paths": ["app/auth/limiter.py", "tests/test_limiter.py"], "changeset_id": "$evidence:0.id", "hunk_count": 1, "status": "parsed"}},
-        {"event_type": "test.receipt.created", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["test_receipt"], "event_references": ["consumer:5"], "payload": {"bound_paths": ["app/auth/limiter.py", "tests/test_limiter.py"], "passed": true, "receipt_id": "$evidence:0.id", "receipt_sha256": "$evidence:0.sha256", "status": "created"}},
-        {"event_type": "candidate.created", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["changeset", "test_receipt"], "event_references": ["consumer:5", "consumer:6"], "payload": {"candidate_id": "fixture_candidate", "candidate_patch_sha256": "$digest:bounded-candidate", "candidate_tree_sha256": "$digest:bounded-tree", "changed_path_count": 2, "status": "created"}},
-        {"event_type": "promotion.approved", "truth_kind": "simulated_fixture", "authority": "simulated_fixture", "source_kind": "simulated_fixture", "event_references": ["consumer:7"], "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "decision_id": "fixture_promotion_decision", "decision_sha256": "$digest:promotion-decision", "expected_head_sha256": "$head.sha256", "status": "approved"}},
-        {"event_type": "promotion.completed", "truth_kind": "server_derived", "authority": "promotion_service", "source_kind": "promotion_receipt", "evidence_kinds": ["promotion_receipt"], "event_references": ["consumer:8"], "checkpoint": true, "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "promotion_receipt_id": "$source.id", "promotion_receipt_sha256": "$source.sha256", "status": "PROMOTED"}}
+        {"event_type": "completion.denied", "truth_kind": "policy_authoritative", "authority": "policy_engine", "source_kind": "policy_evaluation", "session_id": "fixture_session", "invocation_id": "fixture_invocation", "model_id": "graphene-local-scripted", "tool_call_id": "fixture_completion", "event_references": ["consumer:5"], "payload": {"operation": "request_completion", "reason_code": "human_promotion_required", "state": "NEEDS_HUMAN", "status": "denied"}},
+        {"event_type": "changeset.parsed", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["changeset", "hunk"], "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "changed_paths": ["app/auth/limiter.py", "tests/test_security_policy.py"], "changeset_id": "$evidence:0.id", "hunk_count": 1, "status": "parsed"}},
+        {"event_type": "test.receipt.created", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["test_receipt"], "event_references": ["consumer:7"], "payload": {"bound_paths": ["app/auth/limiter.py", "tests/test_security_policy.py"], "passed": true, "receipt_id": "$evidence:0.id", "receipt_sha256": "$evidence:0.sha256", "status": "created"}},
+        {"event_type": "candidate.created", "truth_kind": "server_derived", "authority": "artifact_parser", "source_kind": "reducer_receipt", "evidence_kinds": ["changeset", "test_receipt"], "event_references": ["consumer:7", "consumer:8"], "payload": {"candidate_id": "fixture_candidate", "candidate_patch_sha256": "$digest:bounded-candidate", "candidate_tree_sha256": "$digest:bounded-tree", "changed_path_count": 2, "status": "created"}},
+        {"event_type": "promotion.approved", "truth_kind": "simulated_fixture", "authority": "simulated_fixture", "source_kind": "simulated_fixture", "event_references": ["consumer:9"], "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "decision_id": "fixture_promotion_decision", "decision_sha256": "$digest:promotion-decision", "expected_head_sha256": "$head.sha256", "status": "approved"}},
+        {"event_type": "promotion.completed", "truth_kind": "server_derived", "authority": "promotion_service", "source_kind": "promotion_receipt", "evidence_kinds": ["promotion_receipt"], "event_references": ["consumer:10"], "checkpoint": true, "payload": {"candidate_patch_sha256": "$digest:bounded-candidate", "promotion_receipt_id": "$source.id", "promotion_receipt_sha256": "$source.sha256", "status": "PROMOTED"}}
       ]
     }
   },
   "stages": [
     {"source": 4},
     {"source": 8},
-    {"source": 8, "consumer": 6},
-    {"source": 8, "consumer": 9}
+    {"source": 8, "consumer": 8},
+    {"source": 8, "consumer": 9},
+    {"source": 8, "consumer": 11}
   ],
   "meta": {
     "adk_runner": "not used",
-    "decision_proof": "SIMULATED OPERATOR — NOT HUMAN ATTESTATION",
-    "driver": "replay",
+    "authoritative_writes": false,
+    "decision_proof": "SIMULATED FIXTURE — NOT HUMAN ATTESTATION",
+    "driver": "verified-replay",
     "evidence_source": "checked-in v2 events materialized, committed, and verified in SQLite; simulated fixture decisions are not human proof",
     "gemini_calls": 0,
-    "mode": "VERIFIED REPLAY — NO LIVE AGENT",
-    "truth_label": "VERIFIED V2 FIXTURE REPLAY — SIMULATED OPERATOR, NOT HUMAN ATTESTATION"
+    "human_attestation": false,
+    "live_agent": false,
+    "mode": "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION",
+    "new_test_execution": false,
+    "truth_label": "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION"
   }
 }

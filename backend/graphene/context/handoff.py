@@ -587,6 +587,9 @@ def compile_handoff(
             memory_id=memory.memory_id,
             revision=memory.revision,
             exact_text=memory.rule,
+            scope_id=memory.scope_id,
+            path_globs=memory.path_globs if memory.scope_id is not None else None,
+            task_tags=memory.task_tags if memory.scope_id is not None else None,
         )
         candidate = _candidate(
             "memory_revision",

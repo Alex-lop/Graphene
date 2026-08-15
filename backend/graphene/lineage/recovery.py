@@ -103,7 +103,12 @@ def recover_interrupted_run(
         _discard_checkout(checkout, quarantine)
         return interrupted
     if (
-        projection.state in {LineageRunState.FAILED, LineageRunState.PROMOTED}
+        projection.state
+        in {
+            LineageRunState.FAILED,
+            LineageRunState.PROMOTED,
+            LineageRunState.REJECTED,
+        }
         or any(event.event_type == LineageEventType.RUN_ENDED for event in events)
     ):
         raise RecoveryTerminalError("run is already terminal")

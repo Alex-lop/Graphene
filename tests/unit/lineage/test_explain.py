@@ -191,12 +191,14 @@ def test_feedback_and_memory_relationships_remain_reference_backed(tmp_path: Pat
         question_id=question_id,
         choice="all_auth",
         idempotency_key="explain_answer_00001",
+        human_attestation=True,
     )
     feedback = workflow.record_feedback(
         run.run_id,
         _head(answered),
         question_id=question_id,
         idempotency_key="explain_feedback_0001",
+        human_attestation=True,
     )
     proposed = workflow.propose_memory(
         run.run_id,
@@ -211,6 +213,7 @@ def test_feedback_and_memory_relationships_remain_reference_backed(tmp_path: Pat
         revision=proposed.payload["revision"],
         decision=MemoryDecisionValue.APPROVE,
         idempotency_key="explain_memory_appr_01",
+        human_attestation=True,
     )
 
     why = explain_path(run.store, run.artifacts, run.run_id, PATH)

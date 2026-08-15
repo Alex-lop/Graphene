@@ -1,5 +1,7 @@
 # Idea Evaluation — Provenance-First Collaborative Agent
 
+> **Historical record — not current product truth.** This dated evaluation is preserved for reasoning history. Current behavior and claims are in [`README.md`](README.md), [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), and [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Evaluation date: August 10, 2026.
 
 ## Verdict

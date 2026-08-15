@@ -300,6 +300,7 @@ def test_fake_environment_cannot_upgrade_unverified_truth_labels(monkeypatch):
     }
     assert all(
         "unverified" in profile["model_policy"].lower()
+        or "no provider access is implied" in profile["model_policy"].lower()
         or profile["agent_profile_id"] == "billing-observer@1"
         for profile in catalog
     )

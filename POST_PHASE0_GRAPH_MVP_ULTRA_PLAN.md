@@ -1,5 +1,7 @@
 # Graphene — Post-Phase-0 Graph MVP Ultra Execution Plan
 
+> **Historical record — not current product truth.** This superseded graph plan is preserved for design history. Current authority is indexed in [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Status: binding post-Phase-0 implementation brief  
 Repository: `Alex-lop/AllThingsAgenticHackathon`  
 Primary submission track: **The Collaborative Partner**  

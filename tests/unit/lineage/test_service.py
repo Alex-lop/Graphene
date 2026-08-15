@@ -111,6 +111,7 @@ def runtime(
     tmp_path: Path,
     *,
     run_id: str = "run_service_001",
+    start_invocation: bool = True,
 ):
     checkout = tmp_path / "fixture"
     shutil.copytree(ROOT / GOLDEN.fixture.root, checkout)
@@ -151,6 +152,14 @@ def runtime(
         fixture_policy=GOLDEN.fixture,
         checkout_root=checkout,
     )
+    if start_invocation:
+        service.ensure_invocation_started(
+            handle,
+            session_id=handle.session_id,
+            invocation_id=handle.invocation_id,
+            model_id=handle.model_id,
+            adk_version="2.5.0",
+        )
     return service, handle, store, ledger, evidence_ref
 
 
@@ -275,6 +284,18 @@ def test_six_operations_commit_before_return_and_completion_is_terminal(tmp_path
     assert limiter.bound_test_pass is True
 
 
+def test_non_local_tool_call_requires_durable_invocation_start(tmp_path: Path):
+    service, handle, store, _, _ = runtime(tmp_path, start_invocation=False)
+    before = handle.head
+
+    with pytest.raises(RuntimeIntegrityError, match="durably started"):
+        service.search_repo(handle, call(handle, 1), query="MAX_ATTEMPTS")
+
+    assert handle.closed is False
+    assert handle.head == before
+    assert store.verify(handle.run_id) == before
+
+
 def test_scope_denial_is_the_only_event_and_does_not_disclose_requested_path(
     tmp_path: Path,
 ):
@@ -352,6 +373,28 @@ def test_operation_error_commits_exactly_one_failed_terminal_event(tmp_path: Pat
         LineageEventType.TOOL_STARTED,
         LineageEventType.TOOL_FAILED,
     ]
+
+
+def test_failure_receipt_outage_permanently_closes_runtime(tmp_path: Path):
+    service, handle, store, _, _ = runtime(tmp_path)
+    before = handle.head.seq
+    record = service.record_artifact
+
+    def fail_failure_receipt(kind, payload):
+        if kind == EvidenceKind.TOOL_RECEIPT and payload.get("phase") == "tool.failed":
+            raise OSError("simulated failure receipt outage")
+        return record(kind, payload)
+
+    service.record_artifact = fail_failure_receipt
+    with pytest.raises(OSError, match="failure receipt outage"):
+        service.search_repo(handle, call(handle, 1), query="")
+
+    assert handle.closed is True
+    assert [event.event_type for event in store.tail(handle.run_id, before, 256)] == [
+        LineageEventType.TOOL_STARTED,
+    ]
+    with pytest.raises(RuntimeTerminalError, match="terminal"):
+        service.search_repo(handle, call(handle, 2), query="MAX_ATTEMPTS")
 
 
 def test_post_write_persistence_failure_interrupts_and_quarantines_checkout(
@@ -439,6 +482,7 @@ def test_absent_operation_is_denied_before_tool_started(tmp_path: Path):
         checkout_root=original.checkout_root,
         initial_head=original.head,
     )
+    object.__setattr__(handle, "_invocation_started", original._invocation_started)
     before = handle.head.seq
     with pytest.raises(RuntimeAccessDenied):
         service.read_file(handle, call(handle, 1), path="app/auth/limiter.py")

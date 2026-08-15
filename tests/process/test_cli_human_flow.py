@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
 import sqlite3
 import subprocess
 from contextlib import closing
@@ -41,6 +43,44 @@ def _cli(environment: dict[str, str], cwd: Path, *arguments: str) -> dict[str, o
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert result.stderr == b""
     return json.loads(result.stdout)
+
+
+def _cli_tty(
+    environment: dict[str, str], cwd: Path, *arguments: str
+) -> dict[str, object]:
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
+        [str(GRAPHENE), "--json", *arguments],
+        cwd=cwd,
+        env=environment,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+    )
+    os.close(slave)
+    output = bytearray()
+    try:
+        while process.poll() is None:
+            ready, _, _ = select.select([master], [], [], 20)
+            if not ready:
+                process.kill()
+                raise AssertionError("TTY CLI command timed out")
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+        while select.select([master], [], [], 0)[0]:
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+    except OSError:
+        pass
+    finally:
+        os.close(master)
+    assert process.wait(timeout=1) == 0, output.decode(errors="replace")
+    lines = output.decode().replace("\r", "").splitlines()
+    return json.loads(lines[-1])
 
 
 def test_public_human_commands_reach_billing_denial_and_fresh_auth(tmp_path: Path):
@@ -85,7 +125,7 @@ def test_public_human_commands_reach_billing_denial_and_fresh_auth(tmp_path: Pat
         "--message",
         GOLDEN.memory.correction,
     )
-    answered = _cli(
+    answered = _cli_tty(
         environment,
         runtime,
         "answer",
@@ -93,7 +133,7 @@ def test_public_human_commands_reach_billing_denial_and_fresh_auth(tmp_path: Pat
         "--choice",
         "all_auth",
     )
-    approved = _cli(
+    approved = _cli_tty(
         environment,
         runtime,
         "memory",

@@ -80,7 +80,10 @@ def _event_ref(event: Event) -> EvidenceReference:
 
 def _decision_provenance(
     simulated_fixture: bool,
+    human_attestation: bool,
 ) -> tuple[TruthKind, LineageAuthority, EvidenceKind, SourceKind, str]:
+    if simulated_fixture and human_attestation:
+        raise HumanConflict("a decision cannot be both human and simulated")
     if simulated_fixture:
         return (
             TruthKind.SIMULATED_FIXTURE,
@@ -89,6 +92,8 @@ def _decision_provenance(
             SourceKind.SIMULATED_FIXTURE,
             "simulated_fixture",
         )
+    if not human_attestation:
+        raise HumanConflict("human attestation requires a verified interactive TTY")
     return (
         TruthKind.HUMAN_ATTESTED,
         LineageAuthority.OPERATOR_REQUEST,
@@ -96,6 +101,16 @@ def _decision_provenance(
         SourceKind.OPERATOR_REQUEST,
         "human",
     )
+
+
+def _operator_details(label: str, rationale: str | None) -> tuple[str, str | None]:
+    label = label.strip()
+    rationale = None if rationale is None else rationale.strip() or None
+    if not label or len(label.encode()) > 64:
+        raise HumanConflict("operator label must contain 1 to 64 UTF-8 bytes")
+    if rationale is not None and len(rationale.encode()) > 256:
+        raise HumanConflict("operator rationale exceeds 256 UTF-8 bytes")
+    return label, rationale
 
 
 class HumanWorkflowService:
@@ -505,6 +520,9 @@ class HumanWorkflowService:
         choice: ScopeId | str,
         idempotency_key: str,
         simulated_fixture: bool = False,
+        human_attestation: bool = False,
+        operator_label: str = "local-operator",
+        operator_rationale: str | None = None,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         asked, question, pending_ref, _ = self._question(events, question_id)
@@ -522,7 +540,10 @@ class HumanWorkflowService:
             raise HumanConflict("clarification choice was not offered")
         answered_at = _now()
         truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
-            simulated_fixture
+            simulated_fixture, human_attestation
+        )
+        operator_label, operator_rationale = _operator_details(
+            operator_label, operator_rationale
         )
         answer_values = {
             "schema_version": 2,
@@ -556,6 +577,8 @@ class HumanWorkflowService:
             "answer": answer.model_dump(mode="json"),
             "question_reference": question_ref.model_dump(mode="json"),
             "pending_feedback_reference": pending_ref.model_dump(mode="json"),
+            "operator_label": operator_label,
+            "operator_rationale": operator_rationale,
         }
         source_ref = self._record(evidence_kind, record)
         return self._append(
@@ -575,6 +598,8 @@ class HumanWorkflowService:
                 "answer_id": answer.answer_id,
                 "answer_sha256": answer.answer_sha256,
                 "choice": answer.choice.value,
+                "operator_label": operator_label,
+                "operator_rationale": operator_rationale,
                 "question_id": question_id,
                 "status": "answered",
             },
@@ -588,12 +613,18 @@ class HumanWorkflowService:
         question_id: str,
         idempotency_key: str,
         simulated_fixture: bool = False,
+        human_attestation: bool = False,
+        operator_label: str = "local-operator",
+        operator_rationale: str | None = None,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         asked, question, pending_ref, pending = self._question(events, question_id)
         answered, answer = self._answer(events, question)
         truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
-            simulated_fixture
+            simulated_fixture, human_attestation
+        )
+        operator_label, operator_rationale = _operator_details(
+            operator_label, operator_rationale
         )
         if answer.actor != actor:
             raise HumanConflict("feedback provenance does not match its answer")
@@ -645,6 +676,8 @@ class HumanWorkflowService:
             "expected_head": expected_head.model_dump(mode="json"),
             "feedback_reference": feedback_ref.model_dump(mode="json"),
             "answer_event": _event_ref(answered).model_dump(mode="json"),
+            "operator_label": operator_label,
+            "operator_rationale": operator_rationale,
         }
         source_ref = self._record(evidence_kind, source_record)
         return self._append(
@@ -672,6 +705,8 @@ class HumanWorkflowService:
                 "evidence_event_id": write_event.event_id,
                 "feedback_id": feedback_id,
                 "hunk_id": hunk.hunk_id,
+                "operator_label": operator_label,
+                "operator_rationale": operator_rationale,
                 "scope_id": answer.choice.value,
                 "status": "recorded",
             },
@@ -736,6 +771,7 @@ class HumanWorkflowService:
             state=MemoryState.PROPOSED,
             rule=self.memory.rule,
             repo_id=self.memory.repo_id,
+            scope_id=scope.scope_id,
             path_globs=scope.path_globs,
             task_tags=scope.task_tags,
             required_test_path=self.memory.required_test_path,
@@ -813,6 +849,9 @@ class HumanWorkflowService:
         decision: MemoryDecisionValue | str,
         idempotency_key: str,
         simulated_fixture: bool = False,
+        human_attestation: bool = False,
+        operator_label: str = "local-operator",
+        operator_rationale: str | None = None,
     ) -> Event:
         events = self._verified(run_id, expected_head)
         proposed_event = next(
@@ -860,7 +899,10 @@ class HumanWorkflowService:
             proposed.model_dump(mode="json", exclude={"state", "decision"})
         )
         truth, authority, evidence_kind, source_kind, actor = _decision_provenance(
-            simulated_fixture
+            simulated_fixture, human_attestation
+        )
+        operator_label, operator_rationale = _operator_details(
+            operator_label, operator_rationale
         )
         feedback_event = next(
             event
@@ -868,7 +910,9 @@ class HumanWorkflowService:
             if event.event_type == LineageEventType.FEEDBACK_RECORDED
         )
         if feedback_event.truth_kind != truth or feedback_event.authority != authority:
-            raise HumanConflict("memory decision provenance does not match its feedback")
+            raise HumanConflict(
+                "memory decision provenance does not match its feedback"
+            )
         human_decision = HumanDecision(
             decision_id=_stable_id(
                 "decision", run_id, memory_id, str(revision), value.value, bound_digest
@@ -907,6 +951,8 @@ class HumanWorkflowService:
             "proposal_reference": proposed_refs[0].model_dump(mode="json"),
             "decided_reference": decided_ref.model_dump(mode="json"),
             "human_decision": human_decision.model_dump(mode="json"),
+            "operator_label": operator_label,
+            "operator_rationale": operator_rationale,
         }
         source_ref = self._record(evidence_kind, source_record)
         return self._append(
@@ -926,6 +972,8 @@ class HumanWorkflowService:
                 "decision_id": human_decision.decision_id,
                 "memory_id": memory_id,
                 "memory_sha256": decided_ref.sha256,
+                "operator_label": operator_label,
+                "operator_rationale": operator_rationale,
                 "revision": revision,
                 "status": state.value,
             },

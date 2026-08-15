@@ -4,7 +4,7 @@ Status: local macOS component and CI boundary, 2026-08-13.
 
 The supported input is Graphene's frozen, sanitized Auth fixture and its fixed `python -m pytest -q -p no:cacheprovider` command. Arbitrary repositories, arbitrary commands, package installation, and network access are not supported.
 
-The candidate checkout may contain hostile agent-written Python in a frozen mutable path. Before pytest starts, Graphene creates a new temporary test view containing only the current bytes of contract-listed tracked paths and existing mutable paths. Files are opened directory-relative with `O_NOFOLLOW`; ambient checkout files, symlinks, binary files, and oversized files do not enter that view. The model can therefore test its authorized candidate bytes but cannot use pytest to read other checkout content.
+The candidate checkout may contain untrusted runtime-written Python in a frozen mutable path. Before pytest starts, Graphene creates a new temporary test view containing only the current bytes of contract-listed tracked paths and existing mutable paths. Files are opened directory-relative with `O_NOFOLLOW`; ambient checkout files, symlinks, binary files, and oversized files do not enter that view. The scoped runtime can therefore test its authorized candidate bytes but cannot use pytest to read other checkout content.
 
 On macOS, `sandbox-exec` additionally denies network, fork, broad process information, sysctl (including raw `SYS_sysctl`), and writes outside a separate temporary scratch directory. Standard input is `/dev/null` and the environment is allowlisted. Pytest output is capped and transient; public events store only status, counts, and digests.
 
@@ -26,7 +26,7 @@ systems as interchangeable:
 | Runner | Executed gate | Supported claim |
 | --- | --- | --- |
 | Python 3.13 on `macos-15` | Complete `tests/unit`, `tests/integration`, `tests/process`, and `tests/adversarial` suites; MCP STDIO process tests; installed CLI help and canonical NDJSON smoke | The frozen fixture's fixed tests use the checked macOS `sandbox-exec` profile |
-| Python 3.13 on `ubuntu-24.04` | The two fixed-test boundary regressions | Linux reaches the explicit `fixed tests require an available OS sandbox` failure and does not execute hostile fixture tests |
+| Python 3.13 on `ubuntu-24.04` | The two fixed-test boundary regressions plus the verified-replay process test and CLI smoke | Linux reaches the explicit `fixed tests require an available OS sandbox` failure and does not execute hostile fixture tests; the checked-in replay remains read-only and portable |
 | Node 22 on `ubuntu-24.04` | Dependency-free frontend tests and JavaScript syntax checks | Browser-side deterministic logic only; no Python executor claim |
 
 The macOS job is the only job that runs the full v2 human workflow because that
@@ -41,13 +41,15 @@ Stable local equivalents are:
 ```bash
 uv lock --check
 uv sync --frozen
-uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial
+uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial --ignore=tests/process/test_mcp_stdio.py
 uv run --frozen pytest -q tests/process/test_mcp_stdio.py
 uv run --frozen graphene --help
 node --test frontend/test/*.test.mjs
+node --test tests/frontend/*.mjs
 node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs
+node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs
 ```
 
-The separate MCP command is a named CI gate; the complete local pytest command
-already includes it. CLI NDJSON behavior is covered both by the CI process smoke
-and `tests/process/test_v2_process.py`.
+The separate MCP command is a named CI gate and is excluded from the preceding
+aggregate command. CLI NDJSON behavior is covered both by the CI process smoke and
+`tests/process/test_v2_process.py`.

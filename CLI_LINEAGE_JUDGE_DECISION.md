@@ -1,5 +1,7 @@
 # Graphene CLI Lineage — Judge Decision
 
+> **Historical judge report — not current product truth.** Its HEAD, scorecard, gaps, and next actions are a dated audit snapshot. See [`docs/HISTORY.md`](docs/HISTORY.md) for current authority.
+
 **Decision:** `PIVOT`  
 **Current HEAD:** `d36ff4b6a37f160e1122307f3e48cea953fcd223` on `main` (`main image`)  
 **Audited implementation commit:** `ce9dfbe0d0e2910b0c1f7216bf944fbc5987d206`  

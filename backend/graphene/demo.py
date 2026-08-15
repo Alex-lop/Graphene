@@ -5,6 +5,7 @@ import platform
 import secrets
 import shutil
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -18,28 +19,54 @@ import uvicorn
 from .bootstrap import bootstrap_local_run
 from .cli.main import (
     _answer,
+    _end_rejected_run,
     _feedback,
     _handoff,
     _load,
     _memory,
+    _prepare_candidate,
     _promote,
+    _reject_candidate,
     _review,
 )
 from .context.consumer import resume_fresh_consumer
+from .demo_adk import (
+    ADK_FAKE_PROOF_LABEL,
+    AdkFakeError,
+    AdkFakeToolCall,
+    run_adk_fake,
+    validate_distinct_adk_fake_runtimes,
+)
 from .lineage.explain import explain_path, inspect_run_item
 from .lineage.service import ToolCallIdentity
 from .lineage.store import SQLiteLineageStore
 from .lineage.artifacts import SQLiteArtifactStore
-from .models import GoldenContract, LineageEventType, VerifiedHead
+from .models import (
+    GoldenContract,
+    LineageEventType,
+    LineageOperation,
+    VerifiedHead,
+)
 
 _ROOT = Path(__file__).resolve().parents[2]
 _GOLDEN = GoldenContract.model_validate_json(
     (_ROOT / "contracts/golden_path.json").read_text()
 )
+_SCRIPTED_LABEL = (
+    "SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF"
+)
 
 
 class DemoError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _Decision:
+    value: str
+    operator_label: str
+    rationale: str | None
+    human_attestation: bool
 
 
 @dataclass(slots=True)
@@ -67,7 +94,8 @@ def _call(run, number: int) -> ToolCallIdentity:
 def _preflight() -> None:
     if platform.system() != "Darwin" or not Path("/usr/bin/sandbox-exec").is_file():
         raise DemoError(
-            "scripted-local requires macOS with executable /usr/bin/sandbox-exec"
+            "live workflow requires macOS with executable /usr/bin/sandbox-exec\n"
+            "Run instead: uv run --frozen graphene demo --driver verified-replay"
         )
     try:
         from .viewer.app import create_viewer_app  # noqa: F401
@@ -88,26 +116,32 @@ def _free_port() -> int:
 
 
 def _start_viewer(
-    database: Path, root_run_id: str, *, automated_fixture: bool = False
+    database: Path,
+    root_run_id: str,
+    *,
+    driver: str,
+    automated_fixture: bool = False,
 ) -> _Viewer:
     from .viewer.app import create_viewer_app
 
     port = _free_port()
     token = secrets.token_urlsafe(32)
+    label = ADK_FAKE_PROOF_LABEL if driver == "adk-fake" else _SCRIPTED_LABEL
+    viewer_driver = (
+        "scripted-local-automated-fixture"
+        if automated_fixture and driver == "scripted-local"
+        else driver
+    )
     app = create_viewer_app(
         database_path=database,
         root_run_id=root_run_id,
         read_token=token,
         mode_label=(
-            "SCRIPTED LOCAL — SIMULATED OPERATOR / NOT HUMAN ATTESTATION"
+            f"{label} — SIMULATED OPERATOR / NOT HUMAN ATTESTATION"
             if automated_fixture
-            else "SCRIPTED LOCAL"
+            else label
         ),
-        driver=(
-            "scripted-local-automated-fixture"
-            if automated_fixture
-            else "scripted-local"
-        ),
+        driver=viewer_driver,
     )
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
@@ -123,6 +157,81 @@ def _start_viewer(
     return _Viewer(f"http://127.0.0.1:{port}/viewer/{root_run_id}", server, thread)
 
 
+def _start_verified_replay() -> tuple[_Viewer, str]:
+    from .viewer.replay import (
+        REPLAY_TRUTH_LABEL,
+        ReplayEvidenceInvalid,
+        create_verified_replay_app,
+        load_verified_replay,
+    )
+
+    try:
+        replay = load_verified_replay()
+    except ReplayEvidenceInvalid as error:
+        raise DemoError("the checked-in verified replay is invalid") from error
+    port = _free_port()
+    token = secrets.token_urlsafe(32)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_verified_replay_app(token, replay),
+            host="127.0.0.1",
+            port=port,
+            log_level="error",
+        )
+    )
+    thread = threading.Thread(
+        target=server.run,
+        name="graphene-replay-viewer",
+        daemon=True,
+    )
+    thread.start()
+    deadline = time.monotonic() + 5
+    while not server.started:
+        if not thread.is_alive() or time.monotonic() >= deadline:
+            server.should_exit = True
+            raise DemoError("the verified replay viewer failed to start")
+        time.sleep(0.01)
+    return (
+        _Viewer(
+            f"http://127.0.0.1:{port}/viewer/{replay.root_run_id}",
+            server,
+            thread,
+        ),
+        REPLAY_TRUTH_LABEL,
+    )
+
+
+def run_verified_replay(*, no_open: bool, keep_open: bool = True) -> int:
+    viewer, truth_label = _start_verified_replay()
+    interrupted = False
+    try:
+        print(
+            f"\n{truth_label}\n"
+            "Authoritative lineage writes: 0\n"
+            "Human-attested decisions: 0\n"
+            "Live agent executions: 0\n"
+            "New test executions: 0\n"
+            "Google ADK Runner: not used\n"
+            "Gemini calls: 0\n"
+            f"Viewer: {viewer.url}\n"
+            "Press Ctrl-C to stop the viewer.",
+            flush=True,
+        )
+        if not no_open:
+            webbrowser.open(viewer.url)
+        if keep_open:
+            while True:
+                time.sleep(3600)
+        return 0
+    except KeyboardInterrupt:
+        interrupted = True
+        return 130
+    finally:
+        viewer.close()
+        state = "Replay interrupted" if interrupted else "Replay stopped"
+        print(f"\n{state}. No authoritative state was created.", flush=True)
+
+
 def _packet(title: str, **fields: object) -> None:
     print(f"\nDECISION PACKET — {title}", flush=True)
     for label, value in fields.items():
@@ -132,29 +241,58 @@ def _packet(title: str, **fields: object) -> None:
 
 def _gate(
     prompt: str,
-    expected: str,
+    choices: tuple[tuple[str, str], ...],
     input_fn: Callable[[str], str],
     *,
     automated_fixture: bool,
-) -> None:
+    automated_value: str,
+    default: str | None,
+    tty_check: Callable[[], bool],
+) -> _Decision:
+    values = {value for value, _ in choices}
+    if automated_value not in values:
+        raise DemoError("the automated fixture decision is unavailable")
+    for number, (value, consequence) in enumerate(choices, 1):
+        print(f"  {number}. {value} — {consequence}", flush=True)
     if automated_fixture:
         print(
             f"\n{prompt}\n"
             "SIMULATED OPERATOR — NOT HUMAN ATTESTATION\n"
-            f"Automated fixture decision: {expected}\n"
+            f"Automated fixture decision: {automated_value}\n"
             "This deterministic seam exercises the fixed human-gated transition "
             "but is not evidence that a person decided.",
             flush=True,
         )
-        return
-    try:
-        answer = input_fn(
-            f"\n{prompt}\nType {expected!r} or press Enter for this safe default: "
+        return _Decision(
+            automated_value,
+            "simulated-fixture",
+            "deterministic process fixture",
+            False,
         )
+    if not tty_check():
+        raise DemoError(
+            "human attestation requires a real terminal; non-TTY input cannot "
+            "create a human-attested decision"
+        )
+    try:
+        suffix = f" [default: {default}]" if default is not None else " (required)"
+        answer = input_fn(f"\n{prompt}{suffix}: ").strip().lower()
+        if not answer and default is not None:
+            answer = default
+        if answer.isdigit() and 1 <= int(answer) <= len(choices):
+            answer = choices[int(answer) - 1][0]
+        if answer not in values:
+            raise DemoError("operator selected an unavailable decision")
+        label = input_fn("Public operator label [local-operator]: ").strip()
+        label = label or "local-operator"
+        rationale = input_fn("Optional rationale (Enter to omit): ").strip() or None
     except EOFError as error:
         raise DemoError("operator input ended before the gate decision") from error
-    if (answer.strip() or expected).lower() != expected:
-        raise DemoError("operator declined the demo gate")
+    if not label or len(label.encode()) > 64:
+        raise DemoError("operator label must contain 1 to 64 UTF-8 bytes")
+    if rationale is not None and len(rationale.encode()) > 256:
+        raise DemoError("operator rationale exceeds 256 UTF-8 bytes")
+    return _Decision(answer, label, rationale, True)
 
 
 def _pause(speed: float, seconds: float = 0.35) -> None:
@@ -163,16 +301,30 @@ def _pause(speed: float, seconds: float = 0.35) -> None:
 
 def run_demo(
     *,
+    driver: str = "scripted-local",
     speed: float,
     no_open: bool,
     cleanup: bool,
     keep_open: bool = True,
     automated_fixture: bool = False,
+    automated_decisions: tuple[str, str, str] = (
+        "all_auth",
+        "approve",
+        "commit",
+    ),
     input_fn: Callable[[str], str] = input,
+    tty_check: Callable[[], bool] | None = None,
 ) -> int:
+    if driver == "verified-replay":
+        return run_verified_replay(no_open=no_open, keep_open=keep_open)
+    if driver not in {"scripted-local", "adk-fake"}:
+        raise DemoError(f"unsupported demo driver: {driver}")
     _preflight()
     if automated_fixture and keep_open:
         raise DemoError("the automated fixture seam requires --exit-after-demo")
+    if len(automated_decisions) != 3:
+        raise DemoError("the automated fixture requires exactly three decisions")
+    tty_check = tty_check or (lambda: bool(sys.stdin.isatty() and sys.stdout.isatty()))
     runtime, database = _runtime()
     viewer: _Viewer | None = None
     interrupted = False
@@ -186,7 +338,10 @@ def run_demo(
         if database.stat().st_mode & 0o077:
             raise DemoError("lineage database is not owner-private")
         viewer = _start_viewer(
-            database, source.run_id, automated_fixture=automated_fixture
+            database,
+            source.run_id,
+            driver=driver,
+            automated_fixture=automated_fixture,
         )
         preservation = (
             f"Runtime will be deleted after viewer shutdown: {runtime}\n"
@@ -195,10 +350,20 @@ def run_demo(
             else f"Runtime retained: {runtime}\n"
             "Press Ctrl-C to stop the viewer. Evidence remains on disk."
         )
+        mode_label = (
+            ADK_FAKE_PROOF_LABEL if driver == "adk-fake" else _SCRIPTED_LABEL
+        )
         print(
-            "\nSCRIPTED LOCAL\n"
-            "Google ADK Runner: not used\n"
-            "Gemini calls: 0\n"
+            f"\n{mode_label}\n"
+            + (
+                "Google ADK Runner: real Google ADK 2.5.0\n"
+                "Deterministic fake model: yes\n"
+                "External model dispatches: 0\n"
+                "Google credential/project variables: unset during Runner execution\n"
+                if driver == "adk-fake"
+                else "Google ADK Runner: not used\n"
+            )
+            + "Gemini calls: 0\n"
             "Evidence source: committed and verified v2 SQLite lineage\n"
             f"Viewer: {viewer.url}\n"
             f"Private runtime: {runtime}\n",
@@ -214,20 +379,65 @@ def run_demo(
         if not no_open:
             webbrowser.open(viewer.url)
 
-        original = source.service.read_file(
-            source.handle, _call(source, 1), path="app/auth/limiter.py"
-        )
-        _pause(speed)
-        source.service.write_file(
-            source.handle,
-            _call(source, 2),
-            path="app/auth/limiter.py",
-            content=original.content.replace("MAX_ATTEMPTS = 5", "MAX_ATTEMPTS = 4"),
-        )
-        _pause(speed)
-        if not source.service.run_fixed_test(source.handle, _call(source, 3)).passed:
-            raise DemoError("the baseline fixed test failed")
-        source.service.request_completion(source.handle, _call(source, 4))
+        source_adk = None
+        if driver == "adk-fake":
+            try:
+                source_content = (
+                    source.checkout_root / "app/auth/limiter.py"
+                ).read_text()
+                source_adk = run_adk_fake(
+                    source.service,
+                    source.handle,
+                    role="source",
+                    calls=(
+                        AdkFakeToolCall(
+                            call_id="adk_source_read_001",
+                            operation=LineageOperation.READ_FILE,
+                            arguments={"path": "app/auth/limiter.py"},
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_source_write_001",
+                            operation=LineageOperation.WRITE_FILE,
+                            arguments={
+                                "path": "app/auth/limiter.py",
+                                "content": source_content.replace(
+                                    "MAX_ATTEMPTS = 5", "MAX_ATTEMPTS = 4"
+                                ),
+                            },
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_source_test_001",
+                            operation=LineageOperation.RUN_FIXED_TEST,
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_source_completion_001",
+                            operation=LineageOperation.REQUEST_COMPLETION,
+                        ),
+                    ),
+                )
+            except Exception as error:
+                raise DemoError(
+                    "adk-fake source Runner failed; no fallback was used"
+                ) from error
+        else:
+            original = source.service.read_file(
+                source.handle, _call(source, 1), path="app/auth/limiter.py"
+            )
+            _pause(speed)
+            source.service.write_file(
+                source.handle,
+                _call(source, 2),
+                path="app/auth/limiter.py",
+                content=original.content.replace(
+                    "MAX_ATTEMPTS = 5", "MAX_ATTEMPTS = 4"
+                ),
+            )
+            _pause(speed)
+            if not source.service.run_fixed_test(
+                source.handle, _call(source, 3)
+            ).passed:
+                raise DemoError("the baseline fixed test failed")
+            source.service.request_completion(source.handle, _call(source, 4))
         _pause(speed)
 
         review = _review(database, source.run_id)
@@ -242,23 +452,43 @@ def run_demo(
             ),
         )
         _pause(speed)
+        source_events, _ = _load(database, source.run_id)
+        asked_event = next(
+            event
+            for event in source_events
+            if event.event_type == LineageEventType.CLARIFICATION_ASKED
+            and event.payload.get("question_id") == asked["question_id"]
+        )
         _packet(
             "SCOPE",
+            decision_id=asked["question_id"],
+            focus_anchor=f"event:{source.run_id}:{asked_event.event_id}",
             correction=_GOLDEN.memory.correction,
-            proposed_scope="all_auth (app/auth/**)",
             hunk=f"{hunk['path']}:{hunk['new_start']} +{hunk['new_lines']} lines",
             why="The exact correction must be explicitly scoped before memory is proposed.",
         )
-        _gate(
-            "SCOPE GATE: apply this correction to every app/auth/** change?",
-            "all_auth",
+        scope = _gate(
+            "SCOPE GATE: choose the durable memory scope",
+            (
+                ("all_auth", "may apply to every app/auth/** target"),
+                (
+                    "rate_limiter_only",
+                    "may apply only to app/auth/limiter.py",
+                ),
+            ),
             input_fn,
             automated_fixture=automated_fixture,
+            automated_value=automated_decisions[0],
+            default="all_auth",
+            tty_check=tty_check,
         )
         answered = _answer(
             database,
-            argparse.Namespace(question_id=asked["question_id"], choice="all_auth"),
+            argparse.Namespace(question_id=asked["question_id"], choice=scope.value),
             simulated_fixture=automated_fixture,
+            human_attestation=scope.human_attestation,
+            operator_label=scope.operator_label,
+            operator_rationale=scope.rationale,
         )
         source_events, _ = _load(database, source.run_id)
         proposed = next(
@@ -269,24 +499,65 @@ def run_demo(
         )
         _packet(
             "MEMORY",
+            decision_id=answered["memory_id"],
+            focus_anchor=f"event:{source.run_id}:{proposed.event_id}",
             rule=_GOLDEN.memory.rule,
-            scope="all_auth (app/auth/**)",
+            scope=(
+                "all_auth (app/auth/**)"
+                if scope.value == "all_auth"
+                else "rate_limiter_only (app/auth/limiter.py)"
+            ),
             revision=answered["revision"],
             digest=proposed.payload["memory_sha256"],
             why="Only this immutable scoped revision may enter an authorized handoff.",
         )
-        _gate(
-            "MEMORY GATE: approve the displayed scoped memory revision?",
-            "approve",
+        memory = _gate(
+            "MEMORY GATE: decide the displayed scoped memory revision",
+            (
+                ("approve", "the approved revision may enter a later handoff"),
+                ("reject", "stop with no approved memory or injected context"),
+            ),
             input_fn,
             automated_fixture=automated_fixture,
+            automated_value=automated_decisions[1],
+            default="approve",
+            tty_check=tty_check,
         )
-        _memory(
+        memory_result = _memory(
             database,
-            argparse.Namespace(memory_id=answered["memory_id"], memory_action="approve"),
+            argparse.Namespace(
+                memory_id=answered["memory_id"], memory_action=memory.value
+            ),
             simulated_fixture=automated_fixture,
+            human_attestation=memory.human_attestation,
+            operator_label=memory.operator_label,
+            operator_rationale=memory.rationale,
         )
         _pause(speed)
+        if memory.value == "reject":
+            ended = _end_rejected_run(
+                database,
+                source.run_id,
+                str(memory_result["decision_event_id"]),
+                "memory_rejected",
+            )
+            print(
+                "\nMEMORY REJECTED — branch complete and inspectable\n"
+                f"Decision ID: {answered['memory_id']}\n"
+                f"Scope: {scope.value}\n"
+                "State: REJECTED\n"
+                f"Terminal event: {ended.event_id}\n"
+                "Handoff created: no\n"
+                "Consumer runtime created: no\n"
+                "Local commit created: no\n"
+                f"Viewer: {viewer.url}\n"
+                f"{preservation}",
+                flush=True,
+            )
+            if keep_open:
+                while True:
+                    time.sleep(3600)
+            return 0
 
         billing = _handoff(
             database,
@@ -312,36 +583,128 @@ def run_demo(
         consumer = resume_fresh_consumer(
             database, auth["consumer_run_id"], repository_root=_ROOT
         )
-        consumer.service.open_evidence(
-            consumer.handle, _call(consumer, 5), evidence_id=hunk["evidence_id"]
+        if driver == "adk-fake":
+            try:
+                consumer_content = (
+                    consumer.checkout_root / "app/auth/limiter.py"
+                ).read_text()
+                consumer_adk = run_adk_fake(
+                    consumer.service,
+                    consumer.handle,
+                    role="consumer",
+                    calls=(
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_evidence_001",
+                            operation=LineageOperation.OPEN_EVIDENCE,
+                            arguments={"evidence_id": hunk["evidence_id"]},
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_read_limiter_001",
+                            operation=LineageOperation.READ_FILE,
+                            arguments={"path": "app/auth/limiter.py"},
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_read_test_001",
+                            operation=LineageOperation.READ_FILE,
+                            arguments={"path": "tests/test_security_policy.py"},
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_write_limiter_001",
+                            operation=LineageOperation.WRITE_FILE,
+                            arguments={
+                                "path": "app/auth/limiter.py",
+                                "content": consumer_content.replace(
+                                    "WINDOW_SECONDS = 60", "WINDOW_SECONDS = 90"
+                                ),
+                            },
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_write_test_001",
+                            operation=LineageOperation.WRITE_FILE,
+                            arguments={
+                                "path": "tests/test_security_policy.py",
+                                "content": (
+                                    _GOLDEN.memory.expected_security_test_content
+                                ),
+                            },
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_test_001",
+                            operation=LineageOperation.RUN_FIXED_TEST,
+                        ),
+                        AdkFakeToolCall(
+                            call_id="adk_consumer_completion_001",
+                            operation=LineageOperation.REQUEST_COMPLETION,
+                        ),
+                    ),
+                )
+                if source_adk is None:
+                    raise AdkFakeError("source ADK execution result is missing")
+                validate_distinct_adk_fake_runtimes(source_adk, consumer_adk)
+            except Exception as error:
+                raise DemoError(
+                    "adk-fake consumer Runner failed; no fallback was used"
+                ) from error
+        else:
+            consumer.service.open_evidence(
+                consumer.handle, _call(consumer, 5), evidence_id=hunk["evidence_id"]
+            )
+            _pause(speed)
+            limiter = consumer.service.read_file(
+                consumer.handle, _call(consumer, 6), path="app/auth/limiter.py"
+            )
+            consumer.service.read_file(
+                consumer.handle,
+                _call(consumer, 7),
+                path="tests/test_security_policy.py",
+            )
+            _pause(speed)
+            consumer.service.write_file(
+                consumer.handle,
+                _call(consumer, 8),
+                path="app/auth/limiter.py",
+                content=limiter.content.replace(
+                    "WINDOW_SECONDS = 60", "WINDOW_SECONDS = 90"
+                ),
+            )
+            _pause(speed)
+            consumer.service.write_file(
+                consumer.handle,
+                _call(consumer, 9),
+                path="tests/test_security_policy.py",
+                content=_GOLDEN.memory.expected_security_test_content,
+            )
+            _pause(speed)
+            if not consumer.service.run_fixed_test(
+                consumer.handle, _call(consumer, 10)
+            ).passed:
+                raise DemoError("the consumer fixed retest failed")
+            consumer.service.request_completion(consumer.handle, _call(consumer, 11))
+
+        consumer_events, _ = _load(database, consumer.run_id)
+        opened = next(
+            event
+            for event in consumer_events
+            if event.event_type == LineageEventType.TOOL_COMPLETED
+            and event.payload.get("operation")
+            == LineageOperation.OPEN_EVIDENCE.value
         )
-        _pause(speed)
-        limiter = consumer.service.read_file(
-            consumer.handle, _call(consumer, 6), path="app/auth/limiter.py"
+        _packet(
+            "HANDOFF PROOF",
+            billing=(
+                f"denied ({billing['denial']['reason_code']}); "
+                "model dispatches=0"
+            ),
+            approved_context=(
+                f"scope={scope.value}; brief_sha256={auth['brief_sha256']}; "
+                f"fresh_consumer={consumer.run_id}"
+            ),
+            consumer_reference=(
+                f"event={opened.event_id}; "
+                f"opened_evidence={opened.payload['evidence_id']}"
+            ),
+            proof_limit="Delivery and opening were observed; causality was not established.",
         )
-        consumer.service.read_file(
-            consumer.handle,
-            _call(consumer, 7),
-            path="tests/test_security_policy.py",
-        )
-        _pause(speed)
-        consumer.service.write_file(
-            consumer.handle,
-            _call(consumer, 8),
-            path="app/auth/limiter.py",
-            content=limiter.content.replace("WINDOW_SECONDS = 60", "WINDOW_SECONDS = 90"),
-        )
-        _pause(speed)
-        consumer.service.write_file(
-            consumer.handle,
-            _call(consumer, 9),
-            path="tests/test_security_policy.py",
-            content=_GOLDEN.memory.expected_security_test_content,
-        )
-        _pause(speed)
-        if not consumer.service.run_fixed_test(consumer.handle, _call(consumer, 10)).passed:
-            raise DemoError("the consumer fixed retest failed")
-        consumer.service.request_completion(consumer.handle, _call(consumer, 11))
         _review(database, consumer.run_id)
 
         consumer_events, _ = _load(database, consumer.run_id)
@@ -355,24 +718,76 @@ def run_demo(
             for event in consumer_events
             if event.event_type == LineageEventType.TEST_RECEIPT_CREATED
         )
+        candidate = _prepare_candidate(
+            database,
+            consumer.run_id,
+        )
+        consumer_events, _ = _load(database, consumer.run_id)
+        candidate_event = next(
+            event
+            for event in consumer_events
+            if event.event_type == LineageEventType.CANDIDATE_CREATED
+            and event.payload.get("candidate_id") == candidate.candidate_id
+        )
         _packet(
             "PROMOTION",
+            candidate_id=candidate.candidate_id,
+            focus_anchor=f"event:{consumer.run_id}:{candidate_event.event_id}",
             changed_paths=", ".join(changeset.payload["changed_paths"]),
             test_receipt=(
                 f"{test_receipt.payload['receipt_id']} "
                 f"sha256={test_receipt.payload['receipt_sha256']} passed=true"
             ),
             candidate_digest=changeset.payload["candidate_patch_sha256"],
-            why="Promotion binds these exact paths and candidate digest to the passing fixed-test receipt.",
+            why="The final decision binds this exact candidate and passing fixed-test receipt; rejection creates no commit.",
         )
-        _gate(
-            "PROMOTION GATE: promote the verified bounded candidate?",
-            "promote",
+        final = _gate(
+            "CANDIDATE GATE: decide the exact verified bounded candidate",
+            (
+                (
+                    "commit",
+                    "Approve and create isolated local commit",
+                ),
+                ("reject", "record rejection and create no local commit"),
+            ),
             input_fn,
             automated_fixture=automated_fixture,
+            automated_value=automated_decisions[2],
+            default=None,
+            tty_check=tty_check,
         )
+        if final.value == "reject":
+            rejected = _reject_candidate(
+                database,
+                consumer.run_id,
+                simulated_fixture=automated_fixture,
+                human_attestation=final.human_attestation,
+                operator_label=final.operator_label,
+                operator_rationale=final.rationale,
+            )
+            print(
+                "\nCANDIDATE REJECTED — branch complete and inspectable\n"
+                f"Decision event ID: {rejected['decision_event_id']}\n"
+                f"Candidate ID: {candidate.candidate_id}\n"
+                f"Scope: {scope.value}\n"
+                f"State: {rejected['state']}\n"
+                "Local commit created: no\n"
+                "Push / PR / deployment: no\n"
+                f"Viewer: {viewer.url}\n"
+                f"{preservation}",
+                flush=True,
+            )
+            if keep_open:
+                while True:
+                    time.sleep(3600)
+            return 0
         promoted = _promote(
-            database, consumer.run_id, simulated_fixture=automated_fixture
+            database,
+            consumer.run_id,
+            simulated_fixture=automated_fixture,
+            human_attestation=final.human_attestation,
+            operator_label=final.operator_label,
+            operator_rationale=final.rationale,
         )
         artifacts = SQLiteArtifactStore(database, read_only=True)
         store = SQLiteLineageStore(
@@ -383,7 +798,9 @@ def run_demo(
         if not {"PACKED_IN", "INJECTED_INTO", "PROMOTED_AS"} <= {
             item["relation"] for item in why["relationships"]
         }:
-            raise DemoError("final why path is missing a required explicit relationship")
+            raise DemoError(
+                "final why path is missing a required explicit relationship"
+            )
         heads = (store.verify(source.run_id), store.verify(consumer.run_id))
         if not all(isinstance(head, VerifiedHead) for head in heads):
             raise DemoError("final lineage verification failed")
@@ -392,6 +809,13 @@ def run_demo(
             f"Origin run: {source.run_id}\n"
             f"Consumer run: {consumer.run_id}\n"
             f"Promotion state: {promoted['state']}\n"
+            f"Outcome: {promoted['outcome']}\n"
+            f"Local commit SHA: {promoted['local_commit_sha']}\n"
+            f"Checkout: {consumer.checkout_root}\n"
+            "Verify: git -C "
+            f"{consumer.checkout_root} show --stat --oneline "
+            f"{promoted['local_commit_sha']}\n"
+            "Local isolated commit — not pushed / no PR / no deployment\n"
             f"Viewer: {viewer.url}\n"
             f"{preservation}",
             flush=True,
@@ -414,4 +838,4 @@ def run_demo(
             print(f"\n{state}. Runtime retained: {runtime}", flush=True)
 
 
-__all__ = ["DemoError", "run_demo"]
+__all__ = ["DemoError", "run_demo", "run_verified_replay"]

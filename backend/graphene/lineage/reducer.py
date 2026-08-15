@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from pydantic import TypeAdapter, ValidationError
 
-from ..hashing import canonical_json_sha256
+from ..hashing import canonical_json_sha256, sha256_hex
 from ..models import (
     Event,
+    EventInput,
+    EvidenceKind,
     EvidenceInvalidState,
     LineageEventType,
     LineageOperation,
@@ -66,6 +70,7 @@ _TERMINAL_STATES = {
     LineageRunState.FAILED,
     LineageRunState.INTERRUPTED,
     LineageRunState.PROMOTED,
+    LineageRunState.REJECTED,
 }
 
 _RUNTIME_EVENTS = {
@@ -88,6 +93,122 @@ def _fail(reason: str, event: Event | None = None) -> ProjectionError:
         run_id=None if event is None else event.run_id,
         seq=None if event is None else event.seq,
     )
+
+
+def validate_semantic_artifacts(
+    events: tuple[Event, ...],
+    artifact_resolver: Callable[[str, str], bytes | None],
+) -> None:
+    """Fail closed when an authoritative result is not its exact bound artifact."""
+
+    for index, event in enumerate(events):
+        if event.event_type != LineageEventType.LOCAL_RESULT_RECORDED:
+            continue
+        try:
+            from .local_commit import LocalCommitReceiptV2, local_commit_event_input
+            from .promotion import PromotionReceiptV2
+
+            references = {reference.kind: reference for reference in event.references}
+            local_reference = references[EvidenceKind.LOCAL_COMMIT_RECEIPT]
+            promotion_reference = references[EvidenceKind.PROMOTION_RECEIPT]
+            approval_reference = references[EvidenceKind.EVENT]
+            test_reference = references[EvidenceKind.TEST_RECEIPT]
+            local_raw = artifact_resolver(local_reference.kind.value, local_reference.id)
+            promotion_raw = artifact_resolver(
+                promotion_reference.kind.value, promotion_reference.id
+            )
+            if not isinstance(local_raw, bytes) or not isinstance(promotion_raw, bytes):
+                raise ValueError("bound receipt is unavailable")
+            receipt = LocalCommitReceiptV2.model_validate_json(local_raw)
+            promotion_receipt = PromotionReceiptV2.model_validate_json(promotion_raw)
+            expected_key, expected_draft = local_commit_event_input(
+                receipt,
+                local_reference,
+                agent_profile_id=event.agent_profile_id,
+                policy_revision=event.policy_revision,
+            )
+            actual_draft = EventInput.model_validate(
+                event.model_dump(mode="json", include=set(EventInput.model_fields))
+            )
+            promotion = events[index - 1] if index else None
+            approval = next(
+                (
+                    item
+                    for item in events[:index]
+                    if item.event_id == approval_reference.id
+                    and item.event_sha256 == approval_reference.sha256
+                ),
+                None,
+            )
+            promotion_test = next(
+                (
+                    reference
+                    for reference in promotion_receipt.artifact_references
+                    if reference.kind == EvidenceKind.TEST_RECEIPT
+                ),
+                None,
+            )
+            changeset_reference = next(
+                (
+                    reference
+                    for reference in promotion_receipt.artifact_references
+                    if reference.kind == EvidenceKind.CHANGESET
+                ),
+                None,
+            )
+            changeset_raw = (
+                None
+                if changeset_reference is None
+                else artifact_resolver(changeset_reference.kind.value, changeset_reference.id)
+            )
+            changeset = (
+                json.loads(changeset_raw)
+                if isinstance(changeset_raw, bytes)
+                and changeset_reference is not None
+                and sha256_hex(changeset_raw) == changeset_reference.sha256
+                else None
+            )
+            if (
+                event.idempotency_key != expected_key
+                or actual_draft != expected_draft
+                or receipt.run_id != event.run_id
+                or promotion is None
+                or promotion.event_type != LineageEventType.PROMOTION_COMPLETED
+                or promotion.source_ref.id != promotion_reference.id
+                or promotion.source_ref.sha256 != promotion_reference.sha256
+                or promotion_reference not in promotion.references
+                or approval is None
+                or approval.event_type != LineageEventType.PROMOTION_APPROVED
+                or approval_reference not in promotion.references
+                or promotion_test != test_reference
+                or not isinstance(changeset, dict)
+                or tuple(changeset.get("changed_paths", ())) != receipt.changed_paths
+                or changeset.get("candidate_patch_sha256") != receipt.candidate_patch_sha256
+                or changeset.get("candidate_tree_sha256") != receipt.candidate_tree_sha256
+                or promotion_receipt.run_id != event.run_id
+                or promotion_receipt.repo_id != event.repo_id
+                or promotion_receipt.base_sha != event.base_sha
+                or promotion_receipt.agent_profile_id != event.agent_profile_id
+                or promotion_receipt.policy_revision != event.policy_revision
+                or promotion_receipt.approval_event_id != approval.event_id
+                or promotion_receipt.approval_event_sha256 != approval.event_sha256
+                or promotion_receipt.candidate_patch_sha256 != receipt.candidate_patch_sha256
+                or promotion_receipt.candidate_tree_sha256 != receipt.candidate_tree_sha256
+                or promotion_receipt.test_receipt_sha256 != receipt.test_receipt_sha256
+                or promotion_receipt.authoritative_test_receipt_sha256
+                != receipt.authoritative_test_receipt_sha256
+                or promotion.payload.get("candidate_patch_sha256") != receipt.candidate_patch_sha256
+                or promotion.payload.get("promotion_receipt_id") != promotion_reference.id
+                or promotion.payload.get("promotion_receipt_sha256")
+                != promotion_receipt.receipt_sha256
+                or approval.payload.get("candidate_patch_sha256") != receipt.candidate_patch_sha256
+                or approval.payload.get("decision_id") != receipt.approval_decision_id
+            ):
+                raise ValueError("local result bindings do not match")
+        except ProjectionError:
+            raise
+        except Exception as error:
+            raise _fail("local result semantic artifacts are invalid", event) from error
 
 
 def _required(payload: dict[str, object], names: tuple[str, ...], event: Event) -> None:
@@ -156,7 +277,9 @@ def _status(event: Event, operation: LineageOperation | None) -> str:
         LineageEventType.RUN_STARTED: "STARTING",
         LineageEventType.RUN_INTERRUPTED: "INTERRUPTED",
         LineageEventType.CLARIFICATION_ASKED: "WAITING INPUT",
+        LineageEventType.CANDIDATE_REJECTED: "REJECTED",
         LineageEventType.COMPLETION_ATTEMPTED: "REQUESTED",
+        LineageEventType.LOCAL_RESULT_RECORDED: "RECORDED",
         LineageEventType.PROMOTION_COMPLETED: "PROMOTED",
         LineageEventType.TOOL_STARTED: "STARTED",
         LineageEventType.TOOL_COMPLETED: "COMPLETED",
@@ -363,7 +486,14 @@ def _test(files: dict[str, _File], event: Event) -> None:
 
 
 def _next_state(state: LineageRunState, event: Event) -> LineageRunState:
-    if state in _TERMINAL_STATES:
+    allowed_terminal_successor = (
+        state == LineageRunState.PROMOTED
+        and event.event_type == LineageEventType.LOCAL_RESULT_RECORDED
+    ) or (
+        state == LineageRunState.REJECTED
+        and event.event_type == LineageEventType.RUN_ENDED
+    )
+    if state in _TERMINAL_STATES and not allowed_terminal_successor:
         raise _fail("an event follows a terminal run state", event)
     if state in {LineageRunState.ACCESS_DENIED, LineageRunState.NEEDS_HUMAN} and (
         event.event_type in _RUNTIME_EVENTS
@@ -387,6 +517,12 @@ def _next_state(state: LineageRunState, event: Event) -> LineageRunState:
         return LineageRunState.INTERRUPTED
     if event_type == LineageEventType.PROMOTION_COMPLETED:
         return LineageRunState.PROMOTED
+    if event_type == LineageEventType.LOCAL_RESULT_RECORDED:
+        if state != LineageRunState.PROMOTED:
+            raise _fail("a local result requires completed promotion", event)
+        return LineageRunState.PROMOTED
+    if event_type == LineageEventType.CANDIDATE_REJECTED:
+        return LineageRunState.REJECTED
     if event_type == LineageEventType.RUN_ENDED:
         explicit = event.payload.get("state")
         try:
@@ -450,6 +586,7 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
     finished_invocations: set[str] = set()
     completion_attempts: dict[str, Event] = {}
     completion_denials: set[str] = set()
+    local_results = 0
     ended = False
 
     for event in events:
@@ -541,6 +678,10 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
             ):
                 raise _fail("tool result does not match one unfinished start", event)
             finished_calls.add(event.tool_call_id)
+        elif event.event_type == LineageEventType.LOCAL_RESULT_RECORDED:
+            local_results += 1
+            if local_results != 1:
+                raise _fail("a local result was recorded more than once", event)
         state = _next_state(state, event)
         ended = event.event_type == LineageEventType.RUN_ENDED
         accepted_path: str | None = None
@@ -582,7 +723,10 @@ def reduce_events(events: tuple[Event, ...]) -> LineageProjection:
             injections.append(event.event_id)
         elif event.event_type == LineageEventType.CANDIDATE_CREATED:
             candidates.append(event.event_id)
-        elif event.event_type == LineageEventType.PROMOTION_APPROVED:
+        elif event.event_type in {
+            LineageEventType.PROMOTION_APPROVED,
+            LineageEventType.CANDIDATE_REJECTED,
+        }:
             decisions.append(event.event_id)
 
     ordered = sorted(

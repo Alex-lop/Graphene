@@ -33,6 +33,24 @@ body {
     var(--canvas);
 }
 
+.compatibility-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 20px;
+  color: #fff4d6;
+  background: #5b3511;
+  border-bottom: 1px solid var(--amber);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.compatibility-banner strong { white-space: nowrap; }
+.compatibility-banner code { color: inherit; }
+
 button, input, select { font: inherit; }
 button { color: inherit; }
 [hidden] { display: none !important; }
@@ -697,6 +715,8 @@ input[type="search"]:focus, select:focus {
 }
 
 @media (max-width: 720px) {
+  .compatibility-banner { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .compatibility-banner strong { white-space: normal; }
   .masthead, main { width: min(100% - 24px, 1480px); }
   .masthead { grid-template-columns: 1fr; gap: 20px; padding-top: 22px; }
   .brand { margin-bottom: 10px; }

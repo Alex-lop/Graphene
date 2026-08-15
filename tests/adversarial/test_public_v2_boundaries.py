@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
 import sqlite3
 import subprocess
 from contextlib import closing
@@ -31,23 +33,42 @@ def _call(run, number: int) -> ToolCallIdentity:
 
 
 def _cli(environment: dict[str, str], cwd: Path, *arguments: str) -> dict[str, object]:
-    result = subprocess.run(
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
         [str(GRAPHENE), "--json", *arguments],
         cwd=cwd,
         env=environment,
-        capture_output=True,
-        timeout=20,
-        check=False,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
     )
-    assert result.returncode == 0, result.stderr.decode(errors="replace")
-    assert result.stderr == b""
-    return json.loads(result.stdout)
+    os.close(slave)
+    output = bytearray()
+    try:
+        while process.poll() is None:
+            ready, _, _ = select.select([master], [], [], 20)
+            if not ready:
+                process.kill()
+                raise AssertionError("TTY CLI command timed out")
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+        while select.select([master], [], [], 0)[0]:
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+    except OSError:
+        pass
+    finally:
+        os.close(master)
+    assert process.wait(timeout=1) == 0, output.decode(errors="replace")
+    return json.loads(output.decode().replace("\r", "").splitlines()[-1])
 
 
 def _run_count(database: Path) -> int:
-    with closing(
-        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    ) as connection:
+    with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True)) as connection:
         return connection.execute("SELECT COUNT(*) FROM run_heads").fetchone()[0]
 
 

@@ -336,6 +336,16 @@ def bind_and_dispatch(
                 "brief_sha256": brief.brief_sha256,
                 "decision_artifact_sha256": decision_ref.sha256,
                 "brief_artifact_sha256": brief_ref.sha256,
+                "memory_scopes": [
+                    {
+                        "memory_id": memory.memory_id,
+                        "revision": memory.revision,
+                        "scope_id": memory.scope_id.value,
+                        "path_globs": list(memory.path_globs),
+                    }
+                    for memory in brief.approved_memories
+                    if memory.scope_id is not None and memory.path_globs is not None
+                ],
                 "source_graph_sha256": brief.source_graph_sha256,
             },
         ),

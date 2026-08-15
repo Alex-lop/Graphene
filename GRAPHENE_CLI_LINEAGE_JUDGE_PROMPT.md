@@ -1,5 +1,7 @@
 # Graphene CLI Lineage — Judge and Pivot Prompt
 
+> **Historical judge prompt — not current product truth.** It records the question posed at that checkpoint, not current behavior. See [`docs/HISTORY.md`](docs/HISTORY.md).
+
 Paste the prompt below into a fresh high-reasoning root agent working in `Alex-lop/AllThingsAgenticHackathon`.
 
 ---

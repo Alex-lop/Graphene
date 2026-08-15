@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "graphene"
 version = "0.1.0"
-description = "Approved repository-scoped memory for a controlled coding workflow"
+description = "Evidence-backed review and handoff for bounded coding-agent work"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [

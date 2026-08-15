@@ -271,10 +271,10 @@ function validateContextPacket(packet) {
 }
 
 function validateCatalog(catalog) {
-  if (!Array.isArray(catalog)) throw new TypeError("agent catalog must be an array");
+  if (!Array.isArray(catalog)) throw new TypeError("runtime catalog must be an array");
   for (const profile of catalog) {
-    if (!profile || typeof profile !== "object" || typeof profile.agent_profile_id !== "string") throw new TypeError("agent catalog profile is invalid");
-    if (!Array.isArray(profile.allowed_paths) || !Array.isArray(profile.allowed_tools)) throw new TypeError("agent catalog scope is invalid");
+    if (!profile || typeof profile !== "object" || typeof profile.agent_profile_id !== "string") throw new TypeError("runtime catalog profile is invalid");
+    if (!Array.isArray(profile.allowed_paths) || !Array.isArray(profile.allowed_tools)) throw new TypeError("runtime catalog scope is invalid");
   }
   return catalog;
 }
@@ -312,10 +312,10 @@ function workflowInstruction(snapshot) {
   if (!snapshot.memory) return baselineHunkId()
     ? "Select the server-owned scope, then submit the exact anchored correction."
     : "Open the baseline run so its exact hunk can anchor feedback.";
-  if (snapshot.memory.state === "proposed") return "Memory revision 1 is proposed and awaits human approval.";
-  if (!snapshot.adapted) return "Approved memory is ready for a genuinely fresh adapted run.";
+  if (snapshot.memory.state === "proposed") return "Memory revision 1 is proposed and awaits explicit compatibility approval.";
+  if (!snapshot.adapted) return "Approved memory is ready for a fresh compatibility fixture run.";
   if (snapshot.adapted.state === "queued") return "The fresh adapted run is queued and can be resumed.";
-  if (snapshot.adapted.state === "waiting_for_promotion") return "Tests passed, completion was denied, and the bound candidate awaits human promotion.";
+  if (snapshot.adapted.state === "waiting_for_promotion") return "Tests passed, completion was denied, and the bound candidate awaits explicit compatibility promotion.";
   if (snapshot.adapted.state === "completed") return "Golden loop complete: the exact bound candidate was promoted.";
   return `Adapted run status: ${humanize(snapshot.adapted.state)}.`;
 }
@@ -343,7 +343,7 @@ function renderWorkflow(snapshot = demo.snapshot) {
   elements.showBaseline.setAttribute("aria-pressed", snapshot.activeTask === TASKS.baseline ? "true" : "false");
   elements.showAdapted.setAttribute("aria-pressed", snapshot.activeTask === TASKS.adapted ? "true" : "false");
   elements.runBaseline.textContent = snapshot.baseline?.state === "queued" ? "Resume baseline" : "Run baseline";
-  elements.runAdapted.textContent = snapshot.adapted?.state === "queued" ? "Resume fresh agent" : "Run fresh agent";
+  elements.runAdapted.textContent = snapshot.adapted?.state === "queued" ? "Resume fresh fixture" : "Run fresh fixture";
 
   elements.baselineOutcome.textContent = snapshot.baseline ? humanize(snapshot.baseline.state) : "Not created";
   elements.baselineProof.textContent = runProof(snapshot.baseline);
@@ -352,7 +352,7 @@ function renderWorkflow(snapshot = demo.snapshot) {
     : "Not proposed";
   elements.memoryProof.textContent = snapshot.memory?.path_globs?.length
     ? snapshot.memory.path_globs.join(", ")
-    : "Human approval required";
+    : "Explicit compatibility approval required";
   elements.adaptedOutcome.textContent = snapshot.adapted ? humanize(snapshot.adapted.state) : "Not created";
   elements.adaptedProof.textContent = snapshot.adapted
     ? `${runProof(snapshot.adapted)} · ${snapshot.adapted.injected_memories?.length ?? 0} injected memory`
@@ -679,10 +679,10 @@ function renderDrawerDetail(detail) {
     );
     if (profile) {
       elements.drawerContent.append(
-        evidenceSection("Server-owned agent catalog", PROFILE_FIELDS.map((field) => [field, profile[field]])),
+        evidenceSection("Server-owned runtime catalog", PROFILE_FIELDS.map((field) => [field, profile[field]])),
       );
     } else if (state.catalogError) {
-      elements.drawerContent.append(html("p", "evidence-warning", `Agent catalog unavailable: ${state.catalogError.message}`));
+      elements.drawerContent.append(html("p", "evidence-warning", `Runtime catalog unavailable: ${state.catalogError.message}`));
     }
   }
 
@@ -775,7 +775,7 @@ async function loadGraph() {
   elements.graphEmptyMessage.textContent = "Loading the bounded evidence projection…";
   clear(elements.proofList);
   elements.proofEmpty.hidden = false;
-  setGlobal("Loading graph, context packet, and server-owned agent catalog…");
+  setGlobal("Loading graph, context packet, and server-owned runtime catalog…");
 
   const auxiliary = Promise.allSettled([
     state.api.contextPacket(),
@@ -831,7 +831,7 @@ async function loadGraph() {
   if (state.selectedId && state.detailCache.has(state.selectedId)) {
     renderDrawerDetail(state.detailCache.get(state.selectedId));
   }
-  const warnings = [state.contextError && "context packet", state.catalogError && "agent catalog"].filter(Boolean);
+  const warnings = [state.contextError && "context packet", state.catalogError && "runtime catalog"].filter(Boolean);
   setGlobal(
     warnings.length
       ? `Graph loaded. Auxiliary read unavailable: ${warnings.join(" and ")}. Node relationships remain API-only.`

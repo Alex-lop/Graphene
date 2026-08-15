@@ -79,6 +79,10 @@ jobs:
           uv run --frozen pytest -q
           tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_ambient_checkout_files
           tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_or_write_host_files_or_use_network
+      - name: Verified replay stays read-only and portable
+        run: |
+          uv run --frozen pytest -q tests/process/test_verified_replay.py
+          uv run --frozen graphene demo --driver verified-replay --no-open --exit-after-demo
 
   frontend:
     name: Node 22 legacy + v2 viewer

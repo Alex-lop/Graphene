@@ -17,6 +17,7 @@ from graphene.integrations.mcp import create_mcp_server
 from graphene.lineage.reducer import reduce_events
 from graphene.lineage.service import (
     RuntimeIdentityError,
+    RuntimeIntegrityError,
     RuntimeTerminalError,
     ScopedApplicationService,
     ToolCallIdentity,
@@ -173,6 +174,13 @@ def test_needs_human_is_terminal_for_a_fresh_service_after_restart(tmp_path):
         profile_id="platform-maintainer@1",
         repository_root=ROOT,
     )
+    run.service.ensure_invocation_started(
+        run.handle,
+        session_id=run.handle.session_id,
+        invocation_id=run.handle.invocation_id,
+        model_id=run.handle.model_id,
+        framework_version="2.5.0",
+    )
     run.service.request_completion(
         run.handle,
         _call(run.handle, "completion_call_before_restart_001"),
@@ -293,6 +301,13 @@ def test_invocation_start_is_committed_before_runner_dispatch(tmp_path):
 
 def test_duplicate_call_id_is_consumed_across_adapters_and_restart(tmp_path):
     run = _bootstrap(tmp_path)
+    run.service.ensure_invocation_started(
+        run.handle,
+        session_id=run.handle.session_id,
+        invocation_id=run.handle.invocation_id,
+        model_id=run.handle.model_id,
+        framework_version="2.5.0",
+    )
     call_id = "shared_adapter_call_001"
     run.service.read_file(
         run.handle,
@@ -307,11 +322,6 @@ def test_duplicate_call_id_is_consumed_across_adapters_and_restart(tmp_path):
             _call(run.handle, call_id, "mcp"),
             path="app/auth/limiter.py",
         )
-    service, handle = _reopen(run)
-    with pytest.raises(RuntimeIdentityError, match="already consumed"):
-        service.read_file(
-            handle,
-            _call(handle, call_id, "mcp"),
-            path="app/auth/limiter.py",
-        )
+    with pytest.raises(RuntimeIntegrityError, match="unfinished durable dispatch"):
+        _reopen(run)
     assert run.store.verify(run.run_id) == before

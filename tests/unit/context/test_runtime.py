@@ -33,6 +33,7 @@ from graphene.models import (
     MemoryDecisionValue,
     MemoryRevision,
     MemoryState,
+    ScopeId,
     SourceKind,
     SourceReference,
     TruthKind,
@@ -82,6 +83,7 @@ def _memory(source_run_id: str) -> MemoryRevision:
         state=MemoryState.PROPOSED,
         rule=spec.rule,
         repo_id=spec.repo_id,
+        scope_id=ScopeId.ALL_AUTH,
         path_globs=spec.path_globs,
         task_tags=spec.task_tags,
         required_test_path=spec.required_test_path,
@@ -325,6 +327,14 @@ def test_runtime_binding_commits_before_dispatch_and_fails_closed(
         source_events = store.tail(source_run_id, 0, 256)
         consumer_events = store.tail(handle.run_id, 0, 256)
         assert source_events[-1].event_type == LineageEventType.CONTEXT_COMPILED
+        assert source_events[-1].payload["memory_scopes"] == [
+            {
+                "memory_id": GOLDEN.memory.memory_id,
+                "revision": GOLDEN.memory.revision,
+                "scope_id": "all_auth",
+                "path_globs": ["app/auth/**"],
+            }
+        ]
         assert tuple(item.event_type for item in consumer_events) == (
             LineageEventType.RUN_STARTED,
             LineageEventType.CONTEXT_INJECTED,

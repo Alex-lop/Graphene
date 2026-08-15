@@ -17,6 +17,7 @@ from .projection import (
     build_snapshot,
     current_node_id,
     database_identity,
+    diff_snapshots,
     snapshot_at_cursor,
 )
 
@@ -128,14 +129,36 @@ def create_viewer_app(
         if requested_run_id != root_run_id:
             return Response(status_code=404)
         current = checked_snapshot()
+        previous = snapshot_at_cursor(path, root_run_id, cursor) if cursor else None
         if request.method == "HEAD":
             return Response(media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
-        previous = snapshot_at_cursor(path, root_run_id, cursor) if cursor else None
+
+        def update_envelope(before: GraphSnapshot, after: GraphSnapshot) -> dict[str, object]:
+            deltas = diff_snapshots(before, after)
+            if len(deltas) == 1 and deltas[0].op == "reset":
+                return {
+                    "type": "reset",
+                    "cursor": after.cursor,
+                    "current_id": current_node_id(after),
+                    "snapshot": after.model_dump(mode="json"),
+                }
+            return {
+                "type": "delta",
+                "cursor": after.cursor,
+                "current_id": current_node_id(after),
+                "deltas": [delta.model_dump(mode="json") for delta in deltas],
+                "heads": [head.model_dump(mode="json") for head in after.heads],
+                "graph_sha256": after.graph_sha256,
+                "omitted_counts": after.omitted_counts,
+                "unknowns": after.unknowns,
+                "review_brief": after.review_brief.model_dump(mode="json") if after.review_brief else None,
+                "support_paths": [item.model_dump(mode="json") for item in after.support_paths or ()],
+            }
 
         async def events():
             nonlocal current, previous
             try:
-                if previous is None or previous.graph_sha256 != current.graph_sha256:
+                if previous is None:
                     yield canonical_json_bytes(
                         {
                             "type": "reset",
@@ -144,6 +167,8 @@ def create_viewer_app(
                             "snapshot": current.model_dump(mode="json"),
                         }
                     ) + b"\n"
+                elif previous.graph_sha256 != current.graph_sha256:
+                    yield canonical_json_bytes(update_envelope(previous, current)) + b"\n"
                 previous = current
                 while not await request.is_disconnected():
                     await asyncio.sleep(0.1)
@@ -151,14 +176,7 @@ def create_viewer_app(
                     latest = checked_snapshot()
                     if latest.graph_sha256 == previous.graph_sha256:
                         continue
-                    yield canonical_json_bytes(
-                        {
-                            "type": "reset",
-                            "cursor": latest.cursor,
-                            "current_id": current_node_id(latest),
-                            "snapshot": latest.model_dump(mode="json"),
-                        }
-                    ) + b"\n"
+                    yield canonical_json_bytes(update_envelope(previous, latest)) + b"\n"
                     previous = latest
             except (ViewerEvidenceInvalid, ViewerRunNotFound) as error:
                 yield canonical_json_bytes({"type": "EVIDENCE_INVALID", "detail": str(error)}) + b"\n"

@@ -37,7 +37,7 @@ def test_public_callback_cannot_mint_a_self_hashed_arbitrary_receipt(tmp_path: P
             **retest.model_dump(mode="json"),
             receipt_id="promotion_receipt_attacker_minted",
             authoritative_test_receipt_sha256="f" * 64,
-            reconstructed_commit_sha="c" * 40,
+            retest_base_sha="c" * 40,
             passed=True,
             timed_out=False,
         )

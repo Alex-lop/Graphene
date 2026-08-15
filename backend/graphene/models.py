@@ -408,6 +408,9 @@ class MemoryRevision(FrozenModel):
     state: MemoryState
     rule: BoundedText
     repo_id: Identifier
+    scope_id: ScopeId | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     path_globs: tuple[RepoPath, ...]
     task_tags: tuple[str, ...]
     required_test_path: RepoPath
@@ -753,7 +756,7 @@ class AgentProfile(FrozenModel):
     owner_team: Identifier
     purpose: BoundedText
     model_policy: BoundedText
-    framework: Literal["Google ADK"]
+    framework: Literal["driver-selected"] = "driver-selected"
     repo_ids: tuple[Identifier, ...]
     allowed_paths: tuple[RepoPath, ...]
     allowed_tools: tuple[Literal["read_file", "write_file", "run_fixture_tests"], ...]
@@ -1020,6 +1023,7 @@ class LineageEventType(StrEnum):
     CLARIFICATION_ANSWERED = "clarification.answered"
     COMPLETION_ATTEMPTED = "completion.attempted"
     CANDIDATE_CREATED = "candidate.created"
+    CANDIDATE_REJECTED = "candidate.rejected"
     CHANGESET_PARSED = "changeset.parsed"
     TEST_RECEIPT_CREATED = "test.receipt.created"
     FEEDBACK_RECORDED = "feedback.recorded"
@@ -1035,6 +1039,7 @@ class LineageEventType(StrEnum):
     COMPLETION_DENIED = "completion.denied"
     PROMOTION_DENIED = "promotion.denied"
     PROMOTION_COMPLETED = "promotion.completed"
+    LOCAL_RESULT_RECORDED = "local_result.recorded"
 
 
 class TruthKind(StrEnum):
@@ -1058,6 +1063,7 @@ class LineageAuthority(StrEnum):
     CONTEXT_COMPILER = "context_compiler"
     ARTIFACT_PARSER = "artifact_parser"
     PROMOTION_SERVICE = "promotion_service"
+    LOCAL_COMMIT_SERVICE = "local_commit_service"
 
 
 class LineageOperation(StrEnum):
@@ -1078,6 +1084,7 @@ class LineageRunState(StrEnum):
     FAILED = "FAILED"
     INTERRUPTED = "INTERRUPTED"
     PROMOTED = "PROMOTED"
+    REJECTED = "REJECTED"
     EVIDENCE_INVALID = "EVIDENCE_INVALID"
 
 
@@ -1102,6 +1109,7 @@ class EvidenceKind(StrEnum):
     ADK_EVENT_RECEIPT = "adk_event_receipt"
     MCP_REQUEST_RECEIPT = "mcp_request_receipt"
     LOCAL_ADAPTER_RECEIPT = "local_adapter_receipt"
+    LOCAL_COMMIT_RECEIPT = "local_commit_receipt"
 
 
 class SourceKind(StrEnum):
@@ -1116,6 +1124,7 @@ class SourceKind(StrEnum):
     MCP_REQUEST_RECEIPT = "mcp_request_receipt"
     LOCAL_ADAPTER_RECEIPT = "local_adapter_receipt"
     PROMOTION_RECEIPT = "promotion_receipt"
+    LOCAL_COMMIT_RECEIPT = "local_commit_receipt"
 
 
 class EvidenceReference(FrozenModel):
@@ -1187,6 +1196,10 @@ _EVENT_AUTHORITY = {
         TruthKind.SERVER_DERIVED,
         LineageAuthority.ARTIFACT_PARSER,
     ),
+    LineageEventType.CANDIDATE_REJECTED: (
+        TruthKind.HUMAN_ATTESTED,
+        LineageAuthority.OPERATOR_REQUEST,
+    ),
     LineageEventType.CHANGESET_PARSED: (
         TruthKind.SERVER_DERIVED,
         LineageAuthority.ARTIFACT_PARSER,
@@ -1247,6 +1260,10 @@ _EVENT_AUTHORITY = {
         TruthKind.SERVER_DERIVED,
         LineageAuthority.PROMOTION_SERVICE,
     ),
+    LineageEventType.LOCAL_RESULT_RECORDED: (
+        TruthKind.RUNTIME_OBSERVED,
+        LineageAuthority.LOCAL_COMMIT_SERVICE,
+    ),
 }
 
 _SOURCE_KIND_BY_AUTHORITY = {
@@ -1261,6 +1278,7 @@ _SOURCE_KIND_BY_AUTHORITY = {
     LineageAuthority.CONTEXT_COMPILER: SourceKind.CONTEXT_COMPILER_RECEIPT,
     LineageAuthority.ARTIFACT_PARSER: SourceKind.REDUCER_RECEIPT,
     LineageAuthority.PROMOTION_SERVICE: SourceKind.PROMOTION_RECEIPT,
+    LineageAuthority.LOCAL_COMMIT_SERVICE: SourceKind.LOCAL_COMMIT_RECEIPT,
 }
 
 _ADAPTER_AUTHORITIES = {
@@ -1280,6 +1298,7 @@ _SIMULATED_FIXTURE_EVENT_TYPES = {
     LineageEventType.MEMORY_APPROVED,
     LineageEventType.MEMORY_REJECTED,
     LineageEventType.PROMOTION_APPROVED,
+    LineageEventType.CANDIDATE_REJECTED,
 }
 
 
@@ -1359,7 +1378,15 @@ _EVENT_PAYLOAD_FIELDS = {
         {"choice_count", "question_id", "question_sha256", "status"}
     ),
     LineageEventType.CLARIFICATION_ANSWERED: frozenset(
-        {"answer_id", "answer_sha256", "choice", "question_id", "status"}
+        {
+            "answer_id",
+            "answer_sha256",
+            "choice",
+            "operator_label",
+            "operator_rationale",
+            "question_id",
+            "status",
+        }
     ),
     LineageEventType.COMPLETION_ATTEMPTED: frozenset({"adapter_kind", "operation", "status"}),
     LineageEventType.CANDIDATE_CREATED: frozenset(
@@ -1368,6 +1395,16 @@ _EVENT_PAYLOAD_FIELDS = {
             "candidate_patch_sha256",
             "candidate_tree_sha256",
             "changed_path_count",
+            "status",
+        }
+    ),
+    LineageEventType.CANDIDATE_REJECTED: frozenset(
+        {
+            "candidate_id",
+            "candidate_patch_sha256",
+            "decision_id",
+            "operator_label",
+            "operator_rationale",
             "status",
         }
     ),
@@ -1395,6 +1432,8 @@ _EVENT_PAYLOAD_FIELDS = {
             "evidence_event_id",
             "feedback_id",
             "hunk_id",
+            "operator_label",
+            "operator_rationale",
             "scope_id",
             "status",
         }
@@ -1403,10 +1442,26 @@ _EVENT_PAYLOAD_FIELDS = {
         {"memory_id", "memory_sha256", "revision", "status"}
     ),
     LineageEventType.MEMORY_APPROVED: frozenset(
-        {"decision_id", "memory_id", "memory_sha256", "revision", "status"}
+        {
+            "decision_id",
+            "memory_id",
+            "memory_sha256",
+            "operator_label",
+            "operator_rationale",
+            "revision",
+            "status",
+        }
     ),
     LineageEventType.MEMORY_REJECTED: frozenset(
-        {"decision_id", "memory_id", "memory_sha256", "revision", "status"}
+        {
+            "decision_id",
+            "memory_id",
+            "memory_sha256",
+            "operator_label",
+            "operator_rationale",
+            "revision",
+            "status",
+        }
     ),
     LineageEventType.PROMOTION_APPROVED: frozenset(
         {
@@ -1414,6 +1469,8 @@ _EVENT_PAYLOAD_FIELDS = {
             "decision_id",
             "decision_sha256",
             "expected_head_sha256",
+            "operator_label",
+            "operator_rationale",
             "status",
         }
     ),
@@ -1424,6 +1481,7 @@ _EVENT_PAYLOAD_FIELDS = {
             "candidate_set_sha256",
             "decision_artifact_sha256",
             "decision_sha256",
+            "memory_scopes",
             "source_graph_sha256",
             "status",
         }
@@ -1465,6 +1523,27 @@ _EVENT_PAYLOAD_FIELDS = {
             "promotion_receipt_id",
             "promotion_receipt_sha256",
             "status",
+        }
+    ),
+    LineageEventType.LOCAL_RESULT_RECORDED: frozenset(
+        {
+            "approval_event_id",
+            "approval_event_sha256",
+            "candidate_patch_sha256",
+            "candidate_tree_sha256",
+            "changed_paths",
+            "deployed",
+            "local_commit_receipt_id",
+            "local_commit_receipt_sha256",
+            "local_commit_sha",
+            "outcome",
+            "parent_sha",
+            "pull_request_created",
+            "pushed",
+            "status",
+            "test_receipt_id",
+            "test_receipt_sha256",
+            "tree_sha",
         }
     ),
 }
@@ -1552,6 +1631,100 @@ class EventInput(FrozenModel):
             or self.tool_call_id is None
         ):
             raise ValueError("completion attempts require model proposal identity")
+        if self.event_type in {
+            LineageEventType.CLARIFICATION_ANSWERED,
+            LineageEventType.FEEDBACK_RECORDED,
+            LineageEventType.MEMORY_APPROVED,
+            LineageEventType.MEMORY_REJECTED,
+            LineageEventType.PROMOTION_APPROVED,
+            LineageEventType.CANDIDATE_REJECTED,
+        } and ({"operator_label", "operator_rationale"} & set(self.payload)):
+            label = self.payload.get("operator_label")
+            rationale = self.payload.get("operator_rationale")
+            if (
+                not isinstance(label, str)
+                or not 1 <= len(label) <= 64
+                or (
+                    rationale is not None
+                    and (not isinstance(rationale, str) or len(rationale) > 280)
+                )
+            ):
+                raise ValueError("operator attribution is invalid")
+        if self.event_type == LineageEventType.CANDIDATE_REJECTED:
+            kinds = tuple(reference.kind for reference in self.references)
+            expected = {
+                EvidenceKind.EVIDENCE_BLOB,
+                EvidenceKind.CHANGESET,
+                EvidenceKind.TEST_RECEIPT,
+                EvidenceKind.CONTEXT_BRIEF,
+                EvidenceKind.HANDOFF_DECISION,
+                EvidenceKind.MEMORY_REVISION,
+            }
+            label = self.payload.get("operator_label")
+            rationale = self.payload.get("operator_rationale")
+            if (
+                len(kinds) != len(expected)
+                or set(kinds) != expected
+                or not isinstance(label, str)
+                or not 1 <= len(label) <= 64
+                or (rationale is not None and (not isinstance(rationale, str) or len(rationale) > 280))
+                or self.payload.get("status") != "rejected"
+            ):
+                raise ValueError("candidate rejection bindings are invalid")
+        if self.event_type == LineageEventType.LOCAL_RESULT_RECORDED:
+            by_kind = {reference.kind: reference for reference in self.references}
+            expected = {
+                EvidenceKind.EVENT,
+                EvidenceKind.PROMOTION_RECEIPT,
+                EvidenceKind.TEST_RECEIPT,
+                EvidenceKind.LOCAL_COMMIT_RECEIPT,
+            }
+            receipt = by_kind.get(EvidenceKind.LOCAL_COMMIT_RECEIPT)
+            approval = by_kind.get(EvidenceKind.EVENT)
+            test = by_kind.get(EvidenceKind.TEST_RECEIPT)
+            changed_paths = self.payload.get("changed_paths")
+            git_values = tuple(
+                self.payload.get(name)
+                for name in ("local_commit_sha", "parent_sha", "tree_sha")
+            )
+            try:
+                paths_are_safe = (
+                    isinstance(changed_paths, list)
+                    and changed_paths == sorted(set(changed_paths))
+                    and all(_relative_posix_path(path) == path for path in changed_paths)
+                )
+            except (TypeError, ValueError):
+                paths_are_safe = False
+            if (
+                len(self.references) != len(expected)
+                or set(by_kind) != expected
+                or receipt is None
+                or approval is None
+                or test is None
+                or self.source_ref.kind != SourceKind.LOCAL_COMMIT_RECEIPT
+                or (self.source_ref.id, self.source_ref.sha256)
+                != (receipt.id, receipt.sha256)
+                or self.payload.get("local_commit_receipt_id") != receipt.id
+                or self.payload.get("local_commit_receipt_sha256") != receipt.sha256
+                or self.payload.get("approval_event_id") != approval.id
+                or self.payload.get("approval_event_sha256") != approval.sha256
+                or self.payload.get("test_receipt_id") != test.id
+                or self.payload.get("test_receipt_sha256") != test.sha256
+                or any(
+                    not isinstance(value, str)
+                    or len(value) != 40
+                    or any(character not in "0123456789abcdef" for character in value)
+                    for value in git_values
+                )
+                or not paths_are_safe
+                or self.payload.get("outcome") != "local_isolated_commit"
+                or any(
+                    self.payload.get(name) is not False
+                    for name in ("pushed", "pull_request_created", "deployed")
+                )
+                or self.payload.get("status") != "recorded"
+            ):
+                raise ValueError("local commit result bindings are invalid")
         return self
 
 
@@ -1742,6 +1915,24 @@ class BriefMemory(FrozenModel):
     memory_id: Identifier
     revision: int = Field(ge=1)
     exact_text: BoundedText
+    scope_id: ScopeId | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    path_globs: tuple[RepoPath, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    task_tags: tuple[str, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def scope_is_complete(self) -> BriefMemory:
+        values = (self.scope_id, self.path_globs, self.task_tags)
+        if any(value is None for value in values) != all(
+            value is None for value in values
+        ):
+            raise ValueError("brief memory scope must be complete when present")
+        return self
 
 
 class BriefEvidence(FrozenModel):

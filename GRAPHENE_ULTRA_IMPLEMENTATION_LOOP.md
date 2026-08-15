@@ -1,5 +1,7 @@
 # Graphene Ultra Implementation Loop
 
+> **Historical implementation prompt — not current product truth.** Do not treat its scope, SHAs, test results, or planned claims as shipped behavior. See [`docs/HISTORY.md`](docs/HISTORY.md).
+
 This file is the implementation prompt for a fresh high-reasoning root coding agent working in the local checkout of [`Alex-lop/Graphene`](https://github.com/Alex-lop/Graphene).
 
 ## Keep the host awake

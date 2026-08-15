@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,7 +26,12 @@ from graphene.lineage.promotion import (
 from graphene.lineage.reducer import reduce_events
 from graphene.lineage.service import ToolCallIdentity
 from graphene.lineage.store import LineageConflict, SQLiteLineageStore
-from graphene.models import GoldenContract, LineageEventType, LineageRunState, VerifiedHead
+from graphene.models import (
+    GoldenContract,
+    LineageEventType,
+    LineageRunState,
+    VerifiedHead,
+)
 
 
 ROOT = Path(__file__).parents[2]
@@ -62,17 +69,38 @@ def _call(run, number: int) -> ToolCallIdentity:
 
 
 def _cli(environment: dict[str, str], cwd: Path, *arguments: str) -> dict:
-    result = subprocess.run(
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
         [str(GRAPHENE), "--json", *arguments],
         cwd=cwd,
         env=environment,
-        capture_output=True,
-        timeout=20,
-        check=False,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
     )
-    assert result.returncode == 0, result.stderr.decode(errors="replace")
-    assert result.stderr == b""
-    return json.loads(result.stdout)
+    os.close(slave)
+    output = bytearray()
+    try:
+        while process.poll() is None:
+            ready, _, _ = select.select([master], [], [], 20)
+            if not ready:
+                process.kill()
+                raise AssertionError("TTY CLI command timed out")
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+        while select.select([master], [], [], 0)[0]:
+            chunk = os.read(master, 65_536)
+            if not chunk:
+                break
+            output.extend(chunk)
+    except OSError:
+        pass
+    finally:
+        os.close(master)
+    assert process.wait(timeout=1) == 0, output.decode(errors="replace")
+    return json.loads(output.decode().replace("\r", "").splitlines()[-1])
 
 
 def _events(store: SQLiteLineageStore, run_id: str):
@@ -211,6 +239,7 @@ def test_retained_promotion_precommit_recovers_after_final_append_failure(
         consumer.run_id,
         decision_id="final_boundary_promotion_001",
         occurred_at=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        decision_actor="human",
     )
 
     def authoritative_retest(retest) -> PromotionRetestResult:
@@ -225,7 +254,7 @@ def test_retained_promotion_precommit_recovers_after_final_append_failure(
                     "timed_out": result.timed_out,
                 }
             ),
-            reconstructed_commit_sha=retest.base_sha,
+            retest_base_sha=retest.base_sha,
             passed=result.exit_code == 0,
             timed_out=result.timed_out,
         )
@@ -244,14 +273,12 @@ def test_retained_promotion_precommit_recovers_after_final_append_failure(
     assert reduce_events(interrupted).state == LineageRunState.NEEDS_HUMAN
     assert len(checkpoints.read(consumer.run_id)) == 1
 
-    retry = subprocess.run(
-        [str(GRAPHENE), "--json", "promote", consumer.run_id],
-        cwd=runtime,
-        env=environment,
-        capture_output=True,
-        timeout=20,
-        check=False,
+    retry = _cli(
+        environment,
+        runtime,
+        "promote",
+        consumer.run_id,
+        "--decision",
+        "commit",
     )
-    assert retry.returncode == 0, retry.stderr.decode(errors="replace")
-    assert retry.stderr == b""
-    assert json.loads(retry.stdout)["state"] == "PROMOTED"
+    assert retry["state"] == "PROMOTED"
