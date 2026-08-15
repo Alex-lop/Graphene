@@ -165,3 +165,35 @@ Automated local gates pass; hosted Ubuntu CI, real-browser visual QA, and the fi
 - **Later:** design equivalent Linux isolation and durable artifact retention only after evidence warrants them.
 
 Graph-to-agent retrieval, graph-generated prompts, and automatic context selection remain explicitly deferred.
+
+## Experimental pixel graph inside the terminal
+
+**Feasibility: yes, but it is terminal-emulator-specific and is not shipped yet.** This would be a real raster bubble map, not an ANSI, ASCII, or Unicode-block diagram. Modern emulators can draw images through escape protocols:
+
+| Transport | What it renders | Graphene role |
+|---|---|---|
+| [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) | Arbitrary raster pixels with reusable placements, updates, deletion, pixel offsets, and a capability query | First experimental target |
+| [iTerm2 inline images](https://iterm2.com/3.5/documentation-images.html), also supported by [WezTerm](https://wezterm.org/imgcat.html) | PNG or other raster images sized in cells or pixels | Secondary full-frame redraw path |
+| [Sixel](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) | Bitmap graphics encoded in six-pixel vertical groups | Later fallback only; support varies |
+
+The image protocol supplies pixels, not clickable graph objects. Graphene still has to own terminal input, selection, hit-testing, redraws, resize handling, and cleanup. A small controller script is enough for a feasibility spike; a one-line image command is not enough for interaction.
+
+### Smallest credible prototype
+
+1. Start replay-only and read-only. Consume the same verified public [`GraphSnapshot` and deltas](backend/graphene/viewer/contract.py) that feed the browser; never read private artifacts or create a second authority.
+2. Reuse the existing pure [reducer and deterministic positions](backend/graphene/viewer/static/reducer.mjs), including capped activity-based bubble size and verified-support paths. Do not build another graph model or force-layout engine.
+3. Render only the current-decision neighborhood to a raster frame and transmit it through Kitty graphics. If the capability query fails, open or print the existing browser viewer URL—there is deliberately no character-art fallback.
+4. Own a small alternate-screen interaction loop: `←/→` changes replay checkpoint, `↑/↓` selects a bubble, `Enter` opens the same sanitized detail, `p` highlights verified support, `f` fits, and `q` restores the terminal and exits.
+5. Add mouse selection only after keyboard navigation works. [SGR mouse reporting](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) can report cells, and mode `1016` can report pixels where supported; Graphene must map those coordinates back to bubble circles.
+
+For the fastest visual probe, [Graphviz 9+ can emit Kitty graphics directly](https://graphviz.org/docs/outputs/kitty/) with `dot -Tkitty`. That proves pixel rendering from a script, but it is a static spike—not the product path—because it adds a system dependency and would otherwise duplicate Graphene's existing layout and interaction semantics.
+
+### Ship gate
+
+- one named terminal target first: Kitty without `tmux`;
+- replay truth label remains visible and the public/private boundary is unchanged;
+- selection and verified-support highlighting match the browser for the same snapshot;
+- resize, interruption, and normal exit leave no image placement or terminal mode behind;
+- a short judge test shows the terminal view answers at least one review question more clearly or quickly than the Review Brief.
+
+Until that gate passes, the authenticated browser viewer remains the supported interactive bubble map. Do not add a cross-emulator abstraction, graph database, TUI framework, or ASCII fallback for a speculative demo.
