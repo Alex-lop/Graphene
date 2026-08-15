@@ -31,10 +31,7 @@ These files preserve product reasoning and implementation history. Their SHAs, t
 | [`GRAPHENE_CLI_LINEAGE_JUDGE_PROMPT.md`](../GRAPHENE_CLI_LINEAGE_JUDGE_PROMPT.md) | CLI-lineage judge prompt |
 | [`CLI_LINEAGE_JUDGE_DECISION.md`](../CLI_LINEAGE_JUDGE_DECISION.md) | Dated judge/pivot report |
 | [`GRAPHENE_ULTRA_IMPLEMENTATION_LOOP.md`](../GRAPHENE_ULTRA_IMPLEMENTATION_LOOP.md) | Superseded root implementation prompt |
-| [`GRAPHENE_ULTRA_CONTINUATION_LOOP.md`](../GRAPHENE_ULTRA_CONTINUATION_LOOP.md) | Superseded continuation prompt |
-| [`GRAPHENE_VISUALIZATION_SPRINT_PROMPT.md`](../GRAPHENE_VISUALIZATION_SPRINT_PROMPT.md) | Prior visualization sprint prompt |
 | [`HACKATHON_TIMELINE.md`](../HACKATHON_TIMELINE.md) | Dated schedule/source snapshot |
-| [`OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md) | Dated prior question ledger |
 | [`evidence/checkpoints/`](../evidence/checkpoints/) | Dated implementation checkpoints and local observations |
 
 `contracts/golden_path.json` and `contracts/graph_mvp.json` remain shared operational fixture inputs because v2 still consumes their frozen task/profile/scope data. Their legacy API/loop/framework/model-policy/graph fields are not product or driver truth; that role belongs to `contracts/product_proof.json`. The split is recorded in [`DECISIONS.md`](../DECISIONS.md).
