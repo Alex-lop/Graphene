@@ -9,7 +9,7 @@
 - **Primary user:** a developer supervising or taking over a coding-agent change.
 - **Painful moment:** deciding whether a candidate is trustworthy after a long run, correction, or handoff without reconstructing a transcript.
 - **Decision:** approve, reject, or hand off that exact candidate and its bounded evidence.
-- **Result:** a faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.
+- **Designed outcome (not yet measured):** a faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.
 
 The graph is a read-only decision surface, not the authority. Verified v2 events, private artifacts, policy, and terminal decisions remain authoritative.
 
@@ -87,14 +87,17 @@ No real Gemini driver, provider-credential workflow, or cloud deployment is ship
 
 ## Decision surface
 
-The first viewport leads with a deterministic Review Brief: current attention, changed paths, bound tests, human intervention and truth level, included/excluded handoff context, final outcome, and explicit unknowns. Each fact focuses its committed support. Missing facts render as **not established by captured evidence**.
+The first viewport leads with a deterministic Review Brief: current attention, changed paths, bound tests, recorded decisions and corrections, included/excluded handoff context, final outcome, and explicit unknowns. Each established fact focuses its committed support. Missing facts render as **not established by captured evidence**.
 
 The bounded Cytoscape canvas remains available for inspection:
 
-- color encodes semantic kind, never correctness;
-- size and line width encode capped observed **activity**, never importance or impact;
-- non-color badges distinguish `human_attested`, `simulated_fixture`, policy, runtime, and server-derived truth;
-- **Verified support path** excludes generic membership and unrelated denial branches;
+- fill color encodes semantic kind, never correctness;
+- record and relationship sizes are stable rather than activity, importance, or impact signals;
+- non-color marks distinguish human, simulated, policy, runtime, bound, model-proposed, and server-derived evidence classes;
+- **Decision evidence** shows the exact pending or recorded-outcome support spine; **Capture audit** exposes the wider bounded topology;
+- node and relationship receipts expose committed public source references, run/sequence identity, event identity, and digest identifiers;
+- checked-in replay opens on the final recorded checkpoint, paused, with historical scrubbing opt-in;
+- explicit support excludes generic membership and unrelated denial branches;
 - invalid evidence replaces normal state with `EVIDENCE_INVALID`.
 
 ## Architecture and authority
@@ -181,7 +184,7 @@ The image protocol supplies pixels, not clickable graph objects. Graphene still 
 ### Smallest credible prototype
 
 1. Start replay-only and read-only. Consume the same verified public [`GraphSnapshot` and deltas](backend/graphene/viewer/contract.py) that feed the browser; never read private artifacts or create a second authority.
-2. Reuse the existing pure [reducer and deterministic positions](backend/graphene/viewer/static/reducer.mjs), including capped activity-based bubble size and verified-support paths. Do not build another graph model or force-layout engine.
+2. Reuse the existing pure [reducer and deterministic positions](backend/graphene/viewer/static/reducer.mjs), including stable bubble sizing and explicit decision-support paths. Do not build another graph model or force-layout engine.
 3. Render only the current-decision neighborhood to a raster frame and transmit it through Kitty graphics. If the capability query fails, open or print the existing browser viewer URL—there is deliberately no character-art fallback.
 4. Own a small alternate-screen interaction loop: `←/→` changes replay checkpoint, `↑/↓` selects a bubble, `Enter` opens the same sanitized detail, `p` highlights verified support, `f` fits, and `q` restores the terminal and exits.
 5. Add mouse selection only after keyboard navigation works. [SGR mouse reporting](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) can report cells, and mode `1016` can report pixels where supported; Graphene must map those coordinates back to bubble circles.
@@ -197,3 +200,13 @@ For the fastest visual probe, [Graphviz 9+ can emit Kitty graphics directly](htt
 - a short judge test shows the terminal view answers at least one review question more clearly or quickly than the Review Brief.
 
 Until that gate passes, the authenticated browser viewer remains the supported interactive bubble map. Do not add a cross-emulator abstraction, graph database, TUI framework, or ASCII fallback for a speculative demo.
+
+## Recommended next changes
+
+These are proposed proof-hardening steps, not current capabilities:
+
+1. **Bind every Review Brief to one decision subject.** Select `run_id + candidate_patch_sha256` first, then include a changeset, fixed-test receipt, recorded decision, and local result only when each carries that exact binding. Ambiguous or sibling evidence should remain **not established**.
+2. **Prove context continuity by identity, not sequence.** Establish compile → inject → open only when the same context-brief ID and SHA-256 appear in all three receipts. Keep delivery, timing, layout, and later edits explicitly non-causal.
+3. **Run the graph-necessity study before adding another renderer.** Compare the Review Brief plus evidence table against the graph with unfamiliar developers, using review time and missed-evidence errors. Demote the graph—and keep the terminal pixel experiment deferred—if it adds no measurable value.
+4. **Separate hypotheses from proof inputs.** Reclassify the designed outcome as a hypothesis in `contracts/product_proof.json`, and move `golden_path.json` / `graph_mvp.json` out of current authority into an explicit fixture-input category so legacy relationship names cannot be mistaken for current semantics.
+5. **Complete real-browser accessibility and visual QA.** Exercise keyboard order, fact → drawer → Escape focus restoration, graph selection announcements, filter-to-empty reset, replay scrubbing, reduced motion, contrast, and the invalid-evidence overlay. Current automated checks cover reducer and static DOM contracts, not a real browser or screen reader.
