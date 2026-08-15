@@ -193,7 +193,7 @@ function renderList(view) {
 function render(organize = false) {
   const focusId = document.activeElement?.dataset?.focusId;
   positions = statePositions(state, positions, organize);
-  const storyIds = topologyScope === "decision" ? storyNodeIds(state, currentId, selectedId) : null;
+  const storyIds = topologyScope === "decision" ? storyNodeIds(state, currentId, selectedId, focusedFact) : null;
   const view = visibleGraph(state, enabledGroups, storyIds);
   const elements = graphElements(view);
   if (!cy) {
@@ -294,11 +294,14 @@ function highlightVerifiedSupport(id) {
 
 function focusFact(fact) {
   focusedFact = fact;
-  const nodeId = fact.nodeIds.find((id) => state.nodes.has(id));
-  if (nodeId) selectNode(nodeId, false);
-  highlightElements(fact.nodeIds, fact.edgeIds);
+  selectedId = null;
+  render();
 }
-function clearPath() { cy?.elements().removeClass("faded path"); selectedId = null; focusedFact = null; }
+function clearPath() {
+  const changed = selectedId !== null || focusedFact !== null;
+  cy?.elements().removeClass("faded path"); selectedId = null; focusedFact = null;
+  if (changed && topologyScope === "decision") render();
+}
 
 async function selectNode(id, highlightSupport = true) {
   selectedId = id;

@@ -247,6 +247,8 @@ test("Review Brief renders contract facts, exact unknowns, attention, stages, an
 test("decision neighborhood and counts distinguish visible, filtered, collapsed, and omitted", () => {
   const state = createState(proofSnapshot);
   const story = storyNodeIds(state, "result-a");
+  assert.deepEqual([...story].sort(), ["approval-a", "candidate-a", "file-a", "result-a", "test-a"], "default view is the exact projected decision spine");
+  assert.equal(story.has("billing-a"), false, "historical denial stays out of the current outcome spine");
   const enabled = new Set(["handoff", "tool", "test", "evidence"]);
   const view = visibleGraph(state, enabled, story);
   const counts = projectionCounts(state, view, enabled, story);
@@ -255,6 +257,9 @@ test("decision neighborhood and counts distinguish visible, filtered, collapsed,
   assert.ok(counts.filtered > 0);
   assert.ok(counts.collapsed >= 1);
   assert.equal(counts.omitted, 1);
+
+  const billingFact = reviewBriefFacts(state).context[0];
+  assert.deepEqual([...storyNodeIds(state, "result-a", null, billingFact)], ["billing-a"], "fact focus reveals exactly its committed support");
 });
 
 test("head summary names the root and whole family", () => {
@@ -349,4 +354,5 @@ test("the checked-in sanitized replay traverses the live reducer", () => {
   assert.deepEqual(state.reviewBrief.changed_paths, ["app/auth/limiter.py", "tests/test_security_policy.py"]);
   assert.match(reviewBriefFacts(state).context.find((fact) => fact.id === "context:included").value, /all_auth applies to app\/auth\/\*\*/);
   assert.match(attentionFact(state).value, /No unresolved Graphene decision/);
+  assert.equal(storyNodeIds(state, state.currentId).size, 13, "final replay defaults to its bounded decision-support spine");
 });

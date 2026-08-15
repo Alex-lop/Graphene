@@ -387,14 +387,21 @@ export function verifiedSupportPath(state, selectedId) {
   return { nodeIds, edgeIds };
 }
 
-export function storyNodeIds(state, currentId, selectedId = null) {
-  const ids = new Set(state.currentNeighborhood.filter((id) => state.nodes.has(id)));
-  const brief = reviewBriefFacts(state);
-  for (const section of Object.values(brief)) for (const fact of section) for (const id of fact.nodeIds) if (state.nodes.has(id)) ids.add(id);
-  for (const id of [currentId, selectedId]) if (id && state.nodes.has(id)) {
+export function storyNodeIds(state, currentId, selectedId = null, focusedFact = null) {
+  const ids = new Set();
+  if (focusedFact) {
+    for (const id of focusedFact.nodeIds ?? []) if (state.nodes.has(id)) ids.add(id);
+    for (const id of focusedFact.edgeIds ?? []) {
+      const edge = state.edges.get(id);
+      if (edge) { ids.add(edge.source); ids.add(edge.target); }
+    }
+  }
+  const attention = attentionFact(state);
+  const outcome = reviewBriefFacts(state).outcome.find((fact) => fact.status === "established");
+  const roots = focusedFact ? [] : attention.status === "pending" ? attention.nodeIds : outcome?.nodeIds ?? [currentId];
+  for (const id of [...roots, selectedId]) if (id && state.nodes.has(id)) {
     ids.add(id);
-    const support = verifiedSupportPath(state, id);
-    for (const supportId of support.nodeIds) ids.add(supportId);
+    for (const supportId of verifiedSupportPath(state, id).nodeIds) ids.add(supportId);
   }
   if (!ids.size && currentId && state.nodes.has(currentId)) ids.add(currentId);
   return ids;
