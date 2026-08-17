@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
+  applyDelta, applyThrough, attentionFact, checkpointSummary, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
-  latestNodeId, outcomeLabel, projectionComposition, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
+  geminiCallLabel, latestNodeId, outcomeLabel, projectionComposition, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
   searchProvenance, truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
@@ -245,12 +245,21 @@ test("search is stable, bounded, and limited to projected public evidence", () =
 
   const relationships = searchProvenance(state, "binds path").results;
   assert.ok(relationships.some((result) => result.type === "relationship" && result.id === "support-4"));
-  assert.ok(searchProvenance(state, "model_dispatch_count").results.some((result) => result.id === "context:excluded"));
+  assert.ok(searchProvenance(state, "zero dispatch").results.some((result) => result.id === "context:excluded"));
+  assert.equal(searchProvenance(state, "model_dispatch_count").total, 0, "invisible metadata keys are not search results");
   assert.deepEqual(searchProvenance(state, ""), { query: "", total: 0, truncated: false, results: [] });
   const bounded = searchProvenance(state, "a", 2);
   assert.equal(bounded.results.length, 2);
   assert.equal(bounded.truncated, bounded.total > 2);
   assert.deepEqual(searchProvenance(state, "app example").results, paths, "repeat searches preserve order");
+});
+
+test("checkpoint labels count the initial verified projection and missing call metadata stays unknown", () => {
+  assert.deepEqual(checkpointSummary(0, 4), { current: 1, total: 5, latest: false });
+  assert.deepEqual(checkpointSummary(4, 4), { current: 5, total: 5, latest: true });
+  assert.deepEqual(checkpointSummary(99, 4), { current: 5, total: 5, latest: true });
+  assert.equal(geminiCallLabel(), "Gemini calls: not captured");
+  assert.equal(geminiCallLabel(undefined, 0), "Gemini calls: 0");
 });
 
 test("projection composition reports public receipts without inventing token usage", () => {
@@ -370,7 +379,7 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(source, /evidenceInvalidResponse\(response\)/);
   assert.match(html, /EVIDENCE_INVALID/);
   assert.match(html, /Google ADK Runner: not used/);
-  assert.match(html, /Gemini calls: 0/);
+  assert.match(html, /Gemini calls: not captured/);
   assert.match(html, /Review Brief/);
   assert.match(html, /type="search"/);
   assert.match(html, /Searches only the bounded public projection/);

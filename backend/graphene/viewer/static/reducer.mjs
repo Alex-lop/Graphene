@@ -450,10 +450,7 @@ export function relationshipReceipt(state, edgeId) {
 function searchScore(label, values, query) {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const labelText = String(label).toLowerCase();
-  const haystack = [label, ...values].map((value) => {
-    if (value === null || value === undefined) return "";
-    return typeof value === "object" ? JSON.stringify(value) : String(value);
-  }).join(" ").toLowerCase();
+  const haystack = [label, ...values].filter((value) => value !== null && value !== undefined).map(String).join(" ").toLowerCase();
   if (!terms.length || terms.some((term) => !haystack.includes(term))) return 0;
   return terms.reduce((score, term) => score + (labelText === term ? 100 : labelText.startsWith(term) ? 30 : labelText.includes(term) ? 10 : 1), 0);
 }
@@ -464,7 +461,7 @@ export function searchProvenance(state, rawQuery, limit = 12) {
   const results = [];
   for (const node of state.nodes.values()) {
     const detail = `${node.kind.replaceAll("_", " ")} · ${node.displayStatus} · ${truthLabel(node.truthKind)}`;
-    const score = searchScore(node.label, [detail, node.id, node.runId, node.sequence, node.eventId, node.recordedAt, node.stage, node.sourceRef, node.digest, node.metadata], query);
+    const score = searchScore(node.label, [detail, node.id, node.runId, node.sequence, node.eventId, node.recordedAt, node.stage, node.sourceRef, node.digest], query);
     if (score) results.push({ type: "node", id: node.id, label: node.label, detail, truthKind: node.truthKind, nodeIds: [node.id], edgeIds: [], score });
   }
   for (const edge of state.edges.values()) {
@@ -473,13 +470,13 @@ export function searchProvenance(state, rawQuery, limit = 12) {
     if (!source || !target) continue;
     const label = `${source.label} → ${target.label}`;
     const detail = `${edge.relationshipClass ?? "untyped relationship"} · ${edge.kind}`.replaceAll("_", " ");
-    const score = searchScore(label, [detail, edge.id, edge.runId, edge.sequence, edge.eventId, edge.sourceRef, edge.digest, edge.metadata], query);
+    const score = searchScore(label, [detail, edge.id, edge.runId, edge.sequence, edge.eventId, edge.sourceRef, edge.digest], query);
     if (score) results.push({ type: "relationship", id: edge.id, label, detail, truthKind: edge.truthKind, nodeIds: [edge.source, edge.target], edgeIds: [edge.id], score });
   }
   const facts = [attentionFact(state), ...Object.values(reviewBriefFacts(state)).flat()];
   for (const fact of new Map(facts.map((fact) => [fact.id, fact])).values()) {
     const detail = `${fact.status || "captured"} · ${truthLabel(fact.truthKind)}`.replaceAll("_", " ");
-    const score = searchScore(fact.label, [fact.value, detail, fact.id, fact.nodeIds, fact.edgeIds, fact.metadata], query);
+    const score = searchScore(fact.label, [fact.value, detail, fact.id, ...fact.nodeIds, ...fact.edgeIds], query);
     if (score) results.push({ type: "fact", id: fact.id, label: fact.label, detail: `${fact.value} · ${detail}`, truthKind: fact.truthKind, nodeIds: fact.nodeIds, edgeIds: fact.edgeIds, fact, score });
   }
   const typeOrder = { node: 0, fact: 1, relationship: 2 };
@@ -488,6 +485,17 @@ export function searchProvenance(state, rawQuery, limit = 12) {
   return { query, total: ordered.length, truncated: ordered.length > boundedLimit, results: ordered
     .slice(0, boundedLimit)
     .map(({ score, ...result }) => result) };
+}
+
+export function checkpointSummary(index, deltaCount) {
+  const last = Math.max(0, Math.trunc(Number(deltaCount)) || 0);
+  const position = Math.min(last, Math.max(0, Math.trunc(Number(index)) || 0));
+  return { current: position + 1, total: last + 1, latest: position === last };
+}
+
+export function geminiCallLabel(...values) {
+  const value = values.find((item) => Number.isInteger(item) && item >= 0);
+  return value === undefined ? "Gemini calls: not captured" : `Gemini calls: ${value}`;
 }
 
 const explicitCount = (value) => Number.isInteger(value) && value >= 0 ? value : null;

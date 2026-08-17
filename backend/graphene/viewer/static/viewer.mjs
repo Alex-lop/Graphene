@@ -1,7 +1,7 @@
 import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
   REVIEW_SECTIONS, applyDelta, applyThrough, attentionFact, createState,
-  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, outcomeLabel, projectionComposition, projectionCounts, relationshipReceipt, reviewBriefFacts,
+  checkpointSummary, decisionReceipt, deltaSubjectId, evidenceInvalidResponse, geminiCallLabel, headSummary, outcomeLabel, projectionComposition, projectionCounts, relationshipReceipt, reviewBriefFacts,
   searchProvenance, stageGroups, statePositions, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
@@ -396,10 +396,12 @@ function render(organize = false) {
   setText("bounds", `${counts.visible} / ${counts.total} records visible · ${counts.visibleEdges} / ${counts.totalEdges} relationships · ${counts.filtered} filtered · ${counts.collapsed} collapsed · ${counts.omitted} omitted by cap. Sequence does not prove causality.`);
   setText("verified-head", formatHead());
   setText("run-state", state.invalidReason ? "Evidence invalid" : runState());
+  const checkpoint = checkpointSummary(replayIndex, deltaLog.length);
   $("timeline").max = String(deltaLog.length);
   $("timeline").value = String(replayIndex);
-  $("timeline").setAttribute("aria-valuetext", `Checkpoint ${replayIndex} of ${deltaLog.length}`);
-  setText("timeline-label", `${replayIndex} / ${deltaLog.length}`);
+  $("timeline").setAttribute("aria-valuetext", `Checkpoint ${checkpoint.current} of ${checkpoint.total}`);
+  setText("timeline-label", `${checkpoint.current} of ${checkpoint.total}`);
+  $("latest-checkpoint").disabled = checkpoint.latest;
   if (state.invalidReason) showInvalid(state.invalidReason);
   else if (focusedFact) highlightElements(focusedFact.nodeIds, focusedFact.edgeIds);
   else if (selectedId) highlightVerifiedSupport(selectedId);
@@ -625,7 +627,7 @@ async function start() {
   currentId = state.currentId;
   setText("mode", config.replay === true ? VERIFIED_REPLAY_LABEL : (payload.meta?.mode ?? "LOCAL VIEWER"));
   setText("truth-label", config.replay === true ? VERIFIED_REPLAY_LABEL : (payload.meta?.truth_label ?? "Committed and verified v2 SQLite lineage"));
-  setText("driver-truth", `Google ADK Runner: ${payload.meta?.adk_runner ?? config.adkRunner ?? (config.driver === "adk-fake" ? "real Google ADK 2.5.0" : "not used")} · Gemini calls: ${payload.meta?.gemini_calls ?? config.geminiCalls ?? 0} · Evidence source: ${payload.meta?.evidence_source ?? config.evidenceSource ?? "committed and verified v2 SQLite lineage"}`);
+  setText("driver-truth", `Google ADK Runner: ${payload.meta?.adk_runner ?? config.adkRunner ?? (config.driver === "adk-fake" ? "real Google ADK 2.5.0" : "not used")} · ${geminiCallLabel(payload.meta?.gemini_calls, config.geminiCalls)} · Evidence source: ${payload.meta?.evidence_source ?? config.evidenceSource ?? "committed and verified v2 SQLite lineage"}`);
   setText("live-badge", config.replay === true ? "VERIFIED REPLAY" : live ? "EVENT FEED" : "EVENT HISTORY");
   setText("connection", config.replay === true ? "Verified replay" : live ? "Watching committed records" : "Offline fixture");
   $("connection").dataset.state = config.replay === true || !live ? "replay" : "live";
