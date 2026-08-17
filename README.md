@@ -100,6 +100,22 @@ The bounded Cytoscape canvas remains available for inspection:
 - explicit support excludes generic membership and unrelated denial branches;
 - invalid evidence replaces normal state with `EVIDENCE_INVALID`.
 
+### Viewer update: search and run checkpoints
+
+The authoritative viewer in `backend/graphene/viewer/static/` now adds a white, decision-first workbench around the same bounded public projection:
+
+- **Search captured evidence** finds current-checkpoint public facts, records, paths, runs, statuses, digests, and explicit relationship types. Results report their total when the visible list is capped, open the existing sanitized receipts, and never query private artifacts or a new backend index. `/` focuses search, Arrow Down enters the result list, and Escape clears it.
+- **Run checkpoints** is a collapsible right rail on wide screens and an inline section on narrower screens. It shows the read-only verified history slider, current decision anchor/stage, full graph digest, verified family heads, and projected run records.
+- **Evidence composition** reports established, pending, historical, and limits/not-established Review Brief fact counts. These bars are explicitly not confidence, correctness, progress, or completeness measures.
+- **Context provenance** shows the separately captured compile, inject, and explicit-open receipts; approved memory scopes/revisions; and denied handoffs with an explicit zero-dispatch receipt. “Memory” here is approved context evidence, not RAM or a model context-window meter.
+- **Provider token usage remains “not captured.”** Graphene does not estimate tokens from bytes, records, tool calls, or replay position. A numeric token/cache display requires a new authoritative provider receipt before it belongs in this UI.
+- **Checkpoint-safe interaction** rebuilds search from the selected snapshot and closes stale fact/drawer state when replay or live evidence changes. The initial snapshot counts as checkpoint 1, so a snapshot plus four deltas is labeled 5 of 5.
+- **Visual polish** is light-only, uses stronger focus/support/invalid-evidence contrast, and limits motion to short CSS surface transitions with a reduced-motion fallback. The graph remains deterministic and no motion encodes thought, importance, causality, or correctness.
+
+The layout borrows the useful searchable-workbench and inspection-rail pattern associated with current coding-agent interfaces, but not their reasoning-stream semantics. This is deliberate: official DeepSeek cache metrics are backed by provider-reported usage fields, while Graphene currently has no equivalent public token receipt ([DeepSeek context-cache guide](https://api-docs.deepseek.com/guides/kv_cache)). The refresh also keeps the [Google Cloud Tech hackathon overview](https://www.youtube.com/watch?v=5Xw3LtPeByE) in view: its collaborative-partner theme maps here to recorded questions, corrections, approvals, scoped context, and explicit handoffs—not an animation of hidden cognition.
+
+Three.js was evaluated but not added. Cytoscape already provides the offline deterministic 2D renderer, selection, hit testing, and accessible relationship mirror. A decorative WebGL layer would add weight and failure modes without answering another provenance question; a replacement renderer remains behind the graph-necessity gate below.
+
 ## Architecture and authority
 
 ```text
@@ -205,8 +221,10 @@ Until that gate passes, the authenticated browser viewer remains the supported i
 
 These are proposed proof-hardening steps, not current capabilities:
 
-1. **Bind every Review Brief to one decision subject.** Select `run_id + candidate_patch_sha256` first, then include a changeset, fixed-test receipt, recorded decision, and local result only when each carries that exact binding. Ambiguous or sibling evidence should remain **not established**.
-2. **Prove context continuity by identity, not sequence.** Establish compile → inject → open only when the same context-brief ID and SHA-256 appear in all three receipts. Keep delivery, timing, layout, and later edits explicitly non-causal.
-3. **Run the graph-necessity study before adding another renderer.** Compare the Review Brief plus evidence table against the graph with unfamiliar developers, using review time and missed-evidence errors. Demote the graph—and keep the terminal pixel experiment deferred—if it adds no measurable value.
-4. **Separate hypotheses from proof inputs.** Reclassify the designed outcome as a hypothesis in `contracts/product_proof.json`, and move `golden_path.json` / `graph_mvp.json` out of current authority into an explicit fixture-input category so legacy relationship names cannot be mistaken for current semantics.
-5. **Complete real-browser accessibility and visual QA.** Exercise keyboard order, fact → drawer → Escape focus restoration, graph selection announcements, filter-to-empty reset, replay scrubbing, reduced motion, contrast, and the invalid-evidence overlay. Current automated checks cover reducer and static DOM contracts, not a real browser or screen reader.
+1. **Ship and prove the required external path.** Add a separately authorized real Gemini driver and Google Cloud deployment with conspicuous driver truth, no replay/fake fallback, and recorded evidence that can be shown in the unedited submission demo.
+2. **Bind every Review Brief to one decision subject.** Select `run_id + candidate_patch_sha256` first, then include a changeset, fixed-test receipt, recorded decision, and local result only when each carries that exact binding. Ambiguous or sibling evidence should remain **not established**.
+3. **Prove context continuity by identity, not sequence.** Establish compile → inject → open only when the same context-brief ID and SHA-256 appear in all three receipts. Keep delivery, timing, layout, and later edits explicitly non-causal.
+4. **Add provider usage only as a bound receipt.** If token visibility is still useful after the real provider path exists, capture provider-reported counts at the returned model-event boundary and bind them to provider, model, run, invocation, response/turn identity, and streaming-deduplication rules. Public projection and privacy review must precede any token bar; hidden reasoning, estimated savings, and confidence remain out of scope.
+5. **Run the graph-necessity study before adding Three.js or another renderer.** Compare the Review Brief plus evidence table against the current graph with unfamiliar developers, using review time and missed-evidence errors. Add WebGL only if it answers a named review question better; otherwise demote the graph and keep the terminal pixel experiment deferred.
+6. **Separate hypotheses from proof inputs.** Reclassify the designed outcome as a hypothesis in `contracts/product_proof.json`, and move `golden_path.json` / `graph_mvp.json` out of current authority into an explicit fixture-input category so legacy relationship names cannot be mistaken for current semantics.
+7. **Complete real-browser accessibility and visual QA.** Exercise keyboard order, search empty/clear/result activation, responsive inspector layout, fact → drawer → Escape focus restoration, graph selection announcements, filter-to-empty reset, replay scrubbing, reduced motion, forced colors, contrast, and the invalid-evidence overlay. Current automated checks cover reducer and static DOM contracts, not a real browser or screen reader.
