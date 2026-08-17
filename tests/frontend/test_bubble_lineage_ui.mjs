@@ -6,7 +6,7 @@ import {
   applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
   latestNodeId, outcomeLabel, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
-  truthLabel, verifiedSupportPath, visibleGraph,
+  searchProvenance, truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
 const snapshot = {
@@ -235,6 +235,22 @@ test("relationship receipts expose only committed public provenance", () => {
     runId: null, sequence: null, eventId: null, sourceRef: null, digest: null,
   });
   assert.equal(relationshipReceipt(createState(proofSnapshot), "missing"), null);
+});
+
+test("search is stable, bounded, and limited to projected public evidence", () => {
+  const state = createState(proofSnapshot);
+  const paths = searchProvenance(state, "app example").results;
+  assert.ok(paths.some((result) => result.type === "node" && result.id === "file-a"));
+  assert.ok(paths.some((result) => result.type === "fact" && result.id === "candidate:path"));
+
+  const relationships = searchProvenance(state, "binds path").results;
+  assert.ok(relationships.some((result) => result.type === "relationship" && result.id === "support-4"));
+  assert.ok(searchProvenance(state, "model_dispatch_count").results.some((result) => result.id === "context:excluded"));
+  assert.deepEqual(searchProvenance(state, ""), { query: "", total: 0, truncated: false, results: [] });
+  const bounded = searchProvenance(state, "a", 2);
+  assert.equal(bounded.results.length, 2);
+  assert.equal(bounded.truncated, bounded.total > 2);
+  assert.deepEqual(searchProvenance(state, "app example").results, paths, "repeat searches preserve order");
 });
 
 test("Review Brief renders contract facts, exact unknowns, attention, stages, and truth labels", () => {

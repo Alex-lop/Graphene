@@ -447,6 +447,49 @@ export function relationshipReceipt(state, edgeId) {
   };
 }
 
+function searchScore(label, values, query) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const labelText = String(label).toLowerCase();
+  const haystack = [label, ...values].map((value) => {
+    if (value === null || value === undefined) return "";
+    return typeof value === "object" ? JSON.stringify(value) : String(value);
+  }).join(" ").toLowerCase();
+  if (!terms.length || terms.some((term) => !haystack.includes(term))) return 0;
+  return terms.reduce((score, term) => score + (labelText === term ? 100 : labelText.startsWith(term) ? 30 : labelText.includes(term) ? 10 : 1), 0);
+}
+
+export function searchProvenance(state, rawQuery, limit = 12) {
+  const query = text(rawQuery);
+  if (!query) return { query: "", total: 0, truncated: false, results: [] };
+  const results = [];
+  for (const node of state.nodes.values()) {
+    const detail = `${node.kind.replaceAll("_", " ")} · ${node.displayStatus} · ${truthLabel(node.truthKind)}`;
+    const score = searchScore(node.label, [detail, node.id, node.runId, node.sequence, node.eventId, node.recordedAt, node.stage, node.sourceRef, node.digest, node.metadata], query);
+    if (score) results.push({ type: "node", id: node.id, label: node.label, detail, truthKind: node.truthKind, nodeIds: [node.id], edgeIds: [], score });
+  }
+  for (const edge of state.edges.values()) {
+    const source = state.nodes.get(edge.source);
+    const target = state.nodes.get(edge.target);
+    if (!source || !target) continue;
+    const label = `${source.label} → ${target.label}`;
+    const detail = `${edge.relationshipClass ?? "untyped relationship"} · ${edge.kind}`.replaceAll("_", " ");
+    const score = searchScore(label, [detail, edge.id, edge.runId, edge.sequence, edge.eventId, edge.sourceRef, edge.digest, edge.metadata], query);
+    if (score) results.push({ type: "relationship", id: edge.id, label, detail, truthKind: edge.truthKind, nodeIds: [edge.source, edge.target], edgeIds: [edge.id], score });
+  }
+  const facts = [attentionFact(state), ...Object.values(reviewBriefFacts(state)).flat()];
+  for (const fact of new Map(facts.map((fact) => [fact.id, fact])).values()) {
+    const detail = `${fact.status || "captured"} · ${truthLabel(fact.truthKind)}`.replaceAll("_", " ");
+    const score = searchScore(fact.label, [fact.value, detail, fact.id, fact.nodeIds, fact.edgeIds, fact.metadata], query);
+    if (score) results.push({ type: "fact", id: fact.id, label: fact.label, detail: `${fact.value} · ${detail}`, truthKind: fact.truthKind, nodeIds: fact.nodeIds, edgeIds: fact.edgeIds, fact, score });
+  }
+  const typeOrder = { node: 0, fact: 1, relationship: 2 };
+  const boundedLimit = Math.min(25, Math.max(1, Math.trunc(Number(limit)) || 12));
+  const ordered = results.sort((left, right) => right.score - left.score || typeOrder[left.type] - typeOrder[right.type] || left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
+  return { query, total: ordered.length, truncated: ordered.length > boundedLimit, results: ordered
+    .slice(0, boundedLimit)
+    .map(({ score, ...result }) => result) };
+}
+
 export function storyNodeIds(state, currentId, selectedId = null, focusedFact = null) {
   const ids = new Set();
   if (focusedFact) {
