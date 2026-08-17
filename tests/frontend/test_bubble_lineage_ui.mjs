@@ -347,6 +347,10 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /Google ADK Runner: not used/);
   assert.match(html, /Gemini calls: 0/);
   assert.match(html, /Review Brief/);
+  assert.match(html, /type="search"/);
+  assert.match(html, /Searches only the bounded public projection/);
+  assert.match(source, /searchProvenance\(state, \$\("provenance-search"\)\.value\)/);
+  assert.match(source, /event\.key === "\/"/);
   assert.match(html, /Needs attention now/);
   assert.match(html, /Candidate \/ changed paths/);
   assert.match(html, /Inherited context: included and excluded/);

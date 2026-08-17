@@ -24,6 +24,23 @@
     </header>
 
     <main>
+      <section class="provenance-search" aria-labelledby="search-heading">
+        <div>
+          <p class="eyebrow">Current verified checkpoint</p>
+          <h1 id="search-heading">Find captured evidence</h1>
+          <p>Searches only the bounded public projection shown by this viewer.</p>
+        </div>
+        <form id="search-form" role="search">
+          <label class="sr-only" for="provenance-search">Search captured records, facts, and explicit relationships</label>
+          <input id="provenance-search" type="search" placeholder="Search a path, decision, run, digest, or status…" autocomplete="off" spellcheck="false">
+          <kbd aria-label="Keyboard shortcut: slash">/</kbd>
+          <button id="search-clear" type="button" hidden>Clear</button>
+        </form>
+        <div id="search-panel" class="search-panel" hidden>
+          <p id="search-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <ol id="search-results"></ol>
+        </div>
+      </section>
       <div class="decision-layout">
         <aside id="review-brief" class="review-brief" aria-labelledby="review-heading" tabindex="-1">
           <header>

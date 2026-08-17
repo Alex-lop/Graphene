@@ -2,7 +2,7 @@ import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
   REVIEW_SECTIONS, applyDelta, applyThrough, attentionFact, createState,
   decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, outcomeLabel, projectionCounts, relationshipReceipt, reviewBriefFacts,
-  stageGroups, statePositions, storyNodeIds, truthLabel,
+  searchProvenance, stageGroups, statePositions, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
 
@@ -214,6 +214,38 @@ function renderList(view) {
   setText("relationship-count", `${view.edges.length} typed explicit relationship${view.edges.length === 1 ? "" : "s"}`);
 }
 
+function chooseSearchResult(result) {
+  if (result.type === "node") selectNode(result.id);
+  else if (result.type === "relationship") selectEdge(result.id);
+  else if (result.fact) focusFact(result.fact);
+}
+
+function renderSearch() {
+  const match = searchProvenance(state, $("provenance-search").value);
+  $("search-results").replaceChildren();
+  $("search-panel").hidden = !match.query;
+  $("search-clear").hidden = !match.query;
+  if (!match.query) return;
+  const shown = match.results.length;
+  setText("search-status", match.total
+    ? `${match.truncated ? `Showing ${shown} of ` : ""}${match.total} match${match.total === 1 ? "" : "es"} in this checkpoint.`
+    : `No captured evidence matches “${match.query}” in this checkpoint.`);
+  for (const result of match.results) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const label = document.createElement("strong");
+    const detail = document.createElement("span");
+    button.type = "button";
+    button.dataset.focusId = `search:${result.type}:${result.id}`;
+    label.textContent = result.label;
+    detail.textContent = `${result.type} · ${result.detail}`;
+    button.append(label, detail);
+    button.addEventListener("click", () => chooseSearchResult(result));
+    item.append(button);
+    $("search-results").append(item);
+  }
+}
+
 function render(organize = false) {
   const focusId = document.activeElement?.dataset?.focusId;
   positions = statePositions(state, positions, organize);
@@ -262,6 +294,7 @@ function render(organize = false) {
   }
   if (organize) cy.fit(undefined, 62);
   renderBrief();
+  renderSearch();
   renderDecisionReceipt();
   renderFocusSummary();
   renderStages();
@@ -385,6 +418,8 @@ function showInvalid(reason) {
   setText("connection", "Stopped");
   $("connection").dataset.state = "error";
   paused = true;
+  $("provenance-search").value = "";
+  renderSearch();
   renderBrief();
   updatePlay();
 }
@@ -520,12 +555,18 @@ $("full-view").addEventListener("click", () => { topologyScope = "full"; $("deci
 $("reset-filters").addEventListener("click", () => { enabledGroups.clear(); groups.forEach(([id]) => enabledGroups.add(id)); document.querySelectorAll("[data-group]").forEach((button) => button.setAttribute("aria-pressed", "true")); clearPath(); render(); });
 $("clear-focus").addEventListener("click", clearPath);
 $("drawer-close").addEventListener("click", closeDrawer);
+$("search-form").addEventListener("submit", (event) => { event.preventDefault(); $("search-results").querySelector("button")?.focus(); });
+$("provenance-search").addEventListener("input", renderSearch);
+$("provenance-search").addEventListener("keydown", (event) => { if (event.key === "ArrowDown") { event.preventDefault(); $("search-results").querySelector("button")?.focus(); } });
+$("search-clear").addEventListener("click", () => { $("provenance-search").value = ""; renderSearch(); $("provenance-search").focus(); });
 $("play").addEventListener("click", () => { paused = !paused; if (live && !paused) { rebuild(deltaLog.length); pending = []; } updatePlay(); });
 $("step").addEventListener("click", () => { paused = true; step(); });
 $("speed").addEventListener("change", updatePlay);
 $("timeline").addEventListener("input", (event) => { paused = true; rebuild(Number(event.target.value)); updatePlay(); });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !$("drawer").hidden) closeDrawer();
+  if (event.key === "Escape" && !$("drawer").hidden) { closeDrawer(); return; }
+  if (event.key === "Escape" && $("provenance-search").value) { $("provenance-search").value = ""; renderSearch(); $("provenance-search").focus(); return; }
+  if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) { event.preventDefault(); $("provenance-search").focus(); return; }
   if (event.target !== $("canvas")) return;
   if (!cy || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return;
   if (event.key === "Enter" && selectedId) { selectNode(selectedId); return; }
