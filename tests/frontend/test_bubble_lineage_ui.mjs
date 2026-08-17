@@ -262,6 +262,15 @@ test("checkpoint labels count the initial verified projection and missing call m
   assert.equal(geminiCallLabel(undefined, 0), "Gemini calls: 0");
 });
 
+test("search follows replay checkpoints instead of retaining future evidence", () => {
+  const replay = JSON.parse(readFileSync(new URL("../../backend/graphene/viewer/static/replay.json", import.meta.url), "utf8"));
+  const initial = applyThrough(replay.snapshot, replay.deltas, 0);
+  const final = applyThrough(replay.snapshot, replay.deltas, replay.deltas.length);
+  assert.equal(searchProvenance(initial, "Graphene Receipt Recorded").total, 0);
+  assert.ok(searchProvenance(final, "Graphene Receipt Recorded").total > 0);
+  assert.equal(searchProvenance(applyThrough(replay.snapshot, replay.deltas, 0), "Graphene Receipt Recorded").total, 0);
+});
+
 test("projection composition reports public receipts without inventing token usage", () => {
   const replay = JSON.parse(readFileSync(new URL("../../backend/graphene/viewer/static/replay.json", import.meta.url), "utf8"));
   const initial = projectionComposition(createState(replay.snapshot));
@@ -422,6 +431,8 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(source, /selectEdge\(edge\.id\)/, "relationship rows open their own provenance receipt");
   assert.match(source, /detail\.source_ref\?\.sha256/, "node detail compares the structured public reference digest");
   assert.match(source, /replayIndex = deltaLog\.length;\s*state = applyThrough\(initialSnapshot, deltaLog, replayIndex\)/, "verified replay opens on the final decision checkpoint");
+  assert.match(source, /if \(index !== replayIndex\) dismissTransientView\(\)/, "scrubbing closes checkpoint-specific details");
+  assert.match(source, /else if \(focusId\.startsWith\("search:"\)\) \$\("provenance-search"\)\.focus\(\)/, "disappearing search results return focus to the query");
 });
 
 test("the checked-in sanitized replay traverses the live reducer", () => {

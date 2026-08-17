@@ -56,7 +56,9 @@ function truthMark(truthKind) {
 
 function restoreFocus(focusId) {
   if (!focusId) return;
-  [...document.querySelectorAll("[data-focus-id]")].find((element) => element.dataset.focusId === focusId)?.focus();
+  const target = [...document.querySelectorAll("[data-focus-id]")].find((element) => element.dataset.focusId === focusId);
+  if (target) target.focus();
+  else if (focusId.startsWith("search:")) $("provenance-search").focus();
 }
 function runState() {
   const outcome = outcomeLabel(state.reviewBrief.outcome_kind);
@@ -334,6 +336,8 @@ function renderInspector() {
 
 function render(organize = false) {
   const focusId = document.activeElement?.dataset?.focusId;
+  if (selectedId && !state.nodes.has(selectedId)) selectedId = null;
+  if (focusedFact) focusedFact = [attentionFact(state), ...Object.values(reviewBriefFacts(state)).flat()].find((fact) => fact.id === focusedFact.id) ?? null;
   positions = statePositions(state, positions, organize);
   const storyIds = topologyScope === "decision" ? storyNodeIds(state, currentId, selectedId, focusedFact) : null;
   const view = visibleGraph(state, enabledGroups, storyIds);
@@ -500,8 +504,16 @@ function closeDrawer() {
   const replacement = lastFocusId ? [...document.querySelectorAll("[data-focus-id]")].find((element) => element.dataset.focusId === lastFocusId) : null;
   (replacement ?? lastFocused)?.focus();
 }
+function dismissTransientView() {
+  const drawerHadFocus = $("drawer").contains(document.activeElement);
+  $("drawer").hidden = true;
+  selectedId = null;
+  focusedFact = null;
+  if (drawerHadFocus) queueMicrotask(() => $("canvas").focus());
+}
 function showInvalid(reason) {
   if (state) state.invalidReason ??= reason;
+  dismissTransientView();
   $("invalid").hidden = false;
   setText("invalid-reason", reason);
   setText("connection", "Stopped");
@@ -519,6 +531,7 @@ function updatePlay() {
   if (!live && !paused && replayIndex < deltaLog.length) playTimer = setTimeout(step, Number($("speed").value));
 }
 function rebuild(index) {
+  if (index !== replayIndex) dismissTransientView();
   state = applyThrough(initialSnapshot, deltaLog, index);
   currentId = state.currentId;
   for (const delta of deltaLog.slice(0, index)) {
@@ -535,6 +548,7 @@ function step() {
 function consume(delta) {
   deltaLog.push(delta);
   if (paused) { pending.push(delta); render(); return; }
+  dismissTransientView();
   state = applyDelta(state, delta);
   currentId = deltaSubjectId(delta) ?? state.currentId ?? currentId;
   replayIndex = deltaLog.length;
