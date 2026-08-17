@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   applyDelta, applyThrough, attentionFact, createState, decisionReceipt, deltaSubjectId,
   deterministicPositions, evidenceInvalidResponse, headSummary, projectionCounts,
-  latestNodeId, outcomeLabel, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
+  latestNodeId, outcomeLabel, projectionComposition, relationshipReceipt, reviewBriefFacts, stageGroups, statePositions, storyNodeIds,
   searchProvenance, truthLabel, verifiedSupportPath, visibleGraph,
 } from "../../backend/graphene/viewer/static/reducer.mjs";
 
@@ -251,6 +251,31 @@ test("search is stable, bounded, and limited to projected public evidence", () =
   assert.equal(bounded.results.length, 2);
   assert.equal(bounded.truncated, bounded.total > 2);
   assert.deepEqual(searchProvenance(state, "app example").results, paths, "repeat searches preserve order");
+});
+
+test("projection composition reports public receipts without inventing token usage", () => {
+  const replay = JSON.parse(readFileSync(new URL("../../backend/graphene/viewer/static/replay.json", import.meta.url), "utf8"));
+  const initial = projectionComposition(createState(replay.snapshot));
+  const final = projectionComposition(applyThrough(replay.snapshot, replay.deltas, replay.deltas.length));
+  assert.deepEqual(initial.context, {
+    compiledRecords: 0, injectedRecords: 0, openedRecords: 0, memoryScopes: [], includedReferenceKinds: [], openedEvidenceIds: [],
+    projectedDeniedHandoffs: 0, deniedHandoffsWithExplicitZeroDispatch: 0, omittedDeniedHandoffs: 0,
+  });
+  assert.deepEqual(final.runs, {
+    verifiedHeads: 2, visibleRunRecords: 2, sourceRunRecords: 1, consumerRunRecords: 1, omittedFamilyRuns: 0,
+    agentProfiles: ["auth-maintainer@1", "platform-maintainer@1"],
+  });
+  assert.deepEqual(final.brief, { total: 17, established: 10, pending: 0, historical: 2, gaps: 5, linked: 12 });
+  assert.equal(final.context.compiledRecords, 1);
+  assert.equal(final.context.injectedRecords, 1);
+  assert.equal(final.context.openedRecords, 1);
+  assert.equal(final.context.memoryScopes[0].scope_id, "all_auth");
+  assert.equal(final.context.projectedDeniedHandoffs, 1);
+  assert.equal(final.context.deniedHandoffsWithExplicitZeroDispatch, 1);
+  assert.deepEqual(final.providerUsage, { status: "not_captured" });
+
+  const missing = createState({ nodes: [], edges: [] });
+  assert.equal(projectionComposition(missing).context.compiledRecords, null, "missing counts stay unknown rather than becoming zero");
 });
 
 test("Review Brief renders contract facts, exact unknowns, attention, stages, and truth labels", () => {

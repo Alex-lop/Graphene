@@ -490,6 +490,52 @@ export function searchProvenance(state, rawQuery, limit = 12) {
     .map(({ score, ...result }) => result) };
 }
 
+const explicitCount = (value) => Number.isInteger(value) && value >= 0 ? value : null;
+const uniqueText = (values) => [...new Set((Array.isArray(values) ? values : []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].sort();
+
+export function projectionComposition(state) {
+  const sections = reviewBriefFacts(state);
+  const facts = Object.values(sections).flat();
+  const included = sections.context.find((fact) => fact.id === "context:included");
+  const opened = sections.context.find((fact) => fact.id === "context:opened");
+  const denialFacts = sections.evidence.filter((fact) => fact.id.startsWith("evidence:handoff_denial:") && ["established", "historical"].includes(fact.status) && text(fact.metadata?.target_profile_id));
+  const runNodes = [...state.nodes.values()].filter((node) => node.id.startsWith("run:"));
+  const memoryScopes = Array.isArray(included?.metadata?.memory_scopes)
+    ? included.metadata.memory_scopes.filter((scope) => scope && typeof scope === "object" && !Array.isArray(scope))
+    : [];
+  const statusCount = (status) => facts.filter((fact) => fact.status === status).length;
+  return {
+    brief: {
+      total: facts.length,
+      established: statusCount("established"),
+      pending: statusCount("pending"),
+      historical: statusCount("historical"),
+      gaps: facts.filter((fact) => fact.status === "not_established" || fact.id.startsWith("missing:")).length,
+      linked: facts.filter((fact) => fact.nodeIds.length || fact.edgeIds.length).length,
+    },
+    runs: {
+      verifiedHeads: state.heads.length,
+      visibleRunRecords: runNodes.length,
+      sourceRunRecords: runNodes.filter((node) => node.stage === "source_work").length,
+      consumerRunRecords: runNodes.filter((node) => node.stage === "consumer_work").length,
+      omittedFamilyRuns: count(state.omittedCounts.family_runs, 0),
+      agentProfiles: uniqueText(runNodes.map((node) => node.metadata.agent_profile_id)),
+    },
+    context: {
+      compiledRecords: explicitCount(included?.metadata?.compiled_count),
+      injectedRecords: explicitCount(included?.metadata?.injected_count),
+      openedRecords: explicitCount(opened?.metadata?.opened_count),
+      memoryScopes,
+      includedReferenceKinds: uniqueText(included?.metadata?.reference_kinds),
+      openedEvidenceIds: uniqueText(opened?.metadata?.evidence_ids),
+      projectedDeniedHandoffs: denialFacts.length,
+      deniedHandoffsWithExplicitZeroDispatch: denialFacts.filter((fact) => fact.metadata.model_dispatch_count === 0).length,
+      omittedDeniedHandoffs: count(state.omittedCounts.review_handoff_denials, 0),
+    },
+    providerUsage: { status: "not_captured" },
+  };
+}
+
 export function storyNodeIds(state, currentId, selectedId = null, focusedFact = null) {
   const ids = new Set();
   if (focusedFact) {
