@@ -124,22 +124,70 @@
           <p id="bounds" class="activity-note">Only explicit committed records are shown; sequence does not prove causality.</p>
         </div>
 
-        <section class="replay" aria-label="Captured evidence history controls">
-          <button id="play" type="button" aria-label="Pause replay">Pause</button>
-          <button id="step" type="button">Step</button>
-          <label>Speed
-            <select id="speed">
-              <option value="2000">0.5×</option>
-              <option value="1000" selected>1×</option>
-              <option value="500">2×</option>
-              <option value="250">4×</option>
-            </select>
-          </label>
-          <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Replay timeline">
-          <output id="timeline-label" for="timeline">0 / 0</output>
-          <span id="live-badge" class="badge">EVENT HISTORY</span>
         </section>
-        </section>
+
+        <aside class="run-inspector" aria-label="Run checkpoints and context provenance">
+          <details open>
+            <summary><span><span class="eyebrow">Read-only workbench</span>Run checkpoints</span><span id="inspector-summary">Loading</span></summary>
+            <p id="inspector-state" class="inspector-state" role="status" aria-live="polite">Loading the verified projection.</p>
+            <div id="inspector-body">
+              <section aria-labelledby="checkpoint-heading">
+                <header><p class="eyebrow">Verified projection history</p><h2 id="checkpoint-heading">Evidence checkpoint</h2></header>
+                <div class="replay" aria-label="Captured evidence history controls">
+                  <button id="play" type="button" aria-label="Pause replay">Pause</button>
+                  <button id="step" type="button">Step</button>
+                  <button id="latest-checkpoint" type="button">Latest verified</button>
+                  <label>Speed
+                    <select id="speed">
+                      <option value="2000">0.5×</option>
+                      <option value="1000" selected>1×</option>
+                      <option value="500">2×</option>
+                      <option value="250">4×</option>
+                    </select>
+                  </label>
+                  <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Verified checkpoint history">
+                  <output id="timeline-label" for="timeline">0 / 0</output>
+                  <span id="live-badge" class="badge">EVENT HISTORY</span>
+                </div>
+                <dl class="checkpoint-facts">
+                  <div><dt>Decision anchor</dt><dd id="inspector-anchor">—</dd></div>
+                  <div><dt>Captured stage</dt><dd id="inspector-stage">—</dd></div>
+                  <div><dt>Graph digest</dt><dd><code id="inspector-digest">—</code></dd></div>
+                </dl>
+              </section>
+
+              <section aria-labelledby="composition-heading">
+                <header><p class="eyebrow">Projected Review Brief facts</p><h2 id="composition-heading">Evidence composition</h2></header>
+                <p class="inspector-note">Fact counts—not confidence, correctness, or completeness.</p>
+                <dl class="composition-list">
+                  <div><dt>Established</dt><dd><meter id="meter-established" min="0" max="1" value="0"></meter><span id="count-established">0</span></dd></div>
+                  <div><dt>Pending</dt><dd><meter id="meter-pending" min="0" max="1" value="0"></meter><span id="count-pending">0</span></dd></div>
+                  <div><dt>Historical</dt><dd><meter id="meter-historical" min="0" max="1" value="0"></meter><span id="count-historical">0</span></dd></div>
+                  <div><dt>Limits / not established</dt><dd><meter id="meter-limits" min="0" max="1" value="0"></meter><span id="count-limits">0</span></dd></div>
+                </dl>
+              </section>
+
+              <section aria-labelledby="context-provenance-heading">
+                <header><p class="eyebrow">Captured receipts</p><h2 id="context-provenance-heading">Context provenance</h2></header>
+                <div id="context-receipts" class="context-receipts"></div>
+                <h3>Approved captured memory scopes</h3>
+                <ul id="memory-scopes" class="memory-scopes"></ul>
+                <p class="inspector-note">Delivery and opening are separate observed receipts; influence and hidden reasoning are not established.</p>
+              </section>
+
+              <section aria-labelledby="run-family-heading">
+                <header><p class="eyebrow">Committed family</p><h2 id="run-family-heading">Verified run heads</h2></header>
+                <ul id="run-heads" class="run-heads"></ul>
+                <p id="run-omissions" class="inspector-note"></p>
+              </section>
+
+              <section class="provider-boundary" aria-labelledby="provider-boundary-heading">
+                <h2 id="provider-boundary-heading">Provider token usage not captured</h2>
+                <p>Graphene exposes committed decision provenance, not context-window use, costs, or model thoughts.</p>
+              </section>
+            </div>
+          </details>
+        </aside>
       </div>
 
       <section id="lineage-list" class="lineage-list" aria-labelledby="lineage-heading" tabindex="-1">

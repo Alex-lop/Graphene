@@ -376,6 +376,12 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /Searches only the bounded public projection/);
   assert.match(source, /searchProvenance\(state, \$\("provenance-search"\)\.value\)/);
   assert.match(source, /event\.key === "\/"/);
+  assert.match(html, /Run checkpoints/);
+  assert.match(html, /Provider token usage not captured/);
+  assert.match(html, /Fact counts—not confidence, correctness, or completeness/);
+  assert.match(html, /aria-label="Verified checkpoint history"/);
+  assert.match(source, /projectionComposition\(state\)/);
+  assert.match(css, /@media \(max-width: 1280px\)/);
   assert.match(html, /Needs attention now/);
   assert.match(html, /Candidate \/ changed paths/);
   assert.match(html, /Inherited context: included and excluded/);

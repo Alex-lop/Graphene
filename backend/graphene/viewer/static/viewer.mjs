@@ -1,7 +1,7 @@
 import cytoscape from "./vendor/cytoscape.esm.min.mjs";
 import {
   REVIEW_SECTIONS, applyDelta, applyThrough, attentionFact, createState,
-  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, outcomeLabel, projectionCounts, relationshipReceipt, reviewBriefFacts,
+  decisionReceipt, deltaSubjectId, evidenceInvalidResponse, headSummary, outcomeLabel, projectionComposition, projectionCounts, relationshipReceipt, reviewBriefFacts,
   searchProvenance, stageGroups, statePositions, storyNodeIds, truthLabel,
   verifiedSupportPath, visibleGraph,
 } from "./reducer.mjs";
@@ -246,6 +246,92 @@ function renderSearch() {
   }
 }
 
+function receiptCount(value) {
+  return value === null ? "not established" : `${value} captured receipt${value === 1 ? "" : "s"}`;
+}
+
+function inspectorButton(label, value, fact) {
+  const hasSupport = fact && (fact.nodeIds.length || fact.edgeIds.length);
+  const row = document.createElement(hasSupport ? "button" : "div");
+  const name = document.createElement("strong");
+  const detail = document.createElement("span");
+  if (hasSupport) row.type = "button";
+  name.textContent = label;
+  detail.textContent = value;
+  row.append(name, detail);
+  if (hasSupport) {
+    row.dataset.focusId = `inspector:${fact.id}`;
+    row.addEventListener("click", () => focusFact(fact));
+  }
+  return row;
+}
+
+function renderInspector() {
+  const composition = projectionComposition(state);
+  const sections = reviewBriefFacts(state);
+  const current = state.nodes.get(currentId);
+  $("inspector-body").hidden = Boolean(state.invalidReason);
+  setText("inspector-state", state.invalidReason
+    ? "Evidence is invalid. Prior checkpoint details are hidden."
+    : `${composition.runs.verifiedHeads} verified head${composition.runs.verifiedHeads === 1 ? "" : "s"} · ${composition.runs.visibleRunRecords} projected run record${composition.runs.visibleRunRecords === 1 ? "" : "s"}.`);
+  setText("inspector-summary", state.invalidReason ? "Evidence invalid" : `${composition.runs.verifiedHeads} head${composition.runs.verifiedHeads === 1 ? "" : "s"}`);
+  if (state.invalidReason) return;
+  setText("inspector-anchor", current?.label ?? "not established");
+  setText("inspector-stage", state.reviewBrief.stage?.replaceAll("_", " ") ?? current?.stage?.replaceAll("_", " ") ?? "not established");
+  setText("inspector-digest", state.graphSha256 ? `sha256:${state.graphSha256}` : "not established");
+
+  const meters = [
+    ["established", composition.brief.established], ["pending", composition.brief.pending],
+    ["historical", composition.brief.historical], ["limits", composition.brief.gaps],
+  ];
+  for (const [id, value] of meters) {
+    const meter = $(`meter-${id}`);
+    meter.max = Math.max(1, composition.brief.total);
+    meter.value = value;
+    setText(`count-${id}`, `${value} / ${composition.brief.total}`);
+  }
+
+  const included = sections.context.find((fact) => fact.id === "context:included");
+  const opened = sections.context.find((fact) => fact.id === "context:opened");
+  const denied = sections.evidence.find((fact) => fact.id.startsWith("evidence:handoff_denial:") && ["established", "historical"].includes(fact.status));
+  $("context-receipts").replaceChildren(
+    inspectorButton("Compiled", receiptCount(composition.context.compiledRecords), included),
+    inspectorButton("Injected", receiptCount(composition.context.injectedRecords), included),
+    inspectorButton("Explicitly opened", receiptCount(composition.context.openedRecords), opened),
+    inspectorButton("Excluded handoffs", `${composition.context.projectedDeniedHandoffs} projected · ${composition.context.deniedHandoffsWithExplicitZeroDispatch} with explicit zero dispatch`, denied),
+  );
+  $("memory-scopes").replaceChildren();
+  if (!composition.context.memoryScopes.length) {
+    const item = document.createElement("li"); item.textContent = "not established by captured evidence"; $("memory-scopes").append(item);
+  } else for (const scope of composition.context.memoryScopes) {
+    const item = document.createElement("li");
+    item.append(inspectorButton(scope.scope_id ?? "unnamed scope", `revision ${scope.revision ?? "not exposed"} · ${(scope.path_globs ?? []).join(", ") || "paths not exposed"}`, included));
+    $("memory-scopes").append(item);
+  }
+
+  $("run-heads").replaceChildren();
+  const heads = [...state.heads].sort((left, right) => Number(right.run_id === state.rootRunId) - Number(left.run_id === state.rootRunId) || String(left.run_id).localeCompare(String(right.run_id)));
+  for (const head of heads) {
+    const item = document.createElement("li");
+    const run = state.nodes.get(`run:${head.run_id}`);
+    if (run) {
+      const button = document.createElement("button");
+      const label = document.createElement("strong");
+      const detail = document.createElement("span");
+      button.type = "button";
+      button.dataset.focusId = `inspector-run:${head.run_id}`;
+      label.textContent = `${run.label}${head.run_id === state.rootRunId ? " · root" : ""}`;
+      detail.textContent = `${run.displayStatus} · seq ${head.seq ?? "—"} · ${head.run_id}`;
+      button.append(label, detail);
+      button.addEventListener("click", () => selectNode(run.id));
+      item.append(button);
+    } else item.textContent = `${head.run_id} · seq ${head.seq ?? "—"}`;
+    $("run-heads").append(item);
+  }
+  if (!heads.length) { const item = document.createElement("li"); item.textContent = "No verified run head is available."; $("run-heads").append(item); }
+  setText("run-omissions", `${composition.runs.omittedFamilyRuns} run${composition.runs.omittedFamilyRuns === 1 ? "" : "s"} omitted by the family cap.`);
+}
+
 function render(organize = false) {
   const focusId = document.activeElement?.dataset?.focusId;
   positions = statePositions(state, positions, organize);
@@ -295,6 +381,7 @@ function render(organize = false) {
   if (organize) cy.fit(undefined, 62);
   renderBrief();
   renderSearch();
+  renderInspector();
   renderDecisionReceipt();
   renderFocusSummary();
   renderStages();
@@ -561,6 +648,7 @@ $("provenance-search").addEventListener("keydown", (event) => { if (event.key ==
 $("search-clear").addEventListener("click", () => { $("provenance-search").value = ""; renderSearch(); $("provenance-search").focus(); });
 $("play").addEventListener("click", () => { paused = !paused; if (live && !paused) { rebuild(deltaLog.length); pending = []; } updatePlay(); });
 $("step").addEventListener("click", () => { paused = true; step(); });
+$("latest-checkpoint").addEventListener("click", () => { paused = true; rebuild(deltaLog.length); updatePlay(); });
 $("speed").addEventListener("change", updatePlay);
 $("timeline").addEventListener("input", (event) => { paused = true; rebuild(Number(event.target.value)); updatePlay(); });
 document.addEventListener("keydown", (event) => {
