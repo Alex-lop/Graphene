@@ -391,6 +391,11 @@ test("viewer rendering is DOM-safe and offline", () => {
   assert.match(html, /aria-label="Verified checkpoint history"/);
   assert.match(source, /projectionComposition\(state\)/);
   assert.match(css, /@media \(max-width: 1280px\)/);
+  assert.match(html, /name="color-scheme" content="light"/);
+  assert.match(html, /name="theme-color" content="#ffffff"/);
+  assert.match(css, /color-scheme: light;/);
+  assert.doesNotMatch(css, /prefers-color-scheme/);
+  assert.match(css, /@keyframes surface-enter/);
   assert.match(html, /Needs attention now/);
   assert.match(html, /Candidate \/ changed paths/);
   assert.match(html, /Inherited context: included and excluded/);
