@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#f8fafc">
+    <link rel="icon" href="data:,">
+    <title>Graphene · Mission Control</title>
+    <link rel="stylesheet" href="/mission-static/mission_control.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#mission-summary">Skip to mission summary</a>
+    <header class="status-strip" aria-label="Mission connection and proof status">
+      <a class="brand" href="#mission-summary"><span aria-hidden="true">G</span> Graphene Mission Control</a>
+      <dl>
+        <div><dt>Mode</dt><dd id="mode">Loading</dd></div>
+        <div><dt>Connection</dt><dd id="connection" data-state="connecting" aria-live="polite">Connecting</dd></div>
+        <div><dt>Committed head</dt><dd id="head">—</dd></div>
+        <div><dt>Proof boundary</dt><dd id="proof-boundary">Committed mission projection</dd></div>
+      </dl>
+    </header>
+    <div id="stale-banner" class="stale-banner" role="alert" hidden>
+      State is stale. Reconnecting from a fresh committed snapshot… <span id="stale-since"></span>
+    </div>
+
+    <main>
+      <section id="mission-summary" class="mission-summary" aria-labelledby="goal-heading" tabindex="-1">
+        <div>
+          <p id="mission-status" class="eyebrow">Mission state loading</p>
+          <h1 id="goal-heading">Loading mission…</h1>
+          <h2>Success criteria</h2>
+          <ul id="success-criteria"></ul>
+        </div>
+        <section id="needs-you" class="needs-you" aria-labelledby="needs-you-heading">
+          <p class="eyebrow">Decision state</p>
+          <h2 id="needs-you-heading">Needs you</h2>
+          <div id="needs-you-body" role="status" aria-live="polite">Loading…</div>
+        </section>
+      </section>
+
+      <section class="status-board" aria-labelledby="status-heading">
+        <header><div><p class="eyebrow">Committed scheduler state</p><h2 id="status-heading">Work at a glance</h2></div><p id="critical-path">Critical path: loading</p></header>
+        <dl id="status-buckets"></dl>
+      </section>
+
+      <section class="stage-grid" aria-label="Budget, integration, verification, and result">
+        <article><p class="eyebrow">Resource pressure</p><h2 id="resource-status">Unavailable</h2><p id="resource-summary"></p><ul id="resource-metrics"></ul></article>
+        <article><p class="eyebrow">Integration</p><h2 id="integration-state">Queued</h2><p id="integration-summary"></p><ul id="integration-evidence"></ul></article>
+        <article><p class="eyebrow">Verification</p><h2 id="verification-state">Queued</h2><p id="verification-summary"></p><ul id="verification-evidence"></ul></article>
+        <article><p class="eyebrow">Result</p><h2 id="result-state">Pending</h2><p id="result-summary"></p><ul id="result-evidence"></ul></article>
+      </section>
+
+      <section class="task-table-panel" aria-labelledby="tasks-heading">
+        <header><div><p class="eyebrow">Accessible primary view</p><h2 id="tasks-heading">Tasks and ownership</h2></div><p>Select a task for its bounded evidence.</p></header>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">Task</th><th scope="col">State</th><th scope="col">Worker / attempt</th><th scope="col">Dependencies</th><th scope="col">Blocker</th></tr></thead>
+            <tbody id="task-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="graph-panel" aria-labelledby="graph-heading">
+        <header><div><p class="eyebrow">Explicit committed relationships</p><h2 id="graph-heading">Goal → work → result</h2></div><p>Layout and timing do not imply causality.</p></header>
+        <div id="mission-graph" role="application" tabindex="0" aria-label="Mission dependency graph. Use arrow keys to select a node and Enter to inspect a task." aria-describedby="graph-status"></div>
+        <p id="graph-status" class="sr-only" role="status" aria-live="polite"></p>
+        <ol id="relationship-list" class="relationship-list" aria-label="Accessible relationship list"></ol>
+      </section>
+
+      <section id="replay-controls" class="replay-controls" aria-labelledby="replay-heading" hidden>
+        <div><p class="eyebrow">Deterministic history</p><h2 id="replay-heading">Mission replay</h2></div>
+        <button id="replay-start" type="button">Play from start</button>
+        <button id="replay-step" type="button">Step</button>
+        <label for="timeline">Checkpoint</label>
+        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Mission replay checkpoint">
+        <output id="timeline-label" for="timeline">1 of 1</output>
+      </section>
+
+      <section class="unknowns" aria-labelledby="unknowns-heading">
+        <p class="eyebrow">Explicit limits</p><h2 id="unknowns-heading">Unknowns</h2><ul id="unknown-list"></ul>
+      </section>
+    </main>
+
+    <aside id="task-drawer" class="drawer" role="dialog" aria-labelledby="drawer-title" hidden>
+      <header><div><p class="eyebrow">Task evidence</p><h2 id="drawer-title">Task detail</h2></div><button id="drawer-close" type="button" aria-label="Close task detail">×</button></header>
+      <div id="drawer-state" role="status" aria-live="polite"></div>
+      <div id="drawer-body"></div>
+    </aside>
+    <script type="module" src="/mission-static/mission_control.mjs"></script>
+  </body>
+</html>
