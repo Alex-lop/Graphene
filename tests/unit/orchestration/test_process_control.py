@@ -134,58 +134,73 @@ def test_identity_mismatch_refuses_to_signal(tmp_path: Path, monkeypatch) -> Non
         process.wait(timeout=2)
 
 
-@pytest.mark.skipif(
-    not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="sandbox-exec identity replacement is macOS-specific",
-)
-def test_record_accepts_only_frozen_sandbox_exec_target(
+def test_record_binds_live_popen_to_observed_exec_identity(
     tmp_path: Path, monkeypatch
 ) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     pid = 424_242
-    replacement = str(Path(sys.executable).resolve(strict=True))
+    observed_executable = "Python-3.13-hosted-launcher-target"
     monkeypatch.setattr(
         "graphene.orchestration.process_control._process_identity",
         lambda observed_pid: (
             observed_pid,
             "Tue Aug 19 00:00:00 2026",
             "S",
-            replacement,
+            observed_executable,
         ),
     )
 
     class Spawned:
-        pass
+        pid = 424_242
+        args = (sys.executable, "-c", "pass")
 
-    process = Spawned()
-    process.pid = pid
+        @staticmethod
+        def poll():
+            return None
+
     registry.record(
         dispatch,
-        process,  # type: ignore[arg-type]
-        "/usr/bin/sandbox-exec",
-        (sys.executable,),
+        Spawned(),  # type: ignore[arg-type]
+        sys.executable,
     )
     record = json.loads(next(registry.directory.iterdir()).read_text(encoding="utf-8"))
-    assert record["executable"] == replacement
+    assert record["pid"] == pid
+    assert record["executable"] == observed_executable
 
-    other_dispatch = dispatch.model_copy(update={"attempt_id": "attempt-unlisted-exec"})
+
+def test_record_refuses_child_that_exits_during_identity_capture(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
     monkeypatch.setattr(
         "graphene.orchestration.process_control._process_identity",
         lambda observed_pid: (
             observed_pid,
             "Tue Aug 19 00:00:00 2026",
             "S",
-            "/bin/sleep",
+            "Python-3.13-hosted-launcher-target",
         ),
     )
-    with pytest.raises(ProcessControlError, match="owned process group"):
+
+    class Exited:
+        pid = 424_243
+        args = (sys.executable, "-c", "pass")
+
+        def __init__(self) -> None:
+            self.polls = iter((None, 0))
+
+        def poll(self):
+            return next(self.polls)
+
+    with pytest.raises(ProcessControlError, match="no longer running"):
         registry.record(
-            other_dispatch,
-            process,  # type: ignore[arg-type]
-            "/usr/bin/sandbox-exec",
-            (sys.executable,),
+            dispatch,
+            Exited(),  # type: ignore[arg-type]
+            sys.executable,
         )
+    assert not tuple(registry.directory.iterdir())
 
 
 @pytest.mark.skipif(

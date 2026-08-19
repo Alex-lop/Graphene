@@ -91,25 +91,30 @@ class OwnedProcessRegistry:
         dispatch: Dispatch,
         process: subprocess.Popen[str],
         executable: str,
-        replacement_executables: Sequence[str] = (),
     ) -> None:
-        pgid, started_at, state, observed_executable = _process_identity(process.pid)
-        allowed_executables: set[str] = set()
-        for value in (executable, *replacement_executables):
-            executable_path = Path(value)
-            if (
-                not executable_path.is_absolute()
-                or not executable_path.is_file()
-                or not os.access(executable_path, os.X_OK)
-            ):
-                raise ProcessControlError("owned process executable is unavailable")
-            allowed_executables.add(str(executable_path))
-            allowed_executables.add(str(executable_path.resolve(strict=True)))
+        executable_path = Path(executable)
+        arguments = process.args
         if (
-            state.startswith("Z")
-            or pgid != process.pid
-            or observed_executable not in allowed_executables
+            not executable_path.is_absolute()
+            or not executable_path.is_file()
+            or not os.access(executable_path, os.X_OK)
+            or isinstance(arguments, (str, bytes))
+            or not arguments
+            or arguments[0] != executable
         ):
+            raise ProcessControlError("owned process executable is unavailable")
+        if process.poll() is not None:
+            raise ProcessControlError("owned process is no longer running")
+        pgid, started_at, state, observed_executable = _process_identity(process.pid)
+        if state.startswith("Z") or process.poll() is not None:
+            raise ProcessControlError("owned process is no longer running")
+        if (
+            not observed_executable
+            or len(observed_executable) > 1_024
+            or any(character in observed_executable for character in "\0\n\r")
+        ):
+            raise ProcessControlError("owned process identity is invalid")
+        if pgid != process.pid:
             raise ProcessControlError(
                 "child process did not establish its owned process group"
             )
@@ -208,7 +213,9 @@ class OwnedProcessRegistry:
             or owned.pgid != owned.pid
             or not isinstance(owned.started_at, str)
             or not isinstance(owned.executable, str)
-            or not owned.executable.startswith("/")
+            or not owned.executable
+            or len(owned.executable) > 1_024
+            or any(character in owned.executable for character in "\0\n\r")
         ):
             raise ProcessControlError("owned process record is invalid")
         if path != self._path(owned.attempt_id):
@@ -404,19 +411,10 @@ class ControlledProcessRunner:
         last_heartbeat = last
         try:
             try:
-                replacements = (
-                    (arguments[3],)
-                    if len(arguments) > 3
-                    and arguments[0] == "/usr/bin/sandbox-exec"
-                    and arguments[1] == "-p"
-                    and arguments[3] == sys.executable
-                    else ()
-                )
                 self.registry.record(
                     self.dispatch,
                     process,
                     arguments[0],
-                    replacements,
                 )
                 registered = True
             except Exception:
