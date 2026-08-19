@@ -7,13 +7,17 @@ This index prevents planning artifacts, judge reports, and old implementation pr
 | Document | Role |
 |---|---|
 | [`README.md`](../README.md) | Canonical user path, thesis, proof matrix, and boundaries |
+| [`simplreadme.md`](../simplreadme.md) | Short judge path and proof-level summary |
 | [`contracts/product_proof.json`](../contracts/product_proof.json) | Machine-readable product, driver, and capture truth |
+| [`TASKMASTER_PRODUCT_CONTRACT.md`](TASKMASTER_PRODUCT_CONTRACT.md) | Accepted mission authority, state, validation, and threat boundary |
+| [`deploy/cloudrun/README.md`](../deploy/cloudrun/README.md) | Reproducible but explicitly not-deployed cloud packaging |
 | [`demo_transcript.md`](demo_transcript.md) | Redacted current demo shapes and branch semantics |
 | [`data_residency.md`](data_residency.md) | Current privacy/data boundary |
 | [`EXECUTOR_THREAT_MODEL.md`](EXECUTOR_THREAT_MODEL.md) | Current macOS executor and Linux fail-closed boundary |
 | [`GRAPH_NECESSITY_EVAL.md`](GRAPH_NECESSITY_EVAL.md) | Graph-necessity study protocol; not yet run |
 
-Local planning, prompt, and review files live in untracked `All_md_files/` (`prompts/` and `reviews/`). They are not repository authority.
+Local planning, prompt, and review files live in ignored `All_md_Files/`
+(`prompts/` and `reviews/`). They are not repository authority.
 
 ## Historical records
 
@@ -31,4 +35,9 @@ These names preserve product reasoning and implementation history. Their SHAs, t
 | `HACKATHON_TIMELINE.md` | Dated schedule/source snapshot |
 | [`evidence/checkpoints/`](../evidence/checkpoints/) | Dated implementation checkpoints and local observations |
 
-`contracts/golden_path.json` and `contracts/graph_mvp.json` remain shared operational fixture inputs because v2 still consumes their frozen task/profile/scope data. Their legacy API/loop/framework/model-policy/graph fields are not product or driver truth; that role belongs to `contracts/product_proof.json`. The split is compatibility-only: current product and driver truth comes from `contracts/product_proof.json`.
+`contracts/golden_path.json` and `contracts/graph_mvp.json` remain shared
+operational fixture inputs because the Auth protocol tour still consumes their
+frozen task/profile/scope data. Their legacy API/loop/framework/model-policy and
+graph fields are not Taskmaster product or driver truth. The sibling mission
+domain and `contracts/product_proof.json` now carry that authority; the Auth
+workflow remains a preserved regression/protocol tour rather than the hero path.

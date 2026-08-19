@@ -1,52 +1,91 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "canonical",
-  "product_thesis": "Graphene is an evidence-backed review and handoff layer for a developer supervising bounded coding-agent work. It shows the captured edits, tests, human corrections, approved context, and explicit unknowns behind a candidate, then passes only approved evidence into the next run.",
-  "primary_user": "A developer supervising or taking over a coding-agent change.",
-  "painful_moment": "Deciding whether a candidate is trustworthy after a long run, correction, or handoff without reconstructing a transcript.",
-  "decision": "Approve, reject, or hand off that exact candidate and its bounded evidence.",
-  "result": "A faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.",
-  "drivers": {
-    "verified-replay": {
-      "command": "uv run --frozen graphene demo --driver verified-replay",
-      "truth_label": "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION",
+  "category": "The Taskmaster",
+  "product_thesis": "Graphene is a local-first mission control for bounded multi-agent coding work. Give it one engineering outcome; it validates a dependency-aware work graph, dispatches only policy-allowed isolated work, adapts to bounded failures, assembles accepted artifacts, verifies the result, and creates an isolated local commit only after explicit approval.",
+  "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
+  "costly_problem": "The developer becomes the scheduler: preventing conflicting edits, relaying context, noticing failures, integrating outputs, and reconstructing whether the result is safe.",
+  "result": "A verified review bundle and optional isolated local commit with explicit evidence, resource semantics, and unresolved unknowns.",
+  "mission_paths": {
+    "verified-mission-replay": {
+      "status": "verified_local",
+      "command": "uv run --frozen graphene mission replay taskmaster",
+      "truth_label": "VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD",
       "platform": "cross-platform",
-      "proves": "A checked-in event fixture materialized through v2 verification, its hash-checked public projection, explicit context opening/reference, and the decision-view experience.",
+      "proves": "A SHA-256-checked generated mission fixture, deterministic snapshot/delta reconstruction, task evidence drill-down, and the read-only Mission Control experience.",
       "does_not_prove": [
-        "live execution",
+        "new worker or test execution",
         "human attestation",
-        "Google ADK execution",
-        "Gemini execution",
-        "new test execution"
+        "Google ADK or Gemini execution",
+        "Docker execution",
+        "cloud deployment"
       ]
     },
     "scripted-local": {
-      "command": "uv run --frozen graphene demo --driver scripted-local",
-      "truth_label": "SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF",
+      "status": "verified_local",
+      "command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --driver scripted-local",
+      "execute_command": "uv run --frozen graphene mission approve-plan MISSION_ID --revision 1",
+      "automation_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --driver scripted-local --auto-approve",
+      "default_behavior": "Persists a validated proposed mission; an interactive TTY may offer plan approval.",
+      "automation_truth": "simulated_fixture_no_human_review",
+      "truth_label": "SCRIPTED LOCAL MISSION FIXTURE — NOT GEMINI, ARBITRARY-REPOSITORY, OR CLOUD PROOF",
       "platform": "macOS with /usr/bin/sandbox-exec",
-      "proves": "The bounded v2 protocol, policy enforcement, interactive TTY choices, isolated fixed retest, and approved isolated local Git result.",
+      "proves": "After plan approval: the validated operational DAG, durable scheduler, two overlapping workers, dependency blocking, fenced leases, one failed check and bounded repair, accepted-only fan-in, assembly, bound verification, and isolated local result mechanics.",
       "does_not_prove": [
-        "independent coding-agent behavior",
-        "Google ADK execution",
+        "independent model behavior",
+        "arbitrary-repository execution",
         "Gemini execution",
-        "memory caused or improved a later edit",
-        "push, pull request, or deployment"
+        "Docker execution",
+        "cloud deployment"
       ]
     },
-    "adk-fake": {
-      "command": "uv run --frozen graphene demo --driver adk-fake",
-      "truth_label": "REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — NOT GEMINI OR INDEPENDENT-AGENT PROOF",
-      "platform": "macOS with /usr/bin/sandbox-exec",
-      "proves": "Real Google ADK Runner, session, and Graphene tool routing with a deterministic fake model through the same bounded review protocol.",
+    "adk-fake-planner": {
+      "status": "verified_local",
+      "command": "uv run --frozen pytest -q tests/unit/orchestration/test_adk.py",
+      "truth_label": "REAL ADK RUNNER + DETERMINISTIC FAKE PLANNER — NOT GEMINI OR MODEL-WORKER PROOF",
+      "proves": "Real Google ADK Runner/session plumbing, typed Plan output, a one-call bound, deterministic validation, disabled content telemetry, and sanitized receipts.",
       "does_not_prove": [
         "Gemini execution",
-        "autonomous intelligence",
-        "independent-agent quality",
-        "push, pull request, or deployment"
+        "independent worker behavior",
+        "a completed live mission"
       ]
+    },
+    "gemini-adk-planner": {
+      "status": "not_proven",
+      "command": "GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py",
+      "product_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --success-criterion CRITERION --driver gemini-adk",
+      "truth_label": "NOT PROVEN — REQUIRES EXPLICIT CREDENTIALS AND A RETURNED GEMINI RECEIPT",
+      "model": "gemini-3.5-flash",
+      "fallback": "none",
+      "scope": "Credentialed model-proposed plan persistence only; worker execution is unavailable."
+    },
+    "docker-executor": {
+      "status": "not_proven",
+      "command": "docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest . && GRAPHENE_RUN_DOCKER_SMOKE=1 uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py",
+      "truth_label": "NOT PROVEN — RESPONSIVE DAEMON AND BUILT IMMUTABLE IMAGE REQUIRED"
+    },
+    "cloud-run-firestore": {
+      "status": "not_deployed",
+      "command": "See deploy/cloudrun/README.md",
+      "truth_label": "NOT DEPLOYED — AUTHORIZED PROJECT, GCLOUD, DEPLOYMENT, AND CAPTURED SMOKE REQUIRED"
     }
   },
-  "capture_boundary": {
+  "legacy_protocol_tour": {
+    "role": "Preserved Auth evidence, review, correction, handoff, and local-promotion regression tour; not the Taskmaster product authority.",
+    "drivers": {
+      "verified-replay": {
+        "command": "uv run --frozen graphene demo --driver verified-replay",
+        "truth_label": "VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION"
+      },
+      "scripted-local": {
+        "command": "uv run --frozen graphene demo --driver scripted-local",
+        "truth_label": "SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF"
+      },
+      "adk-fake": {
+        "command": "uv run --frozen graphene demo --driver adk-fake",
+        "truth_label": "REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — NOT GEMINI OR INDEPENDENT-AGENT PROOF"
+      }
+    },
     "operations": [
       "search_repo",
       "read_file",
@@ -54,33 +93,42 @@
       "write_file",
       "run_fixed_test",
       "request_completion"
-    ],
-    "fixture": "Sanitized Auth source and consumer work with a Billing zero-dispatch denial.",
-    "live_execution_platform": "macOS with /usr/bin/sandbox-exec",
-    "browser_authority": "Read-only public projection; terminal and v2 services remain authoritative.",
-    "privately_captured": [
-      "authorized source and evidence bytes",
-      "bounded diffs and approved context",
-      "bounded fixed-test output"
-    ],
-    "not_publicly_projected": [
-      "raw source or diff bytes",
-      "prompt or approved-context text",
-      "test stdout or stderr",
-      "secrets, credentials, or private artifact bytes"
-    ],
-    "not_observed": [
-      "arbitrary shell or editor activity",
-      "whole-repository activity",
-      "hidden reasoning or chain of thought",
-      "push, pull request, deployment, or cloud state"
     ]
   },
+  "mission_capture_boundary": {
+    "authority": "Versioned mission contracts, validated immutable plan revision, append-only hash-chained events, and indexed materialized store state.",
+    "browser_authority": "Authenticated read-only public projection; operator changes use the idempotent CLI/store path.",
+    "public": [
+      "bounded task, dependency, worker, gate, policy, state, and blocker labels",
+      "template and artifact identifiers plus SHA-256 digests",
+      "test, resource, final-result, and explicit-unknown summaries"
+    ],
+    "private_or_excluded": [
+      "raw prompts, context, hidden reasoning, and chain of thought",
+      "credentials and unrestricted environment variables",
+      "raw command arguments, stdout, stderr, source, diffs, and private artifacts"
+    ],
+    "not_observed_or_not_proven": [
+      "activity outside Graphene-owned workers and explicit evidence adapters",
+      "arbitrary user processes or remote CPU and RAM",
+      "push, pull request, deployment, or user-branch mutation",
+      "live Gemini, Docker, Cloud Run, or Firestore behavior without captured smoke evidence"
+    ]
+  },
+  "mission_control_limits": {
+    "legacy_v2_adapter": "reserved; current mission-plan validation rejects legacy_auth_v2",
+    "replan": "records an operator request and pauses dispatch; no linked replacement revision is generated",
+    "retention": "policy metadata is durable; automatic expiry and purge are not implemented",
+    "cloud_streaming": "per-client two-second Firestore polling; no shared listener or fan-out; NOT PROVEN"
+  },
   "authority": {
-    "current": [
-      "backend/graphene/cli/main.py",
-      "backend/graphene/demo.py",
-      "backend/graphene/demo_adk.py",
+    "mission": [
+      "backend/graphene/orchestration",
+      "backend/graphene/cli/mission.py",
+      "demo/taskmaster",
+      "contracts/product_proof.json"
+    ],
+    "legacy_protocol": [
       "backend/graphene/lineage",
       "backend/graphene/viewer",
       "contracts/lineage_v2.json",
@@ -91,14 +139,17 @@
       "backend/graphene/app.py",
       "frontend",
       "Dockerfile"
-    ],
-    "fixture_mechanics": "contracts/golden_path.json and contracts/graph_mvp.json are shared operational fixture inputs. V2 consumes their frozen task, file, test, profile, and scope data; their legacy three-tool, API, loop, framework/model-policy, and graph fields are not current product, driver, runtime, or outcome truth."
+    ]
   },
   "deferred": [
-    "graph-to-agent retrieval or graph-generated context",
-    "real Gemini or other external live model",
-    "Linux fixed-test execution",
-    "whole-repository or arbitrary-repository capture",
-    "push, pull request, deployment, or cloud hosting"
+    "linked revision generation after a recorded replanning request and a browser command plane",
+    "automatic retention expiry and purge",
+    "full ADK/Gemini model-worker mission execution",
+    "arbitrary-repository code execution",
+    "owned idle STDIO MCP lifecycle cleanup",
+    "authenticated cloud-to-local executor claim/heartbeat/result protocol",
+    "shared Firestore listener and cloud stream fan-out",
+    "live Google Cloud deployment and submission video",
+    "five-person Mission Control comprehension study"
   ]
 }

@@ -24,12 +24,14 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "runs-on: ubuntu-24.04" in workflow
     assert "tests/process/test_verified_replay.py" in workflow
     assert "graphene demo --driver verified-replay" in workflow
+    assert "graphene mission replay taskmaster" in workflow
     assert "test_fixed_tests_cannot_read_ambient_checkout_files" in workflow
     assert "test_fixed_tests_cannot_read_or_write_host_files_or_use_network" in workflow
     assert "node --test frontend/test/*.test.mjs" in workflow
     assert "node --test tests/frontend/*.mjs" in workflow
     assert "node --check frontend/src/app.mjs" in workflow
     assert "node --check backend/graphene/viewer/static/reducer.mjs" in workflow
+    assert "node --check backend/graphene/orchestration/static/mission_reducer.mjs" in workflow
     assert (ROOT / ".nvmrc").read_text().strip() == "22"
 
     assert "Linux job is a negative portability gate" in threat_model

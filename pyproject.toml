@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "graphene"
-version = "0.1.0"
-description = "Evidence-backed review and handoff for bounded coding-agent work"
+version = "0.2.0"
+description = "Local-first mission control for bounded multi-agent coding work"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -26,6 +26,9 @@ dev = ["pytest>=8,<10"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/graphene"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"demo/taskmaster" = "graphene/_taskmaster"
 
 [tool.pytest.ini_options]
 addopts = "-ra"

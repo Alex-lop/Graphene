@@ -79,13 +79,14 @@ jobs:
           uv run --frozen pytest -q
           tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_ambient_checkout_files
           tests/unit/execution/test_adapter.py::test_fixed_tests_cannot_read_or_write_host_files_or_use_network
-      - name: Verified replay stays read-only and portable
+      - name: Verified replays stay read-only and portable
         run: |
           uv run --frozen pytest -q tests/process/test_verified_replay.py
           uv run --frozen graphene demo --driver verified-replay --no-open --exit-after-demo
+          uv run --frozen graphene mission replay taskmaster --no-open --exit-after-replay
 
   frontend:
-    name: Node 22 legacy + v2 viewer
+    name: Node 22 legacy + evidence + Mission Control
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -97,3 +98,4 @@ jobs:
       - run: node --test tests/frontend/*.mjs
       - run: node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs
       - run: node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs
+      - run: node --check backend/graphene/orchestration/static/mission_reducer.mjs backend/graphene/orchestration/static/mission_control.mjs

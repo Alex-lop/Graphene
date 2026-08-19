@@ -2,229 +2,217 @@
   <img src="docs/assets/Graphene_main_img.png" alt="Graphene" width="720">
 </p>
 
-# Graphene
+# Graphene Taskmaster
 
-**Graphene is an evidence-backed review and handoff layer for a developer supervising bounded coding-agent work. It shows the captured edits, tests, human corrections, approved context, and explicit unknowns behind a candidate, then passes only approved evidence into the next run.**
+**Graphene is a local-first mission control for bounded multi-agent coding work. Give it one engineering outcome; it validates a dependency-aware work graph, dispatches only policy-allowed isolated work, adapts to bounded failures, assembles accepted artifacts, verifies the result, and creates an isolated local commit only after explicit approval.**
 
-- **Primary user:** a developer supervising or taking over a coding-agent change.
-- **Painful moment:** deciding whether a candidate is trustworthy after a long run, correction, or handoff without reconstructing a transcript.
-- **Decision:** approve, reject, or hand off that exact candidate and its bounded evidence.
-- **Designed outcome (not yet measured):** a faster, more legible review with fewer unsupported changes, missed tests, and lost corrections.
+The primary user is a solo developer or small technical lead who otherwise becomes the scheduler for two to five coding agents. The product outcome is a verified review bundle and optional Graphene-owned local commit—not a transcript, decorative agent animation, or autonomous push.
 
-The graph is a read-only decision surface, not the authority. Verified v2 events, private artifacts, policy, and terminal decisions remain authoritative.
+> Shipped proof: deterministic mission replay and a macOS scripted fixture through the real durable scheduler. **NOT PROVEN:** a live Gemini mission, real Docker execution on a responsive daemon, a deployed Cloud Run/Firestore service, arbitrary-repository execution, or hackathon submission readiness.
 
-## See it quickly: verified replay
+## See the product in one command
 
-```bash
-uv sync --frozen
-uv run --frozen graphene demo --driver verified-replay
-```
-
-This cross-platform path opens a checked-in public event fixture materialized through the v2 verifier and protected by a checked-in SHA-256 digest. It requires no macOS isolation, credentials, model dispatch, authoritative writes, human attestation, or new test execution. Terminal and viewer stay labeled:
-
-> **VERIFIED REPLAY — NO LIVE AGENT, HUMAN ATTESTATION, OR NEW TEST EXECUTION**
-
-## Run the interactive protocol
-
-On macOS with Python 3.13, Git, `uv`, and executable `/usr/bin/sandbox-exec`:
+After `uv sync --frozen`:
 
 ```bash
-uv run --frozen graphene demo --driver scripted-local
+uv run --frozen graphene mission replay taskmaster
 ```
 
-`scripted-local` is a deterministic **workflow fixture**, not independent-agent or Google ADK proof. It creates a private runtime, starts the authenticated loopback viewer, and pauses at real terminal branches for correction scope, memory approval/rejection, and candidate commit/rejection. Only an interactive TTY can create `human_attested`; automation is labeled `simulated_fixture` or fails closed. An approved final branch creates a verifiable Git commit only inside the retained isolated fixture checkout—never in the user's checkout, and never pushed.
+This opens Mission Control from a checked-in, SHA-256-verified generated fixture. It creates no mission state and executes no worker, test, model, or cloud call. The page and terminal stay labeled:
 
-Terminal and viewer stay labeled:
+> **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD**
 
-> **SCRIPTED LOCAL WORKFLOW FIXTURE — NOT INDEPENDENT-AGENT OR GOOGLE ADK PROOF**
-
-The Google ADK integration proof uses the same bounded protocol:
-
-```bash
-uv run --frozen graphene demo --driver adk-fake
-```
-
-It uses the real Google ADK Runner, session, and Graphene tool routing with a deterministic fake model and zero external model calls. It is always labeled:
-
-> **REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — NOT GEMINI OR INDEPENDENT-AGENT PROOF**
-
-There is no silent driver fallback.
-
-## Immediate boundaries
-
-- **Captured operations:** exactly `search_repo`, `read_file`, `open_evidence`, `write_file`, `run_fixed_test`, and zero-argument `request_completion` through the scoped v2 service.
-- **Live execution:** only the sanitized Auth fixture on macOS with `/usr/bin/sandbox-exec`; Linux and Docker cannot run the v2 fixed-test workflow.
-- **Negative proof:** the Billing handoff is denied before consumer construction and records zero model dispatch.
-- **Privately captured:** authorized source/evidence bytes, bounded diffs, approved context, and bounded test output may exist in owner-private local artifacts.
-- **Not publicly projected:** raw source, diffs, prompts/context text, test stdout, secrets, credentials, and private artifact bytes never enter the viewer or replay fixture.
-- **Not observed:** arbitrary shell/editor activity, whole-repository activity, hidden reasoning, pushes, pull requests, deployments, and cloud state remain outside the six-operation boundary.
-- **Causality:** Graphene verifies context compilation, inclusion, injection, opening/reference, and later actions; it does not claim approved context caused or improved an edit.
-- **Deferred:** the viewer remains read-only. Graph-derived context is not fed back into an agent.
-
-The machine-readable version of this current truth is [`contracts/product_proof.json`](contracts/product_proof.json).
-
-## Review story
-
-1. A deterministic source workflow fixture reads the bounded Auth files, makes an allowlisted edit, records a fixed-test receipt, and reaches a review gate.
-2. A developer anchors a correction to captured evidence and chooses the broad or narrow frozen scope.
-3. The developer approves or rejects one immutable memory revision. Rejection remains inspectable and does not create an approved-context claim.
-4. Billing is denied with zero dispatch. An allowed Auth handoff compiles included and excluded evidence for a fresh isolated consumer runtime.
-5. The consumer runtime explicitly opens/references allowed evidence, rereads source, performs bounded operations, and records a bound retest. The checked-in replay includes the explicit `open_evidence` relationship while remaining a fixture rather than a captured live run.
-6. The developer rejects the candidate or explicitly chooses **Approve and create isolated local commit**. The approved result is local-only: no push, PR, deployment, or user-checkout mutation.
-
-Delivery and ordering do not prove that context caused the later edit. The viewer renders explicit support, authorization, inclusion, and handoff relationships; it does not infer relevance, importance, correctness, or hidden causality.
-
-## Driver proof matrix
-
-| Driver | What it proves | What it does not prove |
-|---|---|---|
-| `verified-replay` | Checked-in event fixture materialized through v2 verification, hash-checked public projection, explicit context opening/reference, and the decision-view experience | Captured live execution, human attestation, ADK, Gemini, or new tests |
-| `scripted-local` | Bounded v2 protocol, policy, real TTY choices, isolated retest, and approved isolated local Git result | Independent model behavior, ADK, Gemini, context efficacy, push, PR, or deployment |
-| `adk-fake` | Real Google ADK Runner/session/tool routing with a deterministic fake model | Gemini, autonomous intelligence, independent-agent quality, push, PR, or deployment |
-| Future external-live mode | Only behavior observed in a separately authorized, credentialed run | Any silent substitution by replay, fake, or scripted execution |
-
-No real Gemini driver, provider-credential workflow, or cloud deployment is shipped.
-
-## Decision surface
-
-The first viewport leads with a deterministic Review Brief: current attention, changed paths, bound tests, recorded decisions and corrections, included/excluded handoff context, final outcome, and explicit unknowns. Each established fact focuses its committed support. Missing facts render as **not established by captured evidence**.
-
-The bounded Cytoscape canvas remains available for inspection:
-
-- fill color encodes semantic kind, never correctness;
-- record and relationship sizes are stable rather than activity, importance, or impact signals;
-- non-color marks distinguish human, simulated, policy, runtime, bound, model-proposed, and server-derived evidence classes;
-- **Decision evidence** shows the exact pending or recorded-outcome support spine; **Capture audit** exposes the wider bounded topology;
-- node and relationship receipts expose committed public source references, run/sequence identity, event identity, and digest identifiers;
-- checked-in replay opens on the final recorded checkpoint, paused, with historical scrubbing opt-in;
-- explicit support excludes generic membership and unrelated denial branches;
-- invalid evidence replaces normal state with `EVIDENCE_INVALID`.
-
-### Viewer update: search and run checkpoints
-
-The authoritative viewer in `backend/graphene/viewer/static/` now adds a white, decision-first workbench around the same bounded public projection:
-
-- **Search captured evidence** finds current-checkpoint public facts, records, paths, runs, statuses, digests, and explicit relationship types. Results report their total when the visible list is capped, open the existing sanitized receipts, and never query private artifacts or a new backend index. `/` focuses search, Arrow Down enters the result list, and Escape clears it.
-- **Run checkpoints** is a collapsible right rail on wide screens and an inline section on narrower screens. It shows the read-only verified history slider, current decision anchor/stage, full graph digest, verified family heads, and projected run records.
-- **Evidence composition** reports established, pending, historical, and limits/not-established Review Brief fact counts. These bars are explicitly not confidence, correctness, progress, or completeness measures.
-- **Context provenance** shows the separately captured compile, inject, and explicit-open receipts; approved memory scopes/revisions; and denied handoffs with an explicit zero-dispatch receipt. “Memory” here is approved context evidence, not RAM or a model context-window meter.
-- **Provider token usage remains “not captured.”** Graphene does not estimate tokens from bytes, records, tool calls, or replay position. A numeric token/cache display requires a new authoritative provider receipt before it belongs in this UI.
-- **Checkpoint-safe interaction** rebuilds search from the selected snapshot and closes stale fact/drawer state when replay or live evidence changes. The initial snapshot counts as checkpoint 1, so a snapshot plus four deltas is labeled 5 of 5.
-- **Visual polish** is light-only, uses stronger focus/support/invalid-evidence contrast, and limits motion to short CSS surface transitions with a reduced-motion fallback. The graph remains deterministic and no motion encodes thought, importance, causality, or correctness.
-
-The layout borrows the useful searchable-workbench and inspection-rail pattern associated with current coding-agent interfaces, but not their reasoning-stream semantics. This is deliberate: official DeepSeek cache metrics are backed by provider-reported usage fields, while Graphene currently has no equivalent public token receipt ([DeepSeek context-cache guide](https://api-docs.deepseek.com/guides/kv_cache)). The refresh also keeps the [Google Cloud Tech hackathon overview](https://www.youtube.com/watch?v=5Xw3LtPeByE) in view: its collaborative-partner theme maps here to recorded questions, corrections, approvals, scoped context, and explicit handoffs—not an animation of hidden cognition.
-
-Three.js was evaluated but not added. Cytoscape already provides the offline deterministic 2D renderer, selection, hit testing, and accessible relationship mirror. A decorative WebGL layer would add weight and failure modes without answering another provenance question; a replacement renderer remains behind the graph-necessity gate below.
-
-## Architecture and authority
+The default surface is a keyboard-accessible task table and one `Needs you` brief. A secondary graph shows only:
 
 ```text
-scripted fixture / Google ADK fake / MCP
-                  |
-                  v
-        ScopedApplicationService
-                  |
-                  v
- committed + verified v2 SQLite events ---> private artifacts
-                  |
-                  v
- deterministic public projection ---> authenticated loopback viewer
+Goal -> Tasks -> Workers/Gates -> Integration -> Verification -> Result
 ```
 
-The current path is `graphene` / `graphene-mcp`, the v2 lineage services, and the read-only viewer. `contracts/golden_path.json` and `contracts/graph_mvp.json` are shared operational fixture inputs; their legacy three-tool, API, loop, catalog-framework, and graph fields are not current product, driver, runtime, or outcome truth. `backend/graphene/app.py`, the root `frontend/`, and the root `Dockerfile` are compatibility-only legacy surfaces. The Docker image starts the mutable legacy HTTP demo with a persistent compatibility banner; it is not authoritative v2 and does not provide Linux fixed-test support.
+Every edge is an explicit committed relationship. Timing and visual proximity never imply causality, importance, correctness, or hidden reasoning.
 
-See the [documentation history index](docs/HISTORY.md), [privacy boundary](docs/data_residency.md), and [executor threat model](docs/EXECUTOR_THREAT_MODEL.md).
+## Run the scripted mission
 
-## CLI reference
+The executable fixture requires macOS, Python 3.13, Git, `uv`, and executable `/usr/bin/sandbox-exec`. Initialize a policy in any disposable Git repository, then propose the exact checked-in scenario:
 
-The demo owns its runtime. Advanced commands use an absolute owner-private `GRAPHENE_LINEAGE_DB`; `--json` emits canonical JSON/NDJSON.
+```bash
+uv run --frozen graphene init --repo /path/to/disposable-repo
+uv run --frozen graphene mission start \
+  --repo /path/to/disposable-repo \
+  --goal "Add redacted JSON and Markdown status reports to the fixture CLI." \
+  --driver scripted-local
+```
+
+The default command persists a validated `proposed` mission and returns its ID. In an interactive TTY it also offers a plan-approval prompt. Otherwise, review the proposal and execute it explicitly:
+
+```bash
+uv run --frozen graphene mission approve-plan MISSION_ID --revision 1
+```
+
+For deterministic automation, adding `--auto-approve` executes immediately but records `simulated_fixture`, never human attestation. `scripted-local` deliberately operates on Graphene's small checked-in status-report fixture, not the supplied repository. The repository argument supplies an explicit initialized policy gate; the fixture has its own frozen policy and base. After approval, the run proves that the operational DAG blocks prerequisites, dispatches two disjoint workers concurrently, records fenced leases and accepted artifacts, performs one genuine failing check followed by one bounded repair, fans in through assembly, and verifies that exact candidate.
+
+> **SCRIPTED LOCAL MISSION FIXTURE — NOT GEMINI, ARBITRARY-REPOSITORY, OR CLOUD PROOF**
+
+Approved execution stops at `awaiting_result`. Rejecting creates no commit; approval requires the exact candidate digest and creates one commit only under a durable `refs/graphene/results/...` ref in Graphene's private fixture repository:
+
+```bash
+uv run --frozen graphene mission reject-result MISSION_ID --candidate-sha SHA256
+uv run --frozen graphene mission approve-result MISSION_ID --candidate-sha SHA256
+```
+
+Neither path changes the submitted repository branch or working tree. Graphene never pushes, opens a pull request, deploys, or mutates a user branch.
+
+## Product loop and authority
+
+```text
+outcome + ProjectPolicy
+          |
+          v
+ model/scripted Plan proposal --> deterministic validator
+                                  |
+                                  v
+                  SQLite mission/event authority
+                    |       |          |
+              fenced DAG  resource   read-only
+              scheduler   governor   Mission Control
+                    |
+          isolated scripted workers
+                    |
+          generic attempt evidence
+                    |
+          assembly -> bound verification
+                    |
+          reject OR approved isolated local commit
+```
+
+- `backend/graphene/orchestration/` is the versioned mission, scheduler, evidence, projection, runtime, and cloud boundary.
+- The SQLite store atomically appends canonical hash-chained events with materialized mission/task/attempt/lease/publication/gate state. Normal polling reads that indexed state and incremental tails.
+- Claims are transactional; fencing tokens increase monotonically. Dispatch is at least once, while committed attempt effects and publications are idempotent and stale workers are rejected.
+- Plans are immutable after approval. Cycles, missing artifacts, overlapping parallel write scopes, forbidden paths/commands, policy excess, and missing assembly/verification outcomes fail validation.
+- Mission Control is authenticated and read-only. Operator decisions use the same durable store semantics through the CLI; no browser command plane ships in this slice.
+- Generic attempts use mission evidence v1. The typed legacy-v2 link is reserved for a future trusted Auth bridge; current mission-plan validation rejects it.
+- `backend/graphene/app.py`, root `frontend/`, and the root `Dockerfile` remain compatibility-only legacy surfaces; they are not Mission Control or mission authority.
+
+The accepted boundary and transition tables are in [`docs/TASKMASTER_PRODUCT_CONTRACT.md`](docs/TASKMASTER_PRODUCT_CONTRACT.md). Machine-readable product truth is in [`contracts/product_proof.json`](contracts/product_proof.json).
+
+## Proof matrix
+
+| Path | What it establishes | What it does not establish |
+|---|---|---|
+| `graphene mission replay taskmaster` | Hash-verified deterministic generated projection, deltas, task evidence drill-down, accessibility contracts, and the complete illustrative product story | Captured execution history, new execution, live workers, human attestation, Gemini, Docker, or cloud |
+| scripted proposal + `graphene mission approve-plan ...` | Real durable scheduler, two concurrent fixture workers, sandboxed fixture checks, retry, fan-in, assembly, verification, and optional isolated result | Independent model behavior, arbitrary repositories, Gemini, or cloud |
+| ADK fake planner tests | Real Google ADK Runner/session, typed `Plan`, one-call bound, deterministic validator, and sanitized receipts with a deterministic fake model | Gemini or model-worker quality |
+| Gemini ADK planner | Credential-gated proposal path for exact `gemini-3.5-flash`, with no fallback | A completed live call or full live worker mission; not run on this host |
+| Docker executor | Frozen hardened container arguments, scoped repository view, output/time/resource limits, and owner-bound cleanup tests | A real container run; the available daemon did not respond |
+| Cloud Run + Firestore packaging | Reproducible private read-only control-plane image and transactional Firestore adapter tests | Deployment, authenticated remote smoke, or repository execution in Cloud Run |
+| `graphene demo ...` | Preserved Auth evidence/review/handoff protocol tour | The Taskmaster product loop |
+
+The real ADK/Gemini path never substitutes replay, a fake model, or scripted output. Its credential-gated smoke is skipped as `NOT PROVEN` unless explicitly enabled with valid credentials.
+
+## Mission Control
+
+Mission Control answers from committed state:
+
+- the goal and explicit success criteria;
+- queued, ready, running, blocked, retrying, verifying, failed, cancelled, and done work;
+- the critical blocker path, worker and fenced attempt ownership;
+- one consequential decision or `No decision needed`;
+- measured/estimated/unavailable resource semantics and dispatch headroom;
+- assembly, bound verification, final outcome, supporting evidence, and unknowns.
+
+Task detail includes its contract, dependencies, scopes, command-template IDs, attempts, publications, resource references, and generic evidence. Raw prompts, environment variables, command arguments, secrets, private artifacts, stdout/stderr, and chain-of-thought are excluded from the public projection. The old v2 viewer is linked only for an actual legacy-v2 attempt.
+
+The task table is the primary interface; the Cytoscape graph is secondary. Both have non-color status labels, keyboard paths, narrow-width behavior, deterministic replay, stale-state messaging, and snapshot recovery.
+
+## Safety and Resource Sentinel
+
+- `graphene init` writes a deny-by-default, narrowly scoped policy template. Review its read/write globs and exact argv-form command templates before real work.
+- A Git worktree provides edit isolation. **It is not a security sandbox.** Model-written code may run only through a separately proven OS/container boundary; unsupported hosts fail before execution.
+- The scripted fixture reuses the existing macOS `sandbox-exec` boundary. The generic Docker boundary uses no network, non-root execution, a read-only root, dropped capabilities, no-new-privileges, bounded CPU/memory/PIDs/output/time, and a scoped no-symlink repository view. A live Docker smoke remains unproven.
+- No arbitrary shell is granted. Shells, interpreter `-c`, installers, Git hooks/config, extra argv, host mounts, ambient credentials, and policy-template drift are rejected.
+- Resource samples are bounded. Only strongly identified Graphene-owned process groups can be signaled, after PID creation identity and ownership checks.
+- Managed process resources, estimated context footprint, and MCP/provider telemetry are separate. Remote/shared CPU or RAM is advisory or unavailable and cannot trigger an automatic kill.
+- **Skills are not resource-isolation units.** Instruction and schema bytes can be measured and token counts estimated; per-skill CPU/RAM is not fabricated.
+- **Stateless MCP is sessionless, not processless.** Remote CPU/RAM stays unavailable without an authoritative receipt. Owned idle STDIO MCP lifecycle cleanup is not implemented in this slice.
+- The scheduler has a tested optional governor that can reduce or stop only new dispatch from measured isolated managed-memory pressure. The scripted fixture does not continuously feed that governor or exercise hard termination; that end-to-end Resource Sentinel loop remains partial. Unrelated, shared, remote, and cloud processes are never targets.
+
+See the existing [executor threat model](docs/EXECUTOR_THREAT_MODEL.md) and [data residency boundary](docs/data_residency.md). They retain the legacy Auth details; the Taskmaster-specific boundary is the product contract above.
+
+## Google path and submission truth
+
+The selected category is [The Taskmaster](https://allthingsagentichackathon.devpost.com/). Collaborative Partner is the bounded decision interaction; Fortified Enterprise Fleet is the lease, policy, isolation, budget, and evidence layer—not two additional product modes.
+
+The repository pins Google ADK 2.5 and implements a typed one-turn planner with content capture disabled. The eligible model is explicitly `gemini-3.5-flash`. The credentialed product path persists only a model-proposed plan for review; it does not execute workers:
+
+```bash
+uv run --frozen graphene mission start \
+  --repo PATH \
+  --goal GOAL \
+  --success-criterion CRITERION \
+  --driver gemini-adk
+```
+
+No credential was available for a live call, so Gemini remains **NOT PROVEN**. Missing or invalid credentials fail without scripted or replay fallback.
+
+`deploy/cloudrun/` packages an authenticated read-only Mission Control backed by explicit Firestore configuration. Cloud Run cannot access a developer's local repository; the required authenticated outbound local-executor claim/heartbeat/result protocol is not complete. No project was authorized and `gcloud` was unavailable, so the service is **NOT DEPLOYED**. Reproducible instructions are in [`deploy/cloudrun/README.md`](deploy/cloudrun/README.md).
+
+Cloud streaming currently polls Firestore once per client at a two-second interval; there is no shared listener or fan-out, so that runtime remains **NOT PROVEN**.
+
+## CLI
+
+Run `graphene doctor --repo PATH` first. It reports availability without echoing credentials and never treats configuration as live proof.
 
 | Command | Purpose |
 |---|---|
-| `graphene demo --driver verified-replay` | Open the cross-platform verified public replay |
-| `graphene demo --driver scripted-local` | Run the macOS deterministic workflow fixture and interactive review branches |
-| `graphene demo --driver adk-fake` | Run the real ADK Runner with a deterministic fake model |
-| `graphene run TASK --profile PROFILE` | Bootstrap or exactly replay one frozen v2 run |
-| `graphene watch RUN [--after-seq N] [--snapshot]` | Follow a verified committed suffix |
-| `graphene inspect EVIDENCE --run RUN` | Resolve an item authorized by that verified run |
-| `graphene why PATH --run RUN` | Show explicit evidence relationships and unknowns |
-| `graphene replay RUN --speed N` | Pace committed events without executing work |
-| `graphene review RUN` | Derive bounded changeset, hunk, and test evidence |
-| `graphene feedback HUNK --event EVENT --run RUN --message TEXT` | Anchor a private correction |
-| `graphene answer QUESTION --choice CHOICE` | Record the bounded scope branch |
-| `graphene memory approve|reject MEMORY` | Decide one immutable memory revision |
-| `graphene handoff RUN --to PROFILE --task TASK [--start]` | Compile a denial or included-only handoff |
-| `graphene promote CONSUMER_RUN --decision commit\|reject` | Record the explicit bounded final decision; commit creates only the isolated local result |
+| `graphene init --repo PATH` | Create one explicit bounded project policy |
+| `graphene doctor --repo PATH` | Report policy, isolation, driver, telemetry, and cloud readiness |
+| `graphene mission replay taskmaster` | Launch the portable verified Mission Control replay |
+| `graphene mission start ...` | Persist a scripted or Gemini plan proposal; scripted execution requires review, explicit approval, or simulated `--auto-approve` |
+| `graphene mission status MISSION` | Print one committed mission snapshot |
+| `graphene mission watch MISSION` | Emit committed mission state/events according to its flags |
+| `graphene mission open MISSION` | Open authenticated local Mission Control |
+| `graphene mission pause MISSION` | Pause new mission dispatch |
+| `graphene mission resume MISSION` | Resume a paused mission |
+| `graphene mission cancel MISSION` | Cancel bounded work; requires exact mission-ID confirmation |
+| `graphene mission retry MISSION --task TASK` | Retry one eligible failed task within its cap |
+| `graphene mission approve-plan MISSION --revision N` | Approve exactly one immutable plan revision |
+| `graphene mission decide-gate MISSION --gate GATE --decision VALUE` | Record an allowed gate decision |
+| `graphene mission approve-result ...` | Approve the exact candidate and create its isolated local result |
+| `graphene mission reject-result ...` | Reject the exact candidate and create no commit |
+| `graphene mission replan ...` | Record a replan request and pause dispatch; no linked replacement revision is generated |
 
-`graphene-mcp` is the official STDIO integration for the same six scoped operations. The [MCP client template](docs/mcp_client_config.example.json) and [redacted demo transcript](docs/demo_transcript.md) are advanced references. The legacy HTTP compatibility API uses `Authorization: Bearer <GRAPHENE_DEMO_TOKEN>` and must not be treated as v2 authority.
+Legacy `graphene run`, `graphene watch`, `graphene inspect`, `graphene why`, `graphene replay`, `graphene review`, `graphene feedback`, `graphene answer`, `graphene memory`, `graphene handoff`, `graphene promote`, and `graphene demo` remain available for the Auth protocol tour. `graphene-mcp` still exposes that tour's six scoped operations; it is not the mission scheduler.
 
-## Local verification
+## Verification
 
-The checked-in workflow defines the exact gates; this README does not claim a hosted run for the current commit.
+The default suite is deterministic and credential-free:
 
 ```bash
 uv lock --check
 uv sync --frozen
 uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial --ignore=tests/process/test_mcp_stdio.py
 uv run --frozen pytest -q tests/process/test_mcp_stdio.py
+uv run --frozen graphene mission replay taskmaster --no-open --exit-after-replay
 node --test frontend/test/*.test.mjs
 node --test tests/frontend/*.mjs
 node --check frontend/src/app.mjs frontend/src/graph.mjs frontend/src/workflow.mjs
-node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs
+node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/static/viewer.mjs backend/graphene/orchestration/static/mission_reducer.mjs backend/graphene/orchestration/static/mission_control.mjs
 git diff --check
 ```
 
-Automated local gates pass; hosted Ubuntu CI, real-browser visual QA, and the five-person graph-necessity study are not claimed until they are actually run.
+Opt-in live smokes are proof gates, not default passing substitutes:
 
-## Roadmap
+```bash
+GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py
+docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest .
+GRAPHENE_RUN_DOCKER_SMOKE=1 uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py
+```
 
-- **Now:** prove evidence-backed review, bounded handoff, and local-only approval outcomes.
-- **Next:** run the graph-necessity comparison with real unfamiliar developers; demote the graph if it does not reduce errors or time.
-- **Then:** separately authorize and prove an external live-model path without fallback.
-- **Later:** design equivalent Linux isolation and durable artifact retention only after evidence warrants them.
+## What this sprint actually shipped
 
-Graph-to-agent retrieval, graph-generated prompts, and automatic context selection remain explicitly deferred.
+- A separate strict mission/event/evidence contract, SQLite materialized store, validator, fenced deterministic scheduler, recovery and operator commands.
+- A six-task non-Auth fixture with fan-out/fan-in, actual overlap, a failed check plus bounded repair, assembly, exact verification, rejection, and isolated local approval.
+- A table-first authenticated Mission Control, deterministic SHA-verified replay, NDJSON deltas, stale recovery, and task-to-attempt evidence drill-down.
+- A real ADK Runner planner seam, a fail-closed hardened Docker boundary, truthful Resource Sentinel semantics, Firestore transactions, and private Cloud Run packaging.
+- Preservation of the legacy Auth evidence viewer and protocol tour without weakening its frozen contracts.
 
-## Experimental pixel graph inside the terminal
-
-**Feasibility: yes, but it is terminal-emulator-specific and is not shipped yet.** This would be a real raster bubble map, not an ANSI, ASCII, or Unicode-block diagram. Modern emulators can draw images through escape protocols:
-
-| Transport | What it renders | Graphene role |
-|---|---|---|
-| [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) | Arbitrary raster pixels with reusable placements, updates, deletion, pixel offsets, and a capability query | First experimental target |
-| [iTerm2 inline images](https://iterm2.com/3.5/documentation-images.html), also supported by [WezTerm](https://wezterm.org/imgcat.html) | PNG or other raster images sized in cells or pixels | Secondary full-frame redraw path |
-| [Sixel](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) | Bitmap graphics encoded in six-pixel vertical groups | Later fallback only; support varies |
-
-The image protocol supplies pixels, not clickable graph objects. Graphene still has to own terminal input, selection, hit-testing, redraws, resize handling, and cleanup. A small controller script is enough for a feasibility spike; a one-line image command is not enough for interaction.
-
-### Smallest credible prototype
-
-1. Start replay-only and read-only. Consume the same verified public [`GraphSnapshot` and deltas](backend/graphene/viewer/contract.py) that feed the browser; never read private artifacts or create a second authority.
-2. Reuse the existing pure [reducer and deterministic positions](backend/graphene/viewer/static/reducer.mjs), including stable bubble sizing and explicit decision-support paths. Do not build another graph model or force-layout engine.
-3. Render only the current-decision neighborhood to a raster frame and transmit it through Kitty graphics. If the capability query fails, open or print the existing browser viewer URL—there is deliberately no character-art fallback.
-4. Own a small alternate-screen interaction loop: `←/→` changes replay checkpoint, `↑/↓` selects a bubble, `Enter` opens the same sanitized detail, `p` highlights verified support, `f` fits, and `q` restores the terminal and exits.
-5. Add mouse selection only after keyboard navigation works. [SGR mouse reporting](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) can report cells, and mode `1016` can report pixels where supported; Graphene must map those coordinates back to bubble circles.
-
-For the fastest visual probe, [Graphviz 9+ can emit Kitty graphics directly](https://graphviz.org/docs/outputs/kitty/) with `dot -Tkitty`. That proves pixel rendering from a script, but it is a static spike—not the product path—because it adds a system dependency and would otherwise duplicate Graphene's existing layout and interaction semantics.
-
-### Ship gate
-
-- one named terminal target first: Kitty without `tmux`;
-- replay truth label remains visible and the public/private boundary is unchanged;
-- selection and verified-support highlighting match the browser for the same snapshot;
-- resize, interruption, and normal exit leave no image placement or terminal mode behind;
-- a short judge test shows the terminal view answers at least one review question more clearly or quickly than the Review Brief.
-
-Until that gate passes, the authenticated browser viewer remains the supported interactive bubble map. Do not add a cross-emulator abstraction, graph database, TUI framework, or ASCII fallback for a speculative demo.
-
-## Recommended next changes
-
-These are proposed proof-hardening steps, not current capabilities:
-
-1. **Ship and prove the required external path.** Add a separately authorized real Gemini driver and Google Cloud deployment with conspicuous driver truth, no replay/fake fallback, and recorded evidence that can be shown in the unedited submission demo.
-2. **Bind every Review Brief to one decision subject.** Select `run_id + candidate_patch_sha256` first, then include a changeset, fixed-test receipt, recorded decision, and local result only when each carries that exact binding. Ambiguous or sibling evidence should remain **not established**.
-3. **Prove context continuity by identity, not sequence.** Establish compile → inject → open only when the same context-brief ID and SHA-256 appear in all three receipts. Keep delivery, timing, layout, and later edits explicitly non-causal.
-4. **Add provider usage only as a bound receipt.** If token visibility is still useful after the real provider path exists, capture provider-reported counts at the returned model-event boundary and bind them to provider, model, run, invocation, response/turn identity, and streaming-deduplication rules. Public projection and privacy review must precede any token bar; hidden reasoning, estimated savings, and confidence remain out of scope.
-5. **Run the graph-necessity study before adding Three.js or another renderer.** Compare the Review Brief plus evidence table against the current graph with unfamiliar developers, using review time and missed-evidence errors. Add WebGL only if it answers a named review question better; otherwise demote the graph and keep the terminal pixel experiment deferred.
-6. **Separate hypotheses from proof inputs.** Reclassify the designed outcome as a hypothesis in `contracts/product_proof.json`, and move `golden_path.json` / `graph_mvp.json` out of current authority into an explicit fixture-input category so legacy relationship names cannot be mistaken for current semantics.
-7. **Complete real-browser accessibility and visual QA.** Exercise keyboard order, search empty/clear/result activation, responsive inspector layout, fact → drawer → Escape focus restoration, graph selection announcements, filter-to-empty reset, replay scrubbing, reduced motion, forced colors, contrast, and the invalid-evidence overlay. Current automated checks cover reducer and static DOM contracts, not a real browser or screen reader.
+Still missing for a final hackathon submission: captured real Gemini worker proof, a responsive proven execution container, an authorized deployed Cloud Run/Firestore smoke, the local-executor cloud protocol, linked replan-revision generation, automatic retention/purge, an unedited public demo video, and the five-person comprehension study. See [`simplreadme.md`](simplreadme.md) for the short judge path and [`docs/HISTORY.md`](docs/HISTORY.md) for historical versus current authority.
