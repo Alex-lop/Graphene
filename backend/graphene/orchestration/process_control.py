@@ -34,7 +34,7 @@ class OwnedProcess:
     executable: str
 
 
-def _process_identity(pid: int) -> tuple[int, str, str]:
+def _process_identity(pid: int) -> tuple[int, str, str, str]:
     if pid <= 1 or not Path("/bin/ps").is_file():
         raise ProcessControlError("owned process identity is unavailable")
     try:
@@ -45,6 +45,8 @@ def _process_identity(pid: int) -> tuple[int, str, str]:
                 "pgid=",
                 "-o",
                 "lstart=",
+                "-o",
+                "state=",
                 "-o",
                 "comm=",
                 "-p",
@@ -59,14 +61,14 @@ def _process_identity(pid: int) -> tuple[int, str, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise ProcessControlError("owned process identity is unavailable") from error
-    fields = result.stdout.strip().split(None, 6)
-    if result.returncode or len(fields) != 7:
+    fields = result.stdout.strip().split(None, 7)
+    if result.returncode or len(fields) != 8:
         raise ProcessControlError("owned process is no longer running")
     try:
         pgid = int(fields[0])
     except ValueError as error:
         raise ProcessControlError("owned process identity is invalid") from error
-    return pgid, " ".join(fields[1:6]), fields[6]
+    return pgid, " ".join(fields[1:6]), fields[6], fields[7]
 
 
 class OwnedProcessRegistry:
@@ -85,14 +87,29 @@ class OwnedProcessRegistry:
         return self.directory / (sha256_hex(attempt_id.encode()) + ".json")
 
     def record(
-        self, dispatch: Dispatch, process: subprocess.Popen[str], executable: str
+        self,
+        dispatch: Dispatch,
+        process: subprocess.Popen[str],
+        executable: str,
+        replacement_executables: Sequence[str] = (),
     ) -> None:
-        pgid, started_at, observed_executable = _process_identity(process.pid)
-        executable_path = Path(executable)
-        if not executable_path.is_absolute() or not executable_path.is_file():
-            raise ProcessControlError("owned process executable is unavailable")
-        expected_executable = str(executable_path)
-        if pgid != process.pid or observed_executable != expected_executable:
+        pgid, started_at, state, observed_executable = _process_identity(process.pid)
+        allowed_executables: set[str] = set()
+        for value in (executable, *replacement_executables):
+            executable_path = Path(value)
+            if (
+                not executable_path.is_absolute()
+                or not executable_path.is_file()
+                or not os.access(executable_path, os.X_OK)
+            ):
+                raise ProcessControlError("owned process executable is unavailable")
+            allowed_executables.add(str(executable_path))
+            allowed_executables.add(str(executable_path.resolve(strict=True)))
+        if (
+            state.startswith("Z")
+            or pgid != process.pid
+            or observed_executable not in allowed_executables
+        ):
             raise ProcessControlError(
                 "child process did not establish its owned process group"
             )
@@ -102,7 +119,7 @@ class OwnedProcessRegistry:
             process.pid,
             pgid,
             started_at,
-            expected_executable,
+            observed_executable,
         )
         target = self._path(dispatch.attempt_id)
         temporary = self.directory / f".{target.name}.{secrets.token_hex(12)}.tmp"
@@ -208,7 +225,14 @@ class OwnedProcessRegistry:
             except ProcessLookupError:
                 return False
             raise
-        if current != (owned.pgid, owned.started_at, owned.executable):
+        pgid, started_at, state, executable = current
+        if state.startswith("Z"):
+            return False
+        if (pgid, started_at, executable) != (
+            owned.pgid,
+            owned.started_at,
+            owned.executable,
+        ):
             raise ProcessControlError("owned process identity changed")
         return True
 
@@ -260,14 +284,21 @@ class OwnedProcessRegistry:
     def signal(self, dispatch: Dispatch, requested: int) -> None:
         self._validate_signal(requested)
         owned = self.validate(dispatch)
-        os.killpg(owned.pgid, requested)
+        self._kill_group(owned, requested)
+
+    @staticmethod
+    def _kill_group(owned: OwnedProcess, requested: int) -> None:
+        try:
+            os.killpg(owned.pgid, requested)
+        except ProcessLookupError:
+            return
 
     def signal_prepared(self, owned: OwnedProcess, requested: int) -> None:
         """Signal an identity captured before a mission-state transition."""
 
         self._validate_signal(requested)
         if self._live_identity(owned):
-            os.killpg(owned.pgid, requested)
+            self._kill_group(owned, requested)
 
     def terminate_owned(self, owned: OwnedProcess, *, timeout: float = 2) -> None:
         """Terminate a prevalidated group, confirm absence, then remove its exact record."""
@@ -373,7 +404,20 @@ class ControlledProcessRunner:
         last_heartbeat = last
         try:
             try:
-                self.registry.record(self.dispatch, process, arguments[0])
+                replacements = (
+                    (arguments[3],)
+                    if len(arguments) > 3
+                    and arguments[0] == "/usr/bin/sandbox-exec"
+                    and arguments[1] == "-p"
+                    and arguments[3] == sys.executable
+                    else ()
+                )
+                self.registry.record(
+                    self.dispatch,
+                    process,
+                    arguments[0],
+                    replacements,
+                )
                 registered = True
             except Exception:
                 os.killpg(process.pid, signal.SIGKILL)
