@@ -140,6 +140,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", dest="json_mode")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    from .mission import register_commands
+
+    register_commands(commands)
+
     run = commands.add_parser("run", allow_abbrev=False)
     run.add_argument("task", choices=tuple(item.value for item in TaskId))
     run.add_argument("--profile", required=True, choices=_PROFILES)
@@ -1454,6 +1458,10 @@ def _write_result(value: dict[str, object], *, json_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command in {"init", "doctor", "mission"}:
+        from .mission import handle as handle_mission
+
+        return handle_mission(args, json_mode=args.json_mode)
     if args.command == "run":
         return _run(args)
     if args.command == "demo":

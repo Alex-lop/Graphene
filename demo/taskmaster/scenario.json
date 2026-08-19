@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "scenario_id": "taskmaster",
+  "repository": "repository",
+  "goal": "Add redacted JSON and Markdown status reports to the fixture CLI.",
+  "success_criteria": [
+    "JSON output is canonical and deterministic.",
+    "Markdown output escapes table delimiters.",
+    "Secret-bearing notes are redacted before rendering.",
+    "The assembled candidate passes the full fixture test suite."
+  ],
+  "policy": {
+    "allowed_read_globs": ["status_report/**", "tests/**"],
+    "allowed_write_globs": ["status_report/**", "tests/**"],
+    "exclusions": [".git/**", ".graphene/**"],
+    "command_templates": [
+      {
+        "template_id": "fixture-tests",
+        "argv": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+        "timeout_seconds": 15
+      }
+    ],
+    "agent_roles": ["assembler", "integrator", "report-worker", "verifier"],
+    "max_concurrency": 2,
+    "retry_limit": 1,
+    "resource_budget": {
+      "max_worker_seconds": 120,
+      "max_attempts": 8,
+      "max_artifact_bytes": 1048576
+    },
+    "retention": {
+      "retain_days": 7,
+      "retain_failed_attempts": true
+    },
+    "risk_gates": ["final-result"]
+  },
+  "tasks": [
+    {
+      "task_id": "assemble_candidate",
+      "title": "Assemble accepted patches",
+      "contract": "Apply only accepted task patches to the frozen base.",
+      "kind": "assembly",
+      "dependencies": ["redact_notes", "render_json", "render_markdown", "wire_cli"],
+      "assigned_role": "assembler",
+      "read_paths": [
+        "status_report/__init__.py",
+        "status_report/cli.py",
+        "status_report/model.py",
+        "status_report/redact.py",
+        "status_report/render_json.py",
+        "status_report/render_markdown.py",
+        "tests/__init__.py",
+        "tests/test_cli.py",
+        "tests/test_model.py",
+        "tests/test_redact.py",
+        "tests/test_render_json.py",
+        "tests/test_render_markdown.py"
+      ],
+      "write_paths": [
+        "status_report/cli.py",
+        "status_report/redact.py",
+        "status_report/render_json.py",
+        "status_report/render_markdown.py",
+        "tests/test_cli.py",
+        "tests/test_redact.py",
+        "tests/test_render_json.py",
+        "tests/test_render_markdown.py"
+      ],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [
+        {"producer_task_id": "redact_notes", "name": "candidate-patch", "kind": "patch"},
+        {"producer_task_id": "render_json", "name": "candidate-patch", "kind": "patch"},
+        {"producer_task_id": "render_markdown", "name": "candidate-patch", "kind": "patch"},
+        {"producer_task_id": "wire_cli", "name": "candidate-patch", "kind": "patch"}
+      ],
+      "expected_outputs": [
+        {
+          "name": "assembled-candidate",
+          "kind": "patch",
+          "paths": [
+            "status_report/cli.py",
+            "status_report/redact.py",
+            "status_report/render_json.py",
+            "status_report/render_markdown.py",
+            "tests/test_cli.py",
+            "tests/test_redact.py",
+            "tests/test_render_json.py",
+            "tests/test_render_markdown.py"
+          ]
+        }
+      ],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 100,
+      "attempt_limit": 1
+    },
+    {
+      "task_id": "redact_notes",
+      "title": "Redact secret-bearing notes",
+      "contract": "Replace secret-bearing notes with a stable redacted marker.",
+      "kind": "work",
+      "dependencies": [],
+      "assigned_role": "report-worker",
+      "read_paths": ["status_report/model.py", "tests/test_model.py"],
+      "write_paths": ["status_report/redact.py", "tests/test_redact.py"],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [],
+      "expected_outputs": [{"name": "candidate-patch", "kind": "patch", "paths": ["status_report/redact.py", "tests/test_redact.py"]}],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 30,
+      "attempt_limit": 1
+    },
+    {
+      "task_id": "render_json",
+      "title": "Render canonical JSON",
+      "contract": "Render status values as stable compact JSON.",
+      "kind": "work",
+      "dependencies": [],
+      "assigned_role": "report-worker",
+      "read_paths": ["status_report/model.py", "tests/test_model.py"],
+      "write_paths": ["status_report/render_json.py", "tests/test_render_json.py"],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [],
+      "expected_outputs": [{"name": "candidate-patch", "kind": "patch", "paths": ["status_report/render_json.py", "tests/test_render_json.py"]}],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 20,
+      "attempt_limit": 1
+    },
+    {
+      "task_id": "render_markdown",
+      "title": "Render escaped Markdown",
+      "contract": "Render one Markdown table row and escape cell delimiters.",
+      "kind": "work",
+      "dependencies": [],
+      "assigned_role": "report-worker",
+      "read_paths": ["status_report/model.py", "tests/test_model.py"],
+      "write_paths": ["status_report/render_markdown.py", "tests/test_render_markdown.py"],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [],
+      "expected_outputs": [{"name": "candidate-patch", "kind": "patch", "paths": ["status_report/render_markdown.py", "tests/test_render_markdown.py"]}],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 10,
+      "attempt_limit": 2
+    },
+    {
+      "task_id": "verify_candidate",
+      "title": "Verify the assembled candidate",
+      "contract": "Run the bound full fixture test suite against the assembled candidate.",
+      "kind": "verification",
+      "dependencies": ["assemble_candidate"],
+      "assigned_role": "verifier",
+      "read_paths": [
+        "status_report/__init__.py",
+        "status_report/cli.py",
+        "status_report/model.py",
+        "status_report/redact.py",
+        "status_report/render_json.py",
+        "status_report/render_markdown.py",
+        "tests/__init__.py",
+        "tests/test_cli.py",
+        "tests/test_model.py",
+        "tests/test_redact.py",
+        "tests/test_render_json.py",
+        "tests/test_render_markdown.py"
+      ],
+      "write_paths": [],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [{"producer_task_id": "assemble_candidate", "name": "assembled-candidate", "kind": "patch"}],
+      "expected_outputs": [{"name": "verification-receipt", "kind": "test-receipt", "paths": []}],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 100,
+      "attempt_limit": 1
+    },
+    {
+      "task_id": "wire_cli",
+      "title": "Wire renderers into the CLI",
+      "contract": "Expose JSON and Markdown output after applying note redaction.",
+      "kind": "work",
+      "dependencies": ["redact_notes", "render_json", "render_markdown"],
+      "assigned_role": "integrator",
+      "read_paths": [
+        "status_report/__init__.py",
+        "status_report/cli.py",
+        "status_report/model.py",
+        "status_report/redact.py",
+        "status_report/render_json.py",
+        "status_report/render_markdown.py",
+        "tests/__init__.py",
+        "tests/test_cli.py",
+        "tests/test_model.py",
+        "tests/test_redact.py",
+        "tests/test_render_json.py",
+        "tests/test_render_markdown.py"
+      ],
+      "write_paths": ["status_report/cli.py", "tests/test_cli.py"],
+      "allowed_commands": ["fixture-tests"],
+      "inputs": [
+        {"producer_task_id": "redact_notes", "name": "candidate-patch", "kind": "patch"},
+        {"producer_task_id": "render_json", "name": "candidate-patch", "kind": "patch"},
+        {"producer_task_id": "render_markdown", "name": "candidate-patch", "kind": "patch"}
+      ],
+      "expected_outputs": [{"name": "candidate-patch", "kind": "patch", "paths": ["status_report/cli.py", "tests/test_cli.py"]}],
+      "acceptance_checks": ["fixture-tests"],
+      "priority": 50,
+      "attempt_limit": 1
+    }
+  ]
+}
