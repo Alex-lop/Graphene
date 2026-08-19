@@ -1,5 +1,7 @@
+.gcloudignore
+# Cloud Build receives only the Python package inputs needed by read-only Mission Control.
 **
-!.dockerignore
+!.gcloudignore
 !README.md
 !pyproject.toml
 !uv.lock
@@ -18,8 +20,6 @@
 !demo/taskmaster/**/
 !demo/taskmaster/**/*.py
 !demo/taskmaster/scenario.json
-!docker/
-!docker/executor.Dockerfile
 !deploy/
 !deploy/cloudrun/
 !deploy/cloudrun/Dockerfile
