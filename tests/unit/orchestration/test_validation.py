@@ -33,7 +33,9 @@ def _policy() -> ProjectPolicy:
         allowed_write_globs=("app/**", "out/**", "tests/**"),
         command_templates=(
             CommandTemplate(template_id="check", argv=("pytest",), timeout_seconds=60),
-            CommandTemplate(template_id="edit", argv=("python", "edit.py"), timeout_seconds=60),
+            CommandTemplate(
+                template_id="edit", argv=("python", "edit.py"), timeout_seconds=60
+            ),
         ),
         agent_roles=("assembler", "verifier", "worker"),
         max_concurrency=4,
@@ -94,8 +96,12 @@ def _plan() -> Plan:
         role="assembler",
         dependencies=("work-a", "work-b"),
         inputs=(
-            ArtifactRequirement(producer_task_id="work-a", name="patch-a", kind="patch"),
-            ArtifactRequirement(producer_task_id="work-b", name="patch-b", kind="patch"),
+            ArtifactRequirement(
+                producer_task_id="work-a", name="patch-a", kind="patch"
+            ),
+            ArtifactRequirement(
+                producer_task_id="work-b", name="patch-b", kind="patch"
+            ),
         ),
     )
     verify = _task(
@@ -117,7 +123,9 @@ def _plan() -> Plan:
     return Plan(
         mission_id="mission-1",
         revision=1,
-        tasks=tuple(sorted((assembly, verify, work_a, work_b), key=lambda item: item.task_id)),
+        tasks=tuple(
+            sorted((assembly, verify, work_a, work_b), key=lambda item: item.task_id)
+        ),
         max_concurrency=2,
     )
 
@@ -126,7 +134,11 @@ def _replace(plan: Plan, task_id: str, **updates: object) -> Plan:
     tasks = []
     for task in plan.tasks:
         values = task.model_dump(mode="json")
-        tasks.append(Task.model_validate({**values, **updates}) if task.task_id == task_id else task)
+        tasks.append(
+            Task.model_validate({**values, **updates})
+            if task.task_id == task_id
+            else task
+        )
     return Plan.model_validate({**plan.model_dump(mode="json"), "tasks": tasks})
 
 
@@ -147,7 +159,9 @@ def test_valid_plan_is_pure_deterministic_and_topological() -> None:
     ("changed", "code"),
     (
         (
-            lambda plan: _replace(plan, "assemble", dependencies=("ghost", "work-a", "work-b")),
+            lambda plan: _replace(
+                plan, "assemble", dependencies=("ghost", "work-a", "work-b")
+            ),
             "missing_dependency",
         ),
         (
@@ -248,9 +262,7 @@ def test_write_leases_are_exact_and_policy_globs_use_full_path_matching() -> Non
         "work-a",
         write_paths=("app/nested/a.py",),
         expected_outputs=(
-            ArtifactContract(
-                name="patch-a", kind="patch", paths=("app/nested/a.py",)
-            ),
+            ArtifactContract(name="patch-a", kind="patch", paths=("app/nested/a.py",)),
         ),
     )
 

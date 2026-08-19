@@ -6,6 +6,7 @@ import stat
 import subprocess
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -228,6 +229,9 @@ def test_taskmaster_fixture_is_loadable_and_forced_into_the_wheel() -> None:
     assert configuration["tool"]["hatch"]["build"]["targets"]["wheel"][
         "force-include"
     ] == {"demo/taskmaster": "graphene/_taskmaster"}
+    assert configuration["tool"]["hatch"]["build"]["targets"]["sdist"][
+        "exclude"
+    ] == ["/.claude", "/All_md_Files"]
     assert load_scenario(DEFAULT_SCENARIO_PATH).scenario_id == "taskmaster"
 
 
@@ -397,6 +401,84 @@ def test_start_identity_binds_the_current_canonical_policy(
     assert second_explicit[-1]["policy_sha256"] != first_explicit[-1]["policy_sha256"]
     with pytest.raises(MissionCliError, match="another request"):
         _bind_start_request(runtime, second_explicit[-1])
+
+
+def test_gemini_start_replays_after_only_policy_file_was_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repository(tmp_path)
+    _, policy = initialize(repository)
+    subprocess.run(("git", "add", ".graphene/project.json"), cwd=repository, check=True)
+    subprocess.run(
+        (
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@graphene.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "add graphene policy",
+        ),
+        cwd=repository,
+        check=True,
+    )
+    monkeypatch.setenv("GRAPHENE_STATE_DIR", str(tmp_path / "state"))
+    args = build_parser().parse_args(
+        [
+            "mission",
+            "start",
+            "--repo",
+            str(repository),
+            "--goal",
+            "Propose a bounded change.",
+            "--success-criterion",
+            "The plan remains within policy.",
+            "--driver",
+            "gemini-adk",
+            "--command-id",
+            "command_gemini_policy_commit_retry_001",
+        ]
+    )
+    command_id, mission_id, _, _, loaded_policy, binding = _start_identity(args)
+    assert loaded_policy == policy
+    runtime = _mission_runtime(mission_id)
+    _bind_start_request(runtime, binding)
+    existing = SimpleNamespace(
+        mission=SimpleNamespace(
+            base_sha=policy.base_sha,
+            creation_source="operator",
+            goal=args.goal,
+            policy_id=policy.policy_id,
+            success_criteria=("The plan remains within policy.",),
+        ),
+        policy=SimpleNamespace(
+            base_sha=policy.base_sha,
+            policy_sha256=binding["policy_sha256"],
+            repo_id=policy.repo_id,
+            revision=policy.revision,
+        ),
+    )
+    store = object()
+    monkeypatch.setattr(mission_cli, "_store", lambda: store)
+    monkeypatch.setattr(mission_cli, "_existing_mission_snapshot", lambda *_: existing)
+    monkeypatch.setattr(
+        mission_cli,
+        "_existing_gemini_proposal_value",
+        lambda actual_store, actual_snapshot: {
+            "result_replayed": actual_store is store and actual_snapshot is existing
+        },
+    )
+
+    assert mission_cli._start_bound(
+        args,
+        command_id=command_id,
+        mission_id=mission_id,
+        policy=policy,
+        runtime=runtime,
+        binding=binding,
+    ) == {"result_replayed": True}
 
 
 def test_start_request_binding_recovers_exact_interrupted_staging(

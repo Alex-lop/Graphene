@@ -19,12 +19,12 @@ from .models import (
     MissionEventType,
     MissionStatus,
     MissionSnapshot as DomainMissionSnapshot,
-    Task,
     TaskKind,
     TaskState,
 )
 from .reducer import TransitionError, reduce_events
 from .store import MissionNotFound as StoreMissionNotFound
+from .store import MissionStoreError
 
 TaskStateValue = Literal[
     "queued",
@@ -115,6 +115,7 @@ class AttemptEvidenceView(ViewModel):
 class TaskView(ViewModel):
     task_id: str = Field(min_length=1, max_length=128)
     title: str = Field(min_length=1, max_length=512)
+    contract: str = Field(min_length=1, max_length=1_024)
     state: TaskStateValue
     kind: str = Field(min_length=1, max_length=32)
     priority: int
@@ -288,8 +289,7 @@ class MissionControlSnapshot(ViewModel):
         ):
             raise ValueError("mission view task attempt is unknown")
         if any(
-            item.worker_id is not None
-            and item.worker_id not in workers
+            item.worker_id is not None and item.worker_id not in workers
             for item in self.tasks
         ):
             raise ValueError("mission view task worker is unknown")
@@ -301,7 +301,10 @@ class MissionControlSnapshot(ViewModel):
             for item in self.publications
         ):
             raise ValueError("mission view publication reference is unknown")
-        if any(item.task_id is not None and item.task_id not in task_ids for item in self.gates):
+        if any(
+            item.task_id is not None and item.task_id not in task_ids
+            for item in self.gates
+        ):
             raise ValueError("mission view gate task is unknown")
         if self.needs_you is not None and (
             self.needs_you.gate_id not in gate_ids or self.needs_you.status != "pending"
@@ -316,7 +319,10 @@ class MissionControlSnapshot(ViewModel):
             f"verification:{self.mission.mission_id}",
             f"result:{self.mission.mission_id}",
         }
-        if any(item.source not in node_ids or item.target not in node_ids for item in self.relationships):
+        if any(
+            item.source not in node_ids or item.target not in node_ids
+            for item in self.relationships
+        ):
             raise ValueError("mission relationship endpoint is unknown")
         if not set(self.critical_path_task_ids) <= task_ids:
             raise ValueError("mission critical path references an unknown task")
@@ -434,7 +440,9 @@ class GenericAttemptEvidence(ViewModel):
 
 
 def _reference(item: EvidenceReference) -> EvidenceRefView:
-    return EvidenceRefView(kind=str(item.kind), id=str(item.id), sha256=str(item.sha256))
+    return EvidenceRefView(
+        kind=str(item.kind), id=str(item.id), sha256=str(item.sha256)
+    )
 
 
 def encode_cursor(mission_id: str, seq: int, event_sha256: str) -> str:
@@ -569,6 +577,7 @@ def _tasks(snapshot: DomainMissionSnapshot) -> tuple[TaskView, ...]:
             TaskView(
                 task_id=str(item.task_id),
                 title=str(item.title),
+                contract=str(item.contract),
                 state=str(item.state),
                 kind=str(item.kind),
                 priority=item.priority,
@@ -584,9 +593,7 @@ def _tasks(snapshot: DomainMissionSnapshot) -> tuple[TaskView, ...]:
                 allowed_command_templates=tuple(
                     str(value) for value in item.allowed_commands
                 ),
-                acceptance_checks=tuple(
-                    str(value) for value in item.acceptance_checks
-                ),
+                acceptance_checks=tuple(str(value) for value in item.acceptance_checks),
             )
         )
     return tuple(values)
@@ -613,7 +620,9 @@ def _publications(
 
 def _decision_attribution(event: MissionEvent, action: str) -> str:
     label = event.payload.get("operator_label")
-    bounded_label = str(label)[:64] if isinstance(label, str) and label else "unavailable"
+    bounded_label = (
+        str(label)[:64] if isinstance(label, str) and label else "unavailable"
+    )
     truth_kind = str(event.truth_kind)
     authority = str(event.authority)
     if truth_kind == "human_attested" and authority == "operator":
@@ -627,6 +636,56 @@ def _decision_attribution(event: MissionEvent, action: str) -> str:
         f'{action} command was committed under bounded operator label "{bounded_label}" '
         f"as {truth_kind}/{authority}; human attestation is not established."
     )
+
+
+def _verify_gate_bindings(
+    gates: tuple[Gate, ...], events: tuple[MissionEvent, ...]
+) -> None:
+    requested = tuple(
+        event for event in events if event.event_type == MissionEventType.GATE_REQUESTED
+    )
+    decided = tuple(
+        event for event in events if event.event_type == MissionEventType.GATE_DECIDED
+    )
+    requested_by_id = {str(event.payload.get("gate_id")): event for event in requested}
+    decided_by_id = {str(event.payload.get("gate_id")): event for event in decided}
+    gates_by_id = {str(gate.gate_id): gate for gate in gates}
+    if (
+        len(requested_by_id) != len(requested)
+        or len(decided_by_id) != len(decided)
+        or set(requested_by_id) != set(gates_by_id)
+        or not set(decided_by_id) <= set(gates_by_id)
+    ):
+        raise MissionProjectionError(
+            "materialized mission gates do not match committed gate events"
+        )
+    for gate_id, gate in gates_by_id.items():
+        request = requested_by_id[gate_id]
+        requested_gate = gate.model_copy(
+            update={"operator_label": None, "rationale": None, "resolution": None}
+        )
+        decision = decided_by_id.get(gate_id)
+        if (
+            request.payload.get("gate_sha256")
+            != canonical_json_sha256(requested_gate.model_dump(mode="json"))
+            or request.truth_kind != gate.truth_kind
+            or request.references != gate.evidence
+            or (gate.resolution is None) != (decision is None)
+            or (
+                decision is not None
+                and (
+                    decision.payload.get("gate_sha256")
+                    != canonical_json_sha256(gate.model_dump(mode="json"))
+                    or decision.payload.get("choice") != gate.resolution
+                    or decision.payload.get("operator_label") != gate.operator_label
+                    or decision.payload.get("operator_rationale") != gate.rationale
+                    or decision.references != gate.evidence
+                )
+            )
+        ):
+            raise MissionProjectionError(
+                "materialized mission gate does not match its committed event"
+            )
 
 
 def _gate_views(
@@ -681,9 +740,7 @@ def _gate_views(
                     for option in gate.allowed_decisions
                 ),
                 resolution=str(gate.resolution) if gate.resolution else None,
-                truth_kind=str(
-                    decision.truth_kind if decision else gate.truth_kind
-                ),
+                truth_kind=str(decision.truth_kind if decision else gate.truth_kind),
             )
         )
     return tuple(values)
@@ -720,7 +777,9 @@ def _stage(
             else "running"
         )
         task_state = (
-            "running" if task and task.state == TaskState.VERIFYING else str(task.state)
+            "running"
+            if task and task.state == TaskState.VERIFYING
+            else str(task.state)
             if task
             else event_state
         )
@@ -736,7 +795,11 @@ def _stage(
     else:
         state, summary = "queued", f"{label} has not started."
     attempt = next(
-        (item for item in reversed(snapshot.attempts) if task and item.task_id == task.task_id),
+        (
+            item
+            for item in reversed(snapshot.attempts)
+            if task and item.task_id == task.task_id
+        ),
         None,
     )
     return StageView(
@@ -779,7 +842,8 @@ def _resources(events: tuple[MissionEvent, ...]) -> ResourceSummaryView:
                 label=str(item.get("label") or "Resource")[:160],
                 display_value=str(item.get("display_value") or "unavailable")[:128],
                 category=categories.get(
-                    str(item.get("category")), str(item.get("category") or "unavailable")
+                    str(item.get("category")),
+                    str(item.get("category") or "unavailable"),
                 ),
                 attribution_quality=str(
                     item.get("attribution_quality") or "unavailable"
@@ -799,8 +863,7 @@ def _resources(events: tuple[MissionEvent, ...]) -> ResourceSummaryView:
         return ResourceSummaryView(
             status=status,
             summary=str(
-                payload.get("summary")
-                or "A committed resource summary is available."
+                payload.get("summary") or "A committed resource summary is available."
             )[:512],
             metrics=parsed,
         )
@@ -888,13 +951,19 @@ def _critical_path(tasks: tuple[TaskView, ...]) -> tuple[str, ...]:
     def path(task_id: str) -> tuple[str, ...]:
         if task_id in memo:
             return memo[task_id]
-        dependencies = [value for value in by_id[task_id].dependency_ids if value in active]
+        dependencies = [
+            value for value in by_id[task_id].dependency_ids if value in active
+        ]
         candidates = [path(value) for value in dependencies]
         prefix = max(candidates, key=lambda value: (len(value), value), default=())
         memo[task_id] = (*prefix, task_id)
         return memo[task_id]
 
-    return max((path(task_id) for task_id in sorted(active)), key=lambda value: (len(value), value), default=())
+    return max(
+        (path(task_id) for task_id in sorted(active)),
+        key=lambda value: (len(value), value),
+        default=(),
+    )
 
 
 def _relationships(
@@ -932,13 +1001,20 @@ def _relationships(
             add(result_id, f"gate:{gate.gate_id}", "blocked_by")
         else:
             add(f"mission:{mission_id}", f"gate:{gate.gate_id}", "blocked_by")
-    assembly = next((item for item in tasks if item.kind == str(TaskKind.ASSEMBLY)), None)
-    verification = next((item for item in tasks if item.kind == str(TaskKind.VERIFICATION)), None)
+    assembly = next(
+        (item for item in tasks if item.kind == str(TaskKind.ASSEMBLY)), None
+    )
+    verification = next(
+        (item for item in tasks if item.kind == str(TaskKind.VERIFICATION)), None
+    )
     accepted_tasks = {
         item.task_id
         for item in publications
         if item.state == "accepted"
-        and any(task.task_id == item.task_id and task.kind == str(TaskKind.WORK) for task in tasks)
+        and any(
+            task.task_id == item.task_id and task.kind == str(TaskKind.WORK)
+            for task in tasks
+        )
     }
     for task_id in sorted(accepted_tasks):
         add(integration_id, f"task:{task_id}", "accepted_from")
@@ -983,6 +1059,7 @@ def project_snapshot(
     tasks = _tasks(snapshot)
     attempts = _attempts(snapshot, legacy_viewer_base)
     workers = _workers(snapshot)
+    _verify_gate_bindings(snapshot.gates, verified_events)
     gates = _gate_views(snapshot.gates, verified_events)
     publications = _publications(snapshot.publications)
     integration = _stage(
@@ -1047,6 +1124,8 @@ def project_snapshot(
             else "Final rejection"
         )
         result_summary = _decision_attribution(final_event, action)
+        if final_event.event_type == MissionEventType.FINAL_CANDIDATE_APPROVED:
+            result_summary += " Isolated local commit recording is pending."
         if final_event.event_type == MissionEventType.FINAL_CANDIDATE_REJECTED:
             result_summary += " No isolated commit was authorized."
     elif final_event:
@@ -1061,7 +1140,14 @@ def project_snapshot(
         evidence_refs=_event_refs(final_event),
     )
     pending = tuple(item for item in gates if item.status == "pending")
-    if str(snapshot.mission.status) == "awaiting_result" and not pending:
+    if (
+        str(snapshot.mission.status) == "awaiting_result"
+        and not pending
+        and (
+            final_event is None
+            or final_event.event_type == MissionEventType.FINAL_CANDIDATE_READY
+        )
+    ):
         candidate_sha256 = (
             str(final_event.payload.get("candidate_sha256"))
             if final_event and final_event.payload.get("candidate_sha256")
@@ -1112,7 +1198,9 @@ def project_snapshot(
     mission = MissionView(
         mission_id=str(snapshot.mission.mission_id),
         goal=str(snapshot.mission.goal),
-        success_criteria=tuple(str(value) for value in snapshot.mission.success_criteria),
+        success_criteria=tuple(
+            str(value) for value in snapshot.mission.success_criteria
+        ),
         status=str(snapshot.mission.status),
         plan_revision=snapshot.mission.plan_revision,
         outcome=str(snapshot.mission.final_outcome)
@@ -1146,7 +1234,9 @@ def project_snapshot(
                 {
                     *(str(value) for value in snapshot.unknowns),
                     *(
-                        ("Additional unresolved gates exist; Mission Control shows the first committed gate.",)
+                        (
+                            "Additional unresolved gates exist; Mission Control shows the first committed gate.",
+                        )
                         if len(pending) > 1
                         else ()
                     ),
@@ -1170,11 +1260,15 @@ def project_snapshot(
     )
 
 
-def _patch(before: Iterable[ItemT], after: Iterable[ItemT], key: str) -> CollectionPatch[ItemT]:
+def _patch(
+    before: Iterable[ItemT], after: Iterable[ItemT], key: str
+) -> CollectionPatch[ItemT]:
     old = {str(getattr(item, key)): item for item in before}
     new = {str(getattr(item, key)): item for item in after}
     return CollectionPatch[ItemT](
-        upsert=tuple(new[item_id] for item_id in sorted(new) if old.get(item_id) != new[item_id]),
+        upsert=tuple(
+            new[item_id] for item_id in sorted(new) if old.get(item_id) != new[item_id]
+        ),
         remove=tuple(sorted(set(old) - set(new))),
     )
 
@@ -1266,9 +1360,7 @@ def apply_delta(
     return value
 
 
-def task_detail(
-    snapshot: MissionControlSnapshot, task_id: str
-) -> MissionTaskDetail:
+def task_detail(snapshot: MissionControlSnapshot, task_id: str) -> MissionTaskDetail:
     task = next((item for item in snapshot.tasks if item.task_id == task_id), None)
     if task is None:
         raise MissionNotFound("mission task not found")
@@ -1359,6 +1451,10 @@ class MissionProjection:
                 domain = self.store.snapshot(mission_id)
             except (KeyError, StoreMissionNotFound) as error:
                 raise MissionNotFound("mission not found") from error
+            except MissionStoreError as error:
+                raise MissionProjectionError(
+                    "mission materialized state failed store validation"
+                ) from error
             if domain is None:
                 raise MissionNotFound("mission not found")
             domain = DomainMissionSnapshot.model_validate(domain)
@@ -1390,7 +1486,9 @@ class MissionProjection:
                     )
                 )
                 if not batch:
-                    raise MissionProjectionError("mission event tail ended before its head")
+                    raise MissionProjectionError(
+                        "mission event tail ended before its head"
+                    )
                 validated = tuple(MissionEvent.model_validate(item) for item in batch)
                 previous_sha256 = events[-1].event_sha256 if events else None
                 for offset, event in enumerate(validated, start=1):
@@ -1405,31 +1503,30 @@ class MissionProjection:
                     previous_sha256 = event.event_sha256
                 events.extend(validated)
                 after = events[-1].seq
-            if cached is None:
-                initial_mission = domain.mission.model_copy(
-                    update={"status": MissionStatus.PROPOSED, "final_outcome": None}
+            initial_mission = domain.mission.model_copy(
+                update={"status": MissionStatus.PROPOSED, "final_outcome": None}
+            )
+            try:
+                reduced = reduce_events(
+                    initial_mission, domain.plan.tasks, tuple(events)
                 )
-                try:
-                    reduced = reduce_events(
-                        initial_mission, domain.plan.tasks, tuple(events)
-                    )
-                except TransitionError as error:
-                    raise MissionProjectionError(
-                        "mission materialized state failed event replay"
-                    ) from error
-                if (
-                    len(events) != domain.head.event_count
-                    or (events[-1].event_sha256 if events else None)
-                    != domain.head.event_sha256
-                    or reduced.status != domain.mission.status
-                    or reduced.task_states
-                    != {task.task_id: task.state for task in domain.tasks}
-                    or reduced.attempt_counts
-                    != {task.task_id: task.attempt_count for task in domain.tasks}
-                ):
-                    raise MissionProjectionError(
-                        "mission materialized state does not match event replay"
-                    )
+            except TransitionError as error:
+                raise MissionProjectionError(
+                    "mission materialized state failed event replay"
+                ) from error
+            if (
+                len(events) != domain.head.event_count
+                or (events[-1].event_sha256 if events else None)
+                != domain.head.event_sha256
+                or reduced.status != domain.mission.status
+                or reduced.task_states
+                != {task.task_id: task.state for task in domain.tasks}
+                or reduced.attempt_counts
+                != {task.task_id: task.attempt_count for task in domain.tasks}
+            ):
+                raise MissionProjectionError(
+                    "mission materialized state does not match event replay"
+                )
             view = project_snapshot(
                 domain,
                 events,

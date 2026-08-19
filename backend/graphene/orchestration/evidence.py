@@ -228,17 +228,19 @@ class SQLiteAttemptEvidenceStore:
         recorded_at: datetime,
     ) -> AttemptEvidenceEvent:
         seq = head.seq + 1
-        event_id = "attempt_event_" + canonical_json_sha256(
-            {
-                "evidence_id": evidence_id,
-                "idempotency_key": idempotency_key,
-                "seq": seq,
-            }
-        )[:32]
+        event_id = (
+            "attempt_event_"
+            + canonical_json_sha256(
+                {
+                    "evidence_id": evidence_id,
+                    "idempotency_key": idempotency_key,
+                    "seq": seq,
+                }
+            )[:32]
+        )
         core = {
             **{
-                name: getattr(draft, name)
-                for name in AttemptEvidenceInput.model_fields
+                name: getattr(draft, name) for name in AttemptEvidenceInput.model_fields
             },
             "schema_version": 1,
             "evidence_id": evidence_id,
@@ -306,16 +308,26 @@ class SQLiteAttemptEvidenceStore:
                     raise AttemptEvidenceConflict("attempt evidence head changed")
                 if row is not None and row["terminal"]:
                     raise AttemptEvidenceConflict("attempt evidence is terminal")
-                if head.seq == 0 and draft.event_type != AttemptEvidenceEventType.ATTEMPT_STARTED:
-                    raise AttemptEvidenceConflict("attempt evidence must start with attempt.started")
-                if head.seq > 0 and row is not None and (
-                    row["mission_id"], row["task_id"], row["attempt_id"]
-                ) != (draft.mission_id, draft.task_id, draft.attempt_id):
+                if (
+                    head.seq == 0
+                    and draft.event_type != AttemptEvidenceEventType.ATTEMPT_STARTED
+                ):
+                    raise AttemptEvidenceConflict(
+                        "attempt evidence must start with attempt.started"
+                    )
+                if (
+                    head.seq > 0
+                    and row is not None
+                    and (row["mission_id"], row["task_id"], row["attempt_id"])
+                    != (draft.mission_id, draft.task_id, draft.attempt_id)
+                ):
                     raise AttemptEvidenceConflict("attempt evidence identity changed")
                 for reference in draft.references:
                     content = self.resolve(reference.kind, reference.id)
                     if content is None or sha256_hex(content) != reference.sha256:
-                        raise AttemptEvidenceConflict("attempt artifact reference is unresolved")
+                        raise AttemptEvidenceConflict(
+                            "attempt artifact reference is unresolved"
+                        )
 
                 event = self._event(
                     evidence_id, head, idempotency_key, draft, recorded_at
@@ -327,7 +339,12 @@ class SQLiteAttemptEvidenceStore:
                 if row is None:
                     connection.execute(
                         "INSERT INTO attempt_evidence_heads VALUES (?, 0, NULL, 0, ?, ?, ?, 0)",
-                        (evidence_id, draft.mission_id, draft.task_id, draft.attempt_id),
+                        (
+                            evidence_id,
+                            draft.mission_id,
+                            draft.task_id,
+                            draft.attempt_id,
+                        ),
                     )
                 event_bytes = canonical_json_bytes(event.model_dump(mode="json"))
                 connection.execute(
@@ -397,8 +414,7 @@ class SQLiteAttemptEvidenceStore:
                 (evidence_id, after_seq, limit),
             ).fetchall()
         return tuple(
-            AttemptEvidenceEvent.model_validate_json(row["event_bytes"])
-            for row in rows
+            AttemptEvidenceEvent.model_validate_json(row["event_bytes"]) for row in rows
         )
 
     def verify(self, evidence_id: str) -> AttemptEvidenceHead:
@@ -422,7 +438,10 @@ class SQLiteAttemptEvidenceStore:
                 or current != identity
             ):
                 raise AttemptEvidenceStoreError("attempt evidence chain is invalid")
-            if seq == 1 and event.event_type != AttemptEvidenceEventType.ATTEMPT_STARTED:
+            if (
+                seq == 1
+                and event.event_type != AttemptEvidenceEventType.ATTEMPT_STARTED
+            ):
                 raise AttemptEvidenceStoreError("attempt evidence start is invalid")
             for reference in event.references:
                 content = self.resolve(reference.kind, reference.id)
@@ -450,9 +469,7 @@ class SQLiteAttemptEvidenceStore:
         if len(tail) != 1:
             return False
         terminal = tail[0]
-        recorded = {
-            (item.kind, item.id, item.sha256) for item in terminal.references
-        }
+        recorded = {(item.kind, item.id, item.sha256) for item in terminal.references}
         required = {(item.kind, item.id, item.sha256) for item in references}
         return (
             terminal.event_type
@@ -507,7 +524,10 @@ class SQLiteAttemptEvidenceStore:
                     (artifact_id,),
                 ).fetchone()
                 if row is None or (
-                    row["kind"], row["sha256"], row["visibility"], row["artifact_bytes"]
+                    row["kind"],
+                    row["sha256"],
+                    row["visibility"],
+                    row["artifact_bytes"],
                 ) != (kind, digest, visibility.value, content):
                     raise AttemptEvidenceConflict("attempt artifact collision")
                 connection.commit()

@@ -1121,7 +1121,6 @@ def _start_bound(
                     "policy_base_sha": existing.policy.base_sha,
                     "policy_revision": existing.policy.revision,
                     "policy_sha256": existing.policy.policy_sha256,
-                    "repository_head": existing.mission.base_sha,
                 }
             )
         if (
@@ -1379,10 +1378,17 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
         )
         active = store.recover_dispatches(args.mission_id, recorded_at=now)
         registry = (
-            OwnedProcessRegistry(_mission_runtime(args.mission_id)) if active else None
+            OwnedProcessRegistry(_mission_runtime(args.mission_id))
+            if active or action == "cancel"
+            else None
         )
         try:
             prepared = () if registry is None else registry.prepare_cancel(active)
+            durable = (
+                ()
+                if action != "cancel" or registry is None
+                else registry.records_for_mission(args.mission_id)
+            )
         except ProcessControlError as error:
             raise MissionCliError(
                 "active workers could not be bound to their owned runtime"
@@ -1412,8 +1418,14 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
         }[action]
         try:
             if registry is not None:
-                for owned in prepared:
-                    registry.signal_prepared(owned, requested_signal)
+                targets = tuple(
+                    {item.attempt_id: item for item in (*prepared, *durable)}.values()
+                )
+                for owned in targets:
+                    if action == "cancel":
+                        registry.terminate_owned(owned)
+                    else:
+                        registry.signal_prepared(owned, requested_signal)
         except ProcessControlError as error:
             raise MissionCliError(
                 "mission state changed but an owned worker could not be signalled"

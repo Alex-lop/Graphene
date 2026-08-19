@@ -82,10 +82,10 @@ def reduce_events(
             status = transition_mission(status, MissionStatus.CANCELLED)
         elif event.event_type == MissionEventType.FINAL_CANDIDATE_READY:
             status = transition_mission(status, MissionStatus.AWAITING_RESULT)
-        elif event.event_type == MissionEventType.FINAL_CANDIDATE_APPROVED:
-            status = transition_mission(status, MissionStatus.COMPLETED)
         elif event.event_type == MissionEventType.FINAL_CANDIDATE_REJECTED:
             status = transition_mission(status, MissionStatus.REJECTED)
+        elif event.event_type == MissionEventType.ISOLATED_COMMIT_CREATED:
+            status = transition_mission(status, MissionStatus.COMPLETED)
         elif event.event_type in {
             MissionEventType.ASSEMBLY_FAILED,
             MissionEventType.VERIFICATION_FAILED,
@@ -105,7 +105,9 @@ def reduce_events(
             try:
                 target = TaskState(event.payload["task_state"])
             except ValueError as error:
-                raise TransitionError("gate decision has an invalid task state") from error
+                raise TransitionError(
+                    "gate decision has an invalid task state"
+                ) from error
         if event.event_type == MissionEventType.TASK_STARTED:
             target = (
                 TaskState.VERIFYING

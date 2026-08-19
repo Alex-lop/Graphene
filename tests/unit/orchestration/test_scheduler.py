@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -8,13 +9,20 @@ import pytest
 from graphene.models import TruthKind
 from graphene.orchestration.models import (
     ArtifactRequirement,
+    Gate,
+    GateDecision,
     Mission,
+    MissionEventType,
     MissionStatus,
     Plan,
     TaskKind,
 )
 from graphene.orchestration.scheduler import MissionScheduler
-from graphene.orchestration.store import SQLiteMissionStore, StaleWorker
+from graphene.orchestration.store import (
+    MissionStoreError,
+    SQLiteMissionStore,
+    StaleWorker,
+)
 
 from .test_store import (
     NOW,
@@ -46,7 +54,9 @@ def _task_for(store: SQLiteMissionStore, mission_id: str, task_id: str):
     )
 
 
-def test_scheduler_is_deterministic_recovers_and_runs_full_dependency_chain(tmp_path) -> None:
+def test_scheduler_is_deterministic_recovers_and_runs_full_dependency_chain(
+    tmp_path,
+) -> None:
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)
     clock = FakeClock(NOW)
@@ -94,7 +104,99 @@ def test_scheduler_is_deterministic_recovers_and_runs_full_dependency_chain(tmp_
     assert store.verify("mission-1") == store.head("mission-1")
 
 
-def test_dispatch_limiter_caps_only_new_work_and_keeps_recovery_visible(tmp_path) -> None:
+def test_dispatch_rejects_unapproved_materialized_status(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store, approve=False)
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            "UPDATE missions SET status = 'running' WHERE mission_id = 'mission-1'"
+        )
+
+    scheduler = MissionScheduler(store, clock=FakeClock(NOW))
+    with pytest.raises(MissionStoreError, match="committed events"):
+        scheduler.tick("mission-1", ("worker-a",))
+
+    snapshot = store.snapshot("mission-1")
+    assert snapshot.attempts == ()
+    assert not any(
+        event.event_type == MissionEventType.TASK_STARTED
+        for event in store.tail("mission-1", 0, 20)
+    )
+
+
+def test_dispatch_rejects_missing_materialized_gate(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.request_gate(
+        Gate(
+            gate_id="gate-before-work",
+            mission_id="mission-1",
+            task_id="work-a",
+            reason="Confirm the bounded task before dispatch.",
+            allowed_decisions=(GateDecision(value="approve", consequence="Continue."),),
+            truth_kind=TruthKind.SERVER_DERIVED,
+        ),
+        _command("request-gate-before-work"),
+        recorded_at=NOW,
+    )
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            "DELETE FROM mission_gates WHERE mission_id = 'mission-1' "
+            "AND gate_id = 'gate-before-work'"
+        )
+
+    scheduler = MissionScheduler(store, clock=FakeClock(NOW))
+    with pytest.raises(MissionStoreError, match="committed events"):
+        scheduler.tick("mission-1", ("worker-a",))
+    assert not any(
+        event.event_type == MissionEventType.TASK_STARTED
+        for event in store.tail("mission-1", 0, 20)
+    )
+
+
+def test_tick_recovers_final_completion_before_awaiting_result_commit(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    scheduler = MissionScheduler(store, clock=FakeClock(NOW), lease_ttl_seconds=30)
+    workers = ("worker-a", "worker-b")
+    for _ in range(2):
+        for dispatch in scheduler.tick("mission-1", workers):
+            scheduler.complete(
+                dispatch,
+                _success(
+                    dispatch,
+                    _task_for(store, "mission-1", dispatch.task_id),
+                    _artifacts(store),
+                ),
+            )
+    verification = scheduler.tick("mission-1", workers)[0]
+    result = _success(
+        verification,
+        _task_for(store, "mission-1", verification.task_id),
+        _artifacts(store),
+    )
+    store.complete_attempt(
+        verification.mission_id,
+        verification.attempt_id,
+        verification.worker_id,
+        verification.lease_id,
+        verification.fencing_token,
+        result,
+        _command("complete-before-crash"),
+        recorded_at=NOW,
+        retry_backoff_seconds=0,
+    )
+    assert store.snapshot("mission-1").mission.status == MissionStatus.RUNNING
+
+    assert (
+        MissionScheduler(store, clock=FakeClock(NOW)).tick("mission-1", workers) == ()
+    )
+    assert store.snapshot("mission-1").mission.status == MissionStatus.AWAITING_RESULT
+
+
+def test_dispatch_limiter_caps_only_new_work_and_keeps_recovery_visible(
+    tmp_path,
+) -> None:
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)
     calls: list[tuple[str, int]] = []
@@ -173,6 +275,7 @@ def test_scheduler_cancel_cleans_state_and_invokes_worker_cleanup(tmp_path) -> N
     worker = CancellingWorker()
     returned = scheduler.cancel(
         "mission-1",
+        command_id="command_scheduler_cancel_001",
         worker=worker,
         operator_label="non-tty-api",
         rationale="Cancel all Graphene-owned work.",
@@ -233,7 +336,9 @@ def _soak_plan(mission_id: str) -> Plan:
     return Plan(
         mission_id=mission_id,
         revision=1,
-        tasks=tuple(sorted((*work, assembly, verification), key=lambda task: task.task_id)),
+        tasks=tuple(
+            sorted((*work, assembly, verification), key=lambda task: task.task_id)
+        ),
         max_concurrency=10,
     )
 
@@ -291,9 +396,9 @@ def test_deterministic_fifty_task_ten_worker_soak(tmp_path) -> None:
     assert trace[:10] == [
         (f"work-{index:02d}", f"worker-{index:02d}", 1) for index in range(10)
     ]
-    assert tuple(item.task_id for item in snapshot.tasks if item.state.value == "done") == tuple(
-        item.task_id for item in snapshot.tasks
-    )
+    assert tuple(
+        item.task_id for item in snapshot.tasks if item.state.value == "done"
+    ) == tuple(item.task_id for item in snapshot.tasks)
     assert len(snapshot.attempts) == len(snapshot.publications) == 50
     assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
     assert store.verify(mission_id) == store.head(mission_id)

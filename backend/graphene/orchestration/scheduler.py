@@ -48,10 +48,7 @@ class MissionScheduler:
         retry_backoff_seconds: int = 1,
         dispatch_limiter: DispatchLimiter | None = None,
     ) -> None:
-        if (
-            type(lease_ttl_seconds) is not int
-            or not 1 <= lease_ttl_seconds <= 3_600
-        ):
+        if type(lease_ttl_seconds) is not int or not 1 <= lease_ttl_seconds <= 3_600:
             raise ValueError("lease TTL must be between 1 and 3600 seconds")
         if (
             type(retry_backoff_seconds) is not int
@@ -78,7 +75,19 @@ class MissionScheduler:
             retry_backoff_seconds=self.retry_backoff_seconds,
         )
         head = self.store.head(mission_id)
-        if self.store.snapshot(mission_id).mission.status != MissionStatus.RUNNING:
+        snapshot = self.store.snapshot(mission_id)
+        if (
+            snapshot.mission.status == MissionStatus.RUNNING
+            and snapshot.tasks
+            and all(task.state.value == "done" for task in snapshot.tasks)
+        ):
+            self.store.enter_awaiting_result(
+                mission_id,
+                _command("await_result", mission_id, head.seq),
+                recorded_at=now,
+            )
+            return ()
+        if snapshot.mission.status != MissionStatus.RUNNING:
             return ()
         self.store.refresh_ready(
             mission_id,
@@ -122,9 +131,7 @@ class MissionScheduler:
         return (*recovered, *claimed)
 
     def recover(self, mission_id: str) -> tuple[Dispatch, ...]:
-        return self.store.recover_dispatches(
-            mission_id, recorded_at=self.clock.now()
-        )
+        return self.store.recover_dispatches(mission_id, recorded_at=self.clock.now())
 
     def heartbeat(self, dispatch: Dispatch) -> Lease:
         now = self.clock.now()
@@ -174,6 +181,7 @@ class MissionScheduler:
         self,
         mission_id: str,
         *,
+        command_id: str,
         operator_label: str,
         rationale: str | None,
         truth_kind: TruthKind,
@@ -181,7 +189,7 @@ class MissionScheduler:
         now = self.clock.now()
         return self.store.pause(
             mission_id,
-            _command("pause", mission_id, self.store.head(mission_id).seq),
+            command_id,
             operator_label=operator_label,
             rationale=rationale,
             truth_kind=truth_kind,
@@ -192,6 +200,7 @@ class MissionScheduler:
         self,
         mission_id: str,
         *,
+        command_id: str,
         operator_label: str,
         rationale: str | None,
         truth_kind: TruthKind,
@@ -199,7 +208,7 @@ class MissionScheduler:
         now = self.clock.now()
         return self.store.resume(
             mission_id,
-            _command("resume", mission_id, self.store.head(mission_id).seq),
+            command_id,
             operator_label=operator_label,
             rationale=rationale,
             truth_kind=truth_kind,
@@ -210,6 +219,7 @@ class MissionScheduler:
         self,
         mission_id: str,
         *,
+        command_id: str,
         worker: Worker,
         operator_label: str,
         rationale: str | None,
@@ -219,7 +229,7 @@ class MissionScheduler:
         active = self.store.recover_dispatches(mission_id, recorded_at=now)
         self.store.cancel(
             mission_id,
-            _command("cancel", mission_id, self.store.head(mission_id).seq),
+            command_id,
             operator_label=operator_label,
             rationale=rationale,
             truth_kind=truth_kind,
@@ -229,7 +239,9 @@ class MissionScheduler:
         for dispatch in active:
             try:
                 worker.cancel(dispatch)
-            except Exception as error:  # cleanup all owned workers before surfacing failure
+            except (
+                Exception
+            ) as error:  # cleanup all owned workers before surfacing failure
                 errors.append(error)
         if errors:
             raise RuntimeError("one or more worker cancellations failed") from errors[0]

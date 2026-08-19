@@ -7,15 +7,19 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from graphene.execution import run_fixture_tests
 from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.models import TruthKind
 from graphene.orchestration.evidence import (
+    AttemptEvidenceAuthority,
     AttemptEvidenceEventType,
+    AttemptEvidenceInput,
     SQLiteAttemptEvidenceStore,
 )
 from graphene.orchestration.local_result import LocalResultError, approve_result
@@ -29,12 +33,13 @@ from graphene.orchestration.projection import MissionProjection
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
-    ProcessCancelled,
     ProcessControlError,
 )
 from graphene.orchestration.scheduler import MissionScheduler, SystemClock
 from graphene.orchestration.scripted import (
     _persisted_scenario,
+    ScriptedWorker,
+    execute_scripted_mission,
     load_scenario,
     initialize_fixture_repository,
     propose_scripted_mission,
@@ -168,6 +173,242 @@ def test_scripted_initialization_recovers_exact_interrupted_staging(
 
 @pytest.mark.skipif(
     not scripted_supported(),
+    reason="scripted recovery requires the proven macOS fixture sandbox",
+)
+def test_scripted_worker_replays_terminal_evidence_after_dispatch_crash(
+    tmp_path: Path,
+) -> None:
+    scenario = load_scenario()
+    runtime = tmp_path / "runtime"
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    proposal = propose_scripted_mission(
+        scenario=scenario,
+        store=store,
+        runtime=runtime,
+        mission_id="mission-terminal-recovery",
+    )
+    store.approve_plan(
+        proposal.mission_id,
+        "command_approve_terminal_recovery",
+        expected_revision=1,
+        operator_label="process-fixture",
+        rationale="Approve terminal evidence recovery.",
+        truth_kind=TruthKind.SIMULATED_FIXTURE,
+        recorded_at=datetime.now(UTC),
+    )
+    scheduler = MissionScheduler(store, clock=SystemClock())
+    dispatch = scheduler.tick(proposal.mission_id, ("scripted-worker-1",))[0]
+    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
+    store.bind_artifact_resolver(evidence)
+    worker = ScriptedWorker(
+        scenario=scenario,
+        repository=proposal.repository,
+        runtime=runtime,
+        base_sha=proposal.base_sha,
+        evidence=evidence,
+        store=store,
+        heartbeat=scheduler.heartbeat,
+    )
+    completed_before_crash = worker.execute(dispatch)
+    assert store.snapshot(proposal.mission_id).attempts[0].state == AttemptState.RUNNING
+
+    restarted = ScriptedWorker(
+        scenario=scenario,
+        repository=proposal.repository,
+        runtime=runtime,
+        base_sha=proposal.base_sha,
+        evidence=SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3"),
+        store=store,
+        heartbeat=scheduler.heartbeat,
+    )
+    recovered = restarted.execute(dispatch)
+
+    assert recovered == completed_before_crash
+    scheduler.complete(dispatch, recovered)
+    assert (
+        store.snapshot(proposal.mission_id).attempts[0].state == AttemptState.COMMITTED
+    )
+
+    interrupted_dispatch = scheduler.tick(proposal.mission_id, ("scripted-worker-1",))[
+        0
+    ]
+    interrupted_evidence_id = ScriptedWorker._evidence_id(interrupted_dispatch)
+    evidence.append(
+        interrupted_evidence_id,
+        evidence.empty_head(interrupted_evidence_id),
+        "evidence_interrupted_start",
+        AttemptEvidenceInput(
+            mission_id=interrupted_dispatch.mission_id,
+            task_id=interrupted_dispatch.task_id,
+            attempt_id=interrupted_dispatch.attempt_id,
+            event_type=AttemptEvidenceEventType.ATTEMPT_STARTED,
+            truth_kind=TruthKind.RUNTIME_OBSERVED,
+            authority=AttemptEvidenceAuthority.SCRIPTED_WORKER,
+            payload={"status": "started"},
+        ),
+        recorded_at=datetime.now(UTC),
+    )
+    interrupted_process = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(30)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+    interrupted_registry = OwnedProcessRegistry(runtime)
+    interrupted_registry.record(
+        interrupted_dispatch, interrupted_process, sys.executable
+    )
+    reaper = threading.Thread(target=interrupted_process.wait, daemon=True)
+    reaper.start()
+    interrupted = restarted.execute(interrupted_dispatch)
+
+    reaper.join(timeout=3)
+    assert not interrupted.succeeded and interrupted.retryable
+    assert interrupted.result_code == "worker_interrupted"
+    assert interrupted_process.poll() is not None
+    assert not interrupted_registry._path(interrupted_dispatch.attempt_id).exists()
+    scheduler.complete(interrupted_dispatch, interrupted)
+
+
+@pytest.mark.skipif(
+    not scripted_supported(),
+    reason="scripted duplicate delivery requires the proven macOS fixture sandbox",
+)
+def test_scripted_worker_serializes_duplicate_dispatch_delivery(tmp_path: Path) -> None:
+    scenario = load_scenario()
+    runtime = tmp_path / "runtime"
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    proposal = propose_scripted_mission(
+        scenario=scenario,
+        store=store,
+        runtime=runtime,
+        mission_id="mission-duplicate-delivery",
+    )
+    store.approve_plan(
+        proposal.mission_id,
+        "command_approve_duplicate_delivery",
+        expected_revision=1,
+        operator_label="process-fixture",
+        rationale="Approve duplicate delivery recovery.",
+        truth_kind=TruthKind.SIMULATED_FIXTURE,
+        recorded_at=datetime.now(UTC),
+    )
+    scheduler = MissionScheduler(store, clock=SystemClock())
+    dispatch = scheduler.tick(proposal.mission_id, ("scripted-worker-1",))[0]
+    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
+    store.bind_artifact_resolver(evidence)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_check(workspace, policy):
+        entered.set()
+        assert release.wait(5)
+        return run_fixture_tests(workspace, policy)
+
+    first_worker = ScriptedWorker(
+        scenario=scenario,
+        repository=proposal.repository,
+        runtime=runtime,
+        base_sha=proposal.base_sha,
+        evidence=evidence,
+        store=store,
+        check_runner=blocked_check,
+        heartbeat=scheduler.heartbeat,
+    )
+    duplicate_worker = ScriptedWorker(
+        scenario=scenario,
+        repository=proposal.repository,
+        runtime=runtime,
+        base_sha=proposal.base_sha,
+        evidence=evidence,
+        store=store,
+        heartbeat=scheduler.heartbeat,
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(first_worker.execute, dispatch)
+        assert entered.wait(5)
+        duplicate = executor.submit(duplicate_worker.execute, dispatch)
+        assert not duplicate.done()
+        release.set()
+        first_result = first.result(timeout=20)
+        duplicate_result = duplicate.result(timeout=20)
+
+    assert duplicate_result == first_result
+    scheduler.complete(dispatch, duplicate_result)
+    assert (
+        store.snapshot(proposal.mission_id).attempts[0].state == AttemptState.COMMITTED
+    )
+
+
+@pytest.mark.skipif(
+    not scripted_supported(),
+    reason="final-slot recovery requires the proven macOS fixture sandbox",
+)
+def test_scripted_mission_recovers_terminal_evidence_in_final_attempt_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = tmp_path / "taskmaster"
+    shutil.copytree(ROOT / "demo/taskmaster", fixture)
+    scenario_path = fixture / "scenario.json"
+    raw = json.loads(scenario_path.read_text(encoding="utf-8"))
+    raw["policy"]["resource_budget"]["max_attempts"] = 7
+    scenario_path.write_text(json.dumps(raw), encoding="utf-8")
+    scenario = load_scenario(scenario_path)
+    runtime = tmp_path / "runtime"
+    database = tmp_path / "missions.sqlite"
+    store = SQLiteMissionStore(database)
+    proposal = propose_scripted_mission(
+        scenario=scenario,
+        store=store,
+        runtime=runtime,
+        mission_id="mission-final-slot-recovery",
+    )
+    store.approve_plan(
+        proposal.mission_id,
+        "command_approve_final_slot_recovery",
+        expected_revision=1,
+        operator_label="process-fixture",
+        rationale="Approve exact final-slot recovery.",
+        truth_kind=TruthKind.SIMULATED_FIXTURE,
+        recorded_at=datetime.now(UTC),
+    )
+    original = MissionScheduler.complete
+    calls = 0
+
+    def crash_on_final(self, dispatch, result):
+        nonlocal calls
+        calls += 1
+        if calls == 7:
+            raise RuntimeError("crash after terminal evidence")
+        return original(self, dispatch, result)
+
+    monkeypatch.setattr(MissionScheduler, "complete", crash_on_final)
+    with pytest.raises(RuntimeError, match="terminal evidence"):
+        execute_scripted_mission(
+            store=store,
+            runtime=proposal.runtime,
+            mission_id=proposal.mission_id,
+        )
+    crashed = store.snapshot(proposal.mission_id)
+    assert len(crashed.attempts) == 7
+    assert sum(item.state == AttemptState.RUNNING for item in crashed.attempts) == 1
+
+    monkeypatch.setattr(MissionScheduler, "complete", original)
+    run = execute_scripted_mission(
+        store=SQLiteMissionStore(database),
+        runtime=proposal.runtime,
+        mission_id=proposal.mission_id,
+    )
+    snapshot = SQLiteMissionStore(database).snapshot(proposal.mission_id)
+    assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
+    assert len(snapshot.attempts) == 7
+    assert run.candidate.sha256
+
+
+@pytest.mark.skipif(
+    not scripted_supported(),
     reason="active process control requires the proven macOS scripted runtime",
 )
 def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
@@ -202,10 +443,20 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     dispatch = scheduler.tick(mission_id, ("scripted-worker-1",))[0]
     registry = OwnedProcessRegistry(runtime)
     errors: list[Exception] = []
+    ignore_cancel = [False]
+
+    def observed_status() -> MissionStatus:
+        status = store.snapshot(mission_id).mission.status
+        return (
+            MissionStatus.RUNNING
+            if ignore_cancel[0] and status == MissionStatus.CANCELLED
+            else status
+        )
+
     runner = ControlledProcessRunner(
         registry,
         dispatch,
-        lambda: store.snapshot(mission_id).mission.status,
+        observed_status,
         heartbeat=lambda: scheduler.heartbeat(dispatch),
     )
 
@@ -263,6 +514,16 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     )
     assert resumed["mission_id"] == mission_id
     assert store.snapshot(mission_id).mission.status == MissionStatus.RUNNING
+    ignore_cancel[0] = True
+    store.cancel(
+        mission_id,
+        "command_cancel_active_control",
+        operator_label="local-operator",
+        rationale=None,
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=datetime.now(UTC),
+    )
+    assert tuple(registry.directory.iterdir())
     cancelled = _cli(
         environment,
         "mission",
@@ -276,7 +537,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     thread.join(timeout=3)
 
     assert cancelled == {"mission_id": mission_id, "status": "cancelled"}
-    assert len(errors) == 1 and isinstance(errors[0], ProcessCancelled)
+    assert errors == []
     assert store.snapshot(mission_id).mission.status == MissionStatus.CANCELLED
     assert not thread.is_alive() and not tuple(registry.directory.iterdir())
 
@@ -580,6 +841,19 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
         "Approve the exact verified fixture candidate.",
         "--command-id",
         "command_approve_result_process_001",
+    )
+    store_after_start.approve_final_result(
+        mission_id,
+        "command_approve_result_process_001",
+        expected_candidate_sha256=str(started["candidate_sha256"]),
+        operator_label="process-fixture",
+        rationale="Approve the exact verified fixture candidate.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=datetime.now(UTC),
+    )
+    assert (
+        store_after_start.snapshot(mission_id).mission.status
+        == MissionStatus.AWAITING_RESULT
     )
     approved = _cli(environment, *approval)
     approved_again = _cli(environment, *approval)

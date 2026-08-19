@@ -76,9 +76,7 @@ def _contracts() -> tuple[ProjectPolicy, Plan]:
                     kind="patch",
                 ),
             ),
-            expected_outputs=(
-                ArtifactContract(name="candidate", kind="patch"),
-            ),
+            expected_outputs=(ArtifactContract(name="candidate", kind="patch"),),
             acceptance_checks=("unit-check",),
             priority=10,
             attempt_limit=2,
@@ -118,9 +116,7 @@ def _contracts() -> tuple[ProjectPolicy, Plan]:
                     kind="patch",
                 ),
             ),
-            expected_outputs=(
-                ArtifactContract(name="verification", kind="receipt"),
-            ),
+            expected_outputs=(ArtifactContract(name="verification", kind="receipt"),),
             acceptance_checks=("unit-check",),
             priority=0,
             attempt_limit=2,
@@ -246,9 +242,7 @@ def test_live_credentials_are_preflighted_without_fallback() -> None:
     with pytest.raises(PlannerUnavailable, match="explicit model"):
         AdkPlanner.live(model="gemini-2.5-flash", environ={"GOOGLE_API_KEY": "x"})
     with pytest.raises(PlannerUnavailable, match="exactly one"):
-        AdkPlanner.live(
-            environ={"GOOGLE_API_KEY": "x", "GEMINI_API_KEY": "y"}
-        )
+        AdkPlanner.live(environ={"GOOGLE_API_KEY": "x", "GEMINI_API_KEY": "y"})
 
     assert isinstance(
         AdkPlanner.live(environ={"GOOGLE_API_KEY": "not-recorded"}),

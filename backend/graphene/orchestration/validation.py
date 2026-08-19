@@ -114,9 +114,15 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
                 task.task_id,
             )
         if task.state != TaskState.QUEUED or task.attempt_count != 0:
-            issue("non_initial_task_state", "new plan tasks must be queued", task.task_id)
+            issue(
+                "non_initial_task_state", "new plan tasks must be queued", task.task_id
+            )
         if task.attempt_limit > policy.retry_limit + 1:
-            issue("attempt_limit_exceeds_policy", "attempt limit exceeds policy", task.task_id)
+            issue(
+                "attempt_limit_exceeds_policy",
+                "attempt limit exceeds policy",
+                task.task_id,
+            )
         if task.assigned_role not in policy.agent_roles:
             issue("role_not_allowed", "assigned role is not allowlisted", task.task_id)
         if task.evidence_adapter != "generic_v1":
@@ -144,7 +150,11 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
             if not _read_scope_allowed(
                 path, policy.allowed_read_globs, policy.exclusions
             ):
-                issue("read_path_not_allowed", f"read path is forbidden: {path}", task.task_id)
+                issue(
+                    "read_path_not_allowed",
+                    f"read path is forbidden: {path}",
+                    task.task_id,
+                )
         for path in task.write_paths:
             if not _matches(path, policy.allowed_write_globs) or _matches(
                 path, policy.exclusions
@@ -197,10 +207,9 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
         for right in plan.tasks[index + 1 :]:
             if not set(left.write_paths) & set(right.write_paths):
                 continue
-            ordered = (
-                left.task_id in ancestors.get(right.task_id, set())
-                or right.task_id in ancestors.get(left.task_id, set())
-            )
+            ordered = left.task_id in ancestors.get(
+                right.task_id, set()
+            ) or right.task_id in ancestors.get(left.task_id, set())
             if not ordered:
                 issue(
                     "parallel_write_conflict",
@@ -215,15 +224,13 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
         issue("verification_count", "plan requires exactly one verification task")
     if len(assemblies) == len(verifiers) == 1:
         assembly, verifier = assemblies[0], verifiers[0]
-        required = {
-            task.task_id
-            for task in plan.tasks
-            if task.kind == TaskKind.WORK
-        }
+        required = {task.task_id for task in plan.tasks if task.kind == TaskKind.WORK}
         if not required <= ancestors.get(assembly.task_id, set()):
             issue("assembly_not_reachable", "assembly does not consume every work task")
         if assembly.task_id not in ancestors.get(verifier.task_id, set()):
-            issue("verification_not_bound", "verification is not downstream of assembly")
+            issue(
+                "verification_not_bound", "verification is not downstream of assembly"
+            )
 
     canonical_issues = tuple(
         sorted(issues, key=lambda item: (item.code, item.task_id or "", item.detail))

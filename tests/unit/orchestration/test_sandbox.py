@@ -82,10 +82,14 @@ def test_template_is_exact_and_digest_is_stable() -> None:
     assert validate_command_template(TEMPLATE)[0] == "/usr/local/bin/python"
     assert command_template_sha256(TEMPLATE) == command_template_sha256(TEMPLATE)
     with pytest.raises(SandboxError, match="frozen"):
-        validate_command_template(TEMPLATE.model_copy(update={"argv": (*TEMPLATE.argv, "tests")}))
+        validate_command_template(
+            TEMPLATE.model_copy(update={"argv": (*TEMPLATE.argv, "tests")})
+        )
 
 
-def test_repository_view_is_scoped_and_drops_links_and_credentials(tmp_path: Path) -> None:
+def test_repository_view_is_scoped_and_drops_links_and_credentials(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     (source / "pkg").mkdir()
@@ -120,7 +124,9 @@ def test_repository_view_rejects_scoped_symlinks(tmp_path: Path) -> None:
         )
 
 
-def test_repository_view_uses_anchored_globs_and_bounded_scanning(tmp_path: Path) -> None:
+def test_repository_view_uses_anchored_globs_and_bounded_scanning(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     (source / "top.py").write_text("selected = True\n")
@@ -150,27 +156,39 @@ def test_cleanup_rechecks_owner_and_uses_only_full_container_id() -> None:
         def _run(self, *arguments: str, timeout: float = 5):
             calls.append(arguments)
             if arguments[0] == "inspect":
-                payload = [{
-                    "Id": CONTAINER_ID,
-                    "Config": {"Labels": {"graphene.owner": "attempt-1"}},
-                    "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
-                }]
-                return subprocess.CompletedProcess(arguments, 0, json.dumps(payload).encode(), b"")
+                payload = [
+                    {
+                        "Id": CONTAINER_ID,
+                        "Config": {"Labels": {"graphene.owner": "attempt-1"}},
+                        "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
+                    }
+                ]
+                return subprocess.CompletedProcess(
+                    arguments, 0, json.dumps(payload).encode(), b""
+                )
             return subprocess.CompletedProcess(arguments, 0, b"", b"")
 
     FakeExecutor().cleanup_owned(CONTAINER_ID, "attempt-1")
-    assert calls == [("inspect", CONTAINER_ID), ("inspect", CONTAINER_ID), ("rm", CONTAINER_ID)]
+    assert calls == [
+        ("inspect", CONTAINER_ID),
+        ("inspect", CONTAINER_ID),
+        ("rm", CONTAINER_ID),
+    ]
 
 
 def test_cleanup_refuses_mismatched_ownership() -> None:
     class FakeExecutor(DockerExecutor):
         def _run(self, *arguments: str, timeout: float = 5):
-            payload = [{
-                "Id": CONTAINER_ID,
-                "Config": {"Labels": {"graphene.owner": "someone-else"}},
-                "State": {"Running": False},
-            }]
-            return subprocess.CompletedProcess(arguments, 0, json.dumps(payload).encode(), b"")
+            payload = [
+                {
+                    "Id": CONTAINER_ID,
+                    "Config": {"Labels": {"graphene.owner": "someone-else"}},
+                    "State": {"Running": False},
+                }
+            ]
+            return subprocess.CompletedProcess(
+                arguments, 0, json.dumps(payload).encode(), b""
+            )
 
     with pytest.raises(SandboxError, match="ownership"):
         FakeExecutor().cleanup_owned(CONTAINER_ID, "attempt-1")
@@ -195,18 +213,24 @@ def test_uncertain_create_cleans_only_name_resolved_owned_container(
             calls.append(arguments)
             if arguments[0] == "inspect":
                 name = "graphene-" + hashlib.sha256(b"attempt-1").hexdigest()[:24]
-                payload = [{
-                    "Id": CONTAINER_ID,
-                    "Name": f"/{name}",
-                    "Config": {"Labels": {"graphene.owner": "attempt-1"}},
-                    "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
-                }]
-                return subprocess.CompletedProcess(arguments, 0, json.dumps(payload).encode(), b"")
+                payload = [
+                    {
+                        "Id": CONTAINER_ID,
+                        "Name": f"/{name}",
+                        "Config": {"Labels": {"graphene.owner": "attempt-1"}},
+                        "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
+                    }
+                ]
+                return subprocess.CompletedProcess(
+                    arguments, 0, json.dumps(payload).encode(), b""
+                )
             return subprocess.CompletedProcess(arguments, 0, b"", b"")
 
     monkeypatch.setattr(
         "graphene.orchestration.sandbox.subprocess.run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, b"not-an-id\n", b""),
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, b"not-an-id\n", b""
+        ),
     )
     with pytest.raises(SandboxError, match="verified owned container removed"):
         FakeExecutor().execute(
@@ -259,7 +283,9 @@ def test_unavailable_docker_fails_before_repository_materialization(
         reached_materialization = True
         raise AssertionError("materialized before preflight")
 
-    monkeypatch.setattr("graphene.orchestration.sandbox.materialize_repository_view", forbidden)
+    monkeypatch.setattr(
+        "graphene.orchestration.sandbox.materialize_repository_view", forbidden
+    )
     executor = DockerExecutor(docker_bin=tmp_path / "missing-docker")
     with pytest.raises(DockerUnavailable, match="NOT PROVEN"):
         executor.execute(

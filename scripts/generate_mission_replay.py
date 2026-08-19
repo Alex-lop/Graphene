@@ -8,7 +8,6 @@ from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.orchestration.projection import (
     AttemptEvidenceView,
     AttemptView,
-    CollectionPatch,
     EvidenceRefView,
     GateOptionView,
     GateView,
@@ -29,9 +28,7 @@ from graphene.orchestration.projection import (
 from graphene.orchestration.replay import MISSION_REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = (
-    ROOT / "backend/graphene/orchestration/static/mission-replay.json"
-)
+DEFAULT_OUTPUT = ROOT / "backend/graphene/orchestration/static/mission-replay.json"
 MISSION_ID = "mission_status_reports"
 
 
@@ -55,10 +52,38 @@ def task(
     worker_id: str | None = None,
     attempt_id: str | None = None,
 ) -> TaskView:
+    contract = {
+        "redact_notes": (
+            "Redact private note text by default and pass check_redact_notes."
+        ),
+        "render_json": (
+            "Produce the scoped JSON status renderer and pass check_render_json."
+        ),
+        "render_markdown": (
+            "Produce the scoped Markdown status renderer and pass check_render_markdown."
+        ),
+        "wire_cli": (
+            "Consume only accepted renderer artifacts, wire both formats into the CLI, "
+            "and pass check_wire_cli."
+        ),
+        "assemble": (
+            "Assemble only accepted task publications into the isolated candidate and "
+            "pass check_assemble."
+        ),
+        "verify": (
+            "Verify the exact assembled candidate with the bound check_verify receipt."
+        ),
+    }[task_id]
     write_scope = {
         "redact_notes": ("src/status_report/redaction.py", "tests/test_redaction.py"),
-        "render_json": ("src/status_report/json_report.py", "tests/test_json_report.py"),
-        "render_markdown": ("src/status_report/markdown_report.py", "tests/test_markdown_report.py"),
+        "render_json": (
+            "src/status_report/json_report.py",
+            "tests/test_json_report.py",
+        ),
+        "render_markdown": (
+            "src/status_report/markdown_report.py",
+            "tests/test_markdown_report.py",
+        ),
         "wire_cli": ("src/status_report/cli.py", "tests/test_cli.py"),
         "assemble": (),
         "verify": (),
@@ -66,6 +91,7 @@ def task(
     return TaskView(
         task_id=task_id,
         title=title,
+        contract=contract,
         state=state,
         kind=kind,
         priority=priority,
@@ -158,9 +184,9 @@ def relationships(
         if item.state == "accepted":
             for consumer in item.consumers:
                 add(f"task:{consumer}", f"task:{item.task_id}", "inherited")
-    add(f"task:assemble", f"integration:{MISSION_ID}", "produced")
+    add("task:assemble", f"integration:{MISSION_ID}", "produced")
     add(f"integration:{MISSION_ID}", f"verification:{MISSION_ID}", "verified_by")
-    add(f"task:verify", f"verification:{MISSION_ID}", "produced")
+    add("task:verify", f"verification:{MISSION_ID}", "produced")
     add(f"verification:{MISSION_ID}", f"result:{MISSION_ID}", "produced")
     return tuple(values[key] for key in sorted(values))
 
@@ -230,12 +256,12 @@ def snapshot(
         ),
         status=mission_status,
         plan_revision=1,
-        outcome="Verified isolated result available." if mission_status == "completed" else None,
+        outcome="Verified isolated result available."
+        if mission_status == "completed"
+        else None,
         creation_source="scripted_fixture",
     )
-    head = MissionHeadView(
-        mission_id=MISSION_ID, seq=seq, event_sha256=head_digest
-    )
+    head = MissionHeadView(mission_id=MISSION_ID, seq=seq, event_sha256=head_digest)
     worker_values = workers(attempt_values)
     gates = (gate,)
     values: dict[str, Any] = {
@@ -247,7 +273,9 @@ def snapshot(
         "attempts": tuple(sorted(attempt_values, key=lambda item: item.attempt_id)),
         "workers": worker_values,
         "gates": gates,
-        "publications": tuple(sorted(publications, key=lambda item: item.publication_id)),
+        "publications": tuple(
+            sorted(publications, key=lambda item: item.publication_id)
+        ),
         "relationships": relationships(task_values, worker_values, gates, publications),
         "integration": integration
         or StageView(state="queued", summary="Integration has not started."),
@@ -269,9 +297,7 @@ def snapshot(
     )
     digest_value = digest(
         canonical_json_bytes(
-            provisional.model_dump(
-                mode="json", exclude={"cursor", "snapshot_sha256"}
-            )
+            provisional.model_dump(mode="json", exclude={"cursor", "snapshot_sha256"})
         ).decode()
     )
     return MissionControlSnapshot(**values, snapshot_sha256=digest_value)
@@ -292,7 +318,11 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
         "verify": ("Verify assembled candidate", ("assemble",), "verification", 20),
     }
 
-    def tasks(states: dict[str, str], owners: dict[str, tuple[str, str]] = {}, blockers: dict[str, str] = ()):
+    def tasks(
+        states: dict[str, str],
+        owners: dict[str, tuple[str, str]] = {},
+        blockers: dict[str, str] = (),
+    ):
         return tuple(
             task(
                 task_id,
@@ -338,21 +368,40 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
     empty = ()
     s1 = snapshot(
         1,
-        tasks({"redact_notes": "needs_input", "render_json": "ready", "render_markdown": "ready"}),
+        tasks(
+            {
+                "redact_notes": "needs_input",
+                "render_json": "ready",
+                "render_markdown": "ready",
+            }
+        ),
         empty,
         needs_you=True,
         critical_path=("redact_notes", "wire_cli", "assemble", "verify"),
         unknowns=("No live Gemini or Cloud execution is established by this replay.",),
     )
-    a_json = attempt("attempt_render_json_1", "render_json", "worker_json", 1, "running")
-    a_markdown = attempt("attempt_render_markdown_1", "render_markdown", "worker_markdown", 1, "running")
+    a_json = attempt(
+        "attempt_render_json_1", "render_json", "worker_json", 1, "running"
+    )
+    a_markdown = attempt(
+        "attempt_render_markdown_1", "render_markdown", "worker_markdown", 1, "running"
+    )
     s2 = snapshot(
         2,
         tasks(
-            {"redact_notes": "ready", "render_json": "running", "render_markdown": "running"},
-            {"render_json": ("worker_json", a_json.attempt_id), "render_markdown": ("worker_markdown", a_markdown.attempt_id)},
+            {
+                "redact_notes": "ready",
+                "render_json": "running",
+                "render_markdown": "running",
+            },
+            {
+                "render_json": ("worker_json", a_json.attempt_id),
+                "render_markdown": ("worker_markdown", a_markdown.attempt_id),
+            },
         ),
-        (a_json, a_markdown), gate=gate_decided, resources=pressure,
+        (a_json, a_markdown),
+        gate=gate_decided,
+        resources=pressure,
         critical_path=("render_markdown", "wire_cli", "assemble", "verify"),
     )
     denial = ref("command_denial", "interpreter_template_not_allowlisted")
@@ -360,89 +409,311 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
     s3 = snapshot(
         3,
         tasks(
-            {"redact_notes": "ready", "render_json": "running", "render_markdown": "blocked"},
-            {"render_json": ("worker_json", a_json.attempt_id), "render_markdown": ("worker_markdown", a_markdown.attempt_id)},
-            {"render_markdown": "Denied non-allowlisted interpreter template before execution."},
+            {
+                "redact_notes": "ready",
+                "render_json": "running",
+                "render_markdown": "blocked",
+            },
+            {
+                "render_json": ("worker_json", a_json.attempt_id),
+                "render_markdown": ("worker_markdown", a_markdown.attempt_id),
+            },
+            {
+                "render_markdown": "Denied non-allowlisted interpreter template before execution."
+            },
         ),
-        (a_json, a_markdown_denied), gate=gate_decided, resources=pressure,
+        (a_json, a_markdown_denied),
+        gate=gate_decided,
+        resources=pressure,
         critical_path=("render_markdown", "wire_cli", "assemble", "verify"),
     )
     failed_check = ref("test_check", "markdown_acceptance_failed")
-    json_refs = (ref("changed_path", "json_renderer"), ref("test_check", "json_acceptance_passed"))
-    a_json_done = a_json.model_copy(update={"status": "committed", "result_code": "passed", "evidence_refs": json_refs})
-    a_markdown_failed = a_markdown.model_copy(update={"status": "failed", "result_code": "check_failed", "evidence_refs": (denial, failed_check)})
-    a_redact = attempt("attempt_redact_notes_1", "redact_notes", "worker_redact", 1, "running")
+    json_refs = (
+        ref("changed_path", "json_renderer"),
+        ref("test_check", "json_acceptance_passed"),
+    )
+    a_json_done = a_json.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "passed",
+            "evidence_refs": json_refs,
+        }
+    )
+    a_markdown_failed = a_markdown.model_copy(
+        update={
+            "status": "failed",
+            "result_code": "check_failed",
+            "evidence_refs": (denial, failed_check),
+        }
+    )
+    a_redact = attempt(
+        "attempt_redact_notes_1", "redact_notes", "worker_redact", 1, "running"
+    )
     p_json = publication("render_json", ("wire_cli",))
     s4 = snapshot(
         4,
         tasks(
-            {"redact_notes": "running", "render_json": "done", "render_markdown": "retrying"},
-            {"redact_notes": ("worker_redact", a_redact.attempt_id), "render_json": ("worker_json", a_json.attempt_id), "render_markdown": ("worker_markdown", a_markdown.attempt_id)},
+            {
+                "redact_notes": "running",
+                "render_json": "done",
+                "render_markdown": "retrying",
+            },
+            {
+                "redact_notes": ("worker_redact", a_redact.attempt_id),
+                "render_json": ("worker_json", a_json.attempt_id),
+                "render_markdown": ("worker_markdown", a_markdown.attempt_id),
+            },
         ),
-        (a_json_done, a_markdown_failed, a_redact), gate=gate_decided, publications=(p_json,),
+        (a_json_done, a_markdown_failed, a_redact),
+        gate=gate_decided,
+        publications=(p_json,),
         critical_path=("render_markdown", "wire_cli", "assemble", "verify"),
     )
-    a_markdown_2 = attempt("attempt_render_markdown_2", "render_markdown", "worker_markdown_retry", 2, "running")
+    a_markdown_2 = attempt(
+        "attempt_render_markdown_2",
+        "render_markdown",
+        "worker_markdown_retry",
+        2,
+        "running",
+    )
     s5 = snapshot(
         5,
         tasks(
-            {"redact_notes": "running", "render_json": "done", "render_markdown": "running"},
-            {"redact_notes": ("worker_redact", a_redact.attempt_id), "render_json": ("worker_json", a_json.attempt_id), "render_markdown": ("worker_markdown_retry", a_markdown_2.attempt_id)},
+            {
+                "redact_notes": "running",
+                "render_json": "done",
+                "render_markdown": "running",
+            },
+            {
+                "redact_notes": ("worker_redact", a_redact.attempt_id),
+                "render_json": ("worker_json", a_json.attempt_id),
+                "render_markdown": ("worker_markdown_retry", a_markdown_2.attempt_id),
+            },
         ),
-        (a_json_done, a_markdown_failed, a_markdown_2, a_redact), gate=gate_decided, publications=(p_json,), resources=pressure,
+        (a_json_done, a_markdown_failed, a_markdown_2, a_redact),
+        gate=gate_decided,
+        publications=(p_json,),
+        resources=pressure,
         critical_path=("render_markdown", "wire_cli", "assemble", "verify"),
     )
-    a_redact_done = a_redact.model_copy(update={"status": "committed", "result_code": "passed", "evidence_refs": (ref("changed_path", "redaction_module"), ref("test_check", "redaction_acceptance_passed"))})
-    a_markdown_done = a_markdown_2.model_copy(update={"status": "committed", "result_code": "passed_after_retry", "evidence_refs": (ref("changed_hunk", "markdown_retry_fix"), ref("test_check", "markdown_acceptance_passed"))})
-    p_redact = publication("redact_notes", ("wire_cli",)); p_markdown = publication("render_markdown", ("wire_cli",))
+    a_redact_done = a_redact.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "passed",
+            "evidence_refs": (
+                ref("changed_path", "redaction_module"),
+                ref("test_check", "redaction_acceptance_passed"),
+            ),
+        }
+    )
+    a_markdown_done = a_markdown_2.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "passed_after_retry",
+            "evidence_refs": (
+                ref("changed_hunk", "markdown_retry_fix"),
+                ref("test_check", "markdown_acceptance_passed"),
+            ),
+        }
+    )
+    p_redact = publication("redact_notes", ("wire_cli",))
+    p_markdown = publication("render_markdown", ("wire_cli",))
     s6 = snapshot(
         6,
-        tasks({"redact_notes": "done", "render_json": "done", "render_markdown": "done", "wire_cli": "ready"}),
-        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done), gate=gate_decided, publications=(p_json, p_markdown, p_redact),
+        tasks(
+            {
+                "redact_notes": "done",
+                "render_json": "done",
+                "render_markdown": "done",
+                "wire_cli": "ready",
+            }
+        ),
+        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done),
+        gate=gate_decided,
+        publications=(p_json, p_markdown, p_redact),
         critical_path=("wire_cli", "assemble", "verify"),
     )
-    a_wire = attempt("attempt_wire_cli_1", "wire_cli", "worker_cli", 1, "running", ref("inherited_evidence", "accepted_dependency_patches"))
+    a_wire = attempt(
+        "attempt_wire_cli_1",
+        "wire_cli",
+        "worker_cli",
+        1,
+        "running",
+        ref("inherited_evidence", "accepted_dependency_patches"),
+    )
     s7 = snapshot(
         7,
-        tasks({"redact_notes": "done", "render_json": "done", "render_markdown": "done", "wire_cli": "running"}, {"wire_cli": ("worker_cli", a_wire.attempt_id)}),
-        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done, a_wire), gate=gate_decided, publications=(p_json, p_markdown, p_redact),
+        tasks(
+            {
+                "redact_notes": "done",
+                "render_json": "done",
+                "render_markdown": "done",
+                "wire_cli": "running",
+            },
+            {"wire_cli": ("worker_cli", a_wire.attempt_id)},
+        ),
+        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done, a_wire),
+        gate=gate_decided,
+        publications=(p_json, p_markdown, p_redact),
         critical_path=("wire_cli", "assemble", "verify"),
     )
-    a_wire_done = a_wire.model_copy(update={"status": "committed", "result_code": "passed", "evidence_refs": (*a_wire.evidence_refs, ref("test_check", "cli_acceptance_passed"))})
+    a_wire_done = a_wire.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "passed",
+            "evidence_refs": (
+                *a_wire.evidence_refs,
+                ref("test_check", "cli_acceptance_passed"),
+            ),
+        }
+    )
     p_wire = publication("wire_cli", ("assemble",))
-    a_assemble = attempt("attempt_assemble_1", "assemble", "worker_integrator", 1, "running")
+    a_assemble = attempt(
+        "attempt_assemble_1", "assemble", "worker_integrator", 1, "running"
+    )
     s8 = snapshot(
         8,
-        tasks({"redact_notes": "done", "render_json": "done", "render_markdown": "done", "wire_cli": "done", "assemble": "running"}, {"assemble": ("worker_integrator", a_assemble.attempt_id)}),
-        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done, a_wire_done, a_assemble), gate=gate_decided, publications=(p_json, p_markdown, p_redact, p_wire),
-        integration=StageView(state="running", summary="Applying four accepted patches in the isolated integration workspace.", task_id="assemble", attempt_id=a_assemble.attempt_id),
+        tasks(
+            {
+                "redact_notes": "done",
+                "render_json": "done",
+                "render_markdown": "done",
+                "wire_cli": "done",
+                "assemble": "running",
+            },
+            {"assemble": ("worker_integrator", a_assemble.attempt_id)},
+        ),
+        (
+            a_json_done,
+            a_markdown_failed,
+            a_markdown_done,
+            a_redact_done,
+            a_wire_done,
+            a_assemble,
+        ),
+        gate=gate_decided,
+        publications=(p_json, p_markdown, p_redact, p_wire),
+        integration=StageView(
+            state="running",
+            summary="Applying four accepted patches in the isolated integration workspace.",
+            task_id="assemble",
+            attempt_id=a_assemble.attempt_id,
+        ),
         critical_path=("assemble", "verify"),
     )
-    a_assemble_done = a_assemble.model_copy(update={"status": "committed", "result_code": "assembled", "evidence_refs": (ref("candidate_tree", "assembled_candidate"),)})
+    a_assemble_done = a_assemble.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "assembled",
+            "evidence_refs": (ref("candidate_tree", "assembled_candidate"),),
+        }
+    )
     a_verify = attempt("attempt_verify_1", "verify", "worker_verifier", 1, "running")
     s9 = snapshot(
         9,
-        tasks({"redact_notes": "done", "render_json": "done", "render_markdown": "done", "wire_cli": "done", "assemble": "done", "verify": "verifying"}, {"verify": ("worker_verifier", a_verify.attempt_id)}),
-        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done, a_wire_done, a_assemble_done, a_verify), gate=gate_decided, publications=(p_json, p_markdown, p_redact, p_wire),
-        integration=StageView(state="done", summary="Accepted patches assembled without conflict.", task_id="assemble", attempt_id=a_assemble.attempt_id, evidence_refs=a_assemble_done.evidence_refs),
-        verification=StageView(state="running", summary="Running the bound full verification against the assembled candidate.", task_id="verify", attempt_id=a_verify.attempt_id),
+        tasks(
+            {
+                "redact_notes": "done",
+                "render_json": "done",
+                "render_markdown": "done",
+                "wire_cli": "done",
+                "assemble": "done",
+                "verify": "verifying",
+            },
+            {"verify": ("worker_verifier", a_verify.attempt_id)},
+        ),
+        (
+            a_json_done,
+            a_markdown_failed,
+            a_markdown_done,
+            a_redact_done,
+            a_wire_done,
+            a_assemble_done,
+            a_verify,
+        ),
+        gate=gate_decided,
+        publications=(p_json, p_markdown, p_redact, p_wire),
+        integration=StageView(
+            state="done",
+            summary="Accepted patches assembled without conflict.",
+            task_id="assemble",
+            attempt_id=a_assemble.attempt_id,
+            evidence_refs=a_assemble_done.evidence_refs,
+        ),
+        verification=StageView(
+            state="running",
+            summary="Running the bound full verification against the assembled candidate.",
+            task_id="verify",
+            attempt_id=a_verify.attempt_id,
+        ),
         critical_path=("verify",),
     )
     verify_refs = (
         ref("test_check", "fixture_full_verification_passed"),
         ref("simulated_isolated_commit", "fixture_result_commit_anchor"),
     )
-    a_verify_done = a_verify.model_copy(update={"status": "committed", "result_code": "passed", "evidence_refs": verify_refs})
+    a_verify_done = a_verify.model_copy(
+        update={
+            "status": "committed",
+            "result_code": "passed",
+            "evidence_refs": verify_refs,
+        }
+    )
     s10 = snapshot(
         10,
         tasks({key: "done" for key in base}),
-        (a_json_done, a_markdown_failed, a_markdown_done, a_redact_done, a_wire_done, a_assemble_done, a_verify_done), gate=gate_decided, publications=(p_json, p_markdown, p_redact, p_wire),
-        integration=StageView(state="done", summary="Accepted patches assembled without conflict.", task_id="assemble", attempt_id=a_assemble.attempt_id, evidence_refs=a_assemble_done.evidence_refs),
-        verification=StageView(state="done", summary="All bound checks passed against the assembled candidate.", task_id="verify", attempt_id=a_verify.attempt_id, evidence_refs=verify_refs[:1]),
-        resources=ResourceSummaryView(status="healthy", summary="Managed scripted workers completed within the fixture budget.", metrics=(ResourceMetricView(label="Managed worker slots", display_value="0 / 2 active", category="measured_runtime", attribution_quality="measured_bound"), ResourceMetricView(label="Remote provider CPU/RAM", display_value="unavailable", category="provider", attribution_quality="unavailable"))),
-        result=ResultView(state="commit_created", summary="The generated fixture depicts a verified isolated local commit; it did not run Git, mutate a user branch, or contact a remote during replay.", evidence_refs=verify_refs),
+        (
+            a_json_done,
+            a_markdown_failed,
+            a_markdown_done,
+            a_redact_done,
+            a_wire_done,
+            a_assemble_done,
+            a_verify_done,
+        ),
+        gate=gate_decided,
+        publications=(p_json, p_markdown, p_redact, p_wire),
+        integration=StageView(
+            state="done",
+            summary="Accepted patches assembled without conflict.",
+            task_id="assemble",
+            attempt_id=a_assemble.attempt_id,
+            evidence_refs=a_assemble_done.evidence_refs,
+        ),
+        verification=StageView(
+            state="done",
+            summary="All bound checks passed against the assembled candidate.",
+            task_id="verify",
+            attempt_id=a_verify.attempt_id,
+            evidence_refs=verify_refs[:1],
+        ),
+        resources=ResourceSummaryView(
+            status="healthy",
+            summary="Managed scripted workers completed within the fixture budget.",
+            metrics=(
+                ResourceMetricView(
+                    label="Managed worker slots",
+                    display_value="0 / 2 active",
+                    category="measured_runtime",
+                    attribution_quality="measured_bound",
+                ),
+                ResourceMetricView(
+                    label="Remote provider CPU/RAM",
+                    display_value="unavailable",
+                    category="provider",
+                    attribution_quality="unavailable",
+                ),
+            ),
+        ),
+        result=ResultView(
+            state="commit_created",
+            summary="The generated fixture depicts a verified isolated local commit; it did not run Git, mutate a user branch, or contact a remote during replay.",
+            evidence_refs=verify_refs,
+        ),
         mission_status="completed",
-        unknowns=("This replay does not establish live agent, Gemini, Cloud, or arbitrary-repository execution.",),
+        unknowns=(
+            "This replay does not establish live agent, Gemini, Cloud, or arbitrary-repository execution.",
+        ),
     )
     return (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10)
 
@@ -478,17 +749,24 @@ def render() -> bytes:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate the checked-in Mission Control replay.")
+    parser = argparse.ArgumentParser(
+        description="Generate the checked-in Mission Control replay."
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    content = render(); digest_value = sha256_hex(content)
+    content = render()
+    digest_value = sha256_hex(content)
     digest_path = args.output.with_suffix(".sha256")
     if args.check:
-        if args.output.read_bytes() != content or digest_path.read_text().strip() != digest_value:
+        if (
+            args.output.read_bytes() != content
+            or digest_path.read_text().strip() != digest_value
+        ):
             raise SystemExit(f"mission replay differs: generated sha256={digest_value}")
         return 0
-    args.output.write_bytes(content); digest_path.write_text(digest_value + "\n")
+    args.output.write_bytes(content)
+    digest_path.write_text(digest_value + "\n")
     return 0
 
 

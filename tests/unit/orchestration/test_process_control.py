@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -14,7 +13,6 @@ from graphene.orchestration.models import MissionStatus
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
-    ProcessCancelled,
     ProcessControlError,
 )
 from graphene.orchestration.scheduler import MissionScheduler
@@ -46,7 +44,9 @@ def _invoke(runner: ControlledProcessRunner, seconds: float = 0.2):
     )
 
 
-@pytest.mark.skipif(not Path("/bin/ps").is_file(), reason="POSIX process identity required")
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
 def test_pause_excludes_stopped_time_and_resume_completes(tmp_path: Path) -> None:
     _, dispatch = _dispatch(tmp_path)
     state = [MissionStatus.RUNNING]
@@ -76,8 +76,12 @@ def test_pause_excludes_stopped_time_and_resume_completes(tmp_path: Path) -> Non
     assert not tuple(registry.directory.iterdir())
 
 
-@pytest.mark.skipif(not Path("/bin/ps").is_file(), reason="POSIX process identity required")
-def test_cancel_terminates_only_registered_group_and_cleans_record(tmp_path: Path) -> None:
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_cancel_terminates_only_registered_group_and_cleans_record(
+    tmp_path: Path,
+) -> None:
     _, dispatch = _dispatch(tmp_path)
     state = [MissionStatus.RUNNING]
     registry = OwnedProcessRegistry(tmp_path / "runtime")
@@ -94,16 +98,18 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(tmp_path: Pat
     thread.start()
     while not tuple(registry.directory.iterdir()):
         time.sleep(0.01)
-    prepared = registry.prepare_cancel((dispatch,))[0]
-    state[0] = MissionStatus.CANCELLED
-    registry.signal_prepared(prepared, signal.SIGTERM)
+    prepared = registry.records_for_mission(dispatch.mission_id)
+    assert len(prepared) == 1
+    registry.terminate_owned(prepared[0], timeout=1)
     thread.join(timeout=3)
 
-    assert len(errors) == 1 and isinstance(errors[0], ProcessCancelled)
+    assert errors == [] and not thread.is_alive()
     assert not tuple(registry.directory.iterdir())
 
 
-@pytest.mark.skipif(not Path("/bin/ps").is_file(), reason="POSIX process identity required")
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
 def test_identity_mismatch_refuses_to_signal(tmp_path: Path, monkeypatch) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
@@ -114,7 +120,9 @@ def test_identity_mismatch_refuses_to_signal(tmp_path: Path, monkeypatch) -> Non
     record["started_at"] = "Mon Jan 1 00:00:00 1900"
     path.write_text(json.dumps(record), encoding="utf-8")
     signalled: list[tuple[int, int]] = []
-    monkeypatch.setattr(os, "killpg", lambda pid, requested: signalled.append((pid, requested)))
+    monkeypatch.setattr(
+        os, "killpg", lambda pid, requested: signalled.append((pid, requested))
+    )
 
     try:
         with pytest.raises(ProcessControlError, match="identity changed"):
@@ -125,14 +133,43 @@ def test_identity_mismatch_refuses_to_signal(tmp_path: Path, monkeypatch) -> Non
         process.wait(timeout=2)
 
 
-@pytest.mark.skipif(not Path("/bin/ps").is_file(), reason="POSIX process identity required")
-def test_status_failure_terminates_reaps_and_removes_owned_process(tmp_path: Path) -> None:
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_registry_retry_confirms_gone_and_rejects_public_records(
+    tmp_path: Path,
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    registry.record(dispatch, process, "/bin/sleep")
+    record = next(registry.directory.iterdir())
+    record.chmod(0o644)
+    with pytest.raises(ProcessControlError, match="unsafe"):
+        registry.records_for_mission(dispatch.mission_id)
+
+    record.chmod(0o600)
+    process.kill()
+    process.wait(timeout=2)
+    owned = registry.records_for_mission(dispatch.mission_id)[0]
+    registry.terminate_owned(owned)
+    assert not tuple(registry.directory.iterdir())
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_status_failure_terminates_reaps_and_removes_owned_process(
+    tmp_path: Path,
+) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     observed_pid: list[int] = []
 
     def failed_status() -> MissionStatus:
-        record = json.loads(next(registry.directory.iterdir()).read_text(encoding="utf-8"))
+        record = json.loads(
+            next(registry.directory.iterdir()).read_text(encoding="utf-8")
+        )
         observed_pid.append(record["pid"])
         raise RuntimeError("status unavailable")
 

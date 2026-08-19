@@ -271,7 +271,9 @@ def _fake_proc(root: Path) -> ProcessIdentity:
     return identity
 
 
-def test_linux_proc_tree_sample_is_partial_and_peak_is_unavailable(tmp_path: Path) -> None:
+def test_linux_proc_tree_sample_is_partial_and_peak_is_unavailable(
+    tmp_path: Path,
+) -> None:
     identity = _fake_proc(tmp_path)
     owned = OwnedProcess(
         owner_id="attempt-1",

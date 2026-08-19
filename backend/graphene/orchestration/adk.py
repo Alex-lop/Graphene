@@ -283,7 +283,9 @@ class AdkPlanner:
         except PlannerError:
             raise
         except TimeoutError:
-            raise PlannerUnavailable("ADK planner exceeded its wall-time limit") from None
+            raise PlannerUnavailable(
+                "ADK planner exceeded its wall-time limit"
+            ) from None
         except Exception:
             raise PlannerUnavailable("ADK planner execution failed") from None
         finally:
@@ -311,7 +313,9 @@ class AdkPlanner:
             raise PlannerOutputError("ADK planner output identity mismatch")
         require_valid_plan(policy, plan)
 
-        usage = _provider_usage(observation.usage, authoritative=self._driver == "gemini_live")
+        usage = _provider_usage(
+            observation.usage, authoritative=self._driver == "gemini_live"
+        )
         return PlanProposal(
             plan=plan,
             receipt=PlanProposalReceipt(

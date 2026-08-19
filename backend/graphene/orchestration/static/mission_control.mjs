@@ -187,7 +187,7 @@ async function openTask(taskId) {
     if (generation !== drawerGeneration || drawerTaskId !== taskId) return;
     if (detail.head.seq !== openingHead.seq || detail.head.event_sha256 !== openingHead.event_sha256) throw new Error("task detail does not match its opening cursor");
     const facts = element("dl");
-    for (const [label, value] of [["State", detail.task.state], ["Role", detail.task.assigned_role], ["Read scope", detail.read_scope?.join(", ")], ["Write scope", detail.write_scope?.join(", ")], ["Current attempt", detail.task.current_attempt_id]]) {
+    for (const [label, value] of [["Contract", detail.task.contract], ["State", detail.task.state], ["Role", detail.task.assigned_role], ["Read scope", detail.read_scope?.join(", ")], ["Write scope", detail.write_scope?.join(", ")], ["Current attempt", detail.task.current_attempt_id]]) {
       facts.append(element("dt", "", label), element("dd", "", value || "Not established"));
     }
     $("drawer-body").append(facts);

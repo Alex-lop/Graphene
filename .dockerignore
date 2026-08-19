@@ -6,6 +6,8 @@
 !backend/
 !backend/**/
 !backend/**/*.py
+!backend/graphene/orchestration/static/mission-replay.json
+!backend/graphene/orchestration/static/mission-replay.sha256
 !backend/graphene/orchestration/static/mission_control.css
 !backend/graphene/orchestration/static/mission_control.html
 !backend/graphene/orchestration/static/mission_control.mjs

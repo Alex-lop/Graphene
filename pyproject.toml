@@ -30,6 +30,9 @@ packages = ["backend/graphene"]
 [tool.hatch.build.targets.wheel.force-include]
 "demo/taskmaster" = "graphene/_taskmaster"
 
+[tool.hatch.build.targets.sdist]
+exclude = ["/.claude", "/All_md_Files"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 pythonpath = ["backend", "."]

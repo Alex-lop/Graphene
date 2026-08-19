@@ -30,7 +30,9 @@ def test_checked_in_mission_replay_exactly_regenerates_and_reconstructs():
     assert replay.stages[-1].snapshot_sha256 == replay.meta["final_snapshot_sha256"]
 
 
-def test_mission_replay_digest_truth_and_private_field_tampering_fail_closed(tmp_path: Path):
+def test_mission_replay_digest_truth_and_private_field_tampering_fail_closed(
+    tmp_path: Path,
+):
     source = Path("backend/graphene/orchestration/static/mission-replay.json")
     replay_path = tmp_path / "mission-replay.json"
     replay_path.write_bytes(source.read_bytes())

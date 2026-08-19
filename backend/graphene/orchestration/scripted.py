@@ -63,6 +63,7 @@ from .process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
     ProcessCancelled,
+    ProcessControlError,
 )
 from .scheduler import MissionScheduler, SystemClock
 from .store import SQLiteMissionStore
@@ -370,10 +371,7 @@ def initialize_fixture_repository(
                 target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 descriptor = os.open(
                     target,
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | getattr(os, "O_NOFOLLOW", 0),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                     0o600,
                 )
                 with os.fdopen(descriptor, "wb") as stream:
@@ -424,7 +422,9 @@ def initialize_fixture_repository(
             finally:
                 os.close(directory_descriptor)
         except OSError as error:
-            raise ScriptedError("scripted repository could not be initialized") from error
+            raise ScriptedError(
+                "scripted repository could not be initialized"
+            ) from error
         finally:
             if staging.exists() or staging.is_symlink():
                 staged = staging.lstat()
@@ -484,10 +484,7 @@ def _persisted_scenario(
                 target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 descriptor = os.open(
                     target,
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | getattr(os, "O_NOFOLLOW", 0),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                     0o600,
                 )
                 with os.fdopen(descriptor, "wb") as stream:
@@ -497,10 +494,7 @@ def _persisted_scenario(
             digest_path = staging / ".graphene-fixture.sha256"
             descriptor = os.open(
                 digest_path,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | getattr(os, "O_NOFOLLOW", 0),
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                 0o600,
             )
             with os.fdopen(descriptor, "wb") as stream:
@@ -533,7 +527,9 @@ def _persisted_scenario(
             finally:
                 os.close(directory_descriptor)
         except OSError as error:
-            raise ScriptedError("scripted fixture snapshot could not be created") from error
+            raise ScriptedError(
+                "scripted fixture snapshot could not be created"
+            ) from error
         finally:
             if staging.exists() or staging.is_symlink():
                 staged = staging.lstat()
@@ -629,6 +625,13 @@ class ScriptedWorker:
         self.heartbeat = heartbeat
         self.clock = clock
         self._process_registry = OwnedProcessRegistry(self.runtime)
+        self._attempt_locks = self.runtime / "attempt-locks"
+        if self._attempt_locks.exists() and (
+            self._attempt_locks.is_symlink() or not self._attempt_locks.is_dir()
+        ):
+            raise ScriptedError("scripted attempt lock directory is unsafe")
+        self._attempt_locks.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(self._attempt_locks, 0o700)
         self._git_lock = threading.Lock()
         self._outcome_lock = threading.Lock()
         self._outcomes: dict[str, ScriptedOutcome] = {}
@@ -835,6 +838,15 @@ class ScriptedWorker:
             ),
         )
 
+    @staticmethod
+    def _evidence_id(dispatch: Dispatch) -> str:
+        return (
+            "attempt_evidence_"
+            + canonical_json_sha256(
+                {"attempt_id": dispatch.attempt_id, "mission_id": dispatch.mission_id}
+            )[:24]
+        )
+
     def _record(
         self,
         dispatch: Dispatch,
@@ -843,12 +855,7 @@ class ScriptedWorker:
         *,
         references: tuple[EvidenceReference, ...] = (),
     ) -> str:
-        evidence_id = (
-            "attempt_evidence_"
-            + canonical_json_sha256(
-                {"attempt_id": dispatch.attempt_id, "mission_id": dispatch.mission_id}
-            )[:24]
-        )
+        evidence_id = self._evidence_id(dispatch)
         head = self.evidence.head(evidence_id)
         self.evidence.append(
             evidence_id,
@@ -878,6 +885,110 @@ class ScriptedWorker:
             recorded_at=self.clock(),
         )
         return evidence_id
+
+    def _recover_result(self, dispatch: Dispatch, task: Task) -> AttemptResult | None:
+        evidence_id = self._evidence_id(dispatch)
+        head = self.evidence.head(evidence_id)
+        if head.seq == 0:
+            return None
+        if head.seq > 256:
+            raise ScriptedError("scripted attempt evidence exceeds its recovery bound")
+        self.evidence.verify(evidence_id)
+        events = self.evidence.tail(evidence_id, 0, head.seq)
+        if len(events) != head.seq:
+            raise ScriptedError("scripted attempt evidence is incomplete")
+        terminal = events[-1]
+        if (
+            terminal.mission_id,
+            terminal.task_id,
+            terminal.attempt_id,
+        ) != (dispatch.mission_id, dispatch.task_id, dispatch.attempt_id):
+            raise ScriptedError("scripted attempt evidence identity changed")
+        terminal_types = {
+            AttemptEvidenceEventType.ATTEMPT_COMPLETED,
+            AttemptEvidenceEventType.ATTEMPT_FAILED,
+        }
+        if terminal.event_type not in terminal_types:
+            try:
+                owned = tuple(
+                    item
+                    for item in self._process_registry.records_for_mission(
+                        dispatch.mission_id
+                    )
+                    if item.attempt_id == dispatch.attempt_id
+                )
+                for item in owned:
+                    self._process_registry.terminate_owned(item)
+            except ProcessControlError as error:
+                raise ScriptedError(
+                    "interrupted scripted process could not be reconciled"
+                ) from error
+            references = tuple(
+                sorted(
+                    {
+                        (item.kind, item.id, item.sha256): item
+                        for event in events
+                        for item in event.references
+                    }.values(),
+                    key=lambda item: (item.kind, item.id, item.sha256),
+                )
+            )
+            self._record(
+                dispatch,
+                AttemptEvidenceEventType.ATTEMPT_FAILED,
+                {"result_code": "worker_interrupted"},
+                references=references,
+            )
+            return AttemptResult(
+                succeeded=False,
+                retryable=True,
+                result_code="worker_interrupted",
+                evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
+                evidence_refs=references,
+            )
+
+        succeeded = terminal.event_type == AttemptEvidenceEventType.ATTEMPT_COMPLETED
+        result_code = terminal.payload.get("result_code")
+        if not isinstance(result_code, str) or (succeeded and result_code != "passed"):
+            raise ScriptedError("scripted terminal evidence result is invalid")
+        references = terminal.references
+        publications: tuple[PublicationDraft, ...] = ()
+        if succeeded:
+            output = task.expected_outputs[0]
+            artifacts = tuple(item for item in references if item.kind == output.kind)
+            if len(task.expected_outputs) != 1 or len(artifacts) != 1:
+                raise ScriptedError("scripted terminal publication is ambiguous")
+            publications = (
+                PublicationDraft(
+                    output_name=output.name,
+                    kind=output.kind,
+                    sha256=artifacts[0].sha256,
+                    visibility=ArtifactVisibility.MISSION,
+                    paths=output.paths,
+                ),
+            )
+        check_events = tuple(
+            event
+            for event in events
+            if event.event_type == AttemptEvidenceEventType.CHECK_COMPLETED
+        )
+        if result_code == "worker_interrupted":
+            retryable = True
+        elif (
+            len(check_events) == 1
+            and type(check_events[0].payload.get("timed_out")) is bool
+        ):
+            retryable = not succeeded and not check_events[0].payload["timed_out"]
+        else:
+            raise ScriptedError("scripted terminal check evidence is ambiguous")
+        return AttemptResult(
+            succeeded=succeeded,
+            retryable=retryable,
+            result_code=result_code,
+            evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
+            evidence_refs=references,
+            publications=publications,
+        )
 
     def run(
         self,
@@ -1130,23 +1241,46 @@ class ScriptedWorker:
         return accepted
 
     def execute(self, dispatch: Dispatch) -> AttemptResult:
+        import fcntl
+
         if self.store is None:
             raise ScriptedError("scripted worker is not bound to mission state")
-        snapshot = self.store.snapshot(dispatch.mission_id)
-        tasks = tuple(
-            item
-            for item in snapshot.tasks
-            if item.task_id == dispatch.task_id
-            and snapshot.plan.revision == dispatch.plan_revision
+        lock_path = self._attempt_locks / (
+            sha256_hex(dispatch.attempt_id.encode()) + ".lock"
         )
-        if len(tasks) != 1:
-            raise ScriptedError("scripted dispatch task is unavailable")
-        outcome = self.run(
-            dispatch,
-            tasks[0],
-            accepted_inputs=self._accepted_inputs(dispatch, tasks[0]),
+        descriptor = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
         )
-        return outcome.result
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_IMODE(metadata.st_mode) & 0o077
+            ):
+                raise ScriptedError("scripted attempt lock is unsafe")
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            snapshot = self.store.snapshot(dispatch.mission_id)
+            tasks = tuple(
+                item
+                for item in snapshot.tasks
+                if item.task_id == dispatch.task_id
+                and snapshot.plan.revision == dispatch.plan_revision
+            )
+            if len(tasks) != 1:
+                raise ScriptedError("scripted dispatch task is unavailable")
+            recovered = self._recover_result(dispatch, tasks[0])
+            if recovered is not None:
+                return recovered
+            outcome = self.run(
+                dispatch,
+                tasks[0],
+                accepted_inputs=self._accepted_inputs(dispatch, tasks[0]),
+            )
+            return outcome.result
+        finally:
+            os.close(descriptor)
 
     def cancel(self, dispatch: Dispatch) -> None:
         self._process_registry.signal(dispatch, signal.SIGTERM)
@@ -1318,10 +1452,12 @@ def execute_scripted_mission(
         if snapshot.mission.status == MissionStatus.AWAITING_RESULT:
             break
         remaining_attempts = budget.max_attempts - len(snapshot.attempts)
-        if remaining_attempts <= 0:
-            raise ScriptedError("scripted mission exhausted its attempt budget")
-        dispatches = scheduler.tick(mission_id, worker_ids[:remaining_attempts])
+        dispatches = scheduler.tick(
+            mission_id, worker_ids[: max(0, remaining_attempts)]
+        )
         if not dispatches:
+            if remaining_attempts <= 0:
+                raise ScriptedError("scripted mission exhausted its attempt budget")
             raise ScriptedError("scripted mission scheduler made no safe progress")
         batches.append(tuple(item.task_id for item in dispatches))
         with ThreadPoolExecutor(

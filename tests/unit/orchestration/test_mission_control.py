@@ -50,6 +50,9 @@ def test_mission_control_is_authenticated_read_only_and_bootstraps_safely():
             headers=headers,
         )
         assert task.json()["task"]["task_id"] == "render_markdown"
+        assert task.json()["task"]["contract"] == (
+            "Produce the scoped Markdown status renderer and pass check_render_markdown."
+        )
         evidence = client.get(
             f"/api/mission-control/missions/{replay.mission_id}/attempts/attempt_render_markdown_2/evidence",
             headers=headers,
@@ -110,10 +113,23 @@ class _AdvancingSource(ReplayMissionProjection):
 def test_stream_resumes_once_and_updates_within_two_seconds():
     replay = load_verified_mission_replay()
     source = _AdvancingSource(replay)
-    app = create_mission_control_app(source, replay.mission_id, TOKEN, "TEST", stream_interval_seconds=0.05)
-    server = uvicorn.Server(uvicorn.Config(app, log_level="critical", access_log=False, lifespan="off"))
-    listener = socket.socket(); listener.bind(("127.0.0.1", 0)); port = listener.getsockname()[1]
-    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True); thread.start()
+    app = create_mission_control_app(
+        source,
+        replay.mission_id,
+        TOKEN,
+        "TEST",
+        stream_interval_seconds=0.05,
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(app, log_level="critical", access_log=False, lifespan="off")
+    )
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    thread = threading.Thread(
+        target=server.run, kwargs={"sockets": [listener]}, daemon=True
+    )
+    thread.start()
     deadline = time.monotonic() + 2
     while not server.started and time.monotonic() < deadline:
         time.sleep(0.01)
@@ -126,15 +142,20 @@ def test_stream_resumes_once_and_updates_within_two_seconds():
             f"/api/mission-control/missions/{replay.mission_id}/stream?cursor={before.cursor}",
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
-        response = connection.getresponse(); assert response.status == 200
-        started = time.monotonic(); source.index = 1
+        response = connection.getresponse()
+        assert response.status == 200
+        started = time.monotonic()
+        source.index = 1
         packet = json.loads(response.readline())
         assert time.monotonic() - started < 2
         assert packet["type"] == "delta"
         assert apply_delta(before, packet["delta"]) == replay.stages[1]
         response.close()
     finally:
-        connection.close(); server.should_exit = True; thread.join(timeout=2); listener.close()
+        connection.close()
+        server.should_exit = True
+        thread.join(timeout=2)
+        listener.close()
     assert not thread.is_alive()
 
 
@@ -168,6 +189,7 @@ def test_supplied_replay_document_is_the_one_the_browser_receives():
         ).json()
         assert document["snapshot"]["head"]["seq"] == 1
         assert document["deltas"] == []
-        assert "/mission-static/mission-replay.json" not in client.get(
-            f"/mission-control/{custom.mission_id}"
-        ).text
+        assert (
+            "/mission-static/mission-replay.json"
+            not in client.get(f"/mission-control/{custom.mission_id}").text
+        )

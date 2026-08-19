@@ -130,7 +130,9 @@ class OwnedProcessRegistry:
             try:
                 os.link(temporary, target, follow_symlinks=False)
             except FileExistsError as error:
-                raise ProcessControlError("owned process record already exists") from error
+                raise ProcessControlError(
+                    "owned process record already exists"
+                ) from error
             directory_descriptor = os.open(self.directory, os.O_RDONLY)
             try:
                 os.fsync(directory_descriptor)
@@ -142,8 +144,7 @@ class OwnedProcessRegistry:
     def remove(self, dispatch: Dispatch) -> None:
         self._path(dispatch.attempt_id).unlink(missing_ok=True)
 
-    def validate(self, dispatch: Dispatch) -> OwnedProcess:
-        path = self._path(dispatch.attempt_id)
+    def _read(self, path: Path) -> OwnedProcess:
         try:
             metadata = path.lstat()
         except OSError as error:
@@ -173,12 +174,16 @@ class OwnedProcessRegistry:
                 started_at=raw["started_at"],
                 executable=raw["executable"],
             )
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            OSError,
+        ) as error:
             raise ProcessControlError("owned process record is invalid") from error
         if (
-            owned.mission_id != dispatch.mission_id
-            or owned.attempt_id != dispatch.attempt_id
-            or not isinstance(owned.mission_id, str)
+            not isinstance(owned.mission_id, str)
             or not isinstance(owned.attempt_id, str)
             or type(owned.pid) is not int
             or owned.pid <= 1
@@ -188,17 +193,57 @@ class OwnedProcessRegistry:
             or not isinstance(owned.executable, str)
             or not owned.executable.startswith("/")
         ):
-            raise ProcessControlError("owned process record does not match dispatch")
-        pgid, started_at, executable = _process_identity(owned.pid)
-        if (pgid, started_at, executable) != (
-            owned.pgid,
-            owned.started_at,
-            owned.executable,
-        ):
-            raise ProcessControlError("owned process identity changed")
+            raise ProcessControlError("owned process record is invalid")
+        if path != self._path(owned.attempt_id):
+            raise ProcessControlError("owned process record path does not match")
         return owned
 
-    def prepare_cancel(self, dispatches: Sequence[Dispatch]) -> tuple[OwnedProcess, ...]:
+    @staticmethod
+    def _live_identity(owned: OwnedProcess) -> bool:
+        try:
+            current = _process_identity(owned.pid)
+        except ProcessControlError:
+            try:
+                os.kill(owned.pid, 0)
+            except ProcessLookupError:
+                return False
+            raise
+        if current != (owned.pgid, owned.started_at, owned.executable):
+            raise ProcessControlError("owned process identity changed")
+        return True
+
+    def validate(self, dispatch: Dispatch) -> OwnedProcess:
+        owned = self._read(self._path(dispatch.attempt_id))
+        if (
+            owned.mission_id != dispatch.mission_id
+            or owned.attempt_id != dispatch.attempt_id
+        ):
+            raise ProcessControlError("owned process record does not match dispatch")
+        if not self._live_identity(owned):
+            raise ProcessControlError("owned process is no longer running")
+        return owned
+
+    def records_for_mission(self, mission_id: str) -> tuple[OwnedProcess, ...]:
+        records: list[OwnedProcess] = []
+        for index, path in enumerate(sorted(self.directory.iterdir())):
+            if index >= 4_096:
+                raise ProcessControlError("process registry exceeds its safe limit")
+            stem, suffix = path.name.rsplit(".", 1) if "." in path.name else ("", "")
+            if (
+                suffix != "json"
+                or len(stem) != 64
+                or any(character not in "0123456789abcdef" for character in stem)
+            ):
+                continue
+            owned = self._read(path)
+            if owned.mission_id == mission_id:
+                self._live_identity(owned)  # exact live identity or confirmed gone
+                records.append(owned)
+        return tuple(records)
+
+    def prepare_cancel(
+        self, dispatches: Sequence[Dispatch]
+    ) -> tuple[OwnedProcess, ...]:
         return tuple(self.validate(dispatch) for dispatch in dispatches)
 
     @staticmethod
@@ -221,17 +266,54 @@ class OwnedProcessRegistry:
         """Signal an identity captured before a mission-state transition."""
 
         self._validate_signal(requested)
+        if self._live_identity(owned):
+            os.killpg(owned.pgid, requested)
+
+    def terminate_owned(self, owned: OwnedProcess, *, timeout: float = 2) -> None:
+        """Terminate a prevalidated group, confirm absence, then remove its exact record."""
+
+        if timeout <= 0:
+            raise ProcessControlError("process termination timeout must be positive")
+        path = self._path(owned.attempt_id)
         try:
-            current = _process_identity(owned.pid)
+            if self._read(path) != owned:
+                raise ProcessControlError(
+                    "owned process record changed before termination"
+                )
         except ProcessControlError:
             try:
-                os.kill(owned.pid, 0)
-            except ProcessLookupError:
-                return
+                path.lstat()
+            except FileNotFoundError:
+                if not self._live_identity(owned):
+                    return
             raise
-        if current != (owned.pgid, owned.started_at, owned.executable):
-            raise ProcessControlError("owned process identity changed")
-        os.killpg(owned.pgid, requested)
+        self.signal_prepared(owned, signal.SIGTERM)
+        deadline = time.monotonic() + timeout
+        while self._live_identity(owned) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if self._live_identity(owned):
+            self.signal_prepared(owned, signal.SIGKILL)
+            deadline = time.monotonic() + timeout
+            while self._live_identity(owned) and time.monotonic() < deadline:
+                time.sleep(0.05)
+        if self._live_identity(owned):
+            raise ProcessControlError("owned process could not be terminated")
+        try:
+            recorded = self._read(path)
+        except ProcessControlError as error:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                return
+            raise error
+        if recorded != owned:
+            raise ProcessControlError("owned process record changed during termination")
+        path.unlink()
+        directory_descriptor = os.open(self.directory, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
 
 
 class ControlledProcessRunner:
@@ -336,7 +418,9 @@ class ControlledProcessRunner:
                     continue
                 if self.status() == MissionStatus.CANCELLED:
                     raise ProcessCancelled("scripted attempt was cancelled")
-                return subprocess.CompletedProcess(arguments, process.returncode, stdout, stderr)
+                return subprocess.CompletedProcess(
+                    arguments, process.returncode, stdout, stderr
+                )
         finally:
             original_error = sys.exc_info()[0] is not None
             cleanup_error: Exception | None = None

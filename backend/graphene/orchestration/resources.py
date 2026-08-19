@@ -90,7 +90,9 @@ class DispatchGovernorPolicy(FrozenModel):
     @model_validator(mode="after")
     def thresholds_are_ordered(self) -> DispatchGovernorPolicy:
         if self.soft_managed_rss_bytes >= self.hard_managed_rss_bytes:
-            raise ValueError("soft managed-memory threshold must be below hard threshold")
+            raise ValueError(
+                "soft managed-memory threshold must be below hard threshold"
+            )
         return self
 
 
@@ -246,7 +248,9 @@ class BoundedResourceWindow:
             for item in self._points
             if item.attribution_quality != "unavailable"
         }
-        quality: AttributionQuality = next(iter(qualities)) if qualities else "unavailable"
+        quality: AttributionQuality = (
+            next(iter(qualities)) if qualities else "unavailable"
+        )
         return ResourceSummary(
             subject=first.subject,
             metric=first.metric,
@@ -465,7 +469,10 @@ def sample_owned_process_tree(
                 changed = True
     if process.identity.pid not in stats:
         raise ProcessIdentityError("owned process exited during sampling")
-    if read_process_identity(process.identity.pid, proc_root=proc_root) != process.identity:
+    if (
+        read_process_identity(process.identity.pid, proc_root=proc_root)
+        != process.identity
+    ):
         raise ProcessIdentityError("owned process identity changed during sampling")
 
     ticks = clock_ticks or int(os.sysconf("SC_CLK_TCK"))

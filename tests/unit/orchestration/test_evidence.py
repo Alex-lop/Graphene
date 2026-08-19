@@ -81,8 +81,9 @@ def test_evidence_chain_is_durable_idempotent_and_artifact_bound(tmp_path) -> No
     assert reopened.resolve("patch", artifact.id) == b"bounded patch"
     assert reopened.tail("evidence-1", 1, 10) == (second, terminal)
     assert reopened.verify("evidence-1") == reopened.head("evidence-1")
-    with sqlite3.connect(path) as connection, pytest.raises(
-        sqlite3.IntegrityError, match="append-only"
+    with (
+        sqlite3.connect(path) as connection,
+        pytest.raises(sqlite3.IntegrityError, match="append-only"),
     ):
         connection.execute(
             "UPDATE attempt_evidence_events SET event_sha256 = ? WHERE event_id = ?",
@@ -90,20 +91,22 @@ def test_evidence_chain_is_durable_idempotent_and_artifact_bound(tmp_path) -> No
         )
 
 
-def test_evidence_rejects_stale_identity_idempotency_and_terminal_writes(tmp_path) -> None:
+def test_evidence_rejects_stale_identity_idempotency_and_terminal_writes(
+    tmp_path,
+) -> None:
     store = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
     empty = store.empty_head("evidence-1")
     started = _draft(AttemptEvidenceEventType.ATTEMPT_STARTED)
-    store.append(
-        "evidence-1", empty, "evidence-command-0001", started, recorded_at=NOW
-    )
+    store.append("evidence-1", empty, "evidence-command-0001", started, recorded_at=NOW)
 
     with pytest.raises(AttemptEvidenceConflict, match="reused"):
         store.append(
             "evidence-1",
             empty,
             "evidence-command-0001",
-            _draft(AttemptEvidenceEventType.ATTEMPT_STARTED, payload={"status": "changed"}),
+            _draft(
+                AttemptEvidenceEventType.ATTEMPT_STARTED, payload={"status": "changed"}
+            ),
             recorded_at=NOW,
         )
     with pytest.raises(AttemptEvidenceConflict, match="head changed"):
@@ -119,7 +122,9 @@ def test_evidence_rejects_stale_identity_idempotency_and_terminal_writes(tmp_pat
             "evidence-1",
             store.head("evidence-1"),
             "evidence-command-0003",
-            _draft(AttemptEvidenceEventType.OPERATION_COMPLETED, attempt_id="attempt-2"),
+            _draft(
+                AttemptEvidenceEventType.OPERATION_COMPLETED, attempt_id="attempt-2"
+            ),
             recorded_at=NOW,
         )
 
@@ -146,6 +151,16 @@ def test_evidence_rejects_private_payloads_and_unresolved_artifacts(tmp_path) ->
         _draft(AttemptEvidenceEventType.ATTEMPT_STARTED, payload={"stdout": "secret"})
     for payload in (
         {"apiKey": "hidden"},
+        {"google_api_key": "hidden"},
+        {"authorization_header": "hidden"},
+        {"model_reasoning": "hidden"},
+        {"user_prompt": "hidden"},
+        {"command_argv": ["hidden"]},
+        {"process_environment": {"SAFE": "hidden"}},
+        {"process.env": {"SAFE": "hidden"}},
+        {"result_content": "hidden"},
+        {"tool.stdout": "hidden"},
+        {"trace.stderr": "hidden"},
         {"label": "api_key=abcdefghijklmnopqrstuvwxyz012345"},
         {"label": "Bearer abcdefghijklmnopqrstuvwxyz012345"},
         {"label": "/home/runner/.ssh/id_rsa"},

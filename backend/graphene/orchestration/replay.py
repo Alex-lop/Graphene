@@ -130,15 +130,23 @@ def load_verified_mission_replay(
     try:
         raw = replay_path.read_bytes()
         payload = json.loads(raw)
-        if not isinstance(payload, dict) or set(payload) != {"meta", "snapshot", "deltas"}:
+        if not isinstance(payload, dict) or set(payload) != {
+            "meta",
+            "snapshot",
+            "deltas",
+        }:
             raise ValueError("mission replay document fields are invalid")
         expected = replay_path.with_suffix(".sha256").read_text().strip()
         if raw != canonical_json_bytes(payload) + b"\n" or sha256_hex(raw) != expected:
-            raise ValueError("mission replay bytes do not match their checked-in digest")
-        if any(value in raw.lower() for value in _FORBIDDEN) or not _replay_value_is_public(
-            payload
-        ):
-            raise ValueError("mission replay contains fields outside the public contract")
+            raise ValueError(
+                "mission replay bytes do not match their checked-in digest"
+            )
+        if any(
+            value in raw.lower() for value in _FORBIDDEN
+        ) or not _replay_value_is_public(payload):
+            raise ValueError(
+                "mission replay contains fields outside the public contract"
+            )
         snapshot = MissionControlSnapshot.model_validate(payload["snapshot"])
         deltas = tuple(payload["deltas"])
         stages = [snapshot]

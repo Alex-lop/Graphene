@@ -132,9 +132,7 @@ def create_mission_control_app(
                 "committed mission task projection failed validation"
             ) from error
 
-    def evidence_value(
-        attempt_id: str, cursor: str | None
-    ) -> GenericAttemptEvidence:
+    def evidence_value(attempt_id: str, cursor: str | None) -> GenericAttemptEvidence:
         value = (
             project_attempt_evidence(snapshot_for_cursor(cursor), attempt_id)
             if cursor
@@ -271,9 +269,7 @@ def create_mission_control_app(
         methods=["GET", "HEAD"],
         dependencies=[Depends(authorized)],
     )
-    def replay_document(
-        request: Request, requested_mission_id: str
-    ) -> Response:
+    def replay_document(request: Request, requested_mission_id: str) -> Response:
         value = getattr(source, "replay", None)
         if not replay or requested_mission_id != mission_id or value is None:
             return Response(status_code=404)
@@ -324,24 +320,30 @@ def create_mission_control_app(
         def delta_envelope(
             before: MissionControlSnapshot, after: MissionControlSnapshot
         ) -> bytes:
-            return canonical_json_bytes(
-                {
-                    "type": "delta",
-                    "cursor": after.cursor,
-                    "delta": diff_snapshots(before, after).model_dump(mode="json"),
-                }
-            ) + b"\n"
+            return (
+                canonical_json_bytes(
+                    {
+                        "type": "delta",
+                        "cursor": after.cursor,
+                        "delta": diff_snapshots(before, after).model_dump(mode="json"),
+                    }
+                )
+                + b"\n"
+            )
 
         async def events():
             nonlocal current, previous
             if previous is None:
-                yield canonical_json_bytes(
-                    {
-                        "type": "reset",
-                        "cursor": current.cursor,
-                        "snapshot": current.model_dump(mode="json"),
-                    }
-                ) + b"\n"
+                yield (
+                    canonical_json_bytes(
+                        {
+                            "type": "reset",
+                            "cursor": current.cursor,
+                            "snapshot": current.model_dump(mode="json"),
+                        }
+                    )
+                    + b"\n"
+                )
                 previous = current
             elif previous.snapshot_sha256 != current.snapshot_sha256:
                 yield delta_envelope(previous, current)
@@ -356,18 +358,24 @@ def create_mission_control_app(
                         previous = latest
                         heartbeat = time.monotonic()
                     elif time.monotonic() - heartbeat >= 1:
-                        yield canonical_json_bytes(
-                            {
-                                "type": "heartbeat",
-                                "cursor": previous.cursor,
-                                "head_seq": previous.head.seq,
-                            }
-                        ) + b"\n"
+                        yield (
+                            canonical_json_bytes(
+                                {
+                                    "type": "heartbeat",
+                                    "cursor": previous.cursor,
+                                    "head_seq": previous.head.seq,
+                                }
+                            )
+                            + b"\n"
+                        )
                         heartbeat = time.monotonic()
             except (MissionNotFound, MissionProjectionError) as error:
-                yield canonical_json_bytes(
-                    {"type": "MISSION_EVIDENCE_INVALID", "detail": str(error)}
-                ) + b"\n"
+                yield (
+                    canonical_json_bytes(
+                        {"type": "MISSION_EVIDENCE_INVALID", "detail": str(error)}
+                    )
+                    + b"\n"
+                )
 
         return StreamingResponse(
             events(),
@@ -375,9 +383,7 @@ def create_mission_control_app(
             headers={"X-Content-Type-Options": "nosniff"},
         )
 
-    @app.get(
-        "/mission-control/{requested_mission_id}", response_class=HTMLResponse
-    )
+    @app.get("/mission-control/{requested_mission_id}", response_class=HTMLResponse)
     def mission_page(requested_mission_id: str) -> HTMLResponse:
         if requested_mission_id != mission_id:
             raise HTTPException(status_code=404)

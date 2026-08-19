@@ -56,9 +56,13 @@ def test_host_mount_and_mutable_root_cannot_be_requested(tmp_path: Path) -> None
         limits=SandboxLimits(),
     )
     mounts = [argv[index + 1] for index, item in enumerate(argv) if item == "--mount"]
-    assert mounts == [f"type=bind,source={tmp_path.resolve()},target=/workspace,readonly"]
+    assert mounts == [
+        f"type=bind,source={tmp_path.resolve()},target=/workspace,readonly"
+    ]
     assert "--read-only" in argv
-    assert ("--network", "none") == argv[argv.index("--network") : argv.index("--network") + 2]
+    assert ("--network", "none") == argv[
+        argv.index("--network") : argv.index("--network") + 2
+    ]
 
 
 def test_mount_path_delimiters_are_rejected(tmp_path: Path) -> None:
@@ -69,7 +73,14 @@ def test_mount_path_delimiters_are_rejected(tmp_path: Path) -> None:
             workspace=tmp_path / "escape,readonly=false",
             owner_id="attempt-1",
             container_name="graphene-attempt-1",
-            command=("/usr/local/bin/python", "-m", "pytest", "-q", "-p", "no:cacheprovider"),
+            command=(
+                "/usr/local/bin/python",
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+            ),
             cwd=None,
             limits=SandboxLimits(),
         )

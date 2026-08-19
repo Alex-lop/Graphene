@@ -156,11 +156,16 @@ TASK_TRANSITIONS = frozenset(
         (TaskState.RETRYING, TaskState.FAILED),
         (TaskState.NEEDS_INPUT, TaskState.READY),
         (TaskState.FAILED, TaskState.RETRYING),
-        *((state, TaskState.CANCELLED) for state in TaskState if state not in {
-            TaskState.DONE,
-            TaskState.FAILED,
-            TaskState.CANCELLED,
-        }),
+        *(
+            (state, TaskState.CANCELLED)
+            for state in TaskState
+            if state
+            not in {
+                TaskState.DONE,
+                TaskState.FAILED,
+                TaskState.CANCELLED,
+            }
+        ),
     }
 )
 
@@ -313,6 +318,10 @@ class Task(FrozenModel):
 
     @model_validator(mode="after")
     def collections_and_state_are_consistent(self) -> Task:
+        if not _safe_public_value(
+            {"blocker": self.blocker, "contract": self.contract, "title": self.title}
+        ):
+            raise ValueError("task public text is unsafe")
         collections = (
             self.dependencies,
             self.read_paths,
@@ -336,7 +345,10 @@ class Task(FrozenModel):
             sorted(input_keys)
         ):
             raise ValueError("artifact contracts must be sorted")
-        exact_paths = (*self.write_paths, *(path for item in self.expected_outputs for path in item.paths))
+        exact_paths = (
+            *self.write_paths,
+            *(path for item in self.expected_outputs for path in item.paths),
+        )
         if any(any(character in path for character in "*?[") for path in exact_paths):
             raise ValueError("task write and output paths must be exact")
         if self.attempt_count > self.attempt_limit:
@@ -387,6 +399,15 @@ class Mission(FrozenModel):
 
     @model_validator(mode="after")
     def criteria_are_canonical(self) -> Mission:
+        if not _safe_public_value(
+            {
+                "final_outcome": self.final_outcome,
+                "goal": self.goal,
+                "success_criteria": self.success_criteria,
+                "unknowns": self.unknowns,
+            }
+        ):
+            raise ValueError("mission public text is unsafe")
         if self.success_criteria != tuple(sorted(set(self.success_criteria))):
             raise ValueError("success criteria must be sorted and unique")
         if self.unknowns != tuple(sorted(set(self.unknowns))):
@@ -522,6 +543,12 @@ class GateDecision(FrozenModel):
     consequence: BoundedText
     task_effect: Literal["ready", "cancelled", "needs_input"] = "ready"
 
+    @model_validator(mode="after")
+    def consequence_is_public(self) -> GateDecision:
+        if not _safe_public_value(self.consequence):
+            raise ValueError("gate consequence is unsafe")
+        return self
+
 
 class Gate(FrozenModel):
     schema_version: Literal[1] = 1
@@ -538,6 +565,14 @@ class Gate(FrozenModel):
 
     @model_validator(mode="after")
     def decision_and_operator_are_consistent(self) -> Gate:
+        if not _safe_public_value(
+            {
+                "operator_label": self.operator_label,
+                "rationale": self.rationale,
+                "reason": self.reason,
+            }
+        ):
+            raise ValueError("gate public text is unsafe")
         values = tuple(item.value for item in self.allowed_decisions)
         if values != tuple(sorted(set(values))):
             raise ValueError("gate decisions must have sorted unique values")
@@ -642,21 +677,38 @@ def _safe_payload_key(value: str) -> bool:
     normalized = _normalized_payload_key(value)
     if not normalized or len(value) > 128:
         return False
+    if normalized in _SAFE_TOKEN_KEYS:
+        return True
     if normalized in _FORBIDDEN_PAYLOAD_KEYS:
         return False
     if any(
         word in normalized
         for word in (
+            "apikey",
+            "authorization",
+            "argv",
+            "commandargument",
             "secret",
             "password",
             "passwd",
             "credential",
+            "content",
+            "env",
+            "environment",
+            "modelreasoning",
+            "privatekey",
+            "prompt",
             "rawprompt",
+            "reasoning",
             "chainofthought",
+            "systeminstruction",
+            "stderr",
+            "stdout",
+            "toolpayload",
         )
     ):
         return False
-    return "token" not in normalized or normalized in _SAFE_TOKEN_KEYS
+    return "token" not in normalized
 
 
 def _safe_public_value(value: Any, *, _depth: int = 0) -> bool:
@@ -702,7 +754,10 @@ class MissionEventInput(FrozenModel):
             and self.authority != MissionAuthority.OPERATOR
         ):
             raise ValueError("human truth requires operator authority")
-        if self.truth_kind == TruthKind.MODEL_PROPOSED and self.authority != MissionAuthority.PLANNER:
+        if (
+            self.truth_kind == TruthKind.MODEL_PROPOSED
+            and self.authority != MissionAuthority.PLANNER
+        ):
             raise ValueError("model proposals require planner authority")
         if self.truth_kind == TruthKind.POLICY_AUTHORITATIVE and self.authority not in {
             MissionAuthority.POLICY_ENGINE,
@@ -728,7 +783,9 @@ class MissionEvent(MissionEventInput):
         if self.payload_sha256 != canonical_json_sha256(self.payload):
             raise ValueError("mission payload digest does not match")
         if (self.seq == 1) != (self.previous_event_sha256 is None):
-            raise ValueError("only the first mission event may omit its previous digest")
+            raise ValueError(
+                "only the first mission event may omit its previous digest"
+            )
         expected = canonical_json_sha256(
             self.model_dump(mode="json", exclude={"event_sha256"})
         )

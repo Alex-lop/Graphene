@@ -226,7 +226,9 @@ def _read_regular_file(root_fd: int, relative: PurePosixPath, limit: int) -> byt
         for part in relative.parts[:-1]:
             child = os.open(
                 part,
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
                 dir_fd=parent_fd,
             )
             os.close(parent_fd)
@@ -246,7 +248,9 @@ def _read_regular_file(root_fd: int, relative: PurePosixPath, limit: int) -> byt
             raise SandboxError("scoped source changed while it was copied")
         return data
     except OSError as error:
-        raise SandboxError("scoped source could not be opened without following links") from error
+        raise SandboxError(
+            "scoped source could not be opened without following links"
+        ) from error
     finally:
         if file_fd is not None:
             os.close(file_fd)
@@ -304,7 +308,9 @@ def materialize_repository_view(
                         continue
                     if entry.is_dir(follow_symlinks=False):
                         if entry.name != ".git":
-                            pending.append((Path(entry.path), relative_dir / entry.name))
+                            pending.append(
+                                (Path(entry.path), relative_dir / entry.name)
+                            )
                         continue
                     if not entry.is_file(follow_symlinks=False):
                         if included:
@@ -364,7 +370,9 @@ class DockerExecutor:
             Path(value) if (value := shutil.which("docker")) else None
         )
         if candidate is None:
-            raise DockerUnavailable("Docker is unavailable; container execution is NOT PROVEN")
+            raise DockerUnavailable(
+                "Docker is unavailable; container execution is NOT PROVEN"
+            )
         try:
             resolved = candidate.resolve(strict=True)
         except OSError as error:
@@ -372,7 +380,9 @@ class DockerExecutor:
                 "Docker is unavailable; container execution is NOT PROVEN"
             ) from error
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
-            raise DockerUnavailable("Docker is unavailable; container execution is NOT PROVEN")
+            raise DockerUnavailable(
+                "Docker is unavailable; container execution is NOT PROVEN"
+            )
         return resolved
 
     def _run(
@@ -415,8 +425,16 @@ class DockerExecutor:
             actual_id = document["Id"]
             labels = document["Config"]["Labels"]
             state = document["State"]
-        except (AttributeError, IndexError, KeyError, TypeError, json.JSONDecodeError) as error:
-            raise SandboxError("Docker returned an invalid container inspection") from error
+        except (
+            AttributeError,
+            IndexError,
+            KeyError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as error:
+            raise SandboxError(
+                "Docker returned an invalid container inspection"
+            ) from error
         if (
             actual_id != container_id
             or not isinstance(labels, dict)
@@ -444,8 +462,16 @@ class DockerExecutor:
             container_id = document["Id"]
             labels = document["Config"]["Labels"]
             actual_name = document["Name"]
-        except (AttributeError, IndexError, KeyError, TypeError, json.JSONDecodeError) as error:
-            raise SandboxError("Docker returned an invalid container inspection") from error
+        except (
+            AttributeError,
+            IndexError,
+            KeyError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as error:
+            raise SandboxError(
+                "Docker returned an invalid container inspection"
+            ) from error
         _validate_container_id(container_id)
         if (
             actual_name != f"/{name}"
@@ -568,9 +594,7 @@ class DockerExecutor:
                     check=False,
                 )
             except subprocess.TimeoutExpired:
-                recovered_id = self._owned_id_for_name(
-                    name, owner_id, missing_ok=True
-                )
+                recovered_id = self._owned_id_for_name(name, owner_id, missing_ok=True)
                 if recovered_id is not None:
                     self.cleanup_owned(recovered_id, owner_id)
                 raise
@@ -593,11 +617,18 @@ class DockerExecutor:
                     container_id, owner_id, template.timeout_seconds
                 )
                 state = self._inspect(container_id, owner_id)
-                if not timed_out and not truncated and state.get("Status") not in {
-                    "dead",
-                    "exited",
-                }:
-                    raise SandboxError("container did not reach a terminal execution state")
+                if (
+                    not timed_out
+                    and not truncated
+                    and state.get("Status")
+                    not in {
+                        "dead",
+                        "exited",
+                    }
+                ):
+                    raise SandboxError(
+                        "container did not reach a terminal execution state"
+                    )
                 exit_code = int(state.get("ExitCode", -1))
                 oom_killed = state.get("OOMKilled") is True
             finally:

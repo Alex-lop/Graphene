@@ -71,6 +71,7 @@ test("Mission Control is DOM-safe, table-first, keyboard reachable, responsive, 
   assert.match(source, /sessionStorage/); assert.match(source, /location\.hash/); assert.match(source, /history\.replaceState/);
   assert.doesNotMatch(source, /localStorage|document\.cookie/);
   assert.match(source, /missionPath\("\/replay"\)/); assert.match(source, /Load generic attempt evidence/);
+  assert.match(source, /\["Contract", detail\.task\.contract\]/);
   assert.match(source, /Mission state advanced\. This drawer remains at an earlier committed head/);
   assert.match(source, /const openingState = state; const openingCursor = openingState\.cursor/);
   assert.match(source, /evidence\?cursor=\$\{encodeURIComponent\(openingCursor\)\}/);
