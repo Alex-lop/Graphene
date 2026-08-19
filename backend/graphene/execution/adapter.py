@@ -436,7 +436,12 @@ def _materialize_test_view(root: Path, destination: Path, policy: FixturePolicy)
         os.close(root_fd)
 
 
-def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
+def run_fixture_tests(
+    root: Path,
+    policy: FixturePolicy,
+    *,
+    process_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+) -> TestRun:
     if policy.fixed_test_command != _FIXED_TEST_COMMAND:
         raise ExecutionError("fixture test command is not the frozen command")
     if root.is_symlink():
@@ -459,7 +464,7 @@ def run_fixture_tests(root: Path, policy: FixturePolicy) -> TestRun:
         environment = _sanitized_environment()
         environment["TMPDIR"] = str(scratch)
         try:
-            result = subprocess.run(
+            result = (process_runner or subprocess.run)(
                 _sandboxed_test_command(test_root, scratch),
                 cwd=test_root,
                 env=environment,

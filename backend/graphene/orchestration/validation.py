@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+from pathlib import PurePosixPath
+
+from pydantic import Field
+
+from ..models import FrozenModel
+from .models import Plan, ProjectPolicy, Task, TaskKind, TaskState
+
+
+class PlanValidationIssue(FrozenModel):
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    task_id: str | None = None
+    detail: str = Field(min_length=1, max_length=512)
+
+
+class PlanValidationResult(FrozenModel):
+    valid: bool
+    topological_order: tuple[str, ...]
+    issues: tuple[PlanValidationIssue, ...]
+
+
+class PlanValidationError(ValueError):
+    def __init__(self, result: PlanValidationResult) -> None:
+        self.result = result
+        super().__init__("; ".join(item.code for item in result.issues))
+
+
+def _matches(path: str, globs: tuple[str, ...]) -> bool:
+    candidate = PurePosixPath(path)
+    return any(candidate.full_match(pattern) for pattern in globs)
+
+
+def _read_scope_allowed(
+    scope: str,
+    allowed_globs: tuple[str, ...],
+    exclusions: tuple[str, ...],
+) -> bool:
+    if any(character in scope for character in "*?["):
+        # Pattern-to-pattern containment is not established by matching the
+        # pattern strings. Keep wildcard scopes identical to an authority
+        # scope, and fail closed when that authority has narrower exclusions.
+        return scope in allowed_globs and not exclusions
+    return _matches(scope, allowed_globs) and not _matches(scope, exclusions)
+
+
+def _topological(tasks: dict[str, Task]) -> tuple[tuple[str, ...], bool]:
+    indegree = {task_id: 0 for task_id in tasks}
+    consumers = {task_id: [] for task_id in tasks}
+    for task in tasks.values():
+        for dependency in task.dependencies:
+            if dependency in tasks:
+                indegree[task.task_id] += 1
+                consumers[dependency].append(task.task_id)
+    ready = sorted(task_id for task_id, count in indegree.items() if count == 0)
+    ordered: list[str] = []
+    while ready:
+        task_id = ready.pop(0)
+        ordered.append(task_id)
+        for consumer in sorted(consumers[task_id]):
+            indegree[consumer] -= 1
+            if indegree[consumer] == 0:
+                ready.append(consumer)
+                ready.sort()
+    return tuple(ordered), len(ordered) != len(tasks)
+
+
+def _ancestors(tasks: dict[str, Task]) -> dict[str, set[str]]:
+    result: dict[str, set[str]] = {}
+
+    def visit(task_id: str, pending: set[str]) -> set[str]:
+        if task_id in result:
+            return result[task_id]
+        if task_id in pending:
+            return set()
+        found: set[str] = set()
+        for dependency in tasks[task_id].dependencies:
+            if dependency not in tasks:
+                continue
+            found.add(dependency)
+            found.update(visit(dependency, pending | {task_id}))
+        result[task_id] = found
+        return found
+
+    for task_id in tasks:
+        visit(task_id, set())
+    return result
+
+
+def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
+    """Validate a model-proposed plan without mutating it or repository state."""
+
+    issues: list[PlanValidationIssue] = []
+    tasks = {task.task_id: task for task in plan.tasks}
+    templates = {item.template_id for item in policy.command_templates}
+
+    def issue(code: str, detail: str, task_id: str | None = None) -> None:
+        issues.append(PlanValidationIssue(code=code, task_id=task_id, detail=detail))
+
+    if plan.max_concurrency > policy.max_concurrency:
+        issue("concurrency_exceeds_policy", "plan concurrency exceeds project policy")
+    if len(plan.tasks) > policy.resource_budget.max_attempts:
+        issue(
+            "attempt_budget_too_small",
+            "mission attempt budget cannot cover one attempt per task",
+        )
+
+    for task in plan.tasks:
+        missing = sorted(set(task.dependencies) - set(tasks))
+        if missing:
+            issue(
+                "missing_dependency",
+                f"dependencies are absent: {', '.join(missing)}",
+                task.task_id,
+            )
+        if task.state != TaskState.QUEUED or task.attempt_count != 0:
+            issue("non_initial_task_state", "new plan tasks must be queued", task.task_id)
+        if task.attempt_limit > policy.retry_limit + 1:
+            issue("attempt_limit_exceeds_policy", "attempt limit exceeds policy", task.task_id)
+        if task.assigned_role not in policy.agent_roles:
+            issue("role_not_allowed", "assigned role is not allowlisted", task.task_id)
+        if task.evidence_adapter != "generic_v1":
+            issue(
+                "legacy_adapter_unavailable",
+                "legacy evidence requires a trusted adapter that is not configured",
+                task.task_id,
+            )
+        if len(task.acceptance_checks) != 1:
+            issue(
+                "acceptance_check_count_unsupported",
+                "this evidence contract requires exactly one acceptance check",
+                task.task_id,
+            )
+        unknown_commands = sorted(
+            (set(task.allowed_commands) | set(task.acceptance_checks)) - templates
+        )
+        if unknown_commands:
+            issue(
+                "command_not_allowed",
+                f"command templates are absent: {', '.join(unknown_commands)}",
+                task.task_id,
+            )
+        for path in task.read_paths:
+            if not _read_scope_allowed(
+                path, policy.allowed_read_globs, policy.exclusions
+            ):
+                issue("read_path_not_allowed", f"read path is forbidden: {path}", task.task_id)
+        for path in task.write_paths:
+            if not _matches(path, policy.allowed_write_globs) or _matches(
+                path, policy.exclusions
+            ):
+                issue(
+                    "write_path_not_allowed",
+                    f"write path is forbidden: {path}",
+                    task.task_id,
+                )
+        for output in task.expected_outputs:
+            if any(path not in task.write_paths for path in output.paths):
+                issue(
+                    "output_outside_write_scope",
+                    f"output {output.name} contains a path outside the task lease",
+                    task.task_id,
+                )
+        for requirement in task.inputs:
+            if requirement.producer_task_id not in task.dependencies:
+                issue(
+                    "input_without_dependency",
+                    f"input producer {requirement.producer_task_id} is not a dependency",
+                    task.task_id,
+                )
+                continue
+            producer = tasks.get(requirement.producer_task_id)
+            if producer is not None and not any(
+                output.name == requirement.name and output.kind == requirement.kind
+                for output in producer.expected_outputs
+            ):
+                issue(
+                    "missing_artifact_contract",
+                    f"dependency {requirement.producer_task_id} does not publish {requirement.name}",
+                    task.task_id,
+                )
+        input_producers = {item.producer_task_id for item in task.inputs}
+        for dependency in task.dependencies:
+            if dependency in tasks and dependency not in input_producers:
+                issue(
+                    "dependency_without_artifact",
+                    f"dependency {dependency} has no declared input artifact",
+                    task.task_id,
+                )
+
+    order, cyclic = _topological(tasks)
+    if cyclic:
+        issue("cycle", "task dependency graph contains a cycle")
+    ancestors = _ancestors(tasks)
+
+    for index, left in enumerate(plan.tasks):
+        for right in plan.tasks[index + 1 :]:
+            if not set(left.write_paths) & set(right.write_paths):
+                continue
+            ordered = (
+                left.task_id in ancestors.get(right.task_id, set())
+                or right.task_id in ancestors.get(left.task_id, set())
+            )
+            if not ordered:
+                issue(
+                    "parallel_write_conflict",
+                    f"parallel tasks {left.task_id} and {right.task_id} overlap write scope",
+                )
+
+    assemblies = [task for task in plan.tasks if task.kind == TaskKind.ASSEMBLY]
+    verifiers = [task for task in plan.tasks if task.kind == TaskKind.VERIFICATION]
+    if len(assemblies) != 1:
+        issue("assembly_count", "plan requires exactly one assembly task")
+    if len(verifiers) != 1:
+        issue("verification_count", "plan requires exactly one verification task")
+    if len(assemblies) == len(verifiers) == 1:
+        assembly, verifier = assemblies[0], verifiers[0]
+        required = {
+            task.task_id
+            for task in plan.tasks
+            if task.kind == TaskKind.WORK
+        }
+        if not required <= ancestors.get(assembly.task_id, set()):
+            issue("assembly_not_reachable", "assembly does not consume every work task")
+        if assembly.task_id not in ancestors.get(verifier.task_id, set()):
+            issue("verification_not_bound", "verification is not downstream of assembly")
+
+    canonical_issues = tuple(
+        sorted(issues, key=lambda item: (item.code, item.task_id or "", item.detail))
+    )
+    return PlanValidationResult(
+        valid=not canonical_issues,
+        topological_order=order if not cyclic else (),
+        issues=canonical_issues,
+    )
+
+
+def require_valid_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
+    result = validate_plan(policy, plan)
+    if not result.valid:
+        raise PlanValidationError(result)
+    return result
