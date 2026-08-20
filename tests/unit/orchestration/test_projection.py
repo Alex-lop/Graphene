@@ -15,6 +15,7 @@ from graphene.orchestration.models import (
     MissionSnapshot as DomainMissionSnapshot,
     ResourceReceipt,
     Task,
+    TaskKind,
     TaskState,
 )
 from graphene.orchestration.projection import (
@@ -32,7 +33,7 @@ from graphene.orchestration.projection import (
 from graphene.orchestration.store import SQLiteMissionStore
 from scripts.generate_mission_replay import stages
 
-from .test_store import NOW, _command, _complete_ready, _create
+from .test_store import NOW, _command, _complete_ready, _create, _register_worker
 
 
 def test_snapshots_and_deltas_are_deterministic_exact_and_idempotent():
@@ -171,6 +172,7 @@ def test_non_tty_gate_decision_does_not_claim_human_attestation(tmp_path):
         gate.gate_id,
         "approve",
         _command("decide-non-tty-gate"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -230,7 +232,7 @@ def test_cold_projection_rejects_materialized_state_without_an_event(tmp_path):
             "WHERE mission_id = 'mission-1' AND task_id = 'work-a'"
         )
 
-    with pytest.raises(MissionProjectionError, match="does not match event replay"):
+    with pytest.raises(MissionProjectionError, match="failed store validation"):
         MissionProjection(store).snapshot("mission-1")
 
 
@@ -255,7 +257,7 @@ def test_cold_projection_rejects_pending_gate_without_committed_request(tmp_path
             ),
         )
 
-    with pytest.raises(MissionProjectionError, match="committed gate events"):
+    with pytest.raises(MissionProjectionError, match="failed store validation"):
         MissionProjection(store).snapshot("mission-1")
 
 
@@ -345,6 +347,12 @@ def test_cancelled_integration_stage_uses_authoritative_task_state(tmp_path):
     assembly = next(
         task for task in store.ready_tasks("mission-1") if task.task_id == "assemble"
     )
+    _register_worker(
+        store,
+        "worker-assembly",
+        capabilities=(TaskKind.ASSEMBLY,),
+        at=NOW + timedelta(seconds=2),
+    )
     store.claim_task(
         "mission-1",
         assembly.task_id,
@@ -358,6 +366,7 @@ def test_cancelled_integration_stage_uses_authoritative_task_state(tmp_path):
     store.cancel(
         "mission-1",
         _command("cancel-assembly"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -387,7 +396,6 @@ def test_completed_worker_reuse_and_final_result_decision_project_consistently(
         _command("await-projection"),
         recorded_at=NOW + timedelta(seconds=6),
     )
-
     projection = MissionProjection(store)
     view = projection.snapshot("mission-1")
     assert view.mission.status == "awaiting_result"
@@ -395,43 +403,9 @@ def test_completed_worker_reuse_and_final_result_decision_project_consistently(
         "Produce patch-a."
     )
     assert all(task.worker_id is task.current_attempt_id is None for task in view.tasks)
-    assert view.needs_you is not None
-    assert view.needs_you.gate_id.startswith("final_result_")
-    assert view.needs_you.truth_kind == "server_derived"
-    assert [option.value for option in view.needs_you.options] == [
-        "approve_result",
-        "reject_result",
-    ]
-    assert "--candidate-sha" in view.needs_you.options[0].consequence
-    assert any(
-        relationship.source == f"result:{view.mission.mission_id}"
-        and relationship.target == f"gate:{view.needs_you.gate_id}"
-        and relationship.kind == "blocked_by"
-        for relationship in view.relationships
-    )
-
-    candidate = next(
-        item
-        for item in store.snapshot("mission-1").publications
-        if item.task_id == "assemble"
-    )
-    store.approve_final_result(
-        "mission-1",
-        _command("approve-non-tty-result"),
-        expected_candidate_sha256=candidate.sha256,
-        operator_label="non-tty-api",
-        rationale=None,
-        truth_kind=TruthKind.SERVER_DERIVED,
-        recorded_at=NOW + timedelta(seconds=7),
-    )
-    approved = projection.snapshot("mission-1")
-    assert approved.mission.status == "awaiting_result"
-    assert approved.result.state == "approved"
-    assert "commit recording is pending" in approved.result.summary
-    assert approved.needs_you is None
-    assert 'bounded operator label "non-tty-api"' in approved.result.summary
-    assert "server_derived/mission_service" in approved.result.summary
-    assert "human attestation is not established" in approved.result.summary
+    assert view.result.state == "preparing"
+    assert view.result.bundle_id is None
+    assert view.needs_you is None
 
 
 def test_replay_captures_parallelism_denial_retry_gate_and_ordered_result():
@@ -457,6 +431,12 @@ def test_replay_captures_parallelism_denial_retry_gate_and_ordered_result():
         len([item for item in values[4].attempts if item.task_id == "render_markdown"])
         == 2
     )
+    awaiting = values[-2]
+    assert awaiting.mission.status == "awaiting_result"
+    assert awaiting.result.state == "awaiting_decision"
+    assert awaiting.needs_you is not None
+    assert awaiting.needs_you.gate_id.startswith("final_result_")
+    assert awaiting.needs_you.truth_kind == "simulated_fixture"
     final = values[-1]
     assert final.integration.state == final.verification.state == "done"
     assert final.result.state == "commit_created"

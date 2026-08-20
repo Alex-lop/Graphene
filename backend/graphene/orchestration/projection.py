@@ -219,7 +219,19 @@ class ResourceSummaryView(ViewModel):
 class ResultView(ViewModel):
     state: str = Field(min_length=1, max_length=64)
     summary: str = Field(min_length=1, max_length=512)
+    bundle_id: str | None = Field(
+        default=None,
+        pattern=r"^final_result_[0-9a-f]{32}$",
+        exclude_if=lambda value: value is None,
+    )
+    bundle_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     evidence_refs: tuple[EvidenceRefView, ...] = Field(default=(), max_length=32)
+
+    @model_validator(mode="after")
+    def bundle_identity_is_complete(self) -> ResultView:
+        if (self.bundle_id is None) != (self.bundle_sha256 is None):
+            raise ValueError("final result bundle identity is incomplete")
+        return self
 
 
 class MissionControlSnapshot(ViewModel):
@@ -1080,6 +1092,22 @@ def project_snapshot(
         MissionEventType.VERIFICATION_FAILED,
         "Verification",
     )
+    candidate_event = next(
+        (
+            item
+            for item in reversed(verified_events)
+            if item.event_type == MissionEventType.FINAL_CANDIDATE_READY
+        ),
+        None,
+    )
+    bundle_events = tuple(
+        item
+        for item in verified_events
+        if item.event_type == MissionEventType.FINAL_RESULT_BUNDLE_READY
+    )
+    if len(bundle_events) > 1:
+        raise MissionProjectionError("final result bundle authority is ambiguous")
+    bundle_event = bundle_events[0] if bundle_events else None
     final_event = next(
         (
             item
@@ -1087,6 +1115,7 @@ def project_snapshot(
             if item.event_type
             in {
                 MissionEventType.FINAL_CANDIDATE_READY,
+                MissionEventType.FINAL_RESULT_BUNDLE_READY,
                 MissionEventType.FINAL_CANDIDATE_APPROVED,
                 MissionEventType.FINAL_CANDIDATE_REJECTED,
                 MissionEventType.ISOLATED_COMMIT_CREATED,
@@ -1095,15 +1124,20 @@ def project_snapshot(
         None,
     )
     result_states = {
-        MissionEventType.FINAL_CANDIDATE_READY: "awaiting_decision",
+        MissionEventType.FINAL_CANDIDATE_READY: "preparing",
+        MissionEventType.FINAL_RESULT_BUNDLE_READY: "awaiting_decision",
         MissionEventType.FINAL_CANDIDATE_APPROVED: "approved",
         MissionEventType.FINAL_CANDIDATE_REJECTED: "rejected",
         MissionEventType.ISOLATED_COMMIT_CREATED: "commit_created",
     }
     result_summaries = {
         MissionEventType.FINAL_CANDIDATE_READY: (
-            "The final candidate and verification evidence await an explicit final "
-            "decision command."
+            "The final candidate and verification evidence are being bound into an "
+            "exact review bundle."
+        ),
+        MissionEventType.FINAL_RESULT_BUNDLE_READY: (
+            "The immutable final-result bundle is persisted and awaits an exact "
+            "bundle-bound decision."
         ),
         MissionEventType.ISOLATED_COMMIT_CREATED: (
             "The approved result was recorded as an isolated local commit."
@@ -1134,36 +1168,69 @@ def project_snapshot(
         result_summary = str(snapshot.mission.final_outcome)
     else:
         result_summary = "No final result decision has been committed."
+    bundle_id = (
+        str(bundle_event.payload.get("bundle_id"))
+        if bundle_event and bundle_event.payload.get("bundle_id")
+        else None
+    )
+    bundle_sha256 = (
+        str(bundle_event.payload.get("bundle_sha256"))
+        if bundle_event and bundle_event.payload.get("bundle_sha256")
+        else None
+    )
+    if bundle_event is not None and (
+        candidate_event is None
+        or bundle_event.seq != candidate_event.seq + 1
+        or bundle_event.previous_event_sha256 != candidate_event.event_sha256
+        or (
+            final_event is not None
+            and final_event.event_type
+            in {
+                MissionEventType.FINAL_CANDIDATE_APPROVED,
+                MissionEventType.FINAL_CANDIDATE_REJECTED,
+            }
+            and (
+                final_event.payload.get("bundle_id") != bundle_id
+                or final_event.payload.get("bundle_sha256") != bundle_sha256
+            )
+        )
+    ):
+        raise MissionProjectionError("final result bundle event binding is invalid")
+    result_references = _event_refs(final_event)
+    if final_event is bundle_event and candidate_event is not None:
+        result_references = tuple(
+            {
+                (item.kind, item.id, item.sha256): item
+                for item in (*_event_refs(candidate_event), *result_references)
+            }.values()
+        )
     result = ResultView(
         state=result_state,
         summary=result_summary,
-        evidence_refs=_event_refs(final_event),
+        bundle_id=bundle_id,
+        bundle_sha256=bundle_sha256,
+        evidence_refs=result_references,
     )
     pending = tuple(item for item in gates if item.status == "pending")
     if (
         str(snapshot.mission.status) == "awaiting_result"
         and not pending
-        and (
-            final_event is None
-            or final_event.event_type == MissionEventType.FINAL_CANDIDATE_READY
-        )
+        and final_event is not None
+        and final_event.event_type == MissionEventType.FINAL_RESULT_BUNDLE_READY
     ):
-        candidate_sha256 = (
-            str(final_event.payload.get("candidate_sha256"))
-            if final_event and final_event.payload.get("candidate_sha256")
-            else "the committed candidate digest"
-        )
+        bundle_id = str(final_event.payload["bundle_id"])
+        candidate_sha256 = str(final_event.payload["candidate_sha256"])
         final_decision = GateView(
-            gate_id=f"final_result_{snapshot.head.event_sha256[:16]}",
-            reason="Approve or reject the exact verified final candidate?",
+            gate_id=bundle_id,
+            reason=f"Approve or reject immutable bundle {bundle_id}?",
             status="pending",
             evidence_summary=(
-                "One committed evidence reference binds the candidate or verification; "
+                "One committed evidence reference binds the immutable review bundle; "
                 "no final decision command is committed yet."
                 if len(result.evidence_refs) == 1
                 else (
                     f"{len(result.evidence_refs)} committed evidence references bind the "
-                    "candidate and verification; no final decision command is committed yet."
+                    "bundle, candidate, and verification; no final decision is committed yet."
                 )
                 if result.evidence_refs
                 else (
@@ -1176,18 +1243,17 @@ def project_snapshot(
                     value="approve_result",
                     label="Approve result",
                     consequence=(
-                        "Run `graphene mission approve-result "
-                        f"{snapshot.mission.mission_id} --candidate-sha {candidate_sha256}` "
-                        "to authorize one isolated local commit; no push or user-branch mutation."
+                        f"Authorize bundle {bundle_id} containing candidate sha256:"
+                        f"{candidate_sha256}; create one isolated local commit with no "
+                        "push or user-branch mutation."
                     ),
                 ),
                 GateOptionView(
                     value="reject_result",
                     label="Reject result",
                     consequence=(
-                        "Run `graphene mission reject-result "
-                        f"{snapshot.mission.mission_id} --candidate-sha {candidate_sha256}`; "
-                        "the rejection creates no commit."
+                        f"Reject bundle {bundle_id} containing candidate sha256:"
+                        f"{candidate_sha256}; create no local result commit or result ref."
                     ),
                 ),
             ),
@@ -1444,19 +1510,60 @@ class MissionProjection:
         self._events: dict[str, list[MissionEvent]] = {}
         self._views: dict[str, MissionControlSnapshot] = {}
         self._domain_snapshot_sha256: dict[str, str] = {}
+        self._integrity_markers: dict[str, object] = {}
+        self._quarantined: set[str] = set()
 
     def snapshot(self, mission_id: str) -> MissionControlSnapshot:
         with self._lock:
+            if mission_id in self._quarantined:
+                raise MissionProjectionError("mission evidence is quarantined")
             try:
-                domain = self.store.snapshot(mission_id)
-            except (KeyError, StoreMissionNotFound) as error:
-                raise MissionNotFound("mission not found") from error
-            except MissionStoreError as error:
+                return self._unchecked_snapshot(mission_id)
+            except MissionProjectionError:
+                self._quarantined.add(mission_id)
+                raise
+
+    def _unchecked_snapshot(self, mission_id: str) -> MissionControlSnapshot:
+        with self._lock:
+            marker = getattr(self.store, "integrity_marker", None)
+
+            def read_marker() -> object | None:
+                if not callable(marker):
+                    return None
+                try:
+                    return marker(mission_id)
+                except (KeyError, StoreMissionNotFound) as error:
+                    raise MissionNotFound("mission not found") from error
+                except MissionStoreError as error:
+                    raise MissionProjectionError(
+                        "mission materialized state failed store validation"
+                    ) from error
+
+            cached = self._views.get(mission_id)
+            if cached is not None and callable(marker):
+                current_marker = read_marker()
+                if self._integrity_markers.get(mission_id) == current_marker:
+                    return cached
+            for _attempt in range(2 if callable(marker) else 1):
+                before_marker = read_marker()
+                try:
+                    domain = self.store.snapshot(mission_id)
+                except (KeyError, StoreMissionNotFound) as error:
+                    raise MissionNotFound("mission not found") from error
+                except MissionStoreError as error:
+                    raise MissionProjectionError(
+                        "mission materialized state failed store validation"
+                    ) from error
+                if domain is None:
+                    raise MissionNotFound("mission not found")
+                after_marker = read_marker()
+                if before_marker == after_marker:
+                    self._integrity_markers[mission_id] = after_marker
+                    break
+            else:
                 raise MissionProjectionError(
-                    "mission materialized state failed store validation"
-                ) from error
-            if domain is None:
-                raise MissionNotFound("mission not found")
+                    "mission materialized state changed during validation"
+                )
             domain = DomainMissionSnapshot.model_validate(domain)
             if domain.head.seq > _MAX_PROJECTED_EVENTS:
                 raise MissionProjectionError(
@@ -1508,7 +1615,10 @@ class MissionProjection:
             )
             try:
                 reduced = reduce_events(
-                    initial_mission, domain.plan.tasks, tuple(events)
+                    initial_mission,
+                    domain.plan.tasks,
+                    tuple(events),
+                    plan_revision=domain.plan.revision,
                 )
             except TransitionError as error:
                 raise MissionProjectionError(

@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 html, body { min-width: 320px; min-height: 100%; margin: 0; }
 body { color: var(--ink); background: #f7f9fb; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 9px 12px; color: #fff; background: var(--blue); border-radius: 6px; transform: translateY(-160%); }
@@ -33,11 +33,12 @@ dd { margin: 3px 0 0; font-size: 11px; font-weight: 700; overflow-wrap: anywhere
 #connection[data-state="stale"]::before, #connection[data-state="error"]::before { content: "STALE · "; color: var(--danger); }
 .stale-banner { padding: 10px; color: #7a271a; background: #fef3f2; border-bottom: 2px solid var(--danger); text-align: center; font-size: 12px; font-weight: 750; }
 main { width: min(1440px, calc(100% - 28px)); margin: 14px auto 42px; }
-.mission-summary, .status-board, .stage-grid article, .task-table-panel, .graph-panel, .replay-controls, .unknowns { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 14px 36px rgba(32,49,61,.08); }
+.mission-summary, .status-board, .stage-grid article, .task-table-panel, .graph-panel, .replay-controls, .command-controls, .unknowns { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 14px 36px rgba(32,49,61,.08); }
 .mission-summary { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .7fr); gap: 22px; padding: clamp(18px, 3vw, 32px); }
 h1, h2, p { margin-top: 0; }
 h1 { max-width: 900px; margin-bottom: 20px; font-size: clamp(26px, 4vw, 46px); line-height: 1.05; letter-spacing: -.04em; }
 h2 { margin-bottom: 8px; font-size: 17px; }
+.mission-progress { margin: -10px 0 20px; color: var(--ink); font-size: 15px; font-weight: 800; }
 .mission-summary ul, .unknowns ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .needs-you { padding: 18px; background: #fff8e8; border: 2px solid #dcad47; border-radius: 11px; }
 .needs-you[data-state="clear"] { background: var(--soft); border-color: var(--line); }
@@ -47,6 +48,9 @@ h2 { margin-bottom: 8px; font-size: 17px; }
 .status-board { margin-top: 14px; padding: 16px; }
 .status-board > header, .task-table-panel > header, .graph-panel > header { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
 .status-board header p, .task-table-panel header p, .graph-panel header p { margin: 0; color: var(--muted); font-size: 11px; }
+.mission-brief { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 14px 0 0; }
+.mission-brief div { padding: 10px; border-left: 3px solid var(--blue); background: #f8fafc; }
+.mission-brief dd { font-size: 12px; }
 #status-buckets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin: 14px 0 0; }
 #status-buckets div { min-height: 78px; padding: 9px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; }
 #status-buckets dd { font-size: 19px; }
@@ -55,6 +59,8 @@ h2 { margin-bottom: 8px; font-size: 17px; }
 .stage-grid article { min-height: 140px; padding: 16px; }
 .stage-grid article > p:last-child, .stage-grid li { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .stage-grid ul { margin: 9px 0 0; padding-left: 18px; }
+.stage-grid details summary { color: var(--ink); cursor: pointer; font-weight: 750; }
+.proof-reference { display: block; margin-top: 7px; overflow-wrap: anywhere; color: var(--muted); font-size: 10px; }
 .task-table-panel, .graph-panel, .unknowns { margin-top: 14px; padding: 18px; }
 .table-scroll { margin-top: 13px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -70,8 +76,29 @@ td button { padding: 0; color: var(--blue); background: none; border: 0; font-we
 .replay-controls { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 14px 18px; }
 .replay-controls > div { margin-right: auto; }
 .replay-controls button { min-height: 34px; padding: 7px 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.replay-controls button:disabled { cursor: not-allowed; opacity: .55; }
 .replay-controls input { width: min(320px, 30vw); accent-color: var(--blue); }
 .replay-controls label, .replay-controls output { color: var(--muted); font-size: 11px; }
+.command-controls { margin-top: 14px; padding: 14px 18px; }
+.command-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.command-actions button, #command-dialog button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.command-actions button[data-destructive="true"], #command-submit { color: #fff; background: var(--danger); border-color: var(--danger); }
+#command-status { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+#command-status[data-state="error"] { color: var(--danger); font-weight: 750; }
+#command-dialog { width: min(520px, calc(100% - 24px)); padding: 22px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); }
+#command-dialog::backdrop { background: rgba(20,32,43,.55); }
+#command-dialog label, #command-dialog textarea, #command-dialog input { display: block; width: 100%; margin-top: 12px; }
+#command-dialog label { color: var(--muted); font-size: 12px; font-weight: 750; }
+#command-dialog textarea, #command-dialog input { padding: 9px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+#command-dialog > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.command-final-review { max-height: min(42vh, 380px); margin: 14px 0; padding: 12px; overflow-y: auto; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; }
+.command-final-review h3 { margin: 0 0 8px; font-size: 13px; }
+.command-final-review h3:not(:first-child) { margin-top: 14px; }
+.command-final-review dl { display: grid; grid-template-columns: 135px minmax(0, 1fr); margin: 0; font-size: 11px; }
+.command-final-review dt, .command-final-review dd { margin: 0; padding: 6px 0; overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+.command-final-review dt { font-weight: 750; }
+.command-final-review ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.final-review-summary { margin-top: 12px; }
 .drawer { position: fixed; z-index: 50; top: 0; right: 0; width: min(520px, 100%); height: 100%; padding: 20px; overflow-y: auto; background: rgba(255,255,255,.99); border-left: 1px solid var(--line); box-shadow: -24px 0 64px rgba(32,49,61,.18); }
 .drawer header { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .drawer header button { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; background: var(--soft); font-size: 22px; cursor: pointer; }
@@ -88,6 +115,7 @@ td button { padding: 0; color: var(--blue); background: none; border: 0; font-we
   .status-strip { align-items: flex-start; }
   .status-strip dl { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .mission-summary { grid-template-columns: 1fr; }
+  .mission-brief { grid-template-columns: 1fr; }
   #status-buckets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .relationship-list { grid-template-columns: 1fr; }

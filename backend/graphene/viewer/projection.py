@@ -356,6 +356,7 @@ _SAFE_METADATA = (
     "candidate_id",
     "candidate_patch_sha256",
     "candidate_tree_sha256",
+    "candidate_tree_hash_version",
     "decision_id",
     "changed_paths",
     "changed_path_count",

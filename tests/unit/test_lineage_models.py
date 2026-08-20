@@ -163,6 +163,35 @@ def test_simulated_fixture_provenance_is_limited_to_gate_events():
         )
 
 
+def test_candidate_event_requires_the_tree_hash_version_binding():
+    values = {
+        "event_type": LineageEventType.CANDIDATE_CREATED,
+        "truth_kind": TruthKind.SERVER_DERIVED,
+        "authority": LineageAuthority.ARTIFACT_PARSER,
+        "source_ref": SourceReference(
+            kind="reducer_receipt", id="candidate_1", sha256="c" * 64
+        ),
+        "payload": {
+            "candidate_id": "candidate_1",
+            "candidate_patch_sha256": "a" * 64,
+            "candidate_tree_sha256": "b" * 64,
+            "candidate_tree_hash_version": "graphene.tree.v2",
+            "changed_path_count": 1,
+            "status": "created",
+        },
+    }
+    assert _draft(**values).payload["candidate_tree_hash_version"] == "graphene.tree.v2"
+
+    for version in (None, "graphene.tree.v1"):
+        payload = {**values["payload"]}
+        if version is None:
+            payload.pop("candidate_tree_hash_version")
+        else:
+            payload["candidate_tree_hash_version"] = version
+        with pytest.raises(ValidationError, match="v2 tree hash binding"):
+            _draft(**{**values, "payload": payload})
+
+
 def test_local_commit_result_binds_runtime_receipt_and_supporting_evidence():
     approval = EvidenceReference(kind="event", id="approval_1", sha256="1" * 64)
     promotion = EvidenceReference(
@@ -178,6 +207,7 @@ def test_local_commit_result_binds_runtime_receipt_and_supporting_evidence():
         "tree_sha": "d" * 40,
         "candidate_patch_sha256": "5" * 64,
         "candidate_tree_sha256": "6" * 64,
+        "candidate_tree_hash_version": "graphene.tree.v2",
         "changed_paths": ["app/auth/limiter.py"],
         "test_receipt_id": test.id,
         "test_receipt_sha256": test.sha256,

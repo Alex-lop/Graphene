@@ -29,7 +29,7 @@ const DETAIL_FIELDS = Object.freeze({
   ],
   changeset: [
     "candidate_revision", "base_commit_sha", "candidate_patch_sha256",
-    "candidate_tree_sha256", "changed_file_count", "changed_paths", "lifecycle_state",
+    "candidate_tree_sha256", "candidate_tree_hash_version", "changed_file_count", "changed_paths", "lifecycle_state",
   ],
   file: ["path", "before_sha256", "after_sha256", "language"],
   hunk: [
@@ -61,7 +61,7 @@ const DETAIL_FIELDS = Object.freeze({
   ],
   human_decision: ["decision_id", "actor", "purpose", "decision", "bound_digest", "occurred_at"],
   promotion_receipt: [
-    "base_commit_sha", "candidate_patch_sha256", "candidate_tree_sha256", "memory_id",
+    "base_commit_sha", "candidate_patch_sha256", "candidate_tree_sha256", "candidate_tree_hash_version", "memory_id",
     "memory_revision", "context_packet_id", "context_packet_sha256", "source_graph_revision",
     "source_graph_hash", "selected_node_ids", "test_receipt_sha256", "human_decision_id",
     "commit_sha", "commit_metadata",

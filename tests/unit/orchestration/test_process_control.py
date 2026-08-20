@@ -45,6 +45,14 @@ def _invoke(runner: ControlledProcessRunner, seconds: float = 0.2):
     )
 
 
+def _wait_for_owned_process(registry: OwnedProcessRegistry) -> None:
+    deadline = time.monotonic() + 2
+    while not tuple(registry.directory.iterdir()):
+        if time.monotonic() >= deadline:
+            pytest.fail("owned process record did not appear within two seconds")
+        time.sleep(0.01)
+
+
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
@@ -64,8 +72,7 @@ def test_pause_excludes_stopped_time_and_resume_completes(tmp_path: Path) -> Non
     thread = threading.Thread(target=lambda: result.append(_invoke(runner)))
 
     thread.start()
-    while not tuple(registry.directory.iterdir()):
-        time.sleep(0.01)
+    _wait_for_owned_process(registry)
     state[0] = MissionStatus.PAUSED
     time.sleep(0.3)
     assert thread.is_alive()
@@ -97,8 +104,7 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(
 
     thread = threading.Thread(target=execute)
     thread.start()
-    while not tuple(registry.directory.iterdir()):
-        time.sleep(0.01)
+    _wait_for_owned_process(registry)
     prepared = registry.records_for_mission(dispatch.mission_id)
     assert len(prepared) == 1
     registry.terminate_owned(prepared[0], timeout=1)

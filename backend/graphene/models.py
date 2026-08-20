@@ -202,6 +202,7 @@ class FixturePolicy(FrozenModel):
     max_write_bytes: int = Field(gt=0, le=262_144)
     max_patch_bytes: int = Field(gt=0, le=1_048_576)
     tree_sha256: Sha256
+    tree_hash_version: Literal["graphene.tree.v2"]
     tree_hash_algorithm: str
 
 
@@ -481,6 +482,7 @@ class CandidateArtifact(FrozenModel):
     canonical_patch_base64: Annotated[str, Field(min_length=1, max_length=MAX_PATCH_BASE64_CHARS)]
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changed_paths: tuple[RepoPath, ...]
     file_changes: tuple[FileChange, ...]
     test_receipt: TestReceipt
@@ -520,6 +522,7 @@ class PromotionReceipt(FrozenModel):
     base_commit_sha: GitSha
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     memory_id: Identifier
     memory_revision: int = Field(ge=1)
     context_packet_id: Identifier
@@ -740,6 +743,7 @@ class PromoteRunRequest(FrozenModel):
     base_commit_sha: GitSha
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     memory_id: Identifier
     memory_revision: int = Field(ge=1)
     context_packet_id: Identifier
@@ -1394,6 +1398,7 @@ _EVENT_PAYLOAD_FIELDS = {
             "candidate_id",
             "candidate_patch_sha256",
             "candidate_tree_sha256",
+            "candidate_tree_hash_version",
             "changed_path_count",
             "status",
         }
@@ -1531,6 +1536,7 @@ _EVENT_PAYLOAD_FIELDS = {
             "approval_event_sha256",
             "candidate_patch_sha256",
             "candidate_tree_sha256",
+            "candidate_tree_hash_version",
             "changed_paths",
             "deployed",
             "local_commit_receipt_id",
@@ -1584,6 +1590,11 @@ class EventInput(FrozenModel):
             raise ValueError("event payload is unsafe or exceeds the byte cap")
         if not set(self.payload) <= _EVENT_PAYLOAD_FIELDS[self.event_type]:
             raise ValueError("event payload contains fields outside its public allowlist")
+        if (
+            self.event_type == LineageEventType.CANDIDATE_CREATED
+            and self.payload.get("candidate_tree_hash_version") != "graphene.tree.v2"
+        ):
+            raise ValueError("candidate event requires the v2 tree hash binding")
         reference_keys = tuple((item.kind, item.id, item.sha256) for item in self.references)
         if len(reference_keys) != len(set(reference_keys)):
             raise ValueError("event references must be unique")

@@ -175,8 +175,12 @@ def relationships(
     for item in worker_values:
         add(f"task:{item.task_id}", f"worker:{item.worker_id}", "assigned_to")
     for item in gates:
-        if item.status == "pending" and item.task_id:
+        if item.status != "pending":
+            continue
+        if item.task_id:
             add(f"task:{item.task_id}", f"gate:{item.gate_id}", "blocked_by")
+        elif item.gate_id.startswith("final_result_"):
+            add(f"result:{MISSION_ID}", f"gate:{item.gate_id}", "blocked_by")
     work_task_ids = {item.task_id for item in tasks if item.kind == "work"}
     for item in publications:
         if item.state == "accepted" and item.task_id in work_task_ids:
@@ -228,6 +232,27 @@ PRIVACY_GATE = GateView(
     truth_kind="simulated_fixture",
 )
 
+FINAL_RESULT_GATE = GateView(
+    gate_id="final_result_recorded_fixture",
+    reason="Review the exact verified candidate before the recorded fixture decision.",
+    status="pending",
+    evidence_summary=(
+        "The candidate and verification receipts are committed fixture evidence. "
+        "Replay remains read-only and human_attestation=false."
+    ),
+    options=(
+        GateOptionView(
+            value="continue_recorded_simulated_approval",
+            label="Continue with recorded simulated approval",
+            consequence=(
+                "Continue to the fixture's recorded isolated-commit checkpoint; this "
+                "does not attest a human decision or execute Git."
+            ),
+        ),
+    ),
+    truth_kind="simulated_fixture",
+)
+
 
 def snapshot(
     seq: int,
@@ -235,7 +260,8 @@ def snapshot(
     attempt_values: tuple[AttemptView, ...],
     *,
     gate: GateView = PRIVACY_GATE,
-    needs_you: bool = False,
+    extra_gates: tuple[GateView, ...] = (),
+    needs_you: GateView | None = None,
     publications: tuple[PublicationView, ...] = (),
     integration: StageView | None = None,
     verification: StageView | None = None,
@@ -263,7 +289,7 @@ def snapshot(
     )
     head = MissionHeadView(mission_id=MISSION_ID, seq=seq, event_sha256=head_digest)
     worker_values = workers(attempt_values)
-    gates = (gate,)
+    gates = tuple(sorted((gate, *extra_gates), key=lambda item: item.gate_id))
     values: dict[str, Any] = {
         "view_version": 1,
         "mission": mission,
@@ -286,7 +312,7 @@ def snapshot(
             status="unavailable",
             summary="No authoritative resource receipt is available at this checkpoint.",
         ),
-        "needs_you": gate if needs_you else None,
+        "needs_you": needs_you,
         "critical_path_task_ids": critical_path,
         "result": result
         or ResultView(state="pending", summary="No final result is available."),
@@ -376,7 +402,7 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
             }
         ),
         empty,
-        needs_you=True,
+        needs_you=PRIVACY_GATE,
         critical_path=("redact_notes", "wire_cli", "assemble", "verify"),
         unknowns=("No live Gemini or Cloud execution is established by this replay.",),
     )
@@ -648,16 +674,34 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
         ),
         critical_path=("verify",),
     )
-    verify_refs = (
-        ref("test_check", "fixture_full_verification_passed"),
-        ref("simulated_isolated_commit", "fixture_result_commit_anchor"),
-    )
+    candidate_ref = ref("candidate_tree", "assembled_candidate")
+    verification_ref = ref("test_check", "fixture_full_verification_passed")
+    commit_ref = ref("simulated_isolated_commit", "fixture_result_commit_anchor")
+    verify_refs = (verification_ref, candidate_ref)
     a_verify_done = a_verify.model_copy(
         update={
             "status": "committed",
             "result_code": "passed",
             "evidence_refs": verify_refs,
         }
+    )
+    healthy_resources = ResourceSummaryView(
+        status="healthy",
+        summary="Managed scripted workers completed within the fixture budget.",
+        metrics=(
+            ResourceMetricView(
+                label="Managed worker slots",
+                display_value="0 / 2 active",
+                category="measured_runtime",
+                attribution_quality="measured_bound",
+            ),
+            ResourceMetricView(
+                label="Remote provider CPU/RAM",
+                display_value="unavailable",
+                category="provider",
+                attribution_quality="unavailable",
+            ),
+        ),
     )
     s10 = snapshot(
         10,
@@ -672,6 +716,8 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
             a_verify_done,
         ),
         gate=gate_decided,
+        extra_gates=(FINAL_RESULT_GATE,),
+        needs_you=FINAL_RESULT_GATE,
         publications=(p_json, p_markdown, p_redact, p_wire),
         integration=StageView(
             state="done",
@@ -687,35 +733,64 @@ def stages() -> tuple[MissionControlSnapshot, ...]:
             attempt_id=a_verify.attempt_id,
             evidence_refs=verify_refs[:1],
         ),
-        resources=ResourceSummaryView(
-            status="healthy",
-            summary="Managed scripted workers completed within the fixture budget.",
-            metrics=(
-                ResourceMetricView(
-                    label="Managed worker slots",
-                    display_value="0 / 2 active",
-                    category="measured_runtime",
-                    attribution_quality="measured_bound",
-                ),
-                ResourceMetricView(
-                    label="Remote provider CPU/RAM",
-                    display_value="unavailable",
-                    category="provider",
-                    attribution_quality="unavailable",
-                ),
+        resources=healthy_resources,
+        result=ResultView(
+            state="awaiting_decision",
+            summary=(
+                "The exact verified fixture candidate awaits the recorded simulated "
+                f"decision · candidate sha256:{candidate_ref.sha256}."
             ),
+            evidence_refs=verify_refs,
         ),
+        mission_status="awaiting_result",
+        unknowns=(
+            "This replay does not establish live agent, Gemini, Cloud, human-attested approval, or arbitrary-repository execution.",
+        ),
+    )
+    final_gate = FINAL_RESULT_GATE.model_copy(
+        update={"status": "decided", "resolution": "continue_recorded_simulated_approval"}
+    )
+    s11 = snapshot(
+        11,
+        tasks({key: "done" for key in base}),
+        (
+            a_json_done,
+            a_markdown_failed,
+            a_markdown_done,
+            a_redact_done,
+            a_wire_done,
+            a_assemble_done,
+            a_verify_done,
+        ),
+        gate=gate_decided,
+        extra_gates=(final_gate,),
+        publications=(p_json, p_markdown, p_redact, p_wire),
+        integration=StageView(
+            state="done",
+            summary="Accepted patches assembled without conflict.",
+            task_id="assemble",
+            attempt_id=a_assemble.attempt_id,
+            evidence_refs=a_assemble_done.evidence_refs,
+        ),
+        verification=StageView(
+            state="done",
+            summary="All bound checks passed against the assembled candidate.",
+            task_id="verify",
+            attempt_id=a_verify.attempt_id,
+            evidence_refs=verify_refs[:1],
+        ),
+        resources=healthy_resources,
         result=ResultView(
             state="commit_created",
             summary="The generated fixture depicts a verified isolated local commit; it did not run Git, mutate a user branch, or contact a remote during replay.",
-            evidence_refs=verify_refs,
+            evidence_refs=(*verify_refs, commit_ref),
         ),
         mission_status="completed",
         unknowns=(
             "This replay does not establish live agent, Gemini, Cloud, or arbitrary-repository execution.",
         ),
     )
-    return (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10)
+    return (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11)
 
 
 def render() -> bytes:

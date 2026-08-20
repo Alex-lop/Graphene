@@ -29,6 +29,7 @@
         <div>
           <p id="mission-status" class="eyebrow">Mission state loading</p>
           <h1 id="goal-heading">Loading mission…</h1>
+          <p id="mission-progress" class="mission-progress" role="status" aria-live="polite">Loading task progress…</p>
           <h2>Success criteria</h2>
           <ul id="success-criteria"></ul>
         </div>
@@ -39,8 +40,28 @@
         </section>
       </section>
 
+      <section id="replay-controls" class="replay-controls" aria-labelledby="replay-heading" hidden>
+        <div><p class="eyebrow">Deterministic history</p><h2 id="replay-heading">Mission replay</h2></div>
+        <button id="replay-start" type="button">Play the mission</button>
+        <button id="replay-step" type="button">Step</button>
+        <label for="timeline">Checkpoint</label>
+        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Mission replay checkpoint">
+        <output id="timeline-label" for="timeline">1 of 1</output>
+      </section>
+
+      <section id="command-controls" class="command-controls" aria-labelledby="command-heading" hidden>
+        <div><p class="eyebrow">Authenticated local controls</p><h2 id="command-heading">Operator actions</h2></div>
+        <div id="command-actions" class="command-actions"></div>
+        <p id="command-status" role="alert" aria-live="assertive">No command submitted.</p>
+      </section>
+
       <section class="status-board" aria-labelledby="status-heading">
         <header><div><p class="eyebrow">Committed scheduler state</p><h2 id="status-heading">Work at a glance</h2></div><p id="critical-path">Critical path: loading</p></header>
+        <dl class="mission-brief" aria-label="Current mission brief">
+          <div><dt>Current</dt><dd id="brief-current">Loading</dd></div>
+          <div><dt>Next</dt><dd id="brief-next">Loading</dd></div>
+          <div><dt>Needs you</dt><dd id="brief-needs">Loading</dd></div>
+        </dl>
         <dl id="status-buckets"></dl>
       </section>
 
@@ -68,15 +89,6 @@
         <ol id="relationship-list" class="relationship-list" aria-label="Accessible relationship list"></ol>
       </section>
 
-      <section id="replay-controls" class="replay-controls" aria-labelledby="replay-heading" hidden>
-        <div><p class="eyebrow">Deterministic history</p><h2 id="replay-heading">Mission replay</h2></div>
-        <button id="replay-start" type="button">Play from start</button>
-        <button id="replay-step" type="button">Step</button>
-        <label for="timeline">Checkpoint</label>
-        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Mission replay checkpoint">
-        <output id="timeline-label" for="timeline">1 of 1</output>
-      </section>
-
       <section class="unknowns" aria-labelledby="unknowns-heading">
         <p class="eyebrow">Explicit limits</p><h2 id="unknowns-heading">Unknowns</h2><ul id="unknown-list"></ul>
       </section>
@@ -87,6 +99,24 @@
       <div id="drawer-state" role="status" aria-live="polite"></div>
       <div id="drawer-body"></div>
     </aside>
+    <dialog id="command-dialog" aria-labelledby="command-dialog-title" aria-describedby="command-consequence">
+      <h2 id="command-dialog-title">Confirm operator action</h2>
+      <p id="command-consequence"></p>
+      <section id="command-final-review" class="command-final-review" aria-label="Exact final result review" hidden></section>
+      <div id="command-input-fields" hidden>
+        <label for="command-input">Bounded task input</label>
+        <textarea id="command-input" maxlength="4096" rows="5"></textarea>
+        <p>Stored as a private artifact; only its ID and SHA-256 enter committed mission events.</p>
+      </div>
+      <label for="command-rationale">Rationale <span>(optional)</span></label>
+      <textarea id="command-rationale" maxlength="280" rows="3"></textarea>
+      <label for="command-confirmation">Type <code id="command-confirmation-phrase"></code> to confirm</label>
+      <input id="command-confirmation" maxlength="280" autocomplete="off" spellcheck="false">
+      <div>
+        <button id="command-dismiss" type="button">Go back</button>
+        <button id="command-submit" type="button">Submit authenticated command</button>
+      </div>
+    </dialog>
     <script type="module" src="/mission-static/mission_control.mjs"></script>
   </body>
 </html>

@@ -128,9 +128,13 @@ class MissionEventType(StrEnum):
     VERIFICATION_COMPLETED = "verification.completed"
     VERIFICATION_FAILED = "verification.failed"
     FINAL_CANDIDATE_READY = "final_candidate.ready"
+    FINAL_RESULT_BUNDLE_READY = "final_result_bundle.ready"
     FINAL_CANDIDATE_APPROVED = "final_candidate.approved"
     FINAL_CANDIDATE_REJECTED = "final_candidate.rejected"
     ISOLATED_COMMIT_CREATED = "isolated_commit.created"
+    WORKER_REGISTERED = "worker.registered"
+    WORKER_REVOKED = "worker.revoked"
+    TASK_INPUT_SUPPLIED = "task.input_supplied"
 
 
 TASK_TRANSITIONS = frozenset(
@@ -172,6 +176,7 @@ TASK_TRANSITIONS = frozenset(
 MISSION_TRANSITIONS = frozenset(
     {
         (MissionStatus.PROPOSED, MissionStatus.RUNNING),
+        (MissionStatus.PROPOSED, MissionStatus.REJECTED),
         (MissionStatus.RUNNING, MissionStatus.PAUSED),
         (MissionStatus.PAUSED, MissionStatus.RUNNING),
         (MissionStatus.RUNNING, MissionStatus.AWAITING_RESULT),
@@ -219,6 +224,14 @@ class ResourceBudget(FrozenModel):
     max_worker_seconds: int = Field(gt=0, le=86_400)
     max_attempts: int = Field(gt=0, le=10_000)
     max_artifact_bytes: int = Field(gt=0, le=MAX_ARTIFACT_BYTES * 100)
+    soft_managed_rss_bytes: int = Field(default=536_870_912, gt=0)
+    hard_managed_rss_bytes: int = Field(default=805_306_368, gt=0)
+
+    @model_validator(mode="after")
+    def managed_rss_thresholds_are_ordered(self) -> ResourceBudget:
+        if self.soft_managed_rss_bytes >= self.hard_managed_rss_bytes:
+            raise ValueError("soft managed RSS threshold must be below hard threshold")
+        return self
 
 
 class RetentionPolicy(FrozenModel):
@@ -294,6 +307,29 @@ class ArtifactRequirement(FrozenModel):
     kind: Identifier
 
 
+class CriterionVerificationKind(StrEnum):
+    DETERMINISTIC_CHECK = "deterministic_check"
+    HUMAN_GATE = "human_gate"
+    MODEL_ASSERTION = "model_assertion"
+
+
+class Criterion(FrozenModel):
+    criterion_id: Identifier
+    description: BoundedText
+    producer_task_ids: tuple[Identifier, ...] = Field(default=(), max_length=64)
+    verification_kind: CriterionVerificationKind
+    verifier_task_id: Identifier | None = None
+    verifier_id: Identifier | None = None
+
+    @model_validator(mode="after")
+    def producers_are_canonical(self) -> Criterion:
+        if self.producer_task_ids != tuple(sorted(set(self.producer_task_ids))):
+            raise ValueError("criterion producers must be sorted and unique")
+        if not _safe_public_value(self.description):
+            raise ValueError("criterion description is unsafe")
+        return self
+
+
 class Task(FrozenModel):
     schema_version: Literal[1] = 1
     task_id: Identifier
@@ -355,8 +391,10 @@ class Task(FrozenModel):
             raise ValueError("task attempts exceed the limit")
         if (self.state == TaskState.RETRYING) != (self.retry_at is not None):
             raise ValueError("only retrying tasks carry retry_at")
-        if (self.state == TaskState.BLOCKED) != (self.blocker is not None):
-            raise ValueError("only blocked tasks carry a blocker")
+        if (self.state in {TaskState.BLOCKED, TaskState.NEEDS_INPUT}) != (
+            self.blocker is not None
+        ):
+            raise ValueError("blocked and needs-input tasks require a blocker")
         return self
 
 
@@ -365,11 +403,17 @@ class Plan(FrozenModel):
     mission_id: Identifier
     revision: int = Field(ge=1)
     previous_revision: int | None = Field(default=None, ge=1)
+    criteria: tuple[Criterion, ...] = Field(default=(), max_length=32)
     tasks: tuple[Task, ...] = Field(min_length=3, max_length=256)
     max_concurrency: int = Field(gt=0, le=64)
 
     @model_validator(mode="after")
     def revision_and_ids_are_canonical(self) -> Plan:
+        criterion_ids = tuple(item.criterion_id for item in self.criteria)
+        if criterion_ids != tuple(sorted(criterion_ids)) or len(criterion_ids) != len(
+            set(criterion_ids)
+        ):
+            raise ValueError("plan criteria must have sorted unique IDs")
         ids = tuple(item.task_id for item in self.tasks)
         if ids != tuple(sorted(ids)) or len(ids) != len(set(ids)):
             raise ValueError("plan tasks must have sorted unique IDs")
@@ -437,6 +481,102 @@ class EvidenceReference(FrozenModel):
     sha256: Sha256
 
 
+class ArtifactEnvelopeReferenceV2(FrozenModel):
+    """Immutable CAS identity for bytes minted by the trusted worker wrapper."""
+
+    schema_version: Literal[2]
+    artifact_id: Identifier
+    producer_task_id: Identifier
+    output_name: Identifier
+    kind: Identifier
+    media_type: Annotated[
+        str,
+        Field(
+            min_length=3,
+            max_length=128,
+            pattern=r"^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$",
+        ),
+    ]
+    byte_count: int = Field(ge=0, le=MAX_ARTIFACT_BYTES)
+    content_sha256: Sha256
+    artifact_envelope_sha256: Sha256
+
+    @property
+    def id(self) -> str:
+        return self.artifact_id
+
+    @property
+    def sha256(self) -> str:
+        """Compatibility spelling for byte verification, never semantic identity."""
+
+        return self.content_sha256
+
+
+class PublishedArtifactReferenceV2(ArtifactEnvelopeReferenceV2):
+    publication_id: Identifier
+
+
+ArtifactInputReference = PublishedArtifactReferenceV2 | EvidenceReference
+
+
+def artifact_input_reference_key(
+    reference: ArtifactInputReference,
+) -> tuple[str, ...]:
+    if isinstance(reference, PublishedArtifactReferenceV2):
+        return (
+            "v2",
+            reference.producer_task_id,
+            reference.output_name,
+            reference.publication_id,
+            reference.artifact_envelope_sha256,
+        )
+    return ("legacy", reference.kind, reference.id, reference.sha256)
+
+
+class WorkerRegistration(FrozenModel):
+    schema_version: Literal[1] = 1
+    registration_id: Identifier
+    mission_id: Identifier
+    worker_id: Identifier
+    runtime_id: Identifier
+    capabilities: tuple[TaskKind, ...] = Field(min_length=1, max_length=3)
+    registered_at: UtcDateTime
+
+    @model_validator(mode="after")
+    def capabilities_are_canonical(self) -> WorkerRegistration:
+        if self.capabilities != tuple(sorted(set(self.capabilities))):
+            raise ValueError("worker capabilities must be sorted and unique")
+        return self
+
+
+class WorkerRevocation(FrozenModel):
+    schema_version: Literal[1] = 1
+    registration_id: Identifier
+    mission_id: Identifier
+    worker_id: Identifier
+    reason_code: Identifier
+    revoked_at: UtcDateTime
+
+
+class SuppliedTaskInput(FrozenModel):
+    schema_version: Literal[1] = 1
+    input_id: Identifier
+    mission_id: Identifier
+    plan_revision: int = Field(ge=1)
+    task_id: Identifier
+    gate_id: Identifier
+    reference: EvidenceReference
+    operator_label: str = Field(min_length=1, max_length=64)
+    truth_kind: TruthKind
+    supplied_at: UtcDateTime
+
+    @model_validator(mode="after")
+    def reference_is_private_operator_input(self) -> SuppliedTaskInput:
+        if self.reference.kind != "operator-input":
+            raise ValueError("supplied task input must use the operator-input kind")
+        return self
+
+
 class Attempt(FrozenModel):
     schema_version: Literal[1] = 1
     attempt_id: Identifier
@@ -456,7 +596,9 @@ class Attempt(FrozenModel):
     ended_at: UtcDateTime | None = None
     evidence_link: EvidenceLink | None = None
     result_code: Identifier | None = None
-    input_publications: tuple[EvidenceReference, ...] = Field(default=(), max_length=64)
+    input_publications: tuple[ArtifactInputReference, ...] = Field(
+        default=(), max_length=64
+    )
     evidence_refs: tuple[EvidenceReference, ...] = Field(default=(), max_length=64)
 
     @model_validator(mode="after")
@@ -472,7 +614,7 @@ class Attempt(FrozenModel):
         if self.state == AttemptState.COMMITTED and self.evidence_link is None:
             raise ValueError("committed attempts require evidence")
         input_keys = tuple(
-            (item.kind, item.id, item.sha256) for item in self.input_publications
+            artifact_input_reference_key(item) for item in self.input_publications
         )
         if input_keys != tuple(sorted(set(input_keys))):
             raise ValueError("attempt input publications must be sorted and unique")
@@ -511,6 +653,7 @@ class PublicationDraft(FrozenModel):
     output_name: Identifier
     kind: Identifier
     sha256: Sha256
+    artifact: ArtifactEnvelopeReferenceV2 | None = None
     visibility: ArtifactVisibility = ArtifactVisibility.MISSION
     paths: tuple[RepoPath, ...] = Field(default=(), max_length=64)
 
@@ -518,6 +661,12 @@ class PublicationDraft(FrozenModel):
     def paths_are_canonical(self) -> PublicationDraft:
         if self.paths != tuple(sorted(set(self.paths))):
             raise ValueError("publication paths must be sorted and unique")
+        if self.artifact is not None and (
+            self.artifact.output_name != self.output_name
+            or self.artifact.kind != self.kind
+            or self.artifact.content_sha256 != self.sha256
+        ):
+            raise ValueError("publication artifact binding disagrees")
         return self
 
 
@@ -536,6 +685,14 @@ class ArtifactPublication(PublicationDraft):
         if self.consumers != tuple(sorted(set(self.consumers))):
             raise ValueError("publication consumers must be sorted and unique")
         return self
+
+    def published_reference(self) -> PublishedArtifactReferenceV2:
+        if self.artifact is None:
+            raise ValueError("publication has no V2 artifact envelope")
+        return PublishedArtifactReferenceV2(
+            **self.artifact.model_dump(mode="json"),
+            publication_id=self.publication_id,
+        )
 
 
 class GateDecision(FrozenModel):
@@ -813,6 +970,7 @@ class Dispatch(FrozenModel):
     schema_version: Literal[1] = 1
     mission_id: Identifier
     plan_revision: int = Field(ge=1)
+    plan_sha256: Sha256
     task_id: Identifier
     task_kind: TaskKind
     attempt_id: Identifier
@@ -825,7 +983,9 @@ class Dispatch(FrozenModel):
     write_paths: tuple[RepoPath, ...]
     allowed_commands: tuple[Identifier, ...]
     acceptance_checks: tuple[Identifier, ...]
-    input_publications: tuple[EvidenceReference, ...] = Field(default=(), max_length=64)
+    input_publications: tuple[ArtifactInputReference, ...] = Field(
+        default=(), max_length=64
+    )
     expires_at: UtcDateTime
 
 
@@ -833,8 +993,13 @@ class AttemptResult(FrozenModel):
     succeeded: bool
     retryable: bool = False
     result_code: Identifier
+    session_id: Identifier | None = None
+    invocation_id: Identifier | None = None
     evidence_link: EvidenceLink | None = None
     evidence_refs: tuple[EvidenceReference, ...] = Field(default=(), max_length=64)
+    artifact_envelopes: tuple[ArtifactEnvelopeReferenceV2, ...] = Field(
+        default=(), max_length=64
+    )
     publications: tuple[PublicationDraft, ...] = Field(default=(), max_length=64)
 
     @model_validator(mode="after")
@@ -849,10 +1014,15 @@ class AttemptResult(FrozenModel):
         publication_keys = tuple(
             (item.output_name, item.kind) for item in self.publications
         )
+        envelope_keys = tuple(
+            item.artifact_envelope_sha256 for item in self.artifact_envelopes
+        )
         if len(reference_keys) != len(set(reference_keys)):
             raise ValueError("attempt evidence references must be unique")
         if len(publication_keys) != len(set(publication_keys)):
             raise ValueError("attempt publications must be unique")
+        if envelope_keys != tuple(sorted(set(envelope_keys))):
+            raise ValueError("attempt artifact envelopes must be sorted and unique")
         return self
 
 

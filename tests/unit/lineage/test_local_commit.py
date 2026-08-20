@@ -87,6 +87,7 @@ def _request(base_sha: str, after: str, patch: bytes, *, approve: bool = True):
         candidate_tree_sha256=candidate_tree_sha256(
             {"app/auth/limiter.py": after.encode()}
         ),
+        candidate_tree_hash_version="graphene.tree.v2",
         changed_paths=("app/auth/limiter.py",),
         test_reference=EvidenceReference(
             kind=EvidenceKind.TEST_RECEIPT,

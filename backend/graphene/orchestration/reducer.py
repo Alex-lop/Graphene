@@ -52,9 +52,13 @@ def reduce_events(
     mission: Mission,
     tasks: tuple[Task, ...],
     events: tuple[MissionEvent, ...],
+    *,
+    plan_revision: int | None = None,
 ) -> ReducedMission:
     """Purely replay committed events against immutable initial contracts."""
 
+    target_revision = mission.plan_revision if plan_revision is None else plan_revision
+    active_revision = 1
     status = mission.status
     states = {task.task_id: task.state for task in tasks}
     kinds = {task.task_id: task.kind for task in tasks}
@@ -69,8 +73,21 @@ def reduce_events(
             raise TransitionError("mission event stream is not contiguous")
         previous = event.event_sha256
 
-        if event.event_type == MissionEventType.PLAN_APPROVED:
+        if event.event_type == MissionEventType.PLAN_REVISED:
+            previous_revision = event.payload.get("previous_plan_revision")
+            revision = event.payload.get("plan_revision")
+            if (
+                not isinstance(previous_revision, int)
+                or not isinstance(revision, int)
+                or previous_revision != active_revision
+                or revision != active_revision + 1
+            ):
+                raise TransitionError("plan revision sequence is not contiguous")
+            active_revision = revision
+        elif event.event_type == MissionEventType.PLAN_APPROVED:
             status = transition_mission(status, MissionStatus.RUNNING)
+        elif event.event_type == MissionEventType.PLAN_REJECTED:
+            status = transition_mission(status, MissionStatus.REJECTED)
         elif event.event_type == MissionEventType.OPERATOR_PAUSED:
             status = transition_mission(status, MissionStatus.PAUSED)
         elif event.event_type == MissionEventType.OPERATOR_RESUMED:
@@ -95,6 +112,8 @@ def reduce_events(
 
         task_id = event.payload.get("task_id")
         if not isinstance(task_id, str):
+            continue
+        if active_revision != target_revision:
             continue
         if task_id not in states:
             raise TransitionError("event references an unknown task")

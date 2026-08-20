@@ -66,6 +66,7 @@ def _candidate() -> CandidateArtifact:
                 "tests/test_security_policy.py": test_after,
             }
         ),
+        candidate_tree_hash_version="graphene.tree.v2",
         changed_paths=("app/auth/limiter.py", "tests/test_security_policy.py"),
         file_changes=(
             FileChange(
@@ -90,7 +91,7 @@ def test_canonical_hashes_have_known_answers():
         "06c264c46ad5ada9493abd3aa2383fb205ae99d7d0bad40b03a43bfec8a1b8de"
     )
     assert candidate_tree_sha256({"b.txt": b"two", "a.txt": b"one"}) == (
-        "327c22579e4d8f487dedda9b1e3d8fb428b4907aefa85e9ecb2a7f0aa473b0fb"
+        "a0ab16b6a901be5bdee7dd3ac0a6b033bd9c281e1eece44c11ff38e57a1661bf"
     )
     assert (RunState.WAITING_FOR_PROMOTION, RunState.COMPLETED) not in RUN_TRANSITIONS
     assert (MemoryState.APPROVED, MemoryState.PROPOSED) not in MEMORY_TRANSITIONS
@@ -105,6 +106,14 @@ def test_candidate_binds_patch_file_hashes_and_passing_receipt():
     with pytest.raises(ValidationError):
         CandidateArtifact.model_validate(
             {**candidate.model_dump(), "candidate_patch_sha256": "c" * 64}
+        )
+    without_version = candidate.model_dump()
+    without_version.pop("candidate_tree_hash_version")
+    with pytest.raises(ValidationError):
+        CandidateArtifact.model_validate(without_version)
+    with pytest.raises(ValidationError):
+        CandidateArtifact.model_validate(
+            {**candidate.model_dump(), "candidate_tree_hash_version": "graphene.tree.v1"}
         )
     with pytest.raises(ValidationError):
         CandidateArtifact.model_validate(
@@ -199,6 +208,7 @@ def test_completed_run_binds_the_human_promotion_decision():
         base_commit_sha=candidate.base_commit_sha,
         candidate_patch_sha256=candidate.candidate_patch_sha256,
         candidate_tree_sha256=candidate.candidate_tree_sha256,
+        candidate_tree_hash_version=candidate.candidate_tree_hash_version,
         memory_id="mem_auth_review",
         memory_revision=1,
         context_packet_id="ctx_1",

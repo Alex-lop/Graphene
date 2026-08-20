@@ -145,8 +145,14 @@ def build_parser() -> argparse.ArgumentParser:
     register_commands(commands)
 
     run = commands.add_parser("run", allow_abbrev=False)
-    run.add_argument("task", choices=tuple(item.value for item in TaskId))
-    run.add_argument("--profile", required=True, choices=_PROFILES)
+    run.add_argument("task", help="plan ID, or compatibility task with --profile")
+    run.add_argument("--profile", choices=_PROFILES)
+    run.set_defaults(
+        command_id=None,
+        confirm_human=False,
+        operator_label="local-operator",
+        rationale=None,
+    )
 
     watch = commands.add_parser("watch", allow_abbrev=False)
     watch.add_argument("run_id")
@@ -159,7 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     why = commands.add_parser("why", allow_abbrev=False)
     why.add_argument("path")
-    why.add_argument("--run", required=True, dest="run_id")
+    why_identity = why.add_mutually_exclusive_group()
+    why_identity.add_argument("--run", dest="run_id")
+    why_identity.add_argument("--mission", dest="mission_id")
 
     replay = commands.add_parser("replay", allow_abbrev=False)
     replay.add_argument("run_id")
@@ -1458,7 +1466,31 @@ def _write_result(value: dict[str, object], *, json_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command in {"init", "doctor", "mission"}:
+    mission_alias = (
+        args.command
+        in {
+            "bundle",
+            "cancel",
+            "doctor",
+            "init",
+            "mission",
+            "plan",
+            "request-replan",
+            "retry",
+            "status",
+            "task",
+        }
+        or (args.command == "run" and args.profile is None)
+        or (
+            args.command == "watch"
+            and (
+                not args.run_id.startswith("run_")
+                or os.environ.get("GRAPHENE_MISSION_ID") == args.run_id
+            )
+        )
+        or (args.command == "why" and args.run_id is None)
+    )
+    if mission_alias:
         from .mission import handle as handle_mission
 
         return handle_mission(args, json_mode=args.json_mode)

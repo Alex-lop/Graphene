@@ -11,8 +11,8 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
 
     assert (ROOT / ".python-version").read_text().strip() == "3.13"
     assert "uv==0.11.29" in workflow
-    assert workflow.count("uv lock --check") == 2
-    assert workflow.count("uv sync --frozen") == 2
+    assert workflow.count("uv lock --check") == 3
+    assert workflow.count("uv sync --frozen") == 3
     assert "runs-on: macos-15" in workflow
     assert "test -x /usr/bin/sandbox-exec" in workflow
     assert "tests/unit tests/integration tests/process tests/adversarial" in workflow
@@ -27,6 +27,11 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "graphene mission replay taskmaster" in workflow
     assert "test_fixed_tests_cannot_read_ambient_checkout_files" in workflow
     assert "test_fixed_tests_cannot_read_or_write_host_files_or_use_network" in workflow
+    assert "pytest -q tests/unit/orchestration/test_process_control.py" in workflow
+    assert "firebase emulators:exec --only firestore" in workflow
+    assert "GRAPHENE_RUN_FIRESTORE_EMULATOR: \"1\"" in workflow
+    assert "tests/integration/test_firestore_emulator.py" in workflow
+    assert "google-github-actions/auth" not in workflow
     assert "node --test frontend/test/*.test.mjs" in workflow
     assert "node --test tests/frontend/*.mjs" in workflow
     assert "node --check frontend/src/app.mjs" in workflow

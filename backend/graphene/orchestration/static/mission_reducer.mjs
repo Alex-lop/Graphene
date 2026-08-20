@@ -192,6 +192,175 @@ export function stateBuckets(state) {
 }
 
 
+export function visibleStateBuckets(state) {
+  return stateBuckets(state).filter((bucket) => bucket.count > 0);
+}
+
+
+function boundFinalArtifact(state, taskKind) {
+  const tasks = [...state.tasks.values()].filter((task) => task.kind === taskKind);
+  if (tasks.length !== 1) return null;
+  const publications = [...state.publications.values()].filter((publication) => publication.task_id === tasks[0].task_id && publication.state === "accepted");
+  if (publications.length !== 1) return null;
+  const publication = publications[0];
+  const references = (state.result.evidence_refs ?? []).filter((reference) => reference.id === publication.publication_id && (reference.kind === "artifact-envelope-v2" || (reference.kind === publication.kind && reference.sha256 === publication.sha256)));
+  return references.length === 1 ? { task: tasks[0], publication, reference: references[0] } : null;
+}
+
+
+export function finalResultBinding(state) {
+  const candidate = boundFinalArtifact(state, "assembly");
+  const verification = boundFinalArtifact(state, "verification");
+  const bundles = (state.result.evidence_refs ?? []).filter((reference) => reference.kind === "final-result-bundle");
+  const bundleId = text(state.result.bundle_id);
+  const bundleDigest = text(state.result.bundle_sha256);
+  return candidate && verification && bundleId && /^[0-9a-f]{64}$/.test(bundleDigest ?? "") && bundles.length === 1
+    ? { candidate, verification, bundle: { id: bundleId, digest: bundleDigest, reference: bundles[0] } }
+    : null;
+}
+
+
+export function finalDecisionOptions(state) {
+  const binding = finalResultBinding(state);
+  if (!binding || state.mission.status !== "awaiting_result") return [];
+  const digest = binding.candidate.publication.sha256;
+  const bundleId = binding.bundle.id;
+  if (state.result.state === "awaiting_decision") return [
+    {
+      label: "Approve exact bundle", action: "approve_final", bundleId, destructive: false,
+      consequence: `Approve immutable bundle ${bundleId} (candidate sha256:${digest}); create and record one verified isolated local commit, with no push or user-branch mutation.`,
+    },
+    {
+      label: "Reject exact bundle", action: "reject_final", bundleId, destructive: true,
+      consequence: `Reject immutable bundle ${bundleId} (candidate sha256:${digest}); record rejection and create no local result commit or result ref.`,
+    },
+  ];
+  if (state.result.state === "approved") return [{
+    label: "Finish approved isolated commit", action: "approve_final", bundleId, destructive: false,
+    consequence: `Resume the already attributed approval for immutable bundle ${bundleId} and finish its verified isolated local commit.`,
+  }];
+  return [];
+}
+
+
+export function finalReviewModel(state) {
+  const binding = finalResultBinding(state);
+  if (!binding) return null;
+  return {
+    bundleId: binding.bundle.id,
+    bundleDigest: binding.bundle.digest,
+    bundleEvidence: `${binding.bundle.reference.kind}:${binding.bundle.reference.id} · sha256:${binding.bundle.reference.sha256}`,
+    candidateDigest: binding.candidate.publication.sha256,
+    candidateEvidence: `${binding.candidate.reference.kind}:${binding.candidate.reference.id} · sha256:${binding.candidate.reference.sha256}`,
+    changedPaths: [...binding.candidate.publication.paths],
+    verificationEvidence: `${binding.verification.reference.kind}:${binding.verification.reference.id} · proof sha256:${binding.verification.reference.sha256} · published sha256:${binding.verification.publication.sha256}`,
+    unknowns: [...state.unknowns],
+    approveConsequence: "Approve: create and record one verified isolated local commit. Do not push, mutate the user branch, open a pull request, or deploy.",
+    rejectConsequence: "Reject: record the final rejection and create no local result commit or result ref.",
+  };
+}
+
+
+export function renderFinalReview(documentValue, container, state) {
+  container.replaceChildren();
+  const review = finalReviewModel(state);
+  if (!review) return false;
+  const heading = documentValue.createElement("h3"); heading.textContent = "Exact verified final result";
+  const facts = documentValue.createElement("dl");
+  for (const [label, value] of [
+    ["Immutable bundle ID", review.bundleId],
+    ["Bundle digest", `sha256:${review.bundleDigest}`],
+    ["Bundle evidence", review.bundleEvidence],
+    ["Candidate digest", `sha256:${review.candidateDigest}`],
+    ["Candidate evidence", review.candidateEvidence],
+    ["Changed paths", review.changedPaths.length ? review.changedPaths.join(", ") : "None recorded"],
+    ["Verification evidence", review.verificationEvidence],
+    ["Unknowns", review.unknowns.length ? review.unknowns.join("; ") : "None recorded"],
+  ]) {
+    const term = documentValue.createElement("dt"); term.textContent = label;
+    const description = documentValue.createElement("dd"); description.textContent = value;
+    facts.append(term, description);
+  }
+  const consequencesHeading = documentValue.createElement("h3"); consequencesHeading.textContent = "Decision consequences";
+  const consequences = documentValue.createElement("ul");
+  for (const value of [review.approveConsequence, review.rejectConsequence]) {
+    const item = documentValue.createElement("li"); item.textContent = value; consequences.append(item);
+  }
+  container.append(heading, facts, consequencesHeading, consequences);
+  return true;
+}
+
+
+function taskNames(tasks) {
+  const names = tasks.map((task) => task.title);
+  return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2} more` : names.join(", ");
+}
+
+
+export function missionBrief(state) {
+  const tasks = [...state.tasks.values()].sort((left, right) => Number(right.priority ?? 0) - Number(left.priority ?? 0) || left.task_id.localeCompare(right.task_id));
+  const complete = tasks.filter((task) => task.state === "done");
+  const running = tasks.filter((task) => task.state === "running" || task.state === "verifying");
+  const blocked = tasks.filter((task) => task.state === "blocked" || task.state === "needs_input");
+  const retrying = tasks.filter((task) => task.state === "retrying");
+  const ready = tasks.filter((task) => task.state === "ready");
+  const next = ready.length ? ready : state.criticalPathTaskIds.map((id) => state.tasks.get(id)).filter((task) => task && task.state !== "done" && task.state !== "cancelled").slice(0, 1);
+  return {
+    progress: `${complete.length}/${tasks.length} complete · ${running.length} running · ${blocked.length} blocked`,
+    current: taskNames([...running, ...retrying]) || humanStatus(state.mission.status),
+    next: taskNames(next) || (state.needsYou ? "Waiting for your decision" : "No ready task"),
+    needs: state.needsYou?.reason ?? "No decision needed",
+  };
+}
+
+
+function humanStatus(value) {
+  return String(value ?? "unknown").replaceAll("_", " ");
+}
+
+
+export function graphPositions(state) {
+  const positions = new Map();
+  const depths = new Map();
+  const visiting = new Set();
+  const depth = (taskId) => {
+    if (depths.has(taskId)) return depths.get(taskId);
+    if (visiting.has(taskId)) throw new TypeError("mission task dependencies contain a cycle");
+    visiting.add(taskId);
+    const task = state.tasks.get(taskId);
+    const value = task?.dependency_ids?.length ? 1 + Math.max(...task.dependency_ids.map(depth)) : 0;
+    visiting.delete(taskId); depths.set(taskId, value); return value;
+  };
+  const groups = new Map();
+  for (const task of state.tasks.values()) {
+    const value = depth(task.task_id);
+    if (!groups.has(value)) groups.set(value, []);
+    groups.get(value).push(task);
+  }
+  positions.set(`mission:${state.missionId}`, { x: 70, y: 80 });
+  let maxTaskX = 220;
+  for (const [value, tasks] of [...groups.entries()].sort(([left], [right]) => left - right)) {
+    const x = 240 + value * 155; maxTaskX = Math.max(maxTaskX, x);
+    tasks.sort((left, right) => Number(right.priority ?? 0) - Number(left.priority ?? 0) || left.task_id.localeCompare(right.task_id));
+    tasks.forEach((task, index) => positions.set(`task:${task.task_id}`, { x, y: 70 + index * 105 }));
+  }
+  const integrationX = Math.max(860, maxTaskX + 180);
+  positions.set(`integration:${state.missionId}`, { x: integrationX, y: 80 });
+  positions.set(`verification:${state.missionId}`, { x: integrationX + 190, y: 80 });
+  positions.set(`result:${state.missionId}`, { x: integrationX + 380, y: 80 });
+
+  const satelliteCounts = new Map();
+  for (const node of graphView(state).nodes.filter((item) => item.kind === "worker" || item.kind === "gate").sort((left, right) => left.id.localeCompare(right.id))) {
+    const relation = [...state.relationships.values()].find((edge) => edge.target === node.id && (edge.kind === "assigned_to" || edge.kind === "blocked_by"));
+    const parent = positions.get(relation?.source) ?? positions.get(`mission:${state.missionId}`);
+    const count = satelliteCounts.get(relation?.source) ?? 0;
+    satelliteCounts.set(relation?.source, count + 1);
+    positions.set(node.id, { x: parent.x + 82, y: parent.y + 58 + count * 72 });
+  }
+  return positions;
+}
+
+
 export function taskEvidenceTarget(state, taskId) {
   const attempts = [...state.attempts.values()].filter((attempt) => attempt.task_id === taskId).sort((left, right) => Number(right.number ?? 0) - Number(left.number ?? 0) || right.attempt_id.localeCompare(left.attempt_id));
   const attempt = attempts[0];

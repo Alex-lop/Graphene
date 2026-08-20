@@ -9,6 +9,40 @@
     "Secret-bearing notes are redacted before rendering.",
     "The assembled candidate passes the full fixture test suite."
   ],
+  "criteria": [
+    {
+      "criterion_id": "criterion-assembled-tests",
+      "description": "The assembled candidate passes the full fixture test suite.",
+      "producer_task_ids": ["assemble_candidate"],
+      "verification_kind": "deterministic_check",
+      "verifier_task_id": "verify_candidate",
+      "verifier_id": "fixture-tests"
+    },
+    {
+      "criterion_id": "criterion-json-canonical",
+      "description": "JSON output is canonical and deterministic.",
+      "producer_task_ids": ["render_json"],
+      "verification_kind": "deterministic_check",
+      "verifier_task_id": "verify_candidate",
+      "verifier_id": "fixture-tests"
+    },
+    {
+      "criterion_id": "criterion-markdown-escaped",
+      "description": "Markdown output escapes table delimiters.",
+      "producer_task_ids": ["render_markdown"],
+      "verification_kind": "deterministic_check",
+      "verifier_task_id": "verify_candidate",
+      "verifier_id": "fixture-tests"
+    },
+    {
+      "criterion_id": "criterion-notes-redacted",
+      "description": "Secret-bearing notes are redacted before rendering.",
+      "producer_task_ids": ["redact_notes"],
+      "verification_kind": "deterministic_check",
+      "verifier_task_id": "verify_candidate",
+      "verifier_id": "fixture-tests"
+    }
+  ],
   "policy": {
     "allowed_read_globs": ["status_report/**", "tests/**"],
     "allowed_write_globs": ["status_report/**", "tests/**"],

@@ -8,6 +8,8 @@ from graphene.orchestration.models import (
     ArtifactContract,
     ArtifactRequirement,
     CommandTemplate,
+    Criterion,
+    CriterionVerificationKind,
     Plan,
     ProjectPolicy,
     ResourceBudget,
@@ -90,7 +92,7 @@ def _plan() -> Plan:
     assembly = _task(
         "assemble",
         "candidate",
-        "candidate-patch",
+        "patch",
         "out/candidate.patch",
         kind=TaskKind.ASSEMBLY,
         role="assembler",
@@ -116,13 +118,23 @@ def _plan() -> Plan:
             ArtifactRequirement(
                 producer_task_id="assemble",
                 name="candidate",
-                kind="candidate-patch",
+                kind="patch",
             ),
         ),
     )
     return Plan(
         mission_id="mission-1",
         revision=1,
+        criteria=(
+            Criterion(
+                criterion_id="criterion-checks",
+                description="The bound checks pass.",
+                producer_task_ids=("work-a", "work-b"),
+                verification_kind=CriterionVerificationKind.DETERMINISTIC_CHECK,
+                verifier_task_id="verify",
+                verifier_id="check",
+            ),
+        ),
         tasks=tuple(
             sorted((assembly, verify, work_a, work_b), key=lambda item: item.task_id)
         ),
@@ -140,6 +152,16 @@ def _replace(plan: Plan, task_id: str, **updates: object) -> Plan:
             else task
         )
     return Plan.model_validate({**plan.model_dump(mode="json"), "tasks": tasks})
+
+
+def _replace_criterion(plan: Plan, **updates: object) -> Plan:
+    criterion = plan.criteria[0]
+    return Plan.model_validate(
+        {
+            **plan.model_dump(mode="json"),
+            "criteria": [{**criterion.model_dump(mode="json"), **updates}],
+        }
+    )
 
 
 def test_valid_plan_is_pure_deterministic_and_topological() -> None:
@@ -294,18 +316,198 @@ def test_read_glob_must_equal_policy_scope_and_cannot_hide_exclusions() -> None:
     }
 
 
-def test_plan_requires_global_budget_for_one_attempt_per_task() -> None:
+def test_plan_requires_global_budget_for_declared_retry_limits() -> None:
     policy = _policy()
     policy = ProjectPolicy.model_validate(
         {
             **policy.model_dump(mode="json"),
             "resource_budget": {
                 **policy.resource_budget.model_dump(mode="json"),
-                "max_attempts": 3,
+                "max_attempts": 7,
             },
         }
     )
 
     assert "attempt_budget_too_small" in {
         item.code for item in validate_plan(policy, _plan()).issues
+    }
+
+
+@pytest.mark.parametrize(
+    ("changed", "code"),
+    (
+        (lambda plan: plan.model_copy(update={"criteria": ()}), "criterion_uncovered"),
+        (
+            lambda plan: _replace_criterion(
+                plan, verifier_task_id=None, verifier_id=None
+            ),
+            "criterion_no_verifier",
+        ),
+        (
+            lambda plan: _replace_criterion(
+                plan,
+                verification_kind=CriterionVerificationKind.MODEL_ASSERTION,
+                verifier_task_id=None,
+                verifier_id=None,
+            ),
+            "criterion_model_assertion",
+        ),
+        (
+            lambda plan: _replace_criterion(plan, producer_task_ids=("verify",)),
+            "criterion_self_verification",
+        ),
+    ),
+)
+def test_plan_rejects_unverifiable_criterion_coverage(changed, code: str) -> None:
+    assert code in {item.code for item in validate_plan(_policy(), changed(_plan())).issues}
+
+
+def test_assembly_frontier_must_name_transitive_leaf_outputs() -> None:
+    chained = _replace(
+        _plan(),
+        "work-b",
+        dependencies=("work-a",),
+        inputs=(
+            ArtifactRequirement(
+                producer_task_id="work-a", name="patch-a", kind="patch"
+            ),
+        ),
+    )
+    chained = _replace(
+        chained,
+        "assemble",
+        dependencies=("work-b",),
+        inputs=(
+            ArtifactRequirement(
+                producer_task_id="work-b", name="patch-b", kind="patch"
+            ),
+        ),
+    )
+
+    assert "artifact_frontier_missing" in {
+        item.code for item in validate_plan(_policy(), chained).issues
+    }
+
+
+def test_ordered_tasks_cannot_share_a_base_relative_write_scope() -> None:
+    ordered = _replace(
+        _plan(),
+        "work-b",
+        dependencies=("work-a",),
+        inputs=(
+            ArtifactRequirement(
+                producer_task_id="work-a", name="patch-a", kind="patch"
+            ),
+        ),
+        write_paths=("app/a.py",),
+        expected_outputs=(
+            ArtifactContract(name="patch-b", kind="patch", paths=("app/a.py",)),
+        ),
+    )
+
+    assert "ordered_write_conflict" in {
+        item.code for item in validate_plan(_policy(), ordered).issues
+    }
+
+
+def test_assembly_merge_workspace_may_cover_work_output_paths() -> None:
+    merged = _replace(
+        _plan(),
+        "assemble",
+        write_paths=("app/a.py", "app/b.py"),
+        expected_outputs=(
+            ArtifactContract(
+                name="candidate",
+                kind="patch",
+                paths=("app/a.py", "app/b.py"),
+            ),
+        ),
+    )
+
+    assert not {
+        item.code for item in validate_plan(_policy(), merged).issues
+    } & {"ordered_write_conflict", "parallel_write_conflict"}
+
+
+@pytest.mark.parametrize(
+    ("changed", "code"),
+    (
+        (
+            lambda plan: _replace(
+                plan,
+                "assemble",
+                write_paths=("out/candidate.patch", "out/manifest.json"),
+                expected_outputs=(
+                    ArtifactContract(
+                        name="candidate", kind="patch", paths=("out/candidate.patch",)
+                    ),
+                    ArtifactContract(
+                        name="manifest", kind="report", paths=("out/manifest.json",)
+                    ),
+                ),
+            ),
+            "assembly_output_shape_unsupported",
+        ),
+        (
+            lambda plan: _replace(
+                plan,
+                "assemble",
+                expected_outputs=(
+                    ArtifactContract(
+                        name="candidate",
+                        kind="snapshot",
+                        paths=("out/candidate.patch",),
+                    ),
+                ),
+            ),
+            "assembly_output_kind_unsupported",
+        ),
+        (
+            lambda plan: _replace(
+                plan,
+                "verify",
+                dependencies=("assemble", "work-a"),
+                inputs=(
+                    ArtifactRequirement(
+                        producer_task_id="assemble", name="candidate", kind="patch"
+                    ),
+                    ArtifactRequirement(
+                        producer_task_id="work-a", name="patch-a", kind="patch"
+                    ),
+                ),
+            ),
+            "verification_input_shape_unsupported",
+        ),
+        (
+            lambda plan: _replace(
+                plan,
+                "verify",
+                expected_outputs=(
+                    ArtifactContract(
+                        name="verification",
+                        kind="model-review",
+                        paths=("out/verification.json",),
+                    ),
+                ),
+            ),
+            "verification_output_kind_unsupported",
+        ),
+    ),
+)
+def test_final_stage_shape_matches_runtime_protocol(changed, code: str) -> None:
+    assert code in {item.code for item in validate_plan(_policy(), changed(_plan())).issues}
+
+
+def test_output_name_is_the_publication_identity() -> None:
+    duplicate = _replace(
+        _plan(),
+        "work-a",
+        expected_outputs=(
+            ArtifactContract(name="patch-a", kind="patch", paths=("app/a.py",)),
+            ArtifactContract(name="patch-a", kind="report", paths=("app/a.py",)),
+        ),
+    )
+
+    assert "duplicate_output_name" in {
+        item.code for item in validate_plan(_policy(), duplicate).issues
     }

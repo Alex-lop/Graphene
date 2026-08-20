@@ -9,6 +9,9 @@ frontend/dist/
 frontend/node_modules/
 demo/runs/
 dist/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # Local planning, prompts, and reviews
 All_md_files/

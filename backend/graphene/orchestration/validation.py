@@ -5,7 +5,14 @@ from pathlib import PurePosixPath
 from pydantic import Field
 
 from ..models import FrozenModel
-from .models import Plan, ProjectPolicy, Task, TaskKind, TaskState
+from .models import (
+    CriterionVerificationKind,
+    Plan,
+    ProjectPolicy,
+    Task,
+    TaskKind,
+    TaskState,
+)
 
 
 class PlanValidationIssue(FrozenModel):
@@ -99,10 +106,10 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
 
     if plan.max_concurrency > policy.max_concurrency:
         issue("concurrency_exceeds_policy", "plan concurrency exceeds project policy")
-    if len(plan.tasks) > policy.resource_budget.max_attempts:
+    if sum(task.attempt_limit for task in plan.tasks) > policy.resource_budget.max_attempts:
         issue(
             "attempt_budget_too_small",
-            "mission attempt budget cannot cover one attempt per task",
+            "mission attempt budget cannot cover every declared task attempt",
         )
 
     for task in plan.tasks:
@@ -171,6 +178,13 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
                     f"output {output.name} contains a path outside the task lease",
                     task.task_id,
                 )
+        output_names = tuple(item.name for item in task.expected_outputs)
+        if len(output_names) != len(set(output_names)):
+            issue(
+                "duplicate_output_name",
+                "task output names must identify one publication each",
+                task.task_id,
+            )
         for requirement in task.inputs:
             if requirement.producer_task_id not in task.dependencies:
                 issue(
@@ -203,18 +217,82 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
         issue("cycle", "task dependency graph contains a cycle")
     ancestors = _ancestors(tasks)
 
-    for index, left in enumerate(plan.tasks):
-        for right in plan.tasks[index + 1 :]:
+    work_tasks = tuple(task for task in plan.tasks if task.kind == TaskKind.WORK)
+    for index, left in enumerate(work_tasks):
+        for right in work_tasks[index + 1 :]:
             if not set(left.write_paths) & set(right.write_paths):
                 continue
             ordered = left.task_id in ancestors.get(
                 right.task_id, set()
             ) or right.task_id in ancestors.get(left.task_id, set())
-            if not ordered:
+            issue(
+                "ordered_write_conflict" if ordered else "parallel_write_conflict",
+                f"tasks {left.task_id} and {right.task_id} overlap write scope",
+            )
+
+    if not plan.criteria:
+        issue("criterion_uncovered", "plan declares no success-criterion coverage")
+    for criterion in plan.criteria:
+        producers = set(criterion.producer_task_ids)
+        if not producers:
+            issue(
+                "criterion_uncovered",
+                "criterion has no producing task",
+                criterion.criterion_id,
+            )
+        missing_producers = sorted(producers - set(tasks))
+        if missing_producers:
+            issue(
+                "criterion_missing_producer",
+                f"criterion producers are absent: {', '.join(missing_producers)}",
+                criterion.criterion_id,
+            )
+        if criterion.verification_kind == CriterionVerificationKind.MODEL_ASSERTION:
+            issue(
+                "criterion_model_assertion",
+                "a model assertion cannot verify a success criterion",
+                criterion.criterion_id,
+            )
+            continue
+        if criterion.verification_kind == CriterionVerificationKind.HUMAN_GATE:
+            if (
+                criterion.verifier_task_id is not None
+                or criterion.verifier_id not in policy.risk_gates
+            ):
                 issue(
-                    "parallel_write_conflict",
-                    f"parallel tasks {left.task_id} and {right.task_id} overlap write scope",
+                    "criterion_no_verifier",
+                    "human verification requires a typed policy gate",
+                    criterion.criterion_id,
                 )
+            continue
+        verifier = tasks.get(criterion.verifier_task_id or "")
+        if (
+            verifier is None
+            or verifier.kind != TaskKind.VERIFICATION
+            or criterion.verifier_id not in verifier.acceptance_checks
+        ):
+            issue(
+                "criterion_no_verifier",
+                "deterministic verification requires a verification task check",
+                criterion.criterion_id,
+            )
+            continue
+        if verifier.task_id in producers:
+            issue(
+                "criterion_self_verification",
+                "a producing task cannot verify its own criterion",
+                criterion.criterion_id,
+            )
+        elif any(
+            producer in tasks
+            and producer not in ancestors.get(verifier.task_id, set())
+            for producer in producers
+        ):
+            issue(
+                "criterion_verifier_not_downstream",
+                "criterion verifier is not downstream of every producer",
+                criterion.criterion_id,
+            )
 
     assemblies = [task for task in plan.tasks if task.kind == TaskKind.ASSEMBLY]
     verifiers = [task for task in plan.tasks if task.kind == TaskKind.VERIFICATION]
@@ -230,6 +308,78 @@ def validate_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResult:
         if assembly.task_id not in ancestors.get(verifier.task_id, set()):
             issue(
                 "verification_not_bound", "verification is not downstream of assembly"
+            )
+        work_outputs = {
+            (task.task_id, output.name, output.kind)
+            for task in plan.tasks
+            if task.kind == TaskKind.WORK
+            for output in task.expected_outputs
+        }
+        frontier = {
+            (item.producer_task_id, item.name, item.kind) for item in assembly.inputs
+        }
+        missing_frontier = sorted(work_outputs - frontier)
+        if missing_frontier:
+            issue(
+                "artifact_frontier_missing",
+                "assembly omits work outputs: "
+                + ", ".join(f"{task_id}/{name}" for task_id, name, _ in missing_frontier),
+                assembly.task_id,
+            )
+        extra_frontier = sorted(frontier - work_outputs)
+        if extra_frontier:
+            issue(
+                "artifact_frontier_ambiguous",
+                "assembly contains unsupported frontier inputs",
+                assembly.task_id,
+            )
+
+        if len(assembly.expected_outputs) != 1:
+            issue(
+                "assembly_output_shape_unsupported",
+                "assembly must publish exactly one candidate patch",
+                assembly.task_id,
+            )
+        elif assembly.expected_outputs[0].kind != "patch":
+            issue(
+                "assembly_output_kind_unsupported",
+                "assembly candidate kind must be patch",
+                assembly.task_id,
+            )
+
+        expected_candidate = (
+            None
+            if len(assembly.expected_outputs) != 1
+            else (
+                assembly.task_id,
+                assembly.expected_outputs[0].name,
+                assembly.expected_outputs[0].kind,
+            )
+        )
+        verifier_inputs = tuple(
+            (item.producer_task_id, item.name, item.kind) for item in verifier.inputs
+        )
+        if (
+            expected_candidate is None
+            or verifier.dependencies != (assembly.task_id,)
+            or verifier_inputs != (expected_candidate,)
+        ):
+            issue(
+                "verification_input_shape_unsupported",
+                "verification must consume only the exact assembly candidate",
+                verifier.task_id,
+            )
+        if len(verifier.expected_outputs) != 1:
+            issue(
+                "verification_output_shape_unsupported",
+                "verification must publish exactly one receipt",
+                verifier.task_id,
+            )
+        elif verifier.expected_outputs[0].kind != "test-receipt":
+            issue(
+                "verification_output_kind_unsupported",
+                "verification output kind must be test-receipt",
+                verifier.task_id,
             )
 
     canonical_issues = tuple(

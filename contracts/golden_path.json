@@ -11,7 +11,7 @@
   "hashes": {
     "file": "sha256(raw file bytes)",
     "patch": "sha256(exact git diff --binary bytes)",
-    "candidate_tree": "sha256(path UTF-8 + NUL + file bytes + NUL for sorted changed paths)",
+    "candidate_tree": "sha256(graphene.tree.v2 length-prefixed path/content/type/mode/count manifest)",
     "test_receipt": "sha256(UTF-8 JSON with sort_keys=true, separators=(',', ':'), ensure_ascii=false, excluding receipt_sha256)",
     "idempotency_request": "sha256(UTF-8 JSON with sort_keys=true, separators=(',', ':'), ensure_ascii=false)"
   },
@@ -35,8 +35,9 @@
     "max_test_output_bytes": 16384,
     "max_write_bytes": 32768,
     "max_patch_bytes": 102400,
-    "tree_sha256": "9e9f69d738464965d3b26c72a21778af0c1b002c652bc9109b8225d5acabf02a",
-    "tree_hash_algorithm": "sha256(path + NUL + bytes + NUL for sorted tracked paths)"
+    "tree_sha256": "a117b4dbbf34c9fb4b992301780a25846534779e7c66e874ca33695faf170c4c",
+    "tree_hash_version": "graphene.tree.v2",
+    "tree_hash_algorithm": "sha256(graphene.tree.v2 length-prefixed manifest)"
   },
   "tool_names": ["read_file", "write_file", "run_fixture_tests"],
   "prompt": {

@@ -63,6 +63,7 @@ class LocalCommitRequest(_Frozen):
     candidate_patch: bytes = Field(min_length=1, max_length=MAX_PATCH_BYTES, repr=False)
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changed_paths: tuple[RepoPath, ...]
     test_reference: EvidenceReference
     authoritative_test_receipt_sha256: Sha256
@@ -98,6 +99,7 @@ class LocalCommitReceiptV2(_Frozen):
     tree_sha: GitSha
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changed_paths: tuple[RepoPath, ...]
     test_receipt_id: Identifier
     test_receipt_sha256: Sha256
@@ -400,6 +402,7 @@ def create_isolated_local_commit(
         tree_sha=approved_tree,
         candidate_patch_sha256=request.candidate_patch_sha256,
         candidate_tree_sha256=request.candidate_tree_sha256,
+        candidate_tree_hash_version=request.candidate_tree_hash_version,
         changed_paths=request.changed_paths,
         test_receipt_id=request.test_reference.id,
         test_receipt_sha256=request.test_reference.sha256,
@@ -456,6 +459,7 @@ def local_commit_event_input(
         "approval_event_sha256": receipt.approval_event_sha256,
         "candidate_patch_sha256": receipt.candidate_patch_sha256,
         "candidate_tree_sha256": receipt.candidate_tree_sha256,
+        "candidate_tree_hash_version": receipt.candidate_tree_hash_version,
         "changed_paths": list(receipt.changed_paths),
         "deployed": False,
         "local_commit_receipt_id": receipt_reference.id,
@@ -662,6 +666,8 @@ def commit_promoted_run(
         != promotion_receipt.candidate_patch_sha256
         or changeset.get("candidate_tree_sha256")
         != promotion_receipt.candidate_tree_sha256
+        or changeset.get("candidate_tree_hash_version")
+        != promotion_receipt.candidate_tree_hash_version
     ):
         raise LocalCommitError("promotion and candidate bindings do not match")
 
@@ -672,6 +678,7 @@ def commit_promoted_run(
         candidate_patch=patch,
         candidate_patch_sha256=promotion_receipt.candidate_patch_sha256,
         candidate_tree_sha256=promotion_receipt.candidate_tree_sha256,
+        candidate_tree_hash_version=promotion_receipt.candidate_tree_hash_version,
         changed_paths=changed_paths,
         test_reference=test_reference,
         authoritative_test_receipt_sha256=(

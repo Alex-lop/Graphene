@@ -207,9 +207,13 @@ def _reconstruct_and_commit(candidate, execution_mode: str) -> tuple[str, dict[s
         if applied.returncode:
             raise StoreConflict("candidate patch no longer applies")
         files = {path: (root / path).read_bytes() for path in candidate.changed_paths}
-        if candidate_tree_sha256(files) != candidate.candidate_tree_sha256 or any(
-            sha256_hex(files[change.path]) != change.after_sha256
-            for change in candidate.file_changes
+        if (
+            candidate.candidate_tree_hash_version != "graphene.tree.v2"
+            or candidate_tree_sha256(files) != candidate.candidate_tree_sha256
+            or any(
+                sha256_hex(files[change.path]) != change.after_sha256
+                for change in candidate.file_changes
+            )
         ):
             raise StoreConflict("reconstructed candidate hashes do not match")
         test = run_fixture_tests(root, GOLDEN.fixture)
@@ -580,6 +584,8 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
             candidate is not None and request.base_commit_sha == candidate.base_commit_sha,
             candidate is not None and request.candidate_patch_sha256 == candidate.candidate_patch_sha256,
             candidate is not None and request.candidate_tree_sha256 == candidate.candidate_tree_sha256,
+            candidate is not None
+            and request.candidate_tree_hash_version == candidate.candidate_tree_hash_version,
             candidate is not None and request.test_receipt_sha256 == candidate.test_receipt.receipt_sha256,
             packet is not None and request.context_packet_id == packet.packet_id,
             packet is not None and request.context_packet_sha256 == packet.packet_sha256,
@@ -660,6 +666,7 @@ def create_app(store: Store | None = None, demo_token: str | None = None) -> Fas
             base_commit_sha=candidate.base_commit_sha,
             candidate_patch_sha256=candidate.candidate_patch_sha256,
             candidate_tree_sha256=candidate.candidate_tree_sha256,
+            candidate_tree_hash_version=candidate.candidate_tree_hash_version,
             memory_id=request.memory_id,
             memory_revision=request.memory_revision,
             context_packet_id=packet.packet_id,

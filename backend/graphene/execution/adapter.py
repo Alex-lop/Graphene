@@ -914,6 +914,7 @@ def _finalize_candidate(
         candidate_tree_sha256=candidate_tree_sha256(
             {path: (candidate_root / path).read_bytes() for path in changed_paths}
         ),
+        candidate_tree_hash_version="graphene.tree.v2",
         changed_paths=changed_paths,
         file_changes=changes,
         test_receipt=test_receipt,

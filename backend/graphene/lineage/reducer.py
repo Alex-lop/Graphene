@@ -185,6 +185,8 @@ def validate_semantic_artifacts(
                 or tuple(changeset.get("changed_paths", ())) != receipt.changed_paths
                 or changeset.get("candidate_patch_sha256") != receipt.candidate_patch_sha256
                 or changeset.get("candidate_tree_sha256") != receipt.candidate_tree_sha256
+                or changeset.get("candidate_tree_hash_version")
+                != receipt.candidate_tree_hash_version
                 or promotion_receipt.run_id != event.run_id
                 or promotion_receipt.repo_id != event.repo_id
                 or promotion_receipt.base_sha != event.base_sha
@@ -194,6 +196,8 @@ def validate_semantic_artifacts(
                 or promotion_receipt.approval_event_sha256 != approval.event_sha256
                 or promotion_receipt.candidate_patch_sha256 != receipt.candidate_patch_sha256
                 or promotion_receipt.candidate_tree_sha256 != receipt.candidate_tree_sha256
+                or promotion_receipt.candidate_tree_hash_version
+                != receipt.candidate_tree_hash_version
                 or promotion_receipt.test_receipt_sha256 != receipt.test_receipt_sha256
                 or promotion_receipt.authoritative_test_receipt_sha256
                 != receipt.authoritative_test_receipt_sha256

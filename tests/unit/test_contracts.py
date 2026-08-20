@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import shutil
@@ -9,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from graphene.hashing import canonical_json_sha256
+from graphene.hashing import canonical_json_sha256, candidate_tree_sha256
 from graphene.models import GoldenContract, GraphMvpContract, RepoPath
 
 ROOT = Path(__file__).parents[2]
@@ -22,14 +21,10 @@ def contract() -> GoldenContract:
 
 
 def _fixture_hash(contract: GoldenContract) -> str:
-    digest = hashlib.sha256()
     root = ROOT / contract.fixture.root
-    for relative_path in sorted(contract.fixture.tracked_paths):
-        digest.update(relative_path.encode())
-        digest.update(b"\0")
-        digest.update((root / relative_path).read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return candidate_tree_sha256(
+        {path: (root / path).read_bytes() for path in contract.fixture.tracked_paths}
+    )
 
 
 def _run_fixture(contract: GoldenContract, root: Path) -> subprocess.CompletedProcess[str]:
@@ -166,7 +161,7 @@ def test_post_phase_zero_graph_contract_is_final_and_bounded():
         (ROOT / "contracts/graph_mvp.json").read_text()
     )
     assert canonical_json_sha256(graph.model_dump(mode="json")) == (
-        "686376767e7284d95d4823ea4b8f2967704f4538b0c829dd802e91ec9770ae71"
+        "b8a2875c33171097fca3f2fef93c760c15a035b89d1d9960efc3e7a05b34a9a6"
     )
     assert graph.caps.max_patch_bytes == 102_400
     assert graph.caps.max_nodes == 25

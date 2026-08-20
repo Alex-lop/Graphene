@@ -21,6 +21,7 @@ from graphene.orchestration.evidence import (
     AttemptEvidenceEventType,
     AttemptEvidenceInput,
     SQLiteAttemptEvidenceStore,
+    TrustedCheckReceipt,
 )
 from graphene.orchestration.local_result import LocalResultError, approve_result
 from graphene.orchestration.models import (
@@ -191,6 +192,7 @@ def test_scripted_worker_replays_terminal_evidence_after_dispatch_crash(
         proposal.mission_id,
         "command_approve_terminal_recovery",
         expected_revision=1,
+        expected_head=store.head(proposal.mission_id),
         operator_label="process-fixture",
         rationale="Approve terminal evidence recovery.",
         truth_kind=TruthKind.SIMULATED_FIXTURE,
@@ -290,6 +292,7 @@ def test_scripted_worker_serializes_duplicate_dispatch_delivery(tmp_path: Path) 
         proposal.mission_id,
         "command_approve_duplicate_delivery",
         expected_revision=1,
+        expected_head=store.head(proposal.mission_id),
         operator_label="process-fixture",
         rationale="Approve duplicate delivery recovery.",
         truth_kind=TruthKind.SIMULATED_FIXTURE,
@@ -369,6 +372,7 @@ def test_scripted_mission_recovers_terminal_evidence_in_final_attempt_slot(
         proposal.mission_id,
         "command_approve_final_slot_recovery",
         expected_revision=1,
+        expected_head=store.head(proposal.mission_id),
         operator_label="process-fixture",
         rationale="Approve exact final-slot recovery.",
         truth_kind=TruthKind.SIMULATED_FIXTURE,
@@ -396,12 +400,13 @@ def test_scripted_mission_recovers_terminal_evidence_in_final_attempt_slot(
     assert sum(item.state == AttemptState.RUNNING for item in crashed.attempts) == 1
 
     monkeypatch.setattr(MissionScheduler, "complete", original)
+    restarted_store = SQLiteMissionStore(database)
     run = execute_scripted_mission(
-        store=SQLiteMissionStore(database),
+        store=restarted_store,
         runtime=proposal.runtime,
         mission_id=proposal.mission_id,
     )
-    snapshot = SQLiteMissionStore(database).snapshot(proposal.mission_id)
+    snapshot = restarted_store.snapshot(proposal.mission_id)
     assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
     assert len(snapshot.attempts) == 7
     assert run.candidate.sha256
@@ -434,6 +439,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
         mission_id,
         "command_approve_active_control",
         expected_revision=1,
+        expected_head=store.head(mission_id),
         operator_label="process-fixture",
         rationale="Approve the bounded active-control fixture.",
         truth_kind=TruthKind.SIMULATED_FIXTURE,
@@ -443,15 +449,9 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     dispatch = scheduler.tick(mission_id, ("scripted-worker-1",))[0]
     registry = OwnedProcessRegistry(runtime)
     errors: list[Exception] = []
-    ignore_cancel = [False]
 
     def observed_status() -> MissionStatus:
-        status = store.snapshot(mission_id).mission.status
-        return (
-            MissionStatus.RUNNING
-            if ignore_cancel[0] and status == MissionStatus.CANCELLED
-            else status
-        )
+        return store.snapshot(mission_id).mission.status
 
     runner = ControlledProcessRunner(
         registry,
@@ -514,15 +514,6 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     )
     assert resumed["mission_id"] == mission_id
     assert store.snapshot(mission_id).mission.status == MissionStatus.RUNNING
-    ignore_cancel[0] = True
-    store.cancel(
-        mission_id,
-        "command_cancel_active_control",
-        operator_label="local-operator",
-        rationale=None,
-        truth_kind=TruthKind.SERVER_DERIVED,
-        recorded_at=datetime.now(UTC),
-    )
     assert tuple(registry.directory.iterdir())
     cancelled = _cli(
         environment,
@@ -535,8 +526,19 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
         "command_cancel_active_control",
     )
     thread.join(timeout=3)
+    cancelled_again = _cli(
+        environment,
+        "mission",
+        "cancel",
+        mission_id,
+        "--confirm",
+        mission_id,
+        "--command-id",
+        "command_cancel_active_control",
+    )
 
     assert cancelled == {"mission_id": mission_id, "status": "cancelled"}
+    assert cancelled_again == cancelled
     assert errors == []
     assert store.snapshot(mission_id).mission.status == MissionStatus.CANCELLED
     assert not thread.is_alive() and not tuple(registry.directory.iterdir())
@@ -568,7 +570,11 @@ def test_reviewed_mission_retries_fans_in_verifies_and_rejects_without_commit(
     assert proposed["review_required"] is True
     assert proposed["validation"]["valid"] is True
     assert len(proposed["task_graph"]) == 6
-    proposed_store = SQLiteMissionStore(state / "missions.sqlite3")
+    runtime = state / "missions" / sha256_hex(mission_id.encode())[:32]
+    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
+    proposed_store = SQLiteMissionStore(
+        state / "missions.sqlite3", artifact_resolver=evidence
+    )
     assert proposed_store.snapshot(mission_id).mission.status == MissionStatus.PROPOSED
     assert proposed_store.snapshot(mission_id).attempts == ()
     proposed_head = proposed_store.head(mission_id)
@@ -622,7 +628,7 @@ def test_reviewed_mission_retries_fans_in_verifies_and_rejects_without_commit(
     assert watched["events"][0]["seq"] == 2
     assert watched["snapshot"]["mission"]["mission_id"] == mission_id
 
-    store = SQLiteMissionStore(state / "missions.sqlite3")
+    store = SQLiteMissionStore(state / "missions.sqlite3", artifact_resolver=evidence)
     snapshot = store.snapshot(mission_id)
     assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
     assert all(task.state == TaskState.DONE for task in snapshot.tasks)
@@ -644,12 +650,6 @@ def test_reviewed_mission_retries_fans_in_verifies_and_rejects_without_commit(
         for item in snapshot.publications
     )
 
-    evidence = SQLiteAttemptEvidenceStore(
-        state
-        / "scripted"
-        / sha256_hex(mission_id.encode())[:32]
-        / "attempt-evidence.sqlite3"
-    )
     assembly = next(
         item for item in snapshot.attempts if item.task_id == "assemble_candidate"
     )
@@ -749,13 +749,21 @@ def test_reviewed_mission_retries_fans_in_verifies_and_rejects_without_commit(
     assert started_seq["assemble_candidate"] > accepted_seq["wire_cli"]
     assert started_seq["verify_candidate"] > accepted_seq["assemble_candidate"]
 
+    bundle = _cli(
+        environment,
+        "bundle",
+        "create",
+        mission_id,
+        "--output",
+        str(tmp_path / "rejected-final-result.json"),
+    )
     rejected = _cli(
         environment,
         "mission",
         "reject-result",
         mission_id,
-        "--candidate-sha",
-        candidate_sha,
+        "--bundle-id",
+        str(bundle["bundle_id"]),
         "--operator-label",
         "process-fixture",
         "--rationale",
@@ -764,7 +772,7 @@ def test_reviewed_mission_retries_fans_in_verifies_and_rejects_without_commit(
     assert rejected["status"] == "rejected"
     assert rejected["local_commit_sha"] is None
     assert store.snapshot(mission_id).mission.status == MissionStatus.REJECTED
-    runtime = state / "scripted" / sha256_hex(mission_id.encode())[:32]
+    runtime = state / "missions" / sha256_hex(mission_id.encode())[:32]
     result_ref = "refs/graphene/results/" + sha256_hex(mission_id.encode())[:24]
     result = subprocess.run(
         ("git", "rev-parse", "--verify", result_ref),
@@ -798,7 +806,11 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
     )
     assert started["approval_truth"] == "simulated_fixture_no_human_review"
     mission_id = str(started["mission_id"])
-    store_after_start = SQLiteMissionStore(state / "missions.sqlite3")
+    runtime = state / "missions" / sha256_hex(mission_id.encode())[:32]
+    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
+    store_after_start = SQLiteMissionStore(
+        state / "missions.sqlite3", artifact_resolver=evidence
+    )
     head_after_start = store_after_start.head(mission_id)
     attempts_after_start = store_after_start.snapshot(mission_id).attempts
     started_again = _start(
@@ -812,7 +824,6 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
     assert started_again["result_replayed"] is True
     assert store_after_start.head(mission_id) == head_after_start
     assert store_after_start.snapshot(mission_id).attempts == attempts_after_start
-    runtime = state / "scripted" / sha256_hex(mission_id.encode())[:32]
     internal = runtime / "repository"
     partial_workspace = runtime / "results" / sha256_hex(mission_id.encode())[:24]
     partial_workspace.parent.mkdir(mode=0o700)
@@ -829,12 +840,20 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
         "# interrupted uncommitted apply\n", encoding="utf-8"
     )
 
+    bundle = _cli(
+        environment,
+        "bundle",
+        "create",
+        mission_id,
+        "--output",
+        str(tmp_path / "approved-final-result.json"),
+    )
     approval = (
         "mission",
         "approve-result",
         mission_id,
-        "--candidate-sha",
-        str(started["candidate_sha256"]),
+        "--bundle-id",
+        str(bundle["bundle_id"]),
         "--operator-label",
         "process-fixture",
         "--rationale",
@@ -845,7 +864,8 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
     store_after_start.approve_final_result(
         mission_id,
         "command_approve_result_process_001",
-        expected_candidate_sha256=str(started["candidate_sha256"]),
+        expected_bundle_id=str(bundle["bundle_id"]),
+        expected_head=store_after_start.head(mission_id),
         operator_label="process-fixture",
         rationale="Approve the exact verified fixture candidate.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -861,10 +881,9 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
 
     commit_sha = str(approved["local_commit_sha"])
     result_ref = str(approved["result_ref"])
-    store = SQLiteMissionStore(state / "missions.sqlite3")
+    store = SQLiteMissionStore(state / "missions.sqlite3", artifact_resolver=evidence)
     snapshot = store.snapshot(mission_id)
 
-    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
     candidate, verification = scripted_result_artifacts(store, evidence, mission_id)
     runtime_link = tmp_path / "runtime-link"
     runtime_link.symlink_to(runtime, target_is_directory=True)
@@ -883,19 +902,20 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
             truth_kind=TruthKind.SIMULATED_FIXTURE,
             allow_simulated_fixture=True,
         )
+    verified_receipt = TrustedCheckReceipt.model_validate_json(
+        evidence.resolve(verification.kind, verification.id)
+    )
+    sibling_candidate = candidate.model_copy(update={"sha256": "0" * 64})
     sibling_receipt = evidence.put_artifact(
         "test-receipt",
         canonical_json_bytes(
-            {
-                "accepted_input_sha256": ["0" * 64],
-                "candidate_patch_sha256": "0" * 64,
-                "duration_bucket": "under_1s",
-                "exit_code": 0,
-                "output_sha256": "0" * 64,
-                "output_truncated": False,
-                "template_id": "fixture-tests",
-                "timed_out": False,
-            }
+            verified_receipt.model_copy(
+                update={
+                    "accepted_input_references": (sibling_candidate,),
+                    "candidate_references": (sibling_candidate,),
+                    "candidate_tree_sha256": "0" * 64,
+                }
+            ).model_dump(mode="json")
         ),
     )
     with pytest.raises(LocalResultError, match="did not pass the bound check"):
@@ -934,6 +954,26 @@ def test_approved_result_is_one_exact_anchored_isolated_commit(tmp_path: Path) -
     assert final.truth_kind == "server_derived"
     assert final.payload["candidate_sha256"] == started["candidate_sha256"]
     assert final.payload["verification_sha256"] == started["verification_sha256"]
+
+    shown = _cli(environment, "mission", "result", "show", mission_id)
+    exported_path = tmp_path / "candidate.patch"
+    exported = _cli(
+        environment,
+        "mission",
+        "result",
+        "export",
+        mission_id,
+        "--candidate-sha",
+        str(started["candidate_sha256"]),
+        "--output",
+        str(exported_path),
+    )
+    assert shown["local_commit_sha"] == commit_sha
+    assert shown["result_ref"] == result_ref
+    assert shown["checkout_mutated"] is False
+    assert sha256_hex(exported_path.read_bytes()) == started["candidate_sha256"]
+    assert exported["exported_to"] == str(exported_path)
+    assert _git(repository, "rev-parse", "HEAD") == user_head
 
 
 def test_replay_cli_does_not_print_its_generated_read_token(tmp_path: Path) -> None:

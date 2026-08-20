@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "capture_pending",
+  "source_replay": "backend/graphene/orchestration/static/mission-replay.json",
+  "source_replay_sha256": "1dcc4d6d7e70d34d01574fec8227a49750c9aa7821023209bc7d7445094e17dd",
+  "required_viewport": {
+    "width": 1440,
+    "height": 1000,
+    "device_scale_factor": 1
+  },
+  "capture_checkpoint": 9,
+  "capture_target": {
+    "deltas_applied": 9,
+    "head_seq": 10,
+    "mission_status": "awaiting_result",
+    "pending_gate_id": "final_result_recorded_fixture"
+  },
+  "capture_command": null,
+  "outputs": {
+    "mission-control-hero.png": null,
+    "mission-control-replay.gif": null
+  },
+  "blocker": "The in-app Browser connection failed, so no verified capture runtime was available. No fallback renderer or mock was used. Do not claim media until the same replay checkpoint can be captured and digest-verified reproducibly.",
+  "truth_requirements": [
+    "Keep the complete replay truth banner visible.",
+    "Exclude credentials, usernames, absolute local paths, tokens, and private repository data.",
+    "Start a replay GIF at checkpoint zero and pause at the pending final-candidate decision.",
+    "Label the recorded branch action Continue with recorded simulated approval and keep human_attestation=false."
+  ]
+}

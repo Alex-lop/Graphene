@@ -9,7 +9,10 @@ from graphene.orchestration.cloud import (
     CLOUD_STREAM_INTERVAL_SECONDS,
     CloudConfigurationError,
     create_cloud_app,
+    create_cloud_coordinator_app,
+    create_private_coordinator_app,
 )
+from graphene.orchestration.cloud_protocol import AuthenticatedExecutor
 
 
 CONFIGURATION = {
@@ -28,6 +31,35 @@ class UnusedStore:
 
     def tail(self, _mission_id, _after_seq, _limit):
         raise AssertionError("liveness must not scan mission events")
+
+
+def test_env_example_contains_names_only_and_cloud_gates():
+    lines = tuple(
+        line
+        for line in (ROOT / ".env.example").read_text().splitlines()
+        if line and not line.startswith("#")
+    )
+    assert lines and all("=" in line and line.split("=", 1)[1] == "" for line in lines)
+    assert {
+        "GOOGLE_CLOUD_PROJECT=",
+        "GRAPHENE_COORDINATOR_AUDIENCE=",
+        "GRAPHENE_COORDINATOR_EXECUTOR_BINDINGS=",
+        "GRAPHENE_COORDINATOR_URL=",
+        "GRAPHENE_RUN_FIRESTORE_EMULATOR=",
+        "GRAPHENE_RUN_LIVE_FIRESTORE=",
+        "GRAPHENE_RUN_CLOUD_SMOKE=",
+        "GRAPHENE_LIVE_FIRESTORE_PROJECT=",
+        "GRAPHENE_LIVE_FIRESTORE_DATABASE=",
+        "GRAPHENE_LIVE_FIRESTORE_NAMESPACE=",
+    } <= set(lines)
+
+
+def test_private_coordinator_has_a_separate_container_entrypoint():
+    dockerfile = (ROOT / "deploy/cloudrun/coordinator.Dockerfile").read_text()
+    build = (ROOT / "deploy/cloudrun/coordinator-cloudbuild.yaml").read_text()
+    assert "create_private_coordinator_app" in dockerfile
+    assert "deploy/cloudrun/coordinator.Dockerfile" in build
+    assert "create_cloud_app" not in dockerfile
 
 
 def test_factory_fails_closed_without_every_explicit_setting(monkeypatch):
@@ -70,9 +102,11 @@ def test_health_and_mission_control_are_read_only_and_honest():
     assert redirect.headers["location"] == "/mission-control/mission_cloud_001"
     assert CONFIGURATION["read_token"] not in str(redirect.headers)
 
-    unsafe = {"POST", "PUT", "PATCH", "DELETE"}
-    assert all(
-        not (getattr(route, "methods", None) or set()) & unsafe for route in app.routes
+    assert (
+        client.post(
+            "/api/mission-control/missions/mission_cloud_001/commands/session"
+        ).status_code
+        == 404
     )
     assert app.state.cloud_configuration == {
         "project_id": "authorized-sandbox-project",
@@ -134,3 +168,77 @@ def test_deploy_uses_an_existing_secret_instead_of_a_literal_read_token():
     assert 'gcloud secrets versions describe "$READ_TOKEN_SECRET_VERSION"' in readme
     assert "roles/secretmanager.secretAccessor" in readme
     assert "not an additional service claimed to pad the hackathon stack" in readme
+
+
+def test_private_coordinator_factory_is_multi_mission_and_has_no_auth_fallback():
+    values = {
+        "project_id": CONFIGURATION["project_id"],
+        "database_id": CONFIGURATION["database_id"],
+        "namespace": CONFIGURATION["namespace"],
+        "store": UnusedStore(),
+    }
+    with pytest.raises(CloudConfigurationError, match="identity verifier"):
+        create_cloud_coordinator_app(**values)
+
+    app = create_cloud_coordinator_app(
+        **values,
+        verify_identity=lambda _request: AuthenticatedExecutor(
+            principal="principal@example.invalid", executor_id="executor_cloud_1"
+        ),
+    )
+    client = TestClient(app)
+    assert client.get("/healthz").json() == {
+        "cloud_proof": "NOT PROVEN",
+        "multi_mission": True,
+        "repository_execution": False,
+        "status": "configured",
+    }
+    paths = {getattr(route, "path", None) for route in app.routes}
+    assert "/v1/missions/{mission_id}/claims" in paths
+    assert app.state.cloud_configuration == {
+        "project_id": CONFIGURATION["project_id"],
+        "database_id": CONFIGURATION["database_id"],
+        "namespace": CONFIGURATION["namespace"],
+        "multi_mission": True,
+        "cloud_proof": "NOT PROVEN",
+    }
+
+
+def test_private_coordinator_entrypoint_requires_google_oidc_configuration(
+    monkeypatch,
+):
+    monkeypatch.delenv("GRAPHENE_COORDINATOR_AUDIENCE", raising=False)
+    monkeypatch.delenv("GRAPHENE_COORDINATOR_EXECUTOR_BINDINGS", raising=False)
+    values = {
+        "project_id": CONFIGURATION["project_id"],
+        "database_id": CONFIGURATION["database_id"],
+        "namespace": CONFIGURATION["namespace"],
+        "store": UnusedStore(),
+    }
+    with pytest.raises(
+        CloudConfigurationError, match="GRAPHENE_COORDINATOR_AUDIENCE"
+    ):
+        create_private_coordinator_app(**values)
+
+    app = create_private_coordinator_app(
+        **values,
+        audience="https://coordinator.example.run.app",
+        executor_bindings_json='{"google-subject-1":"executor_private_1"}',
+    )
+    assert app.state.cloud_configuration == {
+        "project_id": CONFIGURATION["project_id"],
+        "database_id": CONFIGURATION["database_id"],
+        "namespace": CONFIGURATION["namespace"],
+        "multi_mission": True,
+        "cloud_proof": "NOT PROVEN",
+        "identity_provider": "google_oidc",
+    }
+
+    with pytest.raises(
+        CloudConfigurationError, match="identity configuration is invalid"
+    ):
+        create_private_coordinator_app(
+            **values,
+            audience="https://coordinator.example.run.app",
+            executor_bindings_json="{}",
+        )

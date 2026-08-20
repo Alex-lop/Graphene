@@ -1,20 +1,49 @@
 # Cloud Run control plane
 
+Canonical cloud architecture and owner setup live in [`docs/FIRESTORE_AND_CLOUD.md`](../../docs/FIRESTORE_AND_CLOUD.md) and [`docs/ALEX_CLOUD_SETUP.md`](../../docs/ALEX_CLOUD_SETUP.md). This file documents only the current package.
+
 Status: **NOT DEPLOYED — NOT PROVEN**. These artifacts are locally testable
 packaging, not evidence of a working Google Cloud deployment.
 
-This image serves one authenticated, read-only Mission Control backed only by an
+The default image serves one authenticated, read-only Mission Control backed only by an
 explicit Firestore database. It does not clone a repository, run commands, invoke
 Gemini, dispatch a worker, or fall back to SQLite. Repository work remains the
-responsibility of a separately authenticated outbound executor; that protocol is
-not proven by this image.
+responsibility of a separately authenticated outbound executor. A distinct
+`coordinator.Dockerfile` packages the private multi-mission coordinator factory;
+neither image proves a deployment.
 
-The Firestore lease-slot primitives provide transactional fencing only. They do
-not publish a lease into the event-head-bound `MissionSnapshot`; a future cloud
-scheduler must commit the corresponding domain event and materialization. There
-is not yet an atomic scheduler API or outbox, so a crash between a slot claim and
-that future event would leave an invisible lease until it expires. Contract-level
-at-least-once cloud scheduling is therefore also **NOT PROVEN**.
+The package includes Firestore command/event/sharded-materialization/outbox
+transactions plus a private register/claim/fetch/heartbeat/completion/abandon
+coordinator, audience-bound OIDC HTTPS client, one-use artifact capabilities,
+and outbound local executor. The official emulator production path completed
+**3 passed**. The separate coordinator image starts only the private
+multi-mission coordinator factory. A live authenticated cloud recovery smoke
+remains pending, so deployment remains **NOT PROVEN**.
+
+Build and deploy the coordinator as a separate private service and service
+account. The bindings value is configuration, not a client-supplied identity.
+
+```sh
+gcloud builds submit . \
+  --project="$PROJECT_ID" \
+  --config=deploy/cloudrun/coordinator-cloudbuild.yaml \
+  --substitutions="_IMAGE=$COORDINATOR_IMAGE"
+
+gcloud run deploy "$COORDINATOR_SERVICE" \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --image="$COORDINATOR_IMAGE" \
+  --service-account="$COORDINATOR_SERVICE_ACCOUNT" \
+  --no-allow-unauthenticated \
+  --max-instances=1 \
+  --concurrency=8 \
+  --port=8080 \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GRAPHENE_FIRESTORE_DATABASE=$DATABASE_ID,GRAPHENE_FIRESTORE_NAMESPACE=$FIRESTORE_NAMESPACE,GRAPHENE_COORDINATOR_AUDIENCE=$COORDINATOR_AUDIENCE,GRAPHENE_COORDINATOR_EXECUTOR_BINDINGS=$EXECUTOR_BINDINGS"
+```
+
+This command is an operator template only. Use an existing least-privilege
+coordinator identity and authorized values; no service or IAM resource was
+created or verified by this repository.
 
 ## Required existing resources
 
@@ -77,6 +106,7 @@ gcloud run deploy "$SERVICE" \
   --image="$IMAGE" \
   --service-account="$SERVICE_ACCOUNT" \
   --no-allow-unauthenticated \
+  --max-instances=1 \
   --port=8080 \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GRAPHENE_FIRESTORE_DATABASE=$DATABASE_ID,GRAPHENE_FIRESTORE_NAMESPACE=$FIRESTORE_NAMESPACE,GRAPHENE_MISSION_ID=$MISSION_ID" \
   --set-secrets="GRAPHENE_MISSION_CONTROL_READ_TOKEN=$READ_TOKEN_SECRET:$READ_TOKEN_SECRET_VERSION"
@@ -115,13 +145,13 @@ token does not replace Cloud Run IAM, and the service must remain private.
 
 `GET /healthz` proves only that required configuration was accepted; its response
 continues to say `NOT PROVEN`. A captured authenticated read of the deployed
-Mission Control and its Firestore-backed mission is still required before making
-any live Cloud Run or Firestore claim.
+Mission Control plus a coordinator-to-local-executor round trip is required
+before making any live Cloud Run or real-Firestore claim.
 
-The adapter rejects a materialized snapshot whose canonical JSON exceeds 900,000
-bytes before attempting a write. This intentionally leaves room below
-Firestore's 1 MiB document limit; larger projections need a future sharded
-materialization design and remain **NOT PROVEN**.
+Materialized state is split into five content-addressed shards, each capped at
+450,000 canonical bytes, plus a root capped at 65,536. The committed pointer contains
+only the head/root binding. No mission depends on one monolithic document near
+Firestore's 1 MiB limit.
 
 Command references: [Cloud Build submit](https://cloud.google.com/sdk/gcloud/reference/builds/submit),
 [Cloud Run deploy](https://cloud.google.com/sdk/gcloud/reference/run/deploy), and

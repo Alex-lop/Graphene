@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import stat
@@ -16,6 +17,7 @@ from graphene.cli.mission import (
     MissionCliError,
     _bind_start_request,
     _mission_runtime,
+    _planning_repository_context,
     _private_url_handoff,
     _start_identity,
     _state_root,
@@ -68,7 +70,10 @@ def _repository(tmp_path: Path) -> Path:
         (["mission", "resume", "mission_1"], "resume"),
         (["mission", "cancel", "mission_1", "--confirm", "mission_1"], "cancel"),
         (["mission", "retry", "mission_1", "--task", "task_1"], "retry"),
-        (["mission", "replan", "mission_1", "--reason", "scope changed"], "replan"),
+        (
+            ["mission", "request-replan", "mission_1", "--reason", "scope changed"],
+            "request-replan",
+        ),
         (["mission", "approve-plan", "mission_1", "--revision", "1"], "approve-plan"),
         (
             [
@@ -87,8 +92,8 @@ def _repository(tmp_path: Path) -> Path:
                 "mission",
                 "approve-result",
                 "mission_1",
-                "--candidate-sha",
-                "a" * 64,
+                "--bundle-id",
+                "final_result_" + "a" * 32,
             ],
             "approve-result",
         ),
@@ -97,11 +102,28 @@ def _repository(tmp_path: Path) -> Path:
                 "mission",
                 "reject-result",
                 "mission_1",
-                "--candidate-sha",
-                "a" * 64,
+                "--bundle-id",
+                "final_result_" + "a" * 32,
             ],
             "reject-result",
         ),
+        (["mission", "result", "show", "mission_1"], "result"),
+        (
+            [
+                "mission",
+                "result",
+                "export",
+                "mission_1",
+                "--candidate-sha",
+                "a" * 64,
+                "--output",
+                "candidate.patch",
+            ],
+            "result",
+        ),
+        (["mission", "db", "status"], "db"),
+        (["mission", "db", "verify"], "db"),
+        (["mission", "db", "migrate", "--dry-run"], "db"),
         (["mission", "replay", "taskmaster", "--no-open"], "replay"),
     ],
 )
@@ -110,6 +132,47 @@ def test_parser_has_one_coherent_mission_command_family(argv, action) -> None:
 
     assert parsed.command == "mission"
     assert parsed.mission_action == action
+
+
+def _subcommands(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices
+    return {}
+
+
+def test_every_mission_help_names_an_example_and_failure_boundary() -> None:
+    mission = _subcommands(build_parser())["mission"]
+    pending = list(_subcommands(mission).items())
+
+    while pending:
+        path, parser = pending.pop()
+        rendered = parser.format_help()
+        assert parser.description, path
+        assert "Example:" in rendered, path
+        assert "Fails:" in rendered, path
+        for action in parser._actions:
+            if (
+                action.option_strings
+                and action.dest != "help"
+                and action.help is not argparse.SUPPRESS
+            ):
+                assert "e.g." in str(action.help), (path, action.option_strings)
+                assert "fails if" in str(action.help), (path, action.option_strings)
+        pending.extend(
+            (f"{path} {name}", child)
+            for name, child in _subcommands(parser).items()
+        )
+
+
+def test_result_export_help_requires_explicit_git_verification_and_apply() -> None:
+    mission = _subcommands(build_parser())["mission"]
+    result = _subcommands(mission)["result"]
+    rendered = _subcommands(result)["export"].format_help()
+
+    assert "never applies it automatically" in rendered
+    assert "git apply --check candidate.patch" in rendered
+    assert "git apply candidate.patch" in rendered
 
 
 def test_init_writes_one_atomic_valid_deny_by_default_policy(tmp_path: Path) -> None:
@@ -134,6 +197,21 @@ def test_init_writes_one_atomic_valid_deny_by_default_policy(tmp_path: Path) -> 
     assert not tuple(path.parent.glob(".project.json-*.tmp"))
 
 
+def test_planning_context_is_bounded_to_policy_and_tracked_files(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    _, policy = initialize(repository)
+    (repository / "secret.py").write_text("TOKEN = 'must-not-be-read'\n")
+    subprocess.run(("git", "add", "secret.py"), cwd=repository, check=True)
+
+    manifest, excerpts = _planning_repository_context(repository, policy)
+
+    assert manifest == ("README.md",)
+    assert tuple(item.path for item in excerpts) == ("README.md",)
+    assert excerpts[0].text == "# Fixture\n"
+
+
 def test_doctor_reports_modes_without_echoing_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -149,11 +227,34 @@ def test_doctor_reports_modes_without_echoing_credentials(
     assert report["policy"]["status"] == "usable"
     assert report["modes"]["mission-replay"]["usable"] is True
     assert report["modes"]["gemini-adk"] == {
-        "usable": False,
+        "usable": True,
         "configured": True,
         "credential_mode": "gemini_api",
-        "proof": "credential hints only; credentials and connectivity not probed",
+        "proof": "bounded local runtime configured; connectivity not probed",
     }
+
+
+def test_database_commands_are_read_only_when_state_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GRAPHENE_STATE_DIR", str(tmp_path / "state"))
+
+    status = mission_cli._database_command(
+        build_parser().parse_args(["mission", "db", "status"])
+    )
+    dry_run = mission_cli._database_command(
+        build_parser().parse_args(["mission", "db", "migrate", "--dry-run"])
+    )
+
+    assert status == {
+        "status": "absent",
+        "schema_version": None,
+        "mission_count": 0,
+        "migration_versions": [],
+    }
+    assert dry_run["action"] == "export-verify-and-create-a-new-v2-store"
+    assert dry_run["mutated"] is False
+    assert not (tmp_path / "state" / "missions.sqlite3").exists()
 
 
 def test_doctor_credential_hints_match_planner_modes(
@@ -172,7 +273,7 @@ def test_doctor_credential_hints_match_planner_modes(
     vertex = doctor(repository)["modes"]["gemini-adk"]
     assert vertex["credential_mode"] == "vertex_ai"
     assert vertex["configured"] is True
-    assert vertex["usable"] is False
+    assert vertex["usable"] is True
 
 
 def test_state_root_rejects_symlink_without_chmodding_target(
@@ -229,9 +330,10 @@ def test_taskmaster_fixture_is_loadable_and_forced_into_the_wheel() -> None:
     assert configuration["tool"]["hatch"]["build"]["targets"]["wheel"][
         "force-include"
     ] == {"demo/taskmaster": "graphene/_taskmaster"}
-    assert configuration["tool"]["hatch"]["build"]["targets"]["sdist"][
-        "exclude"
-    ] == ["/.claude", "/All_md_Files"]
+    assert configuration["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"] == [
+        "/.claude",
+        "/All_md_Files",
+    ]
     assert load_scenario(DEFAULT_SCENARIO_PATH).scenario_id == "taskmaster"
 
 
@@ -451,6 +553,7 @@ def test_gemini_start_replays_after_only_policy_file_was_committed(
             creation_source="operator",
             goal=args.goal,
             policy_id=policy.policy_id,
+            status=mission_cli.MissionStatus.PROPOSED,
             success_criteria=("The plan remains within policy.",),
         ),
         policy=SimpleNamespace(
@@ -476,6 +579,7 @@ def test_gemini_start_replays_after_only_policy_file_was_committed(
         command_id=command_id,
         mission_id=mission_id,
         policy=policy,
+        repository=repository,
         runtime=runtime,
         binding=binding,
     ) == {"result_replayed": True}
@@ -530,10 +634,163 @@ def test_existing_mission_without_start_binding_fails_closed(
     assert not binding.exists()
 
 
+def test_adk_execution_delegates_to_runner_with_exact_runtime_bindings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repository(tmp_path)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    budget = SimpleNamespace(
+        max_worker_seconds=17,
+        soft_managed_rss_bytes=536_870_912,
+        hard_managed_rss_bytes=805_306_368,
+    )
+    policy = SimpleNamespace(
+        max_concurrency=1,
+        command_templates=(),
+        resource_budget=budget,
+    )
+    snapshot = SimpleNamespace(
+        mission=SimpleNamespace(
+            base_sha=subprocess.run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            creation_source="operator",
+            resource_budget=budget,
+            status=mission_cli.MissionStatus.RUNNING,
+        ),
+        plan=SimpleNamespace(max_concurrency=1, tasks=()),
+        policy=SimpleNamespace(policy_sha256="a" * 64),
+    )
+
+    class Store:
+        def snapshot(self, mission_id: str):
+            assert mission_id == "mission-adk-runner-binding"
+            return snapshot
+
+        def bind_artifact_resolver(self, evidence) -> None:
+            captured["evidence"] = evidence
+
+        def verify(self, mission_id: str):
+            assert mission_id == "mission-adk-runner-binding"
+            return object()
+
+    class Registry:
+        def capabilities(self):
+            return (SimpleNamespace(worker_id="injected-worker", driver="adk_fake"),)
+
+    class Scheduler:
+        def __init__(self, store, **kwargs) -> None:
+            self.store = store
+            captured["scheduler_kwargs"] = kwargs
+
+        def assert_fence(self, dispatch) -> None:
+            return None
+
+        def heartbeat(self, dispatch) -> None:
+            return None
+
+    class Runtime:
+        def __init__(self, **kwargs) -> None:
+            captured["runtime_kwargs"] = kwargs
+            self.accepted_artifact = kwargs["accepted_artifact"]
+            self.evidence = kwargs["evidence"]
+
+    class Runner:
+        def __init__(self, **kwargs) -> None:
+            captured["runner_kwargs"] = kwargs
+
+        def run(self, mission_id: str):
+            captured["mission_id"] = mission_id
+            return SimpleNamespace(batches=(("task-a",),), receipts=())
+
+    captured: dict[str, object] = {}
+    evidence = object()
+    monkeypatch.setenv("GRAPHENE_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda mission_id: runtime)
+    monkeypatch.setattr(
+        mission_cli,
+        "_gemini_source",
+        lambda mission_id, actual: (repository, policy, 1),
+    )
+    monkeypatch.setattr(
+        mission_cli, "_ensure_owned_result_repository", lambda *args: repository
+    )
+    monkeypatch.setattr(
+        mission_cli, "SQLiteAttemptEvidenceStore", lambda path: evidence
+    )
+    monkeypatch.setattr(mission_cli, "MissionScheduler", Scheduler)
+    monkeypatch.setattr(mission_cli, "WorkerRuntime", Runtime)
+    monkeypatch.setattr(mission_cli, "MissionRunner", Runner)
+    monkeypatch.setattr(
+        mission_cli, "prepare_local_final_result_bundle", lambda **kwargs: None
+    )
+    monkeypatch.setattr(mission_cli.os, "getpid", lambda: 1_001)
+    monkeypatch.setattr(mission_cli.os, "getpgrp", lambda: 1_000)
+    monkeypatch.setattr(
+        mission_cli,
+        "_adk_result_value",
+        lambda store, mission_id, **kwargs: {
+            "mission_id": mission_id,
+            "batches": kwargs["batches"],
+            "execution_mode": kwargs["execution_mode"],
+            "proof": kwargs["proof"],
+        },
+    )
+
+    value = mission_cli._execute_adk_mission(
+        store=Store(),
+        mission_id="mission-adk-runner-binding",
+        registry=Registry(),
+        check_runner=object(),
+    )
+
+    runtime_kwargs = captured["runtime_kwargs"]
+    runner_kwargs = captured["runner_kwargs"]
+    scheduler_kwargs = captured["scheduler_kwargs"]
+    assert (
+        isinstance(runtime_kwargs, dict)
+        and isinstance(runner_kwargs, dict)
+        and isinstance(scheduler_kwargs, dict)
+    )
+    assert scheduler_kwargs["dispatch_limiter"].clock is scheduler_kwargs["clock"]
+    unavailable = scheduler_kwargs["dispatch_limiter"].sampler(
+        "mission-adk-runner-binding"
+    )
+    assert len(unavailable) == 1
+    assert unavailable[0].category == "managed_runtime"
+    assert unavailable[0].attribution_quality == "unavailable"
+    assert unavailable[0].value is None
+    assert runtime_kwargs["policy_sha256"] == "a" * 64
+    assert runtime_kwargs["accepted_artifact"] is runner_kwargs["accepted_artifacts"]
+    assert runner_kwargs["worker_ids"] == ("injected-worker",)
+    assert runner_kwargs["deadline_seconds"] == 17
+    assert captured["mission_id"] == "mission-adk-runner-binding"
+    assert value == {
+        "mission_id": "mission-adk-runner-binding",
+        "batches": (("task-a",),),
+        "execution_mode": "adk_fake",
+        "proof": (
+            "credential-free fake ADK worker test in Graphene-owned "
+            "lease-fenced workspaces"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "argv",
     [
-        ["mission", "replan", "mission_retry", "--reason", "scope changed"],
+        [
+            "mission",
+            "request-replan",
+            "mission_retry",
+            "--reason",
+            "scope changed",
+        ],
         ["mission", "pause", "mission_retry"],
         ["mission", "resume", "mission_retry"],
         ["mission", "retry", "mission_retry", "--task", "task_retry"],
@@ -553,11 +810,23 @@ def test_default_mutation_ids_replay_after_committed_response_loss(
     class Store:
         def __init__(self) -> None:
             self.command_ids: list[str] = []
+            self.current_head = SimpleNamespace(
+                model_dump=lambda *, mode: {"seq": 1, "mode": mode}
+            )
 
-        def head(self, mission_id: str) -> None:
-            raise AssertionError("default command identity must not read mutable head")
+        def head(self, mission_id: str):
+            return self.current_head
 
-        def recover_dispatches(self, mission_id: str, *, recorded_at) -> tuple[()]:
+        def snapshot(self, mission_id: str):
+            return type(
+                "Snapshot",
+                (),
+                {"attempts": (), "head": self.current_head},
+            )()
+
+        def recover_dispatches(
+            self, mission_id: str, worker_ids: tuple[str, ...], *, recorded_at
+        ) -> tuple[()]:
             return ()
 
         def _commit(self, command_id: str) -> Result:
@@ -587,3 +856,62 @@ def test_default_mutation_ids_replay_after_committed_response_loss(
 
     assert first == second
     assert store.command_ids == [store.command_ids[0], store.command_ids[0]]
+
+
+def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Store:
+        cancel_called = False
+
+        def snapshot(self, _mission_id: str):
+            return SimpleNamespace(
+                mission=SimpleNamespace(status=mission_cli.MissionStatus.RUNNING),
+                attempts=(
+                    SimpleNamespace(
+                        worker_id="owned-worker",
+                        state=mission_cli.AttemptState.RUNNING,
+                    ),
+                ),
+                head=SimpleNamespace(),
+            )
+
+        def recover_dispatches(self, *_args, **_kwargs):
+            return (SimpleNamespace(attempt_id="owned-attempt"),)
+
+        def cancel(self, *_args, **_kwargs):
+            self.cancel_called = True
+            raise AssertionError("cancel authority must not be committed")
+
+    class Registry:
+        def __init__(self, _runtime: Path) -> None:
+            pass
+
+        def prepare_cancel(self, _dispatches):
+            return (SimpleNamespace(attempt_id="owned-attempt"),)
+
+        def records_for_mission(self, _mission_id: str):
+            return ()
+
+        def terminate_owned(self, _owned) -> None:
+            raise mission_cli.ProcessControlError("private cleanup detail")
+
+    store = Store()
+    monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _mission_id: store)
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+    monkeypatch.setattr(mission_cli, "OwnedProcessRegistry", Registry)
+    args = build_parser().parse_args(
+        [
+            "mission",
+            "cancel",
+            "mission-cancel-failure",
+            "--confirm",
+            "mission-cancel-failure",
+        ]
+    )
+
+    with pytest.raises(MissionCliError, match="owned worker cleanup failed") as error:
+        mission_cli._mutate(args)
+
+    assert store.cancel_called is False
+    assert "private cleanup detail" not in str(error.value)

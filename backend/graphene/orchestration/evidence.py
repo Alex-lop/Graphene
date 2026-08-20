@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import closing
 from datetime import datetime
 from enum import StrEnum
@@ -9,9 +10,11 @@ from typing import Any, Literal
 
 from pydantic import Field, TypeAdapter, model_validator
 
+from ..artifact_envelope import ArtifactEnvelopeV2, verify_artifact_envelope
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..models import (
     FrozenModel,
+    GitSha,
     Identifier,
     IdempotencyKey,
     Sha256,
@@ -21,8 +24,12 @@ from ..models import (
 from .models import (
     MAX_ARTIFACT_BYTES,
     MAX_EVENT_PAYLOAD_BYTES,
+    ArtifactEnvelopeReferenceV2,
+    ArtifactInputReference,
     ArtifactVisibility,
     EvidenceReference,
+    PublishedArtifactReferenceV2,
+    artifact_input_reference_key,
     _safe_public_value,
 )
 
@@ -68,6 +75,20 @@ class AttemptEvidenceInput(FrozenModel):
         keys = tuple((item.kind, item.id, item.sha256) for item in self.references)
         if len(keys) != len(set(keys)):
             raise ValueError("attempt evidence references must be unique")
+        allowed = (
+            {AttemptEvidenceAuthority.CHECK_RUNNER}
+            if self.event_type == AttemptEvidenceEventType.CHECK_COMPLETED
+            else {
+                AttemptEvidenceAuthority.ADK_ADAPTER,
+                AttemptEvidenceAuthority.SCOPED_TOOL_WRAPPER,
+                AttemptEvidenceAuthority.SCRIPTED_WORKER,
+            }
+        )
+        if (
+            self.truth_kind != TruthKind.RUNTIME_OBSERVED
+            or self.authority not in allowed
+        ):
+            raise ValueError("attempt event truth and authority do not match its type")
         return self
 
 
@@ -118,6 +139,73 @@ class AttemptArtifact(FrozenModel):
     sha256: Sha256
     byte_count: int = Field(ge=0, le=MAX_ARTIFACT_BYTES)
     visibility: ArtifactVisibility
+
+
+class TrustedCheckReceipt(FrozenModel):
+    schema_version: Literal[2]
+    mission_id: Identifier
+    task_id: Identifier
+    attempt_id: Identifier
+    plan_revision: int = Field(ge=1)
+    fencing_token: int = Field(ge=1)
+    policy_sha256: Sha256
+    base_sha: GitSha
+    runner_id: Literal["graphene_check_runner_v1"]
+    template_id: Identifier
+    template_sha256: Sha256
+    accepted_input_references: tuple[ArtifactInputReference, ...] = Field(max_length=64)
+    candidate_references: tuple[
+        PublishedArtifactReferenceV2
+        | ArtifactEnvelopeReferenceV2
+        | EvidenceReference,
+        ...,
+    ] = Field(
+        min_length=1, max_length=64
+    )
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
+    candidate_tree_sha256: Sha256
+    result_code: Identifier
+    exit_code: int
+    timed_out: bool
+    output_sha256: Sha256
+    output_truncated: bool
+    cleanup_complete: bool
+
+    @model_validator(mode="after")
+    def binding_is_canonical(self) -> TrustedCheckReceipt:
+        for references in (
+            self.accepted_input_references,
+            self.candidate_references,
+        ):
+            keys = tuple(
+                artifact_input_reference_key(item)
+                if isinstance(item, (PublishedArtifactReferenceV2, EvidenceReference))
+                else ("v2", item.artifact_envelope_sha256)
+                for item in references
+            )
+            if keys != tuple(sorted(set(keys))):
+                raise ValueError("check receipt references must be sorted and unique")
+        passed = (
+            self.exit_code == 0
+            and not self.timed_out
+            and not self.output_truncated
+            and self.cleanup_complete
+        )
+        if passed != (self.result_code == "passed"):
+            raise ValueError("check receipt result code disagrees with its outcome")
+        return self
+
+    def event_payload(self, receipt_sha256: str) -> dict[str, object]:
+        return {
+            "candidate_tree_hash_version": self.candidate_tree_hash_version,
+            "candidate_tree_sha256": self.candidate_tree_sha256,
+            "check_receipt_sha256": receipt_sha256,
+            "exit_code": self.exit_code,
+            "result_code": self.result_code,
+            "template_id": self.template_id,
+            "template_sha256": self.template_sha256,
+            "timed_out": self.timed_out,
+        }
 
 
 class AttemptEvidenceStoreError(RuntimeError):
@@ -173,6 +261,22 @@ CREATE TABLE IF NOT EXISTS attempt_artifacts (
     visibility TEXT NOT NULL,
     artifact_bytes BLOB NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS artifact_envelopes_v2 (
+    artifact_envelope_sha256 TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL REFERENCES attempt_artifacts(artifact_id),
+    envelope_bytes BLOB NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS artifact_envelopes_v2_no_update
+BEFORE UPDATE ON artifact_envelopes_v2 BEGIN
+    SELECT RAISE(ABORT, 'artifact envelopes are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS artifact_envelopes_v2_no_delete
+BEFORE DELETE ON artifact_envelopes_v2 BEGIN
+    SELECT RAISE(ABORT, 'artifact envelopes are immutable');
+END;
 """
 
 
@@ -183,7 +287,10 @@ class SQLiteAttemptEvidenceStore:
         if str(path) == ":memory:":
             raise ValueError("attempt evidence requires a durable SQLite path")
         self.path = str(path)
-        with closing(self._connect()) as connection:
+        # ponytail: process-local serialization avoids SQLite WAL open/close races;
+        # shard evidence stores if write throughput becomes a measured bottleneck.
+        self._lock = threading.RLock()
+        with self._lock, closing(self._connect()) as connection:
             mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()[0]
             if str(mode).lower() != "wal":
                 raise AttemptEvidenceStoreError("SQLite WAL mode is required")
@@ -267,11 +374,62 @@ class SQLiteAttemptEvidenceStore:
         *,
         recorded_at: datetime,
     ) -> AttemptEvidenceEvent:
+        if draft.event_type == AttemptEvidenceEventType.CHECK_COMPLETED:
+            raise AttemptEvidenceConflict(
+                "check evidence must be minted by the trusted check runner"
+            )
+        return self._append(
+            evidence_id,
+            expected_head,
+            idempotency_key,
+            draft,
+            recorded_at=recorded_at,
+        )
+
+    def append_check(
+        self,
+        evidence_id: str,
+        expected_head: AttemptEvidenceHead,
+        idempotency_key: str,
+        *,
+        mission_id: str,
+        task_id: str,
+        attempt_id: str,
+        receipt: EvidenceReference,
+        payload: dict[str, object],
+        recorded_at: datetime,
+    ) -> AttemptEvidenceEvent:
+        return self._append(
+            evidence_id,
+            expected_head,
+            idempotency_key,
+            AttemptEvidenceInput(
+                mission_id=mission_id,
+                task_id=task_id,
+                attempt_id=attempt_id,
+                event_type=AttemptEvidenceEventType.CHECK_COMPLETED,
+                truth_kind=TruthKind.RUNTIME_OBSERVED,
+                authority=AttemptEvidenceAuthority.CHECK_RUNNER,
+                references=(receipt,),
+                payload=payload,
+            ),
+            recorded_at=recorded_at,
+        )
+
+    def _append(
+        self,
+        evidence_id: str,
+        expected_head: AttemptEvidenceHead,
+        idempotency_key: str,
+        draft: AttemptEvidenceInput,
+        *,
+        recorded_at: datetime,
+    ) -> AttemptEvidenceEvent:
         recorded_at = _UTC_TIME.validate_python(recorded_at)
         request_sha = self._request_sha256(
             evidence_id, expected_head, idempotency_key, draft
         )
-        with closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = connection.execute(
@@ -383,7 +541,7 @@ class SQLiteAttemptEvidenceStore:
                 raise
 
     def head(self, evidence_id: str) -> AttemptEvidenceHead:
-        with closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT seq, event_sha256, event_count FROM attempt_evidence_heads "
                 "WHERE evidence_id = ?",
@@ -407,7 +565,7 @@ class SQLiteAttemptEvidenceStore:
             raise ValueError("after_seq must be non-negative")
         if type(limit) is not int or not 1 <= limit <= 256:
             raise ValueError("limit must be between 1 and 256")
-        with closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection:
             rows = connection.execute(
                 "SELECT event_bytes FROM attempt_evidence_events "
                 "WHERE evidence_id = ? AND seq > ? ORDER BY seq LIMIT ?",
@@ -460,31 +618,119 @@ class SQLiteAttemptEvidenceStore:
         task_id: str,
         attempt_id: str,
         succeeded: bool,
+        result_code: str,
         references: tuple[EvidenceReference, ...],
+        plan_revision: int,
+        fencing_token: int,
+        policy_sha256: str,
+        base_sha: str,
+        template_id: str,
+        template_sha256: str,
+        accepted_inputs: tuple[ArtifactInputReference, ...],
+        candidate_references: tuple[
+            ArtifactEnvelopeReferenceV2 | EvidenceReference, ...
+        ],
     ) -> bool:
         head = self.verify(evidence_id)
         if head.seq == 0:
             return False
-        tail = self.tail(evidence_id, head.seq - 1, 1)
-        if len(tail) != 1:
-            return False
-        terminal = tail[0]
-        recorded = {(item.kind, item.id, item.sha256) for item in terminal.references}
-        required = {(item.kind, item.id, item.sha256) for item in references}
-        return (
+        events: list[AttemptEvidenceEvent] = []
+        after = 0
+        while after < head.seq:
+            batch = self.tail(evidence_id, after, min(256, head.seq - after))
+            if not batch:
+                return False
+            events.extend(batch)
+            after = batch[-1].seq
+        terminal = events[-1]
+        reference_keys = {(item.kind, item.id, item.sha256) for item in references}
+        terminal_keys = {
+            (item.kind, item.id, item.sha256) for item in terminal.references
+        }
+        if (
             terminal.event_type
-            == (
+            != (
                 AttemptEvidenceEventType.ATTEMPT_COMPLETED
                 if succeeded
                 else AttemptEvidenceEventType.ATTEMPT_FAILED
             )
-            and (
-                terminal.mission_id,
-                terminal.task_id,
-                terminal.attempt_id,
+            or (terminal.mission_id, terminal.task_id, terminal.attempt_id)
+            != (mission_id, task_id, attempt_id)
+            or terminal.payload.get("result_code") != result_code
+            or terminal_keys != reference_keys
+        ):
+            return False
+        checks = tuple(
+            event
+            for event in events[:-1]
+            if event.event_type == AttemptEvidenceEventType.CHECK_COMPLETED
+        )
+        if (succeeded and len(checks) != 1) or (not succeeded and len(checks) > 1):
+            return False
+        if not checks:
+            return not succeeded
+        check = checks[0]
+        if len(check.references) != 1 or check.references[0].kind != "test-receipt":
+            return False
+        receipt_reference = check.references[0]
+        if (
+            receipt_reference.kind,
+            receipt_reference.id,
+            receipt_reference.sha256,
+        ) not in terminal_keys:
+            return False
+        receipt_bytes = self.resolve(receipt_reference.kind, receipt_reference.id)
+        if receipt_bytes is None:
+            return False
+        try:
+            receipt = TrustedCheckReceipt.model_validate_json(receipt_bytes)
+        except ValueError:
+            return False
+        expected_inputs = tuple(
+            sorted(accepted_inputs, key=artifact_input_reference_key)
+        )
+        expected_candidates = tuple(
+            sorted(
+                candidate_references,
+                key=lambda item: (
+                    artifact_input_reference_key(item)
+                    if isinstance(
+                        item, (PublishedArtifactReferenceV2, EvidenceReference)
+                    )
+                    else ("v2", item.artifact_envelope_sha256)
+                ),
             )
-            == (mission_id, task_id, attempt_id)
-            and required <= recorded
+        )
+        return (
+            canonical_json_bytes(receipt.model_dump(mode="json")) == receipt_bytes
+            and check.payload == receipt.event_payload(receipt_reference.sha256)
+            and (
+                receipt.mission_id,
+                receipt.task_id,
+                receipt.attempt_id,
+                receipt.plan_revision,
+                receipt.fencing_token,
+                receipt.policy_sha256,
+                receipt.base_sha,
+                receipt.template_id,
+                receipt.template_sha256,
+                receipt.accepted_input_references,
+                receipt.candidate_references,
+            )
+            == (
+                mission_id,
+                task_id,
+                attempt_id,
+                plan_revision,
+                fencing_token,
+                policy_sha256,
+                base_sha,
+                template_id,
+                template_sha256,
+                expected_inputs,
+                expected_candidates,
+            )
+            and (not succeeded or receipt.result_code == result_code == "passed")
         )
 
     def put_artifact(
@@ -505,7 +751,7 @@ class SQLiteAttemptEvidenceStore:
             byte_count=len(content),
             visibility=visibility,
         )
-        with closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -536,8 +782,202 @@ class SQLiteAttemptEvidenceStore:
                 raise
         return EvidenceReference(kind=kind, id=artifact_id, sha256=digest)
 
+    def put_artifact_envelope(
+        self,
+        envelope: ArtifactEnvelopeV2,
+        content: bytes,
+        *,
+        visibility: ArtifactVisibility = ArtifactVisibility.MISSION,
+    ) -> tuple[EvidenceReference, ArtifactEnvelopeReferenceV2]:
+        """Atomically persist exact bytes and their already-minted V2 envelope."""
+
+        if not isinstance(envelope, ArtifactEnvelopeV2):
+            raise TypeError("artifact envelope must be validated V2")
+        verified = verify_artifact_envelope(envelope, content)
+        if len(content) > MAX_ARTIFACT_BYTES:
+            raise ValueError("attempt artifact must be bounded bytes")
+        artifact_id = f"artifact_{verified.content_sha256[:32]}"
+        envelope_bytes = canonical_json_bytes(verified.model_dump(mode="json"))
+        with self._lock, closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    "INSERT OR IGNORE INTO attempt_artifacts VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        artifact_id,
+                        verified.artifact_kind,
+                        verified.content_sha256,
+                        verified.byte_count,
+                        visibility.value,
+                        content,
+                    ),
+                )
+                artifact_row = connection.execute(
+                    "SELECT * FROM attempt_artifacts WHERE artifact_id = ?",
+                    (artifact_id,),
+                ).fetchone()
+                if artifact_row is None or (
+                    artifact_row["kind"],
+                    artifact_row["sha256"],
+                    artifact_row["byte_count"],
+                    artifact_row["visibility"],
+                    artifact_row["artifact_bytes"],
+                ) != (
+                    verified.artifact_kind,
+                    verified.content_sha256,
+                    verified.byte_count,
+                    visibility.value,
+                    content,
+                ):
+                    raise AttemptEvidenceConflict("attempt artifact collision")
+                connection.execute(
+                    "INSERT OR IGNORE INTO artifact_envelopes_v2 VALUES (?, ?, ?)",
+                    (
+                        verified.artifact_envelope_sha256,
+                        artifact_id,
+                        envelope_bytes,
+                    ),
+                )
+                envelope_row = connection.execute(
+                    "SELECT artifact_id, envelope_bytes FROM artifact_envelopes_v2 "
+                    "WHERE artifact_envelope_sha256 = ?",
+                    (verified.artifact_envelope_sha256,),
+                ).fetchone()
+                if envelope_row is None or (
+                    envelope_row["artifact_id"], envelope_row["envelope_bytes"]
+                ) != (artifact_id, envelope_bytes):
+                    raise AttemptEvidenceConflict("artifact envelope collision")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        content_reference = EvidenceReference(
+            kind=verified.artifact_kind,
+            id=artifact_id,
+            sha256=verified.content_sha256,
+        )
+        envelope_reference = ArtifactEnvelopeReferenceV2(
+            schema_version=2,
+            artifact_id=artifact_id,
+            producer_task_id=verified.task_id,
+            output_name=verified.output_name,
+            kind=verified.artifact_kind,
+            media_type=verified.media_type,
+            byte_count=verified.byte_count,
+            content_sha256=verified.content_sha256,
+            artifact_envelope_sha256=verified.artifact_envelope_sha256,
+        )
+        return content_reference, envelope_reference
+
+    def _load_enveloped(
+        self,
+        reference: ArtifactEnvelopeReferenceV2,
+        expected: dict[str, object] | None = None,
+    ) -> tuple[bytes, ArtifactEnvelopeV2] | None:
+        if not isinstance(reference, ArtifactEnvelopeReferenceV2):
+            return None
+        with self._lock, closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT e.artifact_id, e.envelope_bytes, a.kind, a.sha256, "
+                "a.byte_count, a.artifact_bytes FROM artifact_envelopes_v2 e "
+                "JOIN attempt_artifacts a ON a.artifact_id = e.artifact_id "
+                "WHERE e.artifact_envelope_sha256 = ?",
+                (reference.artifact_envelope_sha256,),
+            ).fetchone()
+        if row is None or row["artifact_id"] != reference.artifact_id:
+            return None
+        content = row["artifact_bytes"]
+        envelope_bytes = row["envelope_bytes"]
+        if not isinstance(content, bytes) or not isinstance(envelope_bytes, bytes):
+            return None
+        try:
+            envelope = ArtifactEnvelopeV2.model_validate_json(envelope_bytes)
+            verify_artifact_envelope(envelope, content, expected=expected)
+        except (TypeError, ValueError):
+            return None
+        if canonical_json_bytes(envelope.model_dump(mode="json")) != envelope_bytes:
+            return None
+        expected = (
+            envelope.task_id,
+            envelope.output_name,
+            envelope.artifact_kind,
+            envelope.media_type,
+            envelope.byte_count,
+            envelope.content_sha256,
+            envelope.artifact_envelope_sha256,
+        )
+        actual = (
+            reference.producer_task_id,
+            reference.output_name,
+            reference.kind,
+            reference.media_type,
+            reference.byte_count,
+            reference.content_sha256,
+            reference.artifact_envelope_sha256,
+        )
+        return (
+            (content, envelope)
+            if actual == expected
+            and (row["kind"], row["sha256"], row["byte_count"])
+            == (reference.kind, reference.content_sha256, reference.byte_count)
+            else None
+        )
+
+    def resolve_enveloped(
+        self, reference: ArtifactEnvelopeReferenceV2
+    ) -> bytes | None:
+        """Resolve only when the stored content, envelope, and caller binding agree."""
+
+        loaded = self._load_enveloped(reference)
+        return None if loaded is None else loaded[0]
+
+    def verify_enveloped(
+        self,
+        reference: ArtifactEnvelopeReferenceV2,
+        *,
+        expected: dict[str, object],
+    ) -> bool:
+        """Cold-check authoritative bindings as well as the CAS byte identity."""
+
+        return self._load_enveloped(reference, expected) is not None
+
+    def find_enveloped(
+        self,
+        artifact_id: str,
+        *,
+        expected: dict[str, object],
+    ) -> ArtifactEnvelopeReferenceV2 | None:
+        """Recover one authoritative envelope without guessing from content alone."""
+
+        with self._lock, closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT envelope_bytes FROM artifact_envelopes_v2 "
+                "WHERE artifact_id = ? ORDER BY artifact_envelope_sha256",
+                (artifact_id,),
+            ).fetchall()
+        matches = []
+        for row in rows:
+            try:
+                envelope = ArtifactEnvelopeV2.model_validate_json(row["envelope_bytes"])
+                reference = ArtifactEnvelopeReferenceV2(
+                    schema_version=2,
+                    artifact_id=artifact_id,
+                    producer_task_id=envelope.task_id,
+                    output_name=envelope.output_name,
+                    kind=envelope.artifact_kind,
+                    media_type=envelope.media_type,
+                    byte_count=envelope.byte_count,
+                    content_sha256=envelope.content_sha256,
+                    artifact_envelope_sha256=envelope.artifact_envelope_sha256,
+                )
+            except (TypeError, ValueError):
+                continue
+            if self.verify_enveloped(reference, expected=expected):
+                matches.append(reference)
+        return matches[0] if len(matches) == 1 else None
+
     def resolve(self, kind: str, artifact_id: str) -> bytes | None:
-        with closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT kind, sha256, byte_count, artifact_bytes FROM attempt_artifacts "
                 "WHERE artifact_id = ?",

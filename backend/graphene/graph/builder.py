@@ -250,6 +250,7 @@ class GraphBuilder:
                 "base_commit_sha": candidate.base_commit_sha,
                 "candidate_patch_sha256": candidate.candidate_patch_sha256,
                 "candidate_tree_sha256": candidate.candidate_tree_sha256,
+                "candidate_tree_hash_version": candidate.candidate_tree_hash_version,
                 "changed_file_count": len(candidate.changed_paths),
                 "changed_paths": list(candidate.changed_paths),
                 "lifecycle_state": run.state.value,

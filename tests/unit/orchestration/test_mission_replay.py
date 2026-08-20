@@ -20,13 +20,22 @@ def test_checked_in_mission_replay_exactly_regenerates_and_reconstructs():
     assert path.read_bytes() == generated
     assert path.with_suffix(".sha256").read_text().strip() == sha256_hex(generated)
     replay = load_verified_mission_replay()
-    assert len(replay.stages) == 10
+    assert len(replay.stages) == 11
     assert replay.meta["mode"] == MISSION_REPLAY_TRUTH_LABEL
     assert replay.meta["live_agent"] is False
     assert replay.meta["human_attestation"] is False
     assert replay.meta["new_test_execution"] is False
     assert replay.meta["gemini_calls"] == 0
     assert replay.meta["cloud_proof"] is False
+    awaiting = replay.stages[-2]
+    assert awaiting.mission.status == "awaiting_result"
+    assert awaiting.result.state == "awaiting_decision"
+    assert awaiting.needs_you is not None
+    assert awaiting.needs_you.gate_id == "final_result_recorded_fixture"
+    assert awaiting.needs_you.truth_kind == "simulated_fixture"
+    assert [option.label for option in awaiting.needs_you.options] == [
+        "Continue with recorded simulated approval"
+    ]
     assert replay.stages[-1].snapshot_sha256 == replay.meta["final_snapshot_sha256"]
 
 

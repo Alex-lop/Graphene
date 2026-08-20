@@ -7,14 +7,20 @@ This index prevents planning artifacts, judge reports, and old implementation pr
 | Document | Role |
 |---|---|
 | [`README.md`](../README.md) | Canonical user path, thesis, proof matrix, and boundaries |
-| [`simplreadme.md`](../simplreadme.md) | Short judge path and proof-level summary |
+| [`README.md`](README.md) | Canonical documentation map |
+| [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md) | Evolving sprint change/test/proof ledger |
 | [`contracts/product_proof.json`](../contracts/product_proof.json) | Machine-readable product, driver, and capture truth |
 | [`TASKMASTER_PRODUCT_CONTRACT.md`](TASKMASTER_PRODUCT_CONTRACT.md) | Accepted mission authority, state, validation, and threat boundary |
+| [`PRODUCT.md`](PRODUCT.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) | Product scope and current system design |
+| [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) | Current versus target planner/worker lifecycle |
+| [`SECURITY_AND_SOVEREIGNTY.md`](SECURITY_AND_SOVEREIGNTY.md) | Canonical Taskmaster trust, isolation, evidence, and privacy boundary |
+| [`FIRESTORE_AND_CLOUD.md`](FIRESTORE_AND_CLOUD.md) and [`ALEX_CLOUD_SETUP.md`](ALEX_CLOUD_SETUP.md) | Cloud design truth and explicit owner actions |
+| [`MISSION_CONTROL.md`](MISSION_CONTROL.md), [`DEMO_GUIDE.md`](DEMO_GUIDE.md), and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | UI/replay truth, demo path, and current gaps |
 | [`deploy/cloudrun/README.md`](../deploy/cloudrun/README.md) | Reproducible but explicitly not-deployed cloud packaging |
-| [`demo_transcript.md`](demo_transcript.md) | Redacted current demo shapes and branch semantics |
-| [`data_residency.md`](data_residency.md) | Current privacy/data boundary |
-| [`EXECUTOR_THREAT_MODEL.md`](EXECUTOR_THREAT_MODEL.md) | Current macOS executor and Linux fail-closed boundary |
 | [`GRAPH_NECESSITY_EVAL.md`](GRAPH_NECESSITY_EVAL.md) | Graph-necessity study protocol; not yet run |
+| [`benchmarks/README.md`](../benchmarks/README.md) | Graph-economics harness contract; no measured result is proven |
+
+[`simplreadme.md`](../simplreadme.md) is now only a forwarding page. The legacy [demo transcript](demo_transcript.md), [data-residency matrix](data_residency.md), and [fixed-test threat model](EXECUTOR_THREAT_MODEL.md) retain Auth protocol details and are visibly superseded for Taskmaster guidance.
 
 Local planning, prompt, and review files live in ignored `All_md_Files/`
 (`prompts/` and `reviews/`). They are not repository authority.

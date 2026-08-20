@@ -469,6 +469,7 @@ def test_forged_local_result_receipt_is_rejected_on_append_and_replay(
             "approval_event_sha256": approval.event_sha256,
             "candidate_patch_sha256": "1" * 64,
             "candidate_tree_sha256": "4" * 64,
+            "candidate_tree_hash_version": "graphene.tree.v2",
             "changed_paths": ["app/auth/limiter.py"],
             "deployed": False,
             "local_commit_receipt_id": local_reference.id,

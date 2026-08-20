@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -7,14 +8,29 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from graphene.artifact_envelope import (
+    ArtifactEnvelopeV2,
+    DirectArtifactInputV2,
+    verify_artifact_envelope,
+)
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.models import TruthKind
 from graphene.orchestration.adk import planning_input_sha256
+from graphene.orchestration.evidence import (
+    AttemptEvidenceAuthority,
+    AttemptEvidenceEventType,
+    AttemptEvidenceInput,
+    SQLiteAttemptEvidenceStore,
+)
 from graphene.orchestration.models import (
     ArtifactContract,
+    ArtifactEnvelopeReferenceV2,
     ArtifactRequirement,
     AttemptResult,
+    AttemptState,
     CommandTemplate,
+    Criterion,
+    CriterionVerificationKind,
     EvidenceReference,
     Gate,
     GateDecision,
@@ -25,6 +41,7 @@ from graphene.orchestration.models import (
     MissionStatus,
     Plan,
     ProjectPolicy,
+    PublishedArtifactReferenceV2,
     PublicationDraft,
     ResourceBudget,
     ResourceReceipt,
@@ -35,12 +52,14 @@ from graphene.orchestration.models import (
 )
 from graphene.orchestration.local_result import LocalResultReceipt
 from graphene.orchestration.store import (
+    BudgetExhausted,
     LeaseConflict,
     MissionConflict,
     MissionStoreError,
     SQLiteMissionStore,
     StaleWorker,
 )
+from graphene.orchestration.validation import PlanValidationError
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -49,6 +68,8 @@ NOW = datetime(2026, 1, 1, tzinfo=UTC)
 class MemoryArtifacts:
     def __init__(self) -> None:
         self.values: dict[tuple[str, str], bytes] = {}
+        self.envelopes: dict[str, ArtifactEnvelopeV2] = {}
+        self.authority: dict[str, tuple[str, str]] = {}
         self.completed: dict[
             str, tuple[str, str, str, tuple[EvidenceReference, ...]]
         ] = {}
@@ -61,6 +82,104 @@ class MemoryArtifacts:
 
     def resolve(self, kind: str, artifact_id: str) -> bytes | None:
         return self.values.get((kind, artifact_id))
+
+    def authorize(self, mission_id: str, policy: ProjectPolicy) -> None:
+        self.authority[mission_id] = (
+            canonical_json_sha256(policy.model_dump(mode="json")),
+            policy.base_sha,
+        )
+
+    def put_enveloped(
+        self,
+        dispatch,
+        *,
+        output_name: str,
+        kind: str,
+        content: bytes,
+    ) -> tuple[EvidenceReference, ArtifactEnvelopeReferenceV2]:
+        policy_sha256, base_sha = self.authority[dispatch.mission_id]
+        direct_inputs = tuple(
+            sorted(
+                (
+                    DirectArtifactInputV2(
+                        publication_id=item.publication_id,
+                        producer_task_id=item.producer_task_id,
+                        output_name=item.output_name,
+                        artifact_envelope_sha256=item.artifact_envelope_sha256,
+                    )
+                    for item in dispatch.input_publications
+                    if isinstance(item, PublishedArtifactReferenceV2)
+                ),
+                key=lambda item: (
+                    item.producer_task_id,
+                    item.output_name,
+                    item.publication_id,
+                    item.artifact_envelope_sha256,
+                ),
+            )
+        )
+        envelope = ArtifactEnvelopeV2.create(
+            content,
+            mission_id=dispatch.mission_id,
+            plan_revision=dispatch.plan_revision,
+            plan_sha256=dispatch.plan_sha256,
+            task_id=dispatch.task_id,
+            attempt_id=dispatch.attempt_id,
+            fencing_token=dispatch.fencing_token,
+            policy_sha256=policy_sha256,
+            base_git_commit=base_sha,
+            direct_inputs=direct_inputs,
+            output_name=output_name,
+            artifact_kind=kind,
+            media_type=(
+                "application/vnd.graphene.git-patch"
+                if kind == "patch"
+                else "application/vnd.graphene.check-receipt+json"
+            ),
+            created_by="trusted-worker-wrapper",
+        )
+        reference = self.put(kind, content)
+        self.envelopes[envelope.artifact_envelope_sha256] = envelope
+        return reference, ArtifactEnvelopeReferenceV2(
+            schema_version=2,
+            artifact_id=reference.id,
+            producer_task_id=dispatch.task_id,
+            output_name=output_name,
+            kind=kind,
+            media_type=envelope.media_type,
+            byte_count=envelope.byte_count,
+            content_sha256=envelope.content_sha256,
+            artifact_envelope_sha256=envelope.artifact_envelope_sha256,
+        )
+
+    def resolve_enveloped(
+        self, reference: ArtifactEnvelopeReferenceV2
+    ) -> bytes | None:
+        content = self.resolve(reference.kind, reference.artifact_id)
+        envelope = self.envelopes.get(reference.artifact_envelope_sha256)
+        if content is None or envelope is None:
+            return None
+        try:
+            verify_artifact_envelope(envelope, content)
+        except ValueError:
+            return None
+        return content
+
+    def verify_enveloped(
+        self,
+        reference: ArtifactEnvelopeReferenceV2,
+        *,
+        expected: dict[str, object],
+    ) -> bool:
+        content = self.resolve_enveloped(reference)
+        envelope = self.envelopes.get(reference.artifact_envelope_sha256)
+        if content is None or envelope is None:
+            return False
+        try:
+            verify_artifact_envelope(envelope, content, expected=expected)
+        except ValueError:
+            return False
+        return True
 
     def record_completed(
         self,
@@ -81,13 +200,37 @@ class MemoryArtifacts:
         task_id: str,
         attempt_id: str,
         succeeded: bool,
+        result_code: str,
         references: tuple[EvidenceReference, ...],
+        plan_revision: int,
+        fencing_token: int,
+        policy_sha256: str,
+        base_sha: str,
+        template_id: str,
+        template_sha256: str,
+        accepted_inputs: tuple[EvidenceReference, ...],
+        candidate_references: tuple[EvidenceReference, ...],
     ) -> bool:
-        return succeeded and self.completed.get(evidence_id) == (
-            mission_id,
-            task_id,
-            attempt_id,
-            references,
+        bindings_are_well_formed = (
+            result_code == "passed"
+            and plan_revision >= 1
+            and fencing_token >= 1
+            and len(policy_sha256) == len(template_sha256) == 64
+            and len(base_sha) == 40
+            and bool(template_id)
+            and isinstance(accepted_inputs, tuple)
+            and isinstance(candidate_references, tuple)
+        )
+        return (
+            succeeded
+            and bindings_are_well_formed
+            and self.completed.get(evidence_id)
+            == (
+                mission_id,
+                task_id,
+                attempt_id,
+                references,
+            )
         )
 
 
@@ -104,6 +247,27 @@ def _task_for_snapshot(store: SQLiteMissionStore, task_id: str) -> Task:
 
 def _command(label: str) -> str:
     return f"command-{label:0<16}"[:40]
+
+
+def _register_worker(
+    store: SQLiteMissionStore,
+    worker_id: str,
+    *,
+    mission_id: str = "mission-1",
+    capabilities: tuple[TaskKind, ...],
+    at: datetime = NOW,
+) -> None:
+    digest = canonical_json_sha256(
+        (mission_id, worker_id, "test_runtime", capabilities)
+    )
+    store.register_worker(
+        mission_id,
+        worker_id,
+        "test_runtime",
+        capabilities,
+        f"register_{digest[:32]}",
+        recorded_at=at,
+    )
 
 
 def _policy(*, max_concurrency: int = 4) -> ProjectPolicy:
@@ -175,7 +339,7 @@ def _plan(mission_id: str = "mission-1") -> Plan:
     assembly = _task(
         "assemble",
         "candidate",
-        "candidate-patch",
+        "patch",
         "out/candidate.patch",
         kind=TaskKind.ASSEMBLY,
         role="assembler",
@@ -201,13 +365,23 @@ def _plan(mission_id: str = "mission-1") -> Plan:
             ArtifactRequirement(
                 producer_task_id="assemble",
                 name="candidate",
-                kind="candidate-patch",
+                kind="patch",
             ),
         ),
     )
     return Plan(
         mission_id=mission_id,
         revision=1,
+        criteria=(
+            Criterion(
+                criterion_id="criterion-checks",
+                description="All checks pass.",
+                producer_task_ids=("work-a", "work-b"),
+                verification_kind=CriterionVerificationKind.DETERMINISTIC_CHECK,
+                verifier_task_id="verify",
+                verifier_id="check",
+            ),
+        ),
         tasks=tuple(
             sorted((assembly, verify, work_a, work_b), key=lambda item: item.task_id)
         ),
@@ -288,6 +462,8 @@ def _create(
     policy = policy or _policy()
     if store.artifact_resolver is None:
         store.bind_artifact_resolver(MemoryArtifacts())
+    if isinstance(store.artifact_resolver, MemoryArtifacts):
+        store.artifact_resolver.authorize(mission_id, policy)
     mission = Mission.model_validate(
         {
             **_mission(mission_id, creation_source=creation_source).model_dump(
@@ -308,6 +484,7 @@ def _create(
             mission_id,
             _command(f"approve-{mission_id}"),
             expected_revision=1,
+            expected_head=store.head(mission_id),
             operator_label="api-operator",
             rationale="Approved by a bounded API request.",
             truth_kind=TruthKind.SERVER_DERIVED,
@@ -332,10 +509,12 @@ def _success(dispatch, task: Task, artifacts: MemoryArtifacts) -> AttemptResult:
             "timed_out": False,
         }
     )
-    output_references = tuple(
-        artifacts.put(
-            output.kind,
-            (
+    output_artifacts = tuple(
+        artifacts.put_enveloped(
+            dispatch,
+            output_name=output.name,
+            kind=output.kind,
+            content=(
                 receipt_bytes
                 if output.kind == "test-receipt"
                 else canonical_json_bytes(
@@ -345,6 +524,7 @@ def _success(dispatch, task: Task, artifacts: MemoryArtifacts) -> AttemptResult:
         )
         for output in task.expected_outputs
     )
+    output_references = tuple(item[0] for item in output_artifacts)
     check_reference = artifacts.put("test-receipt", receipt_bytes)
     references = tuple(
         {
@@ -357,10 +537,11 @@ def _success(dispatch, task: Task, artifacts: MemoryArtifacts) -> AttemptResult:
             output_name=output.name,
             kind=output.kind,
             sha256=reference.sha256,
+            artifact=envelope,
             paths=output.paths,
         )
-        for output, reference in zip(
-            task.expected_outputs, output_references, strict=True
+        for output, (reference, envelope) in zip(
+            task.expected_outputs, output_artifacts, strict=True
         )
     )
     evidence_id = f"evidence-{dispatch.attempt_id}"
@@ -376,6 +557,12 @@ def _success(dispatch, task: Task, artifacts: MemoryArtifacts) -> AttemptResult:
         result_code="passed",
         evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
         evidence_refs=references,
+        artifact_envelopes=tuple(
+            sorted(
+                (item[1] for item in output_artifacts),
+                key=lambda item: item.artifact_envelope_sha256,
+            )
+        ),
         publications=publications,
     )
 
@@ -392,10 +579,18 @@ def _complete_ready(
     )
     completed = []
     for index, task in enumerate(store.ready_tasks(mission_id)):
+        worker_id = f"worker-{round_number}-{index}"
+        _register_worker(
+            store,
+            worker_id,
+            mission_id=mission_id,
+            capabilities=(task.kind,),
+            at=at,
+        )
         dispatch = store.claim_task(
             mission_id,
             task.task_id,
-            f"worker-{index}",
+            worker_id,
             _command(f"claim-{round_number}-{index}-{mission_id}"),
             recorded_at=at,
             ttl_seconds=30,
@@ -441,11 +636,13 @@ def test_creation_is_explicit_revision_bound_idempotent_and_restart_safe(
         if event.event_type == MissionEventType.PLAN_PROPOSED
     )
     assert proposed.truth_kind == TruthKind.SIMULATED_FIXTURE
+    proposed_head = store.head("mission-1")
     with pytest.raises(MissionConflict, match="revision changed"):
         store.approve_plan(
             "mission-1",
             _command("wrong-revision"),
             expected_revision=2,
+            expected_head=proposed_head,
             operator_label="automation",
             rationale=None,
             truth_kind=TruthKind.SERVER_DERIVED,
@@ -456,6 +653,7 @@ def test_creation_is_explicit_revision_bound_idempotent_and_restart_safe(
         "mission-1",
         _command("approve"),
         expected_revision=1,
+        expected_head=proposed_head,
         operator_label="automation",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -465,6 +663,7 @@ def test_creation_is_explicit_revision_bound_idempotent_and_restart_safe(
         "mission-1",
         _command("approve"),
         expected_revision=1,
+        expected_head=proposed_head,
         operator_label="automation",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -488,6 +687,103 @@ def test_creation_is_explicit_revision_bound_idempotent_and_restart_safe(
         connection.execute(
             "DELETE FROM mission_events WHERE mission_id = ? AND seq = 1",
             ("mission-1",),
+        )
+
+
+def test_plan_rejection_is_revision_bound_attributed_idempotent_and_terminal(
+    tmp_path,
+) -> None:
+    path = tmp_path / "missions.sqlite"
+    store = SQLiteMissionStore(path)
+    mission = _mission(creation_source="operator")
+    store.create_mission(
+        _policy(), mission, _plan(), _command("create"), recorded_at=NOW
+    )
+    proposed_head = store.head("mission-1")
+
+    with pytest.raises(MissionConflict, match="revision changed"):
+        store.reject_plan(
+            "mission-1",
+            _command("reject-wrong-revision"),
+            expected_revision=2,
+            expected_head=proposed_head,
+            operator_label="reviewer",
+            rationale="The proposed scope is too broad.",
+            truth_kind=TruthKind.HUMAN_ATTESTED,
+            recorded_at=NOW,
+        )
+
+    command_id = _command("reject-plan")
+    rejected_head = store.reject_plan(
+        "mission-1",
+        command_id,
+        expected_revision=1,
+        expected_head=proposed_head,
+        operator_label="reviewer",
+        rationale="The proposed scope is too broad.",
+        truth_kind=TruthKind.HUMAN_ATTESTED,
+        recorded_at=NOW,
+    )
+    duplicate = SQLiteMissionStore(path).reject_plan(
+        "mission-1",
+        command_id,
+        expected_revision=1,
+        expected_head=proposed_head,
+        operator_label="reviewer",
+        rationale="The proposed scope is too broad.",
+        truth_kind=TruthKind.HUMAN_ATTESTED,
+        recorded_at=NOW + timedelta(minutes=1),
+    )
+
+    reopened = SQLiteMissionStore(path)
+    snapshot = reopened.snapshot("mission-1")
+    rejected = reopened.tail("mission-1", proposed_head.seq, 1)[0]
+    assert duplicate == rejected_head == snapshot.head
+    assert snapshot.mission.status == MissionStatus.REJECTED
+    assert rejected.event_type == MissionEventType.PLAN_REJECTED
+    assert rejected.payload == {
+        "operator_label": "reviewer",
+        "operator_rationale": "The proposed scope is too broad.",
+        "plan_revision": 1,
+        "status": "rejected",
+    }
+    assert rejected.truth_kind == TruthKind.HUMAN_ATTESTED
+    assert rejected.authority == MissionAuthority.OPERATOR
+    assert reopened.verify("mission-1") == rejected_head
+
+    with pytest.raises(MissionConflict, match="reused with another request"):
+        reopened.reject_plan(
+            "mission-1",
+            command_id,
+            expected_revision=1,
+            expected_head=proposed_head,
+            operator_label="reviewer",
+            rationale="A different decision payload.",
+            truth_kind=TruthKind.HUMAN_ATTESTED,
+            recorded_at=NOW,
+        )
+
+
+def test_creation_binds_plan_criteria_to_mission_criteria(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    plan = _plan()
+    mismatched = plan.model_copy(
+        update={
+            "criteria": (
+                plan.criteria[0].model_copy(
+                    update={"description": "A different outcome passes."}
+                ),
+            )
+        }
+    )
+
+    with pytest.raises(MissionConflict, match="bindings do not match"):
+        store.create_mission(
+            _policy(),
+            _mission(),
+            mismatched,
+            _command("criterion-mismatch"),
+            recorded_at=NOW,
         )
 
 
@@ -627,6 +923,8 @@ def test_claim_heartbeat_expiry_and_fencing_reject_stale_workers(tmp_path) -> No
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)
     store.refresh_ready("mission-1", _command("ready"), recorded_at=NOW)
+    for worker in ("worker-a", "worker-b"):
+        _register_worker(store, worker, capabilities=(TaskKind.WORK,))
 
     def claim(worker: str):
         return store.claim_task(
@@ -683,6 +981,12 @@ def test_claim_heartbeat_expiry_and_fencing_reject_stale_workers(tmp_path) -> No
         _command("ready-again"),
         recorded_at=NOW + timedelta(seconds=12),
     )
+    _register_worker(
+        store,
+        "worker-c",
+        capabilities=(TaskKind.WORK,),
+        at=NOW + timedelta(seconds=12),
+    )
     second = store.claim_task(
         "mission-1",
         "work-a",
@@ -738,6 +1042,74 @@ def test_claim_heartbeat_expiry_and_fencing_reject_stale_workers(tmp_path) -> No
     assert store.verify("mission-1") == store.head("mission-1")
 
 
+def test_registration_capabilities_revocation_and_effect_fence_are_authoritative(
+    tmp_path,
+) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("worker-ready"), recorded_at=NOW)
+
+    with pytest.raises(LeaseConflict, match="registration"):
+        store.claim_task(
+            "mission-1",
+            "work-a",
+            "worker-unregistered",
+            _command("claim-unregistered"),
+            recorded_at=NOW,
+            ttl_seconds=10,
+        )
+    _register_worker(store, "worker-wrong-kind", capabilities=(TaskKind.ASSEMBLY,))
+    with pytest.raises(LeaseConflict, match="capability"):
+        store.claim_task(
+            "mission-1",
+            "work-a",
+            "worker-wrong-kind",
+            _command("claim-wrong-kind"),
+            recorded_at=NOW,
+            ttl_seconds=10,
+        )
+
+    _register_worker(store, "worker-work", capabilities=(TaskKind.WORK,))
+    dispatch = store.claim_task(
+        "mission-1",
+        "work-a",
+        "worker-work",
+        _command("claim-work-kind"),
+        recorded_at=NOW,
+        ttl_seconds=10,
+    )
+    store.assert_fence(dispatch, recorded_at=NOW + timedelta(seconds=1))
+    with pytest.raises(StaleWorker, match="stale"):
+        store.assert_fence(dispatch, recorded_at=NOW + timedelta(seconds=10))
+
+    store.revoke_worker(
+        "mission-1",
+        "worker-work",
+        "runtime_retired",
+        _command("revoke-worker-work"),
+        recorded_at=NOW + timedelta(seconds=2),
+    )
+    with pytest.raises(StaleWorker, match="registration"):
+        store.assert_fence(dispatch, recorded_at=NOW + timedelta(seconds=3))
+    with pytest.raises(LeaseConflict, match="revoked"):
+        store.recover_dispatches(
+            "mission-1", ("worker-work",), recorded_at=NOW + timedelta(seconds=3)
+        )
+    event_types = {event.event_type for event in store.tail("mission-1", 0, 100)}
+    assert MissionEventType.WORKER_REGISTERED in event_types
+    assert MissionEventType.WORKER_REVOKED in event_types
+    assert store.verify("mission-1") == store.head("mission-1")
+
+    with sqlite3.connect(store.path) as connection:
+        connection.execute("DROP TRIGGER mission_workers_no_update")
+        connection.execute(
+            "UPDATE mission_workers SET runtime_id = 'forged_runtime' "
+            "WHERE mission_id = 'mission-1' AND worker_id = 'worker-work'"
+        )
+    with pytest.raises(MissionStoreError, match="materialized state"):
+        store.verify("mission-1")
+
+
 def test_successful_publication_requires_resolved_attempt_artifact(tmp_path) -> None:
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)
@@ -745,6 +1117,7 @@ def test_successful_publication_requires_resolved_attempt_artifact(tmp_path) -> 
     task = next(
         item for item in store.ready_tasks("mission-1") if item.task_id == "work-a"
     )
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
     dispatch = store.claim_task(
         "mission-1",
         task.task_id,
@@ -800,6 +1173,312 @@ def test_successful_publication_requires_resolved_attempt_artifact(tmp_path) -> 
     )
 
 
+def test_real_stores_reject_fabricated_pass_without_trusted_check(tmp_path) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite", artifact_resolver=evidence)
+    _create(store)
+    store.refresh_ready("mission-1", _command("forgery-ready"), recorded_at=NOW)
+    task = next(
+        item for item in store.ready_tasks("mission-1") if item.task_id == "work-a"
+    )
+    _register_worker(store, "worker-forgery", capabilities=(TaskKind.WORK,))
+    dispatch = store.claim_task(
+        "mission-1",
+        task.task_id,
+        "worker-forgery",
+        _command("forgery-claim"),
+        recorded_at=NOW,
+        ttl_seconds=30,
+    )
+    patch = evidence.put_artifact("patch", b"fabricated patch")
+    receipt = evidence.put_artifact(
+        "test-receipt", canonical_json_bytes({"exit_code": 0})
+    )
+    references = tuple(
+        sorted((patch, receipt), key=lambda item: (item.kind, item.id, item.sha256))
+    )
+    evidence_id = "evidence-forged-pass"
+    for index, (event_type, payload) in enumerate(
+        (
+            (AttemptEvidenceEventType.ATTEMPT_STARTED, {"status": "started"}),
+            (AttemptEvidenceEventType.ATTEMPT_COMPLETED, {"result_code": "passed"}),
+        ),
+        1,
+    ):
+        evidence.append(
+            evidence_id,
+            evidence.head(evidence_id),
+            f"forged-evidence-{index:02d}",
+            AttemptEvidenceInput(
+                mission_id="mission-1",
+                task_id=task.task_id,
+                attempt_id=dispatch.attempt_id,
+                event_type=event_type,
+                truth_kind=TruthKind.RUNTIME_OBSERVED,
+                authority=AttemptEvidenceAuthority.SCOPED_TOOL_WRAPPER,
+                references=references if index == 2 else (),
+                payload=payload,
+            ),
+            recorded_at=NOW,
+        )
+    result = AttemptResult(
+        succeeded=True,
+        result_code="passed",
+        evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
+        evidence_refs=references,
+        publications=(
+            PublicationDraft(
+                output_name=task.expected_outputs[0].name,
+                kind="patch",
+                sha256=patch.sha256,
+                paths=task.expected_outputs[0].paths,
+            ),
+        ),
+    )
+
+    with pytest.raises(MissionConflict, match="evidence is not completed"):
+        store.complete_attempt(
+            "mission-1",
+            dispatch.attempt_id,
+            dispatch.worker_id,
+            dispatch.lease_id,
+            dispatch.fencing_token,
+            result,
+            _command("forgery-complete"),
+            recorded_at=NOW + timedelta(seconds=1),
+            retry_backoff_seconds=0,
+        )
+
+
+def test_claim_rehashes_accepted_input_artifact_before_dispatch(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    _complete_ready(store, "mission-1", at=NOW, round_number=1)
+    snapshot = store.snapshot("mission-1")
+    publication = snapshot.publications[0]
+    producer_attempt = next(
+        item for item in snapshot.attempts if item.attempt_id == publication.attempt_id
+    )
+    reference = next(
+        item
+        for item in producer_attempt.evidence_refs
+        if item.kind == publication.kind and item.sha256 == publication.sha256
+    )
+    store.refresh_ready(
+        "mission-1",
+        _command("ready-mutated-input"),
+        recorded_at=NOW + timedelta(seconds=2),
+    )
+    _register_worker(
+        store,
+        "worker-assembly",
+        capabilities=(TaskKind.ASSEMBLY,),
+        at=NOW + timedelta(seconds=2),
+    )
+    _artifacts(store).values[(reference.kind, reference.id)] = (
+        b"mutated after acceptance"
+    )
+    with pytest.raises(MissionStoreError, match="materialized artifacts"):
+        store.claim_task(
+            "mission-1",
+            "assemble",
+            "worker-assembly",
+            _command("claim-mutated-input"),
+            recorded_at=NOW + timedelta(seconds=2),
+            ttl_seconds=30,
+        )
+
+
+def test_expected_head_is_atomic_and_replay_is_semantic(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    stale = store.head("mission-1")
+    gate = Gate(
+        gate_id="gate-head-change",
+        mission_id="mission-1",
+        reason="Advance the committed head.",
+        allowed_decisions=(GateDecision(value="continue", consequence="Continue."),),
+        truth_kind=TruthKind.SERVER_DERIVED,
+    )
+    store.request_gate(gate, _command("head-change"), recorded_at=NOW)
+
+    with pytest.raises(MissionConflict, match="expected head"):
+        store.pause(
+            "mission-1",
+            _command("stale-pause"),
+            expected_head=stale,
+            operator_label="non-tty-api",
+            rationale=None,
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW,
+        )
+    assert store.snapshot("mission-1").mission.status == MissionStatus.RUNNING
+
+    current = store.head("mission-1")
+    paused = store.pause(
+        "mission-1",
+        _command("atomic-pause"),
+        expected_head=current,
+        operator_label="non-tty-api",
+        rationale=None,
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW,
+    )
+    assert (
+        store.pause(
+            "mission-1",
+            _command("atomic-pause"),
+            expected_head=current,
+            operator_label="non-tty-api",
+            rationale=None,
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW + timedelta(minutes=1),
+        )
+        == paused
+    )
+    assert (
+        store.pause(
+            "mission-1",
+            _command("atomic-pause"),
+            expected_head=paused,
+            operator_label="non-tty-api",
+            rationale=None,
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW,
+        )
+        == paused
+    )
+    with pytest.raises(MissionConflict, match="another request"):
+        store.pause(
+            "mission-1",
+            _command("atomic-pause"),
+            expected_head=paused,
+            operator_label="non-tty-api",
+            rationale="changed semantic payload",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW,
+        )
+
+
+def test_supplied_task_input_is_gate_scoped_and_rehashed_on_dispatch(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    gate = Gate(
+        gate_id="gate-task-input",
+        mission_id="mission-1",
+        task_id="work-a",
+        reason="Supply the private operator input.",
+        allowed_decisions=(
+            GateDecision(
+                value="supply",
+                consequence="Wait for a private artifact.",
+                task_effect="needs_input",
+            ),
+        ),
+        truth_kind=TruthKind.SERVER_DERIVED,
+    )
+    store.request_gate(gate, _command("request-task-input"), recorded_at=NOW)
+    store.decide_gate(
+        "mission-1",
+        gate.gate_id,
+        "supply",
+        _command("authorize-task-input"),
+        expected_head=store.head("mission-1"),
+        operator_label="non-tty-api",
+        rationale="Provide the requested bounded input.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW,
+    )
+    assert _task_for_snapshot(store, "work-a").state == TaskState.NEEDS_INPUT
+    content = b"private operator value"
+    reference = _artifacts(store).put("operator-input", content)
+    supplied_head = store.supply_task_input(
+        "mission-1",
+        "work-a",
+        gate.gate_id,
+        reference,
+        _command("supply-task-input"),
+        expected_head=store.head("mission-1"),
+        operator_label="non-tty-api",
+        rationale="Bound to work-a only.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=1),
+    )
+    assert _task_for_snapshot(store, "work-a").state == TaskState.READY
+    supplied_event = next(
+        event
+        for event in store.tail("mission-1", 0, 100)
+        if event.event_type == MissionEventType.TASK_INPUT_SUPPLIED
+    )
+    assert supplied_event.references == (reference,)
+    assert supplied_event.payload["consumer_task_id"] == "work-a"
+    assert "private operator value" not in str(supplied_event.payload)
+    assert store.verify("mission-1") == supplied_head
+
+    _register_worker(store, "worker-input", capabilities=(TaskKind.WORK,))
+    _artifacts(store).values[(reference.kind, reference.id)] = b"mutated"
+    with pytest.raises(MissionConflict, match="supplied task input artifact"):
+        store.claim_task(
+            "mission-1",
+            "work-a",
+            "worker-input",
+            _command("claim-mutated-task-input"),
+            recorded_at=NOW + timedelta(seconds=2),
+            ttl_seconds=30,
+        )
+    _artifacts(store).values[(reference.kind, reference.id)] = content
+    dispatch = store.claim_task(
+        "mission-1",
+        "work-a",
+        "worker-input",
+        _command("claim-task-input"),
+        recorded_at=NOW + timedelta(seconds=2),
+        ttl_seconds=30,
+    )
+    assert dispatch.input_publications == (reference,)
+
+
+def test_completion_persists_runtime_session_and_invocation_ids(tmp_path) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("identity-ready"), recorded_at=NOW)
+    task = next(
+        item for item in store.ready_tasks("mission-1") if item.task_id == "work-a"
+    )
+    _register_worker(store, "worker-identity", capabilities=(TaskKind.WORK,))
+    dispatch = store.claim_task(
+        "mission-1",
+        task.task_id,
+        "worker-identity",
+        _command("identity-claim"),
+        recorded_at=NOW,
+        ttl_seconds=30,
+    )
+    result = _success(dispatch, task, _artifacts(store)).model_copy(
+        update={"session_id": "adk-session", "invocation_id": "adk-invocation"}
+    )
+    store.complete_attempt(
+        "mission-1",
+        dispatch.attempt_id,
+        dispatch.worker_id,
+        dispatch.lease_id,
+        dispatch.fencing_token,
+        result,
+        _command("identity-complete"),
+        recorded_at=NOW + timedelta(seconds=1),
+        retry_backoff_seconds=0,
+    )
+    attempt = next(
+        item
+        for item in store.snapshot("mission-1").attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert (attempt.session_id, attempt.invocation_id) == (
+        "adk-session",
+        "adk-invocation",
+    )
+
+
 def test_mission_attempt_worker_time_and_artifact_budgets_are_authoritative(
     tmp_path,
 ) -> None:
@@ -816,82 +1495,13 @@ def test_mission_attempt_worker_time_and_artifact_budgets_are_authoritative(
         )
 
     attempt_store = SQLiteMissionStore(tmp_path / "attempt-budget.sqlite")
-    _create(attempt_store, policy=policy_with(max_attempts=4))
-    for index, task_id in enumerate(("work-a", "work-b")):
-        at = NOW + timedelta(seconds=index * 4)
-        attempt_store.refresh_ready(
-            "mission-1", _command(f"budget-ready-{index}"), recorded_at=at
-        )
-        task = next(
-            item
-            for item in attempt_store.ready_tasks("mission-1")
-            if item.task_id == task_id
-        )
-        first = attempt_store.claim_task(
-            "mission-1",
-            task_id,
-            f"worker-{index}",
-            _command(f"budget-claim-fail-{index}"),
-            recorded_at=at,
-            ttl_seconds=30,
-        )
-        attempt_store.complete_attempt(
-            "mission-1",
-            first.attempt_id,
-            first.worker_id,
-            first.lease_id,
-            first.fencing_token,
-            AttemptResult(succeeded=False, retryable=True, result_code="retryable"),
-            _command(f"budget-fail-{index}"),
-            recorded_at=at + timedelta(seconds=1),
-            retry_backoff_seconds=0,
-        )
-        attempt_store.refresh_ready(
-            "mission-1",
-            _command(f"budget-retry-ready-{index}"),
-            recorded_at=at + timedelta(seconds=1),
-        )
-        second = attempt_store.claim_task(
-            "mission-1",
-            task_id,
-            f"worker-retry-{index}",
-            _command(f"budget-claim-pass-{index}"),
-            recorded_at=at + timedelta(seconds=1),
-            ttl_seconds=30,
-        )
-        attempt_store.complete_attempt(
-            "mission-1",
-            second.attempt_id,
-            second.worker_id,
-            second.lease_id,
-            second.fencing_token,
-            _success(
-                second,
-                _task_for_snapshot(attempt_store, task_id),
-                _artifacts(attempt_store),
-            ),
-            _command(f"budget-pass-{index}"),
-            recorded_at=at + timedelta(seconds=2),
-            retry_backoff_seconds=0,
-        )
-    attempt_store.refresh_ready(
-        "mission-1",
-        _command("budget-assembly-ready"),
-        recorded_at=NOW + timedelta(seconds=9),
-    )
-    with pytest.raises(LeaseConflict, match="attempt budget"):
-        attempt_store.claim_task(
-            "mission-1",
-            "assemble",
-            "worker-assembly",
-            _command("budget-assembly-claim"),
-            recorded_at=NOW + timedelta(seconds=9),
-            ttl_seconds=30,
-        )
+    with pytest.raises(PlanValidationError, match="attempt_budget_too_small"):
+        _create(attempt_store, policy=policy_with(max_attempts=4))
 
     time_store = SQLiteMissionStore(tmp_path / "time-budget.sqlite")
     _create(time_store, policy=policy_with(max_worker_seconds=10))
     time_store.refresh_ready("mission-1", _command("time-ready"), recorded_at=NOW)
+    _register_worker(time_store, "worker-a", capabilities=(TaskKind.WORK,))
     time_store.claim_task(
         "mission-1",
         "work-a",
@@ -900,15 +1510,45 @@ def test_mission_attempt_worker_time_and_artifact_budgets_are_authoritative(
         recorded_at=NOW,
         ttl_seconds=6,
     )
-    with pytest.raises(LeaseConflict, match="worker-time budget"):
+    _register_worker(time_store, "worker-b", capabilities=(TaskKind.WORK,))
+    capped = time_store.claim_task(
+        "mission-1",
+        "work-b",
+        "worker-b",
+        _command("time-second"),
+        recorded_at=NOW,
+        ttl_seconds=6,
+    )
+    assert capped.expires_at == NOW + timedelta(seconds=4)
+    time_store.expire_leases(
+        "mission-1",
+        _command("time-expire"),
+        recorded_at=NOW + timedelta(seconds=4),
+        retry_backoff_seconds=0,
+    )
+    time_store.refresh_ready(
+        "mission-1",
+        _command("time-ready-again"),
+        recorded_at=NOW + timedelta(seconds=4),
+    )
+    with pytest.raises(BudgetExhausted, match="worker-time budget"):
         time_store.claim_task(
             "mission-1",
             "work-b",
             "worker-b",
-            _command("time-second"),
-            recorded_at=NOW,
+            _command("time-exhausted"),
+            recorded_at=NOW + timedelta(seconds=4),
             ttl_seconds=6,
         )
+    time_snapshot = time_store.snapshot("mission-1")
+    blocked_time_task = next(
+        task for task in time_snapshot.tasks if task.task_id == "work-b"
+    )
+    assert time_snapshot.mission.status == MissionStatus.PAUSED
+    assert (blocked_time_task.state, blocked_time_task.blocker) == (
+        TaskState.BLOCKED,
+        "budget:worker_seconds",
+    )
 
     artifact_store = SQLiteMissionStore(tmp_path / "artifact-budget.sqlite")
     _create(artifact_store, policy=policy_with(max_artifact_bytes=16))
@@ -920,6 +1560,7 @@ def test_mission_attempt_worker_time_and_artifact_budgets_are_authoritative(
         for item in artifact_store.ready_tasks("mission-1")
         if item.task_id == "work-a"
     )
+    _register_worker(artifact_store, "worker-a", capabilities=(TaskKind.WORK,))
     dispatch = artifact_store.claim_task(
         "mission-1",
         task.task_id,
@@ -928,18 +1569,193 @@ def test_mission_attempt_worker_time_and_artifact_budgets_are_authoritative(
         recorded_at=NOW,
         ttl_seconds=30,
     )
-    with pytest.raises(MissionConflict, match="artifact budget"):
-        artifact_store.complete_attempt(
+    artifact_store.complete_attempt(
+        "mission-1",
+        dispatch.attempt_id,
+        dispatch.worker_id,
+        dispatch.lease_id,
+        dispatch.fencing_token,
+        _success(dispatch, task, _artifacts(artifact_store)),
+        _command("artifact-complete"),
+        recorded_at=NOW + timedelta(seconds=1),
+        retry_backoff_seconds=0,
+    )
+    artifact_snapshot = artifact_store.snapshot("mission-1")
+    blocked_artifact_task = next(
+        item for item in artifact_snapshot.tasks if item.task_id == task.task_id
+    )
+    failed_attempt = next(
+        item
+        for item in artifact_snapshot.attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert artifact_snapshot.mission.status == MissionStatus.PAUSED
+    assert (blocked_artifact_task.state, blocked_artifact_task.blocker) == (
+        TaskState.BLOCKED,
+        "budget:artifact_bytes",
+    )
+    assert (failed_attempt.state, failed_attempt.result_code) == (
+        AttemptState.FAILED,
+        "artifact_budget_exhausted",
+    )
+    assert any(
+        event.event_type == MissionEventType.RESOURCE_BUDGET_CROSSED
+        and event.payload["dimension"] == "artifact_bytes"
+        and event.payload["action"] == "replan_or_cancel"
+        for event in artifact_store.tail("mission-1", 0, 100)
+    )
+    assert artifact_store.verify("mission-1") == artifact_store.head("mission-1")
+
+
+def test_attempt_budget_exhaustion_after_replan_commits_a_budget_block(
+    tmp_path,
+) -> None:
+    policy = _policy().model_copy(
+        update={
+            "resource_budget": _policy().resource_budget.model_copy(
+                update={"max_attempts": 8}
+            )
+        }
+    )
+    store = SQLiteMissionStore(
+        tmp_path / "attempt-budget.sqlite", artifact_resolver=MemoryArtifacts()
+    )
+    _create(store, policy=policy)
+    _register_worker(store, "worker-all", capabilities=tuple(sorted(TaskKind)))
+    tick = 0
+
+    def claim(task_id: str):
+        nonlocal tick
+        at = NOW + timedelta(seconds=tick)
+        store.refresh_ready(
+            "mission-1", _command(f"attempt-ready-{tick}"), recorded_at=at
+        )
+        dispatch = store.claim_task(
+            "mission-1",
+            task_id,
+            "worker-all",
+            _command(f"attempt-claim-{tick}"),
+            recorded_at=at,
+            ttl_seconds=30,
+        )
+        tick += 1
+        return dispatch
+
+    def complete(dispatch, *, succeeded: bool) -> None:
+        nonlocal tick
+        task = _task_for_snapshot(store, dispatch.task_id)
+        result = (
+            _success(dispatch, task, _artifacts(store))
+            if succeeded
+            else AttemptResult(
+                succeeded=False,
+                retryable=True,
+                result_code="retryable",
+            )
+        )
+        store.complete_attempt(
             "mission-1",
             dispatch.attempt_id,
             dispatch.worker_id,
             dispatch.lease_id,
             dispatch.fencing_token,
-            _success(dispatch, task, _artifacts(artifact_store)),
-            _command("artifact-complete"),
-            recorded_at=NOW + timedelta(seconds=1),
+            result,
+            _command(f"attempt-complete-{tick}"),
+            recorded_at=NOW + timedelta(seconds=tick),
             retry_backoff_seconds=0,
         )
+        tick += 1
+
+    for task_id in ("work-a", "work-b", "assemble"):
+        complete(claim(task_id), succeeded=False)
+        complete(claim(task_id), succeeded=True)
+    complete(claim("verify"), succeeded=False)
+    assert len(store.snapshot("mission-1").attempts) == 7
+
+    store.request_replan(
+        "mission-1",
+        _command("attempt-replan-request"),
+        expected_head=store.head("mission-1"),
+        reason="Replace the exhausted revision explicitly.",
+        operator_label="non-tty-api",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=tick),
+    )
+    revised = Plan.model_validate(
+        {
+            **_plan().model_dump(mode="json"),
+            "previous_revision": 1,
+            "revision": 2,
+        }
+    )
+    store.revise_plan(
+        "mission-1",
+        revised,
+        _command("attempt-revise"),
+        expected_head=store.head("mission-1"),
+        recorded_at=NOW + timedelta(seconds=tick + 1),
+    )
+    store.approve_plan(
+        "mission-1",
+        _command("attempt-revision-approve"),
+        expected_revision=2,
+        expected_head=store.head("mission-1"),
+        operator_label="non-tty-api",
+        rationale="Run the bounded replacement revision.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=tick + 2),
+    )
+    tick += 3
+    first = claim("work-a")
+    assert first.attempt_number == 1
+    with pytest.raises(BudgetExhausted, match="attempt budget"):
+        claim("work-b")
+
+    snapshot = store.snapshot("mission-1")
+    blocked = next(task for task in snapshot.tasks if task.task_id == "work-b")
+    assert snapshot.mission.status == MissionStatus.PAUSED
+    assert (blocked.state, blocked.blocker) == (
+        TaskState.BLOCKED,
+        "budget:attempts",
+    )
+    event = next(
+        event
+        for event in reversed(store.tail("mission-1", 0, 256))
+        if event.event_type == MissionEventType.RESOURCE_BUDGET_CROSSED
+    )
+    assert event.payload == {
+        "action": "replan_or_cancel",
+        "dimension": "attempts",
+        "limit": 8,
+        "observed": 8,
+        "status": "blocked_budget",
+        "task_id": "work-b",
+        "threshold_crossed": True,
+    }
+    assert store.verify("mission-1") == store.head("mission-1")
+    store.resume(
+        "mission-1",
+        _command("attempt-budget-resume"),
+        expected_head=store.head("mission-1"),
+        operator_label="non-tty-api",
+        rationale="Confirm a generic resume cannot erase the budget blocker.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=tick + 1),
+    )
+    store.refresh_ready(
+        "mission-1",
+        _command("attempt-budget-refresh"),
+        recorded_at=NOW + timedelta(seconds=tick + 1),
+    )
+    still_blocked = next(
+        task
+        for task in store.snapshot("mission-1").tasks
+        if task.task_id == "work-b"
+    )
+    assert (still_blocked.state, still_blocked.blocker) == (
+        TaskState.BLOCKED,
+        "budget:attempts",
+    )
 
 
 def test_gate_resource_and_operator_commands_preserve_non_tty_truth(tmp_path) -> None:
@@ -961,6 +1777,7 @@ def test_gate_resource_and_operator_commands_preserve_non_tty_truth(tmp_path) ->
         "gate-1",
         "approve",
         _command("gate-decision"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale="Bounded operator-labeled input.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1003,6 +1820,7 @@ def test_gate_resource_and_operator_commands_preserve_non_tty_truth(tmp_path) ->
     store.pause(
         "mission-1",
         _command("pause"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1011,6 +1829,7 @@ def test_gate_resource_and_operator_commands_preserve_non_tty_truth(tmp_path) ->
     store.resume(
         "mission-1",
         _command("resume"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale=None,
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1019,6 +1838,7 @@ def test_gate_resource_and_operator_commands_preserve_non_tty_truth(tmp_path) ->
     store.cancel(
         "mission-1",
         _command("cancel"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale="Cancelled from automation.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1087,6 +1907,7 @@ def test_task_dispatch_rejects_contract_outside_bound_plan(tmp_path) -> None:
     store = SQLiteMissionStore(database)
     _create(store)
     store.refresh_ready("mission-1", _command("ready-contract-tamper"), recorded_at=NOW)
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
     with sqlite3.connect(database) as connection:
         raw = connection.execute(
             "SELECT task_bytes FROM mission_tasks "
@@ -1156,6 +1977,7 @@ def test_task_gate_blocks_dispatch_until_an_allowed_decision(tmp_path) -> None:
     )
     store.request_gate(gate, _command("task-gate"), recorded_at=NOW)
     store.refresh_ready("mission-1", _command("task-gate-ready"), recorded_at=NOW)
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
 
     assert tuple(task.task_id for task in store.ready_tasks("mission-1")) == ("work-b",)
     assert _task_for_snapshot(store, "work-a").state == TaskState.BLOCKED
@@ -1174,6 +1996,7 @@ def test_task_gate_blocks_dispatch_until_an_allowed_decision(tmp_path) -> None:
         gate.gate_id,
         "continue",
         _command("task-gate-decision"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale="Proceed with the accepted scope.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1222,6 +2045,7 @@ def test_reassign_reprioritize_and_replan_request_are_safe_and_evented(
     assert changed.priority == 99
 
     store.refresh_ready("mission-1", _command("ready-operator"), recorded_at=NOW)
+    _register_worker(store, "worker-b", capabilities=(TaskKind.WORK,))
     dispatch = store.claim_task(
         "mission-1",
         "work-b",
@@ -1241,9 +2065,11 @@ def test_reassign_reprioritize_and_replan_request_are_safe_and_evented(
             truth_kind=TruthKind.SERVER_DERIVED,
             recorded_at=NOW,
         )
+    expected_head = store.head("mission-1")
     head = store.request_replan(
         "mission-1",
         _command("request-replan"),
+        expected_head=expected_head,
         reason="The accepted revision needs a new explicit successor.",
         operator_label="non-tty-api",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1253,6 +2079,7 @@ def test_reassign_reprioritize_and_replan_request_are_safe_and_evented(
         store.request_replan(
             "mission-1",
             _command("request-replan"),
+            expected_head=expected_head,
             reason="The accepted revision needs a new explicit successor.",
             operator_label="non-tty-api",
             truth_kind=TruthKind.SERVER_DERIVED,
@@ -1268,6 +2095,7 @@ def test_reassign_reprioritize_and_replan_request_are_safe_and_evented(
 
 def test_verification_receipt_must_bind_exact_accepted_assembly_candidate(
     tmp_path,
+    monkeypatch,
 ) -> None:
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)
@@ -1279,6 +2107,12 @@ def test_verification_receipt_must_bind_exact_accepted_assembly_candidate(
         recorded_at=NOW + timedelta(seconds=4),
     )
     task = store.ready_tasks("mission-1")[0]
+    _register_worker(
+        store,
+        "worker-verifier",
+        capabilities=(TaskKind.VERIFICATION,),
+        at=NOW + timedelta(seconds=4),
+    )
     dispatch = store.claim_task(
         "mission-1",
         task.task_id,
@@ -1322,8 +2156,20 @@ def test_verification_receipt_must_bind_exact_accepted_assembly_candidate(
         attempt_id=dispatch.attempt_id,
         references=bad.evidence_refs,
     )
+    original_verify = _artifacts(store).verify_attempt
+    claimed_candidate = json.loads(bad_bytes)["candidate_patch_sha256"]
 
-    with pytest.raises(MissionConflict, match="bound to the candidate"):
+    def verify_exact_candidate(*args, candidate_references, **kwargs):
+        return original_verify(
+            *args, candidate_references=candidate_references, **kwargs
+        ) and (
+            len(candidate_references) == 1
+            and candidate_references[0].sha256 == claimed_candidate
+        )
+
+    monkeypatch.setattr(_artifacts(store), "verify_attempt", verify_exact_candidate)
+
+    with pytest.raises(MissionConflict, match="generic attempt evidence"):
         store.complete_attempt(
             "mission-1",
             dispatch.attempt_id,
@@ -1336,6 +2182,7 @@ def test_verification_receipt_must_bind_exact_accepted_assembly_candidate(
             retry_backoff_seconds=0,
         )
 
+    monkeypatch.setattr(_artifacts(store), "verify_attempt", original_verify)
     valid = _success(dispatch, task, _artifacts(store))
     store.complete_attempt(
         "mission-1",
@@ -1354,12 +2201,51 @@ def test_verification_receipt_must_bind_exact_accepted_assembly_candidate(
     assert store.snapshot("mission-1").mission.status == MissionStatus.AWAITING_RESULT
 
 
+def test_forged_accepted_publication_digest_fails_verification_before_dispatch(
+    tmp_path,
+) -> None:
+    database = tmp_path / "missions.sqlite"
+    store = SQLiteMissionStore(database)
+    _create(store)
+    _complete_ready(store, "mission-1", at=NOW, round_number=1)
+
+    with sqlite3.connect(database) as connection:
+        row = connection.execute(
+            "SELECT publication_id, publication_bytes FROM mission_publications "
+            "WHERE mission_id = 'mission-1' AND state = 'accepted' "
+            "ORDER BY publication_id LIMIT 1"
+        ).fetchone()
+        publication = json.loads(row[1])
+        publication["sha256"] = "f" * 64
+        connection.execute(
+            "UPDATE mission_publications SET publication_bytes = ? "
+            "WHERE publication_id = ?",
+            (canonical_json_bytes(publication), row[0]),
+        )
+
+    with pytest.raises(MissionStoreError, match="materialized state"):
+        store.verify("mission-1")
+    with pytest.raises(MissionStoreError, match="materialized state"):
+        store.refresh_ready(
+            "mission-1",
+            _command("ready-after-publication-forgery"),
+            recorded_at=NOW + timedelta(seconds=2),
+        )
+
+
 @pytest.mark.parametrize("approve", (True, False))
 def test_final_decision_binds_candidate_and_verification_receipt(
     tmp_path, approve: bool
 ) -> None:
-    mission_id = "mission-approve" if approve else "mission-reject"
-    store = SQLiteMissionStore(tmp_path / f"{mission_id}.sqlite")
+    from tests.adversarial.test_final_approval_bundle import (
+        _complete_trusted_verification,
+        _pending_bundle,
+    )
+
+    mission_id = "mission-1"
+    store = SQLiteMissionStore(
+        tmp_path / ("mission-approve.sqlite" if approve else "mission-reject.sqlite")
+    )
     _create(store, mission_id=mission_id)
     assert _complete_ready(store, mission_id, at=NOW, round_number=1) == (
         "work-a",
@@ -1368,23 +2254,34 @@ def test_final_decision_binds_candidate_and_verification_receipt(
     assert _complete_ready(
         store, mission_id, at=NOW + timedelta(seconds=2), round_number=2
     ) == ("assemble",)
-    assert _complete_ready(
-        store, mission_id, at=NOW + timedelta(seconds=4), round_number=3
-    ) == ("verify",)
+    _complete_trusted_verification(store)
     store.enter_awaiting_result(
         mission_id,
         _command(f"await-{mission_id}"),
         recorded_at=NOW + timedelta(seconds=6),
     )
+    bundle = _pending_bundle(store)
+    bundle_reference = _artifacts(store).put(
+        "final-result-bundle",
+        canonical_json_bytes(bundle.model_dump(mode="json")),
+    )
+    store.register_final_result_bundle(
+        mission_id,
+        bundle_reference,
+        _command(f"bundle-{approve}"),
+        expected_head=store.head(mission_id),
+        recorded_at=NOW + timedelta(seconds=7),
+    )
     snapshot = store.snapshot(mission_id)
     candidate = next(
         item for item in snapshot.publications if item.task_id == "assemble"
     )
-    with pytest.raises(MissionConflict, match="digest changed"):
+    with pytest.raises(MissionConflict, match="not current"):
         store.approve_final_result(
             mission_id,
             _command(f"wrong-final-{mission_id}"),
-            expected_candidate_sha256="f" * 64,
+            expected_head=snapshot.head,
+            expected_bundle_id="final_result_" + "f" * 32,
             operator_label="non-tty-api",
             rationale=None,
             truth_kind=TruthKind.SERVER_DERIVED,
@@ -1394,7 +2291,8 @@ def test_final_decision_binds_candidate_and_verification_receipt(
     decision_head = decision(
         mission_id,
         _command(f"final-{mission_id}"),
-        expected_candidate_sha256=candidate.sha256,
+        expected_head=snapshot.head,
+        expected_bundle_id=bundle.bundle_id,
         operator_label="non-tty-api",
         rationale="Reviewed the isolated candidate.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1403,7 +2301,8 @@ def test_final_decision_binds_candidate_and_verification_receipt(
     decision_retry = decision(
         mission_id,
         _command(f"final-{mission_id}"),
-        expected_candidate_sha256=candidate.sha256,
+        expected_head=snapshot.head,
+        expected_bundle_id=bundle.bundle_id,
         operator_label="non-tty-api",
         rationale="Reviewed the isolated candidate.",
         truth_kind=TruthKind.SERVER_DERIVED,
@@ -1412,8 +2311,9 @@ def test_final_decision_binds_candidate_and_verification_receipt(
 
     final_event = store.tail(mission_id, snapshot.head.seq, 10)[0]
     assert final_event.payload["candidate_sha256"] == candidate.sha256
+    assert final_event.payload["bundle_id"] == bundle.bundle_id
     assert decision_retry == decision_head
-    assert len(final_event.references) == 2
+    assert len(final_event.references) == 3
     assert final_event.truth_kind == TruthKind.SERVER_DERIVED
     assert store.snapshot(mission_id).mission.status == (
         MissionStatus.AWAITING_RESULT if approve else MissionStatus.REJECTED
@@ -1543,6 +2443,7 @@ def test_explicit_retry_uses_server_truth_and_restores_failed_mission(tmp_path) 
     task = next(
         item for item in store.ready_tasks("mission-1") if item.task_id == "work-a"
     )
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
     dispatch = store.claim_task(
         "mission-1",
         task.task_id,
@@ -1566,6 +2467,7 @@ def test_explicit_retry_uses_server_truth_and_restores_failed_mission(tmp_path) 
         "mission-1",
         "work-a",
         _command("retry"),
+        expected_head=store.head("mission-1"),
         operator_label="non-tty-api",
         rationale="Retry after operator review.",
         truth_kind=TruthKind.SERVER_DERIVED,

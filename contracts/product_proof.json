@@ -5,7 +5,7 @@
   "product_thesis": "Graphene is a local-first mission control for bounded multi-agent coding work. Give it one engineering outcome; it validates a dependency-aware work graph, dispatches only policy-allowed isolated work, adapts to bounded failures, assembles accepted artifacts, verifies the result, and creates an isolated local commit only after explicit approval.",
   "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
   "costly_problem": "The developer becomes the scheduler: preventing conflicting edits, relaying context, noticing failures, integrating outputs, and reconstructing whether the result is safe.",
-  "result": "A verified review bundle and optional isolated local commit with explicit evidence, resource semantics, and unresolved unknowns.",
+  "result": "An exact verified candidate decision and optional isolated local commit with V2 publication evidence, a registered immutable pre-decision bundle, explicit resource semantics, and unresolved unknowns. Bounded ADK workers, collision-safe tree hashing, cold integrity verification, revision/invalidation, and a partial authoritative Firestore/outbound-executor vertical are credential-free tested; external proof remains separate.",
   "mission_paths": {
     "verified-mission-replay": {
       "status": "verified_local",
@@ -43,7 +43,7 @@
       "status": "verified_local",
       "command": "uv run --frozen pytest -q tests/unit/orchestration/test_adk.py",
       "truth_label": "REAL ADK RUNNER + DETERMINISTIC FAKE PLANNER — NOT GEMINI OR MODEL-WORKER PROOF",
-      "proves": "Real Google ADK Runner/session plumbing, typed Plan output, a one-call bound, deterministic validation, disabled content telemetry, and sanitized receipts.",
+      "proves": "Real Google ADK Runner/session plumbing, bounded repository manifest/excerpts, typed PlanIntent output and deterministic Plan compilation, typed worker sessions with deterministic fake models, a one-call bound, disabled content telemetry, and sanitized receipts.",
       "does_not_prove": [
         "Gemini execution",
         "independent worker behavior",
@@ -54,20 +54,35 @@
       "status": "not_proven",
       "command": "GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py",
       "product_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --success-criterion CRITERION --driver gemini-adk",
+      "demo_command": "uv run --frozen graphene mission demo",
       "truth_label": "NOT PROVEN — REQUIRES EXPLICIT CREDENTIALS AND A RETURNED GEMINI RECEIPT",
       "model": "gemini-3.5-flash",
       "fallback": "none",
-      "scope": "Credentialed model-proposed plan persistence only; worker execution is unavailable."
+      "scope": "Planner plus bounded two-to-five-worker execution is implemented and fake-model tested locally; no credentialed provider run or live worker receipt was captured."
     },
     "docker-executor": {
       "status": "not_proven",
       "command": "docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest . && GRAPHENE_RUN_DOCKER_SMOKE=1 uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py",
-      "truth_label": "NOT PROVEN — RESPONSIVE DAEMON AND BUILT IMMUTABLE IMAGE REQUIRED"
+      "truth_label": "NOT PROVEN — RESPONSIVE DAEMON AND BUILT IMMUTABLE IMAGE REQUIRED",
+      "proof_pass": "not run"
     },
     "cloud-run-firestore": {
       "status": "not_deployed",
       "command": "See deploy/cloudrun/README.md",
-      "truth_label": "NOT DEPLOYED — AUTHORIZED PROJECT, GCLOUD, DEPLOYMENT, AND CAPTURED SMOKE REQUIRED"
+      "truth_label": "NOT DEPLOYED — AUTHORIZED PROJECT, GCLOUD, DEPLOYMENT, AND CAPTURED SMOKE REQUIRED",
+      "firestore_emulator": "VERIFIED_LOCAL — official emulator/client production create/approve/readiness/claim/heartbeat/completion plus sharded materialization/reconcile; 3 passed",
+      "unsupported_scheduler_store_mutations": [
+        "register_worker",
+        "revoke_worker",
+        "expire_leases",
+        "enter_awaiting_result",
+        "claim_task",
+        "heartbeat",
+        "complete_attempt",
+        "pause",
+        "resume",
+        "cancel"
+      ]
     }
   },
   "legacy_protocol_tour": {
@@ -96,8 +111,9 @@
     ]
   },
   "mission_capture_boundary": {
-    "authority": "Versioned mission contracts, validated immutable plan revision, append-only hash-chained events, and indexed materialized store state.",
+    "authority": "Immutable initial mission contracts, append-only hash-chained events, every content-addressed canonical record bound by those events, and verified indexed materialized state.",
     "browser_authority": "Authenticated read-only public projection; operator changes use the idempotent CLI/store path.",
+    "working_tree_command_plane": "An optional browser command adapter delegates to the canonical store behind a distinct command token, exact Origin, CSRF session, typed confirmation, idempotency ID, expected head, and operator attribution. Backend and frontend contract tests pass; replay and the packaged cloud viewer disable it, and a live end-to-end operator capture remains pending.",
     "public": [
       "bounded task, dependency, worker, gate, policy, state, and blocker labels",
       "template and artifact identifiers plus SHA-256 digests",
@@ -112,18 +128,69 @@
       "activity outside Graphene-owned workers and explicit evidence adapters",
       "arbitrary user processes or remote CPU and RAM",
       "push, pull request, deployment, or user-branch mutation",
-      "live Gemini, Docker, Cloud Run, or Firestore behavior without captured smoke evidence"
+      "live Gemini, Docker, Cloud Run, or real Firestore behavior without captured smoke evidence"
     ]
   },
   "mission_control_limits": {
     "legacy_v2_adapter": "reserved; current mission-plan validation rejects legacy_auth_v2",
-    "replan": "records an operator request and pauses dispatch; no linked replacement revision is generated",
+    "replan": "request-replan records an operator request and pauses dispatch; no linked replacement revision is generated by the CLI/model path, although the lower-level store validates, links, diffs, and invalidates an explicitly supplied revision N+1",
     "retention": "policy metadata is durable; automatic expiry and purge are not implemented",
     "cloud_streaming": "per-client two-second Firestore polling; no shared listener or fan-out; NOT PROVEN"
+  },
+  "working_tree_integrity": {
+    "status": "targeted_local_matrix_verified_repository_wide_suite_pending",
+    "sqlite": "The v2 store persists immutable canonical record bytes and verifies a schema-ledger digest before use.",
+    "recovery": "Recovered dispatches are selected from a bounded explicit worker-owner set and attempt/lease ownership must agree.",
+    "workspace_audit": "The generic ADK WorkerRuntime uses a bounded Git workspace auditor to independently measure base/admin identity, path and mode changes, and a content-addressed patch before publication; the separate scripted fixture does not inherit this claim.",
+    "tree_hash": "graphene.tree.v2 length-prefixes count, path, mode/type, and content; the exact former NUL encoding collision and an independent reference encoder are covered locally.",
+    "trusted_checks": "Only check.completed from the check-runner authority can bind deterministic success to the exact attempt/fence, plan/policy, inputs, template, candidate tree, and result.",
+    "task_input": "A gate-scoped needs_input task resumes only after 1–4096 private UTF-8 bytes are stored and their exact artifact reference is committed through graphene task input. The browser seam is tested but hidden in one-command live mode because staged-input cleanup is not wired.",
+    "hard_budgets": "Attempt, worker-time, and artifact exhaustion commit blocked_budget, pause dispatch, and name replan_or_cancel; ordinary resume does not clear the task blocker.",
+    "component_limits": "Successful publications require ArtifactEnvelopeV2, and the exact pending FinalResultBundleV2 is registered before Mission Control display and bundle-ID-bound approval/rejection. Causal query and sampled resource control have targeted local tests; transitive artifact subsumption and live operator proof remain open."
+  },
+  "terminal_surface": {
+    "plan": "graphene plan GOAL --repo PATH",
+    "plan_lint": "graphene plan lint MISSION_ID",
+    "run": "graphene run MISSION_ID",
+    "status": "graphene status MISSION_ID",
+    "watch": "graphene watch MISSION_ID --snapshot",
+    "why": "graphene why PATH --mission MISSION_ID",
+    "bundle_create": "graphene bundle create MISSION_ID --output NEW-BUNDLE.json",
+    "bundle_verify": "graphene bundle verify BUNDLE.json-or-final_result_ID",
+    "limit": "The pending bundle is prepared before the decision; display, approval, rejection, recovery, create-only export, and verification bind its exact ID."
+  },
+  "delivery_gates": {
+    "credential_free_core": {
+      "status": "targeted_matrix_verified_full_suite_pending",
+      "truth": "Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the official Firestore emulator production vertical are credential-free verified. The repository-wide final release suite remains pending."
+    },
+    "live_gemini": {
+      "status": "not_proven",
+      "truth": "A real Gemini planner/worker claim requires explicit credentials, returned provider receipts, two distinct workers, measured overlap, exact fan-in, and exact-candidate completion."
+    },
+    "live_cloud": {
+      "status": "not_deployed",
+      "truth": "Cloud Run/real Firestore requires an explicitly authorized project and captured authenticated smoke; packaging, unit tests, and the verified official emulator are not deployment proof."
+    }
+  },
+  "graph_economics": {
+    "status": "not_proven",
+    "truth": "The equal-quality-gate, three-mode, non-overwriting harness has a credential-free unit test. No real repeated run, token/cost/latency result, median, or P95 is claimed."
+  },
+  "product_media": {
+    "status": "not_proven_capture_pending",
+    "logo": "docs/assets/Graphene_main_img.png",
+    "required": [
+      "docs/assets/mission-control-hero.png",
+      "docs/assets/mission-control-replay.gif",
+      "docs/assets/demo-capture.json"
+    ],
+    "blocker": "docs/assets/demo-capture.json records the verified replay source/checkpoint, but no reproducible screenshot, GIF, or four-minute submission video has completed. No product media or video proof is claimed."
   },
   "authority": {
     "mission": [
       "backend/graphene/orchestration",
+      "backend/graphene/cli/main.py",
       "backend/graphene/cli/mission.py",
       "demo/taskmaster",
       "contracts/product_proof.json"
@@ -142,14 +209,16 @@
     ]
   },
   "deferred": [
-    "linked revision generation after a recorded replanning request and a browser command plane",
+    "truthful Mission Control screenshot/GIF capture and output digests",
+    "operator-complete revision generation/review/reapproval after a recorded replanning request and live browser command-plane operator proof",
+    "transitive delta/cumulative artifact subsumption and end-to-end delete/rename/mode mutation semantics",
     "automatic retention expiry and purge",
-    "full ADK/Gemini model-worker mission execution",
-    "arbitrary-repository code execution",
+    "credentialed live ADK/Gemini model-worker mission proof",
+    "published arbitrary-repository support and live execution matrix",
     "owned idle STDIO MCP lifecycle cleanup",
-    "authenticated cloud-to-local executor claim/heartbeat/result protocol",
+    "live authenticated cloud-to-local claim/heartbeat/result/reconnect proof and full Firestore SchedulerStore mutation parity",
     "shared Firestore listener and cloud stream fan-out",
-    "live Google Cloud deployment and submission video",
+    "live Google Cloud deployment, measured graph benchmark, and submission video",
     "five-person Mission Control comprehension study"
   ]
 }

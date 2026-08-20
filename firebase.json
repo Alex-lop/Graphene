@@ -1,0 +1,15 @@
+{
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "singleProjectMode": true,
+    "ui": {
+      "enabled": false
+    }
+  },
+  "firestore": {
+    "rules": "firebase/firestore.rules"
+  }
+}

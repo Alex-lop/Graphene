@@ -72,6 +72,7 @@ export function hasPromotionBindings(run, memory) {
     candidate?.base_commit_sha &&
     candidate?.candidate_patch_sha256 &&
     candidate?.candidate_tree_sha256 &&
+    candidate?.candidate_tree_hash_version === "graphene.tree.v2" &&
     testReceipt?.receipt_sha256 &&
     run.context_packet_id &&
     run.context_packet_sha256 &&
@@ -90,6 +91,7 @@ export function promotionPayload(run, memory, idempotencyKey) {
     base_commit_sha: run.candidate.base_commit_sha,
     candidate_patch_sha256: run.candidate.candidate_patch_sha256,
     candidate_tree_sha256: run.candidate.candidate_tree_sha256,
+    candidate_tree_hash_version: run.candidate.candidate_tree_hash_version,
     memory_id: memory.memory_id,
     memory_revision: memory.revision,
     context_packet_id: run.context_packet_id,

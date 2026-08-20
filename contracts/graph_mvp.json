@@ -114,6 +114,7 @@
       "base_commit_sha",
       "candidate_patch_sha256",
       "candidate_tree_sha256",
+      "candidate_tree_hash_version",
       "changed_file_count",
       "changed_paths",
       "lifecycle_state"
@@ -205,6 +206,7 @@
       "base_commit_sha",
       "candidate_patch_sha256",
       "candidate_tree_sha256",
+      "candidate_tree_hash_version",
       "memory_id",
       "memory_revision",
       "context_packet_id",
@@ -234,6 +236,7 @@
       "base_commit_sha",
       "candidate_patch_sha256",
       "candidate_tree_sha256",
+      "candidate_tree_hash_version",
       "memory_id",
       "memory_revision",
       "context_packet_id",

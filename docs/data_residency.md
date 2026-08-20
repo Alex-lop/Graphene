@@ -1,5 +1,7 @@
 # Data residency and privacy boundary
 
+> **Superseded for Taskmaster guidance.** This matrix preserves the legacy Auth lineage/artifact boundary. Use [Security and sovereignty](SECURITY_AND_SOVEREIGNTY.md) for current Taskmaster privacy and evidence rules.
+
 Status: implemented v2 local boundary and metadata-only Firestore adapter, 2026-08-13.
 
 “Public event” means evidence that Graphene may print through `watch`, `replay`, or

@@ -1,5 +1,7 @@
 # Fixed-test executor threat model
 
+> **Superseded for Taskmaster guidance.** This document preserves the legacy Auth fixture's macOS fixed-test boundary. Use [Security and sovereignty](SECURITY_AND_SOVEREIGNTY.md) for the current Taskmaster boundary.
+
 Status: local macOS component and CI boundary, 2026-08-13.
 
 The supported input is Graphene's frozen, sanitized Auth fixture and its fixed `python -m pytest -q -p no:cacheprovider` command. Arbitrary repositories, arbitrary commands, package installation, and network access are not supported.

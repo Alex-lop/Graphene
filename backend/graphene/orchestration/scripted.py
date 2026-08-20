@@ -9,17 +9,20 @@ import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
+from ..artifact_envelope import ArtifactEnvelopeV2, DirectArtifactInputV2
 from ..execution import ExecutionError, TestRun, run_fixture_tests
 from ..hashing import (
+    TREE_HASH_VERSION,
     canonical_json_bytes,
     canonical_json_sha256,
     candidate_tree_sha256,
@@ -31,19 +34,24 @@ from ..models import (
     FrozenModel,
     Identifier,
     RepoPath,
+    Sha256,
     TruthKind,
 )
 from .evidence import (
     AttemptEvidenceAuthority,
+    AttemptEvidenceConflict,
     AttemptEvidenceEventType,
     AttemptEvidenceInput,
     SQLiteAttemptEvidenceStore,
+    TrustedCheckReceipt,
 )
+from .local_result import prepare_local_final_result_bundle
 from .models import (
+    ArtifactEnvelopeReferenceV2,
     ArtifactVisibility,
-    AttemptState,
     AttemptResult,
     CommandTemplate,
+    Criterion,
     Dispatch,
     EvidenceReference,
     GenericEvidenceLink,
@@ -52,12 +60,14 @@ from .models import (
     NetworkPolicy,
     Plan,
     ProjectPolicy,
+    PublishedArtifactReferenceV2,
     PublicationDraft,
     PublicationState,
     ResourceBudget,
     RetentionPolicy,
     Task,
     TaskKind,
+    artifact_input_reference_key,
 )
 from .process_control import (
     ControlledProcessRunner,
@@ -66,7 +76,7 @@ from .process_control import (
     ProcessControlError,
 )
 from .scheduler import MissionScheduler, SystemClock
-from .store import SQLiteMissionStore
+from .store import LeaseConflict, MissionConflict, SQLiteMissionStore, StaleWorker
 from .validation import PlanValidationResult, require_valid_plan, validate_plan
 
 
@@ -86,6 +96,7 @@ _MAX_FIXTURE_FILES = 128
 _MAX_FIXTURE_BYTES = 1_048_576
 _MAX_FIXTURE_TOTAL_BYTES = 2_097_152
 _MAX_FIXTURE_NODES = 512
+_WORKER_TIMEOUT_GRACE_SECONDS = 2
 
 
 def _wall_duration_bucket(seconds: float) -> str:
@@ -104,6 +115,26 @@ class ScriptedError(RuntimeError):
 
 class ScriptedUnavailable(ScriptedError):
     pass
+
+
+class _PatchManifestEntry(FrozenModel):
+    path: RepoPath
+    hunk_count: int = Field(ge=0)
+    patch_sha256: Sha256
+
+
+class _PatchManifest(FrozenModel):
+    changed_paths: tuple[RepoPath, ...] = Field(min_length=1, max_length=64)
+    entries: tuple[_PatchManifestEntry, ...] = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def paths_agree(self) -> _PatchManifest:
+        if (
+            self.changed_paths != tuple(sorted(set(self.changed_paths)))
+            or tuple(item.path for item in self.entries) != self.changed_paths
+        ):
+            raise ValueError("patch manifest paths must be sorted, unique, and exact")
+        return self
 
 
 class _ScenarioPolicy(FrozenModel):
@@ -125,6 +156,7 @@ class ScriptedScenario(FrozenModel):
     repository: RepoPath
     goal: BoundedText
     success_criteria: tuple[BoundedText, ...]
+    criteria: tuple[Criterion, ...]
     policy: _ScenarioPolicy
     tasks: tuple[Task, ...]
     source_path: Path = Field(exclude=True)
@@ -133,6 +165,8 @@ class ScriptedScenario(FrozenModel):
     def canonical_fixture(self) -> ScriptedScenario:
         if self.success_criteria != tuple(sorted(set(self.success_criteria))):
             raise ValueError("scenario criteria must be sorted and unique")
+        if tuple(sorted(item.description for item in self.criteria)) != self.success_criteria:
+            raise ValueError("scenario criterion contracts do not match success criteria")
         ids = tuple(task.task_id for task in self.tasks)
         if ids != tuple(sorted(set(ids))):
             raise ValueError("scenario tasks must have sorted unique IDs")
@@ -191,6 +225,7 @@ class ScriptedScenario(FrozenModel):
         plan = Plan(
             mission_id=mission_id,
             revision=1,
+            criteria=self.criteria,
             tasks=self.tasks,
             max_concurrency=self.policy.max_concurrency,
         )
@@ -498,7 +533,9 @@ def _persisted_scenario(
                 0o600,
             )
             with os.fdopen(descriptor, "wb") as stream:
-                stream.write(candidate_tree_sha256(files).encode() + b"\n")
+                stream.write(
+                    f"{TREE_HASH_VERSION} {candidate_tree_sha256(files)}\n".encode()
+                )
                 stream.flush()
                 os.fsync(stream.fileno())
             directories = [Path(current) for current, _, _ in os.walk(staging)]
@@ -548,7 +585,12 @@ def _persisted_scenario(
         or not digest_path.is_file()
     ):
         raise ScriptedError("scripted fixture snapshot is unsafe")
-    expected = digest_path.read_text(encoding="ascii").strip()
+    try:
+        version, expected = digest_path.read_text(encoding="ascii").split()
+    except ValueError as error:
+        raise ScriptedError("scripted fixture tree hash metadata is invalid") from error
+    if version != TREE_HASH_VERSION:
+        raise ScriptedError("scripted fixture tree hash version is unsupported")
     inventory = _inventory(fixture)
     inventory.pop(".graphene-fixture.sha256", None)
     if candidate_tree_sha256(inventory) != expected:
@@ -666,7 +708,7 @@ class ScriptedWorker:
         self,
         workspace: Path,
         task: Task,
-        accepted_inputs: Mapping[str, EvidenceReference],
+        accepted_inputs: Mapping[str, PublishedArtifactReferenceV2],
     ) -> None:
         expected = {item.producer_task_id for item in task.inputs}
         if set(accepted_inputs) != expected:
@@ -675,7 +717,7 @@ class ScriptedWorker:
             reference = accepted_inputs[producer]
             if reference.kind != "patch":
                 raise ScriptedError("task input is not an accepted patch")
-            patch = self.evidence.resolve(reference.kind, reference.id)
+            patch = self.evidence.resolve_enveloped(reference)
             if patch is None or sha256_hex(patch) != reference.sha256:
                 raise ScriptedError("accepted task input is unavailable")
             _git(workspace, "apply", "--whitespace=nowarn", "-", input_bytes=patch)
@@ -714,13 +756,128 @@ class ScriptedWorker:
             max_write_bytes=262_144,
             max_patch_bytes=1_048_576,
             tree_sha256=candidate_tree_sha256(files),
-            tree_hash_algorithm="sha256(path + NUL + bytes + NUL for sorted paths)",
+            tree_hash_version="graphene.tree.v2",
+            tree_hash_algorithm="sha256(graphene.tree.v2 length-prefixed manifest)",
         )
 
+    @staticmethod
+    def _direct_inputs(dispatch: Dispatch) -> tuple[DirectArtifactInputV2, ...]:
+        values = []
+        for reference in dispatch.input_publications:
+            if isinstance(reference, PublishedArtifactReferenceV2):
+                values.append(
+                    DirectArtifactInputV2(
+                        publication_id=reference.publication_id,
+                        producer_task_id=reference.producer_task_id,
+                        output_name=reference.output_name,
+                        artifact_envelope_sha256=reference.artifact_envelope_sha256,
+                    )
+                )
+            elif reference.kind != "operator-input":
+                raise ScriptedError("legacy publication input has no V2 envelope")
+        return tuple(
+            sorted(
+                values,
+                key=lambda item: (
+                    item.producer_task_id,
+                    item.output_name,
+                    item.publication_id,
+                    item.artifact_envelope_sha256,
+                ),
+            )
+        )
+
+    @staticmethod
+    def _media_type(kind: str) -> str:
+        return {
+            "patch": "application/vnd.graphene.git-patch",
+            "test-receipt": "application/vnd.graphene.check-receipt+json",
+        }.get(kind, "application/octet-stream")
+
+    def _store_enveloped_artifact(
+        self,
+        dispatch: Dispatch,
+        *,
+        output_name: str,
+        kind: str,
+        content: bytes,
+        tree_sha256: str | None,
+        mutation_manifest_sha256: str | None = None,
+    ) -> tuple[EvidenceReference, ArtifactEnvelopeReferenceV2]:
+        if self.store is None:
+            raise ScriptedError("artifact envelope requires bound mission state")
+        snapshot = self.store.snapshot(dispatch.mission_id)
+        if (
+            snapshot.plan.revision != dispatch.plan_revision
+            or canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+            != dispatch.plan_sha256
+            or snapshot.policy.base_sha != self.base_sha
+        ):
+            raise ScriptedError("artifact envelope authority changed")
+        envelope = ArtifactEnvelopeV2.create(
+            content,
+            mission_id=dispatch.mission_id,
+            plan_revision=dispatch.plan_revision,
+            plan_sha256=dispatch.plan_sha256,
+            task_id=dispatch.task_id,
+            attempt_id=dispatch.attempt_id,
+            fencing_token=dispatch.fencing_token,
+            policy_sha256=snapshot.policy.policy_sha256,
+            base_git_commit=self.base_sha,
+            direct_inputs=self._direct_inputs(dispatch),
+            output_name=output_name,
+            artifact_kind=kind,
+            media_type=self._media_type(kind),
+            mutation_manifest_sha256=mutation_manifest_sha256,
+            tree_hash_version=None if tree_sha256 is None else TREE_HASH_VERSION,
+            tree_sha256=tree_sha256,
+            created_by="trusted-worker-wrapper",
+        )
+        return self.evidence.put_artifact_envelope(envelope, content)
+
+    def _recover_enveloped_artifact(
+        self,
+        dispatch: Dispatch,
+        *,
+        output_name: str,
+        kind: str,
+        artifact: EvidenceReference,
+    ) -> ArtifactEnvelopeReferenceV2:
+        if self.store is None:
+            raise ScriptedError("artifact recovery requires bound mission state")
+        snapshot = self.store.snapshot(dispatch.mission_id)
+        recovered = self.evidence.find_enveloped(
+            artifact.id,
+            expected={
+                "schema_version": 2,
+                "domain": "graphene.artifact.v2",
+                "mission_id": dispatch.mission_id,
+                "plan_revision": dispatch.plan_revision,
+                "plan_sha256": dispatch.plan_sha256,
+                "task_id": dispatch.task_id,
+                "attempt_id": dispatch.attempt_id,
+                "fencing_token": dispatch.fencing_token,
+                "policy_sha256": snapshot.policy.policy_sha256,
+                "base_git_commit": self.base_sha,
+                "direct_inputs": self._direct_inputs(dispatch),
+                "output_name": output_name,
+                "artifact_kind": kind,
+                "media_type": self._media_type(kind),
+                "created_by": "trusted-worker-wrapper",
+            },
+        )
+        if recovered is None or recovered.content_sha256 != artifact.sha256:
+            raise ScriptedError("scripted artifact envelope is unavailable")
+        return recovered
+
     def _patch(
-        self, workspace: Path, paths: tuple[str, ...] | None = None
+        self,
+        workspace: Path,
+        paths: tuple[str, ...] | None = None,
+        *,
+        require_exact: bool = True,
     ) -> tuple[bytes, tuple[str, ...]]:
-        arguments = paths or tuple(_inventory(workspace))
+        arguments = tuple(_inventory(workspace)) if paths is None else paths
         _git(workspace, "add", "--all", "--", *arguments)
         changed = tuple(
             item.decode()
@@ -736,7 +893,7 @@ class ScriptedWorker:
             ).split(b"\0")
             if item
         )
-        if paths is not None and changed != tuple(sorted(paths)):
+        if paths is not None and require_exact and changed != tuple(sorted(paths)):
             raise ScriptedError("scripted patch does not match its write lease")
         return (
             _git(
@@ -783,6 +940,33 @@ class ScriptedWorker:
             ),
         )
 
+    def _publication_paths(
+        self,
+        task: Task,
+        references: tuple[EvidenceReference, ...],
+    ) -> tuple[str, ...]:
+        output = task.expected_outputs[0]
+        if task.kind not in {TaskKind.WORK, TaskKind.ASSEMBLY}:
+            return output.paths
+        manifests = tuple(
+            item for item in references if item.kind == "changed-path-hunk-manifest"
+        )
+        if len(manifests) != 1:
+            raise ScriptedError("scripted publication has no exact path manifest")
+        reference = manifests[0]
+        raw = self.evidence.resolve(reference.kind, reference.id)
+        if raw is None or sha256_hex(raw) != reference.sha256:
+            raise ScriptedError("scripted publication path manifest is unavailable")
+        try:
+            manifest = _PatchManifest.model_validate_json(raw)
+        except ValidationError as error:
+            raise ScriptedError("scripted publication path manifest is invalid") from error
+        if canonical_json_bytes(manifest.model_dump(mode="json")) != raw:
+            raise ScriptedError("scripted publication path manifest is not canonical")
+        if manifest.changed_paths != output.paths:
+            raise ScriptedError("scripted publication paths exceed its write lease")
+        return manifest.changed_paths
+
     def _command_template_receipt(self, task: Task) -> EvidenceReference:
         template = next(
             item
@@ -804,7 +988,7 @@ class ScriptedWorker:
     def _context_manifest(
         self,
         dispatch: Dispatch,
-        accepted_inputs: Mapping[str, EvidenceReference],
+        accepted_inputs: Mapping[str, PublishedArtifactReferenceV2],
     ) -> EvidenceReference:
         if self.store is None:
             raise ScriptedError("scripted worker is not bound to mission state")
@@ -857,33 +1041,44 @@ class ScriptedWorker:
     ) -> str:
         evidence_id = self._evidence_id(dispatch)
         head = self.evidence.head(evidence_id)
-        self.evidence.append(
-            evidence_id,
-            head,
-            "scripted_"
-            + canonical_json_sha256(
-                {
-                    "attempt_id": dispatch.attempt_id,
-                    "event_type": event_type,
-                    "seq": head.seq + 1,
-                }
-            )[:24],
-            AttemptEvidenceInput(
+        command_id = "scripted_" + canonical_json_sha256(
+            {
+                "attempt_id": dispatch.attempt_id,
+                "event_type": event_type,
+                "seq": head.seq + 1,
+            }
+        )[:24]
+        if event_type == AttemptEvidenceEventType.CHECK_COMPLETED:
+            if len(references) != 1:
+                raise ScriptedError("trusted check requires one receipt")
+            self.evidence.append_check(
+                evidence_id,
+                head,
+                command_id,
                 mission_id=dispatch.mission_id,
                 task_id=dispatch.task_id,
                 attempt_id=dispatch.attempt_id,
-                event_type=event_type,
-                truth_kind=TruthKind.RUNTIME_OBSERVED,
-                authority=(
-                    AttemptEvidenceAuthority.CHECK_RUNNER
-                    if event_type == AttemptEvidenceEventType.CHECK_COMPLETED
-                    else AttemptEvidenceAuthority.SCRIPTED_WORKER
-                ),
-                references=references,
+                receipt=references[0],
                 payload=payload,
-            ),
-            recorded_at=self.clock(),
-        )
+                recorded_at=self.clock(),
+            )
+        else:
+            self.evidence.append(
+                evidence_id,
+                head,
+                command_id,
+                AttemptEvidenceInput(
+                    mission_id=dispatch.mission_id,
+                    task_id=dispatch.task_id,
+                    attempt_id=dispatch.attempt_id,
+                    event_type=event_type,
+                    truth_kind=TruthKind.RUNTIME_OBSERVED,
+                    authority=AttemptEvidenceAuthority.SCRIPTED_WORKER,
+                    references=references,
+                    payload=payload,
+                ),
+                recorded_at=self.clock(),
+            )
         return evidence_id
 
     def _recover_result(self, dispatch: Dispatch, task: Task) -> AttemptResult | None:
@@ -953,18 +1148,45 @@ class ScriptedWorker:
             raise ScriptedError("scripted terminal evidence result is invalid")
         references = terminal.references
         publications: tuple[PublicationDraft, ...] = ()
+        output = task.expected_outputs[0]
+        artifacts = tuple(item for item in references if item.kind == output.kind)
+        enveloped_references = tuple(
+            item
+            for item in references
+            if item.kind in {output.kind, "test-receipt"}
+        )
+        artifact_envelopes = tuple(
+            sorted(
+                (
+                    self._recover_enveloped_artifact(
+                        dispatch,
+                        output_name=output.name,
+                        kind=item.kind,
+                        artifact=item,
+                    )
+                    for item in enveloped_references
+                ),
+                key=lambda item: item.artifact_envelope_sha256,
+            )
+        )
+        publication_envelopes = tuple(
+            item for item in artifact_envelopes if item.kind == output.kind
+        )
         if succeeded:
-            output = task.expected_outputs[0]
-            artifacts = tuple(item for item in references if item.kind == output.kind)
-            if len(task.expected_outputs) != 1 or len(artifacts) != 1:
+            if (
+                len(task.expected_outputs) != 1
+                or len(artifacts) != 1
+                or len(publication_envelopes) != 1
+            ):
                 raise ScriptedError("scripted terminal publication is ambiguous")
             publications = (
                 PublicationDraft(
                     output_name=output.name,
                     kind=output.kind,
                     sha256=artifacts[0].sha256,
+                    artifact=publication_envelopes[0],
                     visibility=ArtifactVisibility.MISSION,
-                    paths=output.paths,
+                    paths=self._publication_paths(task, references),
                 ),
             )
         check_events = tuple(
@@ -972,8 +1194,22 @@ class ScriptedWorker:
             for event in events
             if event.event_type == AttemptEvidenceEventType.CHECK_COMPLETED
         )
-        if result_code == "worker_interrupted":
+        if result_code in {
+            "heartbeat_lost",
+            "lease_lost",
+            "process_killed",
+            "worker_exception",
+            "worker_interrupted",
+            "worker_timeout",
+        }:
             retryable = True
+        elif result_code in {
+            "malformed_output",
+            "operator_cancelled",
+            "policy_denied",
+            "store_conflict",
+        }:
+            retryable = False
         elif (
             len(check_events) == 1
             and type(check_events[0].payload.get("timed_out")) is bool
@@ -987,15 +1223,121 @@ class ScriptedWorker:
             result_code=result_code,
             evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
             evidence_refs=references,
+            artifact_envelopes=artifact_envelopes,
             publications=publications,
         )
+
+    def terminal_failure(
+        self, dispatch: Dispatch, error: Exception
+    ) -> AttemptResult:
+        """Seal an adapter failure so mission state can release this exact lease."""
+
+        result_code, retryable = self._failure_code(dispatch, error)
+        evidence_id = self._evidence_id(dispatch)
+        try:
+            owned = tuple(
+                item
+                for item in self._process_registry.records_for_mission(
+                    dispatch.mission_id
+                )
+                if item.attempt_id == dispatch.attempt_id
+            )
+            for item in owned:
+                self._process_registry.terminate_owned(item)
+        except ProcessControlError:
+            result_code, retryable = "process_killed", True
+
+        # A timed-out thread may race this adapter while unwinding. Bounded CAS
+        # retries let the durable terminal event decide which result won.
+        for _ in range(3):
+            head = self.evidence.head(evidence_id)
+            if head.seq == 0:
+                try:
+                    self._record(
+                        dispatch,
+                        AttemptEvidenceEventType.ATTEMPT_STARTED,
+                        {
+                            "attempt_number": dispatch.attempt_number,
+                            "worker_id": dispatch.worker_id,
+                        },
+                    )
+                except AttemptEvidenceConflict:
+                    continue
+                head = self.evidence.head(evidence_id)
+            events = self.evidence.tail(evidence_id, 0, head.seq)
+            if events and events[-1].event_type in {
+                AttemptEvidenceEventType.ATTEMPT_COMPLETED,
+                AttemptEvidenceEventType.ATTEMPT_FAILED,
+            }:
+                task = next(
+                    item
+                    for item in self.store.snapshot(dispatch.mission_id).tasks
+                    if item.task_id == dispatch.task_id
+                )
+                recovered = self._recover_result(dispatch, task)
+                assert recovered is not None
+                return recovered
+            references = tuple(
+                sorted(
+                    {
+                        (item.kind, item.id, item.sha256): item
+                        for event in events
+                        for item in event.references
+                    }.values(),
+                    key=lambda item: (item.kind, item.id, item.sha256),
+                )
+            )
+            try:
+                self._record(
+                    dispatch,
+                    AttemptEvidenceEventType.ATTEMPT_FAILED,
+                    {"result_code": result_code},
+                    references=references,
+                )
+            except AttemptEvidenceConflict:
+                continue
+            return AttemptResult(
+                succeeded=False,
+                retryable=retryable,
+                result_code=result_code,
+                evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
+                evidence_refs=references,
+            )
+        raise ScriptedError("scripted worker failure could not be sealed") from error
+
+    def _failure_code(
+        self, dispatch: Dispatch, error: Exception
+    ) -> tuple[str, bool]:
+        if isinstance(error, ProcessCancelled):
+            if (
+                self.store is not None
+                and self.store.snapshot(dispatch.mission_id).mission.status
+                == MissionStatus.CANCELLED
+            ):
+                return "operator_cancelled", False
+            return "process_killed", True
+        if isinstance(
+            error, (FuturesTimeoutError, TimeoutError, subprocess.TimeoutExpired)
+        ):
+            return "worker_timeout", True
+        if isinstance(error, StaleWorker):
+            return "lease_lost", True
+        if isinstance(error, LeaseConflict):
+            return "heartbeat_lost", True
+        if isinstance(error, MissionConflict):
+            return "store_conflict", False
+        if isinstance(error, ValidationError):
+            return "malformed_output", False
+        if isinstance(error, (ExecutionError, ScriptedUnavailable)):
+            return "policy_denied", False
+        return "worker_exception", True
 
     def run(
         self,
         dispatch: Dispatch,
         task: Task,
         *,
-        accepted_inputs: Mapping[str, EvidenceReference] | None = None,
+        accepted_inputs: Mapping[str, PublishedArtifactReferenceV2] | None = None,
     ) -> ScriptedOutcome:
         started = time.monotonic()
         if (
@@ -1025,6 +1367,7 @@ class ScriptedWorker:
             references=(command_reference,),
         )
         artifact: EvidenceReference | None = None
+        artifact_envelope: ArtifactEnvelopeReferenceV2 | None = None
         manifest_reference: EvidenceReference | None = None
         context_reference: EvidenceReference | None = None
         try:
@@ -1036,10 +1379,21 @@ class ScriptedWorker:
                 self._write_attempt(workspace, task, dispatch.attempt_number)
                 patch, changed_paths = self._patch(workspace, task.write_paths)
             elif task.kind == TaskKind.ASSEMBLY:
-                patch, changed_paths = self._patch(workspace)
+                patch, changed_paths = self._patch(
+                    workspace, task.write_paths, require_exact=False
+                )
             if patch is not None:
-                artifact = self.evidence.put_artifact("patch", patch)
                 manifest_reference = self._patch_manifest(workspace, changed_paths)
+            candidate_tree = candidate_tree_sha256(_inventory(workspace))
+            if patch is not None:
+                artifact, artifact_envelope = self._store_enveloped_artifact(
+                    dispatch,
+                    output_name=task.expected_outputs[0].name,
+                    kind="patch",
+                    content=patch,
+                    tree_sha256=candidate_tree,
+                    mutation_manifest_sha256=manifest_reference.sha256,
+                )
             if self.check_runner is run_fixture_tests:
                 if self.store is None:
                     raise ScriptedError("scripted worker is not bound to mission state")
@@ -1059,6 +1413,8 @@ class ScriptedWorker:
                 )
             else:
                 check = self.check_runner(workspace, self._fixture_policy(workspace))
+            if candidate_tree_sha256(_inventory(workspace)) != candidate_tree:
+                raise ScriptedError("check runner changed the tested candidate")
         except Exception as error:
             self._record(
                 dispatch,
@@ -1075,38 +1431,70 @@ class ScriptedWorker:
                     "scripted fixture sandbox rejected execution"
                 ) from error
             raise
-        check_record = canonical_json_bytes(
-            {
-                "accepted_input_sha256": [
-                    reference.sha256 for reference in dispatch.input_publications
-                ],
-                "candidate_patch_sha256": (
-                    bound_inputs[task.inputs[0].producer_task_id].sha256
-                    if task.kind == TaskKind.VERIFICATION and len(task.inputs) == 1
-                    else None
-                ),
-                "duration_bucket": check.duration_bucket,
-                "exit_code": check.exit_code,
-                "output_sha256": sha256_hex(check.output.encode()),
-                "output_truncated": check.output_truncated,
-                "template_id": _CHECK_TEMPLATE,
-                "timed_out": check.timed_out,
-            }
+        if self.store is None:
+            raise ScriptedError("trusted check requires bound mission state")
+        snapshot = self.store.snapshot(dispatch.mission_id)
+        passed = (
+            check.exit_code == 0
+            and not check.timed_out
+            and not check.output_truncated
         )
-        check_reference = self.evidence.put_artifact("test-receipt", check_record)
+        candidate_references = (
+            tuple(bound_inputs.values())
+            if task.kind == TaskKind.VERIFICATION
+            else (() if artifact_envelope is None else (artifact_envelope,))
+        )
+        check_result_code = (
+            "passed"
+            if passed
+            else "worker_timeout"
+            if check.timed_out
+            else "acceptance_check_failed"
+        )
+        check_receipt = TrustedCheckReceipt(
+            schema_version=2,
+            mission_id=dispatch.mission_id,
+            task_id=dispatch.task_id,
+            attempt_id=dispatch.attempt_id,
+            plan_revision=dispatch.plan_revision,
+            fencing_token=dispatch.fencing_token,
+            policy_sha256=snapshot.policy.policy_sha256,
+            base_sha=self.base_sha,
+            runner_id="graphene_check_runner_v1",
+            template_id=_CHECK_TEMPLATE,
+            template_sha256=canonical_json_sha256(
+                self.scenario.policy.command_templates[0].model_dump(mode="json")
+            ),
+            accepted_input_references=tuple(
+                sorted(
+                    dispatch.input_publications,
+                    key=artifact_input_reference_key,
+                )
+            ),
+            candidate_references=candidate_references,
+            candidate_tree_hash_version=TREE_HASH_VERSION,
+            candidate_tree_sha256=candidate_tree,
+            result_code=check_result_code,
+            exit_code=check.exit_code,
+            timed_out=check.timed_out,
+            output_sha256=sha256_hex(check.output.encode()),
+            output_truncated=check.output_truncated,
+            cleanup_complete=True,
+        )
+        check_record = canonical_json_bytes(check_receipt.model_dump(mode="json"))
+        check_reference, check_envelope = self._store_enveloped_artifact(
+            dispatch,
+            output_name=task.expected_outputs[0].name,
+            kind="test-receipt",
+            content=check_record,
+            tree_sha256=candidate_tree,
+        )
         self._record(
             dispatch,
             AttemptEvidenceEventType.CHECK_COMPLETED,
-            {
-                "duration_bucket": check.duration_bucket,
-                "exit_code": check.exit_code,
-                "passed": check.exit_code == 0 and not check.timed_out,
-                "template_id": _CHECK_TEMPLATE,
-                "timed_out": check.timed_out,
-            },
+            check_receipt.event_payload(check_reference.sha256),
             references=(check_reference,),
         )
-        passed = check.exit_code == 0 and not check.timed_out
         ended = time.monotonic()
         resource_reference = self.evidence.put_artifact(
             "resource-receipt",
@@ -1125,24 +1513,28 @@ class ScriptedWorker:
         if passed:
             if task.kind in {TaskKind.WORK, TaskKind.ASSEMBLY}:
                 assert artifact is not None
+                assert artifact_envelope is not None
                 output = task.expected_outputs[0]
                 publications = (
                     PublicationDraft(
                         output_name=output.name,
                         kind=output.kind,
                         sha256=artifact.sha256,
+                        artifact=artifact_envelope,
                         visibility=ArtifactVisibility.MISSION,
-                        paths=output.paths,
+                        paths=changed_paths,
                     ),
                 )
             else:
                 artifact = check_reference
+                artifact_envelope = check_envelope
                 output = task.expected_outputs[0]
                 publications = (
                     PublicationDraft(
                         output_name=output.name,
                         kind=output.kind,
                         sha256=artifact.sha256,
+                        artifact=artifact_envelope,
                         visibility=ArtifactVisibility.MISSION,
                         paths=output.paths,
                     ),
@@ -1173,7 +1565,7 @@ class ScriptedWorker:
             ),
             {
                 "operation_id": "bounded-fixture-task",
-                "result_code": "passed" if passed else "acceptance_check_failed",
+                "result_code": check_result_code,
             },
             references=references,
         )
@@ -1184,15 +1576,25 @@ class ScriptedWorker:
                 if passed
                 else AttemptEvidenceEventType.ATTEMPT_FAILED
             ),
-            {"result_code": "passed" if passed else "acceptance_check_failed"},
+            {"result_code": check_result_code},
             references=references,
         )
         result = AttemptResult(
             succeeded=passed,
-            retryable=not passed and not check.timed_out,
-            result_code="passed" if passed else "acceptance_check_failed",
+            retryable=not passed,
+            result_code=check_result_code,
             evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
             evidence_refs=references,
+            artifact_envelopes=tuple(
+                sorted(
+                    {
+                        item.artifact_envelope_sha256: item
+                        for item in (artifact_envelope, check_envelope)
+                        if item is not None
+                    }.values(),
+                    key=lambda item: item.artifact_envelope_sha256,
+                )
+            ),
             publications=publications,
         )
         outcome = ScriptedOutcome(
@@ -1209,35 +1611,22 @@ class ScriptedWorker:
 
     def _accepted_inputs(
         self, dispatch: Dispatch, task: Task
-    ) -> dict[str, EvidenceReference]:
-        if self.store is None:
-            raise ScriptedError("scripted worker is not bound to mission state")
-        snapshot = self.store.snapshot(dispatch.mission_id)
-        attempts = {item.attempt_id: item for item in snapshot.attempts}
-        accepted: dict[str, EvidenceReference] = {}
+    ) -> dict[str, PublishedArtifactReferenceV2]:
+        accepted: dict[str, PublishedArtifactReferenceV2] = {}
         for requirement in task.inputs:
             matches = tuple(
                 item
-                for item in snapshot.publications
-                if item.task_id == requirement.producer_task_id
+                for item in dispatch.input_publications
+                if isinstance(item, PublishedArtifactReferenceV2)
+                and item.producer_task_id == requirement.producer_task_id
                 and item.output_name == requirement.name
                 and item.kind == requirement.kind
-                and item.state == PublicationState.ACCEPTED
             )
             if len(matches) != 1:
                 raise ScriptedError("task input is not one accepted publication")
-            publication = matches[0]
-            attempt = attempts.get(publication.attempt_id)
-            if attempt is None or attempt.state != AttemptState.COMMITTED:
-                raise ScriptedError("accepted publication has no committed attempt")
-            references = tuple(
-                item
-                for item in attempt.evidence_refs
-                if item.kind == publication.kind and item.sha256 == publication.sha256
-            )
-            if len(references) != 1:
-                raise ScriptedError("accepted publication has no exact artifact")
-            accepted[requirement.producer_task_id] = references[0]
+            if self.evidence.resolve_enveloped(matches[0]) is None:
+                raise ScriptedError("accepted publication envelope is unavailable")
+            accepted[requirement.producer_task_id] = matches[0]
         return accepted
 
     def execute(self, dispatch: Dispatch) -> AttemptResult:
@@ -1299,7 +1688,6 @@ def scripted_result_artifacts(
     mission_id: str,
 ) -> tuple[EvidenceReference, EvidenceReference]:
     snapshot = store.snapshot(mission_id)
-    attempts = {item.attempt_id: item for item in snapshot.attempts}
 
     def artifact(kind: TaskKind, artifact_kind: str) -> EvidenceReference:
         task_ids = tuple(item.task_id for item in snapshot.tasks if item.kind == kind)
@@ -1315,21 +1703,20 @@ def scripted_result_artifacts(
         if len(publications) != 1:
             raise ScriptedError("scripted result publication is unavailable")
         publication = publications[0]
-        attempt = attempts.get(publication.attempt_id)
-        if attempt is None or attempt.state != AttemptState.COMMITTED:
-            raise ScriptedError("scripted result attempt is unavailable")
-        references = tuple(
-            item
-            for item in attempt.evidence_refs
-            if item.kind == publication.kind and item.sha256 == publication.sha256
-        )
-        if len(references) != 1:
-            raise ScriptedError("scripted result artifact is unavailable")
-        reference = references[0]
-        raw = evidence.resolve(reference.kind, reference.id)
-        if raw is None or sha256_hex(raw) != reference.sha256:
+        try:
+            envelope_reference = publication.published_reference()
+        except ValueError as error:
+            raise ScriptedError(
+                "scripted result artifact has no V2 envelope"
+            ) from error
+        raw = evidence.resolve_enveloped(envelope_reference)
+        if raw is None or sha256_hex(raw) != envelope_reference.content_sha256:
             raise ScriptedError("scripted result artifact failed digest verification")
-        return reference
+        return EvidenceReference(
+            kind=envelope_reference.kind,
+            id=envelope_reference.artifact_id,
+            sha256=envelope_reference.content_sha256,
+        )
 
     return artifact(TaskKind.ASSEMBLY, "patch"), artifact(
         TaskKind.VERIFICATION, "test-receipt"
@@ -1392,6 +1779,72 @@ def propose_scripted_mission(
     )
 
 
+def _execute_scripted_batch(
+    dispatches: tuple[Dispatch, ...],
+    worker: ScriptedWorker,
+    scheduler: MissionScheduler,
+    *,
+    timeout_seconds: float,
+) -> None:
+    """Commit concurrent terminal results independently in completion order."""
+
+    executor = ThreadPoolExecutor(
+        max_workers=len(dispatches), thread_name_prefix="graphene-scripted"
+    )
+    futures = {executor.submit(worker.execute, item): item for item in dispatches}
+    errors: list[Exception] = []
+    processed = set()
+
+    def commit(future, dispatch: Dispatch, *, timed_out: bool = False) -> None:
+        processed.add(future)
+        if timed_out:
+            future.cancel()
+            try:
+                worker.cancel(dispatch)
+            except Exception as error:
+                errors.append(error)
+        try:
+            result = (
+                worker.terminal_failure(
+                    dispatch, FuturesTimeoutError("scripted worker timed out")
+                )
+                if timed_out
+                else AttemptResult.model_validate(future.result())
+            )
+        except Exception as error:
+            try:
+                result = worker.terminal_failure(dispatch, error)
+            except Exception as terminal_error:
+                errors.append(terminal_error)
+                return
+        try:
+            scheduler.complete(dispatch, result)
+        except Exception as error:
+            if result.result_code == "operator_cancelled" and isinstance(
+                error, LeaseConflict
+            ):
+                return
+            errors.append(error)
+
+    try:
+        try:
+            for future in as_completed(futures, timeout=timeout_seconds):
+                commit(future, futures[future])
+        except FuturesTimeoutError:
+            for future, dispatch in sorted(
+                futures.items(), key=lambda item: item[1].task_id
+            ):
+                if future in processed:
+                    continue
+                commit(future, dispatch, timed_out=not future.done())
+    finally:
+        # Python threads cannot be killed safely. Terminal evidence and the
+        # released/fenced lease make any late completion non-authoritative.
+        executor.shutdown(wait=False, cancel_futures=True)
+    if errors:
+        raise errors[0]
+
+
 def execute_scripted_mission(
     *,
     store: SQLiteMissionStore,
@@ -1404,6 +1857,14 @@ def execute_scripted_mission(
         )
     scenario = _persisted_scenario(runtime)
     repository, base_sha = initialize_fixture_repository(scenario, runtime)
+    evidence_path = (runtime / "attempt-evidence.sqlite3").resolve()
+    evidence = store.artifact_resolver
+    if isinstance(evidence, SQLiteAttemptEvidenceStore):
+        if Path(evidence.path).resolve() != evidence_path:
+            raise ScriptedError("mission artifact resolver does not match its runtime")
+    else:
+        evidence = SQLiteAttemptEvidenceStore(evidence_path)
+        store.bind_artifact_resolver(evidence)
     snapshot = store.snapshot(mission_id)
     if snapshot.mission.status != MissionStatus.RUNNING:
         raise ScriptedError("scripted execution requires an approved running plan")
@@ -1426,8 +1887,6 @@ def execute_scripted_mission(
     ):
         raise ScriptedError("approved mission does not match its fixture snapshot")
     budget = snapshot.mission.resource_budget
-    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
-    store.bind_artifact_resolver(evidence)
     scheduler = MissionScheduler(
         store,
         clock=SystemClock(),
@@ -1452,35 +1911,40 @@ def execute_scripted_mission(
         if snapshot.mission.status == MissionStatus.AWAITING_RESULT:
             break
         remaining_attempts = budget.max_attempts - len(snapshot.attempts)
-        dispatches = scheduler.tick(
-            mission_id, worker_ids[: max(0, remaining_attempts)]
+        dispatches = (
+            scheduler.recover(mission_id, worker_ids)
+            if remaining_attempts <= 0
+            else scheduler.tick(mission_id, worker_ids[:remaining_attempts])
         )
         if not dispatches:
             if remaining_attempts <= 0:
                 raise ScriptedError("scripted mission exhausted its attempt budget")
             raise ScriptedError("scripted mission scheduler made no safe progress")
         batches.append(tuple(item.task_id for item in dispatches))
-        with ThreadPoolExecutor(
-            max_workers=len(dispatches), thread_name_prefix="graphene-scripted"
-        ) as executor:
-            futures = {
-                item.attempt_id: executor.submit(worker.execute, item)
-                for item in dispatches
-            }
-            try:
-                results = tuple(
-                    futures[item.attempt_id].result() for item in dispatches
-                )
-            except ProcessCancelled as error:
-                if store.snapshot(mission_id).mission.status == MissionStatus.CANCELLED:
-                    raise ScriptedError("scripted mission was cancelled") from error
-                raise
-        for dispatch, result in zip(dispatches, results, strict=True):
-            scheduler.complete(dispatch, result)
+        template_timeout = max(
+            item.timeout_seconds for item in scenario.policy.command_templates
+        )
+        _execute_scripted_batch(
+            dispatches,
+            worker,
+            scheduler,
+            timeout_seconds=min(
+                template_timeout + _WORKER_TIMEOUT_GRACE_SECONDS,
+                scheduler.lease_ttl_seconds - 1,
+            ),
+        )
+        if store.snapshot(mission_id).mission.status == MissionStatus.CANCELLED:
+            raise ScriptedError("scripted mission was cancelled")
     else:
         raise ScriptedError("scripted mission exceeded its bounded attempt budget")
 
-    store.verify(mission_id)
+    verified_head = store.verify(mission_id)
+    prepare_local_final_result_bundle(
+        store=store,
+        mission_id=mission_id,
+        expected_head=verified_head,
+        recorded_at=datetime.now(UTC),
+    )
     candidate, verification = scripted_result_artifacts(store, evidence, mission_id)
     return ScriptedMissionRun(
         mission_id,
@@ -1516,6 +1980,7 @@ def run_scripted_mission(
         mission_id,
         "approve_" + canonical_json_sha256((mission_id, 1))[:32],
         expected_revision=1,
+        expected_head=store.head(mission_id),
         operator_label="scripted-fixture",
         rationale="Explicit --auto-approve deterministic Taskmaster fixture run.",
         truth_kind=TruthKind.SIMULATED_FIXTURE,

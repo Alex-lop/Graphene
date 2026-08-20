@@ -1,5 +1,7 @@
 # Redacted demo transcript shapes
 
+> **Superseded as the primary demo guide.** These representative shapes are retained for regression/history. Use [Demo guide](DEMO_GUIDE.md) for the current Taskmaster path and capture rules.
+
 These are representative, redacted output shapes—not copied execution logs and
 not proof that a hosted run or external model occurred. Executable process
 tests are under `tests/process/`; current proof truth is machine-readable in

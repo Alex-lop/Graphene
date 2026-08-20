@@ -20,6 +20,8 @@ from graphene.orchestration.models import (
     ArtifactContract,
     ArtifactRequirement,
     CommandTemplate,
+    Criterion,
+    CriterionVerificationKind,
     NetworkPolicy,
     Plan,
     ProjectPolicy,
@@ -116,7 +118,9 @@ def _contracts() -> tuple[ProjectPolicy, Plan]:
                     kind="patch",
                 ),
             ),
-            expected_outputs=(ArtifactContract(name="verification", kind="receipt"),),
+            expected_outputs=(
+                ArtifactContract(name="verification", kind="test-receipt"),
+            ),
             acceptance_checks=("unit-check",),
             priority=0,
             attempt_limit=2,
@@ -125,6 +129,16 @@ def _contracts() -> tuple[ProjectPolicy, Plan]:
     return policy, Plan(
         mission_id="mission-001",
         revision=1,
+        criteria=(
+            Criterion(
+                criterion_id="criterion-bound-check",
+                description="The bound test passes.",
+                producer_task_ids=("implement",),
+                verification_kind=CriterionVerificationKind.DETERMINISTIC_CHECK,
+                verifier_task_id="verify",
+                verifier_id="unit-check",
+            ),
+        ),
         tasks=tasks,
         max_concurrency=2,
     )

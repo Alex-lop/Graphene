@@ -90,6 +90,7 @@ class PreparedPromotionCandidate(_Frozen):
     candidate_sha256: Sha256
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changeset_sha256: Sha256
     test_receipt_sha256: Sha256
     brief_sha256: Sha256
@@ -168,6 +169,7 @@ class PromotionRetestRequest(_Frozen):
     candidate_sha256: Sha256
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changeset_sha256: Sha256
     test_receipt_sha256: Sha256
     brief_sha256: Sha256
@@ -201,6 +203,7 @@ class PromotionReceiptV2(_Frozen):
     candidate_sha256: Sha256
     candidate_patch_sha256: Sha256
     candidate_tree_sha256: Sha256
+    candidate_tree_hash_version: Literal["graphene.tree.v2"]
     changeset_sha256: Sha256
     test_receipt_sha256: Sha256
     brief_sha256: Sha256
@@ -498,6 +501,7 @@ def _retest_request(
         candidate_sha256=request.candidate_sha256,
         candidate_patch_sha256=request.candidate_patch_sha256,
         candidate_tree_sha256=request.candidate_tree_sha256,
+        candidate_tree_hash_version=request.candidate_tree_hash_version,
         changeset_sha256=request.changeset_sha256,
         test_receipt_sha256=request.test_receipt_sha256,
         brief_sha256=request.brief_sha256,
@@ -831,6 +835,8 @@ def _prepared_candidate_matches(
             record.get("base_sha") == request.base_sha,
             record.get("candidate_patch_sha256") == request.candidate_patch_sha256,
             record.get("candidate_tree_sha256") == request.candidate_tree_sha256,
+            record.get("candidate_tree_hash_version")
+            == request.candidate_tree_hash_version,
             isinstance(record.get("source_memory_event"), dict),
         )
     )
@@ -912,6 +918,8 @@ def _validate_promotion_evidence(
             == request.candidate_patch_sha256
             and event.payload.get("candidate_tree_sha256")
             == request.candidate_tree_sha256
+            and event.payload.get("candidate_tree_hash_version")
+            == request.candidate_tree_hash_version
             for event in events
         )
         and any(
@@ -1190,6 +1198,7 @@ def prepare_verified_promotion(
         or not patch
         or sha256_hex(patch) != changeset.get("candidate_patch_sha256")
         or not isinstance(changeset.get("candidate_tree_sha256"), str)
+        or changeset.get("candidate_tree_hash_version") != "graphene.tree.v2"
         or test_event.payload.get("receipt_id") != test_reference.id
         or test_event.payload.get("receipt_sha256") != test_reference.sha256
         or test_event.payload.get("passed") is not True
@@ -1233,6 +1242,7 @@ def prepare_verified_promotion(
         "base_sha": events[0].base_sha,
         "candidate_patch_sha256": changeset["candidate_patch_sha256"],
         "candidate_tree_sha256": changeset["candidate_tree_sha256"],
+        "candidate_tree_hash_version": changeset["candidate_tree_hash_version"],
         "changed_paths": list(changed_paths),
         **{
             name: reference.model_dump(mode="json")
@@ -1291,6 +1301,7 @@ def prepare_verified_promotion(
                         "candidate_id": candidate_id,
                         "candidate_patch_sha256": changeset["candidate_patch_sha256"],
                         "candidate_tree_sha256": changeset["candidate_tree_sha256"],
+                        "candidate_tree_hash_version": changeset["candidate_tree_hash_version"],
                         "changed_path_count": len(changed_paths),
                         "status": "created",
                     },
@@ -1315,6 +1326,7 @@ def prepare_verified_promotion(
         candidate_sha256=candidate_reference.sha256,
         candidate_patch_sha256=changeset["candidate_patch_sha256"],
         candidate_tree_sha256=changeset["candidate_tree_sha256"],
+        candidate_tree_hash_version=changeset["candidate_tree_hash_version"],
         changeset_sha256=changeset_reference.sha256,
         test_receipt_sha256=test_reference.sha256,
         brief_sha256=brief_reference.sha256,

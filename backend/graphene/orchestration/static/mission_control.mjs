@@ -1,18 +1,23 @@
 import cytoscape from "/mission-vendor/cytoscape.esm.min.mjs";
-import { TASK_STATES, applyDelta, applyThrough, canonicalJson, createState, graphView, snapshotHashPayload, stateBuckets, taskEvidenceTarget } from "./mission_reducer.mjs";
+import { applyDelta, applyThrough, canonicalJson, createState, finalDecisionOptions, finalResultBinding, graphPositions, graphView, missionBrief, renderFinalReview, snapshotHashPayload, taskEvidenceTarget, visibleStateBuckets } from "./mission_reducer.mjs";
 
 const $ = (id) => document.getElementById(id);
 const bootstrap = window.__GRAPHENE_MISSION_CONTROL__ ?? {};
 const tokenKey = `graphene-mission-token:${bootstrap.missionId ?? "unknown"}`;
+const commandTokenKey = `graphene-mission-command-token:${bootstrap.missionId ?? "unknown"}`;
 const fragment = new URLSearchParams(window.location.hash.slice(1));
 let readToken = fragment.get("token");
+let commandToken = fragment.get("command");
 try {
   if (!readToken) readToken = sessionStorage.getItem(tokenKey);
   if (readToken && /^[A-Za-z0-9_-]{16,512}$/.test(readToken)) sessionStorage.setItem(tokenKey, readToken);
+  if (!commandToken) commandToken = sessionStorage.getItem(commandTokenKey);
+  if (commandToken && /^[A-Za-z0-9_-]{16,512}$/.test(commandToken)) sessionStorage.setItem(commandTokenKey, commandToken);
 } catch { /* The in-memory fragment token still works when session storage is blocked. */ }
 if (!readToken || !/^[A-Za-z0-9_-]{16,512}$/.test(readToken)) readToken = null;
-if (fragment.has("token")) history.replaceState(null, "", `${location.pathname}${location.search}`);
-const config = Object.freeze({ ...bootstrap, token: readToken });
+if (!commandToken || !/^[A-Za-z0-9_-]{16,512}$/.test(commandToken)) commandToken = null;
+if (fragment.has("token") || fragment.has("command")) history.replaceState(null, "", `${location.pathname}${location.search}`);
+const config = Object.freeze({ ...bootstrap, token: readToken, commandToken });
 const colors = Object.freeze({ goal: "#155eef", task: "#6f8fa6", worker: "#7559a7", gate: "#b7791f", integration: "#087443", verification: "#0e7490", result: "#334155" });
 let state;
 let cy;
@@ -25,6 +30,8 @@ let replayTimer = null;
 let staleAt = null;
 let drawerTaskId = null;
 let drawerGeneration = 0;
+let csrfToken = null;
+let pendingCommand = null;
 
 function setText(id, value) { $(id).textContent = String(value ?? "—"); }
 function humanize(value) { return String(value ?? "unknown").replaceAll("_", " "); }
@@ -34,6 +41,31 @@ function request(path, options = {}) {
   return fetch(`${config.apiBase ?? "/api/mission-control"}${path}`, { ...options, headers, cache: "no-store" });
 }
 function missionPath(suffix) { return `/missions/${encodeURIComponent(state?.missionId ?? config.missionId)}${suffix}`; }
+
+async function commandRequest(path, body = null) {
+  const headers = new Headers({ Authorization: `Bearer ${config.commandToken}` });
+  if (body !== null) {
+    headers.set("Content-Type", "application/json");
+    headers.set("X-CSRF-Token", csrfToken);
+  }
+  return fetch(`${config.apiBase ?? "/api/mission-control"}${path}`, {
+    method: "POST", headers, body: body === null ? null : JSON.stringify(body), credentials: "same-origin", cache: "no-store",
+  });
+}
+
+async function ensureCommandSession() {
+  if (csrfToken) return;
+  const response = await commandRequest(missionPath("/commands/session"));
+  if (!response.ok) throw new Error("Authenticated command session was rejected.");
+  const value = await response.json(); csrfToken = value.csrf_token;
+  setText("command-status", `Ready for attributed commands as ${value.operator_label}.`);
+}
+
+function commandId() {
+  if (crypto.randomUUID) return `browser_${crypto.randomUUID().replaceAll("-", "_")}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return `browser_${[...bytes].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
 
 function snapshotDocument(value) {
   return {
@@ -65,8 +97,14 @@ function element(tag, className = "", value = null) {
 function renderNeedsYou() {
   const body = $("needs-you-body"); clear(body);
   if (!state.needsYou) {
-    $("needs-you").dataset.state = "clear";
-    body.append(element("strong", "", "No decision needed"), element("p", "", "Graphene can continue within the committed policy."));
+    if (state.result.state === "approved" && finalResultBinding(state)) {
+      $("needs-you").dataset.state = "pending";
+      body.append(element("strong", "", "Approved result needs finalization"), element("p", "", "The approval is committed. Finish the verified isolated local commit; the recorded approval attribution cannot be replaced."));
+      const review = element("section", "final-review-summary"); renderFinalReview(document, review, state); body.append(review);
+    } else {
+      $("needs-you").dataset.state = "clear";
+      body.append(element("strong", "", "No decision needed"), element("p", "", "Graphene can continue within the committed policy."));
+    }
     return;
   }
   $("needs-you").dataset.state = "pending";
@@ -77,22 +115,28 @@ function renderNeedsYou() {
   for (const option of state.needsYou.options ?? []) {
     const item = element("li");
     item.append(element("strong", "", `${option.label}: `), document.createTextNode(option.consequence));
-    if (!option.value.endsWith("_result")) {
+    if (config.replay !== true && config.commandsEnabled !== true && !option.value.endsWith("_result")) {
       const command = element("code", "", `graphene mission decide-gate ${state.missionId} --gate ${state.needsYou.gate_id} --decision ${option.value}`);
       item.append(element("br"), command);
     }
     options.append(item);
   }
-  body.append(heading, options, element("p", "", "This projection is read-only. Each command records a separate attributed decision event."));
+  const review = element("section", "final-review-summary");
+  if (renderFinalReview(document, review, state)) body.append(review);
+  body.append(heading, options, element("p", "", config.replay === true
+    ? "Replay is read-only. Continuing follows a recorded simulated decision; human attestation remains false."
+    : config.commandsEnabled === true
+      ? "Use the separately authenticated controls below. The server binds operator identity and truth attribution."
+      : "This projection is read-only. Each command records a separate attributed decision event."));
 }
 
 function renderBuckets() {
   clear($("status-buckets"));
-  for (const bucket of stateBuckets(state)) {
+  for (const bucket of visibleStateBuckets(state)) {
     const group = element("div");
     const term = element("dt", "", humanize(bucket.status));
     const count = element("dd", "", bucket.count);
-    const names = element("p", "", bucket.names.join(", ") || "No tasks");
+    const names = element("p", "", bucket.names.join(", "));
     group.append(term, count, names); $("status-buckets").append(group);
   }
 }
@@ -116,22 +160,24 @@ function renderTasks() {
   }
 }
 
-function nodePosition(node, index, counts) {
-  const xs = { goal: 70, task: 270, worker: 500, gate: 500, integration: 730, verification: 940, result: 1140 };
-  const offset = counts[node.kind] = (counts[node.kind] ?? 0) + 1;
-  return { x: xs[node.kind], y: 60 + (offset - 1) * (node.kind === "task" ? 78 : 92) + (index % 2) * 5 };
-}
-
 function renderGraph() {
-  const view = graphView(state); const counts = {};
+  const view = graphView(state); const positions = graphPositions(state);
   const items = [
-    ...view.nodes.map((node, index) => ({ group: "nodes", data: { ...node, display: `${node.label}\n${humanize(node.status)}`, color: colors[node.kind] }, position: nodePosition(node, index, counts), classes: /failed|blocked|cancelled/.test(node.status) ? "negative" : "" })),
+    ...view.nodes.map((node) => {
+      const classes = [];
+      if (/failed|blocked|cancelled/.test(node.status)) classes.push("negative");
+      if (node.taskId && state.criticalPathTaskIds.includes(node.taskId)) classes.push("critical");
+      if (/running|verifying|retrying|needs_input/.test(node.status)) classes.push("active");
+      return { group: "nodes", data: { ...node, display: `${node.label}\n${humanize(node.status)}`, color: colors[node.kind] }, position: positions.get(node.id), classes: classes.join(" ") };
+    }),
     ...view.edges.map((edge) => ({ group: "edges", data: { id: edge.relationship_id, source: edge.source, target: edge.target, kind: edge.kind, label: humanize(edge.kind) } })),
   ];
   if (!cy) {
     cy = cytoscape({ container: $("mission-graph"), elements: items, layout: { name: "preset", fit: true, padding: 42 }, minZoom: .3, maxZoom: 2.2, style: [
       { selector: "node", style: { width: 58, height: 58, "background-color": "data(color)", label: "data(display)", color: "#14202b", "font-size": 9, "font-weight": 700, "text-wrap": "wrap", "text-max-width": 110, "text-valign": "bottom", "text-margin-y": 8, "border-width": 3, "border-color": "#fff" } },
       { selector: "node.negative", style: { "border-color": "#b42318", "border-width": 7, "border-style": "double" } },
+      { selector: "node.critical", style: { "border-color": "#8a5700", "border-width": 7, "border-style": "dashed" } },
+      { selector: "node.active", style: { shape: "round-rectangle", "border-width": 7 } },
       { selector: "edge", style: { width: 2, "line-color": "#64748b", "target-arrow-color": "#64748b", "target-arrow-shape": "triangle", "curve-style": "bezier", label: "data(label)", "font-size": 8, color: "#52606d", "text-background-color": "#fff", "text-background-opacity": .9 } },
       { selector: ":selected", style: { "border-color": "#155eef", "border-width": 7 } },
     ] });
@@ -150,21 +196,88 @@ function renderStages() {
   for (const metric of state.resources.metrics ?? []) $("resource-metrics").append(element("li", "", `${metric.label}: ${metric.display_value} · ${humanize(metric.category)} · ${humanize(metric.attribution_quality)}`));
   for (const name of ["integration", "verification"]) {
     setText(`${name}-state`, humanize(state[name].state)); setText(`${name}-summary`, state[name].summary);
-    clear($(`${name}-evidence`));
-    for (const reference of state[name].evidence_refs ?? []) $(`${name}-evidence`).append(element("li", "", `${reference.kind}:${reference.id} · sha256:${reference.sha256}`));
+    renderTechnicalProof(`${name}-evidence`, state[name].evidence_refs);
   }
   setText("result-state", humanize(state.result.state)); setText("result-summary", state.result.summary);
-  clear($("result-evidence"));
-  for (const reference of state.result.evidence_refs ?? []) $("result-evidence").append(element("li", "", `${reference.kind}:${reference.id} · sha256:${reference.sha256}`));
+  renderTechnicalProof("result-evidence", state.result.evidence_refs);
+}
+
+function renderTechnicalProof(id, references = []) {
+  const list = $(id); clear(list);
+  if (!references.length) return;
+  const item = element("li"); const details = element("details");
+  details.append(element("summary", "", `Technical proof · ${references.length} committed reference${references.length === 1 ? "" : "s"}`));
+  for (const reference of references) details.append(element("code", "proof-reference", `${reference.kind}:${reference.id} · sha256:${reference.sha256}`));
+  item.append(details); list.append(item);
+}
+
+function confirmationPhrase(action, targetId, fields) {
+  if (action === "decide_gate") return `${action}:${targetId}:${fields.decision}`;
+  if (action === "approve_final" || action === "reject_final") return `${action}:${targetId}:${fields.expected_bundle_id}`;
+  if (action === "supply_input") return `${action}:${targetId}:${fields.gate_id}`;
+  return `${action}:${targetId}`;
+}
+
+function addCommand(label, action, targetId, consequence, fields = {}, destructive = false, needsInput = false) {
+  const button = element("button", "", label); button.type = "button";
+  if (destructive) button.dataset.destructive = "true";
+  button.addEventListener("click", () => {
+    pendingCommand = { action, targetId, consequence, fields, needsInput, head: structuredClone(state.head), commandId: commandId() };
+    const phrase = confirmationPhrase(action, targetId, fields);
+    setText("command-dialog-title", label); setText("command-consequence", consequence); setText("command-confirmation-phrase", phrase);
+    const finalReview = $("command-final-review"); clear(finalReview);
+    finalReview.hidden = !(action === "approve_final" || action === "reject_final") || !renderFinalReview(document, finalReview, state);
+    $("command-input-fields").hidden = !needsInput; $("command-input").value = ""; $("command-confirmation").value = ""; $("command-rationale").value = ""; $("command-dialog").showModal(); (needsInput ? $("command-input") : $("command-confirmation")).focus();
+  });
+  $("command-actions").append(button);
+}
+
+function renderCommands() {
+  const panel = $("command-controls"); clear($("command-actions"));
+  if (config.replay === true || config.commandsEnabled !== true) { panel.hidden = true; return; }
+  panel.hidden = false;
+  if (!config.commandToken) {
+    setText("command-status", "Command credential unavailable. Reopen the private operator URL."); $("command-status").dataset.state = "error"; return;
+  }
+  const status = state.mission.status; const mission = state.missionId; const revision = state.mission.plan_revision;
+  if (status === "proposed") {
+    addCommand("Approve plan", "approve_plan", `plan:${revision}`, `Approve exact plan revision ${revision} and allow scheduling.`, { expected_plan_revision: revision });
+    addCommand("Reject plan", "reject_plan", `plan:${revision}`, `Reject exact plan revision ${revision}; no task execution is authorized.`, { expected_plan_revision: revision }, true);
+  }
+  if (status === "running") {
+    addCommand("Pause mission", "pause", mission, "Pause new mission scheduling at the current committed head.");
+    addCommand("Request plan revision", "request_replan", mission, "Record a replan request and leave execution paused.");
+  }
+  if (status === "paused") {
+    addCommand("Resume mission", "resume", mission, "Resume scheduling from the current committed head.");
+    addCommand("Request plan revision", "request_replan", mission, "Record a replan request; execution remains paused.");
+  }
+  if (config.cancelEnabled === true && ["proposed", "running", "paused", "awaiting_result"].includes(status) && state.mission.outcome !== "approved_pending_commit") addCommand("Cancel mission", "cancel", mission, `Stop Graphene-owned local processes, then cancel exactly mission ${mission}.`, {}, true);
+  for (const task of state.tasks.values()) if (task.state === "failed") addCommand(`Retry ${task.title}`, "retry_task", task.task_id, `Retry only failed task ${task.task_id}.`);
+  for (const task of state.tasks.values()) if (task.state === "needs_input" && task.blocker_reason?.startsWith("input:")) {
+    const gateId = task.blocker_reason.slice(6);
+    if (config.inputEnabled === true) addCommand(`Supply input to ${task.title}`, "supply_input", task.task_id, `Store bounded private input for task ${task.task_id} and exact gate ${gateId}.`, { gate_id: gateId }, false, true);
+    else { setText("command-status", `Task ${task.task_id} needs private input, but this server has no writable private artifact resolver.`); $("command-status").dataset.state = "error"; }
+  }
+  if (state.needsYou && status !== "awaiting_result") for (const option of state.needsYou.options ?? []) addCommand(option.label, "decide_gate", state.needsYou.gate_id, option.consequence, { decision: option.value });
+  if (status === "awaiting_result") {
+    const binding = finalResultBinding(state);
+    if (binding) {
+      for (const option of finalDecisionOptions(state)) addCommand(option.label, option.action, `result:${mission}`, option.consequence, { expected_bundle_id: option.bundleId }, option.destructive);
+    } else if (["awaiting_decision", "approved"].includes(state.result.state)) {
+      setText("command-status", "Final-result authority is ambiguous. No decision command is available."); $("command-status").dataset.state = "error";
+    }
+  }
 }
 
 function render() {
   setText("goal-heading", state.mission.goal); clear($("success-criteria"));
   setText("mission-status", `Mission ${humanize(state.mission.status)}`);
+  const brief = missionBrief(state); setText("mission-progress", brief.progress); setText("brief-current", brief.current); setText("brief-next", brief.next); setText("brief-needs", brief.needs);
   for (const criterion of state.mission.success_criteria ?? []) $("success-criteria").append(element("li", "", criterion));
   setText("head", `seq ${state.head.seq} · ${state.head.event_sha256.slice(0, 12)}…`);
   setText("critical-path", `Critical path: ${state.criticalPathTaskIds.map((id) => state.tasks.get(id)?.title ?? id).join(" → ") || "none established"}`);
-  renderNeedsYou(); renderBuckets(); renderTasks(); renderStages(); renderGraph();
+  renderNeedsYou(); renderCommands(); renderBuckets(); renderTasks(); renderStages(); renderGraph();
   clear($("unknown-list")); for (const unknown of state.unknowns.length ? state.unknowns : ["No unresolved unknowns are recorded."]) $("unknown-list").append(element("li", "", unknown));
 }
 
@@ -290,10 +403,56 @@ function rebuildReplay(index) {
   replayIndex = Math.max(0, Math.min(replayDeltas.length, index)); state = applyThrough(initialSnapshot, replayDeltas, replayIndex); render();
   if (drawerWasOpen && previousCursor !== state.cursor) closeDrawer();
   $("timeline").value = String(replayIndex); setText("timeline-label", `${replayIndex + 1} of ${replayDeltas.length + 1}`);
+  updateReplayControls();
+}
+function recordedDecisionCheckpoint() { return config.replay === true && state?.needsYou?.gate_id?.startsWith("final_result_"); }
+function updateReplayControls() {
+  const decision = recordedDecisionCheckpoint();
+  setText("replay-start", decision ? "Continue with recorded simulated approval" : replayIndex >= replayDeltas.length ? "Play from start" : "Play the mission");
+  $("replay-step").disabled = decision || replayIndex >= replayDeltas.length;
 }
 function playReplay() {
   clearTimeout(replayTimer); if (replayIndex >= replayDeltas.length) rebuildReplay(0);
-  const step = () => { if (replayIndex >= replayDeltas.length) return; rebuildReplay(replayIndex + 1); replayTimer = setTimeout(step, 650); }; step();
+  if (recordedDecisionCheckpoint()) { rebuildReplay(replayIndex + 1); return; }
+  const step = () => { if (replayIndex >= replayDeltas.length) return; rebuildReplay(replayIndex + 1); if (!recordedDecisionCheckpoint()) replayTimer = setTimeout(step, 650); }; step();
+}
+
+async function submitCommand() {
+  if (!pendingCommand) return;
+  if (pendingCommand.needsInput && !$("command-input").value.length) { setText("command-status", "Task input cannot be empty."); $("command-status").dataset.state = "error"; $("command-input").focus(); return; }
+  const submit = $("command-submit"); submit.disabled = true;
+  try {
+    await ensureCommandSession();
+    const body = {
+      action: pendingCommand.action,
+      command_id: pendingCommand.commandId,
+      expected_head: { mission_id: state.missionId, seq: pendingCommand.head.seq, event_sha256: pendingCommand.head.event_sha256 },
+      target_id: pendingCommand.targetId,
+      confirmation: $("command-confirmation").value,
+      rationale: $("command-rationale").value.trim() || null,
+      ...pendingCommand.fields,
+    };
+    if (pendingCommand.needsInput) body.input_text = $("command-input").value;
+    const response = await commandRequest(missionPath("/commands"), body);
+    const value = await response.json().catch(() => ({ code: "COMMAND_REJECTED" }));
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) csrfToken = null;
+      if (value.code === "MISSION_HEAD_STALE") {
+        $("command-dialog").close(); pendingCommand = null; await freshSnapshot();
+        setText("command-status", "Mission changed before submission. The current head is refreshed; review and confirm the action again.");
+      } else setText("command-status", value.detail ?? "Command rejected without changing mission state.");
+      $("command-status").dataset.state = "error";
+      return;
+    }
+    $("command-dialog").close(); pendingCommand = null;
+    try {
+      await freshSnapshot(); setText("command-status", `Command accepted at committed head ${value.head.seq}.`); delete $("command-status").dataset.state;
+    } catch (error) {
+      markStale(error.message); setText("command-status", `Command accepted at committed head ${value.head.seq}, but the refreshed projection is unavailable.`); $("command-status").dataset.state = "error";
+    }
+  } catch {
+    setText("command-status", "Command connection failed without a confirmed state change. Refresh before retrying."); $("command-status").dataset.state = "error";
+  } finally { submit.disabled = false; }
 }
 
 async function start() {
@@ -305,7 +464,7 @@ async function start() {
     let verified = createState(replay.snapshot); await verifyState(verified);
     for (const envelope of replay.deltas) { verified = applyDelta(verified, envelope); await verifyState(verified); }
     if (verified.snapshotSha256 !== replay.meta?.final_snapshot_sha256) throw new Error("mission replay final digest is invalid");
-    initialSnapshot = replay.snapshot; replayDeltas = replay.deltas; rebuildReplay(replayDeltas.length);
+    initialSnapshot = replay.snapshot; replayDeltas = replay.deltas; rebuildReplay(0);
     $("replay-controls").hidden = false; $("timeline").max = String(replayDeltas.length); $("connection").dataset.state = "replay"; setText("connection", "Verified replay");
   } else { await freshSnapshot(); stream(); }
 }
@@ -314,6 +473,11 @@ $("drawer-close").addEventListener("click", closeDrawer);
 $("replay-start").addEventListener("click", playReplay);
 $("replay-step").addEventListener("click", () => rebuildReplay(replayIndex + 1));
 $("timeline").addEventListener("input", (event) => { clearTimeout(replayTimer); rebuildReplay(Number(event.target.value)); });
+$("command-dismiss").addEventListener("click", () => { $("command-dialog").close(); pendingCommand = null; });
+$("command-submit").addEventListener("click", submitCommand);
+$("command-dialog").addEventListener("close", () => {
+  $("command-input").value = ""; $("command-rationale").value = ""; $("command-confirmation").value = ""; pendingCommand = null;
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("task-drawer").hidden) { closeDrawer(); return; }
   if (event.target !== $("mission-graph") || !cy || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return;

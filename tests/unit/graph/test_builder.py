@@ -138,6 +138,7 @@ def _candidate(
         canonical_patch_base64=base64.b64encode(patch).decode(),
         candidate_patch_sha256=patch_hash,
         candidate_tree_sha256=candidate_tree_sha256(files),
+        candidate_tree_hash_version="graphene.tree.v2",
         changed_paths=tuple(sorted(files)),
         file_changes=tuple(
             FileChange(
@@ -341,6 +342,7 @@ def _bundle(contract: GraphMvpContract):
         base_commit_sha=BASE_SHA,
         candidate_patch_sha256=adapted_candidate.candidate_patch_sha256,
         candidate_tree_sha256=adapted_candidate.candidate_tree_sha256,
+        candidate_tree_hash_version=adapted_candidate.candidate_tree_hash_version,
         memory_id=memory.memory_id,
         memory_revision=memory.revision,
         context_packet_id=packet.packet_id,

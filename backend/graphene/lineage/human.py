@@ -231,6 +231,7 @@ class HumanWorkflowService:
             "base_sha": events[0].base_sha,
             "candidate_patch_sha256": patch_sha256,
             "candidate_tree_sha256": candidate_tree_sha256(after_files),
+            "candidate_tree_hash_version": "graphene.tree.v2",
             "canonical_patch_base64": base64.b64encode(patch).decode(),
             "changed_paths": list(changed_paths),
             "file_changes": file_changes,

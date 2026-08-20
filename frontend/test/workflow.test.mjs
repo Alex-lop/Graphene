@@ -45,6 +45,7 @@ function adaptedRun(state = "waiting_for_promotion") {
       base_commit_sha: BASE,
       candidate_patch_sha256: SHA,
       candidate_tree_sha256: SHA,
+      candidate_tree_hash_version: "graphene.tree.v2",
       changed_paths: ["app/auth/limiter.py", "tests/test_security_policy.py"],
       test_receipt: { receipt_sha256: SHA, candidate_exit_code: 0 },
     },

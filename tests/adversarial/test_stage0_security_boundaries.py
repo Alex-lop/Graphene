@@ -142,6 +142,7 @@ MUTATION_CASES = (
             "base_commit_sha": "a" * 40,
             "candidate_patch_sha256": "b" * 64,
             "candidate_tree_sha256": "c" * 64,
+            "candidate_tree_hash_version": "graphene.tree.v2",
             "memory_id": "memory_unknown",
             "memory_revision": 1,
             "context_packet_id": "packet_unknown",

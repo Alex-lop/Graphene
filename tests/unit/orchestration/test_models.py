@@ -105,6 +105,25 @@ def test_models_are_strict_frozen_and_canonical() -> None:
         task.state = TaskState.DONE
 
 
+def test_resource_budget_defaults_and_orders_managed_rss_thresholds() -> None:
+    budget = ResourceBudget(
+        max_worker_seconds=60,
+        max_attempts=4,
+        max_artifact_bytes=1_000,
+    )
+
+    assert budget.soft_managed_rss_bytes == 536_870_912
+    assert budget.hard_managed_rss_bytes == 805_306_368
+    with pytest.raises(ValidationError, match="soft managed RSS threshold"):
+        ResourceBudget(
+            max_worker_seconds=60,
+            max_attempts=4,
+            max_artifact_bytes=1_000,
+            soft_managed_rss_bytes=200,
+            hard_managed_rss_bytes=100,
+        )
+
+
 def test_event_payload_rejects_private_fields_and_binds_hashes() -> None:
     draft = MissionEventInput(
         event_type=MissionEventType.TASK_READY,
