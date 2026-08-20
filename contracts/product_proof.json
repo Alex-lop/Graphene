@@ -162,7 +162,7 @@
   "delivery_gates": {
     "credential_free_core": {
       "status": "verified_local",
-      "truth": "On source commit 1be89420d16c9f6ac45b8053b6765b8114e408ad, the credential-free Python matrix passed 807 tests with four explicit opt-in skips; MCP passed 6 and frontend passed 39. Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the recorded official Firestore emulator production vertical are locally verified."
+      "truth": "On source commit 581d6bf4e1c2ba4810f16d93b295637c7203a7b5, the credential-free Python matrix passed 808 tests with four explicit opt-in skips; MCP passed 6 and frontend passed 39. Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the recorded official Firestore emulator production vertical are locally verified."
     },
     "live_gemini": {
       "status": "not_proven",

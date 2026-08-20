@@ -1,14 +1,14 @@
 # Taskmaster Ultra implementation report
 
 Status: implementation committed and the credential-free release matrix is green on
-the exact source commit recorded below. This report update changes documentation
-only and is verified separately.
+the exact source commit recorded below. This truth update changes documentation and
+machine-readable proof only and is verified separately.
 
 ## Commit range
 
 - Reviewed start: `b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5`
-- Verified source commit: `1be89420d16c9f6ac45b8053b6765b8114e408ad`
-- Compare link: `https://github.com/Alex-lop/Graphene/compare/b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5...1be89420d16c9f6ac45b8053b6765b8114e408ad`
+- Verified source commit: `581d6bf4e1c2ba4810f16d93b295637c7203a7b5`
+- Compare link: `https://github.com/Alex-lop/Graphene/compare/b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5...581d6bf4e1c2ba4810f16d93b295637c7203a7b5`
 - Final report/release SHA: recorded in the terminal handoff; a commit cannot embed its own SHA.
 
 ## Product and architecture decisions
@@ -76,14 +76,14 @@ Final credential-free release gates:
 
 | Gate | Final result |
 |---|---|
-| Verified executable source | Git commit `1be89420d16c9f6ac45b8053b6765b8114e408ad`; production, test, and config files stayed unchanged throughout; post-run edits are docs/proof only |
+| Verified executable source | Git commit `581d6bf4e1c2ba4810f16d93b295637c7203a7b5`; production, test, and config files stayed unchanged throughout; post-run edits are docs/proof only |
 | `uv lock --check` / `uv sync --frozen` | Passed; 73 packages resolved and 69 checked |
-| Full Python matrix excluding MCP | **807 passed, 4 skipped, 0 failed**, 5 upstream warnings, 256.90 s |
-| MCP STDIO | **6 passed**, 13.51 s |
+| Full Python matrix excluding MCP | **808 passed, 4 skipped, 0 failed**, 5 upstream warnings, 265.61 s |
+| MCP STDIO | **6 passed**, 15.55 s |
 | Frontend tests and seven JS syntax checks | **39 passed** (8 + 31); all syntax checks passed |
 | Replay generator check and CLI smoke | Passed at replay SHA-256 `1dcc4d6d7e70d34d01574fec8227a49750c9aa7821023209bc7d7445094e17dd` |
 | Ruff / compileall / `git diff --check` | Passed on the source commit; docs links and JSON passed after this truth update |
-| Official emulator rerun after freeze | **3 passed**, 1.15 s; the aggregate matrix intentionally kept this exact opt-in test skipped |
+| Official emulator rerun after freeze | **3 passed**, 1.00 s; the aggregate matrix intentionally kept this exact opt-in test skipped |
 
 Credential gates:
 
