@@ -47,7 +47,7 @@ def _invoke(runner: ControlledProcessRunner, seconds: float = 0.2):
 
 def _wait_for_owned_process(registry: OwnedProcessRegistry) -> None:
     deadline = time.monotonic() + 2
-    while not tuple(registry.directory.iterdir()):
+    while not any(path.suffix == ".json" for path in registry.directory.iterdir()):
         if time.monotonic() >= deadline:
             pytest.fail("owned process record did not appear within two seconds")
         time.sleep(0.01)
