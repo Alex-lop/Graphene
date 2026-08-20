@@ -1,12 +1,15 @@
 # Taskmaster Ultra implementation report
 
-Status: implementation assembled; final immutable-tree verification and release commit remain for the root integrator.
+Status: implementation committed and the credential-free release matrix is green on
+the exact source commit recorded below. This report update changes documentation
+only and is verified separately.
 
 ## Commit range
 
 - Reviewed start: `b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5`
-- Compare link: **PENDING ROOT — replace `FINAL_PRE_REPORT_COMMIT` after the implementation commits exist:** `https://github.com/Alex-lop/Graphene/compare/b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5...FINAL_PRE_REPORT_COMMIT`
-- Final report/release SHA: **PENDING ROOT TERMINAL HANDOFF**. A commit cannot truthfully embed its own SHA.
+- Verified source commit: `1be89420d16c9f6ac45b8053b6765b8114e408ad`
+- Compare link: `https://github.com/Alex-lop/Graphene/compare/b3223fb310a4f7b3825f9dc4a4b84dbb7c7a23f5...1be89420d16c9f6ac45b8053b6765b8114e408ad`
+- Final report/release SHA: recorded in the terminal handoff; a commit cannot embed its own SHA.
 
 ## Product and architecture decisions
 
@@ -28,7 +31,7 @@ Status: implementation assembled; final immutable-tree verification and release 
 | Firestore/cloud | Five bounded state shards plus root, schema compatibility, atomic create/approve/readiness/claim/heartbeat/completion/outbox/locality, reconciliation, private multi-mission coordinator image, OIDC client, outbound executor | Official emulator production path verified; real project/deployment **NOT PROVEN** |
 | Mission Control | Five-second summary, DAG/task evidence, pending-bundle decision, shared CLI/browser finalizer, authenticated CSRF/origin/current-head command plane, sticky quarantine, checkpoint-zero replay | Python/Node/replay tests; screenshot/GIF/browser capture unavailable |
 | CLI | `plan/show/diff/lint`, `run/status/watch/why`, top-level cancel/retry/request-replan/task input, mission demo/executor, result show/export, bundle create/verify, v2 DB status/verify/dry-run | Credential-free parser/process tests; live provider/cloud commands remain opt-in |
-| Docs/proof | Concise README, focused docs, owner cloud checklist, environment names, machine-readable proof, capture blocker | Relative links/JSON/truth tests; final counts/fingerprint pending |
+| Docs/proof | Concise README, focused docs, owner cloud checklist, environment names, machine-readable proof, capture blocker | Relative links/JSON/truth tests plus the final counts/fingerprint below |
 
 ## Important implementation files
 
@@ -63,24 +66,24 @@ Current non-final targeted evidence:
 | Deterministic SQLite soak | **50 tasks, 5 workers, 50 accepted publications, awaiting_result, full verify; 23.07 s pytest / 23.68 s wall** |
 | Cloud unit/protocol matrix | **62 passed, 2 opt-in live skips** |
 | V2 artifact/final-bundle focus | **26 passed** |
-| Latest integrated diagnostic Python matrix on the shared tree | **801 passed, 4 skipped, 4 failed**; all four exact nodes then passed focused reruns, but this is not a frozen integrated pass |
-| Frontend combined matrix | **38 passed** |
+| Pre-freeze diagnostic Python matrix | **801 passed, 4 skipped, 4 failed** on the moving tree; all four exact nodes then passed focused reruns and the stable final matrix below |
+| Frontend combined matrix | **39 passed** after the bundle-ID Mission Control update |
 | MCP STDIO | **6 passed** |
 | Replay check/smoke | Green at replay SHA-256 `1dcc4d6d7e70d34d01574fec8227a49750c9aa7821023209bc7d7445094e17dd` |
-| Current docs/readme/contracts/CI/Taskmaster CLI contract | **58 passed, 4 dependency warnings** |
+| Final docs/readme/contracts/CI/Taskmaster CLI contract | **99 passed, 4 dependency warnings** |
 
-Final release gates — root must replace every placeholder from one frozen source fingerprint:
+Final credential-free release gates:
 
 | Gate | Final result |
 |---|---|
-| Source fingerprint/commit before run | **PENDING ROOT: `FINAL_VERIFICATION_SHA`** |
-| `uv lock --check` / `uv sync --frozen` | **PENDING ROOT** |
-| Full Python matrix excluding MCP | **PENDING ROOT: pass/skip/fail count** |
-| MCP STDIO | **PENDING ROOT: pass/skip/fail count** |
-| Frontend tests and seven JS syntax checks | **PENDING ROOT: exact count/status** |
-| Replay generator check and CLI smoke | **PENDING ROOT: exact status and replay SHA-256** |
-| Ruff / `git diff --check` / docs links / JSON | **PENDING ROOT: exact status** |
-| Official emulator rerun after freeze | **PENDING ROOT: exact count** |
+| Verified executable source | Git commit `1be89420d16c9f6ac45b8053b6765b8114e408ad`; production, test, and config files stayed unchanged throughout; post-run edits are docs/proof only |
+| `uv lock --check` / `uv sync --frozen` | Passed; 73 packages resolved and 69 checked |
+| Full Python matrix excluding MCP | **807 passed, 4 skipped, 0 failed**, 5 upstream warnings, 256.90 s |
+| MCP STDIO | **6 passed**, 13.51 s |
+| Frontend tests and seven JS syntax checks | **39 passed** (8 + 31); all syntax checks passed |
+| Replay generator check and CLI smoke | Passed at replay SHA-256 `1dcc4d6d7e70d34d01574fec8227a49750c9aa7821023209bc7d7445094e17dd` |
+| Ruff / compileall / `git diff --check` | Passed on the source commit; docs links and JSON passed after this truth update |
+| Official emulator rerun after freeze | **3 passed**, 1.15 s; the aggregate matrix intentionally kept this exact opt-in test skipped |
 
 Credential gates:
 

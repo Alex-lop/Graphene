@@ -76,9 +76,9 @@
         "revoke_worker",
         "expire_leases",
         "enter_awaiting_result",
-        "claim_task",
-        "heartbeat",
-        "complete_attempt",
+        "generic_scheduler_store_claim_task",
+        "generic_scheduler_store_heartbeat",
+        "generic_scheduler_store_complete_attempt",
         "pause",
         "resume",
         "cancel"
@@ -138,7 +138,7 @@
     "cloud_streaming": "per-client two-second Firestore polling; no shared listener or fan-out; NOT PROVEN"
   },
   "working_tree_integrity": {
-    "status": "targeted_local_matrix_verified_repository_wide_suite_pending",
+    "status": "credential_free_release_matrix_verified",
     "sqlite": "The v2 store persists immutable canonical record bytes and verifies a schema-ledger digest before use.",
     "recovery": "Recovered dispatches are selected from a bounded explicit worker-owner set and attempt/lease ownership must agree.",
     "workspace_audit": "The generic ADK WorkerRuntime uses a bounded Git workspace auditor to independently measure base/admin identity, path and mode changes, and a content-addressed patch before publication; the separate scripted fixture does not inherit this claim.",
@@ -161,8 +161,8 @@
   },
   "delivery_gates": {
     "credential_free_core": {
-      "status": "targeted_matrix_verified_full_suite_pending",
-      "truth": "Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the official Firestore emulator production vertical are credential-free verified. The repository-wide final release suite remains pending."
+      "status": "verified_local",
+      "truth": "On source commit 1be89420d16c9f6ac45b8053b6765b8114e408ad, the credential-free Python matrix passed 807 tests with four explicit opt-in skips; MCP passed 6 and frontend passed 39. Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the recorded official Firestore emulator production vertical are locally verified."
     },
     "live_gemini": {
       "status": "not_proven",
