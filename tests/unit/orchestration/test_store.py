@@ -1110,6 +1110,36 @@ def test_registration_capabilities_revocation_and_effect_fence_are_authoritative
         store.verify("mission-1")
 
 
+def test_integrity_reads_use_one_sqlite_snapshot(tmp_path, monkeypatch) -> None:
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("snapshot-ready"), recorded_at=NOW)
+    _register_worker(store, "worker-work", capabilities=(TaskKind.WORK,))
+    dispatch = store.claim_task(
+        "mission-1",
+        "work-a",
+        "worker-work",
+        _command("snapshot-claim"),
+        recorded_at=NOW,
+        ttl_seconds=10,
+    )
+    original = store._verify_state_record
+    transactions: list[bool] = []
+
+    def verify_state_record(connection, mission_id: str) -> None:
+        transactions.append(connection.in_transaction)
+        original(connection, mission_id)
+
+    monkeypatch.setattr(store, "_verify_state_record", verify_state_record)
+    store.assert_fence(dispatch, recorded_at=NOW + timedelta(seconds=1))
+    assert store.recover_dispatches(
+        "mission-1", ("worker-work",), recorded_at=NOW + timedelta(seconds=1)
+    ) == (dispatch,)
+    store.verify("mission-1")
+
+    assert transactions == [True, True, True]
+
+
 def test_successful_publication_requires_resolved_attempt_artifact(tmp_path) -> None:
     store = SQLiteMissionStore(tmp_path / "missions.sqlite")
     _create(store)

@@ -212,11 +212,12 @@ class MissionRunner:
                 await asyncio.to_thread(self.runtime.cancel, dispatch)
                 result_code = RuntimeErrorCode.CANCELLED
                 error: RunnerError = RunnerCancelled("mission cancellation requested")
-            except Exception:
+            except Exception as cleanup_error:
                 result_code = RuntimeErrorCode.OUTCOME_UNKNOWN
                 error = RunnerExecutionFailed(
                     f"worker cancellation cleanup failed for {dispatch.task_id}"
                 )
+                error.__cause__ = cleanup_error
             return (
                 dispatch,
                 AttemptResult(

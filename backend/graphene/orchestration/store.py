@@ -2802,6 +2802,7 @@ class SQLiteMissionStore:
             raise TypeError("assert_fence requires a validated Dispatch")
         recorded_at = self._time(recorded_at)
         with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
             mission_row = self._mission_row(connection, dispatch.mission_id)
             self._verify_state_record(connection, dispatch.mission_id)
             if mission_row["plan_revision"] != dispatch.plan_revision:
@@ -3912,6 +3913,7 @@ class SQLiteMissionStore:
         if len(worker_ids) > 256:
             raise ValueError("worker owner set is too large")
         with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
             self._mission_row(connection, mission_id)
             self._verify_state_record(connection, mission_id)
             if not worker_ids or self._has_unresolved_mission_gate(
@@ -6267,20 +6269,9 @@ class SQLiteMissionStore:
             MissionEvent.model_validate_json(row["event_bytes"]) for row in rows
         )
 
-    def _all_events(self, mission_id: str) -> tuple[MissionEvent, ...]:
-        head = self.head(mission_id)
-        events: list[MissionEvent] = []
-        after = 0
-        while after < head.seq:
-            batch = self.tail(mission_id, after, min(256, head.seq - after))
-            if not batch:
-                raise MissionStoreError("mission event stream is incomplete")
-            events.extend(batch)
-            after = batch[-1].seq
-        return tuple(events)
-
     def verify(self, mission_id: str) -> MissionHead:
         with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
             mission_row = self._mission_row(connection, mission_id)
             self._verify_state_record(connection, mission_id)
             initial_mission = self._initial_mission(connection, mission_row)
@@ -6315,8 +6306,15 @@ class SQLiteMissionStore:
                 Gate.model_validate_json(row["gate_bytes"]) for row in gate_rows
             )
             stored_status = MissionStatus(mission_row["status"])
-        head = self.head(mission_id)
-        events = self._all_events(mission_id)
+            head = self._head(connection, mission_id)
+            events = tuple(
+                MissionEvent.model_validate_json(row["event_bytes"])
+                for row in connection.execute(
+                    "SELECT event_bytes FROM mission_events WHERE mission_id = ? "
+                    "ORDER BY seq",
+                    (mission_id,),
+                )
+            )
         reduced = reduce_events(
             initial_mission, plan.tasks, events, plan_revision=revision
         )
