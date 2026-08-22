@@ -8,9 +8,12 @@ JSON object, an unknown or missing field, a wrong JSON type, a schema other
 than ``shadow.event.v1``, an unknown ``kind``/``actor``/``provenance``, a
 ``seq`` that is not contiguous from 1, a ``session_id`` that changes
 mid-file, a malformed or mismatched supplied ``event_id``, any value
-``ShadowEvent`` refuses (paths, lengths, patterns, claim and provenance
-shape), and a ``derived_from`` entry that is not the ``event_id`` of an
-earlier record in the same file.
+``ShadowEvent`` refuses (paths, lengths, patterns, control characters, claim
+and provenance shape), and a ``derived_from`` entry that is not the
+``event_id`` of an earlier record in the same file. A line too deeply nested
+to parse, or whose record nests containers deeper than ``MAX_NESTING``
+levels, is rejected with the line number rather than escaping as a
+``RecursionError``.
 
 ``source`` is kept exactly as supplied: the emitter's adapter id and version
 travel with every event. Re-ingesting an exported capsule's ``events.ndjson``
@@ -38,6 +41,9 @@ _RESERVED = frozenset(
     {"schema", "seq", "event_id", "provenance", "derived_from", "session_id"}
 )
 _KNOWN_FIELDS = frozenset(EVENT_FIELDS) | {"event_id"}
+# Records are flat except ``source`` and ``claim`` (objects) and the three
+# string arrays, so two levels are the deepest a valid record ever needs.
+MAX_NESTING = 4
 
 # JSON shape of every identity field; value constraints belong to ShadowEvent.
 _STRING = frozenset({"schema", "session_id", "actor", "kind", "provenance"})
@@ -113,11 +119,36 @@ def _record(line_number: int, line: str) -> dict[str, object]:
         raise AdapterError(f"line {line_number}: blank line")
     try:
         value = json.loads(line)
+    except RecursionError as error:
+        raise AdapterError(
+            f"line {line_number}: invalid JSON (nesting too deep)"
+        ) from error
     except ValueError as error:
         raise AdapterError(f"line {line_number}: invalid JSON ({error})") from error
     if not isinstance(value, dict):
         raise AdapterError(f"line {line_number}: record is not a JSON object")
+    if _nesting(value) > MAX_NESTING:
+        raise AdapterError(
+            f"line {line_number}: record nests containers deeper than "
+            f"{MAX_NESTING} levels"
+        )
     return value
+
+
+def _nesting(value: object) -> int:
+    """Deepest container level in ``value`` (the record itself is level 1)."""
+
+    deepest = 0
+    pending: list[tuple[object, int]] = [(value, 1)]
+    while pending:
+        current, level = pending.pop()
+        if isinstance(current, dict):
+            deepest = max(deepest, level)
+            pending.extend((item, level + 1) for item in current.values())
+        elif isinstance(current, list):
+            deepest = max(deepest, level)
+            pending.extend((item, level + 1) for item in current)
+    return deepest
 
 
 def _check_fields(line_number: int, record: dict[str, object]) -> None:
@@ -236,4 +267,4 @@ class NdjsonAdapter:
         )
 
 
-__all__ = ["NDJSON_ADAPTER", "NDJSON_ADAPTER_VERSION", "NdjsonAdapter"]
+__all__ = ["MAX_NESTING", "NDJSON_ADAPTER", "NDJSON_ADAPTER_VERSION", "NdjsonAdapter"]

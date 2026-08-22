@@ -94,18 +94,39 @@ def _sorted_unique(values: tuple[str, ...]) -> tuple[str, ...]:
     return values
 
 
+# C0 and C1 control characters (ESC and every terminal escape sequence start
+# with one) and the Unicode line and paragraph separators. A value carrying
+# one could forge lines in the lint listing and the report text.
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def _printable(value: str) -> str:
+    if _CONTROL_CHARACTERS.search(value):
+        raise ValueError("must not contain control characters")
+    return value
+
+
 def _outside_path(value: str) -> str:
-    if "\0" in value or not value.strip():
+    if not value.strip():
         raise ValueError("outside paths must be printable and non-empty")
     return value
 
 
+Printable = AfterValidator(_printable)
 Timestamp = Annotated[str, AfterValidator(_utc_timestamp)]
 SessionId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._-]{1,128}$")]
-ShortText = Annotated[str, Field(min_length=1, max_length=128)]
+ShortText = Annotated[str, Field(min_length=1, max_length=128), Printable]
+EventPath = Annotated[RepoPath, Printable]
 OutsidePath = Annotated[
-    str, Field(min_length=1, max_length=512), AfterValidator(_outside_path)
+    str,
+    Field(min_length=1, max_length=512),
+    Printable,
+    AfterValidator(_outside_path),
 ]
+ToolName = Annotated[str, Field(min_length=1, max_length=64), Printable]
+CallId = Annotated[str, Field(min_length=1, max_length=128), Printable]
+CommandExcerpt = Annotated[str, Field(min_length=1, max_length=200), Printable]
+MessageExcerpt = Annotated[str, Field(min_length=1, max_length=280), Printable]
 
 
 class ShadowClaim(FrozenModel):
@@ -128,15 +149,15 @@ class ShadowEvent(FrozenModel):
     ts: Timestamp | None
     actor: Actor
     kind: Kind
-    paths: Annotated[tuple[RepoPath, ...], AfterValidator(_sorted_unique)]
+    paths: Annotated[tuple[EventPath, ...], AfterValidator(_sorted_unique)]
     outside_paths: Annotated[tuple[OutsidePath, ...], AfterValidator(_sorted_unique)]
-    tool: Annotated[str, Field(min_length=1, max_length=64)] | None
-    call_id: Annotated[str, Field(min_length=1, max_length=128)] | None
+    tool: ToolName | None
+    call_id: CallId | None
     argv_digest: Sha256 | None
-    argv_excerpt: Annotated[str, Field(min_length=1, max_length=200)] | None
+    argv_excerpt: CommandExcerpt | None
     exit_code: Annotated[int, Field(ge=-1024, le=1024)] | None
     check_family: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,31}$")] | None
-    excerpt: Annotated[str, Field(min_length=1, max_length=280)] | None
+    excerpt: MessageExcerpt | None
     content_digest: Sha256 | None
     claim: ShadowClaim | None
     provenance: Provenance
@@ -220,15 +241,15 @@ class _Draft(FrozenModel):
     ts: Timestamp | None
     actor: Actor
     kind: Kind
-    paths: Annotated[tuple[RepoPath, ...], AfterValidator(_sorted_unique)]
+    paths: Annotated[tuple[EventPath, ...], AfterValidator(_sorted_unique)]
     outside_paths: Annotated[tuple[OutsidePath, ...], AfterValidator(_sorted_unique)]
-    tool: Annotated[str, Field(min_length=1, max_length=64)] | None
-    call_id: Annotated[str, Field(min_length=1, max_length=128)] | None
+    tool: ToolName | None
+    call_id: CallId | None
     argv_digest: Sha256 | None
-    argv_excerpt: Annotated[str, Field(min_length=1, max_length=200)] | None
+    argv_excerpt: CommandExcerpt | None
     exit_code: Annotated[int, Field(ge=-1024, le=1024)] | None
     check_family: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,31}$")] | None
-    excerpt: Annotated[str, Field(min_length=1, max_length=280)] | None
+    excerpt: MessageExcerpt | None
     content_digest: Sha256 | None
     claim: ShadowClaim | None
     provenance: Provenance

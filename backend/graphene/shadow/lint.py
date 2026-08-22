@@ -263,14 +263,21 @@ def _claimed_without_evidence(ctx: _Context) -> tuple[list[Finding], int, int]:
         excerpt = event.excerpt or "<no excerpt>"
         event_ids = (event.event_id, *event.derived_from)
         seqs = ctx.seqs_for(event_ids)
+        if last_edit:
+            detail = (
+                f" has no observed passing check after the last edit (seq {last_edit})."
+            )
+        else:
+            # Seqs are 1-based; 0 is the "no write yet" sentinel, never an event.
+            detail = (
+                ": no edit precedes this claim; no observed passing check "
+                "precedes it either."
+            )
         findings.append(
             Finding(
                 rule="claimed-without-evidence",
                 severity="high",
-                message=(
-                    f'Claim "{excerpt}" ({category}) has no observed passing check '
-                    f"after the last edit (seq {last_edit})."
-                ),
+                message=f'Claim "{excerpt}" ({category}){detail}',
                 event_ids=event_ids,
                 seqs=seqs,
                 paths=(),

@@ -98,7 +98,7 @@ The governed-run diff is qualitative and static. Each high-severity finding maps
 
 ## Claim extraction
 
-A conservative, versioned matcher (`claims.v1`) scans agent messages for success assertions ("tests pass", "all green", "verified", "fixed", "build succeeds", and close variants) and emits `kind=claim` events with `provenance=inferred`. Precision is preferred over recall: hedged, negated, conditional, and question forms are excluded, and text inside code fences is ignored. A missed claim is a shrug; a hallucinated claim in a trust report is a scandal.
+A conservative, versioned matcher (`claims.v1`) scans agent messages for success assertions ("tests pass", "all green", "verified", "fixed", "build succeeds", and close variants) and emits `kind=claim` events with `provenance=inferred`. Precision is preferred over recall: hedged, negated, conditional, and question forms are excluded, and text inside code fences is ignored. The adversarial review of v0 added further exclusion classes inside `claims.v1`: zero and partial counts ("0 passed", "12 passed, 2 failed", "3 of 10"), imperatives and instructions to the reader ("Verify that all tests pass"), plans and criteria ("I'll confirm", "Expected: all tests pass"), explanations of mechanism ("how it works", "works by"), `pass` as a transitive verb or a noun ("passes the config", "a single pass"), `fixed` meaning constant ("fixed-point", "fixed at"), quotations and attributions ("you said", "according to", quoted spans), and markdown to-do boxes, blockquotes, table rows, and struck-through text. A missed claim is a shrug; a hallucinated claim in a trust report is a scandal.
 
 ## Graph reconstruction
 

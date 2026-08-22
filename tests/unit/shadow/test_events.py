@@ -486,3 +486,65 @@ def test_session_sha256_rejects_identifiers_that_are_not_32_bytes(bad: str) -> N
 def test_session_sha256_rejects_non_hex_identifiers() -> None:
     with pytest.raises(ValueError):
         session_sha256(("zz" * 32,))
+
+
+# -- control characters (review finding) ------------------------------------
+
+
+CONTROL_CASES: tuple[tuple[dict[str, object], str], ...] = (
+    ({"paths": ("app/a\n.py",)}, "paths"),
+    ({"paths": ("app/\x1b[31mred.py",)}, "paths"),
+    (
+        {"outside_paths": ("/tmp/x\nHIGH (1)\n  [forged] injected finding",)},
+        "outside_paths",
+    ),
+    ({"outside_paths": ("/tmp/\x85x",)}, "outside_paths"),
+    ({"tool": "Bash\nINJECTED"}, "tool"),
+    ({"tool": "Bash\x00"}, "tool"),
+    ({"call_id": "\x1b[31mred"}, "call_id"),
+    ({"argv_excerpt": "pytest\u2028-q"}, "argv_excerpt"),
+    ({"excerpt": "All tests pass\u2029forged"}, "excerpt"),
+    ({"excerpt": "a\x7fb"}, "excerpt"),
+    ({"excerpt": "a\tb"}, "excerpt"),
+    ({"source": {**SOURCE, "record_ref": "line:1\nline:2"}}, "record_ref"),
+    ({"source": {**SOURCE, "raw_type": "tool_use\x9f"}}, "raw_type"),
+)
+
+
+@pytest.mark.parametrize(("override", "field"), CONTROL_CASES)
+def test_create_rejects_control_characters_naming_the_field(
+    override: dict[str, object], field: str
+) -> None:
+    with pytest.raises(ValueError, match="must not contain control characters") as info:
+        _event(**override)
+    assert field in str(info.value)
+
+
+@pytest.mark.parametrize(("override", "field"), CONTROL_CASES)
+def test_from_record_rejects_control_characters_naming_the_field(
+    override: dict[str, object], field: str
+) -> None:
+    record = _event().to_record()
+    del record["event_id"]
+    for name, value in override.items():
+        record[name] = list(value) if isinstance(value, tuple) else value
+
+    with pytest.raises(ValueError, match="must not contain control characters") as info:
+        ShadowEvent.from_record(record)
+    assert field in str(info.value)
+
+
+def test_printable_text_is_accepted_and_the_encoding_is_unchanged() -> None:
+    # Non-ASCII, symbols, and ordinary punctuation are not control characters;
+    # the validator rejects, never rewrites, so valid records keep their bytes.
+    event = _event(
+        kind="file_edit",
+        paths=("app/café ✓.py",),
+        outside_paths=("~/notes (draft).txt",),
+        tool="Edit",
+        call_id="call-1",
+        excerpt=None,
+        content_digest=None,
+    )
+    assert event.event_id == event_id_for(event.identity_fields())
+    assert ShadowEvent.from_record(VECTOR_RECORD).event_id == VECTOR_EVENT_ID

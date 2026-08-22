@@ -9,6 +9,7 @@ Status: v0 specification, 2026-08-22. This is the open integration surface for t
 - Records for one session must be contiguous, in `seq` order, starting at 1 with no gaps.
 - A file may contain exactly one session.
 - Unknown top-level fields are rejected. Unknown `kind` values are rejected; emitters that cannot classify an event must use `kind: "unknown"` so the record is surfaced rather than dropped.
+- A line may nest JSON containers at most 4 levels deep (a valid record needs two: the record and its `source`, `claim`, or arrays); a deeper line, or one too deep to parse at all, is rejected with its line number.
 
 ## Record fields
 
@@ -35,6 +36,8 @@ Status: v0 specification, 2026-08-22. This is the open integration surface for t
 | `derived_from` | array of string | `event_id` values of the events this record was derived from; required non-empty when `provenance` is `inferred`, must be empty when `observed` |
 | `source` | object | `{"adapter": "<id>", "adapter_version": "<semver>", "record_ref": "<bounded locator>", "raw_type": "<source record type>"}`; each string ≤ 128 characters |
 | `event_id` | string (optional on input) | Lowercase hex SHA-256 computed as below. If present it must match the recomputed value or ingest fails closed. |
+
+Every string in `paths`, `outside_paths`, `tool`, `call_id`, `argv_excerpt`, `excerpt`, `source.record_ref`, and `source.raw_type` must be free of control characters: C0 (`U+0000`–`U+001F`, which includes ESC and therefore every terminal escape sequence), DEL and C1 (`U+007F`–`U+009F`), and the line separators `U+2028` and `U+2029`. Such a value could forge lines in the lint listing or the report; ingest rejects it naming the field.
 
 ## Kinds
 
@@ -83,7 +86,7 @@ A session digest is `SHA-256("shadow.session.v1" || 0x00 || be64(count) || for e
 
 ## Redaction requirements
 
-Emitters must never include: prompts or system instructions, hidden reasoning, file contents, full command output, environment variables, credentials, tokens, or private keys. Graphene additionally scrubs, at ingest, any excerpt that matches its secret patterns (bearer tokens, `KEY=`/`TOKEN=`/`SECRET=`/`PASSWORD=` assignments, AWS/Google/GitHub/Slack/OpenAI/Anthropic-style key prefixes, PEM blocks) and replaces the match with `<redacted>`. Redaction is applied before persistence; nothing unredacted is ever written to the shadow store.
+Emitters must never include: prompts or system instructions, hidden reasoning, file contents, full command output, environment variables, credentials, tokens, or private keys. Graphene additionally scrubs, at ingest, any excerpt that matches its secret patterns (bearer tokens, `KEY=`/`TOKEN=`/`SECRET=`/`PASSWORD=` assignments, AWS/Google/GitHub/Slack/OpenAI/Anthropic-style key prefixes, PEM blocks) and replaces the match with `<redacted>`. Control and zero-width characters (`U+200B`–`U+200D`, `U+FEFF`) are stripped from an excerpt before the patterns run, and the patterns run again after whitespace is collapsed, so a secret split by one of them cannot slip past. Redaction is applied before persistence; nothing unredacted is ever written to the shadow store.
 
 ## Worked example
 
@@ -118,6 +121,7 @@ Ingest stops with a precise error, and persists nothing, when:
 - `provenance` is `inferred` with an empty `derived_from`, or `observed` with a non-empty one;
 - a supplied `event_id` does not match the recomputed digest;
 - `claim` is present on a non-claim kind, or absent on a `claim`.
+- a string field contains a control character, or a line nests containers deeper than 4 levels or is too deeply nested to parse.
 
 ## Versioning
 

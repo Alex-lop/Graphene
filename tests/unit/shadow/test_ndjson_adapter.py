@@ -596,3 +596,95 @@ def test_materialize_rejects_non_drafts_and_invalid_values() -> None:
         materialize("sess-9", (_draft(excerpt="x" * 281),))
     with pytest.raises(AdapterError, match="draft 0: claim payload is present exactly"):
         materialize("sess-9", (_draft(claim=CLAIM),))
+
+
+# -- nesting and control characters (review findings) -------------------------
+
+
+def test_deeply_nested_line_is_a_line_numbered_error_not_a_recursion_error() -> None:
+    deep = b"[" * 100_000 + b"]" * 100_000 + b"\n"
+
+    _rejects(deep, "line 1: invalid JSON (nesting too deep)")
+    _rejects(_lines(_record(1)) + deep, "line 2: invalid JSON (nesting too deep)")
+    nested_field = json.dumps(_record(1)).replace(
+        '"claim": null', '"claim": ' + "[" * 100_000 + "]" * 100_000
+    )
+    _rejects(nested_field.encode() + b"\n", "line 1: invalid JSON (nesting too deep)")
+
+
+def test_records_nesting_deeper_than_four_levels_are_rejected() -> None:
+    message = "line 1: record nests containers deeper than 4 levels"
+
+    _rejects(_lines(_record(1, claim=[[[[[1]]]]])), message)
+    _rejects(_lines({**_record(1), "x": {"a": {"b": {"c": {"d": 1}}}}}), message)
+    # Three levels is within the bound: the unknown field is what gets named.
+    _rejects(_lines({**_record(1), "x": {"a": {"b": 1}}}), 'line 1: unknown field "x"')
+    # A valid record (source and the arrays are level two) is unaffected.
+    assert _parse(_lines(_record(1))).raw_record_count == 1
+
+
+@pytest.mark.parametrize(
+    ("over", "field"),
+    (
+        (
+            {
+                "kind": "file_edit",
+                "paths": ["a\n  [claimed-without-evidence] FORGED LINE"],
+                "excerpt": None,
+                "content_digest": None,
+            },
+            "paths[0]",
+        ),
+        (
+            {
+                "kind": "file_edit",
+                "paths": ["a\x1b[31mred"],
+                "excerpt": None,
+                "content_digest": None,
+            },
+            "paths[0]",
+        ),
+        (
+            {
+                "kind": "file_delete",
+                "outside_paths": ["/tmp/x\nHIGH (1)\n  [forged] injected finding"],
+                "excerpt": None,
+                "content_digest": None,
+            },
+            "outside_paths[0]",
+        ),
+        (
+            {
+                "kind": "file_delete",
+                "outside_paths": ["/tmp/\x1b[31mred"],
+                "excerpt": None,
+                "content_digest": None,
+            },
+            "outside_paths[0]",
+        ),
+        ({"tool": "Bash\nINJECTED"}, "tool"),
+        ({"tool": "Bash\x00"}, "tool"),
+        ({"call_id": "\x1b[31mred"}, "call_id"),
+        ({"source": {**SOURCE, "raw_type": "a\nb"}}, "source.raw_type"),
+        ({"source": {**SOURCE, "record_ref": "line:1\x1b"}}, "source.record_ref"),
+        ({"excerpt": "All tests pass\u2028  high [forged] line"}, "excerpt"),
+        ({"excerpt": "Set TOKEN=x in the shell.\tAll tests pass."}, "excerpt"),
+        (
+            {
+                "kind": "command_exec",
+                "tool": "Bash",
+                "argv_excerpt": "pytest\u2029-q",
+                "excerpt": None,
+                "content_digest": None,
+            },
+            "argv_excerpt",
+        ),
+    ),
+)
+def test_control_characters_are_rejected_naming_the_field(
+    over: dict[str, object], field: str
+) -> None:
+    _rejects(
+        _lines(_record(1, **over)),
+        f'line 1: field "{field}": must not contain control characters',
+    )

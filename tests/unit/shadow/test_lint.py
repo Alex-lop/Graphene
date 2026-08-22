@@ -586,3 +586,21 @@ def test_lint_report_round_trips_through_json():
     restored = LintReport.model_validate(json.loads(report.model_dump_json()))
 
     assert restored == report
+
+
+def test_claim_with_no_edit_and_no_check_says_so_instead_of_citing_seq_zero():
+    # Review finding: the message used to cite "the last edit (seq 0)", an
+    # event that cannot exist because seqs are 1-based.
+    message = _event(1, "message", actor="agent", excerpt="All tests pass.")
+    events = [message, _claim(2, message)]
+
+    report = _run(events)
+
+    (finding,) = _rule(report, "claimed-without-evidence")
+    assert finding.message == (
+        'Claim "All tests pass." (checks_pass): no edit precedes this claim; '
+        "no observed passing check precedes it either."
+    )
+    assert "seq 0" not in finding.message
+    assert finding.severity == "high"
+    assert _ratio(report, "backed_claims") == (0, 1)

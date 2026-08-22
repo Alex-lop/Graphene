@@ -433,7 +433,9 @@ def test_secret_shaped_excerpts_are_redacted_before_persistence(
     token = "abcd1234efgh5678ijkl"
     path = _write(
         tmp_path / "s.ndjson",
-        _record(1, excerpt=f"Set TOKEN={token} in the shell.\tAll tests pass."),
+        # Two spaces, not a tab: control characters now fail closed at the
+        # adapter, and the double space still exercises whitespace collapse.
+        _record(1, excerpt=f"Set TOKEN={token} in the shell.  All tests pass."),
         _record(
             2,
             kind="command_exec",
@@ -551,3 +553,118 @@ def test_package_exports_the_pipeline() -> None:
         assert name in shadow_package.__all__
         assert getattr(shadow_package, name) is not None
     assert shadow_package.ingest_file is ingest_file
+
+
+# -- review findings: forged lines, split secrets, collapsed markdown ---------
+
+
+def _fake_adapter_fields() -> dict[str, object]:
+    base = _record(1)
+    return {
+        name: value
+        for name, value in base.items()
+        if name
+        not in {"schema", "seq", "event_id", "provenance", "derived_from", "session_id"}
+    }
+
+
+def test_forged_report_lines_in_paths_are_rejected_before_anything_persists(
+    store: ShadowStore, tmp_path: Path
+) -> None:
+    path = _write(
+        tmp_path / "s.ndjson",
+        _record(1, actor="user", excerpt="fix it"),
+        _record(
+            2,
+            kind="file_edit",
+            paths=["a\n  [claimed-without-evidence] FORGED LINE"],
+            excerpt=None,
+            content_digest=None,
+        ),
+        _record(
+            3,
+            kind="file_delete",
+            outside_paths=["/tmp/x\nHIGH (1)\n  [forged] injected finding"],
+            excerpt=None,
+            content_digest=None,
+        ),
+    )
+
+    with pytest.raises(
+        AdapterError,
+        match=r'line 2: field "paths\[0\]": must not contain control characters',
+    ):
+        ingest_file(store, path, fmt="ndjson", repo=None)
+    assert store.sessions() == []
+
+
+def test_control_and_zero_width_split_secrets_are_redacted_before_persistence(
+    store: ShadowStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bearer = "abcdefghijklmnopqrstuvwxyz012345"
+    split_bearer = bearer[:8] + "\x7f" + bearer[8:]
+    sk = "sk-" + "a" * 40
+    split_sk = "sk-\u200d" + "a" * 40
+
+    class FakeAdapter:
+        name = "fake"
+        version = "0.0.1"
+
+        def parse(self, data: bytes, *, repo: Path | None) -> ParsedSession:
+            fields = _fake_adapter_fields()
+            message = Draft(
+                {**fields, "excerpt": f"note: Bearer {split_bearer} end"},
+                "observed",
+                (),
+            )
+            command = Draft(
+                {
+                    **fields,
+                    "kind": "command_exec",
+                    "tool": "Bash",
+                    "excerpt": None,
+                    "content_digest": None,
+                    "argv_digest": "cd" * 32,
+                    "argv_excerpt": f"run {split_sk}",
+                },
+                "observed",
+                (),
+            )
+            return ParsedSession(
+                "sess-fake", (message, command), False, 2, 0, "fake", "0.0.1"
+            )
+
+    monkeypatch.setitem(ADAPTERS, "fake", FakeAdapter())
+    source = tmp_path / "anything.bin"
+    source.write_bytes(b"opaque")
+
+    result = ingest_file(store, source, fmt="fake", repo=None)
+    events = store.events(result.shadow_id)
+
+    assert events[0].excerpt == f"note: {REDACTED} end"
+    assert events[1].argv_excerpt == f"run {REDACTED}"
+    blobs = b"\n".join(_event_blobs(Path(store.path)))
+    assert bearer.encode() not in blobs
+    assert sk.encode() not in blobs
+    assert ("a" * 40).encode() not in blobs
+
+
+def test_collapsed_checkbox_and_explanation_text_yields_no_claims(
+    store: ShadowStore, tmp_path: Path
+) -> None:
+    # The review's end-to-end case, already whitespace-collapsed the way an
+    # ndjson excerpt arrives: three false claims before the fix, none after.
+    text = (
+        "None of the tests pass. Here is how it works: the cache is keyed by "
+        "path. - [ ] All tests pass The problem is fixed-point precision."
+    )
+    path = _write(
+        tmp_path / "s.ndjson",
+        _record(1, actor="user", excerpt="go"),
+        _record(2, excerpt=text),
+    )
+
+    result = ingest_file(store, path, fmt="ndjson", repo=None)
+
+    assert result.claim_count == 0
+    assert result.event_count == 2

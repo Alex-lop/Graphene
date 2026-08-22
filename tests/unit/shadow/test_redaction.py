@@ -309,3 +309,40 @@ def test_classify_path_never_touches_the_filesystem(tmp_path: Path) -> None:
     )
     assert not root.exists()
     assert not link_target.exists()
+
+
+# -- control-character and zero-width splitting (review finding) -------------
+
+
+def test_control_character_split_secrets_are_redacted() -> None:
+    # The strip used to run AFTER the patterns, reassembling the secret.
+    assert bounded_excerpt("API_K\x00EY=abcd1234", 80) == REDACTED
+    assert bounded_excerpt("Bearer abcdefgh\x7fijklmnopqrstuvwxyz012345", 280) == (
+        REDACTED
+    )
+    assert bounded_excerpt("run sk-\x7f" + "a" * 40, 200) == f"run {REDACTED}"
+    assert bounded_excerpt("export OPENAI_API_K\x01EY=abcd1234efgh5678", 80) == (
+        f"export {REDACTED}"
+    )
+    assert bounded_excerpt("ghp_" + "A" * 10 + "\x1f" + "A" * 20, 80) == REDACTED
+
+
+def test_zero_width_split_secrets_are_redacted() -> None:
+    assert bounded_excerpt("API_K\u200dEY=abcd1234", 80) == REDACTED
+    assert bounded_excerpt("Bearer abcdefgh\u200bijklmnopqrstuvwxyz012345", 280) == (
+        REDACTED
+    )
+    assert bounded_excerpt("ghp_" + "A" * 10 + "\ufeff" + "A" * 20, 80) == REDACTED
+    assert bounded_excerpt("run sk-\u200c" + "a" * 40, 200) == f"run {REDACTED}"
+
+
+def test_zero_width_and_c1_characters_are_stripped_from_ordinary_text() -> None:
+    assert bounded_excerpt("a\u200bb\u200cc\u200dd\ufeffe", 80) == "abcde"
+    assert bounded_excerpt("a\x80b\x85c\x9fd", 80) == "abcd"
+
+
+def test_secret_assembled_by_whitespace_collapse_is_still_redacted() -> None:
+    # Belt and braces: the patterns run again after the collapse.
+    assert bounded_excerpt("PASSWORD \n = \n hunter22", 80) == REDACTED
+    excerpt = bounded_excerpt("token=abcd1234 \t and \x00 sk-" + "b" * 32, 80)
+    assert excerpt == f"{REDACTED} and {REDACTED}"

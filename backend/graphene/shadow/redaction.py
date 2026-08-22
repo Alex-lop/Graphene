@@ -35,7 +35,9 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)\bhttps?://[^\s/@]+:[^\s/@]+@"),
 )
 _WHITESPACE = re.compile(r"\s+")
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# C0 and C1 controls plus the zero-width characters (U+200B..U+200D, U+FEFF)
+# that an emitter could use to split a secret so the patterns miss it.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u200b-\u200d\ufeff]")
 
 
 def redact_text(text: str) -> str:
@@ -50,7 +52,11 @@ def bounded_excerpt(text: str, limit: int) -> str | None:
 
     if limit < 2:
         raise ValueError("excerpt limit must leave room for an ellipsis")
-    collapsed = _WHITESPACE.sub(" ", _CONTROL.sub("", redact_text(text))).strip()
+    # Strip control and zero-width characters BEFORE scanning, so a secret
+    # split by one cannot slip past the patterns and be reassembled by the
+    # strip; then scan again after whitespace collapse, belt and braces.
+    collapsed = _WHITESPACE.sub(" ", redact_text(_CONTROL.sub("", text))).strip()
+    collapsed = redact_text(collapsed)
     if not collapsed:
         return None
     if len(collapsed) > limit:
