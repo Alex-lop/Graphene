@@ -19,3 +19,6 @@ All_md_files/
 # Local cycle diaries and proof ledger
 evidence/checkpoints/*-cycle-*.md
 evidence/claim_ledger.json
+
+# Local-only raw session transcripts and private captures (never committed)
+local/
