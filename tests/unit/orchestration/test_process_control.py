@@ -311,3 +311,82 @@ def test_status_failure_terminates_reaps_and_removes_owned_process(
     with pytest.raises(ProcessLookupError):
         os.kill(observed_pid[0], 0)
     assert not tuple(registry.directory.iterdir())
+
+
+SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path(SANDBOX_EXEC).is_file(),
+    reason="exec-in-place wrapper identity requires macOS /usr/bin/sandbox-exec",
+)
+def test_exec_in_place_wrapper_keeps_identity_and_signals(tmp_path: Path) -> None:
+    """sandbox-exec replaces its own image; the registry must still own the group.
+
+    Identity is pid, process group, and start time. The executable may change
+    only for a child recorded under the documented exec-in-place wrapper.
+    """
+
+    from graphene.orchestration import process_control
+
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(
+        (SANDBOX_EXEC, "-p", "(version 1)(allow default)", "/bin/sleep", "30"),
+        start_new_session=True,
+    )
+    try:
+        registry.record(dispatch, process, SANDBOX_EXEC)
+        owned = registry.records_for_mission(dispatch.mission_id)[0]
+        assert owned.pid == owned.pgid == process.pid
+        assert owned.executable in {SANDBOX_EXEC, "/bin/sleep"}
+        deadline = time.monotonic() + 5
+        observed = owned.executable
+        while time.monotonic() < deadline:
+            _, _, _, observed = process_control._process_identity(process.pid)
+            if observed != SANDBOX_EXEC:
+                break
+            time.sleep(0.02)
+        assert observed != SANDBOX_EXEC, "sandbox-exec did not exec in place"
+        # The exec'd image is re-identified, not refused.
+        assert registry.records_for_mission(dispatch.mission_id) == (owned,)
+        assert registry.validate(dispatch) == owned
+        assert registry.has_record(dispatch.attempt_id)
+        registry.signal(dispatch, 15)
+        assert process.wait(timeout=2) == -15
+        registry.remove(dispatch)
+        assert not registry.has_record(dispatch.attempt_id)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, 9)
+            process.wait(timeout=2)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_executable_change_without_wrapper_still_refuses_to_signal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    registry.record(dispatch, process, "/bin/sleep")
+    path = next(registry.directory.iterdir())
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["executable"] = "/bin/other"
+    path.write_text(json.dumps(record), encoding="utf-8")
+    signalled: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        os, "killpg", lambda pid, requested: signalled.append((pid, requested))
+    )
+
+    try:
+        with pytest.raises(ProcessControlError, match="identity changed"):
+            registry.signal(dispatch, 15)
+        with pytest.raises(ProcessControlError, match="identity changed"):
+            registry.records_for_mission(dispatch.mission_id)
+        assert signalled == []
+    finally:
+        process.kill()
+        process.wait(timeout=2)

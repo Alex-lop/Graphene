@@ -358,11 +358,16 @@ def _inventory(root: Path) -> dict[str, bytes]:
     return files
 
 
-def fixture_policy_for(workspace: Path) -> FixturePolicy:
+def fixture_policy_for(
+    workspace: Path, *, test_timeout_seconds: int = 15
+) -> FixturePolicy:
     """Bind the frozen fixture-tests command to one exact workspace inventory.
 
     Shared by the scripted worker and the host-sandbox check runner so both
-    trusted check paths materialize and hash the same candidate tree.
+    trusted check paths materialize and hash the same candidate tree. The
+    scripted fixture keeps its 15 second budget; the host-sandbox runner passes
+    the policy template's own timeout so the attested template digest and the
+    enforced budget agree.
     """
 
     files = _inventory(workspace)
@@ -371,7 +376,7 @@ def fixture_policy_for(workspace: Path) -> FixturePolicy:
         tracked_paths=tuple(files),
         mutable_paths=tuple(files),
         fixed_test_command=_FIXED_TEST_COMMAND,
-        test_timeout_seconds=15,
+        test_timeout_seconds=test_timeout_seconds,
         max_test_output_bytes=16_384,
         max_write_bytes=262_144,
         max_patch_bytes=1_048_576,

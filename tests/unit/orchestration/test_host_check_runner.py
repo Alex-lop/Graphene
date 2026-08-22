@@ -303,3 +303,118 @@ def test_host_sandbox_runner_rejects_unknown_or_mismatched_attempt_owners(
             asyncio.run(runner(tmp_path, _assignment(FIXTURE_TESTS), "attempt-1"))
         assert rejected.value.code == RuntimeErrorCode.POLICY_REJECTED
         assert not tuple(runner.registry.directory.iterdir())
+
+
+def _dispatch_for_attempt(attempt_id: str) -> Dispatch:
+    return Dispatch(
+        mission_id="mission-host",
+        plan_revision=1,
+        plan_sha256="0" * 64,
+        task_id="work-a",
+        task_kind=TaskKind.WORK,
+        attempt_id=attempt_id,
+        attempt_number=1,
+        worker_id="worker-a",
+        workspace_id="workspace-a",
+        lease_id="lease-a",
+        fencing_token=1,
+        dispatch_command_id="dispatch-command-host-0002",
+        write_paths=(),
+        allowed_commands=("fixture-tests",),
+        acceptance_checks=("fixture-tests",),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+
+
+def test_host_sandbox_runner_rejects_a_timeout_above_the_fixture_cap(
+    tmp_path: Path,
+) -> None:
+    over_cap = CommandTemplate(
+        template_id="fixture-tests",
+        argv=FIXTURE_TESTS.argv,
+        timeout_seconds=61,
+    )
+    runner = _runner(tmp_path)
+    with pytest.raises(RuntimeFailure) as rejected:
+        asyncio.run(runner(tmp_path, _assignment(over_cap), "attempt-1"))
+    assert rejected.value.code == RuntimeErrorCode.POLICY_REJECTED
+    assert not tuple(runner.registry.directory.iterdir())
+
+
+@DARWIN_SANDBOX
+def test_host_sandbox_runner_enforces_the_template_timeout_and_reaps_the_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hanging check is SIGKILLed through the registry after exec-in-place.
+
+    The attested outcome says timed_out, cleanup_complete is measured from the
+    owned record being gone, and the sandboxed process group no longer exists.
+    """
+
+    import os
+    import signal as signals
+
+    workspace = tmp_path / "workspace"
+    (workspace / "tests").mkdir(parents=True)
+    (workspace / "tests" / "test_slow.py").write_text(
+        "import time\n\n\ndef test_slow() -> None:\n    time.sleep(20)\n",
+        encoding="utf-8",
+    )
+    short = CommandTemplate(
+        template_id="fixture-tests", argv=FIXTURE_TESTS.argv, timeout_seconds=1
+    )
+    dispatch = _dispatch_for_attempt("attempt-slow")
+    runner = _runner(tmp_path, dispatch_for=lambda _attempt_id: dispatch)
+    groups: list[int] = []
+    original_record = OwnedProcessRegistry.record
+
+    def observe_record(self, owned_dispatch, process, executable) -> None:
+        original_record(self, owned_dispatch, process, executable)
+        groups.append(process.pid)
+
+    monkeypatch.setattr(OwnedProcessRegistry, "record", observe_record)
+
+    outcome = asyncio.run(runner(workspace, _assignment(short), "attempt-slow"))
+
+    assert outcome.timed_out is True
+    assert outcome.cleanup_complete is True
+    assert outcome.template_id == "fixture-tests"
+    assert not runner.registry.has_record("attempt-slow")
+    assert len(groups) == 1
+    with pytest.raises(ProcessLookupError):
+        os.killpg(groups[0], signals.SIGCONT)
+
+
+def test_host_sandbox_selection_fails_before_any_worker_runs_off_macos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared = prepare_fake_two_worker_mission(
+        tmp_path,
+        monkeypatch,
+        command_templates=(FIXTURE_TESTS,),
+        extra_files={"tests/test_ok.py": PASSING_TEST},
+    )
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "host-sandbox")
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    with pytest.raises(
+        mission_cli.MissionCliError,
+        match="^GRAPHENE_CHECK_EXECUTOR=host-sandbox requires macOS",
+    ):
+        mission_cli._execute_adk_mission(
+            store=prepared.store,
+            mission_id=prepared.mission_id,
+            registry=prepared.registry,
+            resource_sampler=quiet_resource_sampler,
+        )
+
+    assert prepared.model_a.calls == 0
+    assert prepared.model_b.calls == 0
+    snapshot = prepared.store.snapshot(prepared.mission_id)
+    assert snapshot.mission.status == MissionStatus.RUNNING
+    assert snapshot.attempts == ()
+    assert mission_cli.doctor(prepared.repository)["check_executor"] == {
+        "requested": "host-sandbox",
+        "supported": False,
+        "reason": "host-sandbox requires macOS /usr/bin/sandbox-exec",
+    }

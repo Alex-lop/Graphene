@@ -3074,12 +3074,28 @@ def _requested_check_executor() -> str:
     return os.environ.get(_CHECK_EXECUTOR_ENV, "").strip() or "docker"
 
 
+_HOST_SANDBOX_UNSUPPORTED = (
+    "GRAPHENE_CHECK_EXECUTOR=host-sandbox requires macOS /usr/bin/sandbox-exec"
+)
+
+
+def _host_sandbox_supported() -> bool:
+    return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
+
+
 def _select_check_executor() -> str:
-    """Fail closed on anything but the two explicit fixture-tests executors."""
+    """Fail closed on anything but the two explicit fixture-tests executors.
+
+    The host-sandbox choice is also checked for platform support here, before
+    any worker runs, so an unsupported host never spends a model call on an
+    attempt whose check can only fail.
+    """
 
     requested = _requested_check_executor()
     if requested not in _CHECK_EXECUTOR_CHOICES:
         raise MissionCliError(_CHECK_EXECUTOR_ERROR)
+    if requested == "host-sandbox" and not _host_sandbox_supported():
+        raise MissionCliError(_HOST_SANDBOX_UNSUPPORTED)
     return requested
 
 
@@ -3133,7 +3149,16 @@ class _LateBoundWorkerRuntime:
         return self.scheduler.heartbeat(dispatch)
 
 
+def _work_task_kinds(snapshot) -> dict[str, TaskKind]:
+    kinds = {task.task_id: task.kind for task in snapshot.plan.tasks}
+    kinds.update({task.task_id: task.kind for task in snapshot.tasks})
+    return kinds
+
+
 def _provider_receipt_references(snapshot) -> list[dict[str, object]]:
+    """Evidence-bound provider receipt references of WORK attempts only."""
+
+    kinds = _work_task_kinds(snapshot)
     return [
         {
             "attempt_id": attempt.attempt_id,
@@ -3143,6 +3168,7 @@ def _provider_receipt_references(snapshot) -> list[dict[str, object]]:
             "sha256": reference.sha256,
         }
         for attempt in snapshot.attempts
+        if kinds.get(attempt.task_id) == TaskKind.WORK
         for reference in attempt.evidence_refs
         if reference.kind == WORKER_PROVIDER_RECEIPT_KIND
     ]
@@ -3150,12 +3176,23 @@ def _provider_receipt_references(snapshot) -> list[dict[str, object]]:
 
 def _replayed_provider_receipts(
     snapshot, evidence: SQLiteAttemptEvidenceStore
-) -> tuple[list[dict[str, object]], list[str], list[str], list[str]]:
-    """Rebuild provider receipts from evidence-bound references; never guess."""
+) -> tuple[
+    list[dict[str, object]],
+    list[str],
+    list[str],
+    list[str],
+    dict[str, WorkerProviderReceipt],
+]:
+    """Rebuild provider receipts from evidence-bound references; never guess.
 
-    kinds = {task.task_id: task.kind for task in snapshot.plan.tasks}
-    kinds.update({task.task_id: task.kind for task in snapshot.tasks})
+    The final element maps each WORK attempt id to its evidence-resolved
+    receipt, which is the only input a provider-call overlap measurement
+    accepts.
+    """
+
+    kinds = _work_task_kinds(snapshot)
     receipts: list[dict[str, object]] = []
+    by_attempt: dict[str, WorkerProviderReceipt] = {}
     session_ids: set[str] = set()
     invocation_ids: set[str] = set()
     unknowns: list[str] = []
@@ -3182,11 +3219,18 @@ def _replayed_provider_receipts(
                 unknowns.append(f"{label} is not canonical")
                 continue
             receipts.append(receipt.model_dump(mode="json"))
+            by_attempt[attempt.attempt_id] = receipt
             if attempt.session_id is not None:
                 session_ids.add(attempt.session_id)
             if attempt.invocation_id is not None:
                 invocation_ids.add(attempt.invocation_id)
-    return receipts, sorted(session_ids), sorted(invocation_ids), unknowns
+    return (
+        receipts,
+        sorted(session_ids),
+        sorted(invocation_ids),
+        unknowns,
+        by_attempt,
+    )
 
 
 def _adk_result_value(
@@ -3232,37 +3276,21 @@ def _adk_result_value(
         store.bind_artifact_resolver(evidence)
     candidate, verification = scripted_result_artifacts(store, evidence, mission_id)
     snapshot = store.snapshot(mission_id)
-    overlap = measure_overlap(snapshot)
-    receipt_unknowns: list[str] = []
-    if receipts:
-        # Live run: the in-memory runtime receipts are ordered by attempt id so
-        # the list is byte-comparable with the evidence-resolved replay below.
-        provider_receipts = [
-            item.completion.provider.model_dump(mode="json")
-            for item in sorted(receipts, key=lambda item: item.attempt_id)
-            if item.completion.provider is not None
-        ]
-        worker_session_ids = sorted(
-            {
-                item.completion.session_id
-                for item in receipts
-                if item.completion.provider is not None
-            }
-        )
-        worker_invocation_ids = sorted(
-            {
-                item.completion.invocation_id
-                for item in receipts
-                if item.completion.provider is not None
-            }
-        )
-    else:
-        (
-            provider_receipts,
-            worker_session_ids,
-            worker_invocation_ids,
-            receipt_unknowns,
-        ) = _replayed_provider_receipts(snapshot, evidence)
+    # Provider receipts are reported only from evidence-bound references, on
+    # the live path and on replay alike. An in-memory runtime receipt whose
+    # evidence binding failed is not a receipt Graphene can cite, so it is
+    # never listed; `receipts` is kept for the dispatch/attempt bookkeeping.
+    (
+        provider_receipts,
+        worker_session_ids,
+        worker_invocation_ids,
+        receipt_unknowns,
+        receipts_by_attempt,
+    ) = _replayed_provider_receipts(snapshot, evidence)
+    # Overlap carries the lifetime bases from the store clock and, from the
+    # same evidence-resolved receipts, the provider-call basis a live claim
+    # must cite.
+    overlap = measure_overlap(snapshot, provider_receipts=receipts_by_attempt)
     return {
         "status": snapshot.mission.status.value,
         "mission_id": mission_id,
@@ -3280,6 +3308,7 @@ def _adk_result_value(
         "receipt_unknowns": receipt_unknowns,
         "parallel_overlap": overlap.model_dump(mode="json"),
         "parallel_overlap_observed": overlap.observed,
+        "provider_call_overlap_observed": overlap.provider_call_observed,
         "review_required": snapshot.mission.status == MissionStatus.AWAITING_RESULT,
         "checkout_mutated": False,
         **({"simulation_truth": demo_truth} if demo_truth else {}),
@@ -3584,6 +3613,7 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         raise MissionCliError(
             "outbound Gemini worker configuration is unavailable"
         ) from error
+    check_executor = _select_check_executor()
     runtime = _mission_runtime(args.mission_id) / "outbound-executor"
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(runtime, 0o700)
@@ -3595,7 +3625,11 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
     ):
         check_runner = _policy_check
     elif len(templates) == 1 and templates[0].template_id == "fixture-tests":
-        check_runner = DockerCheckRunner(DockerExecutor())
+        # Same explicit selection as the local ADK path; no silent fallback.
+        if check_executor == "host-sandbox":
+            check_runner = None  # built per attempt once its runtime exists
+        else:
+            check_runner = DockerCheckRunner(DockerExecutor())
     else:
         raise MissionCliError("outbound executor has no supported check runner")
 
@@ -3663,6 +3697,17 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             input_publications=outbox.accepted_inputs,
             expires_at=outbox.lease.expires_at,
         )
+        late_runtime = _LateBoundWorkerRuntime()
+        attempt_check_runner = check_runner
+        if attempt_check_runner is None:
+            # host-sandbox: the check subprocess registers in the mission's
+            # owned-process registry; heartbeats stay with the executor loop.
+            attempt_check_runner = HostSandboxCheckRunner(
+                OwnedProcessRegistry(_mission_runtime(args.mission_id)),
+                dispatch_for=late_runtime.dispatch_for,
+                status=lambda: store.snapshot(args.mission_id).mission.status,
+                heartbeat=None,
+            )
         worker = WorkerRuntime(
             repository=repository,
             base_sha=snapshot.mission.base_sha,
@@ -3671,11 +3716,12 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             registry=registry,
             assignment=lambda current: assignments[current.task_id],
             accepted_artifact=accepted,
-            check_runner=check_runner,
+            check_runner=attempt_check_runner,
             policy_sha256=snapshot.policy.policy_sha256,
             fence=fence,
             heartbeat=heartbeat,
         )
+        late_runtime.runtime = worker
         try:
             result = worker.execute(dispatch)
         except Exception:

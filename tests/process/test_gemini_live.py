@@ -122,13 +122,19 @@ def test_real_gemini_runs_the_full_two_worker_mission(
         assert receipt["output_bytes"] > 0
         assert receipt["usage_source"] in {"provider_reported", "unavailable"}
         assert "prompt" not in receipt and "output" not in receipt
-    # Measured overlap comes from durable attempt and lease timestamps, and
-    # every provider receipt is cited by an evidence reference that resolves.
+    # Lifetime overlap comes from durable attempt and lease timestamps; the
+    # real-agent claim cites the provider-call windows the runtime stamped
+    # into the evidence-bound receipts. Every receipt is cited by an evidence
+    # reference that resolves.
     assert completed["parallel_overlap_observed"] is True
     assert completed["parallel_overlap"]["max_window_ms"] > 0
+    assert completed["provider_call_overlap_observed"] is True
+    assert completed["parallel_overlap"]["provider_call_observed"] is True
+    assert completed["parallel_overlap"]["provider_call_max_window_ms"] > 0
     assert {item["basis"] for item in completed["parallel_overlap"]["pairs"]} == {
         "attempt_timestamps",
         "lease_timestamps",
+        "provider_call_timestamps",
     }
     assert completed["receipt_unknowns"] == []
     assert len(completed["provider_receipt_references"]) >= 2

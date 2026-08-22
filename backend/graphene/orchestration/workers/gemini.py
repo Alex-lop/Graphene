@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import Literal
 
@@ -37,6 +38,7 @@ from ..runtime import (
     WorkerCompletion,
     WorkerContext,
     WorkerProviderReceipt,
+    format_provider_call_timestamp,
 )
 
 
@@ -275,6 +277,10 @@ class GeminiWorkerAdapter:
         heartbeat = asyncio.create_task(self._heartbeat(context, done))
         output = []
         started = time.monotonic()
+        # The provider call window is stamped on the wall clock immediately
+        # around the model run, for both the fake and the live driver, so the
+        # receipt carries a measured execution window rather than a lifetime.
+        call_started_at = datetime.now(UTC)
         try:
             async with asyncio.timeout(self.model_timeout_seconds):
                 async for event in runner.run_async(
@@ -296,6 +302,7 @@ class GeminiWorkerAdapter:
                         for part in event.content.parts if event.content else ():
                             if part.text and not part.thought:
                                 output.append(part.text)
+                call_ended_at = datetime.now(UTC)
         except asyncio.CancelledError as error:
             raise RuntimeFailure(RuntimeErrorCode.CANCELLED) from error
         except TimeoutError as error:
@@ -391,6 +398,8 @@ class GeminiWorkerAdapter:
                 input_bytes=len(payload.encode("utf-8")),
                 output_bytes=len(raw_output.encode("utf-8")),
                 latency_ms=min(300_000, int((time.monotonic() - started) * 1_000)),
+                call_started_at=format_provider_call_timestamp(call_started_at),
+                call_ended_at=format_provider_call_timestamp(call_ended_at),
                 usage_source="provider_reported" if reported else "unavailable",
                 prompt_tokens=counts[0],
                 candidate_tokens=counts[1],

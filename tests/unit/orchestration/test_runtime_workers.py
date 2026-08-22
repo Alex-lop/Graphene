@@ -499,6 +499,10 @@ def test_two_adk_workers_overlap_replay_and_feed_exact_assembly_verification(
     assert run_a.receipt.completion.provider.input_bytes > 0
     assert run_a.receipt.completion.provider.output_bytes > 0
     assert run_a.receipt.completion.provider.latency_ms >= 0
+    assert (
+        run_a.receipt.completion.provider.call_started_at
+        <= run_a.receipt.completion.provider.call_ended_at
+    )
     assert run_a.receipt.completion.provider.usage_source == "unavailable"
     assert run_a.result.session_id == run_a.receipt.completion.session_id
     assert run_a.result.invocation_id == run_a.receipt.completion.invocation_id
@@ -676,8 +680,29 @@ def _provider_receipt() -> WorkerProviderReceipt:
         input_bytes=12,
         output_bytes=34,
         latency_ms=5,
+        call_started_at="2026-08-20T00:00:00.000Z",
+        call_ended_at="2026-08-20T00:00:00.005Z",
         usage_source="unavailable",
     )
+
+
+def test_provider_receipt_call_window_is_validated() -> None:
+    receipt = _provider_receipt()
+    assert receipt.call_started_at <= receipt.call_ended_at
+    for started, ended in (
+        ("2026-08-20T00:00:00.005Z", "2026-08-20T00:00:00.000Z"),
+        ("2026-08-20T00:00:00Z", "2026-08-20T00:00:00.005Z"),
+        ("2026-08-20T00:00:00.000+00:00", "2026-08-20T00:00:00.005Z"),
+        ("2026-13-20T00:00:00.000Z", "2026-13-20T00:00:00.005Z"),
+    ):
+        with pytest.raises(ValueError):
+            WorkerProviderReceipt.model_validate(
+                {
+                    **receipt.model_dump(mode="json"),
+                    "call_started_at": started,
+                    "call_ended_at": ended,
+                }
+            )
 
 
 def _stub_runtime(

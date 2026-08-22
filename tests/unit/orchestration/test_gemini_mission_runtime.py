@@ -906,3 +906,66 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
     )
     assert replayed["receipt_unknowns"] == []
     assert replayed["parallel_overlap"] == result["parallel_overlap"]
+
+
+def test_live_result_lists_only_evidence_bound_provider_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A receipt whose evidence binding failed is never cited, live or replayed."""
+
+    import sqlite3
+
+    from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
+    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    original = SQLiteAttemptEvidenceStore.put_artifact
+    failures: list[str] = []
+
+    def flaky_put(self, kind, content, **overrides):
+        if kind == WORKER_PROVIDER_RECEIPT_KIND and not failures:
+            failures.append(kind)
+            raise sqlite3.OperationalError("simulated receipt write failure")
+        return original(self, kind, content, **overrides)
+
+    monkeypatch.setattr(SQLiteAttemptEvidenceStore, "put_artifact", flaky_put)
+
+    result = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=prepared.registry,
+        check_runner=mission_cli._policy_check,
+        resource_sampler=quiet_resource_sampler,
+    )
+
+    assert failures == [WORKER_PROVIDER_RECEIPT_KIND]
+    assert result["status"] == "awaiting_result"
+    snapshot = prepared.store.snapshot(prepared.mission_id)
+    kinds = {task.task_id: task.kind for task in snapshot.plan.tasks}
+    work = [item for item in snapshot.attempts if kinds[item.task_id] == TaskKind.WORK]
+    unbound = [item for item in work if item.result_code == "runtime_unavailable"]
+    assert len(unbound) == 1
+    assert not any(
+        reference.kind == WORKER_PROVIDER_RECEIPT_KIND
+        for reference in unbound[0].evidence_refs
+    )
+    bound = [item for item in work if item.attempt_id != unbound[0].attempt_id]
+    assert len(bound) == 2
+    # Only the two evidence-bound receipts are listed; the in-memory receipt of
+    # the attempt whose binding failed is not, and nothing is guessed.
+    assert len(result["provider_receipts"]) == 2
+    assert {item["attempt_id"] for item in result["provider_receipt_references"]} == {
+        item.attempt_id for item in bound
+    }
+    assert result["receipt_unknowns"] == []
+    assert prepared.store.verify(prepared.mission_id) == snapshot.head
+
+    replayed = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=prepared.registry,
+        check_runner=mission_cli._policy_check,
+    )
+    assert replayed["result_replayed"] is True
+    assert replayed["provider_receipts"] == result["provider_receipts"]
+    assert replayed["worker_session_ids"] == result["worker_session_ids"]

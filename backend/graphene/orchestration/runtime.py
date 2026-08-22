@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -13,7 +14,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2, DirectArtifactInputV2
 from ..execution.adapter import _FIXED_TEST_COMMAND, ExecutionError, run_fixture_tests
@@ -70,6 +71,10 @@ from .workspace_audit import (
 # credential mode, byte and token counts; never prompts or outputs) to the
 # attempt that produced it.
 WORKER_PROVIDER_RECEIPT_KIND = "worker-provider-receipt"
+
+# The fixture policy caps a single check at 60 seconds; a template asking for
+# more cannot be honoured exactly and is rejected rather than silently clamped.
+HOST_SANDBOX_MAX_TIMEOUT_SECONDS = 60
 
 
 class RuntimeErrorCode(StrEnum):
@@ -156,12 +161,35 @@ class CheckOutcome(FrozenModel):
         return self
 
 
+PROVIDER_CALL_TIMESTAMP_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
+_PROVIDER_CALL_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
+
+def format_provider_call_timestamp(moment: datetime) -> str:
+    """Render an aware instant as RFC 3339 UTC with millisecond precision."""
+
+    if moment.tzinfo is None:
+        raise ValueError("provider call timestamps must be timezone-aware")
+    utc = moment.astimezone(UTC)
+    return f"{utc:%Y-%m-%dT%H:%M:%S}.{utc.microsecond // 1000:03d}Z"
+
+
+def parse_provider_call_timestamp(value: str) -> datetime:
+    """Parse a receipt call timestamp; anything outside the receipt format fails."""
+
+    if re.fullmatch(PROVIDER_CALL_TIMESTAMP_PATTERN, value) is None:
+        raise ValueError("provider call timestamp is not RFC 3339 UTC milliseconds")
+    return datetime.strptime(value, _PROVIDER_CALL_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
+
+
 class WorkerProviderReceipt(FrozenModel):
     driver: Literal["adk_fake", "gemini_live"]
     framework: Literal["google_adk"] = "google_adk"
     framework_version: Literal["2.5.0"] = "2.5.0"
     client: Literal["google_genai"] = "google_genai"
-    client_version: str = Field(min_length=1, max_length=32)
+    client_version: str = Field(
+        min_length=1, max_length=32, pattern=r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"
+    )
     requested_model: Identifier
     returned_model: Identifier
     credential_mode: Literal["not_applicable", "gemini_api", "vertex_ai"]
@@ -170,6 +198,11 @@ class WorkerProviderReceipt(FrozenModel):
     input_bytes: int = Field(ge=1, le=1_048_576)
     output_bytes: int = Field(ge=1, le=1_048_576)
     latency_ms: int = Field(ge=0, le=300_000)
+    # Wall-clock window of the single provider call, stamped by the runtime
+    # immediately around the model run. This, not the attempt lifetime, is the
+    # basis for a measured provider-call overlap claim between workers.
+    call_started_at: str = Field(pattern=PROVIDER_CALL_TIMESTAMP_PATTERN)
+    call_ended_at: str = Field(pattern=PROVIDER_CALL_TIMESTAMP_PATTERN)
     usage_source: Literal["provider_reported", "unavailable"]
     prompt_tokens: int | None = Field(default=None, ge=0)
     candidate_tokens: int | None = Field(default=None, ge=0)
@@ -196,6 +229,14 @@ class WorkerProviderReceipt(FrozenModel):
             item is None for item in counts
         ):
             raise ValueError("provider-reported worker usage requires a token count")
+        return self
+
+    @model_validator(mode="after")
+    def call_window_is_ordered(self) -> WorkerProviderReceipt:
+        started = parse_provider_call_timestamp(self.call_started_at)
+        ended = parse_provider_call_timestamp(self.call_ended_at)
+        if started > ended:
+            raise ValueError("provider call cannot end before it starts")
         return self
 
 
@@ -400,7 +441,11 @@ class HostSandboxCheckRunner:
         self, workspace: Path, assignment: RuntimeAssignment, owner_id: str
     ) -> CheckOutcome:
         template = assignment.command_template
-        if tuple(template.argv) != _FIXED_TEST_COMMAND or template.cwd is not None:
+        if (
+            tuple(template.argv) != _FIXED_TEST_COMMAND
+            or template.cwd is not None
+            or not 0 < template.timeout_seconds <= HOST_SANDBOX_MAX_TIMEOUT_SECONDS
+        ):
             raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
         if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
             raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE)
@@ -418,8 +463,12 @@ class HostSandboxCheckRunner:
             heartbeat=None if heartbeat is None else (lambda: heartbeat(dispatch)),
         )
         try:
-            policy = fixture_policy_for(workspace)
-        except ScriptedError as error:
+            policy = fixture_policy_for(
+                workspace, test_timeout_seconds=template.timeout_seconds
+            )
+        except (ScriptedError, ValidationError) as error:
+            # An unrepresentable workspace (for example a path longer than the
+            # fixture policy allows) is a deterministic policy condition.
             raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
         try:
             run = await asyncio.to_thread(
@@ -439,7 +488,9 @@ class HostSandboxCheckRunner:
             timed_out=run.timed_out,
             output_sha256=sha256_hex(run.output.encode("utf-8")),
             output_truncated=run.output_truncated,
-            cleanup_complete=True,
+            # Measured, not asserted: the controlled runner removes the owned
+            # record only after the process group is confirmed gone.
+            cleanup_complete=not self.registry.has_record(dispatch.attempt_id),
         )
 
 
@@ -1971,6 +2022,7 @@ class WorkerRuntime:
 
 
 __all__ = [
+    "PROVIDER_CALL_TIMESTAMP_PATTERN",
     "WORKER_PROVIDER_RECEIPT_KIND",
     "AcceptedArtifactResolver",
     "CheckOutcome",
@@ -1990,5 +2042,7 @@ __all__ = [
     "WorkerRegistry",
     "WorkerRun",
     "WorkerRuntime",
+    "format_provider_call_timestamp",
+    "parse_provider_call_timestamp",
     "stable_operation_id",
 ]

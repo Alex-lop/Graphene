@@ -236,7 +236,9 @@ class PlanProposalReceipt(FrozenModel):
     framework: Literal["google_adk"] = "google_adk"
     framework_version: Literal[ADK_VERSION] = ADK_VERSION
     client: Literal["google_genai"] = "google_genai"
-    client_version: str = Field(min_length=1, max_length=32)
+    client_version: str = Field(
+        min_length=1, max_length=32, pattern=r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"
+    )
     mission_id: Identifier
     revision: int = Field(ge=1)
     plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

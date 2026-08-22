@@ -35,6 +35,10 @@ class DeterministicWorkerModel(BaseLlm):
         return self._calls
 
     @property
+    def mutations(self) -> tuple[FileMutation, ...]:
+        return self._mutations
+
+    @property
     def prompt(self) -> str:
         return self._prompt
 

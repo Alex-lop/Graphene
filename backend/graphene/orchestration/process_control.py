@@ -71,6 +71,13 @@ def _process_identity(pid: int) -> tuple[int, str, str, str]:
     return pgid, " ".join(fields[1:6]), fields[6], fields[7]
 
 
+# Wrappers that replace their own image with the wrapped command (``exec`` in
+# place) without forking. The process identity (pid, process group, start
+# time) survives the exec while ``comm`` changes, so an executable change is
+# accepted only for a child that was recorded under one of these wrappers.
+_EXEC_IN_PLACE_WRAPPERS = frozenset({"/usr/bin/sandbox-exec"})
+
+
 class OwnedProcessRegistry:
     """Private identity records for Graphene-created process-group leaders."""
 
@@ -235,12 +242,22 @@ class OwnedProcessRegistry:
         pgid, started_at, state, executable = current
         if state.startswith("Z"):
             return False
-        if (pgid, started_at, executable) != (
-            owned.pgid,
-            owned.started_at,
-            owned.executable,
+        if (pgid, started_at) != (owned.pgid, owned.started_at):
+            raise ProcessControlError("owned process identity changed")
+        if (
+            executable != owned.executable
+            and owned.executable not in _EXEC_IN_PLACE_WRAPPERS
         ):
             raise ProcessControlError("owned process identity changed")
+        return True
+
+    def has_record(self, attempt_id: str) -> bool:
+        """True while a durable record for ``attempt_id`` exists on disk."""
+
+        try:
+            self._path(attempt_id).lstat()
+        except FileNotFoundError:
+            return False
         return True
 
     def validate(self, dispatch: Dispatch) -> OwnedProcess:
