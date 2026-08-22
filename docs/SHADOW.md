@@ -2,7 +2,7 @@
 
 > **"Your agent said the tests passed. Graphene knows whether they actually ran."**
 
-Status: v0 design accepted 2026-08-22. The implementation lands in the commits that follow this document; the README proof table and [`contracts/product_proof.json`](../contracts/product_proof.json) flip to a verified label only in the same change as the tests that earn it. Until then the Shadow Agent is **NOT PROVEN**.
+Status: v0 design accepted 2026-08-22; the v0 implementation (`backend/graphene/shadow/`, `graphene shadow`) landed the same day. Credential-free tests pass for the ndjson path on the synthetic fixture under `tests/fixtures/shadow/ndjson/`; the `claude-code` adapter is pending a real transcript and fails closed until then. The README proof table and [`contracts/product_proof.json`](../contracts/product_proof.json) flip to a verified label only in the same change as the full test matrix that earns it. Until then the Shadow Agent is **NOT PROVEN**.
 
 ## Who it is for
 
@@ -59,12 +59,16 @@ graphene shadow ingest PATH --format claude-code|ndjson [--repo PATH]   # -> SHA
 graphene shadow report SHADOW_ID [--json]
 graphene shadow lint   SHADOW_ID [--rule RULE ...] [--json]
 graphene shadow graph  SHADOW_ID --json|--dot
-graphene shadow export SHADOW_ID --output DIR                           # -> redacted .graphene-shadow capsule
+graphene shadow export SHADOW_ID --output DIR                           # -> DIR/SHADOW_ID.graphene-shadow capsule
+graphene shadow list                                                    # one line per stored session
+graphene shadow verify SHADOW_ID                                        # re-verify one stored session
 ```
+
+The capsule is a new `0700` directory holding `manifest.json`, `events.ndjson`, `graph.json`, `lint.json`, `report.txt`, and `VERIFY.md`; the manifest pins every other file by SHA-256 and size. Re-ingesting a capsule: `graphene shadow ingest CAPSULE/events.ndjson --format ndjson` reproduces the same `SHADOW_ID`, because the exported stream already contains its inferred claim events so no matcher runs and no renumbering occurs, and `python -m graphene.shadow.verify CAPSULE` recomputes every `event_id`, the session digest, every file digest, the `shadow_id`, and the `segments.v1`/`lint.v1` outputs from the capsule's bytes alone.
 
 Two adapters, exactly:
 
-- `claude-code` parses a local Claude Code session transcript (the JSONL file under `~/.claude/projects/<project>/<session>.jsonl`). It was written against real session files produced on the maintainer's machine and is versioned against the observed record shapes. An unrecognized structure fails closed with an error that names the record and the field that did not match.
+- `claude-code` will parse a local Claude Code session transcript (the JSONL file under `~/.claude/projects/<project>/<session>.jsonl`). It is **not implemented in v0**: `graphene shadow ingest --format claude-code` fails closed with `unsupported shadow format: claude-code` until the adapter is built against real session files produced on the maintainer's machine and versioned against the observed record shapes. When it exists, an unrecognized structure must fail closed with an error that names the record and the field that did not match.
 - `ndjson` is the documented open format in [the adapter specification](SHADOW_ADAPTER_SPEC.md). Any agent, wrapper, or CI harness can emit `shadow.event.v1` records directly. The specification is the integration surface; Gemini CLI and Cursor reach Graphene through it rather than through bespoke adapters.
 
 The normalized schema is `shadow.event.v1`. Redaction happens at ingest, not at export: hidden reasoning is never ingested, command text is reduced to a digest plus a bounded redacted excerpt, file contents are never stored, and secrets matched by the redaction patterns are replaced before anything is persisted.

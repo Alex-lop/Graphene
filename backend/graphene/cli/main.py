@@ -144,6 +144,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_commands(commands)
 
+    from .shadow import register_commands as register_shadow
+
+    register_shadow(commands)
+
     run = commands.add_parser("run", allow_abbrev=False)
     run.add_argument("task", help="plan ID, or compatibility task with --profile")
     run.add_argument("--profile", choices=_PROFILES)
@@ -1466,6 +1470,10 @@ def _write_result(value: dict[str, object], *, json_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "shadow":
+        from .shadow import handle as handle_shadow
+
+        return handle_shadow(args, json_mode=args.json_mode)
     mission_alias = (
         args.command
         in {

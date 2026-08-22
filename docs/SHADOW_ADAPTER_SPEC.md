@@ -99,6 +99,14 @@ A minimal session: the agent edits a file, runs the tests, and says they passed.
 
 Ingest computes each `event_id`, extracts a `claim` event (`provenance: inferred`, `derived_from` the `seq: 5` message) and, because an observed `check_result` with `exit_code: 0` follows the last `file_edit`, `claimed-without-evidence` does not fire. Remove lines 3 and 4 and it does. Digests in this example are illustrative placeholders; the checked-in fixture under `tests/fixtures/shadow/` carries real values.
 
+## Claims in the input
+
+If the file contains any `claim` records, Graphene does not run its claim matcher over the agent messages: the emitter is the claim authority for that session, and every claim it emits must already satisfy the record rules above (`provenance: inferred`, non-empty `derived_from` naming an earlier message, the `claim` object with `matcher`, `category`, and `pattern_id`). When the file contains no `claim` records, Graphene runs `claims.v1` over each agent `message` excerpt and inserts the resulting `claim` events immediately after their message, renumbering `seq` in the process. The session summary records which of the two happened (`has_source_claims`).
+
+## Re-ingest
+
+Exported capsules round-trip. `graphene shadow export` writes `events.ndjson` as one canonical `shadow.event.v1` record per line, in `seq` order, with every `event_id` present; `graphene shadow ingest CAPSULE/events.ndjson --format ndjson` yields the same `shadow_id` because the stream already carries its claims, so nothing is extracted or renumbered and the normalized events, their session digest, and therefore the identifier are unchanged.
+
 ## Fail-closed behavior
 
 Ingest stops with a precise error, and persists nothing, when:

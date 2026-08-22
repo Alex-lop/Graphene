@@ -229,6 +229,11 @@ def _append_access_denied(path: Path, previous) -> object:
             "demo",
             None,
         ),
+        (["shadow", "ingest", "x.ndjson", "--format", "ndjson"], "shadow", None),
+        (["shadow", "report", "shadow_abc"], "shadow", None),
+        (["shadow", "lint", "shadow_abc", "--rule", "scope-drift"], "shadow", None),
+        (["shadow", "graph", "shadow_abc", "--dot"], "shadow", None),
+        (["shadow", "export", "shadow_abc", "--output", "out"], "shadow", None),
     ],
 )
 def test_parser_accepts_the_frozen_command_grammar(argv, command, memory_action):

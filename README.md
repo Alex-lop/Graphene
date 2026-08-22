@@ -69,6 +69,24 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 
 Machine-readable truth lives in [`contracts/product_proof.json`](contracts/product_proof.json).
 
+## Shadow Agent
+
+> **"Your agent said the tests passed. Graphene knows whether they actually ran."**
+
+Code review for agent sessions Graphene did not run. Point it at a finished transcript: Graphene reconstructs the session as inferred segments with a read-after-write graph, lints it for claims without checks, edits without checks, overlapping writes, scope drift, unverified deletes, and network or install activity, and exports a redacted capsule that verifies from its own bytes.
+
+```bash
+graphene shadow ingest PATH --format ndjson [--repo PATH]   # -> shadow_id
+graphene shadow report SHADOW_ID [--json]
+graphene shadow lint   SHADOW_ID [--rule RULE ...] [--json]
+graphene shadow graph  SHADOW_ID --json|--dot
+graphene shadow export SHADOW_ID --output DIR               # -> SHADOW_ID.graphene-shadow capsule
+```
+
+`graphene shadow list` and `graphene shadow verify SHADOW_ID` enumerate and re-verify stored sessions. Shadow data lives in its own `shadow.sqlite3` with its own schema ledger: `graphene shadow` never opens the mission store, and nothing in the mission trust chain ever cites a shadow record. Every reconstruction is labeled `inferred`, and there is no trust score. See [Shadow Agent](docs/SHADOW.md) and the [adapter specification](docs/SHADOW_ADAPTER_SPEC.md).
+
+Shadow Agent v0: credential-free tests pass on the synthetic ndjson fixture; the claude-code adapter is NOT PROVEN until it is built against a real transcript.
+
 ## Safety boundary
 
 - `graphene init` writes a narrow policy template; review every scope and exact argv-form command.
