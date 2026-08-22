@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "goal": "Add a redacted JSON status report and a Markdown status report to the ledger CLI; both must pass the existing suite plus new tests.",
+  "success_criteria": [
+    "Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy.",
+    "Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells.",
+    "The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider.",
+    "No file outside ledger_service/ and tests/ is created or modified."
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "policy_id": "<materialized>",
+  "revision": "<materialized>",
+  "repo_id": "<materialized>",
+  "base_ref": "<materialized>",
+  "base_sha": "<materialized>",
+  "allowed_read_globs": ["README.md", "ledger_service/**", "tests/**"],
+  "allowed_write_globs": ["ledger_service/**", "tests/**"],
+  "exclusions": ["**/*.key", "**/*.pem", ".env", ".env.*", ".git/**", ".graphene/**"],
+  "command_templates": [
+    {
+      "template_id": "fixture-tests",
+      "argv": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+      "timeout_seconds": 60
+    }
+  ],
+  "network": {"mode": "deny", "allowed_hosts": []},
+  "agent_roles": ["assembler", "planner", "verifier", "worker"],
+  "max_concurrency": 2,
+  "retry_limit": 1,
+  "resource_budget": {
+    "max_worker_seconds": 900,
+    "max_attempts": 8,
+    "max_artifact_bytes": 10485760,
+    "soft_managed_rss_bytes": 536870912,
+    "hard_managed_rss_bytes": 805306368
+  },
+  "retention": {"retain_days": 7, "retain_failed_attempts": true},
+  "risk_gates": ["final-result", "network", "scope-expansion"]
+}
