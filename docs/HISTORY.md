@@ -16,6 +16,7 @@ This index prevents planning artifacts, judge reports, and old implementation pr
 | [`SECURITY_AND_SOVEREIGNTY.md`](SECURITY_AND_SOVEREIGNTY.md) | Canonical Taskmaster trust, isolation, evidence, and privacy boundary |
 | [`FIRESTORE_AND_CLOUD.md`](FIRESTORE_AND_CLOUD.md) and [`ALEX_CLOUD_SETUP.md`](ALEX_CLOUD_SETUP.md) | Cloud design truth and explicit owner actions |
 | [`MISSION_CONTROL.md`](MISSION_CONTROL.md), [`DEMO_GUIDE.md`](DEMO_GUIDE.md), and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | UI/replay truth, demo path, and current gaps |
+| [`NORTH_STAR_RUNBOOK.md`](NORTH_STAR_RUNBOOK.md) and [`CLOUD_PROOF_PLAN.md`](CLOUD_PROOF_PLAN.md) | Ordered credentialed North Star sequence and the Option 1 Cloud Run + real Firestore plan with its SQLite-versus-cloud authority split; NOT RUN — NOT PROVEN until the cited evidence lands in the same commit as any label flip |
 | [`SHADOW.md`](SHADOW.md) and [`SHADOW_ADAPTER_SPEC.md`](SHADOW_ADAPTER_SPEC.md) | Shadow Agent product story, provenance discipline, and the open `shadow.event.v1` adapter format |
 | [`backend/graphene/shadow/`](../backend/graphene/shadow/) and `graphene shadow` | Shadow Agent v0 implementation (2026-08-22): ndjson ingest, `segments.v1` reconstruction, `lint.v1` Trust Lint, report, and self-verifying capsule export; credential-free tests on the synthetic fixture only, `claude-code` adapter NOT PROVEN |
 | [`deploy/cloudrun/README.md`](../deploy/cloudrun/README.md) | Reproducible but explicitly not-deployed cloud packaging |
