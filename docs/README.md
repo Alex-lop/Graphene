@@ -9,6 +9,8 @@ The root [README](../README.md) is the canonical product doorway. This index own
 - [Agent runtime](AGENT_RUNTIME.md) — planner, workers, tools, recovery, and proof status.
 - [Mission Control](MISSION_CONTROL.md) — projection, graph, decisions, and replay semantics.
 - [Demo guide](DEMO_GUIDE.md) — replay, scripted fixture, live-proof gates, and capture rules.
+- [Shadow Agent](SHADOW.md) — code review for agent sessions: observe, reconstruct, lint, report; observed-versus-inferred discipline.
+- [Shadow adapter specification](SHADOW_ADAPTER_SPEC.md) — the open `shadow.event.v1` NDJSON format any agent or harness can emit.
 
 ## Trust and deployment
 

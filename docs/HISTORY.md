@@ -16,6 +16,7 @@ This index prevents planning artifacts, judge reports, and old implementation pr
 | [`SECURITY_AND_SOVEREIGNTY.md`](SECURITY_AND_SOVEREIGNTY.md) | Canonical Taskmaster trust, isolation, evidence, and privacy boundary |
 | [`FIRESTORE_AND_CLOUD.md`](FIRESTORE_AND_CLOUD.md) and [`ALEX_CLOUD_SETUP.md`](ALEX_CLOUD_SETUP.md) | Cloud design truth and explicit owner actions |
 | [`MISSION_CONTROL.md`](MISSION_CONTROL.md), [`DEMO_GUIDE.md`](DEMO_GUIDE.md), and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | UI/replay truth, demo path, and current gaps |
+| [`SHADOW.md`](SHADOW.md) and [`SHADOW_ADAPTER_SPEC.md`](SHADOW_ADAPTER_SPEC.md) | Shadow Agent product story, provenance discipline, and the open `shadow.event.v1` adapter format |
 | [`deploy/cloudrun/README.md`](../deploy/cloudrun/README.md) | Reproducible but explicitly not-deployed cloud packaging |
 | [`GRAPH_NECESSITY_EVAL.md`](GRAPH_NECESSITY_EVAL.md) | Graph-necessity study protocol; not yet run |
 | [`benchmarks/README.md`](../benchmarks/README.md) | Graph-economics harness contract; no measured result is proven |
