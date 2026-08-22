@@ -66,6 +66,10 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | Docker executor | `NOT PROVEN` | Requires a responsive-daemon smoke |
 | Cloud Run + real Firestore | `NOT DEPLOYED — NOT PROVEN` | Packaging/emulator proof is not authenticated deployment proof |
 | Benchmark/video/media | `NOT PROVEN` | Harness/runbook/capture metadata exist; results and media do not |
+| Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
+| Shadow Agent, real Claude Code session | `NOT PROVEN` | Requires a real transcript; the claude-code adapter is not implemented and fails closed |
+| Mission capsule | `VERIFIED_LOCAL` on scripted-local and fake-ADK missions | Cold verification of event chains, evidence chains, receipts, bundle binding, and manifest summary; not producer authenticity |
+| North Star groundwork | `VERIFIED_LOCAL` with fake workers | Evidence-bound provider receipts, provider-call overlap, host-sandbox checks, failure laboratory, `why --json`; the live two-worker run stays `NOT PROVEN` |
 
 Machine-readable truth lives in [`contracts/product_proof.json`](contracts/product_proof.json).
 

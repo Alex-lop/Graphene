@@ -219,6 +219,53 @@
     "live authenticated cloud-to-local claim/heartbeat/result/reconnect proof and full Firestore SchedulerStore mutation parity",
     "shared Firestore listener and cloud stream fan-out",
     "live Google Cloud deployment, measured graph benchmark, and submission video",
-    "five-person Mission Control comprehension study"
-  ]
+    "five-person Mission Control comprehension study",
+    "Shadow Agent claude-code adapter built against a real transcript, then the real-session report",
+    "live North Star run: two Gemini workers, live failure laboratory, live capsule; labels flip only with that evidence"
+  ],
+  "shadow_agent": {
+    "status": "not_proven",
+    "ndjson_path": "verified_local",
+    "command": "uv run --frozen graphene shadow ingest tests/fixtures/shadow/ndjson/session_v1.ndjson --format ndjson",
+    "report_command": "uv run --frozen graphene shadow report SHADOW_ID",
+    "truth_label": "SHADOW AGENT v0 — NDJSON PATH VERIFIED LOCALLY ON A SYNTHETIC FIXTURE; REAL CLAUDE CODE SESSION NOT PROVEN",
+    "proves": "shadow.event.v1 canonical identities, ingest-time redaction, an isolated shadow store, the ndjson adapter's fail-closed rules, segments.v1 reconstruction, claims.v1 extraction with precision locks, the six lint.v1 rules with three defined ratios, and a self-verifying redacted capsule, all on the synthetic fixture and hand-built records.",
+    "does_not_prove": [
+      "ingestion of a real Claude Code session (the claude-code adapter is not implemented and fails closed)",
+      "faithfulness of any source transcript to what an agent did",
+      "any numeric governed-run saving"
+    ],
+    "blocker": "No raw transcript has been supplied at local/shadow/claude-code-session-raw.jsonl; the adapter is built against the real file, never from memory."
+  },
+  "mission_capsule": {
+    "status": "verified_local",
+    "command": "uv run --frozen graphene mission capsule export MISSION_ID --output DIR",
+    "verify_command": "uv run --frozen python -m graphene.orchestration.capsule verify CAPSULE_DIR",
+    "truth_label": "MISSION CAPSULE — COLD-VERIFIED INTERNAL CONSISTENCY; NOT PRODUCER AUTHENTICITY",
+    "proves": "From the capsule bytes alone: the mission event chain, every attempt evidence chain, receipt digests and schemas, the final bundle's head binding and candidate tree identity against the verification receipt, envelope digests, plan revision digests, attempt coverage, and the manifest summary; exported from scripted-local and fake-ADK missions on macOS.",
+    "does_not_prove": [
+      "who produced the capsule (no signature or external anchor)",
+      "tree identity against artifact bytes, which stay in the executor's private spool",
+      "provider-side identity or host clock accuracy"
+    ]
+  },
+  "north_star": {
+    "status": "not_proven",
+    "sentence": "Graphene coordinates two real Gemini coding workers, survives one of them failing, and proves exactly why the final repository result should be trusted.",
+    "credential_free_groundwork": [
+      "worker provider receipts bound to attempt evidence and resolved by digest in store.verify",
+      "overlap measured on attempt-lifetime, lease, and provider-call bases from evidence receipts",
+      "macOS host-sandbox check executor with owned-process registration (GRAPHENE_CHECK_EXECUTOR=host-sandbox)",
+      "deterministic failure laboratory: SIGKILL of worker B's registered check group, sibling publication untouched, retry under a higher fence, stale fence rejected",
+      "graphene why --json with worker identity, fences, retries, and receipt nodes",
+      "mission capsule export and cold verification",
+      "North Star demo target repository and materializer"
+    ],
+    "blockers": [
+      "Gemini credentials (exactly one of GEMINI_API_KEY or GOOGLE_API_KEY) with GRAPHENE_RUN_LIVE_GEMINI=1",
+      "a responsive Docker daemon with the executor image, or GRAPHENE_CHECK_EXECUTOR=host-sandbox on macOS",
+      "an authorized Google Cloud project for the Cloud Run and real Firestore proof"
+    ],
+    "runbook": "docs/NORTH_STAR_RUNBOOK.md"
+  }
 }

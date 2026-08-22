@@ -4,10 +4,10 @@ This list describes the reviewed release. A limitation moves only when code, det
 
 | Area | Current status | What closes it |
 |---|---|---|
-| Real Gemini workers | Runtime implemented and fake-model ADK path verified locally; live provider behavior **NOT PROVEN** | Two distinct credentialed workers, scoped receipts, measured overlap, exact fan-in/result |
+| Real Gemini workers | Runtime implemented and fake-model ADK path verified locally; provider receipts are evidence-bound and overlap is measured on attempt-lifetime and provider-call bases; live provider behavior **NOT PROVEN** | Two distinct credentialed workers with evidence-bound receipts, provider-call overlap > 0, exact fan-in/result; see [North Star runbook](NORTH_STAR_RUNBOOK.md) |
 | Generic repositories | Narrow initialized-repository runtime exercised locally with fake ADK workers; general support remains unproven | Published repository/runtime matrix plus adversarial scope and live execution proof |
 | Fake-ADK vertical slice | Two workers reach exact `awaiting_result` without touching the source checkout and register the pending bundle | Add both terminal decision branches to one end-to-end fake-model matrix |
-| Docker execution | **NOT PROVEN** on a responsive daemon | Immutable image build and opt-in smoke on the selected host |
+| Docker execution | **NOT PROVEN** on a responsive daemon; `GRAPHENE_CHECK_EXECUTOR=host-sandbox` is the verified macOS alternative for `fixture-tests` checks | Immutable image build and opt-in smoke on the selected host |
 | Result inspection/export | `mission result show/export` verifies the V2-bound candidate and writes a create-only private patch; the stable release matrix is green | Live operator capture |
 | Replay final decision | Pending-candidate checkpoint and simulated continuation exist; replay is not V2 bundle proof | Public capture; replay remains fixture proof, not live execution |
 | Product media | Metadata present; PNG/GIF missing | Verified replay PNG plus reproducible GIF or documented capture-tool blocker |
@@ -26,7 +26,10 @@ This list describes the reviewed release. A limitation moves only when code, det
 | Cloud artifact authority | Executor-local durable spool only; cross-executor transfer is unsupported | Reviewed private object storage and cold-restart recovery |
 | Resource Sentinel | The product Gemini scheduler commits sampled-pressure decisions and a credential-free path proves reduced then restored dispatch. Unsupported/non-owned process sampling stays unavailable | Capture pressure/action evidence in a live provider run |
 | V2 artifact/final bundles | Successful publications require V2 envelopes; an immutable pending final bundle is registered before display/approval/rejection, and both decisions bind its ID | Live operator proof only; no format expansion is needed for this release |
-| Taskmaster causal query | `graphene why PATH --mission MISSION_ID` verifies current mission authority and reports only committed links/unknowns | Richer TUI navigation and broader query shapes |
+| Taskmaster causal query | `graphene why PATH --mission MISSION_ID [--json]` verifies current mission authority and reports committed links with worker identity, fences, retries, receipt nodes, and unknowns | Richer TUI navigation and broader query shapes |
+| Mission capsule | `graphene mission capsule export/verify` cold-verifies internal consistency from the capsule bytes; it carries no signature, so producer authenticity is not verified | Signed capsules only if a trust model for the signer exists |
+| Failure laboratory | Deterministic SIGKILL choreography proven with fake ADK workers on macOS; cancel during an attempt's model phase has no owned process and aborts | Live run with Gemini workers; owned identity for the model phase |
+| Shadow Agent | ndjson path verified on a synthetic fixture; the claude-code adapter is not implemented and fails closed; ingestion is never tamper-evident about its source | A real Claude Code transcript, then the adapter and its scrubbed fixture |
 | Graph-economics benchmark | Harness and equal-gate contract are tested; results **NOT PROVEN** | Real repeated equal-quality runs with raw receipts, median, and P95 |
 | Comprehension study | Not run | Five-person protocol in [Graph necessity evaluation](GRAPH_NECESSITY_EVAL.md) |
 | Public demo/video | **NOT PROVEN**; not recorded | Unedited, truth-labeled four-minute demo using only proven paths |
