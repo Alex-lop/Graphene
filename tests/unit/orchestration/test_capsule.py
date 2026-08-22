@@ -11,13 +11,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from graphene.hashing import canonical_json_bytes, sha256_hex
+from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.orchestration import capsule
 from graphene.orchestration.capsule import (
     AUTHORITY_NOTE,
     CAPSULE_SCHEMA,
     CAPSULE_SUFFIX,
     NOT_VERIFIABLE_OFFLINE,
+    PRODUCER_NOTE,
     RECEIPT_KINDS,
     REDACTION_NOTE,
     CapsuleError,
@@ -26,7 +27,7 @@ from graphene.orchestration.capsule import (
     verify_mission_capsule,
 )
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
-from graphene.orchestration.models import MissionStatus, Plan
+from graphene.orchestration.models import MissionEventType, MissionStatus, Plan
 from graphene.orchestration.scripted import (
     load_scenario,
     propose_scripted_mission,
@@ -48,7 +49,10 @@ EXPECTED_CHECKS = [
     "tree_manifest",
     "publication_envelopes",
     "plan_revisions",
+    "attempt_coverage",
+    "manifest_summary",
 ]
+PROVIDER_RECEIPT_ID = "artifact_provider_receipt_0001"
 
 requires_scripted = pytest.mark.skipif(
     not scripted_supported(),
@@ -144,6 +148,100 @@ def _failure(result: dict) -> dict:
     failed = [item for item in result["checks"] if not item["ok"]]
     assert len(failed) == 1 and failed[0] is result["checks"][-1]
     return failed[0]
+
+
+def _events(capsule_dir: Path) -> list[dict]:
+    raw = (capsule_dir / "events.ndjson").read_bytes()
+    return [json.loads(line) for line in raw.split(b"\n") if line]
+
+
+def _rechain(path: Path) -> tuple[int, str]:
+    """Re-link an ndjson hash chain after tampering, as any producer could."""
+
+    lines = [json.loads(line) for line in path.read_bytes().split(b"\n") if line]
+    previous: str | None = None
+    rebuilt = []
+    for number, value in enumerate(lines, 1):
+        value["seq"] = number
+        value["previous_event_sha256"] = previous
+        value["payload_sha256"] = canonical_json_sha256(value["payload"])
+        value.pop("event_sha256", None)
+        previous = value["event_sha256"] = canonical_json_sha256(value)
+        rebuilt.append(canonical_json_bytes(value))
+    path.write_bytes(b"".join(line + b"\n" for line in rebuilt))
+    assert previous is not None
+    return len(rebuilt), previous
+
+
+def _reforge(capsule_dir: Path, manifest: dict | None = None) -> None:
+    """Re-chain every event file, restate the manifest heads, and re-sign.
+
+    This is everything an unsigned capsule lets a tamperer do. The verifier
+    accepts the result, which is exactly why it must disclaim producer
+    authenticity in ``not_checked`` instead of implying it.
+    """
+
+    manifest = _manifest(capsule_dir) if manifest is None else manifest
+    count, head = _rechain(capsule_dir / "events.ndjson")
+    manifest["head"] = {"seq": count, "event_count": count, "event_sha256": head}
+    manifest["counts"]["events"] = count
+    total = 0
+    for entry in manifest["attempts"]:
+        count, head = _rechain(capsule_dir / entry["file"])
+        entry["event_count"], entry["event_sha256"] = count, head
+        total += count
+    manifest["counts"]["attempt_evidence_events"] = total
+    _resign_manifest(capsule_dir, manifest)
+
+
+def _provider_receipt() -> dict:
+    from graphene.orchestration.runtime import WorkerProviderReceipt
+
+    return WorkerProviderReceipt(
+        driver="adk_fake",
+        client_version="test",
+        requested_model="stub-model",
+        returned_model="stub-model",
+        credential_mode="not_applicable",
+        input_bytes=12,
+        output_bytes=34,
+        latency_ms=5,
+        call_started_at="2026-08-20T00:00:00.000Z",
+        call_ended_at="2026-08-20T00:00:00.005Z",
+        usage_source="unavailable",
+    ).model_dump(mode="json")
+
+
+def _inject_provider_receipt(capsule_dir: Path, content: bytes) -> str:
+    """Bind a worker-provider-receipt file to the first attempt chain and re-forge."""
+
+    manifest = _manifest(capsule_dir)
+    entry = manifest["attempts"][0]
+    name = f"receipts/{PROVIDER_RECEIPT_ID}.json"
+    (capsule_dir / name).write_bytes(content)
+    reference = {
+        "kind": "worker-provider-receipt",
+        "id": PROVIDER_RECEIPT_ID,
+        "sha256": sha256_hex(content),
+    }
+
+    def attach(value: dict) -> None:
+        value["references"] = [*value["references"], reference]
+
+    _rewrite_line(capsule_dir / entry["file"], entry["event_count"], attach)
+    manifest["receipts"].append(
+        {
+            "id": PROVIDER_RECEIPT_ID,
+            "kind": "worker-provider-receipt",
+            "sha256": reference["sha256"],
+            "bytes": len(content),
+            "attempt_ids": [entry["attempt_id"]],
+            "file": name,
+        }
+    )
+    manifest["counts"]["receipts"] += 1
+    _reforge(capsule_dir, manifest)
+    return entry["attempt_id"]
 
 
 @requires_scripted
@@ -505,6 +603,16 @@ def test_proposed_mission_capsule_has_no_bundle_and_verifies(tmp_path: Path):
     assert result["verified"] is True
     assert [item["name"] for item in result["checks"]] == EXPECTED_CHECKS
     assert any("none was registered" in item for item in result["not_checked"])
+    summary = next(
+        item for item in result["checks"] if item["name"] == "manifest_summary"
+    )
+    assert "mission_status proposed" in summary["detail"]
+
+    # The layout is exact even when a directory is empty: dropping one fails.
+    (capsule_dir / "attempts").rmdir()
+    failure = _failure(verify_mission_capsule(capsule_dir))
+    assert failure["name"] == "manifest_file_digests"
+    assert "missing=['attempts']" in failure["detail"]
 
 
 def test_verify_rejects_non_directories_and_unreadable_manifests(tmp_path: Path):
@@ -619,3 +727,361 @@ def test_export_cleans_up_when_a_file_write_fails(
         )
     assert list(output.iterdir()) == []
     assert os.path.isdir(output)
+
+
+def test_export_removes_the_capsule_directory_when_its_chmod_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    runtime = tmp_path / "runtime"
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    mission_id = "mission-capsule-failed-chmod"
+    propose_scripted_mission(
+        scenario=load_scenario(), store=store, runtime=runtime, mission_id=mission_id
+    )
+    evidence = SQLiteAttemptEvidenceStore(runtime / "attempt-evidence.sqlite3")
+    output = tmp_path / "out"
+    output.mkdir(mode=0o700)
+    original = os.chmod
+
+    def failing(path, mode, *args, **kwargs):
+        if Path(path).name.endswith(CAPSULE_SUFFIX):
+            raise PermissionError("chmod denied")
+        return original(path, mode, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(capsule.os, "chmod", failing)
+        with pytest.raises(CapsuleError, match="could not be written"):
+            export_mission_capsule(
+                store=store, evidence=evidence, mission_id=mission_id, output_dir=output
+            )
+    # No empty capsule directory survives the failure, so a retry can succeed.
+    assert list(output.iterdir()) == []
+
+    exported = export_mission_capsule(
+        store=store, evidence=evidence, mission_id=mission_id, output_dir=output
+    )
+    assert verify_mission_capsule(Path(exported["capsule_dir"]))["verified"] is True
+
+
+@requires_scripted
+def test_rechained_capsule_verifies_and_verifier_disclaims_producer_authenticity(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    # Events up to the final bundle's head are pinned a second time by the
+    # bundle's event_head_sha256, so re-chaining them breaks that binding.
+    pinned = _copy(completed.capsule_dir, tmp_path / "pinned")
+    approved = next(
+        item["seq"] for item in _events(pinned) if item["event_type"] == "plan.approved"
+    )
+
+    def forge_rationale(value: dict) -> None:
+        value["payload"] = {**value["payload"], "operator_rationale": "Forged."}
+
+    _rewrite_line(pinned / "events.ndjson", approved, forge_rationale)
+    assert _failure(verify_mission_capsule(pinned))["name"] == "manifest_file_digests"
+    _reforge(pinned)
+    failure = _failure(verify_mission_capsule(pinned))
+    assert failure["name"] == "final_bundle" and "event head" in failure["detail"]
+
+    # Past that head nothing but the chain itself binds the record: a re-chained,
+    # self-consistent capsule verifies because there is no signature to break.
+    copied = _copy(completed.capsule_dir, tmp_path)
+    last = _events(copied)[-1]
+    assert last["event_type"] == "final_result_bundle.ready"
+
+    def forge_status(value: dict) -> None:
+        value["payload"] = {**value["payload"], "status": "forged"}
+
+    _rewrite_line(copied / "events.ndjson", last["seq"], forge_status)
+    _reforge(copied)
+    result = verify_mission_capsule(copied)
+
+    # So the verifier must say plainly that it proves internal consistency,
+    # not who produced the capsule.
+    assert result["verified"] is True
+    assert any("signature" in item for item in result["not_checked"])
+    assert any(PRODUCER_NOTE in item for item in result["not_checked"])
+    assert any("graphene mission db verify" in item for item in result["not_checked"])
+    verify_document = (copied / "VERIFY.md").read_text()
+    assert "signature" in verify_document and PRODUCER_NOTE in verify_document
+    assert "producer authenticity" in _manifest(copied)["not_verifiable_offline"]
+
+
+@requires_scripted
+def test_tampered_manifest_summary_fails_naming_the_field(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    original = _manifest(completed.capsule_dir)
+    failed = next(item for item in original["attempts"] if item["state"] == "failed")
+    first = original["attempts"][0]
+
+    def tampered(label: str, mutate) -> str:
+        copied = _copy(completed.capsule_dir, tmp_path / label)
+        manifest = _manifest(copied)
+        mutate(manifest)
+        _resign_manifest(copied, manifest)
+        failure = _failure(verify_mission_capsule(copied))
+        assert failure["name"] == "manifest_summary", (label, failure)
+        return failure["detail"]
+
+    def approve(manifest: dict) -> None:
+        manifest["final_bundle"]["decision"] = {
+            "state": "approved",
+            "event_seq": manifest["head"]["seq"],
+        }
+
+    detail = tampered("decision", approve)
+    assert "decision" in detail and "approved" in detail and "pending" in detail
+
+    def complete(manifest: dict) -> None:
+        manifest["mission_status"] = "completed"
+        manifest["mission"]["status"] = "completed"
+
+    detail = tampered("status", complete)
+    assert "mission_status" in detail and "awaiting_result" in detail
+
+    def entry(manifest: dict, attempt_id: str) -> dict:
+        return next(
+            item for item in manifest["attempts"] if item["attempt_id"] == attempt_id
+        )
+
+    def pass_the_failed_attempt(manifest: dict) -> None:
+        entry(manifest, failed["attempt_id"])["state"] = "committed"
+        entry(manifest, failed["attempt_id"])["result_code"] = "passed"
+
+    detail = tampered("state", pass_the_failed_attempt)
+    assert failed["attempt_id"] in detail and "state" in detail
+
+    def relabel_result(manifest: dict) -> None:
+        entry(manifest, failed["attempt_id"])["result_code"] = "passed"
+
+    detail = tampered("result", relabel_result)
+    assert failed["attempt_id"] in detail and "result_code" in detail
+
+    def impostor(manifest: dict) -> None:
+        entry(manifest, first["attempt_id"])["worker_id"] = "impostor"
+
+    detail = tampered("worker", impostor)
+    assert first["attempt_id"] in detail and "worker_id" in detail
+
+    def inflate(manifest: dict) -> None:
+        manifest["counts"]["events"] = 999
+
+    detail = tampered("counts", inflate)
+    assert "counts.events" in detail and "999" in detail
+
+    def undercount(manifest: dict) -> None:
+        manifest["excluded_artifact_kinds"]["patch"] -= 1
+        manifest["counts"]["excluded_artifacts"] -= 1
+
+    detail = tampered("excluded", undercount)
+    assert "excluded_artifact_kinds" in detail
+
+    # base_sha, policy_id, revision, and policy_sha256 are already bound by the
+    # final bundle check; repo_id is only provable from project.created.
+    def repolicy(manifest: dict) -> None:
+        manifest["policy"]["repo_id"] = "repo_forged"
+
+    detail = tampered("policy", repolicy)
+    assert "policy" in detail and "project.created" in detail
+
+
+@requires_scripted
+def test_dropped_attempt_chain_fails_unless_declared_honestly(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    copied = _copy(completed.capsule_dir, tmp_path)
+    manifest = _manifest(copied)
+    entry = next(item for item in manifest["attempts"] if item["state"] == "failed")
+    attempt_id = entry["attempt_id"]
+    owned = [
+        item for item in manifest["receipts"] if item["attempt_ids"] == [attempt_id]
+    ]
+    assert owned, "the failed attempt minted its own check receipt"
+    (copied / entry["file"]).unlink()
+    for receipt in owned:
+        (copied / receipt["file"]).unlink()
+    manifest["attempts"] = [
+        item for item in manifest["attempts"] if item["attempt_id"] != attempt_id
+    ]
+    manifest["receipts"] = [item for item in manifest["receipts"] if item not in owned]
+    manifest["counts"]["attempt_evidence_chains"] -= 1
+    manifest["counts"]["attempt_evidence_events"] -= entry["event_count"]
+    manifest["counts"]["receipts"] -= len(owned)
+    _resign_manifest(copied, manifest)
+
+    failure = _failure(verify_mission_capsule(copied))
+    assert failure["name"] == "attempt_coverage"
+    assert attempt_id in failure["detail"] and "neither" in failure["detail"]
+
+    declared = {
+        "attempt_id": attempt_id,
+        "task_id": entry["task_id"],
+        "state": "committed",
+        "reason": "attempt has no evidence link",
+    }
+    manifest["attempts_without_evidence"] = [declared]
+    _resign_manifest(copied, manifest)
+    failure = _failure(verify_mission_capsule(copied))
+    assert failure["name"] == "manifest_summary"
+    assert attempt_id in failure["detail"] and "state" in failure["detail"]
+
+    declared["state"] = "failed"
+    _resign_manifest(copied, manifest)
+    result = verify_mission_capsule(copied)
+    assert result["verified"] is True
+    coverage = next(
+        item for item in result["checks"] if item["name"] == "attempt_coverage"
+    )
+    assert "1 declared without evidence" in coverage["detail"]
+    assert any("attempts without evidence" in item for item in result["not_checked"])
+
+    ghost = _copy(completed.capsule_dir, tmp_path / "ghost")
+    manifest = _manifest(ghost)
+    manifest["attempts_without_evidence"] = [
+        {**declared, "attempt_id": "attempt_ghost"}
+    ]
+    _resign_manifest(ghost, manifest)
+    failure = _failure(verify_mission_capsule(ghost))
+    assert failure["name"] == "attempt_coverage"
+    assert "attempt_ghost" in failure["detail"] and "never leased" in failure["detail"]
+
+
+@requires_scripted
+def test_worker_provider_receipt_is_schema_validated(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    valid = _provider_receipt()
+    genuine = _copy(completed.capsule_dir, tmp_path / "genuine")
+    _inject_provider_receipt(genuine, canonical_json_bytes(valid))
+    result = verify_mission_capsule(genuine)
+    assert result["verified"] is True
+    contents = next(
+        item for item in result["checks"] if item["name"] == "receipt_contents"
+    )
+    assert "1 worker provider receipts" in contents["detail"]
+
+    cases = {
+        "extra": (
+            canonical_json_bytes({**valid, "note": "x"}),
+            "not a valid WorkerProviderReceipt",
+        ),
+        "prompt": (
+            canonical_json_bytes({**valid, "prompt": "secret"}),
+            "non-public key",
+        ),
+        "order": (json.dumps(valid, indent=2).encode(), "not canonical JSON"),
+        "defaults": (
+            canonical_json_bytes({k: v for k, v in valid.items() if k != "framework"}),
+            "canonical bytes of its WorkerProviderReceipt",
+        ),
+    }
+    for label, (content, message) in cases.items():
+        copied = _copy(completed.capsule_dir, tmp_path / label)
+        _inject_provider_receipt(copied, content)
+        failure = _failure(verify_mission_capsule(copied))
+        assert failure["name"] == "receipt_contents", (label, failure)
+        assert PROVIDER_RECEIPT_ID in failure["detail"], (label, failure)
+        assert message in failure["detail"], (label, failure)
+
+
+@requires_scripted
+def test_unlisted_directory_fails_naming_it(completed: SimpleNamespace, tmp_path: Path):
+    copied = _copy(completed.capsule_dir, tmp_path)
+    (copied / "evil" / "nested").mkdir(parents=True)
+    failure = _failure(verify_mission_capsule(copied))
+    assert failure["name"] == "manifest_file_digests"
+    assert "unlisted=['evil', 'evil/nested']" in failure["detail"]
+
+
+def test_recorded_plan_digests_fail_closed_on_conflicting_events():
+    def event(event_type: MissionEventType, **payload) -> SimpleNamespace:
+        return SimpleNamespace(event_type=event_type, payload=payload)
+
+    events = [
+        event(MissionEventType.PLAN_PROPOSED, plan_revision=1, plan_sha256="a" * 64),
+        event(MissionEventType.PLAN_VALIDATED, plan_revision=1, plan_sha256="c" * 64),
+        event(MissionEventType.PLAN_REVISED, plan_revision=2, plan_sha256="b" * 64),
+    ]
+    assert capsule._recorded_plan_digests(events) == {1: "a" * 64, 2: "b" * 64}
+
+    conflicting = [
+        *events,
+        event(MissionEventType.PLAN_PROPOSED, plan_revision=1, plan_sha256="d" * 64),
+    ]
+    with pytest.raises(CapsuleError, match="revision 1 has conflicting"):
+        capsule._recorded_plan_digests(conflicting)
+    with pytest.raises(capsule._CheckFailed, match="revision 1 has conflicting"):
+        capsule._recorded_plan_digests(conflicting, failure=capsule._CheckFailed)
+    malformed = [
+        event(MissionEventType.PLAN_PROPOSED, plan_revision="1", plan_sha256="a" * 64)
+    ]
+    with pytest.raises(capsule._CheckFailed, match="malformed"):
+        capsule._recorded_plan_digests(malformed, failure=capsule._CheckFailed)
+
+
+@requires_scripted
+def test_conflicting_plan_digest_event_fails_closed_in_the_verifier(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    copied = _copy(completed.capsule_dir, tmp_path)
+    path = copied / "events.ndjson"
+    proposed = next(
+        item for item in _events(copied) if item["event_type"] == "plan.proposed"
+    )
+    forged = {**proposed, "payload": {**proposed["payload"], "plan_sha256": "f" * 64}}
+    path.write_bytes(path.read_bytes() + canonical_json_bytes(forged) + b"\n")
+    _reforge(copied)
+
+    failure = _failure(verify_mission_capsule(copied))
+    assert failure["name"] == "plan_revisions"
+    assert "revision 1" in failure["detail"] and "conflicting" in failure["detail"]
+
+
+def test_fake_adk_mission_capsule_reports_provider_call_overlap_and_verifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A two-worker fake ADK mission exports its bound receipts and call windows."""
+
+    from graphene.cli import mission as mission_cli
+    from graphene.orchestration.overlap import OverlapMeasurement
+    from tests.unit.orchestration.test_gemini_mission_runtime import (
+        prepare_fake_two_worker_mission,
+        quiet_resource_sampler,
+    )
+
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    result = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=prepared.registry,
+        check_runner=mission_cli._policy_check,
+        resource_sampler=quiet_resource_sampler,
+    )
+    assert result["status"] == "awaiting_result"
+    output = tmp_path / "capsules"
+    output.mkdir()
+    evidence = mission_cli._mission_evidence(prepared.store, prepared.mission_id)
+    exported = export_mission_capsule(
+        store=prepared.store,
+        evidence=evidence,
+        mission_id=prepared.mission_id,
+        output_dir=output,
+    )
+    capsule_dir = Path(exported["capsule_dir"])
+    overlap = OverlapMeasurement.model_validate_json(
+        (capsule_dir / "overlap.json").read_bytes()
+    )
+    assert overlap.model_dump(mode="json") == result["parallel_overlap"]
+    assert {pair.basis for pair in overlap.pairs} >= {
+        "attempt_timestamps",
+        "provider_call_timestamps",
+    }
+    receipts = sorted(path.name for path in (capsule_dir / "receipts").iterdir())
+    kinds = {
+        json.loads((capsule_dir / "receipts" / name).read_bytes()).get("driver")
+        for name in receipts
+    }
+    assert "adk_fake" in kinds
+    verified = verify_mission_capsule(capsule_dir)
+    assert verified["verified"] is True

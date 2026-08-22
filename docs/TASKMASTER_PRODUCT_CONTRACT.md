@@ -115,6 +115,30 @@ authenticated browser seam delegates to that store operation in contract tests,
 but one-command live mode does not inject it until safe staged-input cleanup
 exists. No terminal command generates a replacement plan revision.
 
+Mission Capsule: `graphene mission capsule export MISSION_ID --output DIR`
+writes a private `MISSION_ID.graphene-capsule` directory from verified
+mission authority: the hash-chained public mission events, every attempt's
+evidence chain, trusted `test-receipt` and sanitized
+`worker-provider-receipt` bytes, publication envelope digests, plan
+revisions, the registered `FinalResultBundleV2`, the derived overlap and
+unknown views, and a manifest that digests every file. It contains no
+prompts, source bytes, diffs, command output, environment values, or
+credentials; artifact bytes of every other kind stay in the private evidence
+spool and only their digests travel. `graphene mission capsule verify
+CAPSULE_DIR` recomputes every digest and chain link from the capsule files
+alone, never opens the mission store, and lists what it did not check:
+candidate tree identity against artifact bytes, Gemini provider-side
+identity, host clock accuracy, and producer authenticity. The verifier also
+cross-checks the manifest's summary claims (mission status, final decision,
+per-attempt state and worker, counts) against the event log and attempt
+chains, and requires every leased attempt to carry a chain or an explicit
+`attempts_without_evidence` entry. A capsule carries no signature or
+external anchor: verification proves internal consistency with its hash
+chains and digests, not who produced them, so producer authenticity comes
+from the exporting mission store (`graphene mission db verify`) or from
+comparing the manifest head digest against the operator's recorded mission
+head. A capsule proves what the store recorded, not live Gemini execution.
+
 ## Explicit cuts
 
 No general shell, repository crawler, graph database, visual workflow editor, writable evidence graph, per-skill CPU/RAM attribution, generic process manager, autonomous push/PR/deploy, or additional agent framework belongs in this slice.

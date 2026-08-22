@@ -113,7 +113,7 @@ uv run --frozen graphene mission approve-plan MISSION_ID --revision 1
 
 The default scripted start commits a validated proposal. An interactive TTY may attest approval; `--auto-approve` is always `simulated_fixture`. Execution stops at `awaiting_result` after registering a canonical pending `FinalResultBundleV2`.
 
-Use `graphene mission result show MISSION_ID` to verify the candidate. Use `graphene mission approve-result MISSION_ID --bundle-id FINAL_RESULT_ID` or `graphene mission reject-result MISSION_ID --bundle-id FINAL_RESULT_ID`; both bind the exact bundle. `graphene mission result export ...` and `graphene bundle create/verify` write only create-new mode-`0600` review artifacts and never mutate the checkout.
+Use `graphene mission result show MISSION_ID` to verify the candidate. Use `graphene mission approve-result MISSION_ID --bundle-id FINAL_RESULT_ID` or `graphene mission reject-result MISSION_ID --bundle-id FINAL_RESULT_ID`; both bind the exact bundle. `graphene mission result export ...` and `graphene bundle create/verify` write only create-new mode-`0600` review artifacts and never mutate the checkout. `graphene mission capsule export MISSION_ID --output DIR` writes a private `MISSION_ID.graphene-capsule` directory holding the hash-chained mission events, every attempt's evidence chain, trusted check and sanitized worker receipts, publication envelope digests, plan revisions, and the registered final bundle, with no prompts, source bytes, diffs, or command output, and `graphene mission capsule verify CAPSULE_DIR` recomputes every digest and chain link from those files alone without opening the mission store.
 
 ## Command map
 
@@ -129,7 +129,7 @@ graphene task input MISSION_ID TASK_ID --gate GATE_ID --file INPUT_FILE
 graphene bundle verify FINAL_RESULT_ID
 ```
 
-Mission commands: `graphene mission start`, `graphene mission status`, `graphene mission watch`, `graphene mission open`, `graphene mission pause`, `graphene mission resume`, `graphene mission cancel`, `graphene mission retry`, `graphene mission request-replan`, `graphene mission approve-plan`, `graphene mission decide-gate`, `graphene mission approve-result`, `graphene mission reject-result`, `graphene mission result`, `graphene mission db`, `graphene mission replay`, `graphene mission demo`, and `graphene mission executor`.
+Mission commands: `graphene mission start`, `graphene mission status`, `graphene mission watch`, `graphene mission open`, `graphene mission pause`, `graphene mission resume`, `graphene mission cancel`, `graphene mission retry`, `graphene mission request-replan`, `graphene mission approve-plan`, `graphene mission decide-gate`, `graphene mission approve-result`, `graphene mission reject-result`, `graphene mission result`, `graphene mission capsule`, `graphene mission db`, `graphene mission replay`, `graphene mission demo`, and `graphene mission executor`.
 
 `graphene plan show/diff` reads verified revisions; `request-replan` pauses dispatch but generates no linked replacement revision. `graphene task input` accepts 1–4096 private UTF-8 bytes from a regular file or stdin and commits only their evidence reference. The browser-input seam is tested but hidden in one-command live mode because no safe staged-input cleanup API is wired. Automatic expiry and purge are not implemented. Current mission-plan validation rejects `legacy_auth_v2`. Cloud streaming uses per-client polling; there is no shared listener or fan-out.
 

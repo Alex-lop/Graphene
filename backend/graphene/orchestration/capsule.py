@@ -47,10 +47,13 @@ from .models import (
     MissionEventType,
     MissionHead,
     MissionSnapshot,
+    MissionStatus,
     Plan,
     Task,
+    TaskState,
 )
 from .overlap import measure_overlap
+from .reducer import TransitionError, transition_mission
 
 CAPSULE_SCHEMA = "graphene.mission-capsule.v1"
 CAPSULE_SUFFIX = ".graphene-capsule"
@@ -66,6 +69,14 @@ NOT_VERIFIABLE_OFFLINE = (
     "candidate tree identity against artifact bytes",
     "Gemini provider-side identity",
     "host clock accuracy",
+    "producer authenticity",
+)
+PRODUCER_NOTE = (
+    "the capsule carries no signature or external anchor, so verification proves "
+    "internal consistency with the hash chains and digests, not who produced "
+    "them; producer authenticity comes from the mission store that exported it "
+    "(`graphene mission db verify`) or from comparing the manifest head digest "
+    "against the operator's recorded mission head"
 )
 
 MANIFEST_FILE = "manifest.json"
@@ -79,6 +90,9 @@ VERIFY_FILE = "VERIFY.md"
 PLAN_DIRECTORY = "plan"
 ATTEMPTS_DIRECTORY = "attempts"
 RECEIPTS_DIRECTORY = "receipts"
+_CAPSULE_DIRECTORIES = frozenset(
+    {PLAN_DIRECTORY, ATTEMPTS_DIRECTORY, RECEIPTS_DIRECTORY}
+)
 
 _DIRECTORY_MODE = 0o700
 _FILE_MODE = 0o600
@@ -228,7 +242,16 @@ def _mission_events(
     return tuple(events)
 
 
-def _recorded_plan_digests(events: Iterable[MissionEvent]) -> dict[int, str]:
+def _recorded_plan_digests(
+    events: Iterable[MissionEvent], *, failure: type[Exception] = CapsuleError
+) -> dict[int, str]:
+    """Collect the digest each ``plan.proposed`` / ``plan.revised`` event records.
+
+    Two events recording different digests for one revision fail closed with
+    ``failure`` (``CapsuleError`` during export, ``_CheckFailed`` during cold
+    verification) rather than letting the later event win.
+    """
+
     recorded: dict[int, str] = {}
     for event in events:
         if event.event_type not in {
@@ -239,12 +262,32 @@ def _recorded_plan_digests(events: Iterable[MissionEvent]) -> dict[int, str]:
         revision = event.payload.get("plan_revision")
         digest = event.payload.get("plan_sha256")
         if type(revision) is not int or not isinstance(digest, str):
-            raise CapsuleError("plan event payload is malformed")
+            raise failure("plan event payload is malformed")
         if recorded.setdefault(revision, digest) != digest:
-            raise CapsuleError(
-                f"plan revision {revision} has conflicting recorded digests"
-            )
+            raise failure(f"plan revision {revision} has conflicting recorded digests")
     return recorded
+
+
+def _bundle_decision(
+    events: tuple[MissionEvent, ...], ready_seq: int, bundle_id: str
+) -> dict[str, Any]:
+    """Derive the final decision bound to ``bundle_id`` after its ready event."""
+
+    decision: dict[str, Any] = {"state": "pending", "event_seq": None}
+    for later in events[ready_seq:]:
+        if later.event_type not in {
+            MissionEventType.FINAL_CANDIDATE_APPROVED,
+            MissionEventType.FINAL_CANDIDATE_REJECTED,
+        }:
+            continue
+        receipt = later.payload.get("decision_receipt")
+        if isinstance(receipt, dict) and receipt.get("bundle_id") == bundle_id:
+            approved = later.event_type == MissionEventType.FINAL_CANDIDATE_APPROVED
+            decision = {
+                "state": "approved" if approved else "rejected",
+                "event_seq": later.seq,
+            }
+    return decision
 
 
 def _rewind_items(
@@ -410,6 +453,40 @@ def _attempt_chains(
     return tuple(chains), tuple(skipped)
 
 
+def _provider_call_receipts(
+    evidence: SQLiteAttemptEvidenceStore, snapshot: MissionSnapshot
+) -> dict[str, object]:
+    """Evidence-bound worker provider receipts keyed by attempt, for overlap.
+
+    Only digest-verified, canonical, schema-valid receipts take part, so the
+    provider-call overlap basis in ``overlap.json`` cites nothing unbound.
+    """
+
+    from .runtime import WorkerProviderReceipt  # lazy: cold verify stays light
+
+    mapping: dict[str, object] = {}
+    for attempt in snapshot.attempts:
+        for reference in attempt.evidence_refs:
+            if reference.kind != "worker-provider-receipt":
+                continue
+            content = evidence.resolve(reference.kind, reference.id)
+            if content is None or sha256_hex(content) != reference.sha256:
+                raise CapsuleError(f"receipt {reference.id} is unresolved or changed")
+            try:
+                receipt = WorkerProviderReceipt.model_validate_json(content)
+            except ValueError as error:
+                raise CapsuleError(
+                    f"receipt {reference.id} is not a worker provider receipt"
+                ) from error
+            if canonical_json_bytes(receipt.model_dump(mode="json")) != content:
+                raise CapsuleError(f"receipt {reference.id} is not canonical")
+            if mapping.setdefault(attempt.attempt_id, receipt) != receipt:
+                raise CapsuleError(
+                    f"attempt {attempt.attempt_id} binds conflicting provider receipts"
+                )
+    return mapping
+
+
 def _receipts(
     evidence: SQLiteAttemptEvidenceStore,
     snapshot: MissionSnapshot,
@@ -497,20 +574,7 @@ def _final_bundle(
         or bundle.event_head_sha256 != event.previous_event_sha256
     ):
         raise CapsuleError("final result bundle does not match its ready event")
-    decision: dict[str, Any] = {"state": "pending", "event_seq": None}
-    for later in events[event.seq :]:
-        if later.event_type not in {
-            MissionEventType.FINAL_CANDIDATE_APPROVED,
-            MissionEventType.FINAL_CANDIDATE_REJECTED,
-        }:
-            continue
-        receipt = later.payload.get("decision_receipt")
-        if isinstance(receipt, dict) and receipt.get("bundle_id") == bundle.bundle_id:
-            approved = later.event_type == MissionEventType.FINAL_CANDIDATE_APPROVED
-            decision = {
-                "state": "approved" if approved else "rejected",
-                "event_seq": later.seq,
-            }
+    decision = _bundle_decision(events, event.seq, bundle.bundle_id)
     return _FinalBundle(raw, bundle, event, reference, decision)
 
 
@@ -608,26 +672,50 @@ Every check is a recomputation over the files in this directory.
    the same content and envelope digests, and every published artifact in the
    event log appears in `envelopes.json`.
 9. `plan_revisions` - each `plan/revision-<n>.json` digest equals the digest
-   recorded by the `plan.proposed` / `plan.revised` event for that revision.
+   recorded by the `plan.proposed` / `plan.revised` event for that revision;
+   two events recording different digests for one revision fail closed.
+10. `attempt_coverage` - every attempt named by a `task.leased` /
+    `task.started` / `task.retried` / `task.completed` / `task.failed` /
+    `task.cancelled` event was leased exactly once and has either an
+    `attempts/<attempt_id>.ndjson` chain or an `attempts_without_evidence`
+    entry in the manifest (never both, never neither), and no chain or entry
+    names an attempt the event log never leased.
+11. `manifest_summary` - the manifest's summary claims recompute from the
+    capsule's own bytes: `policy` from `project.created`, the creation source
+    from `mission.created`, `mission_status` by replaying the event log's
+    status transitions with the reducer's rules, `final_bundle.decision` from
+    the `final_candidate.approved` / `final_candidate.rejected` events that
+    bind the bundle, each attempt's task, worker, attempt number, fencing
+    token, state, and result code from its `task.*` events and its terminal
+    evidence event, and every `counts` and `excluded_artifact_kinds` entry
+    from the events, chains, receipts, envelopes, and plan files present.
 
 ## What is verified offline
 
 Hash-chain integrity and linkage of the public mission events and of every
 attempt evidence chain; that receipts, envelopes, plan revisions, and the final
-bundle are the exact bytes those chains committed to; and that the final
-bundle's tree identity is the one the trusted check runner attested.
+bundle are the exact bytes those chains committed to; that the final bundle's
+tree identity is the one the trusted check runner attested; and that the
+manifest's summary claims agree with those bytes.
 
 ## What is not verifiable offline
 
+- {NOT_VERIFIABLE_OFFLINE[3]}: {PRODUCER_NOTE}.
 - {NOT_VERIFIABLE_OFFLINE[0]}: patch and source bytes are not in the capsule,
   so the candidate tree digest is checked against the receipt, not recomputed
   from bytes.
 - {NOT_VERIFIABLE_OFFLINE[1]}: worker-provider receipts are sanitized,
   worker-reported records, not a provider-side attestation.
 - {NOT_VERIFIABLE_OFFLINE[2]}: timestamps come from the mission store clock.
+- `snapshot_sha256`, `exported_at`, `mission.created_at`, and
+  `mission.final_outcome` in the manifest: the materialized snapshot digest,
+  the export clock, the mission contract's creation time, and the store's
+  outcome label cannot be recomputed from the capsule; the final decision is
+  verified through `final_bundle.decision` instead.
 - Artifacts of excluded kinds (see `excluded_artifact_kinds` in the manifest)
   are present only as digests.
-- Materialized mission state replay requires the SQLite mission store.
+- Materialized task-state replay requires the SQLite mission store; only the
+  mission status dimension is replayed here.
 
 ## Redaction
 
@@ -718,7 +806,9 @@ def export_mission_capsule(
     chains, skipped = _attempt_chains(evidence, snapshot)
     receipts, excluded = _receipts(evidence, snapshot, chains)
     final = _final_bundle(evidence, events)
-    overlap = measure_overlap(snapshot).model_dump(mode="json")
+    overlap = measure_overlap(
+        snapshot, provider_receipts=_provider_call_receipts(evidence, snapshot)
+    ).model_dump(mode="json")
 
     files: dict[str, bytes] = {}
     files[EVENTS_FILE] = _ndjson(event.model_dump(mode="json") for event in events)
@@ -846,12 +936,15 @@ def export_mission_capsule(
     manifest_bytes = _pretty_json(manifest)
 
     try:
-        _make_private_directory(capsule_dir)
+        os.mkdir(capsule_dir, _DIRECTORY_MODE)
     except FileExistsError as error:
         raise CapsuleError("capsule directory already exists") from error
     except OSError as error:
         raise CapsuleError("capsule directory could not be created") from error
+    # From here on the directory is ours: any failure, including the chmod that
+    # makes it private, removes it so a retry never finds a stale empty capsule.
     try:
+        os.chmod(capsule_dir, _DIRECTORY_MODE)
         for directory in (PLAN_DIRECTORY, ATTEMPTS_DIRECTORY, RECEIPTS_DIRECTORY):
             _make_private_directory(capsule_dir / directory)
         for name in sorted(files):
@@ -894,6 +987,9 @@ class _Verification:
     chains: dict[str, tuple[AttemptEvidenceEvent, ...]] = field(default_factory=dict)
     receipts: dict[str, tuple[str, bytes]] = field(default_factory=dict)
     bundle: FinalResultBundleV2 | None = None
+    envelopes: list[dict[str, Any]] = field(default_factory=list)
+    attempt_log: dict[str, tuple[MissionEvent, ...]] = field(default_factory=dict)
+    attempts_without_evidence: dict[str, dict[str, Any]] = field(default_factory=dict)
     not_checked: list[str] = field(default_factory=list)
 
 
@@ -968,6 +1064,7 @@ def _check_manifest_files(context: _Verification) -> str:
     if not isinstance(listed, dict):
         raise _CheckFailed("manifest has no file table")
     found: dict[str, Path] = {}
+    found_directories: set[str] = set()
     for root, directories, names in os.walk(context.capsule_dir, followlinks=False):
         root_path = Path(root)
         for entry in directories:
@@ -976,6 +1073,7 @@ def _check_manifest_files(context: _Verification) -> str:
                 raise _CheckFailed(
                     f"{_relative_name(context.capsule_dir, path)} is a symlink"
                 )
+            found_directories.add(_relative_name(context.capsule_dir, path))
         for entry in names:
             path = root_path / entry
             metadata = path.lstat()
@@ -986,6 +1084,12 @@ def _check_manifest_files(context: _Verification) -> str:
                 raise _CheckFailed(f"{relative} is not a regular file")
             if relative != MANIFEST_FILE:
                 found[relative] = path
+    if found_directories != _CAPSULE_DIRECTORIES:
+        raise _CheckFailed(
+            f"capsule directory set does not match the layout: "
+            f"missing={sorted(_CAPSULE_DIRECTORIES - found_directories)} "
+            f"unlisted={sorted(found_directories - _CAPSULE_DIRECTORIES)}"
+        )
     expected = {_safe_relative_name(name) for name in listed}
     if set(found) != expected:
         missing = sorted(expected - set(found))
@@ -1142,8 +1246,27 @@ def _check_receipt_references(context: _Verification) -> str:
     return f"{len(referenced)} receipt files match their evidence references"
 
 
+def _check_worker_provider_receipt(identifier: str, content: bytes) -> None:
+    # Lazy: the runtime module pulls in the sandbox stack, which a cold verifier
+    # only needs when a capsule actually carries a worker-provider receipt.
+    from .runtime import WorkerProviderReceipt
+
+    try:
+        receipt = WorkerProviderReceipt.model_validate_json(content)
+    except ValueError as error:
+        raise _CheckFailed(
+            f"worker provider receipt {identifier} is not a valid WorkerProviderReceipt"
+        ) from error
+    if canonical_json_bytes(receipt.model_dump(mode="json")) != content:
+        raise _CheckFailed(
+            f"worker provider receipt {identifier} is not the canonical bytes of "
+            "its WorkerProviderReceipt"
+        )
+
+
 def _check_receipt_contents(context: _Verification) -> str:
     checks = 0
+    provider_receipts = 0
     for identifier, (kind, content) in sorted(context.receipts.items()):
         try:
             value = json.loads(content)
@@ -1153,8 +1276,12 @@ def _check_receipt_contents(context: _Verification) -> str:
             raise _CheckFailed(f"receipt {identifier} is not canonical JSON")
         if not _receipt_keys_are_public(value):
             raise _CheckFailed(f"receipt {identifier} contains a non-public key")
-        if kind != "test-receipt":
+        if kind == "worker-provider-receipt":
+            _check_worker_provider_receipt(identifier, content)
+            provider_receipts += 1
             continue
+        if kind != "test-receipt":
+            raise _CheckFailed(f"receipt {identifier} has unsupported kind {kind!r}")
         try:
             receipt = TrustedCheckReceipt.model_validate(value)
         except ValueError as error:
@@ -1188,7 +1315,9 @@ def _check_receipt_contents(context: _Verification) -> str:
         checks += 1
     return (
         f"{len(context.receipts)} receipts are canonical public JSON; "
-        f"{checks} trusted check receipts match their check.completed payloads"
+        f"{checks} trusted check receipts match their check.completed payloads; "
+        f"{provider_receipts} worker provider receipts are canonical "
+        "WorkerProviderReceipt bytes"
     )
 
 
@@ -1421,6 +1550,7 @@ def _check_envelopes(context: _Verification) -> str:
                     f"final bundle publication {publication.publication_id} is not "
                     "an accepted exported envelope"
                 )
+    context.envelopes = entries
     return f"{len(entries)} publication envelopes match their artifact events"
 
 
@@ -1431,20 +1561,15 @@ def _check_plan_revisions(context: _Verification) -> str:
     revisions = [entry.get("revision") for entry in entries]
     if revisions != list(range(1, len(entries) + 1)):
         raise _CheckFailed("plan revisions are not contiguous from 1")
-    recorded: dict[int, str] = {}
+    recorded = _recorded_plan_digests(context.events, failure=_CheckFailed)
     validated: str | None = None
     for event in context.events:
-        if event.event_type == MissionEventType.PLAN_PROPOSED:
-            recorded[event.payload.get("plan_revision")] = event.payload.get(
-                "plan_sha256"
-            )
-        elif event.event_type == MissionEventType.PLAN_REVISED:
+        if event.event_type == MissionEventType.PLAN_REVISED:
             revision = event.payload.get("plan_revision")
             if event.payload.get("previous_plan_revision") != revision - 1:
                 raise _CheckFailed(
                     f"plan revision {revision} event does not link to its predecessor"
                 )
-            recorded[revision] = event.payload.get("plan_sha256")
         elif event.event_type == MissionEventType.PLAN_VALIDATED:
             validated = event.payload.get("plan_sha256")
     digests: dict[int, str] = {}
@@ -1498,6 +1623,384 @@ def _check_plan_revisions(context: _Verification) -> str:
     return f"{len(entries)} plan revisions match their recorded digests"
 
 
+_ATTEMPT_EVENT_TYPES = frozenset(
+    {
+        MissionEventType.TASK_LEASED,
+        MissionEventType.TASK_STARTED,
+        MissionEventType.TASK_RETRIED,
+        MissionEventType.TASK_COMPLETED,
+        MissionEventType.TASK_FAILED,
+        MissionEventType.TASK_CANCELLED,
+    }
+)
+_ATTEMPT_TERMINAL_EVENT_TYPES = frozenset(
+    {
+        MissionEventType.TASK_RETRIED,
+        MissionEventType.TASK_COMPLETED,
+        MissionEventType.TASK_FAILED,
+        MissionEventType.TASK_CANCELLED,
+    }
+)
+_ATTEMPT_LEASE_FIELDS = ("task_id", "worker_id", "attempt_number", "fencing_token")
+# Events that end every in-flight attempt without naming it: the store abandons
+# leased/running attempts on a plan revision and cancels them with the mission.
+_ATTEMPT_SWEEP_EVENT_TYPES = frozenset(
+    {MissionEventType.OPERATOR_CANCELLED, MissionEventType.PLAN_REVISED}
+)
+# The mission-status dimension of ``reducer.reduce_events``, mirrored so a cold
+# verifier can replay ``mission_status`` without the store or its task rows.
+_STATUS_TARGETS: dict[MissionEventType, MissionStatus] = {
+    MissionEventType.PLAN_APPROVED: MissionStatus.RUNNING,
+    MissionEventType.PLAN_REJECTED: MissionStatus.REJECTED,
+    MissionEventType.OPERATOR_PAUSED: MissionStatus.PAUSED,
+    MissionEventType.OPERATOR_RESUMED: MissionStatus.RUNNING,
+    MissionEventType.OPERATOR_CANCELLED: MissionStatus.CANCELLED,
+    MissionEventType.FINAL_CANDIDATE_READY: MissionStatus.AWAITING_RESULT,
+    MissionEventType.FINAL_CANDIDATE_REJECTED: MissionStatus.REJECTED,
+    MissionEventType.ISOLATED_COMMIT_CREATED: MissionStatus.COMPLETED,
+}
+_FAILURE_EVENT_TYPES = frozenset(
+    {MissionEventType.ASSEMBLY_FAILED, MissionEventType.VERIFICATION_FAILED}
+)
+_SETTLED_STATUSES = frozenset({MissionStatus.FAILED, MissionStatus.CANCELLED})
+
+
+@dataclass(frozen=True, slots=True)
+class _ExpectedAttempt:
+    """What the public event log says about one attempt."""
+
+    lease: dict[str, Any]
+    states: frozenset[str]
+    result_code: Any
+    terminal: AttemptEvidenceEventType | None
+
+
+def _attempts_in_log(
+    events: tuple[MissionEvent, ...],
+) -> dict[str, tuple[MissionEvent, ...]]:
+    named: dict[str, list[MissionEvent]] = {}
+    for event in events:
+        if event.event_type not in _ATTEMPT_EVENT_TYPES:
+            continue
+        attempt_id = event.payload.get("attempt_id")
+        if not isinstance(attempt_id, str):
+            if event.event_type == MissionEventType.TASK_LEASED:
+                raise _CheckFailed(f"task.leased seq {event.seq} names no attempt")
+            continue
+        named.setdefault(attempt_id, []).append(event)
+    for attempt_id, items in named.items():
+        leases = [
+            item for item in items if item.event_type == MissionEventType.TASK_LEASED
+        ]
+        if len(leases) != 1 or items[0] is not leases[0]:
+            raise _CheckFailed(
+                f"attempt {attempt_id} is not leased exactly once before its task "
+                "events"
+            )
+    return {attempt_id: tuple(items) for attempt_id, items in named.items()}
+
+
+def _expected_attempt(
+    items: tuple[MissionEvent, ...], events: tuple[MissionEvent, ...]
+) -> _ExpectedAttempt:
+    leased = items[0]
+    lease = {key: leased.payload.get(key) for key in _ATTEMPT_LEASE_FIELDS}
+    terminal_events = [
+        item for item in items if item.event_type in _ATTEMPT_TERMINAL_EVENT_TYPES
+    ]
+    terminal: AttemptEvidenceEventType | None = None
+    if terminal_events:
+        last = terminal_events[-1]
+        code = last.payload.get("result_code")
+        if last.event_type == MissionEventType.TASK_COMPLETED:
+            states = {"committed"}
+            terminal = AttemptEvidenceEventType.ATTEMPT_COMPLETED
+        elif last.event_type == MissionEventType.TASK_CANCELLED:
+            states = {"cancelled"}
+        elif code == "lease_expired":
+            states = {"abandoned"}
+        else:
+            states = {"failed"}
+            terminal = AttemptEvidenceEventType.ATTEMPT_FAILED
+        return _ExpectedAttempt(lease, frozenset(states), code, terminal)
+    sweep = next(
+        (
+            event
+            for event in events[leased.seq :]
+            if event.event_type in _ATTEMPT_SWEEP_EVENT_TYPES
+        ),
+        None,
+    )
+    if sweep is None:
+        return _ExpectedAttempt(lease, frozenset({"leased", "running"}), None, None)
+    if sweep.event_type == MissionEventType.OPERATOR_CANCELLED:
+        return _ExpectedAttempt(
+            lease, frozenset({"cancelled"}), "mission_cancelled", None
+        )
+    return _ExpectedAttempt(lease, frozenset({"abandoned"}), "plan_revised", None)
+
+
+def _replay_mission_status(
+    events: tuple[MissionEvent, ...], target_revision: int
+) -> MissionStatus:
+    created = [
+        event
+        for event in events
+        if event.event_type == MissionEventType.MISSION_CREATED
+    ]
+    if len(created) != 1:
+        raise _CheckFailed("event log does not record exactly one mission.created")
+    try:
+        status = MissionStatus(created[0].payload.get("status"))
+    except ValueError as error:
+        raise _CheckFailed("mission.created records an unknown status") from error
+    active_revision = 1
+    for event in events:
+        kind = event.event_type
+        try:
+            if kind == MissionEventType.PLAN_REVISED:
+                revision = event.payload.get("plan_revision")
+                if type(revision) is not int:
+                    raise _CheckFailed(f"plan.revised seq {event.seq} has no revision")
+                active_revision = revision
+            elif kind in _STATUS_TARGETS:
+                status = transition_mission(status, _STATUS_TARGETS[kind])
+            elif kind == MissionEventType.OPERATOR_REPLAN_REQUESTED:
+                if status == MissionStatus.RUNNING:
+                    status = transition_mission(status, MissionStatus.PAUSED)
+            elif kind in _FAILURE_EVENT_TYPES and status not in _SETTLED_STATUSES:
+                status = transition_mission(status, MissionStatus.FAILED)
+            if (
+                not isinstance(event.payload.get("task_id"), str)
+                or active_revision != target_revision
+            ):
+                continue
+            task_failed = kind == MissionEventType.TASK_FAILED or (
+                kind == MissionEventType.GATE_DECIDED
+                and event.payload.get("task_state") == TaskState.FAILED.value
+            )
+            if task_failed and status not in _SETTLED_STATUSES:
+                status = transition_mission(status, MissionStatus.FAILED)
+        except TransitionError as error:
+            raise _CheckFailed(
+                f"mission status replay is illegal at seq {event.seq}: {error}"
+            ) from error
+    return status
+
+
+def _check_attempt_coverage(context: _Verification) -> str:
+    context.attempt_log = _attempts_in_log(context.events)
+    declared = context.manifest.get("attempts_without_evidence")
+    if not isinstance(declared, list):
+        raise _CheckFailed("manifest has no attempts_without_evidence table")
+    without: dict[str, dict[str, Any]] = {}
+    for entry in declared:
+        attempt_id = entry.get("attempt_id") if isinstance(entry, dict) else None
+        if not isinstance(attempt_id, str) or attempt_id in without:
+            raise _CheckFailed(
+                f"attempts_without_evidence entry {attempt_id!r} is malformed or "
+                "repeated"
+            )
+        without[attempt_id] = entry
+    chained = set(context.chains)
+    for attempt_id in sorted(chained & set(without)):
+        raise _CheckFailed(
+            f"attempt {attempt_id} has an evidence chain but is also declared "
+            "without evidence"
+        )
+    for attempt_id in sorted(set(context.attempt_log) - chained - set(without)):
+        raise _CheckFailed(
+            f"attempt {attempt_id} is leased in {EVENTS_FILE} but has neither an "
+            "evidence chain nor an attempts_without_evidence entry"
+        )
+    for attempt_id in sorted((chained | set(without)) - set(context.attempt_log)):
+        raise _CheckFailed(
+            f"attempt {attempt_id} is in the manifest but {EVENTS_FILE} never leased it"
+        )
+    context.attempts_without_evidence = without
+    return (
+        f"{len(context.attempt_log)} leased attempts: {len(chained)} evidence "
+        f"chains, {len(without)} declared without evidence"
+    )
+
+
+def _check_attempt_entry(
+    context: _Verification, entry: dict[str, Any], fields: tuple[str, ...]
+) -> None:
+    attempt_id = entry["attempt_id"]
+    expected = _expected_attempt(context.attempt_log[attempt_id], context.events)
+    for key in fields:
+        if entry.get(key) != expected.lease[key]:
+            raise _CheckFailed(
+                f"attempt {attempt_id} {key} {entry.get(key)!r} does not match its "
+                "task.leased event"
+            )
+    if entry.get("state") not in expected.states:
+        raise _CheckFailed(
+            f"attempt {attempt_id} state {entry.get('state')!r} does not match its "
+            f"task events (expected {' or '.join(sorted(expected.states))})"
+        )
+    if "result_code" in entry and entry.get("result_code") != expected.result_code:
+        raise _CheckFailed(
+            f"attempt {attempt_id} result_code {entry.get('result_code')!r} does "
+            "not match its task events"
+        )
+    chain = context.chains.get(attempt_id)
+    if expected.terminal is not None and chain is not None:
+        last = chain[-1]
+        if (
+            last.event_type != expected.terminal
+            or last.payload.get("result_code") != expected.result_code
+        ):
+            raise _CheckFailed(
+                f"attempt {attempt_id} terminal evidence event does not match its "
+                "task events"
+            )
+
+
+def _check_manifest_summary(context: _Verification) -> str:
+    manifest = context.manifest
+    events = context.events
+    projects = [
+        event
+        for event in events
+        if event.event_type == MissionEventType.PROJECT_CREATED
+    ]
+    created = [
+        event
+        for event in events
+        if event.event_type == MissionEventType.MISSION_CREATED
+    ]
+    if len(projects) != 1 or len(created) != 1:
+        raise _CheckFailed(
+            "event log does not record exactly one project.created and mission.created"
+        )
+    policy = manifest.get("policy")
+    expected_policy = {
+        "base_sha": projects[0].payload.get("base_sha"),
+        "policy_id": projects[0].payload.get("policy_id"),
+        "policy_sha256": projects[0].payload.get("policy_sha256"),
+        "repo_id": projects[0].payload.get("repo_id"),
+        "revision": projects[0].payload.get("policy_revision"),
+    }
+    if policy != expected_policy:
+        raise _CheckFailed("manifest policy does not match the project.created event")
+    mission = manifest.get("mission")
+    if not isinstance(mission, dict):
+        raise _CheckFailed("manifest has no mission summary")
+    if mission.get("creation_source") != created[0].payload.get("creation_source"):
+        raise _CheckFailed(
+            "manifest mission creation_source does not match the mission.created event"
+        )
+    status = _replay_mission_status(events, mission["plan_revision"])
+    if (
+        manifest.get("mission_status") != status.value
+        or mission.get("status") != status.value
+    ):
+        raise _CheckFailed(
+            f"manifest mission_status {manifest.get('mission_status')!r} does not "
+            f"match the event log replay ({status.value})"
+        )
+
+    final_entry = manifest["final_bundle"]
+    decision_text = "no final bundle"
+    if context.bundle is not None:
+        expected_decision = _bundle_decision(
+            events, final_entry["event_seq"], context.bundle.bundle_id
+        )
+        if final_entry.get("decision") != expected_decision:
+            raise _CheckFailed(
+                f"manifest final_bundle.decision {final_entry.get('decision')!r} "
+                f"does not match the final_candidate events ({expected_decision})"
+            )
+        decision_text = f"final decision {expected_decision['state']}"
+
+    for entry in manifest["attempts"]:
+        _check_attempt_entry(context, entry, _ATTEMPT_LEASE_FIELDS)
+    for entry in context.attempts_without_evidence.values():
+        _check_attempt_entry(context, entry, ("task_id",))
+
+    seen: dict[str, set[str]] = {}
+    for chain in context.chains.values():
+        for event in chain:
+            for reference in event.references:
+                if reference.kind not in RECEIPT_KINDS:
+                    seen.setdefault(reference.kind, set()).add(reference.id)
+    recomputed_excluded = {kind: len(ids) for kind, ids in sorted(seen.items())}
+    excluded = manifest.get("excluded_artifact_kinds")
+    if not isinstance(excluded, dict) or not all(
+        isinstance(count, int) for count in excluded.values()
+    ):
+        raise _CheckFailed("manifest excluded_artifact_kinds is malformed")
+    if not context.attempts_without_evidence:
+        if excluded != recomputed_excluded:
+            raise _CheckFailed(
+                f"manifest excluded_artifact_kinds {excluded} does not match the "
+                f"attempt evidence references ({recomputed_excluded})"
+            )
+    else:
+        if any(
+            excluded.get(kind, 0) < count for kind, count in recomputed_excluded.items()
+        ):
+            raise _CheckFailed(
+                f"manifest excluded_artifact_kinds {excluded} counts fewer "
+                f"artifacts than the attempt evidence references "
+                f"({recomputed_excluded})"
+            )
+        context.not_checked.append(
+            "excluded_artifact_kinds exact counts: "
+            f"{len(context.attempts_without_evidence)} attempts without evidence "
+            "chains may reference artifacts the capsule cannot see"
+        )
+
+    counts = manifest.get("counts")
+    if not isinstance(counts, dict):
+        raise _CheckFailed("manifest has no counts table")
+    plan_files = [
+        name for name in context.files if name.startswith(f"{PLAN_DIRECTORY}/")
+    ]
+    expected_counts = {
+        "events": len(events),
+        "plan_revisions": len(plan_files),
+        "attempts": len(context.attempt_log),
+        "attempt_evidence_chains": len(context.chains),
+        "attempt_evidence_events": sum(len(chain) for chain in context.chains.values()),
+        "receipts": len(context.receipts),
+        "publications": len(context.envelopes),
+        "leases": sum(
+            1 for event in events if event.event_type == MissionEventType.TASK_LEASED
+        ),
+        "gates": len(
+            {
+                str(event.payload.get("gate_id"))
+                for event in events
+                if event.event_type == MissionEventType.GATE_REQUESTED
+            }
+        ),
+        "excluded_artifacts": sum(excluded.values()),
+    }
+    if len(plan_files) != len(manifest["plan_revisions"]):
+        raise _CheckFailed(
+            "manifest plan_revisions table does not match the plan files"
+        )
+    for key, value in expected_counts.items():
+        if counts.get(key) != value:
+            raise _CheckFailed(
+                f"manifest counts.{key} {counts.get(key)!r} does not match the "
+                f"capsule contents ({value})"
+            )
+    unverifiable = sorted(set(counts) - set(expected_counts))
+    if unverifiable:
+        raise _CheckFailed(f"manifest counts has unverifiable entries {unverifiable}")
+    return (
+        f"manifest summary recomputed: policy and creation source from the first "
+        f"events, mission_status {status.value} by status replay, {decision_text}, "
+        f"{len(manifest['attempts'])} attempt rows and "
+        f"{len(context.attempts_without_evidence)} attempts without evidence match "
+        f"their task events, {len(expected_counts)} counts match"
+    )
+
+
 _CHECKS: tuple[tuple[str, Callable[[_Verification], str]], ...] = (
     ("manifest_file_digests", _check_manifest_files),
     ("mission_event_chain", _check_mission_events),
@@ -1508,6 +2011,8 @@ _CHECKS: tuple[tuple[str, Callable[[_Verification], str]], ...] = (
     ("tree_manifest", _check_tree_manifest),
     ("publication_envelopes", _check_envelopes),
     ("plan_revisions", _check_plan_revisions),
+    ("attempt_coverage", _check_attempt_coverage),
+    ("manifest_summary", _check_manifest_summary),
 )
 
 
@@ -1580,14 +2085,22 @@ def verify_mission_capsule(capsule_dir: Path) -> dict[str, object]:
         else "none"
     )
     not_checked = [
+        f"{NOT_VERIFIABLE_OFFLINE[3]}: {PRODUCER_NOTE}",
         f"{NOT_VERIFIABLE_OFFLINE[0]} (patch and source bytes are not in the capsule)",
         f"{NOT_VERIFIABLE_OFFLINE[1]} (provider receipts are sanitized, "
         "worker-reported records)",
         f"{NOT_VERIFIABLE_OFFLINE[2]} (timestamps are the mission store clock)",
+        "manifest snapshot_sha256 (the store's materialized snapshot digest cannot "
+        "be recomputed from the capsule)",
+        "manifest exported_at (the export clock) and mission.created_at (the "
+        "mission contract is carried only as its digest)",
+        "manifest mission.final_outcome (the store's outcome label; the final "
+        "decision is verified through final_bundle.decision instead)",
         f"artifact bytes of excluded kinds: {excluded_text} (digests only)",
         f"{OVERLAP_FILE} and {UNKNOWNS_FILE} are derived views; only their file "
         "digests are checked",
-        "mission materialized state replay (requires the SQLite mission store)",
+        "mission materialized task-state replay (requires the SQLite mission "
+        "store; only the mission status dimension is replayed offline)",
         *context.not_checked,
     ]
     return {
@@ -1626,6 +2139,7 @@ __all__ = [
     "CAPSULE_SUFFIX",
     "CapsuleError",
     "NOT_VERIFIABLE_OFFLINE",
+    "PRODUCER_NOTE",
     "RECEIPT_KINDS",
     "REDACTION_NOTE",
     "export_mission_capsule",

@@ -123,6 +123,7 @@ _MISSION_COMMANDS = (
     "reject-result",
     "request-replan",
     "result",
+    "capsule",
     "replay",
     "resume",
     "retry",
@@ -796,6 +797,62 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
             "--output candidate.patch",
             "the path exists or cannot be created safely",
         ),
+    )
+
+    capsule = _mission_parser(
+        actions,
+        "capsule",
+        summary="export or cold-verify a redacted self-verifying mission capsule",
+        example="graphene mission capsule export mission_123 --output ./capsules",
+        failure="the mission cannot be verified or the capsule directory exists",
+    )
+    capsule_actions = capsule.add_subparsers(dest="capsule_action", required=True)
+    export_capsule = _mission_parser(
+        capsule_actions,
+        "export",
+        summary="write MISSION_ID.graphene-capsule from verified mission authority",
+        example="graphene mission capsule export mission_123 --output ./capsules",
+        failure="the mission or its evidence cannot be verified or the capsule exists",
+    )
+    export_capsule.description = (
+        "Write a private MISSION_ID.graphene-capsule directory holding the "
+        "hash-chained mission events, attempt evidence chains, trusted check and "
+        "sanitized worker receipts, publication envelope digests, plan revisions, "
+        "and the registered final bundle. It contains no prompts, source bytes, "
+        "diffs, command output, environment values, or credentials."
+    )
+    export_capsule.epilog = (
+        "Example: graphene mission capsule export mission_123 --output ./capsules\n"
+        "Verify with: graphene mission capsule verify "
+        "./capsules/mission_123.graphene-capsule\n"
+        "Fails: the mission or its evidence cannot be verified, the output "
+        "directory is missing or a symlink, or the capsule already exists"
+    )
+    export_capsule.add_argument("mission_id", help="exact mission ID")
+    export_capsule.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help=_option_help(
+            "existing directory that receives a new MISSION_ID.graphene-capsule",
+            "--output ./capsules",
+            "the directory is missing or a symlink, or the capsule already exists",
+        ),
+    )
+    verify_capsule = _mission_parser(
+        capsule_actions,
+        "verify",
+        summary="recompute every digest and chain link from the capsule files alone",
+        example=(
+            "graphene mission capsule verify ./capsules/mission_123.graphene-capsule"
+        ),
+        failure=(
+            "a manifest, event chain, evidence chain, receipt, bundle, envelope, or "
+            "plan check fails; this command never opens the mission store"
+        ),
+    )
+    verify_capsule.add_argument(
+        "capsule_dir", type=Path, help="path of a *.graphene-capsule directory"
     )
 
     database = _mission_parser(
@@ -4163,6 +4220,69 @@ def _result_command(args: argparse.Namespace) -> dict[str, object]:
     return {**value, "exported_to": str(parent / output.name)}
 
 
+def _capsule_export_value(args: argparse.Namespace) -> dict[str, object]:
+    from ..orchestration.capsule import CapsuleError, export_mission_capsule
+
+    mission_id = args.mission_id
+    output = args.output.expanduser()
+    if not output.is_absolute():
+        output = Path.cwd() / output
+    store = _store_for_mission(mission_id)
+    evidence_path = _mission_runtime(mission_id) / "attempt-evidence.sqlite3"
+    if evidence_path.is_symlink() or not evidence_path.is_file():
+        raise MissionCliError("mission attempt evidence is unavailable")
+    evidence = _mission_evidence(store, mission_id)
+    try:
+        return export_mission_capsule(
+            store=store,
+            evidence=evidence,
+            mission_id=mission_id,
+            output_dir=output,
+        )
+    except CapsuleError as error:
+        raise MissionCliError(f"capsule export failed: {error}") from error
+
+
+def _capsule_verify_value(args: argparse.Namespace) -> dict[str, object]:
+    """Cold verification: recomputes from the capsule files and opens no store."""
+
+    from ..orchestration.capsule import CapsuleError, verify_mission_capsule
+
+    capsule_dir = args.capsule_dir.expanduser()
+    if not capsule_dir.is_absolute():
+        capsule_dir = Path.cwd() / capsule_dir
+    try:
+        return verify_mission_capsule(capsule_dir)
+    except CapsuleError as error:
+        raise MissionCliError(f"capsule verification failed: {error}") from error
+
+
+def _capsule_command(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
+    if args.capsule_action == "export":
+        return 0, _capsule_export_value(args)
+    if args.capsule_action == "verify":
+        value = _capsule_verify_value(args)
+        return (0 if value["verified"] else 1), value
+    raise MissionCliError("capsule action is not available")
+
+
+def _render_capsule_verify(value: dict[str, object]) -> str:
+    lines = [
+        f"CAPSULE {value['mission_id']} schema={value['schema']} "
+        f"dir={value['capsule_dir']}"
+    ]
+    for item in value["checks"]:
+        lines.append(f"CHECK {item['name']} ok={item['ok']} {item['detail']}")
+    lines.extend(f"NOT_CHECKED {item}" for item in value["not_checked"])
+    if value["verified"]:
+        lines.append(f"VERIFIED {value['mission_id']} checks={len(value['checks'])}")
+    else:
+        failed = next((item for item in value["checks"] if not item["ok"]), None)
+        name = "none" if failed is None else failed["name"]
+        lines.append(f"FAILED {value['mission_id']} check={name}")
+    return "\n".join(lines) + "\n"
+
+
 def _database_status() -> dict[str, object]:
     database = _state_root() / "missions.sqlite3"
     if not database.exists():
@@ -4677,6 +4797,8 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
         return 0, _start(args)
     if args.mission_action == "result":
         return 0, _result_command(args)
+    if args.mission_action == "capsule":
+        return _capsule_command(args)
     if args.mission_action == "db":
         return 0, _database_command(args)
     return 0, _mutate(args)
@@ -4711,6 +4833,12 @@ def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
                 sys.stdout.write(
                     f"WATCH events={len(value['events'])} next_after_seq={value['next_after_seq']}\n"
                 )
+            elif (
+                args.command == "mission"
+                and args.mission_action == "capsule"
+                and args.capsule_action == "verify"
+            ):
+                sys.stdout.write(_render_capsule_verify(value))
             elif args.command == "plan" and args.goal == "lint":
                 sys.stdout.write(_render_plan_lint(value))
             elif args.command == "plan" and args.goal in {"diff", "show"}:
