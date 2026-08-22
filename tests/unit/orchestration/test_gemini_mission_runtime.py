@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from graphene.cli import mission as mission_cli
+from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.models import TruthKind
 from graphene.orchestration.adk import (
     PlanIntent,
@@ -22,14 +23,22 @@ from graphene.orchestration.adk import (
     criterion_id,
 )
 from graphene.orchestration.models import (
+    AttemptState,
     CriterionVerificationKind,
     Mission,
     MissionEventType,
     MissionStatus,
+    ProjectPolicy,
+    TaskKind,
 )
 from graphene.orchestration.resources import ResourcePoint
-from graphene.orchestration.runtime import WorkerRegistry
-from graphene.orchestration.runtime import CheckOutcome, RuntimeAssignment
+from graphene.orchestration.runtime import (
+    WORKER_PROVIDER_RECEIPT_KIND,
+    CheckOutcome,
+    RuntimeAssignment,
+    WorkerProviderReceipt,
+    WorkerRegistry,
+)
 from graphene.orchestration.workers import (
     DeterministicWorkerModel,
     FileMutation,
@@ -562,18 +571,62 @@ def test_open_live_waits_for_active_runner_cleanup_before_cancel_authority(
     assert store.status == MissionStatus.CANCELLED
 
 
-def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
-    tmp_path: Path, monkeypatch
-) -> None:
+def quiet_resource_sampler(mission_id: str) -> tuple[ResourcePoint, ...]:
+    """Report zero managed RSS so the governor never throttles new dispatch."""
+
+    return (
+        ResourcePoint(
+            subject=mission_id,
+            metric="current-rss-bytes",
+            units="bytes",
+            category="managed_runtime",
+            scope="isolated_process_tree",
+            attribution_quality="sampled_partial",
+            observed_at=datetime.now(UTC),
+            value=0,
+            semantics="sampled-current-rss",
+        ),
+    )
+
+
+def prepare_fake_two_worker_mission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    command_templates: tuple[mission_cli.CommandTemplate, ...] | None = None,
+    extra_files: dict[str, str] | None = None,
+) -> SimpleNamespace:
+    """Create, bind, and approve a two-task Gemini plan backed by fake ADK workers.
+
+    Returns everything a test needs to call ``_execute_adk_mission`` itself so
+    each test chooses its own check runner, executor, and resource sampler.
+    """
+
     repository = tmp_path / "source"
     repository.mkdir()
     _git(repository, "init", "-q")
     _git(repository, "config", "user.name", "Runtime Test")
     _git(repository, "config", "user.email", "runtime@example.invalid")
     (repository / "README.md").write_text("# Source\n", encoding="utf-8")
-    _git(repository, "add", "README.md")
+    for relative, text in (extra_files or {}).items():
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    _git(repository, "add", "--all", "--")
     _git(repository, "commit", "-q", "-m", "base")
     _policy_path, policy = mission_cli.initialize(repository)
+    if command_templates is not None:
+        policy = ProjectPolicy.model_validate(
+            {
+                **policy.model_dump(mode="json"),
+                "command_templates": [
+                    item.model_dump(mode="json") for item in command_templates
+                ],
+            }
+        )
+        (repository / ".graphene" / "project.json").write_bytes(
+            canonical_json_bytes(policy.model_dump(mode="json")) + b"\n"
+        )
     source_status = _git(repository, "status", "--porcelain=v1")
     source_readme = (repository / "README.md").read_bytes()
     state = tmp_path / "state"
@@ -595,6 +648,7 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
     runtime.mkdir(mode=0o700, parents=True)
     mission_cli._bind_start_request(runtime, binding)
     criterion = criterion_id(args.success_criteria[0])
+    template_id = policy.command_templates[0].template_id
     request = PlanningRequest(
         mission_id=mission_id,
         revision=1,
@@ -617,7 +671,7 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
                     assigned_role="worker",
                     read_paths=("README.md",),
                     write_paths=(".graphene/generated/a.txt",),
-                    command_template_id="git-diff-check",
+                    command_template_id=template_id,
                 ),
                 WorkIntent(
                     task_id="report-b",
@@ -627,14 +681,11 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
                     assigned_role="worker",
                     read_paths=("README.md",),
                     write_paths=(".graphene/generated/b.txt",),
-                    command_template_id="git-diff-check",
+                    command_template_id=template_id,
                 ),
             ),
         ),
     )
-    assert plan.criteria[0].verification_kind == CriterionVerificationKind.HUMAN_GATE
-    assert plan.criteria[0].verifier_task_id is None
-    assert plan.criteria[0].verifier_id == "final-result"
     now = datetime.now(UTC)
     store = mission_cli._store()
     store.create_mission(
@@ -694,6 +745,35 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
             GeminiWorkerAdapter.fake(worker_id="fake-b", model=model_b),
         )
     )
+    return SimpleNamespace(
+        repository=repository,
+        policy=policy,
+        plan=plan,
+        mission_id=mission_id,
+        runtime=runtime,
+        state=state,
+        store=store,
+        registry=registry,
+        model_a=model_a,
+        model_b=model_b,
+        source_status=source_status,
+        source_readme=source_readme,
+    )
+
+
+def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    repository = prepared.repository
+    policy = prepared.policy
+    store = prepared.store
+    mission_id = prepared.mission_id
+    runtime = prepared.runtime
+    plan = prepared.plan
+    assert plan.criteria[0].verification_kind == CriterionVerificationKind.HUMAN_GATE
+    assert plan.criteria[0].verifier_task_id is None
+    assert plan.criteria[0].verifier_id == "final-result"
     samples = iter(
         (
             policy.resource_budget.soft_managed_rss_bytes + 1,
@@ -719,7 +799,7 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
     result = mission_cli._execute_adk_mission(
         store=store,
         mission_id=mission_id,
-        registry=registry,
+        registry=prepared.registry,
         check_runner=mission_cli._policy_check,
         resource_sampler=sample_managed_rss,
     )
@@ -741,8 +821,8 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
     ]
     assert len(result["worker_session_ids"]) == 2
     assert len(result["worker_invocation_ids"]) == 2
-    assert _git(repository, "status", "--porcelain=v1") == source_status
-    assert (repository / "README.md").read_bytes() == source_readme
+    assert _git(repository, "status", "--porcelain=v1") == prepared.source_status
+    assert (repository / "README.md").read_bytes() == prepared.source_readme
     assert not (repository / ".graphene/generated").exists()
     assert (runtime / "repository" / ".git").is_dir()
     assert _git(runtime / "repository", "remote") == ""
@@ -754,3 +834,75 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
     assert len({item.worker_id for item in work_attempts}) == 2
     assert len({item.session_id for item in work_attempts}) == 2
     assert len({item.invocation_id for item in work_attempts}) == 2
+    # The throttled first batch ran the two workers one after the other, so
+    # the durable timestamps must not claim an overlap that never happened.
+    assert result["parallel_overlap_observed"] is False
+    assert result["parallel_overlap"]["attempt_count"] == 2
+
+    # Every committed WORK attempt binds exactly one sanitized provider receipt
+    # that resolves by digest, parses, and names the fake driver honestly.
+    kinds = {item.task_id: item.kind for item in snapshot.tasks}
+    evidence = mission_cli._mission_evidence(store, mission_id)
+    committed_work = tuple(
+        item
+        for item in snapshot.attempts
+        if kinds[item.task_id] == TaskKind.WORK
+        and item.state == AttemptState.COMMITTED
+    )
+    assert len(committed_work) == 2
+    for attempt in committed_work:
+        references = tuple(
+            item
+            for item in attempt.evidence_refs
+            if item.kind == WORKER_PROVIDER_RECEIPT_KIND
+        )
+        assert len(references) == 1
+        content = evidence.resolve(references[0].kind, references[0].id)
+        assert content is not None
+        assert sha256_hex(content) == references[0].sha256
+        receipt = WorkerProviderReceipt.model_validate_json(content)
+        assert receipt.driver == "adk_fake"
+        assert receipt.requested_model == receipt.returned_model
+        record = json.loads(content)
+        assert not {"prompt", "output", "api_key"} & set(record)
+        text = content.decode("utf-8")
+        assert "Create only the first bounded report." not in text
+        assert "Create only the second bounded report." not in text
+        assert "# Source" not in text
+    assert all(
+        item.kind != WORKER_PROVIDER_RECEIPT_KIND
+        for attempt in snapshot.attempts
+        if kinds[attempt.task_id] != TaskKind.WORK
+        for item in attempt.evidence_refs
+    )
+    assert store.verify(mission_id) == snapshot.head
+    assert [item["driver"] for item in result["provider_receipts"]] == [
+        "adk_fake",
+        "adk_fake",
+    ]
+    assert [item["attempt_id"] for item in result["provider_receipt_references"]] == [
+        item.attempt_id for item in committed_work
+    ]
+    assert all(
+        item["kind"] == WORKER_PROVIDER_RECEIPT_KIND
+        for item in result["provider_receipt_references"]
+    )
+    assert result["receipt_unknowns"] == []
+
+    # A replayed result rebuilds the receipts from evidence, not from memory.
+    replayed = mission_cli._execute_adk_mission(
+        store=store,
+        mission_id=mission_id,
+        registry=prepared.registry,
+        check_runner=mission_cli._policy_check,
+    )
+    assert replayed["result_replayed"] is True
+    assert replayed["provider_receipts"] == result["provider_receipts"]
+    assert replayed["worker_session_ids"] == result["worker_session_ids"]
+    assert replayed["worker_invocation_ids"] == result["worker_invocation_ids"]
+    assert (
+        replayed["provider_receipt_references"]
+        == result["provider_receipt_references"]
+    )
+    assert replayed["receipt_unknowns"] == []
+    assert replayed["parallel_overlap"] == result["parallel_overlap"]

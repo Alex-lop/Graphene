@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import timedelta
 
 import pytest
 
+from graphene.cli import mission as mission_cli
+from graphene.hashing import canonical_json_bytes
 from graphene.models import TruthKind
+from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
 from graphene.orchestration.materialized_integrity import (
     MaterializedArtifactError,
     verify_materialized_artifacts,
@@ -16,11 +20,20 @@ from graphene.orchestration.models import (
     CriterionVerificationKind,
     Gate,
     GateDecision,
+    MissionStatus,
     Plan,
     Task,
 )
 from graphene.orchestration.projection import MissionProjection, MissionProjectionError
+from graphene.orchestration.runtime import (
+    WORKER_PROVIDER_RECEIPT_KIND,
+    WorkerProviderReceipt,
+)
 from graphene.orchestration.store import MissionStoreError, SQLiteMissionStore
+from tests.unit.orchestration.test_gemini_mission_runtime import (
+    prepare_fake_two_worker_mission,
+    quiet_resource_sampler,
+)
 from tests.unit.orchestration.test_store import (
     MemoryArtifacts,
     NOW,
@@ -178,3 +191,51 @@ def test_materialized_artifact_verifier_reconciles_unique_byte_count(tmp_path) -
             resolver=_artifacts(store),
             max_artifact_bytes=len(content) - 1,
         )
+
+
+def test_forged_worker_provider_receipt_bytes_fail_closed_on_cold_reads(
+    tmp_path, monkeypatch
+) -> None:
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    result = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=prepared.registry,
+        check_runner=mission_cli._policy_check,
+        resource_sampler=quiet_resource_sampler,
+    )
+    assert result["status"] == MissionStatus.AWAITING_RESULT
+    assert prepared.store.verify(prepared.mission_id) == prepared.store.head(
+        prepared.mission_id
+    )
+    reference = result["provider_receipt_references"][0]
+    assert reference["kind"] == WORKER_PROVIDER_RECEIPT_KIND
+    evidence_path = prepared.runtime / "attempt-evidence.sqlite3"
+    original = SQLiteAttemptEvidenceStore(evidence_path).resolve(
+        reference["kind"], reference["id"]
+    )
+    assert original is not None
+    receipt = WorkerProviderReceipt.model_validate_json(original)
+    forged = canonical_json_bytes(
+        {**receipt.model_dump(mode="json"), "latency_ms": receipt.latency_ms + 1}
+    )
+    # Schema-valid, differently-digested bytes stand in for a tampered receipt.
+    assert WorkerProviderReceipt.model_validate_json(forged) != receipt
+    connection = sqlite3.connect(evidence_path)
+    try:
+        updated = connection.execute(
+            "UPDATE attempt_artifacts SET artifact_bytes = ? WHERE artifact_id = ?",
+            (forged, reference["id"]),
+        ).rowcount
+        connection.commit()
+    finally:
+        connection.close()
+    assert updated == 1
+
+    cold = mission_cli._store_for_mission(prepared.mission_id)
+    with pytest.raises(MissionStoreError, match="materialized artifacts"):
+        cold.verify(prepared.mission_id)
+    with pytest.raises(MissionStoreError, match="materialized artifacts"):
+        cold.snapshot(prepared.mission_id)
+    with pytest.raises(MissionProjectionError, match="store validation"):
+        MissionProjection(cold).snapshot(prepared.mission_id)

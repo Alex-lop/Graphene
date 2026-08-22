@@ -54,7 +54,10 @@ The recorded production-path run completed **3 passed**. It does not prove real 
 uv run --frozen graphene mission demo
 GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py
 GRAPHENE_RUN_DOCKER_SMOKE=1 uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py
+GRAPHENE_CHECK_EXECUTOR=host-sandbox uv run --frozen graphene mission demo
 ```
+
+`GRAPHENE_CHECK_EXECUTOR` selects how `fixture-tests` checks run on the `gemini-adk` path: `docker` (default) or `host-sandbox` (macOS `sandbox-exec`, check subprocess registered in the owned-process registry). Any other value fails closed with `GRAPHENE_CHECK_EXECUTOR must be docker or host-sandbox`. The darwin-gated tests in `tests/unit/orchestration/test_host_check_runner.py` drive the host runner through a fake two-worker mission; every worker attempt also binds a `worker-provider-receipt` evidence artifact that `store.verify` resolves by digest.
 
 `graphene mission demo` is the credential-gated live Taskmaster planner/worker entrypoint; it has no fake or replay fallback and remains **NOT PROVEN** until a complete two-worker provider run returns receipts. Live Firestore/Cloud commands require the exact project checks in [Alex cloud setup](ALEX_CLOUD_SETUP.md). Docker, live Gemini, real Cloud Run/Firestore, benchmark results, and the submission video remain **NOT PROVEN**. Do not convert required deterministic tests into skips.
 

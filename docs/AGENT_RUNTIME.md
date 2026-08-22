@@ -36,6 +36,12 @@ A failed sibling must not cancel healthy work. Accepted work commits as it compl
 
 Provider/process effects without authoritative receipts can have unknown outcomes. Graphene must not silently repeat them or call them exactly once. Cancellation prepares and reaps only exact owned process groups while the lease/fence remains valid, then commits the mission transition; cleanup failure aborts cancellation.
 
+## Provider receipts and check executors
+
+Every attempt whose worker returned a provider completion binds a sanitized `worker-provider-receipt` artifact (model names, credential mode, byte and token counts; never prompts, outputs, environment values, or credentials) into its terminal evidence event and `Attempt.evidence_refs`, on success and on failure alike. A failed receipt write can never produce a completed attempt. `store.verify()` and the materialized-integrity check resolve the receipt bytes by digest, so a tampered receipt fails closed, and a replayed `gemini-adk` result rebuilds `provider_receipts` from evidence rather than memory (`provider_receipt_references` cites each one; `receipt_unknowns` lists anything unresolvable instead of guessing). Worker overlap is reported as `parallel_overlap`, measured from durable attempt and lease timestamps recorded by the mission store clock, not from provider-side data.
+
+`fixture-tests` checks on the Gemini/ADK path are routed by `GRAPHENE_CHECK_EXECUTOR`: `docker` (default) uses the container executor; `host-sandbox` runs the frozen command on macOS under `/usr/bin/sandbox-exec` and registers the check subprocess in the owned-process registry that `graphene mission cancel` reaps, which is what makes the failure laboratory's kill strongly identified. Any other value fails closed before a worker runs; Graphene never falls back silently between the two. `graphene doctor` reports the requested executor under `check_executor` without echoing unrecognised values.
+
 ## Proof gates
 
 Deterministic fake-ADK tests may prove routing and contracts, never Gemini behavior. A real-agent claim requires two distinct returned model/session/invocation identities, measured overlap, no fixture overlay, scoped tool receipts, accepted-only fan-in, exact verification, and unchanged user checkout evidence.

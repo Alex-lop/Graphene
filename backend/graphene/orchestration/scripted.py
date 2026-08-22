@@ -358,6 +358,29 @@ def _inventory(root: Path) -> dict[str, bytes]:
     return files
 
 
+def fixture_policy_for(workspace: Path) -> FixturePolicy:
+    """Bind the frozen fixture-tests command to one exact workspace inventory.
+
+    Shared by the scripted worker and the host-sandbox check runner so both
+    trusted check paths materialize and hash the same candidate tree.
+    """
+
+    files = _inventory(workspace)
+    return FixturePolicy(
+        root="fixture",
+        tracked_paths=tuple(files),
+        mutable_paths=tuple(files),
+        fixed_test_command=_FIXED_TEST_COMMAND,
+        test_timeout_seconds=15,
+        max_test_output_bytes=16_384,
+        max_write_bytes=262_144,
+        max_patch_bytes=1_048_576,
+        tree_sha256=candidate_tree_sha256(files),
+        tree_hash_version="graphene.tree.v2",
+        tree_hash_algorithm="sha256(graphene.tree.v2 length-prefixed manifest)",
+    )
+
+
 def _scenario_inventory(scenario: ScriptedScenario) -> dict[str, bytes]:
     source = scenario.source_path
     metadata = source.lstat()
@@ -745,20 +768,7 @@ class ScriptedWorker:
 
     @staticmethod
     def _fixture_policy(workspace: Path) -> FixturePolicy:
-        files = _inventory(workspace)
-        return FixturePolicy(
-            root="fixture",
-            tracked_paths=tuple(files),
-            mutable_paths=tuple(files),
-            fixed_test_command=_FIXED_TEST_COMMAND,
-            test_timeout_seconds=15,
-            max_test_output_bytes=16_384,
-            max_write_bytes=262_144,
-            max_patch_bytes=1_048_576,
-            tree_sha256=candidate_tree_sha256(files),
-            tree_hash_version="graphene.tree.v2",
-            tree_hash_algorithm="sha256(graphene.tree.v2 length-prefixed manifest)",
-        )
+        return fixture_policy_for(workspace)
 
     @staticmethod
     def _direct_inputs(dispatch: Dispatch) -> tuple[DirectArtifactInputV2, ...]:
@@ -2003,6 +2013,7 @@ __all__ = [
     "ScriptedUnavailable",
     "ScriptedWorker",
     "execute_scripted_mission",
+    "fixture_policy_for",
     "initialize_fixture_repository",
     "load_scenario",
     "propose_scripted_mission",

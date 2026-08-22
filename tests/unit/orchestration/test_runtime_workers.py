@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import sqlite3
 import stat
 import subprocess
 from collections import Counter
@@ -13,19 +14,28 @@ import pytest
 
 import graphene.orchestration.runtime as runtime_module
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
+from graphene.orchestration.evidence import (
+    AttemptEvidenceEventType,
+    SQLiteAttemptEvidenceStore,
+)
 from graphene.orchestration.models import (
+    ArtifactVisibility,
     CommandTemplate,
     Dispatch,
     PublishedArtifactReferenceV2,
     TaskKind,
 )
 from graphene.orchestration.runtime import (
+    WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     CompletionOutcome,
     RuntimeAssignment,
     RuntimeErrorCode,
     RuntimeFailure,
+    WorkerCapabilities,
+    WorkerCompletion,
+    WorkerContext,
+    WorkerProviderReceipt,
     WorkerRegistry,
     WorkerRuntime,
     stable_operation_id,
@@ -385,11 +395,15 @@ def test_two_adk_workers_overlap_replay_and_feed_exact_assembly_verification(
         del dispatch
         return accepted[(reference.id, reference.sha256)]
 
+    runtime: WorkerRuntime
+
     async def check(
         workspace: Path, assignment: RuntimeAssignment, owner_id: str
     ) -> CheckOutcome:
         assert workspace.is_relative_to(runtime_root / "worker-workspaces")
         assert owner_id
+        # The trusted check runner can resolve the active dispatch by owner id.
+        assert runtime.dispatch_for(owner_id).attempt_id == owner_id
         await asyncio.sleep(0.01)
         return CheckOutcome(
             template_id=assignment.command_template.template_id,
@@ -491,6 +505,34 @@ def test_two_adk_workers_overlap_replay_and_feed_exact_assembly_verification(
     assert set(heartbeats) == {"attempt-a", "attempt-b"}
     assert not tuple((runtime_root / "worker-workspaces").iterdir())
     assert all(count == 2 for count in Counter(fences).values())
+    with pytest.raises(KeyError):
+        runtime.dispatch_for("attempt-a")
+    # Each worker attempt binds exactly one sanitized provider receipt into its
+    # terminal evidence event; the bytes never carry the private operator input.
+    for run in (run_a, run_b):
+        provider_references = tuple(
+            item
+            for item in run.result.evidence_refs
+            if item.kind == WORKER_PROVIDER_RECEIPT_KIND
+        )
+        assert len(provider_references) == 1
+        content = evidence.resolve(
+            WORKER_PROVIDER_RECEIPT_KIND, provider_references[0].id
+        )
+        assert content is not None
+        assert sha256_hex(content) == provider_references[0].sha256
+        assert (
+            WorkerProviderReceipt.model_validate_json(content)
+            == run.receipt.completion.provider
+        )
+        assert b"private guidance for A" not in content
+        assert not {"prompt", "output", "api_key"} & set(json.loads(content))
+        assert run.result.evidence_link is not None
+        evidence_id = run.result.evidence_link.evidence_id
+        events = evidence.tail(evidence_id, 0, 256)
+        assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_COMPLETED
+        assert provider_references[0] in events[-1].references
+        assert evidence.verify(evidence_id).seq == len(events)
 
     crashed = _dispatch(
         task_id="work-a",
@@ -539,6 +581,10 @@ def test_two_adk_workers_overlap_replay_and_feed_exact_assembly_verification(
     )
     assembly_run = asyncio.run(runtime.execute_async(assembly))
     assert assembly_run.result.succeeded
+    assert all(
+        item.kind != WORKER_PROVIDER_RECEIPT_KIND
+        for item in assembly_run.result.evidence_refs
+    )
     candidate = next(
         item for item in assembly_run.result.evidence_refs if item.kind == "patch"
     )
@@ -600,6 +646,178 @@ def test_two_adk_workers_overlap_replay_and_feed_exact_assembly_verification(
     } == source_before
     assert _git(repository, "status", "--porcelain=v1") == status_before
     assert not tuple((runtime_root / "worker-workspaces").iterdir())
+
+
+class _StubAdapter:
+    """Minimal WorkerAdapter returning one fixed completion with a receipt."""
+
+    def __init__(self, worker_id: str, completion: WorkerCompletion) -> None:
+        self.capabilities = WorkerCapabilities(
+            worker_id=worker_id, driver="adk_fake", task_kinds=(TaskKind.WORK,)
+        )
+        self._completion = completion
+        self.calls = 0
+
+    async def execute(
+        self, context: WorkerContext, assignment: RuntimeAssignment
+    ) -> WorkerCompletion:
+        del context, assignment
+        self.calls += 1
+        return self._completion
+
+
+def _provider_receipt() -> WorkerProviderReceipt:
+    return WorkerProviderReceipt(
+        driver="adk_fake",
+        client_version="test",
+        requested_model="stub-model",
+        returned_model="stub-model",
+        credential_mode="not_applicable",
+        input_bytes=12,
+        output_bytes=34,
+        latency_ms=5,
+        usage_source="unavailable",
+    )
+
+
+def _stub_runtime(
+    tmp_path: Path,
+    adapter: _StubAdapter,
+    *,
+    evidence: SQLiteAttemptEvidenceStore,
+    check_runner,
+) -> tuple[WorkerRuntime, Dispatch]:
+    repository, base_sha = _repository(tmp_path / "user-checkout")
+    runtime_root = tmp_path / "private-runtime"
+    runtime_root.mkdir(mode=0o700)
+    assignment = RuntimeAssignment(
+        task_id="work-a",
+        title="Change A",
+        contract="Change only the leased A file.",
+        read_paths=("a.txt",),
+        output_name="patch-a",
+        output_kind="patch",
+        output_paths=("a.txt",),
+        command_template=CHECK,
+    )
+    dispatch = _dispatch(
+        task_id="work-a",
+        worker_id=adapter.capabilities.worker_id,
+        workspace_id="workspace-a",
+        attempt_id="attempt-a",
+        lease_id="lease-a",
+        fence=11,
+        writes=("a.txt",),
+    )
+    runtime = WorkerRuntime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime=runtime_root,
+        evidence=evidence,
+        registry=WorkerRegistry((adapter,)),
+        assignment=lambda _: assignment,
+        accepted_artifact=lambda *_: b"",
+        check_runner=check_runner,
+        policy_sha256="a" * 64,
+        fence=lambda *_: None,
+        heartbeat=lambda _: None,
+        clock=lambda: NOW,
+    )
+    return runtime, dispatch
+
+
+def test_failed_provider_completion_still_binds_its_receipt_as_evidence(
+    tmp_path: Path,
+) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    provider = _provider_receipt()
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.RETRYABLE_FAILURE,
+            result_code="provider_timeout",
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+            provider=provider,
+        ),
+    )
+
+    async def check(*_):
+        raise AssertionError("check must not run after a failed completion")
+
+    runtime, dispatch = _stub_runtime(
+        tmp_path, adapter, evidence=evidence, check_runner=check
+    )
+
+    run = asyncio.run(runtime.execute_async(dispatch))
+
+    assert run.result.succeeded is False
+    assert run.result.retryable is True
+    assert run.result.result_code == "provider_timeout"
+    assert run.result.publications == ()
+    references = tuple(
+        item
+        for item in run.result.evidence_refs
+        if item.kind == WORKER_PROVIDER_RECEIPT_KIND
+    )
+    assert len(references) == 1
+    content = evidence.resolve(WORKER_PROVIDER_RECEIPT_KIND, references[0].id)
+    assert content is not None
+    assert sha256_hex(content) == references[0].sha256
+    assert WorkerProviderReceipt.model_validate_json(content) == provider
+    assert run.result.evidence_link is not None
+    events = evidence.tail(run.result.evidence_link.evidence_id, 0, 256)
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
+    assert events[-1].references == references
+    assert run.receipt.completion.provider == provider
+    assert adapter.calls == 1
+
+
+def test_failed_provider_receipt_write_never_yields_a_completed_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.COMPLETED,
+            result_code="passed",
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+            provider=_provider_receipt(),
+        ),
+    )
+    original_put = evidence.put_artifact
+
+    def failing_put(kind, content, *, visibility=ArtifactVisibility.PRIVATE):
+        if kind == WORKER_PROVIDER_RECEIPT_KIND:
+            raise sqlite3.OperationalError("private disk detail must not escape")
+        return original_put(kind, content, visibility=visibility)
+
+    monkeypatch.setattr(evidence, "put_artifact", failing_put)
+
+    async def check(*_):
+        raise AssertionError("check must not run when receipt binding failed")
+
+    runtime, dispatch = _stub_runtime(
+        tmp_path, adapter, evidence=evidence, check_runner=check
+    )
+
+    run = asyncio.run(runtime.execute_async(dispatch))
+
+    assert run.result.succeeded is False
+    assert run.result.retryable is True
+    assert run.result.result_code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
+    assert run.result.publications == ()
+    assert all(
+        item.kind != WORKER_PROVIDER_RECEIPT_KIND for item in run.result.evidence_refs
+    )
+    assert "private disk detail" not in run.receipt.model_dump_json()
+    assert run.result.evidence_link is not None
+    events = evidence.tail(run.result.evidence_link.evidence_id, 0, 256)
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
+    assert adapter.calls == 1
+    assert not tuple((tmp_path / "private-runtime" / "worker-workspaces").iterdir())
 
 
 def test_post_effect_fence_loss_is_sanitized_as_outcome_unknown(

@@ -8,8 +8,13 @@ from pathlib import Path
 import pytest
 
 from graphene.cli import mission as mission_cli
+from graphene.hashing import sha256_hex
 from graphene.orchestration.adk import LIVE_GEMINI_MODEL
 from graphene.orchestration.models import AttemptState, MissionStatus, TaskKind
+from graphene.orchestration.runtime import (
+    WORKER_PROVIDER_RECEIPT_KIND,
+    WorkerProviderReceipt,
+)
 
 
 def _credentials_configured() -> bool:
@@ -117,8 +122,28 @@ def test_real_gemini_runs_the_full_two_worker_mission(
         assert receipt["output_bytes"] > 0
         assert receipt["usage_source"] in {"provider_reported", "unavailable"}
         assert "prompt" not in receipt and "output" not in receipt
+    # Measured overlap comes from durable attempt and lease timestamps, and
+    # every provider receipt is cited by an evidence reference that resolves.
+    assert completed["parallel_overlap_observed"] is True
+    assert completed["parallel_overlap"]["max_window_ms"] > 0
+    assert {item["basis"] for item in completed["parallel_overlap"]["pairs"]} == {
+        "attempt_timestamps",
+        "lease_timestamps",
+    }
+    assert completed["receipt_unknowns"] == []
+    assert len(completed["provider_receipt_references"]) >= 2
 
     store = mission_cli._store_for_mission(mission_id)
+    evidence = mission_cli._mission_evidence(store, mission_id)
+    for reference in completed["provider_receipt_references"]:
+        assert reference["kind"] == WORKER_PROVIDER_RECEIPT_KIND
+        content = evidence.resolve(reference["kind"], reference["id"])
+        assert content is not None
+        assert sha256_hex(content) == reference["sha256"]
+        assert WorkerProviderReceipt.model_validate_json(content).driver == (
+            "gemini_live"
+        )
+    assert store.verify(mission_id) == store.head(mission_id)
     snapshot = store.snapshot(mission_id)
     kinds = {item.task_id: item.kind for item in snapshot.tasks}
     work = tuple(
@@ -128,6 +153,11 @@ def test_real_gemini_runs_the_full_two_worker_mission(
         and item.state == AttemptState.COMMITTED
     )
     assert len(work) >= 2
+    for attempt in work:
+        assert (
+            sum(item.kind == WORKER_PROVIDER_RECEIPT_KIND for item in attempt.evidence_refs)
+            == 1
+        )
     first, second = work[:2]
     assert len({first.worker_id, second.worker_id}) == 2
     assert len({first.session_id, second.session_id}) == 2

@@ -6,6 +6,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -15,6 +16,7 @@ from typing import Literal, Protocol
 from pydantic import Field, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2, DirectArtifactInputV2
+from ..execution.adapter import _FIXED_TEST_COMMAND, ExecutionError, run_fixture_tests
 from ..hashing import (
     EXECUTABLE_FILE_MODE,
     REGULAR_FILE_MODE,
@@ -42,12 +44,20 @@ from .models import (
     Dispatch,
     EvidenceReference,
     GenericEvidenceLink,
+    MissionStatus,
     PublishedArtifactReferenceV2,
     PublicationDraft,
     TaskKind,
     artifact_input_reference_key,
 )
-from .sandbox import DockerExecutor, SandboxResult
+from .process_control import (
+    ControlledProcessRunner,
+    OwnedProcessRegistry,
+    ProcessCancelled,
+    ProcessControlError,
+)
+from .sandbox import DockerExecutor, SandboxResult, command_template_sha256
+from .scripted import ScriptedError, fixture_policy_for
 from .workspace_audit import (
     WorkspaceBaseline,
     _admin_files,
@@ -55,6 +65,11 @@ from .workspace_audit import (
     audit_workspace,
     capture_workspace_baseline,
 )
+
+# Evidence artifact kind that binds a sanitized provider receipt (model names,
+# credential mode, byte and token counts; never prompts or outputs) to the
+# attempt that produced it.
+WORKER_PROVIDER_RECEIPT_KIND = "worker-provider-receipt"
 
 
 class RuntimeErrorCode(StrEnum):
@@ -353,6 +368,78 @@ class DockerCheckRunner:
             output_sha256=sha256_hex(result.output),
             output_truncated=result.output_truncated,
             cleanup_complete=result.cleanup_complete,
+        )
+
+
+class HostSandboxCheckRunner:
+    """Run the frozen ``fixture-tests`` template on the host under sandbox-exec.
+
+    This is the explicit macOS alternative to :class:`DockerCheckRunner`. It
+    reuses the scripted path's trusted machinery: the same frozen command, the
+    same fixture materialization, and a :class:`ControlledProcessRunner` that
+    registers the check subprocess in the :class:`OwnedProcessRegistry` for
+    the duration of the check. That registration is what lets cancellation
+    and the failure laboratory act on a strongly identified Graphene-owned
+    process group instead of guessing by name. Anything else fails closed.
+    """
+
+    def __init__(
+        self,
+        registry: OwnedProcessRegistry,
+        *,
+        dispatch_for: Callable[[str], Dispatch],
+        status: Callable[[], MissionStatus],
+        heartbeat: Callable[[Dispatch], object] | None = None,
+    ) -> None:
+        self.registry = registry
+        self.dispatch_for = dispatch_for
+        self.status = status
+        self.heartbeat = heartbeat
+
+    async def __call__(
+        self, workspace: Path, assignment: RuntimeAssignment, owner_id: str
+    ) -> CheckOutcome:
+        template = assignment.command_template
+        if tuple(template.argv) != _FIXED_TEST_COMMAND or template.cwd is not None:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
+            raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE)
+        try:
+            dispatch = self.dispatch_for(owner_id)
+        except KeyError as error:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
+        if not isinstance(dispatch, Dispatch) or dispatch.attempt_id != owner_id:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        heartbeat = self.heartbeat
+        process_runner = ControlledProcessRunner(
+            self.registry,
+            dispatch,
+            self.status,
+            heartbeat=None if heartbeat is None else (lambda: heartbeat(dispatch)),
+        )
+        try:
+            policy = fixture_policy_for(workspace)
+        except ScriptedError as error:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
+        try:
+            run = await asyncio.to_thread(
+                run_fixture_tests,
+                workspace,
+                policy,
+                process_runner=process_runner,
+            )
+        except ProcessCancelled as error:
+            raise RuntimeFailure(RuntimeErrorCode.CANCELLED) from error
+        except (ExecutionError, ProcessControlError) as error:
+            raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE) from error
+        return CheckOutcome(
+            template_id=template.template_id,
+            template_sha256=command_template_sha256(template),
+            exit_code=run.exit_code,
+            timed_out=run.timed_out,
+            output_sha256=sha256_hex(run.output.encode("utf-8")),
+            output_truncated=run.output_truncated,
+            cleanup_complete=True,
         )
 
 
@@ -845,11 +932,17 @@ class WorkerRuntime:
         self._initialize_directories()
         self._attempt_locks: dict[str, asyncio.Lock] = {}
         self._cancellation_safe_attempts: set[str] = set()
+        self._active: dict[str, Dispatch] = {}
 
     def cancellation_safe(self, dispatch: Dispatch) -> bool:
         """True only while cancellation cannot orphan a local thread/subprocess."""
 
         return dispatch.attempt_id in self._cancellation_safe_attempts
+
+    def dispatch_for(self, attempt_id: str) -> Dispatch:
+        """Return the dispatch currently executing ``attempt_id`` or raise KeyError."""
+
+        return self._active[attempt_id]
 
     def _initialize_directories(self) -> None:
         root = -1
@@ -1433,6 +1526,38 @@ class WorkerRuntime:
             )
         return outcome, reference, envelope_reference, truth_reference
 
+    async def _store_provider_receipt(
+        self, context: WorkerContext, provider: WorkerProviderReceipt
+    ) -> EvidenceReference:
+        """Bind the sanitized provider receipt to the attempt as evidence.
+
+        A failed write must never yield a COMPLETED attempt: non-runtime errors
+        map to ``runtime_unavailable`` and post-effect fence loss keeps the
+        surrounding outcome-unknown discipline.
+        """
+
+        record = canonical_json_bytes(provider.model_dump(mode="json"))
+        try:
+            stored = await context._effect(
+                "store-provider-receipt",
+                lambda: self.evidence.put_artifact(
+                    WORKER_PROVIDER_RECEIPT_KIND,
+                    record,
+                    visibility=ArtifactVisibility.MISSION,
+                ),
+            )
+        except RuntimeFailure:
+            raise
+        except Exception as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        if (
+            not isinstance(stored, EvidenceReference)
+            or stored.kind != WORKER_PROVIDER_RECEIPT_KIND
+            or stored.sha256 != sha256_hex(record)
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+        return stored
+
     def _evidence_id(self, dispatch: Dispatch) -> str:
         return (
             "attempt_evidence_"
@@ -1490,7 +1615,11 @@ class WorkerRuntime:
     async def execute_async(self, dispatch: Dispatch) -> WorkerRun:
         lock = self._attempt_locks.setdefault(dispatch.attempt_id, asyncio.Lock())
         async with lock:
-            return await self._execute_locked(dispatch)
+            self._active[dispatch.attempt_id] = dispatch
+            try:
+                return await self._execute_locked(dispatch)
+            finally:
+                self._active.pop(dispatch.attempt_id, None)
 
     async def _execute_locked(self, dispatch: Dispatch) -> WorkerRun:
         recovered = self._load_receipt(dispatch)
@@ -1584,6 +1713,14 @@ class WorkerRuntime:
                     self._cancellation_safe_attempts.discard(dispatch.attempt_id)
                 if not isinstance(completion, WorkerCompletion):
                     raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED)
+                if completion.provider is not None:
+                    # Bind the receipt on success and failure alike so the
+                    # terminal evidence event and Attempt.evidence_refs cite it.
+                    references.append(
+                        await self._store_provider_receipt(
+                            context, completion.provider
+                        )
+                    )
                 if completion.outcome != CompletionOutcome.COMPLETED:
                     raise RuntimeFailure(
                         RuntimeErrorCode(completion.result_code),
@@ -1834,11 +1971,13 @@ class WorkerRuntime:
 
 
 __all__ = [
+    "WORKER_PROVIDER_RECEIPT_KIND",
     "AcceptedArtifactResolver",
     "CheckOutcome",
     "CheckRunner",
     "CompletionOutcome",
     "DockerCheckRunner",
+    "HostSandboxCheckRunner",
     "RuntimeAssignment",
     "RuntimeErrorCode",
     "RuntimeFailure",
