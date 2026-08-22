@@ -172,6 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     why_identity = why.add_mutually_exclusive_group()
     why_identity.add_argument("--run", dest="run_id")
     why_identity.add_argument("--mission", dest="mission_id")
+    why.add_argument("--json", action="store_true", dest="json_mode_local")
 
     replay = commands.add_parser("replay", allow_abbrev=False)
     replay.add_argument("run_id")
@@ -1470,6 +1471,9 @@ def _write_result(value: dict[str, object], *, json_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "why" and getattr(args, "json_mode_local", False):
+        # `graphene why ... --json` means the same as the global `--json` flag.
+        args.json_mode = True
     if args.command == "shadow":
         from .shadow import handle as handle_shadow
 

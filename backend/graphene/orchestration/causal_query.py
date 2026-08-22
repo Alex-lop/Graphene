@@ -24,6 +24,12 @@ class CausalQueryError(ValueError):
     pass
 
 
+#: Evidence reference kinds that are receipts minted by trusted authorities
+#: (the check runner's ``test-receipt`` and the sanitized worker provider
+#: receipt). Kept local so this read-only module never imports the runtime.
+RECEIPT_REFERENCE_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
+
+
 class CausalNode(FrozenModel):
     node_type: Literal["publication", "attempt", "reference", "event"]
     node_id: Identifier
@@ -33,6 +39,11 @@ class CausalNode(FrozenModel):
     attempt_id: Identifier | None = None
     paths: tuple[RepoPath, ...] = ()
     resolvable: bool | None = None
+    # Populated on attempt nodes only: who ran it, under which fence, and
+    # which retry it was. All three come from the verified snapshot.
+    worker_id: Identifier | None = None
+    fencing_token: int | None = Field(default=None, ge=1)
+    attempt_number: int | None = Field(default=None, ge=1)
 
 
 class CausalLink(FrozenModel):
@@ -102,6 +113,9 @@ def _attempt_node(attempt: Attempt) -> CausalNode:
         node_id=attempt.attempt_id,
         task_id=attempt.task_id,
         attempt_id=attempt.attempt_id,
+        worker_id=attempt.worker_id,
+        fencing_token=attempt.fencing_token,
+        attempt_number=attempt.attempt_number,
     )
 
 
@@ -139,6 +153,45 @@ def _reference_node(
         kind=reference.kind,
         sha256=reference.sha256,
         resolvable=resolvable,
+    )
+
+
+def _receipt_nodes(
+    attempt: Attempt,
+    reference_exists: ReferenceExists,
+    unknowns: list[str],
+) -> tuple[CausalNode, ...]:
+    """Reference nodes for the receipts an attempt's evidence binds, attempt-bound."""
+
+    references = sorted(
+        (
+            reference
+            for reference in attempt.evidence_refs
+            if reference.kind in RECEIPT_REFERENCE_KINDS
+        ),
+        key=lambda item: (item.kind, item.id, item.sha256),
+    )
+    return tuple(
+        _reference_node(reference, reference_exists, unknowns).model_copy(
+            update={"task_id": attempt.task_id, "attempt_id": attempt.attempt_id}
+        )
+        for reference in references
+    )
+
+
+def _producer_receipt_nodes(
+    publications: Sequence[ArtifactPublication],
+    attempts: dict[str, Attempt],
+    reference_exists: ReferenceExists,
+    unknowns: list[str],
+) -> tuple[CausalNode, ...]:
+    producers = sorted(
+        {item.attempt_id for item in publications if item.attempt_id in attempts}
+    )
+    return tuple(
+        node
+        for attempt_id in producers
+        for node in _receipt_nodes(attempts[attempt_id], reference_exists, unknowns)
     )
 
 
@@ -263,7 +316,14 @@ def why(
         CausalLink(
             stage="producer_attempt",
             status="established" if target_attempts else "unknown",
-            nodes=tuple(_attempt_node(item) for item in target_attempts),
+            nodes=tuple(
+                node
+                for attempt in target_attempts
+                for node in (
+                    _attempt_node(attempt),
+                    *_receipt_nodes(attempt, reference_exists, unknowns),
+                )
+            ),
             event_ids=_event_ids(
                 committed,
                 event_types={MissionEventType.TASK_STARTED, MissionEventType.TASK_COMPLETED},
@@ -324,7 +384,12 @@ def why(
         CausalLink(
             stage="assembly_candidate",
             status="established" if assembly_publications else "unknown",
-            nodes=tuple(_publication_node(item) for item in assembly_publications),
+            nodes=(
+                *(_publication_node(item) for item in assembly_publications),
+                *_producer_receipt_nodes(
+                    assembly_publications, attempts, reference_exists, unknowns
+                ),
+            ),
             event_ids=_event_ids(
                 committed,
                 event_types={MissionEventType.ASSEMBLY_COMPLETED},
@@ -361,7 +426,12 @@ def why(
         CausalLink(
             stage="verification",
             status="established" if verification_publications else "unknown",
-            nodes=tuple(_publication_node(item) for item in verification_publications),
+            nodes=(
+                *(_publication_node(item) for item in verification_publications),
+                *_producer_receipt_nodes(
+                    verification_publications, attempts, reference_exists, unknowns
+                ),
+            ),
             event_ids=_event_ids(
                 committed,
                 event_types={MissionEventType.VERIFICATION_COMPLETED},
@@ -430,6 +500,7 @@ def why(
 
 
 __all__ = (
+    "RECEIPT_REFERENCE_KINDS",
     "CausalLink",
     "CausalNode",
     "CausalQueryError",

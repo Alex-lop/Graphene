@@ -1785,14 +1785,50 @@ def _render_status(value: dict[str, object]) -> str:
     )
 
 
+_WHY_RECEIPT_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
+_WHY_TRUST_LINE = (
+    "TRUST: every line above is derived from hash-chained mission events and "
+    "resolvable evidence references; unknowns are listed, never guessed."
+)
+
+
+def _render_why_node(node: dict[str, object]) -> str:
+    def field(name: str) -> str:
+        item = node.get(name)
+        return "none" if item is None else str(item)
+
+    node_type = field("node_type")
+    if node_type == "reference" and node.get("kind") in _WHY_RECEIPT_KINDS:
+        return (
+            f"  receipt {field('kind')} {field('node_id')} "
+            f"resolvable={field('resolvable')}"
+        )
+    sha256 = node.get("sha256")
+    digest = sha256[:12] if isinstance(sha256, str) else "none"
+    line = (
+        f"  node {node_type} {field('node_id')} kind={field('kind')} "
+        f"task={field('task_id')} attempt={field('attempt_id')} "
+        f"worker={field('worker_id')} attempt_number={field('attempt_number')} "
+        f"fence={field('fencing_token')} sha256={digest}"
+    )
+    if node_type == "reference":
+        line += f" resolvable={field('resolvable')}"
+    return line
+
+
 def _render_why(value: dict[str, object]) -> str:
+    # The first line is pinned by tests and docs; everything after it is one
+    # block per causal link, then explicit unknowns, then the trust statement.
     lines = [
         f"WHY {value['mission_id']} {value['query']} matched_by={value['matched_by']}"
     ]
     for link in value["links"]:
-        nodes = ",".join(item["node_id"] for item in link["nodes"]) or "none"
-        lines.append(f"{link['stage']} {link['status']} nodes={nodes}")
+        lines.append(f"STAGE {link['stage']} {link['status']}")
+        lines.extend(_render_why_node(item) for item in link.get("nodes", ()))
+        lines.append(f"  events {','.join(link.get('event_ids', ())) or 'none'}")
+        lines.append(f"  note {link['note']}")
     lines.extend(f"UNKNOWN {item}" for item in value["unknowns"])
+    lines.append(_WHY_TRUST_LINE)
     return "\n".join(lines) + "\n"
 
 
@@ -4602,6 +4638,12 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
 
 def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
     json_mode = getattr(args, "json_mode", False) if json_mode is None else json_mode
+    if getattr(args, "command", None) == "why" and getattr(
+        args, "json_mode_local", False
+    ):
+        # `graphene why ... --json` is honoured even when handle() is called
+        # directly with the parsed namespace rather than through main().
+        json_mode = True
     try:
         code, value = _dispatch(args)
         if value is not None:
