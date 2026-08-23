@@ -193,8 +193,9 @@ def _dispatch(mission_id: str, attempt_id: str, worker_id: str) -> Dispatch:
 
 
 @DARWIN_SANDBOX
+@pytest.mark.parametrize("mode", ["kill", "auto"])
 def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sibling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     lab = _load_failure_lab()
     prepared = prepare_fake_two_worker_mission(
@@ -294,7 +295,30 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
             assert not any(item.task_id in downstream for item in snapshot.attempts)
             # Through the operator script's exact path: store lookup of the
             # live-leased dispatch, registry identity re-check, then killpg.
-            assert lab.main(["kill", mission_id, "--attempt", dispatch.attempt_id]) == 0
+            # `auto` is the unattended form: it must find exactly this
+            # attempt (running, leased, registered, sibling already accepted).
+            if mode == "auto":
+                assert lab.kill_opportunity(store, self, mission_id) == (
+                    dispatch.attempt_id,
+                    worker_a,
+                    accepted[0].publication_id,
+                )
+                out = io.StringIO()
+                assert lab.main(["auto", mission_id, "--timeout", "5"], stdout=out) == 0
+                printed = json.loads(out.getvalue())
+                assert printed["attempt_id"] == dispatch.attempt_id
+                assert printed["signal"] == "SIGKILL"
+                assert printed["sibling_worker_id"] == worker_a
+                assert (
+                    printed["sibling_accepted_publication_id"]
+                    == accepted[0].publication_id
+                )
+                assert printed["killed_at"]
+            else:
+                assert (
+                    lab.main(["kill", mission_id, "--attempt", dispatch.attempt_id])
+                    == 0
+                )
             laboratory.update(
                 dispatch=dispatch,
                 owned=owned,
