@@ -123,11 +123,13 @@ def test_ingest_is_idempotent_and_json_capable(
 def test_unknown_format_fails_closed_with_the_adapter_message(
     state: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # ``--format`` is an argparse choice, so an unregistered name never reaches
+    # the adapter registry; the wrong adapter for a file fails closed instead.
     argv = ["shadow", "ingest", str(FIXTURE), "--format", "claude-code"]
     code, out, err = _run(capsys, argv)
 
     assert (code, out) == (1, "")
-    assert err == "SHADOW_ERROR: unsupported shadow format: claude-code\n"
+    assert err == 'SHADOW_ERROR: line 1: missing field "type"\n'
     with pytest.raises(SystemExit) as raised:
         main(["shadow", "ingest", str(FIXTURE), "--format", "bogus"])
     assert raised.value.code == 2

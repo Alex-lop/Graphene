@@ -476,7 +476,15 @@ def test_redaction_is_stable_on_reingest(store: ShadowStore, tmp_path: Path) -> 
 
 
 def test_unsupported_format_fails_closed(store: ShadowStore) -> None:
-    with pytest.raises(AdapterError, match="unsupported shadow format: claude-code"):
+    with pytest.raises(AdapterError, match="unsupported shadow format: jsonl"):
+        ingest_file(store, FIXTURE, fmt="jsonl", repo=None)
+    assert store.sessions() == []
+
+
+def test_wrong_adapter_for_the_file_fails_closed(store: ShadowStore) -> None:
+    # The ndjson fixture is not a Claude Code session: its records have no
+    # ``type``; nothing is persisted.
+    with pytest.raises(AdapterError, match='line 1: missing field "type"'):
         ingest_file(store, FIXTURE, fmt="claude-code", repo=None)
     assert store.sessions() == []
 

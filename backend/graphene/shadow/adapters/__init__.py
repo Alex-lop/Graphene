@@ -151,14 +151,14 @@ def _locator(fields: Mapping[str, object]) -> str:
 
 
 def _builtin_adapters() -> dict[str, Adapter]:
-    # Imported here so the adapter module can import the draft types above.
+    # Imported here so the adapter modules can import the draft types above.
+    from .claude_code import ClaudeCodeAdapter
     from .ndjson import NdjsonAdapter
 
-    adapter = NdjsonAdapter()
-    return {adapter.name: adapter}
+    adapters: tuple[Adapter, ...] = (ClaudeCodeAdapter(), NdjsonAdapter())
+    return {adapter.name: adapter for adapter in adapters}
 
 
-# ``claude-code`` is NOT implemented yet; only the open ndjson format is here.
 ADAPTERS: dict[str, Adapter] = _builtin_adapters()
 
 

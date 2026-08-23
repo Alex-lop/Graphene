@@ -90,8 +90,8 @@ def _spec_example() -> bytes:
 # -- registry ----------------------------------------------------------------
 
 
-def test_registry_holds_only_the_ndjson_adapter() -> None:
-    assert set(ADAPTERS) == {"ndjson"}
+def test_registry_holds_exactly_the_two_documented_adapters() -> None:
+    assert set(ADAPTERS) == {"claude-code", "ndjson"}
     adapter = adapter_for("ndjson")
     assert isinstance(adapter, NdjsonAdapter)
     assert adapter is ADAPTERS["ndjson"]
@@ -99,7 +99,7 @@ def test_registry_holds_only_the_ndjson_adapter() -> None:
     assert issubclass(AdapterError, ValueError)
 
 
-@pytest.mark.parametrize("name", ("claude-code", "jsonl", "", None, 7))
+@pytest.mark.parametrize("name", ("claude_code", "jsonl", "", None, 7))
 def test_unknown_format_fails_closed(name: object) -> None:
     with pytest.raises(AdapterError, match=f"unsupported shadow format: {name}"):
         adapter_for(name)  # type: ignore[arg-type]
