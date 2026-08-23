@@ -12,26 +12,66 @@ footage yet and should be filmed with the commands shown — they spend money
 Nothing in this script fakes a result: where the live run did not reach a
 step, the script says so and shows the rehearsal instead.
 
-Environment for every live beat (owner-private shell, never committed):
-`GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`,
-`GOOGLE_CLOUD_LOCATION=global` (the only location serving `gemini-3.5-flash`
-for this project), `GRAPHENE_RUN_LIVE_GEMINI=1`,
-`GRAPHENE_CHECK_EXECUTOR=host-sandbox`, a fresh `GRAPHENE_STATE_DIR`
-(mode 0700). Materialize a fresh target first:
-`uv run --frozen python scripts/materialize_north_star.py ~/demo-target`.
+Environment for every live beat (owner-private shell, never committed) —
+paste this whole block into terminal 1 before Beat 0, then reuse the same
+terminal for every later beat unless a beat says otherwise:
+
+```bash
+export GOOGLE_GENAI_USE_VERTEXAI=true
+export GOOGLE_CLOUD_PROJECT="$(gcloud config get-value project)"
+export GOOGLE_CLOUD_LOCATION=global
+export GRAPHENE_CHECK_EXECUTOR=host-sandbox
+export GRAPHENE_STATE_DIR="$HOME/.graphene/demo-state"
+mkdir -p -m 700 "$GRAPHENE_STATE_DIR"
+```
+
+`GOOGLE_CLOUD_PROJECT` above pulls gcloud's current default project — check
+it's the funded one (`echo "$GOOGLE_CLOUD_PROJECT"`) before going further.
+`GOOGLE_CLOUD_LOCATION=global` is the only location serving
+`gemini-3.5-flash` for this project (regional endpoints 404). The state dir
+is a fresh store, isolated from the night run's
+(`~/.graphene/north-star-state`); `-m 700` sets the leaf directory's mode
+even if it already exists, which is what Graphene itself requires.
+`GRAPHENE_RUN_LIVE_GEMINI=1` is not needed here — it only gates the paid
+pytest run (`tests/process/test_gemini_live.py`), not the CLI/watcher paths
+these beats use. Materialize a fresh target once, before Beat 0:
+
+```bash
+mkdir -p ~/demo-inbox
+uv run --frozen python scripts/materialize_north_star.py ~/demo-target
+```
+
+**Paste warning:** every command block below is written to be pasted as-is
+into an interactive shell. Do not add trailing `# comment` notes to a pasted
+line — interactive zsh (the macOS default) does not treat `#` as a comment
+start unless `setopt INTERACTIVE_COMMENTS` is set, so a trailing comment is
+parsed as literal arguments and `graphene` will reject them
+(`unrecognized arguments: # ...`). Terminal labels are called out in prose
+instead.
 
 ## Beat 0 — the category, literally (0:00–0:25)
 
 *"Watching for a change."* A `mission.yaml` lands in a folder; Graphene is
 watching.
 
+Terminal 1 — start the watcher and leave it running (it re-scans the
+directory every 5 seconds and costs nothing until a file appears):
+
 ```bash
-uv run --frozen graphene watch inbox --dir ~/demo-inbox --poll 5      # terminal 1, leave running
-sed "s|/ABSOLUTE/PATH/TO/north-star-target|$HOME/demo-target|" \
-  demo/north_star/mission.yaml > ~/demo-inbox/mission.yaml            # terminal 2
+uv run --frozen graphene watch inbox --dir ~/demo-inbox --poll 5
 ```
 
-On screen: one JSON line — `"status":"created"`, a mission id, the file's
+Terminal 2 — drop the mission file. This is the moment that bills a live
+planner call, so only run it when you're ready to film the reaction:
+
+```bash
+sed "s|/ABSOLUTE/PATH/TO/north-star-target|$HOME/demo-target|" demo/north_star/mission.yaml > ~/demo-inbox/mission.yaml
+```
+
+`--dir` must already exist and `--poll` re-lists the directory on every
+tick, so it does not matter whether the watcher or the drop happens first —
+starting the watcher first just makes the on-camera reaction visible. On
+screen: one JSON line — `"status":"created"`, a mission id, the file's
 digest. Then `graphene why` later starts with `STAGE trigger established …
 Triggered by inbox_file mission.yaml.` Footage: none yet (**RE-CAPTURE** the
 `watch inbox` terminal; the evidence of the live trigger is
