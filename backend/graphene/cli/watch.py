@@ -99,7 +99,10 @@ def create_mission(
         driver=str(request["driver"]),
         max_workers=int(request.get("max_workers") or 2),
         auto_approve=False,
-        command_id=None,
+        # The trigger is the event: two different files (or issues) with the
+        # same goal are two missions; the same bytes twice are caught by the
+        # content-digest dedupe before this point.
+        command_id=f"watch_{source_kind}_{source_sha256[:48]}",
         open_viewer=False,
         json_mode=True,
     )
