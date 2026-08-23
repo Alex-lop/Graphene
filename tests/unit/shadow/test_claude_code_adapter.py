@@ -175,7 +175,10 @@ def test_adapter_is_registered_with_its_version() -> None:
 def test_fixture_is_synthetic_and_lf_terminated() -> None:
     data = FIXTURE.read_bytes()
     assert data.endswith(b"\n") and b"\r" not in data
-    assert b"/Users/" not in data and b"alexlopez" not in data
+    # No absolute home path and no trace of whoever captured the real session.
+    home = Path.home()
+    assert b"/Users/" not in data
+    assert home.name.encode() not in data
     assert data.count(b"\n") == 35
 
 
