@@ -186,7 +186,7 @@ def test_inbox_creates_one_proposed_mission_with_a_trigger_first_in_why(
     assert verified["verified"] is True, verified
     assert main(["why", "status_report/redact.py", "--mission", mission_id, "--json"]) == 0
     stages = [link["stage"] for link in json.loads(capsys.readouterr().out)["links"]]
-    assert stages[:2] == ["trigger", "target"] and len(stages) == 7
+    assert stages[:2] == ["trigger", "target"] and len(stages) == 8
 
 
 @pytest.mark.parametrize(
