@@ -7,6 +7,7 @@ from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.genai import types
 from pydantic import PrivateAttr
 
+from ..adk import describe_output_schema
 from .gemini import FileMutation, WorkerIntent
 
 
@@ -46,7 +47,12 @@ class DeterministicWorkerModel(BaseLlm):
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
         assert stream is False
-        assert llm_request.config.response_schema is WorkerIntent
+        assert llm_request.config.response_schema is None
+        assert llm_request.config.response_json_schema is None
+        assert llm_request.config.response_mime_type == "application/json"
+        assert describe_output_schema(WorkerIntent) in (
+            llm_request.config.system_instruction or ""
+        )
         self._calls += 1
         self._prompt = "".join(
             part.text or ""

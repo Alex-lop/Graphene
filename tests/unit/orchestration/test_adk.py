@@ -173,7 +173,7 @@ class _PlanLlm(BaseLlm):
     ) -> AsyncGenerator[LlmResponse, None]:
         assert stream is False
         self._calls += 1
-        self._saw_schema = llm_request.config.response_schema is not None
+        self._saw_schema = bool(llm_request.config.system_instruction)
         self._last_temperature = llm_request.config.temperature
         yield LlmResponse(
             model_version=self._returned_model,

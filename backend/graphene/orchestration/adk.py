@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from importlib.metadata import version
@@ -375,12 +376,14 @@ class AdkPlanner:
             description="Proposes bounded work intent for deterministic compilation.",
             model=self._model,
             instruction=(
-                "Return only a PlanIntent matching the response schema. Propose at least "
-                "two independent work roots, using only supplied roles, command template "
-                "and criterion IDs, and repository evidence. Graphene deterministically adds assembly, "
-                "verification, artifacts, retries, and concurrency."
+                "Return only a single JSON object matching this exact schema, with no "
+                "markdown fences, prose, or explanation before or after it:\n"
+                + describe_output_schema(PlanIntent)
+                + "\nPropose at least two independent work roots, using only supplied "
+                "roles, command template and criterion IDs, and repository evidence. "
+                "Graphene deterministically adds assembly, verification, artifacts, "
+                "retries, and concurrency."
             ),
-            output_schema=PlanIntent,
             include_contents="none",
             tools=[],
             mode="chat",
@@ -388,6 +391,7 @@ class AdkPlanner:
             disallow_transfer_to_peers=True,
             generate_content_config=types.GenerateContentConfig(
                 max_output_tokens=8_192,
+                response_mime_type="application/json",
             ),
             after_model_callback=observation.after_model,
         )
@@ -717,6 +721,32 @@ def _credential_preflight(
 
 def _canonical_model(model: str) -> str:
     return model.removeprefix("models/")
+
+
+def gemini_response_schema(model: type) -> dict[str, object]:
+    """The JSON Schema for one Graphene ``FrozenModel``, as a prompt hint.
+
+    Live contact with the real Gemini Developer API surfaced two distinct
+    ``400 INVALID_ARGUMENT`` failures for these schemas under both
+    ``LlmAgent.output_schema`` (routes to ``response_schema``) and
+    ``generate_content_config.response_json_schema``, with no field-level
+    detail in either error. Rather than keep guessing at which JSON Schema
+    construct the API's structured-output path rejects, Graphene does not
+    ask the API to enforce a schema at all: this dict is embedded as a
+    prompt hint (see ``describe_output_schema``) and ``response_mime_type``
+    stays ``"application/json"``, but the actual contract is the strict
+    ``model_validate_json`` parse this module already performs on the
+    returned text, which fails closed exactly as it would on a schema
+    violation.
+    """
+
+    return model.model_json_schema()
+
+
+def describe_output_schema(model: type) -> str:
+    """A compact JSON Schema rendering to embed in an instruction prompt."""
+
+    return json.dumps(gemini_response_schema(model), sort_keys=True)
 
 
 def _validate_repository_context(

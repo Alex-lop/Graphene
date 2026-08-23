@@ -41,6 +41,37 @@ uv run --frozen graphene --help
 
 Proves: the locked environment resolves and the CLI imports. Capture: nothing.
 
+### 0.1a Known live-contact fixes and quota limits
+
+The Gemini Developer API's `response_schema` field has no `anyOf` support at
+all (the model call fails closed with an undetailed `400 INVALID_ARGUMENT`),
+and `generate_content_config.response_json_schema` failed identically in
+testing despite the SDK documenting full JSON Schema support there. Graphene
+no longer asks the API to enforce a schema for the planner or worker
+structured output: it embeds the JSON Schema as a prompt instruction instead
+(`response_mime_type="application/json"` plus a `describe_output_schema(...)`
+block in the agent instruction) and keeps the same strict
+`model_validate_json` parse of the returned text as the actual contract; a
+malformed response still fails closed with `PlannerOutputError`. This landed
+with the full fake-model regression suite green and one confirmed live pass
+(see below).
+
+**Free-tier daily quota:** the `gemini-3.5-flash` free tier caps at **20
+`generateContent` requests per project per day**
+(`generativelanguage.googleapis.com/generate_content_free_tier_requests`,
+quota id `GenerateRequestsPerDayPerProjectPerModel-FreeTier`). This is a
+*daily* cap, not a short rate window — a `429 RESOURCE_EXHAUSTED` naming this
+quota will not clear by waiting a few minutes. One live mission run alone can
+spend most of a day's quota (one planner call plus at least one call per
+worker). Debugging schema issues against the live API burns quota fast; do it
+sparingly and read the error body's `quotaId` before assuming a short
+rate-limit and retrying. To avoid the daily cap entirely, switch to Vertex AI
+billing (`GOOGLE_GENAI_USE_VERTEXAI=true` with `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, and valid ADC) against a GCP project with billing
+enabled — for example the project used for [the cloud proof
+plan](CLOUD_PROOF_PLAN.md), spending the project's Cloud credits instead of
+the AI Studio free-tier allowance.
+
 ### 0.2 Environment (owner-private shell, never a committed file)
 
 Set exactly these; leave every other Graphene variable unset for this run.

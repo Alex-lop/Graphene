@@ -27,6 +27,7 @@ from ..adk import (
     PlannerUnavailable,
     _canonical_model,
     _credential_preflight,
+    describe_output_schema,
 )
 from ..models import TaskKind
 from ..runtime import (
@@ -252,21 +253,24 @@ class GeminiWorkerAdapter:
             description="Returns bounded file mutations for one leased task.",
             model=self.model,
             instruction=(
-                "Return only WorkerIntent with ordered create, update, delete, rename, "
-                "or chmod operations. Create requires text and mode; update requires "
-                "text; rename requires new_path; chmod requires mode. Modes are only "
-                "100644 or 100755. Every path and both rename endpoints must equal the "
-                "exact write_paths lease. Do not return explanations, commands, "
-                "credentials, or hidden reasoning."
+                "Return only a single JSON object matching this exact schema, with no "
+                "markdown fences, prose, or explanation before or after it:\n"
+                + describe_output_schema(WorkerIntent)
+                + "\nUse ordered create, update, delete, rename, or chmod operations. "
+                "Create requires text and mode; update requires text; rename requires "
+                "new_path; chmod requires mode. Modes are only 100644 or 100755. Every "
+                "path and both rename endpoints must equal the exact write_paths "
+                "lease. Do not return explanations, commands, credentials, or hidden "
+                "reasoning."
             ),
-            output_schema=WorkerIntent,
             include_contents="none",
             tools=[],
             mode="chat",
             disallow_transfer_to_parent=True,
             disallow_transfer_to_peers=True,
             generate_content_config=types.GenerateContentConfig(
-                max_output_tokens=16_384
+                max_output_tokens=16_384,
+                response_mime_type="application/json",
             ),
             after_model_callback=observation.after_model,
         )

@@ -9,6 +9,7 @@ from google.genai import types
 from graphene.orchestration.adk import (
     AdkPlanner,
     PlanIntent,
+    describe_output_schema,
     PlannerOutputError,
     PlanningExcerpt,
     PlanningRequest,
@@ -39,7 +40,7 @@ class _IntentLlm(BaseLlm):
     ) -> AsyncGenerator[LlmResponse, None]:
         assert stream is False
         self._calls += 1
-        self._schema = llm_request.config.response_schema
+        self._schema = llm_request.config.system_instruction
         self._prompt = "".join(
             part.text or ""
             for content in llm_request.contents
@@ -109,7 +110,7 @@ def test_intent_is_compiled_with_bounded_context_and_adk_owned_ids() -> None:
 
     proposal = asyncio.run(AdkPlanner.fake(fake).propose(policy, request))
 
-    assert fake._schema is PlanIntent
+    assert describe_output_schema(PlanIntent) in (fake._schema or "")
     assert "src/change.py" in fake._prompt
     assert "return False" in fake._prompt
     assert proposal.plan == compile_plan_intent(policy, request, intent)
