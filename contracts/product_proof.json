@@ -235,22 +235,80 @@
     "shared Firestore listener and cloud stream fan-out",
     "live Google Cloud deployment, measured graph benchmark, and submission video",
     "five-person Mission Control comprehension study",
-    "Shadow Agent claude-code adapter built against a real transcript, then the real-session report",
+    "Shadow Agent real-session report as a reproducible, committed artifact (the claude-code adapter exists and the only real transcript is private)",
     "live North Star failure laboratory and cold capsule verification; human-attested approval on a live mission"
   ],
   "shadow_agent": {
     "status": "not_proven",
     "ndjson_path": "verified_local",
+    "claude_code_adapter": "verified_local_on_synthetic_fixture",
     "command": "uv run --frozen graphene shadow ingest tests/fixtures/shadow/ndjson/session_v1.ndjson --format ndjson",
+    "claude_code_command": "uv run --frozen graphene shadow ingest tests/fixtures/shadow/claude-code/session_v1.jsonl --format claude-code",
     "report_command": "uv run --frozen graphene shadow report SHADOW_ID",
-    "truth_label": "SHADOW AGENT v0 — NDJSON PATH VERIFIED LOCALLY ON A SYNTHETIC FIXTURE; REAL CLAUDE CODE SESSION NOT PROVEN",
-    "proves": "shadow.event.v1 canonical identities, ingest-time redaction, an isolated shadow store, the ndjson adapter's fail-closed rules, segments.v1 reconstruction, claims.v1 extraction with precision locks, the six lint.v1 rules with three defined ratios, and a self-verifying redacted capsule, all on the synthetic fixture and hand-built records.",
+    "test_command": "uv run --frozen pytest -q tests/unit/shadow -p no:cacheprovider",
+    "truth_label": "SHADOW AGENT v0 — NDJSON AND CLAUDE-CODE ADAPTERS VERIFIED LOCALLY ON SYNTHETIC FIXTURES; REAL CLAUDE CODE SESSION INGESTED ONLY IN A PRIVATE COUNTS-ONLY SMOKE, NOT PROVEN",
+    "proves": "shadow.event.v1 canonical identities, ingest-time redaction, an isolated shadow store, both adapters' fail-closed rules, the claude-code record-shape mapping (messages, tool_use/tool_result pairing, Bash classification through classify.v1, path and content digests, unknown and skipped record accounting), segments.v1 reconstruction, claims.v1 extraction with precision locks, the six lint.v1 rules with three defined ratios, and a self-verifying redacted capsule, all on the synthetic fixtures and hand-built records.",
+    "real_session_smoke": {
+      "date": "2026-08-23",
+      "source": "one real Claude Code 2.1.x session transcript kept privately under local/shadow/ (gitignored, never committed)",
+      "adapter_version": "1.0.0",
+      "raw_record_count": 110,
+      "event_count": 46,
+      "observed_count": 38,
+      "inferred_count": 8,
+      "claim_count": 3,
+      "unknown_count": 0,
+      "events_by_kind": {
+        "check_result": 3,
+        "check_run": 3,
+        "claim": 3,
+        "command_exec": 4,
+        "command_result": 5,
+        "file_create": 1,
+        "file_edit": 5,
+        "message": 18,
+        "tool_call": 1,
+        "tool_result": 2,
+        "vcs_op": 1
+      },
+      "skipped_records": {
+        "ai-title": 5,
+        "atis-latch": 5,
+        "attachment": 24,
+        "file-history-delta": 1,
+        "file-history-snapshot": 7,
+        "last-prompt": 4,
+        "mode": 5,
+        "permission-mode": 5,
+        "queue-operation": 6,
+        "system:turn_duration": 3,
+        "thinking": 7
+      },
+      "segments": 6,
+      "edges": 2,
+      "ratios": {
+        "covered_files": "2/2",
+        "backed_claims": "1/3",
+        "overlap_segments": "3/6"
+      },
+      "lint_findings_by_rule": {
+        "claimed-without-evidence": 2,
+        "edit-without-check": 0,
+        "write-overlap": 2,
+        "scope-drift": 0,
+        "destructive-unverified": 0,
+        "network-or-install": 0
+      },
+      "rejections": [],
+      "note": "Counts only; the transcript, its paths, ids, and text are private and this run is not reproducible from the repository, so no label flips on it."
+    },
     "does_not_prove": [
-      "ingestion of a real Claude Code session (the claude-code adapter is not implemented and fails closed)",
+      "the real-session report as a reproducible artifact (the only real transcript is private; the smoke above is counts only)",
       "faithfulness of any source transcript to what an agent did",
+      "claude-code record shapes beyond the one observed 2.1.x session (Read, Write, MultiEdit, NotebookEdit, Glob, Grep, WebFetch, WebSearch, and MCP tool mappings are exercised only by the synthetic fixture and hand-built records)",
       "any numeric governed-run saving"
     ],
-    "blocker": "No raw transcript has been supplied at local/shadow/claude-code-session-raw.jsonl; the adapter is built against the real file, never from memory."
+    "blocker": "A shareable real transcript, or a scrubbed capsule exported from one, committed together with its report."
   },
   "mission_capsule": {
     "status": "verified_live_cold",

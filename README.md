@@ -69,7 +69,8 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | Cloud Run + real Firestore | `NOT DEPLOYED — NOT PROVEN` | Packaging/emulator proof is not authenticated deployment proof |
 | Benchmark/video/media | `NOT PROVEN` | Harness/runbook/capture metadata exist; results and media do not |
 | Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
-| Shadow Agent, real Claude Code session | `NOT PROVEN` | Requires a real transcript; the claude-code adapter is not implemented and fails closed |
+| Shadow Agent, claude-code adapter | `VERIFIED_LOCAL` on a synthetic fixture | Record-shape mapping, Bash classification, path and content digests, redaction, fail-closed rules, reconstruction, lint, capsule |
+| Shadow Agent, real Claude Code session | `NOT PROVEN` (private smoke only) | One real 110-record transcript ingested with zero unknown records and report and lint ran; counts only in the contract, the transcript is private and the run is not reproducible from the repository |
 | Mission capsule | `VERIFIED_LIVE_COLD` (2026-08-23) | Capsules of the completed live mission and the live failure-lab mission verify from a fresh clone with no mission store (11 checks each); not producer authenticity, same laptop |
 | North Star | `PARTIALLY VERIFIED_LIVE` | Two real workers and the `why` chains: proven live. Surviving a worker's death: proven live up to the accepted fenced retry (`mission_start_38129f17add65609de1c3388`: registry-identified SIGKILL, `-9` receipt, sibling untouched, retry under fence 2 accepted, `why` names the killed attempt); completion *after* that recovery `NOT PROVEN` live — rehearsal only. [Evidence](evidence/north_star/2026-08-23-north-star-live.md) |
 
@@ -82,7 +83,7 @@ Machine-readable truth lives in [`contracts/product_proof.json`](contracts/produ
 Code review for agent sessions Graphene did not run. Point it at a finished transcript: Graphene reconstructs the session as inferred segments with a read-after-write graph, lints it for claims without checks, edits without checks, overlapping writes, scope drift, unverified deletes, and network or install activity, and exports a redacted capsule that verifies from its own bytes.
 
 ```bash
-graphene shadow ingest PATH --format ndjson [--repo PATH]   # -> shadow_id
+graphene shadow ingest PATH --format claude-code|ndjson [--repo PATH]   # -> shadow_id
 graphene shadow report SHADOW_ID [--json]
 graphene shadow lint   SHADOW_ID [--rule RULE ...] [--json]
 graphene shadow graph  SHADOW_ID --json|--dot
@@ -91,7 +92,7 @@ graphene shadow export SHADOW_ID --output DIR               # -> SHADOW_ID.graph
 
 `graphene shadow list` and `graphene shadow verify SHADOW_ID` enumerate and re-verify stored sessions. Shadow data lives in its own `shadow.sqlite3` with its own schema ledger: `graphene shadow` never opens the mission store, and nothing in the mission trust chain ever cites a shadow record. Every reconstruction is labeled `inferred`, and there is no trust score. See [Shadow Agent](docs/SHADOW.md) and the [adapter specification](docs/SHADOW_ADAPTER_SPEC.md).
 
-Shadow Agent v0: credential-free tests pass on the synthetic ndjson fixture; the claude-code adapter is NOT PROVEN until it is built against a real transcript.
+Shadow Agent v0: credential-free tests pass on the synthetic ndjson and claude-code fixtures. The claude-code adapter was built against one real Claude Code transcript that stays private; it ingested with zero unknown records in a smoke whose counts are in the contract, so the real-session report remains NOT PROVEN and source faithfulness is never claimed.
 
 ## Safety boundary
 
