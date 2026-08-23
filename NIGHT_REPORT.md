@@ -20,7 +20,9 @@ but no laboratory mission completed afterwards, because the model's later
 output failed its own checks, so "survives *and completes*" stays a
 rehearsal claim. `graphene watch` (inbox + read-only GitHub poller) landed
 with fixture tests, and a dropped `mission.yaml` started a live mission whose
-`why` begins at the trigger. Spend ≈ **$4.30** of $20. Nothing was pushed.
+`why` begins at the trigger. The stretch Shadow v0 `claude-code` adapter
+landed too (synthetic-fixture proof; the real transcript ingests with zero
+unknown records). Spend ≈ **$4.30** of $20. Nothing was pushed.
 
 ## 0. Checkpoint timeline (UTC; local is EDT, UTC−4)
 
@@ -33,7 +35,8 @@ with fixture tests, and a dropped `mission.yaml` started a live mission whose
 | 13:17 | Phase 2, first live kill | $2.0 | 11 | `mission_start_38129f17…`: kill landed, fenced retry accepted, integration task then failed on its own. Two more lab runs followed |
 | 13:45 | Phase 2 stopped | $3.1 | 21 | Four kills, zero post-recovery completions; retry discipline. Phase 3 cold verification of both capsules passed from a fresh clone |
 | 13:56 | Phase 4 merged, demo | $3.5 | 23 | Watcher branch rebased and fast-forwarded; `watch inbox` created live missions from dropped files (`why` begins at the trigger); none completed |
-| 14:10 | Wind-down | $4.3 | 32 | Malformed model replies made retryable; receipts preserved on every rejected output; `docs/DEMO_SCRIPT.md`; Shadow v0 claude-code adapter building in a worktree; final matrix, report, quiesce |
+| 14:10 | Wind-down | $4.3 | 32 | Malformed model replies made retryable; receipts preserved on every rejected output; `docs/DEMO_SCRIPT.md`; Shadow v0 claude-code adapter building in a worktree |
+| 15:15 | Handoff | $4.3 | 32 | Shadow adapter merged (matrix 2005 passed on its tree); `scripts/morning_verify.sh` full run on the final `main`; no missions in flight, no pollers, registries empty, `caffeinate` stopped; 23 commits ahead of `origin/main`, remotes unchanged |
 
 ## 1. Commits (oldest first; every one has the full matrix green on its tree or states otherwise)
 
@@ -52,7 +55,9 @@ with fixture tests, and a dropped `mission.yaml` started a live mission whose
 | `3236cc9` | Malformed model replies retryable (`model_output_rejected`); receipts kept when a mutation is refused at apply time |
 | `a407a26` | Watcher derives the mission command id from the trigger digest (each dropped file is its own event) |
 | `23eaeca` | **Trigger-demo evidence** (`why` begins at the trigger on a live mission), `docs/DEMO_SCRIPT.md`, `demo/north_star/mission.yaml`, this report |
-| _(if it lands)_ | Shadow v0 `claude-code` adapter from the worktree agent (synthetic fixture tests; real-transcript smoke reported as counts only) |
+| `e18553f` | Docs: runbook status + six corrections from the live run; implementation report series table |
+| `a9354bd` … `bf16c96` | **Stretch — Shadow v0 `claude-code` adapter** (worktree agent, rebased, fast-forwarded): adapter + synthetic fixture + 43 tests; the real 110-record transcript in `local/shadow/` ingested privately with 0 unknown records (counts only in `contracts/product_proof.json → shadow_agent.real_session_smoke`); label stays `not_proven` overall, `claude_code_adapter: verified_local_on_synthetic_fixture` |
+| _(last)_ | This report's final checkpoint (`morning_verify.sh` full run: ALL PASS) |
 
 ## 2. What is now proven, with evidence and verify commands
 
@@ -71,8 +76,8 @@ Run from the repo root; the night's store is
 | Human-attested (TTY) approval on a live mission | **NOT PROVEN** — every approval tonight was `server_derived`, operator-delegated | every `approve_plan.json` | — |
 | Docker, Cloud Run/Firestore, benchmark, media | unchanged (`not_proven` / `not_deployed`) | — | — |
 
-Counts: credential-free matrix on `3236cc9` **1960 passed, 4 opt-in
-skips** (5 min); ruff / compileall / `git diff --check` clean. Secret scan:
+Counts: `scripts/morning_verify.sh` on the final `main` → **ALL PASS**:
+matrix **2005 passed, 4 opt-in skips** (5 min), MCP 6 passed; ruff / compileall / `git diff --check` clean. Secret scan:
 findings only in test fixtures. Recordings: `local/recordings/` (gitignored)
 holds the console logs of every live mission (text, not pty capture — no
 `tmux`/`asciinema` on this machine and `script`(1) was refused by the session
