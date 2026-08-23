@@ -72,6 +72,7 @@ def test_why_reports_only_committed_causal_links_and_explicit_unknowns(tmp_path)
     assert [link.stage for link in result.links] == [
         "target",
         "producer_attempt",
+        "prior_attempts",
         "accepted_inputs",
         "assembly_candidate",
         "verification",
@@ -80,6 +81,7 @@ def test_why_reports_only_committed_causal_links_and_explicit_unknowns(tmp_path)
     assert [link.status for link in result.links] == [
         "established",
         "established",
+        "not_present",
         "not_present",
         "established",
         "established",
@@ -117,8 +119,9 @@ def test_why_reports_only_committed_causal_links_and_explicit_unknowns(tmp_path)
         "out/candidate.patch",
         reference_exists=lambda _reference: True,
     )
-    assert assembly.links[2].status == "established"
-    assert len(assembly.links[2].nodes) == 2
+    inputs = next(link for link in assembly.links if link.stage == "accepted_inputs")
+    assert inputs.status == "established"
+    assert len(inputs.nodes) == 2
 
     missing = why(
         snapshot,

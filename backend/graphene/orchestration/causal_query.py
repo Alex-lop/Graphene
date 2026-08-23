@@ -44,12 +44,16 @@ class CausalNode(FrozenModel):
     worker_id: Identifier | None = None
     fencing_token: int | None = Field(default=None, ge=1)
     attempt_number: int | None = Field(default=None, ge=1)
+    # Populated on prior-attempt nodes only: how that earlier attempt ended.
+    state: Identifier | None = None
+    result_code: Identifier | None = None
 
 
 class CausalLink(FrozenModel):
     stage: Literal[
         "target",
         "producer_attempt",
+        "prior_attempts",
         "accepted_inputs",
         "assembly_candidate",
         "verification",
@@ -107,7 +111,7 @@ def _publication_node(publication: ArtifactPublication) -> CausalNode:
     )
 
 
-def _attempt_node(attempt: Attempt) -> CausalNode:
+def _attempt_node(attempt: Attempt, *, outcome: bool = False) -> CausalNode:
     return CausalNode(
         node_type="attempt",
         node_id=attempt.attempt_id,
@@ -116,6 +120,8 @@ def _attempt_node(attempt: Attempt) -> CausalNode:
         worker_id=attempt.worker_id,
         fencing_token=attempt.fencing_token,
         attempt_number=attempt.attempt_number,
+        state=attempt.state.value if outcome else None,
+        result_code=attempt.result_code if outcome else None,
     )
 
 
@@ -333,6 +339,52 @@ def why(
                 "The verified snapshot binds each target to its producer attempt."
                 if target_attempts
                 else "No producer attempt is present for the target."
+            ),
+        )
+    )
+    # Earlier attempts of the producing tasks: a retry's history is part of
+    # the explanation, and each earlier fence is strictly lower than the
+    # producer's. They published nothing that the target depends on.
+    prior_attempts = tuple(
+        sorted(
+            (
+                attempt
+                for attempt in snapshot.attempts
+                if any(
+                    attempt.task_id == producer.task_id
+                    and attempt.attempt_number < producer.attempt_number
+                    for producer in target_attempts
+                )
+            ),
+            key=lambda item: (item.task_id, item.attempt_number),
+        )
+    )
+    links.append(
+        CausalLink(
+            stage="prior_attempts",
+            status="established" if prior_attempts else "not_present",
+            nodes=tuple(
+                node
+                for attempt in prior_attempts
+                for node in (
+                    _attempt_node(attempt, outcome=True),
+                    *_receipt_nodes(attempt, reference_exists, unknowns),
+                )
+            ),
+            event_ids=_event_ids(
+                committed,
+                event_types={
+                    MissionEventType.TASK_STARTED,
+                    MissionEventType.TASK_RETRIED,
+                    MissionEventType.TASK_FAILED,
+                },
+                attempt_ids={item.attempt_id for item in prior_attempts},
+            ),
+            note=(
+                "Earlier attempts of the producing task ended without an accepted "
+                "publication; the producer above ran under a strictly higher fence."
+                if prior_attempts
+                else "The producer attempt was the task's first."
             ),
         )
     )

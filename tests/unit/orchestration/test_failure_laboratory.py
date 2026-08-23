@@ -544,7 +544,21 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
     assert producer_nodes[0]["fencing_token"] == retry.fencing_token
     assert producer_nodes[0]["worker_id"] == retry.worker_id
     assert producer["event_ids"]
-    assert failed.attempt_id not in json.dumps(why_b)
+    # The killed attempt is part of the explanation, but only as history:
+    # it sits in prior_attempts with its outcome and lower fence, never as
+    # the producer or target of anything.
+    prior = next(link for link in why_b["links"] if link["stage"] == "prior_attempts")
+    assert prior["status"] == "established"
+    prior_nodes = [node for node in prior["nodes"] if node["node_type"] == "attempt"]
+    assert [node["node_id"] for node in prior_nodes] == [failed.attempt_id]
+    assert prior_nodes[0]["state"] == "failed"
+    assert prior_nodes[0]["result_code"] == "acceptance_check_failed"
+    assert prior_nodes[0]["fencing_token"] == stale.fencing_token < retry.fencing_token
+    assert any(node["kind"] == "test-receipt" for node in prior["nodes"])
+    assert prior["event_ids"]
+    for link in why_b["links"]:
+        if link["stage"] != "prior_attempts":
+            assert failed.attempt_id not in json.dumps(link)
     assert {
         item.attempt_id for item in snapshot.attempts if item.task_id == "report-b"
     } == {
@@ -662,3 +676,42 @@ def test_failure_lab_script_lists_by_mission_and_refuses_foreign_or_unleased_kil
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=5)
+
+
+def test_auto_reopens_the_store_after_a_transient_read_error() -> None:
+    """Live contact: one quarantined read must not blind the poller for 900 s."""
+
+    from types import SimpleNamespace
+
+    from graphene.orchestration.store import MissionStoreError
+
+    lab = _load_failure_lab()
+
+    class Quarantined:
+        def snapshot(self, mission_id):  # noqa: ANN001
+            raise MissionStoreError("mission materialized artifacts are invalid")
+
+    completed = SimpleNamespace(
+        snapshot=lambda mission_id: SimpleNamespace(
+            mission=SimpleNamespace(status=MissionStatus.COMPLETED),
+            tasks=(),
+            attempts=(),
+            publications=(),
+        )
+    )
+    reopened: list[object] = []
+
+    def reopen():  # noqa: ANN202
+        reopened.append(completed)
+        return completed
+
+    with pytest.raises(lab.FailureLabError, match="no kill opportunity"):
+        lab.auto_kill(
+            Quarantined(),
+            OwnedProcessRegistry.__new__(OwnedProcessRegistry),
+            "mission-1",
+            timeout=5,
+            poll=0.001,
+            reopen=reopen,
+        )
+    assert reopened == [completed]

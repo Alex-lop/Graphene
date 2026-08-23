@@ -30,6 +30,7 @@ QUERY_PATH = "status_report/redact.py"
 STAGES = [
     "target",
     "producer_attempt",
+    "prior_attempts",
     "accepted_inputs",
     "assembly_candidate",
     "verification",

@@ -1870,6 +1870,8 @@ def _render_why_node(node: dict[str, object]) -> str:
     )
     if node_type == "reference":
         line += f" resolvable={field('resolvable')}"
+    if node.get("state") is not None:
+        line += f" state={field('state')} result_code={field('result_code')}"
     return line
 
 
