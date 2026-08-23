@@ -78,7 +78,14 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert scripted["truth_label"] in readme
     assert scripted["execute_command"] in readme and "--auto-approve" in readme
     assert replay["status"] == scripted["status"] == "verified_local"
-    assert product["mission_paths"]["gemini-adk-planner"]["status"] == "not_proven"
+    gemini = product["mission_paths"]["gemini-adk-planner"]
+    assert gemini["status"] == "verified_live"
+    # A live label must cite evidence that is in the tree and names the mission.
+    evidence = (ROOT / gemini["evidence"]).read_text()
+    assert gemini["mission_id"] in evidence and gemini["mission_id"] in readme
+    assert all(digest in evidence for digest in gemini["receipt_sha256"])
+    assert gemini["head_event_sha256"] in evidence
+    assert "VERIFIED_LIVE" in readme and "NOT HUMAN-ATTESTED" in gemini["truth_label"]
     assert (
         product["mission_paths"]["gemini-adk-planner"]["product_command"]
         in " ".join(readme.replace("\\\n", "").split())

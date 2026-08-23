@@ -1,0 +1,106 @@
+[
+  {
+    "artifact_envelope_sha256": "63f53ea91263a093b3c950a0edd7fd6b7acf992bd6a0c686e8ed17ae3a971d17",
+    "artifact_id": "artifact_32d155ca0dfa565fdca16cb8c685e5ed",
+    "attempt_id": "attempt_869c2696307718a16231bd0cc24fe8a5",
+    "byte_count": 10594,
+    "consumers": [
+      "verify"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "candidate",
+    "paths": [],
+    "plan_revision": 1,
+    "publication_id": "publication_620293fb9561935641723a2dbc166f50",
+    "sha256": "32d155ca0dfa565fdca16cb8c685e5edebad8c08b0d295888258e3390310491f",
+    "state": "accepted",
+    "task_id": "assemble",
+    "visibility": "mission"
+  },
+  {
+    "artifact_envelope_sha256": "1fc97205530ec234fef1e04ef1bf905373c05b9985d8257a80a76163bdb6abe8",
+    "artifact_id": "artifact_c456f9d2651f4f1828992da7b66a6955",
+    "attempt_id": "attempt_2d6b86bfd40bbb9b0a6300e46eb748da",
+    "byte_count": 3130,
+    "consumers": [
+      "assemble",
+      "task-cli-integration"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "work-e3909a0611024e3eaef9ea05",
+    "paths": [
+      "ledger_service/report_json.py",
+      "tests/test_report_json.py"
+    ],
+    "plan_revision": 1,
+    "publication_id": "publication_770dd4ef0fef00a3c5af1ba83a00934f",
+    "sha256": "c456f9d2651f4f1828992da7b66a695512f47a3c546c0c60029fc68f0b869d48",
+    "state": "accepted",
+    "task_id": "task-json-renderer",
+    "visibility": "mission"
+  },
+  {
+    "artifact_envelope_sha256": "c8a097fcc52c21d5b56b17ab33a07f6249a3cf067b91084af7945ea719ff449c",
+    "artifact_id": "artifact_b2a33a2c2f34ae5bace469de9145eb0d",
+    "attempt_id": "attempt_f2fc8ddc39ae6153867d8ff47da08d92",
+    "byte_count": 1780,
+    "consumers": [],
+    "kind": "test-receipt",
+    "media_type": "application/vnd.graphene.check-receipt+json",
+    "output_name": "verification",
+    "paths": [],
+    "plan_revision": 1,
+    "publication_id": "publication_86d9faa948331f3a98ac52dc3e843021",
+    "sha256": "b2a33a2c2f34ae5bace469de9145eb0d23795d4531967e3f4fbc9d16e38b7faf",
+    "state": "accepted",
+    "task_id": "verify",
+    "visibility": "mission"
+  },
+  {
+    "artifact_envelope_sha256": "281c79dda0ab317101a1d8b9290ce027944de2b430b5b56e4682945185224682",
+    "artifact_id": "artifact_5ece9035069ef859d28aaf6599cd8c8a",
+    "attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+    "byte_count": 3349,
+    "consumers": [
+      "assemble",
+      "task-cli-integration"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "work-065225c2d24e59c7fbd07c0c",
+    "paths": [
+      "ledger_service/report_markdown.py",
+      "tests/test_report_markdown.py"
+    ],
+    "plan_revision": 1,
+    "publication_id": "publication_8ed46afac012d1c29ab01b2f0bc19826",
+    "sha256": "5ece9035069ef859d28aaf6599cd8c8a10aaa0944bb1169f9e44b8a23e6f55c5",
+    "state": "accepted",
+    "task_id": "task-markdown-renderer",
+    "visibility": "mission"
+  },
+  {
+    "artifact_envelope_sha256": "08f6e43dd071c17e4da7a042f5dba03b508023617c4b9a8bb7a306ea9c79f1d0",
+    "artifact_id": "artifact_672ec5010405173543ecb89e35b7aaf3",
+    "attempt_id": "attempt_2f50d5853f564ebf702920cee6eaa504",
+    "byte_count": 4115,
+    "consumers": [
+      "assemble"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "work-e6fe867b7898f5a264298d57",
+    "paths": [
+      "ledger_service/cli.py",
+      "tests/test_cli_reports.py"
+    ],
+    "plan_revision": 1,
+    "publication_id": "publication_cdbbe0b90dc9848768bc465336c431b7",
+    "sha256": "672ec5010405173543ecb89e35b7aaf3ae13ea011577af3421bb3124c2550803",
+    "state": "accepted",
+    "task_id": "task-cli-integration",
+    "visibility": "mission"
+  }
+]

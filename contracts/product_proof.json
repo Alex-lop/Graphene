@@ -51,14 +51,29 @@
       ]
     },
     "gemini-adk-planner": {
-      "status": "not_proven",
+      "status": "verified_live",
       "command": "GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py",
       "product_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --success-criterion CRITERION --driver gemini-adk",
       "demo_command": "uv run --frozen graphene mission demo",
-      "truth_label": "NOT PROVEN — REQUIRES EXPLICIT CREDENTIALS AND A RETURNED GEMINI RECEIPT",
+      "truth_label": "VERIFIED LIVE — gemini-3.5-flash ON VERTEX AI (global); TWO WORKERS WITH EVIDENCE-BOUND RECEIPTS AND DUAL-CLOCK OVERLAP; OPERATOR-DELEGATED (server_derived) APPROVAL, NOT HUMAN-ATTESTED",
       "model": "gemini-3.5-flash",
       "fallback": "none",
-      "scope": "Planner plus bounded two-to-five-worker execution is implemented and fake-model tested locally; no credentialed provider run or live worker receipt was captured."
+      "scope": "On 2026-08-23 the planner proposed a validated five-task DAG for the demo/north_star target and two bounded workers executed it live (three work attempts, assembly, exact verification) with provider receipts bound into evidence; approval was operator-delegated under the night directive, so human attestation on a live mission stays unproven.",
+      "evidence": "evidence/north_star/2026-08-23-north-star-live.md",
+      "mission_id": "mission_start_5291caad50a8ee7a222a9221",
+      "head_event_sha256": "33c1599cedc578263c9705fa7817b671aa2835000a337afe74e7a5322f290f55",
+      "receipt_sha256": [
+        "eabc601ecb4bb9f39d3f9a1dd523f1874f5b6f097ead44189834d6c1b2634950",
+        "dfe9ac14ac68427b6ea5485156735dce8afe1faa9ce74ed9beda63fbb0ba7a70",
+        "f7e0b0ded5ae36424375491f5f9bbec637952d3f68ad0a8eacf1c0645785a651"
+      ],
+      "location": "global",
+      "does_not_prove": [
+        "human-attested (TTY) approval on a live mission",
+        "the live failure laboratory (see north_star)",
+        "Docker execution",
+        "cloud deployment"
+      ]
     },
     "docker-executor": {
       "status": "not_proven",
@@ -165,8 +180,9 @@
       "truth": "On source commit 581d6bf4e1c2ba4810f16d93b295637c7203a7b5, the credential-free Python matrix passed 808 tests with four explicit opt-in skips; MCP passed 6 and frontend passed 39. Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the recorded official Firestore emulator production vertical are locally verified."
     },
     "live_gemini": {
-      "status": "not_proven",
-      "truth": "A real Gemini planner/worker claim requires explicit credentials, returned provider receipts, two distinct workers, measured overlap, exact fan-in, and exact-candidate completion."
+      "status": "verified_live",
+      "truth": "On 2026-08-23 mission mission_start_5291caad50a8ee7a222a9221 ran two gemini-3.5-flash workers through Vertex AI (location global) with evidence-bound provider receipts, overlap measured on the store clock (28491 ms), the runtime-stamped provider call window (26463 ms), and the provider's own clock (25364 ms), exact fan-in and verification, a bundle-bound operator-delegated approval, and an isolated local result commit; evidence: evidence/north_star/2026-08-23-north-star-live.md. Human attestation and the live failure laboratory are not part of this claim.",
+      "evidence": "evidence/north_star/2026-08-23-north-star-live.md"
     },
     "live_cloud": {
       "status": "not_deployed",
@@ -213,7 +229,6 @@
     "operator-complete revision generation/review/reapproval after a recorded replanning request and live browser command-plane operator proof",
     "transitive delta/cumulative artifact subsumption and end-to-end delete/rename/mode mutation semantics",
     "automatic retention expiry and purge",
-    "credentialed live ADK/Gemini model-worker mission proof",
     "published arbitrary-repository support and live execution matrix",
     "owned idle STDIO MCP lifecycle cleanup",
     "live authenticated cloud-to-local claim/heartbeat/result/reconnect proof and full Firestore SchedulerStore mutation parity",
@@ -221,7 +236,7 @@
     "live Google Cloud deployment, measured graph benchmark, and submission video",
     "five-person Mission Control comprehension study",
     "Shadow Agent claude-code adapter built against a real transcript, then the real-session report",
-    "live North Star run: two Gemini workers, live failure laboratory, live capsule; labels flip only with that evidence"
+    "live North Star failure laboratory and cold capsule verification; human-attested approval on a live mission"
   ],
   "shadow_agent": {
     "status": "not_proven",
@@ -250,7 +265,7 @@
     ]
   },
   "north_star": {
-    "status": "not_proven",
+    "status": "partially_verified_live",
     "sentence": "Graphene coordinates two real Gemini coding workers, survives one of them failing, and proves exactly why the final repository result should be trusted.",
     "credential_free_groundwork": [
       "worker provider receipts bound to attempt evidence and resolved by digest in store.verify",
@@ -259,13 +274,21 @@
       "deterministic failure laboratory: SIGKILL of worker B's registered check group, sibling publication untouched, retry under a higher fence, stale fence rejected",
       "graphene why --json with worker identity, fences, retries, and receipt nodes",
       "mission capsule export and cold verification",
-      "North Star demo target repository and materializer"
+      "North Star demo target repository and materializer",
+      "provider-side receipt stamps (response id, server create_time, HTTP Date) and the provider_reported_timestamps overlap basis"
     ],
     "blockers": [
-      "Gemini credentials (exactly one of GEMINI_API_KEY or GOOGLE_API_KEY) with GRAPHENE_RUN_LIVE_GEMINI=1",
-      "a responsive Docker daemon with the executor image, or GRAPHENE_CHECK_EXECUTOR=host-sandbox on macOS",
+      "live failure laboratory run (Phase 2) with captured kill, retry under a higher fence, and why chains",
+      "cold capsule verification from a clean checkout (Phase 3)",
+      "a responsive Docker daemon with the executor image, for the Docker alternative",
       "an authorized Google Cloud project for the Cloud Run and real Firestore proof"
     ],
-    "runbook": "docs/NORTH_STAR_RUNBOOK.md"
+    "runbook": "docs/NORTH_STAR_RUNBOOK.md",
+    "legs": {
+      "coordinates_two_real_gemini_workers": "verified_live",
+      "survives_one_of_them_failing": "not_proven — fake-model rehearsal only (scripts/failure_lab.py auto, tests/unit/orchestration/test_failure_laboratory.py)",
+      "proves_exactly_why": "verified_live — graphene why chains on the live mission, see evidence"
+    },
+    "evidence": "evidence/north_star/2026-08-23-north-star-live.md"
   }
 }

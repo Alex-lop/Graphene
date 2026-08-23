@@ -1,0 +1,30 @@
+WHY mission_start_5291caad50a8ee7a222a9221 ledger_service/report_json.py matched_by=path
+STAGE target established
+  node publication publication_770dd4ef0fef00a3c5af1ba83a00934f kind=patch task=task-json-renderer attempt=attempt_2d6b86bfd40bbb9b0a6300e46eb748da worker=none attempt_number=none fence=none sha256=c456f9d2651f
+  events mission_event_7a744617855274cb4a0542b2eb49cd80,mission_event_d8de55920d8f61e3e9a2b260d69bc5e3
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_2d6b86bfd40bbb9b0a6300e46eb748da kind=none task=task-json-renderer attempt=attempt_2d6b86bfd40bbb9b0a6300e46eb748da worker=gemini-worker-1 attempt_number=1 fence=1 sha256=none
+  receipt test-receipt artifact_ab09a5c08278b7252c5d102fae2773fc resolvable=True
+  receipt worker-provider-receipt artifact_eabc601ecb4bb9f39d3f9a1dd523f187 resolvable=True
+  events mission_event_2143f7c90eb5e205cb4eef412b2a8db8,mission_event_71d7f6ec0c65b9cdd7cadd14d82258c7
+  note The verified snapshot binds each target to its producer attempt.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate established
+  node publication publication_620293fb9561935641723a2dbc166f50 kind=patch task=assemble attempt=attempt_869c2696307718a16231bd0cc24fe8a5 worker=none attempt_number=none fence=none sha256=32d155ca0dfa
+  receipt test-receipt artifact_1ab70200ea979a9e8536572b5a26d89c resolvable=True
+  events mission_event_abbcdcf2f00e1cdf6b0d1573bb569b0f
+  note Accepted assembly output consumes the target publication.
+STAGE verification established
+  node publication publication_86d9faa948331f3a98ac52dc3e843021 kind=test-receipt task=verify attempt=attempt_f2fc8ddc39ae6153867d8ff47da08d92 worker=none attempt_number=none fence=none sha256=b2a33a2c2f34
+  receipt test-receipt artifact_b2a33a2c2f34ae5bace469de9145eb0d resolvable=True
+  events mission_event_caa126553aeef8089ff9b8b7525fdd8b
+  note Accepted verification output consumes the assembly candidate.
+STAGE approval established
+  node event mission_event_c5034ff29d43388cb6f45981c8b49919 kind=none task=none attempt=none worker=none attempt_number=none fence=none sha256=none
+  events mission_event_c5034ff29d43388cb6f45981c8b49919
+  note A committed final approval references the assembly candidate.
+UNKNOWN The model-proposed plan awaits operator review.
+TRUST: every line above is derived from hash-chained mission events and resolvable evidence references; unknowns are listed, never guessed.

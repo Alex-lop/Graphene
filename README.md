@@ -21,7 +21,7 @@ uv run --frozen graphene mission replay taskmaster
 
 The checked-in replay is SHA-256 verified, opens at checkpoint zero, and pauses at the fixture's pending final-candidate checkpoint. **Continue with recorded simulated approval** depicts a fixture branch with `human_attestation=false`; it runs nothing new and is not V2 bundle proof. No screenshot or GIF is presented because the in-app capture surface was unavailable. See [`demo-capture.json`](docs/assets/demo-capture.json).
 
-## Live Gemini — implemented, not yet proven
+## Live Gemini — proven on one mission, labelled exactly
 
 ```bash
 uv run --frozen graphene mission demo
@@ -33,7 +33,9 @@ uv run --frozen graphene mission start \
   --driver gemini-adk
 ```
 
-The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG, and can run two to five bounded ADK workers after exact plan approval. Credential-free tests exercise the same orchestration with deterministic fake models, isolated workspaces, concurrent siblings, trusted checks, accepted-only fan-in, exact verification, and an unchanged source checkout. One credentialed live run of `tests/process/test_gemini_live.py` has passed, returning real worker receipts, but its evidence lived in a temporary directory that was not persisted, so no mission ID or receipt digest is on record and Gemini remains **NOT PROVEN**. Missing credentials fail closed with no silent fallback. See [`docs/NORTH_STAR_RUNBOOK.md`](docs/NORTH_STAR_RUNBOOK.md) for the live-contact schema fix and the free-tier daily quota limit this run surfaced.
+The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG, and runs two to five bounded ADK workers after exact plan approval. Credential-free tests exercise the same orchestration with deterministic fake models, isolated workspaces, concurrent siblings, trusted checks, accepted-only fan-in, exact verification, and an unchanged source checkout.
+
+On 2026-08-23 the North Star mission ran live against the `demo/north_star` target through Vertex AI (location `global`; `us-central1` does not serve this model for the project): two workers, three work attempts, assembly, exact verification, a registered `FinalResultBundleV2`, a bundle-bound approval, and an isolated local result commit — with every worker call bound into evidence as a sanitized provider receipt and the two renderer calls overlapping for 25–28 s on three independent bases. **What that run does not prove:** approvals were operator-delegated (`truth_kind: server_derived`) under a recorded standing instruction, not TTY-attested; the live failure laboratory and the cold capsule verification are separate claims. Every identifier, digest, and count is in [`evidence/north_star/2026-08-23-north-star-live.md`](evidence/north_star/2026-08-23-north-star-live.md); missing credentials still fail closed with no silent fallback. See [`docs/NORTH_STAR_RUNBOOK.md`](docs/NORTH_STAR_RUNBOOK.md) for the live-contact fixes this run required.
 
 ## Product loop
 
@@ -62,14 +64,14 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | `scripted-local` mission | `VERIFIED_LOCAL` on macOS | Durable scheduler, overlapping fixture workers, retry, V2 publication fan-in, exact verification, bundle-bound decision, isolated result |
 | Credential-free core | `VERIFIED_LOCAL` | SQLite authority/tamper checks, ownership/fencing, workspace audit, fake-ADK runtime, Mission Control commands, bounded 50-task/five-worker soak |
 | Official Firestore emulator | `VERIFIED_LOCAL` | Production create/approve/readiness/claim/heartbeat/completion and sharded materialization/reconcile path |
-| Live Gemini | `NOT PROVEN` | Requires explicit credentials, provider receipts, and a complete two-worker run |
+| Live Gemini | `VERIFIED_LIVE` (2026-08-23) | Two `gemini-3.5-flash` workers on Vertex AI (`global`) completed the North Star mission `mission_start_5291caad50a8ee7a222a9221`: evidence-bound provider receipts, overlap on the store clock, the runtime call window, and the provider's own clock, exact verification, bundle-bound approval, isolated local result. Approval was operator-delegated (`server_derived`), not human-attested. [Evidence](evidence/north_star/2026-08-23-north-star-live.md) |
 | Docker executor | `NOT PROVEN` | Requires a responsive-daemon smoke |
 | Cloud Run + real Firestore | `NOT DEPLOYED — NOT PROVEN` | Packaging/emulator proof is not authenticated deployment proof |
 | Benchmark/video/media | `NOT PROVEN` | Harness/runbook/capture metadata exist; results and media do not |
 | Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
 | Shadow Agent, real Claude Code session | `NOT PROVEN` | Requires a real transcript; the claude-code adapter is not implemented and fails closed |
 | Mission capsule | `VERIFIED_LOCAL` on scripted-local and fake-ADK missions | Cold verification of event chains, evidence chains, receipts, bundle binding, and manifest summary; not producer authenticity |
-| North Star groundwork | `VERIFIED_LOCAL` with fake workers | Evidence-bound provider receipts, provider-call overlap, host-sandbox checks, failure laboratory, `why --json`; the live two-worker run stays `NOT PROVEN` |
+| North Star | `PARTIALLY VERIFIED_LIVE` | Two real workers and the `why` chains: proven live (row above). Surviving a worker's death: `NOT PROVEN` live — only the fake-model rehearsal (`scripts/failure_lab.py auto`, deterministic test). Cold capsule verification of a live mission: pending |
 
 Machine-readable truth lives in [`contracts/product_proof.json`](contracts/product_proof.json).
 

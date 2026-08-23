@@ -1,0 +1,76 @@
+{
+  "attempt_count": 3,
+  "max_window_ms": 28491,
+  "note": "`observed` is the intersection of attempt lifetimes on the mission store clock (scheduler claim to completion), which proves simultaneous leases, not concurrent execution. `provider_call_observed` is the intersection of the workers' provider call windows stamped by the runtime and bound into evidence receipts; a real-agent overlap claim must cite that measurement. `provider_reported_observed` is the same intersection measured on the provider's own clock, from each receipt's server-side `create_time` to its whole-second HTTP `Date` reply header; it is independent of every Graphene clock and underestimates the true window by up to one second.",
+  "observed": true,
+  "pairs": [
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_2d6b86bfd40bbb9b0a6300e46eb748da",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 28491
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_2d6b86bfd40bbb9b0a6300e46eb748da",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 28491
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_2d6b86bfd40bbb9b0a6300e46eb748da",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 26463
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_2d6b86bfd40bbb9b0a6300e46eb748da",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 25364
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_2f50d5853f564ebf702920cee6eaa504",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_2f50d5853f564ebf702920cee6eaa504",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_2f50d5853f564ebf702920cee6eaa504",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_2f50d5853f564ebf702920cee6eaa504",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_333a2fef6b2812b2ec8614b397f37e29",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    }
+  ],
+  "provider_call_max_window_ms": 26463,
+  "provider_call_observed": true,
+  "provider_reported_max_window_ms": 25364,
+  "provider_reported_observed": true
+}

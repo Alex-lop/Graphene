@@ -1,0 +1,9 @@
+{
+  "bundle_unresolved_unknowns": [
+    "The model-proposed plan awaits operator review."
+  ],
+  "note": "Unknowns are recorded, never resolved by inference; a null bundle list means no final result bundle was registered.",
+  "snapshot_unknowns": [
+    "The model-proposed plan awaits operator review."
+  ]
+}
