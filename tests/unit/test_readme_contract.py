@@ -91,6 +91,10 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
         in " ".join(readme.replace("\\\n", "").split())
     )
     assert product["mission_paths"]["cloud-run-firestore"]["status"] == "not_deployed"
+    watcher = product["watch"]
+    assert watcher["status"] == "verified_local"
+    assert watcher["truth_label"] in readme and "NOT PROVEN" in watcher["truth_label"]
+    assert watcher["live_gate_env"] in readme and watcher["live_gate_env"] in watcher["github_command"]
 
     assert product["product_thesis"] in readme
     assert package["description"] == (

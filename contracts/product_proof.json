@@ -269,6 +269,20 @@
       "evidence/north_star/2026-08-23-mission4-failure-lab/cold_verify.json"
     ]
   },
+  "watch": {
+    "status": "verified_local",
+    "inbox_command": "uv run --frozen graphene watch inbox --dir PATH --once",
+    "github_command": "GRAPHENE_WATCH_GITHUB_LIVE=1 uv run --frozen graphene watch github --repo OWNER/NAME --label graphene-mission --target-repo PATH --driver DRIVER --once",
+    "truth_label": "WATCHER — VERIFIED_LOCAL ON FIXTURES; LIVE GITHUB POLLING NOT PROVEN",
+    "live_gate_env": "GRAPHENE_WATCH_GITHUB_LIVE",
+    "proves": "A dropped mission.yaml creates exactly one proposed mission through mission start, the mission.triggered annotation is hash-chained and surfaced first by graphene why, store.verify and the capsule verifier pass on a triggered mission, identical content and seen issue ids dedupe, malformed/oversized/unsafe inputs become recorded rejections, and the GitHub poller honors ETag/304, rate-limit backoff, and pull-request skipping against an injected fetch.",
+    "does_not_prove": [
+      "a live poll of api.github.com (never exercised; the command refuses the network unless GRAPHENE_WATCH_GITHUB_LIVE=1)",
+      "gemini-adk proposals from an inbox or issue (the live planner is NOT PROVEN)",
+      "any approval, which the watcher cannot issue"
+    ],
+    "test_command": "uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py"
+  },
   "north_star": {
     "status": "partially_verified_live",
     "sentence": "Graphene coordinates two real Gemini coding workers, survives one of them failing, and proves exactly why the final repository result should be trusted.",

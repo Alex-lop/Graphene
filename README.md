@@ -141,6 +141,17 @@ Mission commands: `graphene mission start`, `graphene mission status`, `graphene
 
 The outbound surface is `graphene mission executor connect --repo PATH --mission MISSION_ID --coordinator-url URL --audience AUDIENCE --workers 2`. It touches local workspaces; Cloud Run does not.
 
+## Watching for a change
+
+> **WATCHER — VERIFIED_LOCAL ON FIXTURES; LIVE GITHUB POLLING NOT PROVEN**
+
+```bash
+graphene watch inbox --dir PATH [--once] [--poll 5]
+graphene watch github --repo OWNER/NAME --label graphene-mission --target-repo PATH --driver DRIVER [--once] [--poll 60] [--state PATH]
+```
+
+A `*.yaml` dropped in the inbox (`goal`, `repo`, `driver`, optional `success_criteria`, `max_workers`, `policy`; `yaml.safe_load`, 64 KiB, unknown keys rejected) or an open issue carrying the label creates one proposed mission through the same `mission start` path and commits a `mission.triggered` annotation (`source_kind`, `source_ref`, `source_url`, `source_sha256`, `observed_at`, `watcher_id`) that `graphene why` lists as the first stage. The watcher only creates; plan approval stays with the operator. Rejections become `rejected/<name>.result.json` sidecars or state-file entries, never missions; identical content and already-seen issue ids trigger exactly once. GitHub polling is read-only `urllib` with `ETag`/`If-None-Match`, exponential backoff on rate limits, an optional `GITHUB_TOKEN`/`GRAPHENE_GITHUB_TOKEN` that is never printed or stored, and it refuses the network unless `GRAPHENE_WATCH_GITHUB_LIVE=1`. Fixture tests cover both paths; no live GitHub poll has been run.
+
 ## Documentation
 
 [Product](docs/PRODUCT.md) · [Architecture](docs/ARCHITECTURE.md) · [Agent runtime](docs/AGENT_RUNTIME.md) · [Security](docs/SECURITY_AND_SOVEREIGNTY.md) · [Firestore/cloud](docs/FIRESTORE_AND_CLOUD.md) · [Alex cloud setup](docs/ALEX_CLOUD_SETUP.md) · [Mission Control](docs/MISSION_CONTROL.md) · [Demo guide](docs/DEMO_GUIDE.md) · [Known limitations](docs/KNOWN_LIMITATIONS.md) · [Development](docs/DEVELOPMENT.md)
