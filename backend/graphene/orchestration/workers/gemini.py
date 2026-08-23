@@ -2,22 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from functools import cached_property
 from importlib.metadata import version
-from typing import Literal
+from typing import Any, Literal
 
 import google.adk
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.run_config import RunConfig
 from google.adk.models import BaseLlm, LlmResponse
+from google.adk.models.google_llm import Gemini
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.telemetry import ContentCapturingMode, TelemetryConfig
-from google.genai import errors as genai_errors, types
-from pydantic import Field, model_validator
+from google.genai import Client, errors as genai_errors, types
+from pydantic import Field, PrivateAttr, model_validator
 
 from ...hashing import canonical_json_bytes, canonical_json_sha256
 from ...models import FrozenModel, RepoPath
@@ -86,6 +90,80 @@ class WorkerIntent(FrozenModel):
         ):
             raise ValueError("worker mutations exceed their total byte limit")
         return self
+
+
+class ProviderStamp(FrozenModel):
+    """What the provider itself said about one call: identifiers and instants only."""
+
+    response_id: str | None = None
+    create_time: str | None = None
+    response_date: str | None = None
+
+
+_RESPONSE_ID = re.compile(r"^[A-Za-z0-9._:/-]{1,128}$")
+
+
+def provider_stamp(response: Any) -> ProviderStamp:
+    """Read the provider-side stamps off a raw ``GenerateContentResponse``.
+
+    Never raises and never reads content: a response missing any field
+    yields ``None`` for that field, so a stamp can only be absent, not wrong.
+    """
+
+    response_id = getattr(response, "response_id", None)
+    if not isinstance(response_id, str) or _RESPONSE_ID.match(response_id) is None:
+        response_id = None
+    create_time = None
+    created = getattr(response, "create_time", None)
+    if isinstance(created, datetime) and created.tzinfo is not None:
+        create_time = format_provider_call_timestamp(created)
+    response_date = None
+    http = getattr(response, "sdk_http_response", None)
+    headers = getattr(http, "headers", None)
+    if isinstance(headers, Mapping):
+        date = next(
+            (value for key, value in headers.items() if str(key).lower() == "date"),
+            None,
+        )
+        try:
+            parsed = parsedate_to_datetime(str(date)) if date else None
+        except (TypeError, ValueError):
+            parsed = None
+        if parsed is not None and parsed.tzinfo is not None:
+            response_date = format_provider_call_timestamp(parsed)
+    return ProviderStamp(
+        response_id=response_id, create_time=create_time, response_date=response_date
+    )
+
+
+class StampedGemini(Gemini):
+    """ADK ``Gemini`` whose client records ``provider_stamp`` for every call.
+
+    The runtime's clock brackets each call in the receipt; these stamps are
+    the provider's own view of it, so overlap between workers can be measured
+    on a clock Graphene does not own. The wrapper only observes the response
+    object after the SDK returns it and cannot alter the call.
+    """
+
+    _stamps: list[ProviderStamp] = PrivateAttr(default_factory=list)
+
+    @cached_property
+    def api_client(self) -> Client:
+        client = Gemini.api_client.func(self)
+        models = client.aio.models
+        original = models.generate_content
+
+        async def generate_content(*args: Any, **kwargs: Any) -> Any:
+            response = await original(*args, **kwargs)
+            self._stamps.append(provider_stamp(response))
+            return response
+
+        models.generate_content = generate_content  # type: ignore[method-assign]
+        return client
+
+    @property
+    def stamps(self) -> tuple[ProviderStamp, ...]:
+        return tuple(self._stamps)
 
 
 class _Observation:
@@ -191,7 +269,7 @@ class GeminiWorkerAdapter:
         )
         return cls(
             worker_id=worker_id,
-            model=model,
+            model=StampedGemini(model=model),
             driver="gemini_live",
             credential_mode=credential_mode,
             heartbeat_seconds=heartbeat_seconds,
@@ -281,6 +359,8 @@ class GeminiWorkerAdapter:
         heartbeat = asyncio.create_task(self._heartbeat(context, done))
         output = []
         started = time.monotonic()
+        stamped = self.model if isinstance(self.model, StampedGemini) else None
+        stamps_before = len(stamped.stamps) if stamped is not None else 0
         # The provider call window is stamped on the wall clock immediately
         # around the model run, for both the fake and the live driver, so the
         # receipt carries a measured execution window rather than a lifetime.
@@ -388,6 +468,10 @@ class GeminiWorkerAdapter:
             value is not None for value in usage_values
         )
         counts = usage_values if reported else (None,) * 6
+        # Exactly one call was observed above; its provider stamp, if the
+        # client recorded one, is the provider's own account of that call.
+        new_stamps = stamped.stamps[stamps_before:] if stamped is not None else ()
+        stamp = new_stamps[0] if len(new_stamps) == 1 else ProviderStamp()
         return WorkerCompletion(
             outcome=CompletionOutcome.COMPLETED,
             result_code="passed",
@@ -404,6 +488,9 @@ class GeminiWorkerAdapter:
                 latency_ms=min(300_000, int((time.monotonic() - started) * 1_000)),
                 call_started_at=format_provider_call_timestamp(call_started_at),
                 call_ended_at=format_provider_call_timestamp(call_ended_at),
+                provider_response_id=stamp.response_id,
+                provider_create_time=stamp.create_time,
+                provider_response_date=stamp.response_date,
                 usage_source="provider_reported" if reported else "unavailable",
                 prompt_tokens=counts[0],
                 candidate_tokens=counts[1],
@@ -418,5 +505,8 @@ class GeminiWorkerAdapter:
 __all__ = [
     "FileMutation",
     "GeminiWorkerAdapter",
+    "ProviderStamp",
+    "StampedGemini",
+    "provider_stamp",
     "WorkerIntent",
 ]

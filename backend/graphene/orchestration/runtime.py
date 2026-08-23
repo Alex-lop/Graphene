@@ -12,9 +12,9 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, model_serializer, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2, DirectArtifactInputV2
 from ..execution.adapter import _FIXED_TEST_COMMAND, ExecutionError, run_fixture_tests
@@ -204,6 +204,20 @@ class WorkerProviderReceipt(FrozenModel):
     call_started_at: str = Field(pattern=PROVIDER_CALL_TIMESTAMP_PATTERN)
     call_ended_at: str = Field(pattern=PROVIDER_CALL_TIMESTAMP_PATTERN)
     usage_source: Literal["provider_reported", "unavailable"]
+    # The provider's own view of the same call, read from the response rather
+    # than stamped by the runtime: the response id, the server-side request
+    # arrival time (`create_time`), and the HTTP `Date` header of the reply
+    # (whole seconds). Identifiers and instants only, never content. Absent
+    # when the provider did not report them; the fake driver never has them.
+    provider_response_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:/-]+$"
+    )
+    provider_create_time: str | None = Field(
+        default=None, pattern=PROVIDER_CALL_TIMESTAMP_PATTERN
+    )
+    provider_response_date: str | None = Field(
+        default=None, pattern=PROVIDER_CALL_TIMESTAMP_PATTERN
+    )
     prompt_tokens: int | None = Field(default=None, ge=0)
     candidate_tokens: int | None = Field(default=None, ge=0)
     thought_tokens: int | None = Field(default=None, ge=0)
@@ -238,6 +252,37 @@ class WorkerProviderReceipt(FrozenModel):
         if started > ended:
             raise ValueError("provider call cannot end before it starts")
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_provider_stamps(self, handler: Any) -> Any:
+        # Receipts minted before provider stamps existed must keep hashing to
+        # the same canonical bytes, so absent stamps are omitted, not nulled.
+        value = handler(self)
+        if isinstance(value, dict):
+            for key in (
+                "provider_response_id",
+                "provider_create_time",
+                "provider_response_date",
+            ):
+                if value.get(key) is None:
+                    value.pop(key, None)
+        return value
+
+    def provider_reported_window(self) -> tuple[datetime, datetime] | None:
+        """The provider's own [request arrival, reply sent] window, if reported.
+
+        The `Date` header is truncated to whole seconds, so the end may sit
+        up to one second before the true reply instant and even before
+        `create_time` for a sub-second call; consumers clamp, which makes any
+        overlap measured on this basis an underestimate, never an overclaim.
+        """
+
+        if self.provider_create_time is None or self.provider_response_date is None:
+            return None
+        return (
+            parse_provider_call_timestamp(self.provider_create_time),
+            parse_provider_call_timestamp(self.provider_response_date),
+        )
 
 
 class WorkerCompletion(FrozenModel):

@@ -15,13 +15,21 @@ OVERLAP_NOTE = (
     "clock (scheduler claim to completion), which proves simultaneous leases, "
     "not concurrent execution. `provider_call_observed` is the intersection of "
     "the workers' provider call windows stamped by the runtime and bound into "
-    "evidence receipts; a real-agent overlap claim must cite that measurement."
+    "evidence receipts; a real-agent overlap claim must cite that measurement. "
+    "`provider_reported_observed` is the same intersection measured on the "
+    "provider's own clock, from each receipt's server-side `create_time` to "
+    "its whole-second HTTP `Date` reply header; it is independent of every "
+    "Graphene clock and underestimates the true window by up to one second."
 )
 
 OverlapBasis = Literal[
-    "attempt_timestamps", "lease_timestamps", "provider_call_timestamps"
+    "attempt_timestamps",
+    "lease_timestamps",
+    "provider_call_timestamps",
+    "provider_reported_timestamps",
 ]
 PROVIDER_CALL_BASIS: OverlapBasis = "provider_call_timestamps"
+PROVIDER_REPORTED_BASIS: OverlapBasis = "provider_reported_timestamps"
 
 
 class OverlapPair(FrozenModel):
@@ -38,6 +46,8 @@ class OverlapMeasurement(FrozenModel):
     max_window_ms: int = Field(ge=0)
     provider_call_observed: bool
     provider_call_max_window_ms: int = Field(ge=0)
+    provider_reported_observed: bool = False
+    provider_reported_max_window_ms: int = Field(default=0, ge=0)
     pairs: tuple[OverlapPair, ...]
     attempt_count: int = Field(ge=0)
     note: str
@@ -80,7 +90,10 @@ def measure_overlap(
     ``call_started_at``/``call_ended_at`` windows, which the runtime stamps
     immediately around the model run. ``observed``/``max_window_ms`` report the
     lifetime bases only; ``provider_call_observed``/``provider_call_max_window_ms``
-    report the provider-call basis only.
+    report the provider-call basis only. When both receipts also carry the
+    provider's own stamps (``provider_reported_window``), a fourth
+    ``provider_reported_timestamps`` pair is measured on the provider clock
+    alone and reported as ``provider_reported_observed``/``_max_window_ms``.
     """
 
     receipts: Mapping[str, WorkerProviderReceipt] = (
@@ -152,14 +165,33 @@ def measure_overlap(
                         basis=PROVIDER_CALL_BASIS,
                     )
                 )
-    lifetime = tuple(pair for pair in pairs if pair.basis != PROVIDER_CALL_BASIS)
+                first_window = first_receipt.provider_reported_window()
+                second_window = second_receipt.provider_reported_window()
+                if first_window is not None and second_window is not None:
+                    pairs.append(
+                        OverlapPair(
+                            **identity,
+                            window_ms=_window_ms(*first_window, *second_window),
+                            basis=PROVIDER_REPORTED_BASIS,
+                        )
+                    )
+    lifetime = tuple(
+        pair
+        for pair in pairs
+        if pair.basis not in {PROVIDER_CALL_BASIS, PROVIDER_REPORTED_BASIS}
+    )
     provider = tuple(pair for pair in pairs if pair.basis == PROVIDER_CALL_BASIS)
+    reported = tuple(pair for pair in pairs if pair.basis == PROVIDER_REPORTED_BASIS)
     return OverlapMeasurement(
         observed=any(pair.window_ms > 0 for pair in lifetime),
         max_window_ms=max((pair.window_ms for pair in lifetime), default=0),
         provider_call_observed=any(pair.window_ms > 0 for pair in provider),
         provider_call_max_window_ms=max(
             (pair.window_ms for pair in provider), default=0
+        ),
+        provider_reported_observed=any(pair.window_ms > 0 for pair in reported),
+        provider_reported_max_window_ms=max(
+            (pair.window_ms for pair in reported), default=0
         ),
         pairs=tuple(pairs),
         attempt_count=len(attempts),
@@ -170,6 +202,7 @@ def measure_overlap(
 __all__ = [
     "OVERLAP_NOTE",
     "PROVIDER_CALL_BASIS",
+    "PROVIDER_REPORTED_BASIS",
     "OverlapBasis",
     "OverlapMeasurement",
     "OverlapPair",
