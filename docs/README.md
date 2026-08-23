@@ -26,7 +26,6 @@ The root [README](../README.md) is the canonical product doorway. This index own
 - [Implementation report](IMPLEMENTATION_REPORT.md) — current sprint change/proof ledger; final fields are intentionally pending until integration completes.
 - [Taskmaster product contract](TASKMASTER_PRODUCT_CONTRACT.md) — accepted state and authority contract.
 - [Graph necessity evaluation](GRAPH_NECESSITY_EVAL.md) — unrun comprehension-study protocol.
-- [Harness observability proposal](PROPOSAL_HARNESS_OBSERVABILITY.md) — fit assessment for watching tool calls across agent harnesses; recommends the claude-code Shadow adapter over a new tool.
 - [Graph economics benchmark](../benchmarks/README.md) — tested harness; no benchmark result is proven.
 - [Documentation history](HISTORY.md) — current versus historical authority.
 
