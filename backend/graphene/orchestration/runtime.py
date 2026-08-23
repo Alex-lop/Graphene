@@ -83,6 +83,10 @@ class RuntimeErrorCode(StrEnum):
     ARTIFACT_TAMPERED = "artifact_tampered"
     CANCELLED = "cancelled"
     INPUT_REJECTED = "input_rejected"
+    # The provider answered, but not with a parseable WorkerIntent: a bounded
+    # retry under a higher fence is the right response, unlike ADAPTER_REJECTED
+    # (identity or framework problems), which stays terminal.
+    MODEL_OUTPUT_REJECTED = "model_output_rejected"
     OUTCOME_UNKNOWN = "outcome_unknown"
     POLICY_REJECTED = "policy_rejected"
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
@@ -298,6 +302,7 @@ class WorkerCompletion(FrozenModel):
             CompletionOutcome.COMPLETED: {"passed"},
             CompletionOutcome.RETRYABLE_FAILURE: {
                 RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED.value,
+                RuntimeErrorCode.MODEL_OUTPUT_REJECTED.value,
                 RuntimeErrorCode.PROVIDER_RATE_LIMITED.value,
                 RuntimeErrorCode.PROVIDER_TIMEOUT.value,
                 RuntimeErrorCode.PROVIDER_UNAVAILABLE.value,
@@ -1944,6 +1949,7 @@ class WorkerRuntime:
             succeeded = False
             retryable = error.code in {
                 RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED,
+                RuntimeErrorCode.MODEL_OUTPUT_REJECTED,
                 RuntimeErrorCode.PROVIDER_RATE_LIMITED,
                 RuntimeErrorCode.PROVIDER_TIMEOUT,
                 RuntimeErrorCode.PROVIDER_UNAVAILABLE,

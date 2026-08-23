@@ -441,7 +441,11 @@ class GeminiWorkerAdapter:
             # The call was made and billed; its receipt is bound to the
             # failed attempt so spend and provider identity stay auditable.
             return WorkerCompletion(
-                outcome=CompletionOutcome.TERMINAL_FAILURE,
+                outcome=(
+                    CompletionOutcome.RETRYABLE_FAILURE
+                    if code == RuntimeErrorCode.MODEL_OUTPUT_REJECTED
+                    else CompletionOutcome.TERMINAL_FAILURE
+                ),
                 result_code=code.value,
                 session_id=session.id,
                 invocation_id=next(iter(observation.invocation_ids)),
@@ -451,7 +455,10 @@ class GeminiWorkerAdapter:
         try:
             intent = WorkerIntent.model_validate_json(raw_output)
         except ValueError:
-            return rejected(RuntimeErrorCode.ADAPTER_REJECTED)
+            # Live contact: gemini-3.5-flash occasionally returns a reply that
+            # is not a WorkerIntent. That is a retryable model failure, bounded
+            # by the policy's retry_limit, not a terminal adapter fault.
+            return rejected(RuntimeErrorCode.MODEL_OUTPUT_REJECTED)
         touched_paths = tuple(
             sorted(
                 {
@@ -465,14 +472,25 @@ class GeminiWorkerAdapter:
         if touched_paths != context.dispatch.write_paths:
             return rejected(RuntimeErrorCode.POLICY_REJECTED)
         for index, mutation in enumerate(intent.mutations):
-            await context.apply_file_mutation(
-                index,
-                mutation.operation,
-                mutation.path,
-                text=mutation.text,
-                new_path=mutation.new_path,
-                mode=mutation.mode,
-            )
+            try:
+                await context.apply_file_mutation(
+                    index,
+                    mutation.operation,
+                    mutation.path,
+                    text=mutation.text,
+                    new_path=mutation.new_path,
+                    mode=mutation.mode,
+                )
+            except RuntimeFailure as error:
+                # A mutation the runtime refuses (wrong shape, outside policy,
+                # tampered) still came from a billed call: keep the receipt.
+                if error.outcome_unknown or error.code not in {
+                    RuntimeErrorCode.POLICY_REJECTED,
+                    RuntimeErrorCode.ARTIFACT_TAMPERED,
+                    RuntimeErrorCode.INPUT_REJECTED,
+                }:
+                    raise
+                return rejected(error.code)
         return WorkerCompletion(
             outcome=CompletionOutcome.COMPLETED,
             result_code="passed",

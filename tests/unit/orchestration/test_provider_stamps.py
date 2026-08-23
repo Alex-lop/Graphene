@@ -301,3 +301,93 @@ def test_rejected_worker_output_still_binds_its_provider_receipt(
         assert content is not None
         receipt = WorkerProviderReceipt.model_validate_json(content)
         assert receipt.driver == "adk_fake" and receipt.output_bytes >= 1
+
+
+def test_malformed_model_reply_is_retried_under_a_higher_fence(
+    tmp_path, monkeypatch
+) -> None:
+    """A reply that is not a WorkerIntent is a model failure, bounded by retry_limit."""
+
+    from collections.abc import AsyncGenerator
+
+    from google.adk.models import LlmRequest, LlmResponse
+    from google.genai import types
+
+    from graphene.cli import mission as mission_cli
+    from graphene.orchestration.models import AttemptState, MissionStatus, TaskKind
+    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+    from graphene.orchestration.workers import DeterministicWorkerModel
+    from tests.unit.orchestration.test_gemini_mission_runtime import (
+        prepare_fake_two_worker_mission,
+        quiet_resource_sampler,
+    )
+
+    class TaskAware(DeterministicWorkerModel):
+        """Answers for whichever leased path the prompt names; garbles one reply."""
+
+        garble_path: str | None = None
+
+        async def generate_content_async(  # type: ignore[override]
+            self, llm_request: LlmRequest, stream: bool = False
+        ) -> AsyncGenerator[LlmResponse, None]:
+            prompt = "".join(
+                part.text or ""
+                for content in llm_request.contents
+                for part in content.parts or ()
+            )
+            leased = [m for m in by_path if m in prompt]
+            assert len(leased) == 1, leased
+            self.bind((by_path[leased[0]],))
+            if leased[0] == self.garble_path:
+                self.garble_path = None
+                self._calls += 1
+                yield LlmResponse(
+                    model_version=self.model,
+                    content=types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text="I cannot comply {")],
+                    ),
+                )
+                return
+            async for response in super().generate_content_async(llm_request, stream):
+                yield response
+
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    by_path = {
+        m.path: m for m in (*prepared.model_a.mutations, *prepared.model_b.mutations)
+    }
+    path_b = prepared.model_b.mutations[0].path
+    model_a = TaskAware(model="fixture-worker-a")
+    model_b = TaskAware(model="fixture-worker-b", garble_path=path_b)
+    from graphene.orchestration.runtime import WorkerRegistry
+    from graphene.orchestration.workers import GeminiWorkerAdapter
+
+    registry = WorkerRegistry(
+        (
+            GeminiWorkerAdapter.fake(worker_id="fake-a", model=model_a),
+            GeminiWorkerAdapter.fake(worker_id="fake-b", model=model_b),
+        )
+    )
+    result = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=registry,
+        resource_sampler=quiet_resource_sampler,
+    )
+    assert result["status"] == MissionStatus.AWAITING_RESULT
+    snapshot = prepared.store.snapshot(prepared.mission_id)
+    kinds = {task.task_id: task.kind for task in snapshot.tasks}
+    rejected = [
+        a
+        for a in snapshot.attempts
+        if kinds[a.task_id] == TaskKind.WORK and a.result_code == "model_output_rejected"
+    ]
+    assert len(rejected) == 1 and rejected[0].state == AttemptState.FAILED
+    retry = next(
+        a
+        for a in snapshot.attempts
+        if a.task_id == rejected[0].task_id and a.attempt_number == 2
+    )
+    assert retry.state == AttemptState.COMMITTED
+    assert retry.fencing_token > rejected[0].fencing_token
+    assert any(r.kind == WORKER_PROVIDER_RECEIPT_KIND for r in rejected[0].evidence_refs)
