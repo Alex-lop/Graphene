@@ -47,7 +47,7 @@ import json
 import signal
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import IO
 
@@ -225,13 +225,29 @@ def auto_kill(
     *,
     timeout: float,
     poll: float = 0.05,
+    reopen: Callable[[], object] | None = None,
 ) -> dict[str, object]:
     """Wait for the first kill opportunity and take it; see ``kill_opportunity``."""
 
     deadline = time.monotonic() + timeout
+    transient_read_errors = 0
     while True:
-        status = store.snapshot(mission_id).mission.status  # type: ignore[attr-defined]
-        opportunity = kill_opportunity(store, registry, mission_id)
+        try:
+            status = store.snapshot(mission_id).mission.status  # type: ignore[attr-defined]
+            opportunity = kill_opportunity(store, registry, mission_id)
+        except MissionStoreError:
+            # Live contact: a reader can observe an attempt row whose evidence
+            # artifact is still being written in the separate evidence store
+            # ("mission materialized artifacts are invalid"). The store's read
+            # quarantine is sticky by design, so the poller reopens the store
+            # and keeps polling; a persistent error still ends at the deadline.
+            transient_read_errors += 1
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(poll)
+            if reopen is not None:
+                store = reopen()
+            continue
         if opportunity is not None:
             attempt_id, sibling_worker, publication_id = opportunity
             dispatch = running_dispatch(store, mission_id, attempt_id)
@@ -242,6 +258,7 @@ def auto_kill(
                 "killed_at": killed_at.isoformat(timespec="milliseconds"),
                 "sibling_worker_id": sibling_worker,
                 "sibling_accepted_publication_id": publication_id,
+                "transient_read_errors": transient_read_errors,
             }
         if status not in {MissionStatus.PROPOSED, MissionStatus.RUNNING}:
             raise FailureLabError(
@@ -303,7 +320,13 @@ def main(
                 registry, args.mission_id, worker_ids(store, args.mission_id)
             )
         elif args.command == "auto":
-            value = auto_kill(store, registry, args.mission_id, timeout=args.timeout)
+            value = auto_kill(
+                store,
+                registry,
+                args.mission_id,
+                timeout=args.timeout,
+                reopen=lambda: _store_for_mission(args.mission_id),
+            )
         else:
             dispatch = running_dispatch(store, args.mission_id, args.attempt_id)
             value = kill_attempt(registry, args.mission_id, args.attempt_id, dispatch)
