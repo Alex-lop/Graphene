@@ -1,0 +1,312 @@
+{
+  "mission_id": "mission_start_38129f17add65609de1c3388",
+  "plan": {
+    "criteria": [
+      {
+        "criterion_id": "criterion-2178e2f250ea513c666a4932",
+        "description": "No file outside ledger_service/ and tests/ is created or modified.",
+        "producer_task_ids": [
+          "task_integrate_reports"
+        ],
+        "verification_kind": "deterministic_check",
+        "verifier_id": "fixture-tests",
+        "verifier_task_id": "verify"
+      },
+      {
+        "criterion_id": "criterion-59e537baf125973ff0a69466",
+        "description": "The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider.",
+        "producer_task_ids": [
+          "task_integrate_reports",
+          "task_json_report",
+          "task_markdown_report"
+        ],
+        "verification_kind": "deterministic_check",
+        "verifier_id": "fixture-tests",
+        "verifier_task_id": "verify"
+      },
+      {
+        "criterion_id": "criterion-6f3d537241e1b830c746c6a3",
+        "description": "Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells.",
+        "producer_task_ids": [
+          "task_integrate_reports",
+          "task_markdown_report"
+        ],
+        "verification_kind": "deterministic_check",
+        "verifier_id": "fixture-tests",
+        "verifier_task_id": "verify"
+      },
+      {
+        "criterion_id": "criterion-e4bdc14d5c8f46dd6a59c0d8",
+        "description": "Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy.",
+        "producer_task_ids": [
+          "task_integrate_reports",
+          "task_json_report"
+        ],
+        "verification_kind": "deterministic_check",
+        "verifier_id": "fixture-tests",
+        "verifier_task_id": "verify"
+      }
+    ],
+    "max_concurrency": 2,
+    "mission_id": "mission_start_38129f17add65609de1c3388",
+    "previous_revision": null,
+    "revision": 1,
+    "schema_version": 1,
+    "tasks": [
+      {
+        "acceptance_checks": [
+          "fixture-tests"
+        ],
+        "allowed_commands": [
+          "fixture-tests"
+        ],
+        "assigned_role": "assembler",
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "blocker": null,
+        "contract": "Assemble every accepted work artifact into one candidate patch.",
+        "dependencies": [
+          "task_integrate_reports",
+          "task_json_report",
+          "task_markdown_report"
+        ],
+        "evidence_adapter": "generic_v1",
+        "expected_outputs": [
+          {
+            "kind": "patch",
+            "name": "candidate",
+            "paths": []
+          }
+        ],
+        "inputs": [
+          {
+            "kind": "patch",
+            "name": "work-3da607b00134debee4ebbac2",
+            "producer_task_id": "task_integrate_reports"
+          },
+          {
+            "kind": "patch",
+            "name": "work-9f60d600a21c0bb2d116323a",
+            "producer_task_id": "task_json_report"
+          },
+          {
+            "kind": "patch",
+            "name": "work-c5d3d951572cf3462a28ba82",
+            "producer_task_id": "task_markdown_report"
+          }
+        ],
+        "kind": "assembly",
+        "priority": -1,
+        "read_paths": [
+          "README.md",
+          "ledger_service/cli.py",
+          "ledger_service/redact.py",
+          "ledger_service/report_base.py",
+          "ledger_service/report_json.py",
+          "ledger_service/report_markdown.py",
+          "tests/test_cli_report.py",
+          "tests/test_report_json.py",
+          "tests/test_report_markdown.py"
+        ],
+        "retry_at": null,
+        "schema_version": 1,
+        "state": "queued",
+        "task_id": "assemble",
+        "title": "Assemble candidate",
+        "write_paths": []
+      },
+      {
+        "acceptance_checks": [
+          "fixture-tests"
+        ],
+        "allowed_commands": [
+          "fixture-tests"
+        ],
+        "assigned_role": "assembler",
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "blocker": null,
+        "contract": "Update `ledger_service/cli.py` to import and call the JSON and Markdown report renderers within the `render_report` function. Create `tests/test_cli_report.py` to run full integration tests for the CLI `report` command, testing both formats and ensuring that the entire test suite passes perfectly.",
+        "dependencies": [
+          "task_json_report",
+          "task_markdown_report"
+        ],
+        "evidence_adapter": "generic_v1",
+        "expected_outputs": [
+          {
+            "kind": "patch",
+            "name": "work-3da607b00134debee4ebbac2",
+            "paths": [
+              "ledger_service/cli.py",
+              "tests/test_cli_report.py"
+            ]
+          }
+        ],
+        "inputs": [
+          {
+            "kind": "patch",
+            "name": "work-9f60d600a21c0bb2d116323a",
+            "producer_task_id": "task_json_report"
+          },
+          {
+            "kind": "patch",
+            "name": "work-c5d3d951572cf3462a28ba82",
+            "producer_task_id": "task_markdown_report"
+          }
+        ],
+        "kind": "work",
+        "priority": 2,
+        "read_paths": [
+          "ledger_service/cli.py",
+          "ledger_service/report_json.py",
+          "ledger_service/report_markdown.py"
+        ],
+        "retry_at": null,
+        "schema_version": 1,
+        "state": "queued",
+        "task_id": "task_integrate_reports",
+        "title": "Integrate JSON and Markdown reports into CLI",
+        "write_paths": [
+          "ledger_service/cli.py",
+          "tests/test_cli_report.py"
+        ]
+      },
+      {
+        "acceptance_checks": [
+          "fixture-tests"
+        ],
+        "allowed_commands": [
+          "fixture-tests"
+        ],
+        "assigned_role": "worker",
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "blocker": null,
+        "contract": "Create `ledger_service/report_json.py` which contains a JSON report renderer. It must build on `build_report`, serialize a JSON object containing the status report with per-item quantities equal to the balances command, and apply the redaction policy to notes. Create `tests/test_report_json.py` containing pytest test cases ensuring correctness of the JSON report renderer.",
+        "dependencies": [],
+        "evidence_adapter": "generic_v1",
+        "expected_outputs": [
+          {
+            "kind": "patch",
+            "name": "work-9f60d600a21c0bb2d116323a",
+            "paths": [
+              "ledger_service/report_json.py",
+              "tests/test_report_json.py"
+            ]
+          }
+        ],
+        "inputs": [],
+        "kind": "work",
+        "priority": 1,
+        "read_paths": [
+          "README.md",
+          "ledger_service/redact.py",
+          "ledger_service/report_base.py"
+        ],
+        "retry_at": null,
+        "schema_version": 1,
+        "state": "queued",
+        "task_id": "task_json_report",
+        "title": "Implement redacted JSON status report",
+        "write_paths": [
+          "ledger_service/report_json.py",
+          "tests/test_report_json.py"
+        ]
+      },
+      {
+        "acceptance_checks": [
+          "fixture-tests"
+        ],
+        "allowed_commands": [
+          "fixture-tests"
+        ],
+        "assigned_role": "worker",
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "blocker": null,
+        "contract": "Create `ledger_service/report_markdown.py` which contains a Markdown report renderer. It must build on `build_report`, serialize a Markdown table with a header row and exactly one row per item, escaping any pipe characters inside cells, and applying the redaction policy to notes. Create `tests/test_report_markdown.py` containing pytest test cases ensuring correctness of the Markdown report renderer.",
+        "dependencies": [],
+        "evidence_adapter": "generic_v1",
+        "expected_outputs": [
+          {
+            "kind": "patch",
+            "name": "work-c5d3d951572cf3462a28ba82",
+            "paths": [
+              "ledger_service/report_markdown.py",
+              "tests/test_report_markdown.py"
+            ]
+          }
+        ],
+        "inputs": [],
+        "kind": "work",
+        "priority": 1,
+        "read_paths": [
+          "README.md",
+          "ledger_service/redact.py",
+          "ledger_service/report_base.py"
+        ],
+        "retry_at": null,
+        "schema_version": 1,
+        "state": "queued",
+        "task_id": "task_markdown_report",
+        "title": "Implement redacted Markdown status report",
+        "write_paths": [
+          "ledger_service/report_markdown.py",
+          "tests/test_report_markdown.py"
+        ]
+      },
+      {
+        "acceptance_checks": [
+          "fixture-tests"
+        ],
+        "allowed_commands": [
+          "fixture-tests"
+        ],
+        "assigned_role": "verifier",
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "blocker": null,
+        "contract": "Verify the assembled candidate with the policy-bound check.",
+        "dependencies": [
+          "assemble"
+        ],
+        "evidence_adapter": "generic_v1",
+        "expected_outputs": [
+          {
+            "kind": "test-receipt",
+            "name": "verification",
+            "paths": []
+          }
+        ],
+        "inputs": [
+          {
+            "kind": "patch",
+            "name": "candidate",
+            "producer_task_id": "assemble"
+          }
+        ],
+        "kind": "verification",
+        "priority": -2,
+        "read_paths": [
+          "README.md",
+          "ledger_service/cli.py",
+          "ledger_service/redact.py",
+          "ledger_service/report_base.py",
+          "ledger_service/report_json.py",
+          "ledger_service/report_markdown.py",
+          "tests/test_cli_report.py",
+          "tests/test_report_json.py",
+          "tests/test_report_markdown.py"
+        ],
+        "retry_at": null,
+        "schema_version": 1,
+        "state": "queued",
+        "task_id": "verify",
+        "title": "Verify candidate",
+        "write_paths": []
+      }
+    ]
+  },
+  "plan_revision": 1,
+  "plan_sha256": "26767c00b29acf20f6b48c3d083b002183faaf89ef9b3011daf10f805f09ce56"
+}

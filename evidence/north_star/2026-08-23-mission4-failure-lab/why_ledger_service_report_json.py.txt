@@ -1,0 +1,31 @@
+WHY mission_start_38129f17add65609de1c3388 ledger_service/report_json.py matched_by=path
+STAGE target established
+  node publication publication_210020a3af14cc5dac31ac8b4409e071 kind=patch task=task_json_report attempt=attempt_c226230a485158700242d45563330404 worker=none attempt_number=none fence=none sha256=b243419c85fa
+  events mission_event_1a2202fa36bf0616735e75d511c53f19,mission_event_96a9ec55ae111f6bf62b94c4ee67b770
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_c226230a485158700242d45563330404 kind=none task=task_json_report attempt=attempt_c226230a485158700242d45563330404 worker=gemini-worker-1 attempt_number=1 fence=1 sha256=none
+  receipt test-receipt artifact_aedbd3b38eeb6f87108b216fbb7aa76b resolvable=True
+  receipt worker-provider-receipt artifact_3892e53397756d758e3e95e5cf4e950f resolvable=True
+  events mission_event_49f62d19e12b0cd258f13652adef0e2b,mission_event_0530f89694c4803dbbb2ffcb7b881b18
+  note The verified snapshot binds each target to its producer attempt.
+STAGE prior_attempts not_present
+  events none
+  note The producer attempt was the task's first.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate unknown
+  events none
+  note No accepted assembly candidate is causally linked to the target.
+STAGE verification unknown
+  events none
+  note No accepted verification is causally linked to the assembly candidate.
+STAGE approval unknown
+  events none
+  note No committed final decision references the assembly candidate.
+UNKNOWN No accepted assembly candidate is causally linked to the target.
+UNKNOWN No accepted verification is causally linked to the assembly candidate.
+UNKNOWN No committed final decision references the assembly candidate.
+UNKNOWN The model-proposed plan awaits operator review.
+TRUST: every line above is derived from hash-chained mission events and resolvable evidence references; unknowns are listed, never guessed.

@@ -1,0 +1,204 @@
+{
+  "attempt_count": 5,
+  "max_window_ms": 52754,
+  "note": "`observed` is the intersection of attempt lifetimes on the mission store clock (scheduler claim to completion), which proves simultaneous leases, not concurrent execution. `provider_call_observed` is the intersection of the workers' provider call windows stamped by the runtime and bound into evidence receipts; a real-agent overlap claim must cite that measurement. `provider_reported_observed` is the same intersection measured on the provider's own clock, from each receipt's server-side `create_time` to its whole-second HTTP `Date` reply header; it is independent of every Graphene clock and underestimates the true window by up to one second.",
+  "observed": true,
+  "pairs": [
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_74a7da2828d6f4362eca722d7dd0149b",
+      "first_worker_id": "gemini-worker-1",
+      "second_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "second_worker_id": "gemini-worker-2",
+      "window_ms": 0
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 0
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 0
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_758bcab8ca2498a6d6b61462ba5e8216",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 0
+    },
+    {
+      "basis": "attempt_timestamps",
+      "first_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 52754
+    },
+    {
+      "basis": "lease_timestamps",
+      "first_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 52754
+    },
+    {
+      "basis": "provider_call_timestamps",
+      "first_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 50672
+    },
+    {
+      "basis": "provider_reported_timestamps",
+      "first_attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+      "first_worker_id": "gemini-worker-2",
+      "second_attempt_id": "attempt_c226230a485158700242d45563330404",
+      "second_worker_id": "gemini-worker-1",
+      "window_ms": 49182
+    }
+  ],
+  "provider_call_max_window_ms": 50672,
+  "provider_call_observed": true,
+  "provider_reported_max_window_ms": 49182,
+  "provider_reported_observed": true
+}

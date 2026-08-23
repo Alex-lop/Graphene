@@ -1,0 +1,48 @@
+[
+  {
+    "artifact_envelope_sha256": "8f464d8cb82bd8998946cc79157d832ffd811c26ad080aec2964e2a9f5879932",
+    "artifact_id": "artifact_b243419c85fab67177ca1316a7a1555b",
+    "attempt_id": "attempt_c226230a485158700242d45563330404",
+    "byte_count": 5411,
+    "consumers": [
+      "assemble",
+      "task_integrate_reports"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "work-9f60d600a21c0bb2d116323a",
+    "paths": [
+      "ledger_service/report_json.py",
+      "tests/test_report_json.py"
+    ],
+    "plan_revision": 1,
+    "publication_id": "publication_210020a3af14cc5dac31ac8b4409e071",
+    "sha256": "b243419c85fab67177ca1316a7a1555b52cadf54ab20b43d86b8fe0f4885b7bf",
+    "state": "accepted",
+    "task_id": "task_json_report",
+    "visibility": "mission"
+  },
+  {
+    "artifact_envelope_sha256": "25d06bcc0a5a76dfe59357e6c7de66ef939d3b185133b47e3c1163c3b4e59ac7",
+    "artifact_id": "artifact_f6a232a978fe35383096dadc446bf742",
+    "attempt_id": "attempt_397c5a0c0615787ae83ef2d0f98a51d2",
+    "byte_count": 5592,
+    "consumers": [
+      "assemble",
+      "task_integrate_reports"
+    ],
+    "kind": "patch",
+    "media_type": "application/vnd.graphene.git-patch",
+    "output_name": "work-c5d3d951572cf3462a28ba82",
+    "paths": [
+      "ledger_service/report_markdown.py",
+      "tests/test_report_markdown.py"
+    ],
+    "plan_revision": 1,
+    "publication_id": "publication_b9d48d91691777c154553590e152be4b",
+    "sha256": "f6a232a978fe35383096dadc446bf742722da3add34d28ab72ee920d9357ed35",
+    "state": "accepted",
+    "task_id": "task_markdown_report",
+    "visibility": "mission"
+  }
+]

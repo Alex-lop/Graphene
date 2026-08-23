@@ -1,0 +1,34 @@
+WHY mission_start_38129f17add65609de1c3388 ledger_service/report_markdown.py matched_by=path
+STAGE target established
+  node publication publication_b9d48d91691777c154553590e152be4b kind=patch task=task_markdown_report attempt=attempt_397c5a0c0615787ae83ef2d0f98a51d2 worker=none attempt_number=none fence=none sha256=f6a232a978fe
+  events mission_event_e07d21932997bbb15c930a6068af6f6b,mission_event_6ae3f8fd392f8c4444faf3241167aca2
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_397c5a0c0615787ae83ef2d0f98a51d2 kind=none task=task_markdown_report attempt=attempt_397c5a0c0615787ae83ef2d0f98a51d2 worker=gemini-worker-1 attempt_number=2 fence=2 sha256=none
+  receipt test-receipt artifact_10c5912138c1e448a15dba954af8fd0c resolvable=True
+  receipt worker-provider-receipt artifact_9b7916d912ef78116bcd9564376e065a resolvable=True
+  events mission_event_744d50447a9e6c7c4cbcf2b1ed960167,mission_event_7bc3259fc7e8f8506a4a765cea2019b7
+  note The verified snapshot binds each target to its producer attempt.
+STAGE prior_attempts established
+  node attempt attempt_8373ffbe1ffef817b422c3ed26b0e960 kind=none task=task_markdown_report attempt=attempt_8373ffbe1ffef817b422c3ed26b0e960 worker=gemini-worker-2 attempt_number=1 fence=1 sha256=none state=failed result_code=acceptance_check_failed
+  receipt test-receipt artifact_9660f9dbe1d227b922c6bc92bdd85eb5 resolvable=True
+  receipt worker-provider-receipt artifact_87208831ace7128b215efdd4a92db280 resolvable=True
+  events mission_event_0beda42e2243f7973e280da3aca874e3,mission_event_f0ccc7f3462229c1cde431a6d1c045d3
+  note Earlier attempts of the producing task ended without an accepted publication; the producer above ran under a strictly higher fence.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate unknown
+  events none
+  note No accepted assembly candidate is causally linked to the target.
+STAGE verification unknown
+  events none
+  note No accepted verification is causally linked to the assembly candidate.
+STAGE approval unknown
+  events none
+  note No committed final decision references the assembly candidate.
+UNKNOWN No accepted assembly candidate is causally linked to the target.
+UNKNOWN No accepted verification is causally linked to the assembly candidate.
+UNKNOWN No committed final decision references the assembly candidate.
+UNKNOWN The model-proposed plan awaits operator review.
+TRUST: every line above is derived from hash-chained mission events and resolvable evidence references; unknowns are listed, never guessed.

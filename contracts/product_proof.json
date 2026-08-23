@@ -253,15 +253,20 @@
     "blocker": "No raw transcript has been supplied at local/shadow/claude-code-session-raw.jsonl; the adapter is built against the real file, never from memory."
   },
   "mission_capsule": {
-    "status": "verified_local",
+    "status": "verified_live_cold",
     "command": "uv run --frozen graphene mission capsule export MISSION_ID --output DIR",
     "verify_command": "uv run --frozen python -m graphene.orchestration.capsule verify CAPSULE_DIR",
-    "truth_label": "MISSION CAPSULE — COLD-VERIFIED INTERNAL CONSISTENCY; NOT PRODUCER AUTHENTICITY",
-    "proves": "From the capsule bytes alone: the mission event chain, every attempt evidence chain, receipt digests and schemas, the final bundle's head binding and candidate tree identity against the verification receipt, envelope digests, plan revision digests, attempt coverage, and the manifest summary; exported from scripted-local and fake-ADK missions on macOS.",
+    "truth_label": "MISSION CAPSULE — COLD-VERIFIED FROM A CLEAN CHECKOUT ON LIVE GEMINI MISSIONS; INTERNAL CONSISTENCY, NOT PRODUCER AUTHENTICITY",
+    "proves": "From the capsule bytes alone, in a fresh clone with no mission store: the mission event chain, every attempt evidence chain, receipt digests and schemas, the final bundle's head binding and candidate tree identity against the verification receipt, envelope digests, plan revision digests, attempt coverage, and the manifest summary; verified on 2026-08-23 for the completed live mission mission_start_5291caad50a8ee7a222a9221 (manifest sha256 ef4917194fbdc9f2c98628af83743d60750abee44f81b833a492f6fd7e2404b8) and the failed laboratory mission mission_start_38129f17add65609de1c3388 (manifest sha256 1d1ac81f27e6bf2ec4f72972b642326d09c706b684d7be1fe3a6598470df62ef); exported from scripted-local and fake-ADK missions in tests.",
     "does_not_prove": [
       "who produced the capsule (no signature or external anchor)",
       "tree identity against artifact bytes, which stay in the executor's private spool",
-      "provider-side identity or host clock accuracy"
+      "provider-side identity or host clock accuracy",
+      "verification on a second machine (the clean checkout was a fresh clone on the same laptop)"
+    ],
+    "evidence": [
+      "evidence/north_star/2026-08-23-mission1/cold_verify.json",
+      "evidence/north_star/2026-08-23-mission4-failure-lab/cold_verify.json"
     ]
   },
   "north_star": {
@@ -278,17 +283,18 @@
       "provider-side receipt stamps (response id, server create_time, HTTP Date) and the provider_reported_timestamps overlap basis"
     ],
     "blockers": [
-      "live failure laboratory run (Phase 2) with captured kill, retry under a higher fence, and why chains",
-      "cold capsule verification from a clean checkout (Phase 3)",
+      "a laboratory mission whose fenced retry and integration tail both pass live, so completion-after-recovery can be observed (model-quality variance, not Graphene mechanics, blocked it tonight)",
+      "human-attested (TTY) approval on a live mission",
       "a responsive Docker daemon with the executor image, for the Docker alternative",
       "an authorized Google Cloud project for the Cloud Run and real Firestore proof"
     ],
     "runbook": "docs/NORTH_STAR_RUNBOOK.md",
     "legs": {
       "coordinates_two_real_gemini_workers": "verified_live",
-      "survives_one_of_them_failing": "not_proven — fake-model rehearsal only (scripts/failure_lab.py auto, tests/unit/orchestration/test_failure_laboratory.py)",
+      "survives_one_of_them_failing": "partially_verified_live — on mission_start_38129f17add65609de1c3388 worker B's registered check was SIGKILLed through the owned-process registry after A's publication was accepted (test-receipt exit -9, lease released failed, no publication), A's accepted row was untouched, the task was retried under a strictly higher fence on the other worker and its publication accepted, and graphene why names the killed attempt under prior_attempts; the same kill landed on three further missions. NOT PROVEN live: mission completion after the recovery — every laboratory mission later failed on model output quality; that leg rests on the fake-model rehearsal (REHEARSAL — NOT PROOF).",
       "proves_exactly_why": "verified_live — graphene why chains on the live mission, see evidence"
     },
-    "evidence": "evidence/north_star/2026-08-23-north-star-live.md"
+    "evidence": "evidence/north_star/2026-08-23-north-star-live.md",
+    "failure_lab_evidence": "evidence/north_star/2026-08-23-mission4-failure-lab"
   }
 }

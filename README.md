@@ -70,8 +70,8 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | Benchmark/video/media | `NOT PROVEN` | Harness/runbook/capture metadata exist; results and media do not |
 | Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
 | Shadow Agent, real Claude Code session | `NOT PROVEN` | Requires a real transcript; the claude-code adapter is not implemented and fails closed |
-| Mission capsule | `VERIFIED_LOCAL` on scripted-local and fake-ADK missions | Cold verification of event chains, evidence chains, receipts, bundle binding, and manifest summary; not producer authenticity |
-| North Star | `PARTIALLY VERIFIED_LIVE` | Two real workers and the `why` chains: proven live (row above). Surviving a worker's death: `NOT PROVEN` live — only the fake-model rehearsal (`scripts/failure_lab.py auto`, deterministic test). Cold capsule verification of a live mission: pending |
+| Mission capsule | `VERIFIED_LIVE_COLD` (2026-08-23) | Capsules of the completed live mission and the live failure-lab mission verify from a fresh clone with no mission store (11 checks each); not producer authenticity, same laptop |
+| North Star | `PARTIALLY VERIFIED_LIVE` | Two real workers and the `why` chains: proven live. Surviving a worker's death: proven live up to the accepted fenced retry (`mission_start_38129f17add65609de1c3388`: registry-identified SIGKILL, `-9` receipt, sibling untouched, retry under fence 2 accepted, `why` names the killed attempt); completion *after* that recovery `NOT PROVEN` live — rehearsal only. [Evidence](evidence/north_star/2026-08-23-north-star-live.md) |
 
 Machine-readable truth lives in [`contracts/product_proof.json`](contracts/product_proof.json).
 

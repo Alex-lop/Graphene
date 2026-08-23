@@ -1,0 +1,76 @@
+{
+  "capsule_dir": "<clean clone in a temp directory>",
+  "checks": [
+    {
+      "detail": "22 files match their manifest digests",
+      "name": "manifest_file_digests",
+      "ok": true
+    },
+    {
+      "detail": "84 hash-chained mission events recomputed; head seq 84 sha256 2f4b0c56ae0a",
+      "name": "mission_event_chain",
+      "ok": true
+    },
+    {
+      "detail": "5 attempt evidence chains recomputed (15 events)",
+      "name": "attempt_evidence_chains",
+      "ok": true
+    },
+    {
+      "detail": "10 receipt files match their evidence references",
+      "name": "receipt_references",
+      "ok": true
+    },
+    {
+      "detail": "10 receipts are canonical public JSON; 5 trusted check receipts match their check.completed payloads; 5 worker provider receipts are canonical WorkerProviderReceipt bytes",
+      "name": "receipt_contents",
+      "ok": true
+    },
+    {
+      "detail": "no final result bundle registered (manifest says absent)",
+      "name": "final_bundle",
+      "ok": true
+    },
+    {
+      "detail": "tree manifest records no result tree (no final bundle)",
+      "name": "tree_manifest",
+      "ok": true
+    },
+    {
+      "detail": "2 publication envelopes match their artifact events",
+      "name": "publication_envelopes",
+      "ok": true
+    },
+    {
+      "detail": "1 plan revisions match their recorded digests",
+      "name": "plan_revisions",
+      "ok": true
+    },
+    {
+      "detail": "5 leased attempts: 5 evidence chains, 0 declared without evidence",
+      "name": "attempt_coverage",
+      "ok": true
+    },
+    {
+      "detail": "manifest summary recomputed: policy and creation source from the first events, mission_status failed by status replay, no final bundle, 5 attempt rows and 0 attempts without evidence match their task events, 10 counts match",
+      "name": "manifest_summary",
+      "ok": true
+    }
+  ],
+  "mission_id": "mission_start_38129f17add65609de1c3388",
+  "not_checked": [
+    "producer authenticity: the capsule carries no signature or external anchor, so verification proves internal consistency with the hash chains and digests, not who produced them; producer authenticity comes from the mission store that exported it (`graphene mission db verify`) or from comparing the manifest head digest against the operator's recorded mission head",
+    "candidate tree identity against artifact bytes (patch and source bytes are not in the capsule)",
+    "Gemini provider-side identity (provider receipts are sanitized, worker-reported records)",
+    "host clock accuracy (timestamps are the mission store clock)",
+    "manifest snapshot_sha256 (the store's materialized snapshot digest cannot be recomputed from the capsule)",
+    "manifest exported_at (the export clock) and mission.created_at (the mission contract is carried only as its digest)",
+    "manifest mission.final_outcome (the store's outcome label; the final decision is verified through final_bundle.decision instead)",
+    "artifact bytes of excluded kinds: patch=5 (digests only)",
+    "overlap.json and unknowns.json are derived views; only their file digests are checked",
+    "mission materialized task-state replay (requires the SQLite mission store; only the mission status dimension is replayed offline)",
+    "final result bundle: the manifest records that none was registered"
+  ],
+  "schema": "graphene.mission-capsule.v1",
+  "verified": true
+}

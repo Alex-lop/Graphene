@@ -1,0 +1,17 @@
+{
+  "action": "kill",
+  "attempt_id": "attempt_8373ffbe1ffef817b422c3ed26b0e960",
+  "executable": "/usr/bin/sandbox-exec",
+  "fencing_token": 1,
+  "killed_at": "2026-08-23T13:15:32.097+00:00",
+  "mission_id": "mission_start_38129f17add65609de1c3388",
+  "pgid": 47009,
+  "pid": 47009,
+  "sibling_accepted_publication_id": "publication_210020a3af14cc5dac31ac8b4409e071",
+  "sibling_worker_id": "gemini-worker-1",
+  "signal": "SIGKILL",
+  "started_at": "Sun Aug 23 09:15:32 2026",
+  "task_id": "task_markdown_report",
+  "transient_read_errors": 1,
+  "worker_id": "gemini-worker-2"
+}

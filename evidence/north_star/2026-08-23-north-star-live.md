@@ -111,6 +111,70 @@ now states that every task must pass the suite by itself. Its three receipts
 same mission store and verify (`verified_missions: 2`). It is **not** a
 failure-laboratory run: nothing was killed; the check failed on its own.
 
+## Phase 2 — live failure laboratory (Mission 4, `mission_start_38129f17add65609de1c3388`)
+
+Driven unattended by `scripts/failure_lab.py auto` (commit `c101339`, hardened
+in `a6aef3d`): it polls the store and the owned-process registry and kills
+only when a running work attempt's sibling already holds an accepted
+publication. Raw outputs and the capsule: `2026-08-23-mission4-failure-lab/`.
+
+| Step (directive §7 / runbook 4.4) | What the record shows |
+|---|---|
+| A accepted before the kill | `task_json_report` attempt `…63330404` (`gemini-worker-1`, fence 1): `artifact.accepted` seq 38, `publication_210020a3af14cc5dac31ac8b4409e071` |
+| B holds a live lease with a registered check | `task_markdown_report` attempt `attempt_8373ffbe1ffef817b422c3ed26b0e960` (`gemini-worker-2`, fence 1): `task.leased` seq 15; registry record pid = pgid = 47009, executable `/usr/bin/sandbox-exec`, start time recorded |
+| Identity re-verified, then `SIGKILL` | `registry.signal` re-checked pid / pgid / start time / exec-in-place wrapper immediately before `killpg`; `killed_at` **2026-08-23T13:15:32.097Z** (`kill.json`; `transient_read_errors: 1` — the poller reopened the store once) |
+| Trusted receipt records the kill | `test-receipt` `artifact_9660f9dbe1d227b922c6bc92bdd85eb5`: `exit_code -9`, `acceptance_check_failed`, `timed_out false`; lease `…26b0e960` released with reason `failed`; no `artifact.published` for that attempt |
+| A survives untouched | `publication_210020a3…` is the same accepted row before and after; `why ledger_service/report_json.py` chains to attempt `…63330404` |
+| Descendants blocked | `assemble` / `task_integrate_reports` have no attempt until B's task is accepted (seq 40–41 only record the dependency on A) |
+| Retry under a higher fence | `task.retried` seq 43 (`acceptance_check_failed`) → `task.leased` seq 46, attempt `attempt_397c5a0c0615787ae83ef2d0f98a51d2` on the *other* worker (`gemini-worker-1`), **fence 2** |
+| Replacement publishes, stale fence cannot | `artifact.published`/`accepted` seq 55–56, `publication_b9d48d91691777c154553590e152be4b`; the fence-1 lease is released; `why` names attempt 2 as producer |
+| `why` includes B's failed attempt | `why_ledger_service_report_markdown.py.txt`: `STAGE producer_attempt` = attempt `…f98a51d2` (`attempt_number=2 fence=2`), `STAGE prior_attempts` = attempt `…26b0e960` (`state=failed result_code=acceptance_check_failed fence=1`) with both its receipts resolvable |
+| Mission completes → verification → approval | **Did not happen.** The integration task `task_integrate_reports` then failed its own acceptance check twice (attempts `…ba5e8216` fence 1, `…7dd0149b` fence 2, both `exit 1`, model output quality, unrelated to the kill) and the mission ended `failed` at head seq 84 (`2f4b0c56ae0a3d05719eee5fec80b8ee05d1b4b53b4ef7c7f14f4510b337cfaa`) |
+
+Receipts for the attempts above (`worker-provider-receipt` sha256 / provider `response_id`):
+`task_json_report` #1 `3892e53397756d758e3e95e5cf4e950f13c6ff53f05f82ce591f159c5215490d` / `O_KKasKmMezql7oP49nz4AQ`;
+`task_markdown_report` #1 (killed) `87208831ace7128b215efdd4a92db280ca3b910eda5302bc93dbe11990ad7e02` / `O_KKaq34MaG3sbwP9cm9AQ`;
+`task_markdown_report` #2 (retry) `9b7916d912ef78116bcd9564376e065a186ac4e4bb1ea01733a339ec3bd194a9` / `dfKKavGzCOzql7oP49nz4AQ`;
+`task_integrate_reports` #1/#2 `fcbf2f25…06d450` / `32faaac7…6f9dfa`.
+
+The same kill landed on three more missions (`…d2733149`, `…d96b94c5`,
+`…c8bb3c46`, kill JSON and console logs in `local/recordings/`); in each the
+fenced retry was dispatched and then failed on the model's own output
+(`adapter_rejected` or a failed check). Two other lab attempts never reached
+a kill window (`…bda90a16` failed on its own; `…a9d31719` completed while the
+first, non-reopening poller was blind — that is a second complete live
+mission, not lab evidence). Retry discipline stopped the laboratory after
+the third post-kill failure of the same signature.
+
+**What this flips:** the failure-recovery leg becomes `partially_verified_live`
+— SIGKILL through the registry, the `-9` receipt, the untouched sibling, the
+automatic retry under a strictly higher fence, the accepted replacement, and
+a `why` chain that names the killed attempt are all live facts. **What it
+does not flip:** mission completion after recovery (exact verification,
+approval, isolated result) was not observed live on any laboratory mission;
+that leg rests on the fake-model rehearsal (`tests/unit/orchestration/
+test_failure_laboratory.py`, labelled REHEARSAL — NOT PROOF).
+
+## Phase 3 — cold verification from a clean checkout
+
+A fresh `git clone` of this repository into a temporary directory (commit
+`a6aef3d`, no `GRAPHENE_STATE_DIR`, no mission store), `uv sync --frozen`,
+then `uv run --frozen python -m graphene.orchestration.capsule verify …` on:
+
+- Mission 1's capsule from the clone's own tree
+  (`manifest.json` sha256 `ef4917194fbdc9f2c98628af83743d60750abee44f81b833a492f6fd7e2404b8`) → `verified: true`, 11 checks
+  (`manifest_file_digests`, `mission_event_chain`, `attempt_evidence_chains`,
+  `receipt_references`, `receipt_contents`, `final_bundle`, `tree_manifest`,
+  `publication_envelopes`, `plan_revisions`, `attempt_coverage`,
+  `manifest_summary`), 10 `not_checked` items stated by the verifier.
+- Mission 4's capsule (`manifest.json` sha256
+  `1d1ac81f27e6bf2ec4f72972b642326d09c706b684d7be1fe3a6598470df62ef`) → `verified: true`, 11 checks.
+
+Machine: Darwin arm64 (this laptop; no second machine was available). The
+sanitized verifier outputs are `cold_verify.json` in each mission directory.
+Redaction check before committing: location-only secret scan clean; no home
+paths or project ids in any committed evidence file.
+
 ## What this flips, and what it does not
 
 Flips (in this commit): `contracts/product_proof.json`
@@ -118,7 +182,10 @@ Flips (in this commit): `contracts/product_proof.json`
 `north_star.status` (partially — the live two-worker leg), and the README
 `Live Gemini` row.
 
-Does **not** flip: the live failure laboratory (Phase 2), the cold capsule
-verification (Phase 3), human-attested approval on a live mission, Docker,
-Cloud Run/Firestore, benchmark, and media. Each stays labelled until its own
-evidence lands.
+Flips (Phase 2/3 commit): `north_star.legs.survives_one_of_them_failing` →
+`partially_verified_live`; `mission_capsule.status` → `verified_live_cold`
+(live missions, clean checkout); README rows.
+
+Does **not** flip: mission completion after a live recovery, human-attested
+approval on a live mission, Docker, Cloud Run/Firestore, benchmark, and
+media. Each stays labelled until its own evidence lands.
