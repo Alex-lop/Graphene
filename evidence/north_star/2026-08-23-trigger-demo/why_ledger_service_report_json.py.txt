@@ -1,0 +1,35 @@
+WHY mission_start_a44dcefd7cd8e79e25690611 ledger_service/report_json.py matched_by=path
+STAGE trigger established
+  node event mission_event_2a585f9f34f71a7ded227a0653f89e16 kind=inbox_file task=none attempt=none worker=none attempt_number=none fence=none sha256=e6734971d25a
+  events mission_event_2a585f9f34f71a7ded227a0653f89e16
+  note Triggered by inbox_file mission.yaml.
+STAGE target established
+  node publication publication_289f771b490bd31283bb9f80c4493e78 kind=patch task=json_report_renderer attempt=attempt_03030302cfe34c3b488a0ae7e0d14e5d worker=none attempt_number=none fence=none sha256=cd3645366861
+  events mission_event_9bb7655b25537c7a347c4d9cd84077fe,mission_event_5bd10aee22876c1a0c622bb0993a0da3
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_03030302cfe34c3b488a0ae7e0d14e5d kind=none task=json_report_renderer attempt=attempt_03030302cfe34c3b488a0ae7e0d14e5d worker=gemini-worker-1 attempt_number=1 fence=1 sha256=none
+  receipt test-receipt artifact_9d8dff9f4b0b5719fda3fce2adc9f459 resolvable=True
+  receipt worker-provider-receipt artifact_534c57063a4e70669ff5bb9a60962b06 resolvable=True
+  events mission_event_59c61d12ae7d4ead75b90bb36c2043ce,mission_event_01a0ac2c7ea056dee543a68f5e9b6ec5
+  note The verified snapshot binds each target to its producer attempt.
+STAGE prior_attempts not_present
+  events none
+  note The producer attempt was the task's first.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate unknown
+  events none
+  note No accepted assembly candidate is causally linked to the target.
+STAGE verification unknown
+  events none
+  note No accepted verification is causally linked to the assembly candidate.
+STAGE approval unknown
+  events none
+  note No committed final decision references the assembly candidate.
+UNKNOWN No accepted assembly candidate is causally linked to the target.
+UNKNOWN No accepted verification is causally linked to the assembly candidate.
+UNKNOWN No committed final decision references the assembly candidate.
+UNKNOWN The model-proposed plan awaits operator review.
+TRUST: every line above is derived from hash-chained mission events and resolvable evidence references; unknowns are listed, never guessed.

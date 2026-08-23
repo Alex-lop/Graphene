@@ -278,10 +278,18 @@
     "proves": "A dropped mission.yaml creates exactly one proposed mission through mission start, the mission.triggered annotation is hash-chained and surfaced first by graphene why, store.verify and the capsule verifier pass on a triggered mission, identical content and seen issue ids dedupe, malformed/oversized/unsafe inputs become recorded rejections, and the GitHub poller honors ETag/304, rate-limit backoff, and pull-request skipping against an injected fetch.",
     "does_not_prove": [
       "a live poll of api.github.com (never exercised; the command refuses the network unless GRAPHENE_WATCH_GITHUB_LIVE=1)",
-      "gemini-adk proposals from an inbox or issue (the live planner is NOT PROVEN)",
+      "a verified result after a triggered mission (the three triggered missions tonight failed on model output quality)",
       "any approval, which the watcher cannot issue"
     ],
-    "test_command": "uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py"
+    "test_command": "uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py",
+    "live_inbox_smoke": {
+      "date": "2026-08-23",
+      "mission_id": "mission_start_a44dcefd7cd8e79e25690611",
+      "trigger_event": "mission_event_2a585f9f34f71a7ded227a0653f89e16",
+      "source_sha256": "e6734971d25a103d113929579a31d4137c5db1a2adb317e0f9b29eb41329d828",
+      "evidence": "evidence/north_star/2026-08-23-trigger-demo",
+      "proves": "a dropped mission.yaml created a live gemini-adk proposal through the watcher (creation only), the operator-delegated approval ran two live workers, and graphene why on a file that worker produced begins with STAGE trigger; the mission itself later failed on the model's own output, so no verified result followed the trigger."
+    }
   },
   "north_star": {
     "status": "partially_verified_live",

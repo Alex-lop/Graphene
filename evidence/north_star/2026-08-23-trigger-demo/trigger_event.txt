@@ -1,0 +1,3 @@
+['project.created', 'mission.created', 'plan.proposed', 'plan.validated', 'mission.triggered', 'plan.approved']
+{'source_kind': 'inbox_file', 'source_ref': 'mission.yaml', 'source_sha256': 'e6734971d25a103d113929579a31d4137c5db1a2adb317e0f9b29eb41329d828', 'watcher_id': 'inbox-0dea99c17393ee80', 'observed_at': '2026-08-23T14:01:18.280176Z'}
+event mission_event_2a585f9f34f71a7ded227a0653f89e16 ae836941ced5861c seq 5

@@ -8,154 +8,198 @@ morning checklist.
 (SHA-256 of the directive as handed over; the file itself is gitignored under
 `local/` and never enters a commit). Every delegated approval below cites it.
 
+**One-paragraph summary.** Two complete live North Star missions ran on
+Vertex AI (`gemini-3.5-flash`, location `global`): two real workers each,
+evidence-bound provider receipts, overlap measured on three clocks including
+the provider's own, exact verification, bundle-bound approval, isolated local
+result, `why` chains to approval, capsules that cold-verify from a fresh
+clone. The live failure laboratory killed worker B's registered check four
+times; each time the runtime recorded the `-9` receipt, left A untouched, and
+retried under a strictly higher fence (once the replacement was accepted) —
+but no laboratory mission completed afterwards, because the model's later
+output failed its own checks, so "survives *and completes*" stays a
+rehearsal claim. `graphene watch` (inbox + read-only GitHub poller) landed
+with fixture tests, and a dropped `mission.yaml` started a live mission whose
+`why` begins at the trigger. Spend ≈ **$4.30** of $20. Nothing was pushed.
+
 ## 0. Checkpoint timeline (UTC; local is EDT, UTC−4)
 
-| When | Phase | Spend so far | Attempts | State / next intent |
+| When | Phase | Spend so far | Worker attempts | State / next intent |
 |---|---|---|---|---|
 | 12:06 | Preflight start | $0.00 | 0 | Directive digest recorded; `GEMINI_API_KEY` blanked in `.env`; secret scan clean; baseline matrix started |
-| 12:12 | Preflight done | $0.00 | 0 | Baseline green (1923 passed, 4 skipped); target materialized; doctor ready (`vertex_ai`); Phase 4 watcher build launched in a worktree (zero-cost). Next: provider-side receipt stamps, then Phase 1 live run |
-| 12:29 | Phase 1, first live contact | ≤$0.20 (est.) | 0 worker attempts | Three planner-only failures, fixed forward: (1) `404 NOT_FOUND` — Vertex serves `gemini-3.5-flash` only through the `global` location for this project (free `count_tokens` probe; `us-central1`/`us-east4`/`us-east5` 404); (2) planner JSON rejected with no detail → sanitized error detail added; (3) detail showed `work intent collections must be sorted and unique` → model ordering is now canonicalized on input. Watcher agent finished Phase 4 on its branch (1944 passed). |
-| 12:48 | Phase 1 complete | $1.22 (ceil'd; $0.60 of it estimated) | 6 worker attempts | `mission_start_5291caad…` completed live: receipts, three-clock overlap, bundle-bound delegated approval, isolated result; evidence captured and capsule warm-verified. Next: commit series, merge the watcher branch, Phase 2 failure lab live |
+| 12:12 | Preflight done | $0.00 | 0 | Baseline green (1923 passed, 4 skipped); target materialized; doctor ready (`vertex_ai`); Phase 4 watcher build launched in a worktree (zero-cost) |
+| 12:29 | Phase 1, first live contact | ≤$0.20 (est.) | 0 | Planner-only failures fixed forward: 404 (location must be `global`); no error detail → sanitized detail added; unsorted model output → canonicalized |
+| 12:48 | Phase 1 complete | $1.22 | 6 | `mission_start_5291caad…` completed live; evidence captured; capsule warm-verified |
+| 13:17 | Phase 2, first live kill | $2.0 | 11 | `mission_start_38129f17…`: kill landed, fenced retry accepted, integration task then failed on its own. Two more lab runs followed |
+| 13:45 | Phase 2 stopped | $3.1 | 21 | Four kills, zero post-recovery completions; retry discipline. Phase 3 cold verification of both capsules passed from a fresh clone |
+| 13:56 | Phase 4 merged, demo | $3.5 | 23 | Watcher branch rebased and fast-forwarded; `watch inbox` created live missions from dropped files (`why` begins at the trigger); none completed |
+| 14:10 | Wind-down | $4.3 | 32 | Malformed model replies made retryable; receipts preserved on every rejected output; `docs/DEMO_SCRIPT.md`; Shadow v0 claude-code adapter building in a worktree; final matrix, report, quiesce |
 
-## 1. Commits (oldest first)
+## 1. Commits (oldest first; every one has the full matrix green on its tree or states otherwise)
 
 | Commit | Purpose |
 |---|---|
 | `9a0d1da` | Preflight: `scripts/secret_scan.py` (location-only scanner), preflight doctor evidence, this report |
 | `a29152b` | Receipts: provider-side stamps (`response_id`, server `create_time`, HTTP `Date`) via `StampedGemini`; `provider_reported_timestamps` overlap basis; capture script `--mission` mode |
-| `c101339` | Failure lab: `scripts/failure_lab.py auto` (unattended, identity-checked kill only once a sibling is accepted) + rehearsal test (fake workers, real sandbox-exec) |
+| `c101339` | Failure lab: `scripts/failure_lab.py auto` (unattended, identity-checked kill only once a sibling is accepted) + rehearsal test |
 | `c5589b4` | Live-contact fixes: sanitized planner error detail with token counts; canonicalize model ordering; explicit planner rules; planner token cap 16 384 and timeout 120 s; demo policy `max_attempts` 8 → 16 |
-| _(next)_ | Phase 1 evidence + label flip (same commit) |
+| `fc2dbd8` | **Phase 1 evidence + label flip** (`gemini-adk-planner`, `live_gemini` → `verified_live`; `north_star` → `partially_verified_live`) |
+| `61e2843` | `why` gains the `prior_attempts` stage (the killed attempt, its fence, result code, receipts) |
+| `a3d6a16` | Workers bind the provider receipt even when their output is rejected |
+| `a6aef3d` | Failure-lab poller reopens the store after a transient read error |
+| `e557715` | **Phase 2/3 evidence + label flip** (failure-recovery leg → `partially_verified_live`; capsule → `verified_live_cold`); `scripts/morning_verify.sh` |
+| `6af9587` … `44d9d06` | **Phase 4**: `mission.triggered` event + `store.record_trigger` + `why` trigger stage; `graphene watch inbox` / `watch github` (ETag, backoff, dedupe, fail-closed); 21 fixture tests; README + proof entry (five commits from the worktree agent, rebased, fast-forwarded) |
+| _(next)_ | Malformed model replies retryable (`model_output_rejected`); receipts kept when a mutation is refused at apply time; watcher command id from the trigger digest; trigger-demo evidence; `docs/DEMO_SCRIPT.md`; `demo/north_star/mission.yaml` |
+| _(if it lands)_ | Shadow v0 `claude-code` adapter from the worktree agent (synthetic fixture tests; real-transcript smoke reported as counts only) |
 
-## 2. What is proven / what did not flip
+## 2. What is now proven, with evidence and verify commands
 
-**Flipped (Phase 1 commit):** `mission_paths.gemini-adk-planner.status` and
-`delivery_gates.live_gemini.status` → `verified_live`; `north_star.status` →
-`partially_verified_live`; README rows `Live Gemini` and `North Star`.
+Run from the repo root; the night's store is
+`GRAPHENE_STATE_DIR=$HOME/.graphene/north-star-state` (12 missions, all verify).
+`scripts/morning_verify.sh` runs everything below in order.
 
-Evidence: `evidence/north_star/2026-08-23-north-star-live.md` plus the raw
-sanitized outputs and the capsule under `evidence/north_star/2026-08-23-mission1/`.
-Verify commands (repo root, `GRAPHENE_STATE_DIR=$HOME/.graphene/north-star-state`):
+| Claim | Status | Evidence | Verify |
+|---|---|---|---|
+| Two real Gemini workers, receipts, three-clock overlap, exact verification, bundle-bound approval, isolated result | **`verified_live`** (`mission_start_5291caad50a8ee7a222a9221`; also `…a9d31719`) | `evidence/north_star/2026-08-23-north-star-live.md`, `…/2026-08-23-mission1/` | `graphene --json mission status mission_start_5291caad50a8ee7a222a9221`; `graphene why ledger_service/cli.py --mission …` |
+| Failure laboratory: registry-identified SIGKILL, `-9` receipt, sibling untouched, fenced retry accepted, `why` names the killed attempt | **`partially_verified_live`** (`mission_start_38129f17add65609de1c3388`; kills also on `…d2733149`, `…d96b94c5`, `…c8bb3c46`) | `…/2026-08-23-mission4-failure-lab/` (`kill.json`, event list, `why`) | `graphene why ledger_service/report_markdown.py --mission mission_start_38129f17add65609de1c3388` |
+| Mission completes after a live recovery | **NOT PROVEN live** — rehearsal only | `tests/unit/orchestration/test_failure_laboratory.py` | `uv run --frozen pytest -q tests/unit/orchestration/test_failure_laboratory.py` |
+| Capsule cold-verifies from a clean checkout | **`verified_live_cold`** (both capsules, fresh clone, no store; same laptop) | `cold_verify.json` in both mission directories | `scripts/morning_verify.sh` (clones into a temp dir and verifies) |
+| `graphene watch inbox` / `watch github` create missions with the trigger in lineage; deny-by-default | **`verified_local`** on fixtures; **live**: dropped file → mission → `why` starts at `trigger` (`mission_start_a44dcefd7cd8e79e25690611`) | `tests/unit/cli/test_watch.py`, `…/2026-08-23-trigger-demo/` | `uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py` |
+| Live GitHub polling | **NOT PROVEN** (env-flag gated, never exercised) | — | — |
+| Human-attested (TTY) approval on a live mission | **NOT PROVEN** — every approval tonight was `server_derived`, operator-delegated | every `approve_plan.json` | — |
+| Docker, Cloud Run/Firestore, benchmark, media | unchanged (`not_proven` / `not_deployed`) | — | — |
 
-```bash
-uv run --frozen graphene --json mission db verify                    # verified_missions: 2
-uv run --frozen graphene --json mission status mission_start_5291caad50a8ee7a222a9221
-uv run --frozen graphene why ledger_service/report_json.py --mission mission_start_5291caad50a8ee7a222a9221
-uv run --frozen python -m graphene.orchestration.capsule verify \
-  evidence/north_star/2026-08-23-mission1/mission_start_5291caad50a8ee7a222a9221.graphene-capsule
-shasum -a 256 evidence/north_star/2026-08-23-mission1/mission_start_5291caad50a8ee7a222a9221.graphene-capsule/manifest.json
-#   ef4917194fbdc9f2c98628af83743d60750abee44f81b833a492f6fd7e2404b8
-```
-
-**Did not flip (and why):** human-attested approval on a live mission (no
-TTY tonight — approvals are `server_derived` with the delegation recorded);
-live failure laboratory (Phase 2, pending); cold capsule verification
-(Phase 3, pending); Docker, Cloud Run/Firestore, benchmark, media (out of
-scope tonight). The gated `tests/process/test_gemini_live.py` was not run —
-its budget went to the runbook mission; it stays skipped in the matrix.
+Counts: credential-free matrix on the final tree is stated in the last
+commit message; ruff / compileall / `git diff --check` clean. Secret scan:
+findings only in test fixtures. Recordings: `local/recordings/` (gitignored)
+holds the console logs of every live mission (text, not pty capture — no
+`tmux`/`asciinema` on this machine and `script`(1) was refused by the session
+sandbox).
 
 ## 3. Spend log
 
 Pricing source: Google "Gemini Developer API pricing" page
-(`ai.google.dev/gemini-api/docs/pricing`, last updated 2026-08-13 UTC):
-**Gemini 3.5 Flash, paid tier — $1.50 / 1M input tokens, $9.00 / 1M output
-tokens, thinking tokens billed as output.** Vertex AI per-token pricing for the
-same model is published as identical; the Vertex pricing page itself was not
-machine-readable from this session (it rendered as an empty shell), so the
-AI-Studio figure is the cited rate and the morning check should confirm the
-Cloud Billing report agrees. Cost per attempt is computed from the receipt's
-provider-reported `prompt_tokens` / (`candidate_tokens` + `thought_tokens`)
-and rounded **up** to the cent. Planner calls are billed too and are logged
-the same way.
+(`ai.google.dev/gemini-api/docs/pricing`, updated 2026-08-13): **Gemini 3.5
+Flash, paid tier — $1.50 / 1M input, $9.00 / 1M output, thinking billed as
+output.** Vertex per-token pricing is published as identical; the Vertex
+pricing page itself rendered empty from this session, so confirm in Cloud
+Billing. Costs are computed from each receipt's provider-reported tokens
+(output = candidate + thought) and rounded **up** to the cent; cached input
+tokens are charged at full price here (conservative).
 
-| # | When (UTC) | Mission | Role | Model | Input tok | Output tok (incl. thought) | Cost (ceil) | Running total |
-|---|---|---|---|---|---|---|---|---|
-| p0 | 12:29 | — | planner | gemini-3.5-flash @ us-central1 | 0 | 0 | $0.00 (404, unbilled) | $0.00 |
-| p1 | 12:30 | — | planner (rejected: ordering) | gemini-3.5-flash | ~13k (est.) | ~8k (est.) | $0.10 (est.) | $0.10 |
-| p2 | 12:32 | — | planner (rejected: ordering) | gemini-3.5-flash | ~13k (est.) | ~8k (est.) | $0.10 (est.) | $0.20 |
-| p3 | 12:34 | — | planner (rejected: <2 roots) | gemini-3.5-flash | ~13k (est.) | ~8k (est.) | $0.10 (est.) | $0.30 |
-| p4 | 12:35 | — | planner (plan invalid: budget/write overlap) | gemini-3.5-flash | ~13k (est.) | ~8k (est.) | $0.10 (est.) | $0.40 |
-| p5 | 12:38 | — | planner (json truncated) | gemini-3.5-flash | 13 032 | 8 175 (730 + 7 445) | $0.10 | $0.50 |
-| p6 | 12:39 | `…66e186ce` | planner (accepted) | gemini-3.5-flash | 13 032 (12 190 cached) | 7 343 (898 + 6 445) | $0.09 | $0.59 |
-| w1 | 12:40 | `…66e186ce` | worker-1 `add_report_tests` #1 (check failed) | gemini-3.5-flash | 2 010 | 8 047 | $0.08 | $0.67 |
-| w2 | 12:40 | `…66e186ce` | worker-2 `implement_report_renderers` #1 (passed) | gemini-3.5-flash | 2 468 | 10 031 | $0.10 | $0.77 |
-| w3 | 12:41 | `…66e186ce` | worker-1 `add_report_tests` #2 (check failed) | gemini-3.5-flash | 2 012 | 7 276 | $0.07 | $0.84 |
-| p7 | 12:44 | — | planner (cancelled at 60 s wall time; billed, counts unknown) | gemini-3.5-flash | ~13k (est.) | ~8k (est.) | $0.10 (est.) | $0.94 |
-| p8 | 12:45 | `…5291caad` | planner (accepted) | gemini-3.5-flash | ~13k (est., receipt `artifact_34a4ab2b…`) | ~7k (est.) | $0.10 (est.) | $1.04 |
-| w4 | 12:46 | `…5291caad` | worker-1 `task-json-renderer` #1 | gemini-3.5-flash | 4 327 | 5 277 | $0.05 | $1.09 |
-| w5 | 12:46 | `…5291caad` | worker-2 `task-markdown-renderer` #1 | gemini-3.5-flash | 4 317 | 5 454 | $0.05 | $1.14 |
-| w6 | 12:47 | `…5291caad` | worker-1 `task-cli-integration` #1 | gemini-3.5-flash | 5 448 | 8 214 | $0.08 | $1.22 |
+**Worker attempts with receipts: 32, $2.33** (per-attempt table:
+`local/night/spend_all.ndjson`, reproducible with
+`local/night/spend.py MISSION_ID…`). Two early worker calls have no receipt
+(a rejected reply on `…d2733149` and a refused mutation on `…91df39c0`, both
+before the receipt-preservation fixes): ≈ $0.16 estimated. **Planner calls:
+12 accepted (one per mission) + 6 rejected/cancelled ≈ 18 × ≈$0.10 = $1.80
+estimated** (one measured: 13 032 prompt / 898 + 6 445 output = $0.09).
 
-Estimated rows (planner calls that produced no receipt) are charged at the
-measured p5/p6 size, rounded up; the provider's billing report is the
-authority for those. Worker attempts used: **6 of 12**. Caps: $20 session,
-~$5 per mission. Remaining: ≥ $18.70.
+**Running total ≈ $4.30 (of which ≈ $1.96 estimated).** Caps: $20 session,
+~$5 per mission (max single mission: $0.47). The 12-attempt fallback cap did
+not bind because receipts give exact token counts; 32 attempts were spent.
+Remaining: ≈ $15.70.
+
+| Mission | Role | Outcome | Receipted worker $ |
+|---|---|---|---|
+| `…66e186ce` | Phase 1 attempt | failed (plan split tests from code) | 0.25 |
+| `…5291caad` | **Phase 1** | **completed** | 0.21 |
+| `…bda90a16` | lab try | failed on its own, no kill window | 0.14 |
+| `…a9d31719` | lab try | **completed** (poller blind; not lab evidence) | 0.14 |
+| `…38129f17` | **Phase 2** | kill + fenced retry accepted; integration failed | 0.47 |
+| `…d2733149` | lab | kill; retry `adapter_rejected` | 0.10 (+0.08 est.) |
+| `…d96b94c5` | lab | kill; retry check failed | 0.17 |
+| `…539482aa` | lab | failed before a window | 0.19 |
+| `…c8bb3c46` | lab | kill; retry `adapter_rejected` (receipted) | 0.19 |
+| `…b6c751ae` | trigger demo | failed (reply rejected, terminal then) | 0.10 |
+| `…a44dcefd` | trigger demo | `why` starts at trigger; markdown task failed | 0.21 |
+| `…91df39c0` | trigger demo | failed (refused mutation) | 0.16 (+0.08 est.) |
 
 ## 4. Authority-use log
 
-| When | Action | Mission | Detail |
-|---|---|---|---|
-| 12:46 | `mission approve-plan --revision 1` (operator-delegated) | `mission_start_5291caad50a8ee7a222a9221` | `truth_kind: server_derived`, operator label `night-run-delegate`, rationale cites `AUTHORITY_DIGEST`; ran two live workers ($0.18) |
-| 12:48 | `mission approve-result --bundle-id final_result_e00b5da7…` (operator-delegated) | `mission_start_5291caad50a8ee7a222a9221` | bundle-bound; created isolated local commit `abed9e5f…` in the Graphene-owned result repo; nothing pushed |
-| 12:40 | `mission approve-plan --revision 1` (operator-delegated) | `mission_start_66e186ce9369c149c167a677` | same delegation; mission ended `failed` on its own retry budget (plan flaw), $0.25 |
-| 12:06 | Blanked `GEMINI_API_KEY` in `.env` | — | The one permitted `.env` edit (§2). Blanking does **not** revoke the key server-side — Alex must rotate it himself. Doctor afterwards: `configuration_ready: true`, `credential_mode: vertex_ai` |
+All approvals: `truth_kind: server_derived`, operator label
+`night-run-delegate`, rationale `Operator-delegated approval under Alex's
+standing overnight instruction (night directive v2);
+AUTHORITY_DIGEST=c5b116e7…`. Targets: only materialized copies of
+`demo/north_star` under `$HOME/north-star-target`.
 
-## 5. Blockers and open questions
+| When | Action | Mission |
+|---|---|---|
+| 12:06 | Blanked `GEMINI_API_KEY` in `.env` (the one permitted edit; server-side rotation is still Alex's) | — |
+| 12:40 | `approve-plan --revision 1` | `…66e186ce` (failed on its own) |
+| 12:46 / 12:48 | `approve-plan`; `approve-result --bundle-id final_result_e00b5da7…` → isolated commit `abed9e5f…`, `pushed: false` | `…5291caad` |
+| 13:00 | `approve-plan` | `…bda90a16` |
+| 13:03 / 13:04 | `approve-plan`; `approve-result --bundle-id final_result_d9e15cfd…` → isolated commit, `pushed: false` | `…a9d31719` |
+| 13:14 | `approve-plan`; **`failure_lab.py auto` SIGKILL** of attempt `attempt_8373ffbe…` (pid 47009) at 13:15:32Z | `…38129f17` |
+| 13:33, 13:38, 13:44 | `approve-plan`; SIGKILLs at 13:34:06Z, 13:38:32Z, 13:44:47Z | `…d2733149`, `…d96b94c5`, `…c8bb3c46` |
+| 13:40 | `approve-plan` (no kill opportunity) | `…539482aa` |
+| 13:58, 14:01, 14:04 | `watch inbox --once` created the mission (creation only); then `approve-plan` | `…b6c751ae`, `…a44dcefd`, `…91df39c0` |
+| 13:2x | Killed my own stuck poller process (not Graphene-owned) once, before the reopen fix | — |
 
-- **Directive location discrepancy.** The directive says it lives at
-  `local/GRAPHENE_NIGHT_RUN_DIRECTIVE.md`; it was handed over as the untracked
-  file `docs/GRAPHENE_NIGHT_RUN_DIRECTIVE (1).md`. A byte-identical copy was
-  placed at the `local/` path (same digest); the `docs/` copy is left alone and
-  is never staged. Recommended default: delete the `docs/` copy after review so
-  it cannot be committed by accident.
-- **`GRAPHENE_ULTRA_DIRECTIVE.md` is absent** from the repo and `local/`. Its
-  Shadow v0 / demo-target specifications are therefore taken from the runbook,
-  `docs/SHADOW_ADAPTER_SPEC.md`, and the current code, which the directive
-  ranks above it anyway.
-- **No `tmux` / `asciinema` on this machine.** `caffeinate -dims` runs as a
-  detached background process for the whole session; terminal recordings use
-  `script`(1). Installing tmux was not necessary and was not done.
-- **Vertex location.** `gemini-3.5-flash` is served to this project only via
-  `GOOGLE_CLOUD_LOCATION=global` (us-central1/us-east4/us-east5 → 404, checked
-  with free `count_tokens` calls). `.env` still says `us-central1`; the
-  gitignored loader overrides it. Recommended default: set `global` in `.env`
-  yourself and note it in `docs/ALEX_CLOUD_SETUP.md`. `graphene doctor`
-  reported `configuration_ready: true` because it never probes the provider —
-  a `doctor --probe` that makes one free `count_tokens` call would have
-  caught this before any spend (not built tonight; zero-cost follow-up).
-- **Minor exposure.** The SDK's 404 message embedded the GCP project id in a
-  traceback that landed in `local/recordings/` and this session's transcript.
-  It is a project id, not a credential, and it already appears in the
-  directive; no committed file contains it (checked by grep before every
-  evidence commit).
-- **Runbook discrepancies found by running it:** (a) 3.3 says `result show`
-  prints the bundle id — it does not; `graphene bundle create MISSION_ID
-  --output FILE` registers and prints it (the tested path); (b) 1.2 says
-  `git status --porcelain` must print nothing after materializing — it prints
-  `?? .graphene/` because the materializer writes the policy after the base
-  commit; (c) `mission start` is idempotent on its arguments, so a re-run after
-  a failed mission returns the failed mission — pass `--command-id` to start a
-  fresh one; (d) the directive's Phase 2 wording "heartbeat loss → lease
-  expiry" describes the scripted path; on the gemini-adk path the runbook's
-  wording holds (check dies with exit -9 → `acceptance_check_failed` → lease
-  released `failed` → retry under a higher fence).
-- **Cosmetic wart:** `graphene why` prints `UNKNOWN The model-proposed plan
-  awaits operator review.` on completed missions because the creation-time
-  unknown is never cleared after `plan.approved`. Not a chain gap.
-- **`.env` is not auto-loaded by Graphene.** Live commands source a gitignored
-  loader (`local/night_env.sh`) that exports only the three Vertex values plus
-  the run gates; nothing prints values.
+No push, no remote change, no `.env` edit beyond the blanking, no mission
+outside the demo target, no `--confirm-human` (no TTY — and claiming it would
+have been a lie).
+
+## 5. Blockers, findings, and open questions (each with a recommended default)
+
+- **Model quality is the ceiling, not Graphene.** 2 of 12 live missions
+  completed; the rest failed on the markdown-report task (check failures,
+  malformed replies, an out-of-lease mutation). Graphene behaved correctly
+  every time (fail closed, retry once under a higher fence, never fabricate).
+  Defaults: (a) keep `retry_limit 1` for the lab; (b) for video captures,
+  consider `retry_limit 2` in `demo/north_star/policy.template.json`
+  (budget 16 covers 5 tasks × 3) or a slightly easier markdown criterion;
+  (c) a real feature: feed the retry the previous attempt's check summary.
+- **Vertex location.** `gemini-3.5-flash` is served only via
+  `GOOGLE_CLOUD_LOCATION=global` for this project. `.env` still says
+  `us-central1`; the gitignored loader overrides it. Default: set `global`
+  in `.env` and in `docs/ALEX_CLOUD_SETUP.md`. `graphene doctor` reported
+  ready without probing; a `doctor --probe` (one free `count_tokens`) is a
+  cheap follow-up.
+- **Cross-database read race (real).** A concurrent reader can see an
+  attempt row before its evidence artifact exists (they live in two SQLite
+  files), tripping the sticky read quarantine. The poller now reopens; the
+  writer-side fix (write evidence before the row, or one file) is for later.
+- **Runbook discrepancies found by running it:** `result show` does not
+  print the bundle id (`bundle create` does); `git status` shows the
+  materializer's own `.graphene/`; `mission start` is idempotent on its
+  arguments (use `--command-id` for a re-run; the watcher now derives it
+  from the trigger digest); the directive's "heartbeat loss → lease expiry"
+  wording describes the scripted path — on `gemini-adk` the check dies with
+  `-9`, the attempt fails, the lease is released `failed`, the retry is
+  dispatched (runbook wording holds).
+- **Cosmetic wart:** `why` prints `UNKNOWN The model-proposed plan awaits
+  operator review.` on completed missions (creation-time unknown never
+  cleared). Default: clear it on `plan.approved`.
+- **Directive/location discrepancies:** the directive was handed over as
+  `docs/GRAPHENE_NIGHT_RUN_DIRECTIVE (1).md` (untracked; a byte-identical
+  copy sits at `local/`); delete the `docs/` copy after review. No
+  `GRAPHENE_ULTRA_DIRECTIVE.md` exists anywhere. No `tmux`/`asciinema`;
+  `script`(1) was refused by the session sandbox, so recordings are console
+  logs. `.env` is not auto-loaded; live commands sourced `local/night_env.sh`.
+- **Minor exposure:** the SDK's 404 message embedded the GCP project id in a
+  traceback that reached `local/recordings/` and this session's transcript.
+  It is a project id (already in the directive), not a credential; no
+  committed file contains it (grep-checked before every evidence commit).
+- **Gated pytest** (`tests/process/test_gemini_live.py`) was not run; its
+  budget went to the runbook missions. It remains skipped in the matrix.
 
 ## 6. Morning checklist for Alex
 
-1. Rotate `GEMINI_API_KEY` server-side (Google AI Studio) — blanking the local
-   file does not revoke it.
-2. `git log --oneline origin/main..main` and review commits in order.
-3. `scripts/morning_verify.sh` (lands later tonight) — one command re-runs the
-   night's verification.
-4. `git remote -v` must equal the preflight snapshot below; `HEAD` is simply
-   ahead of `origin/main`.
-5. Push when satisfied. Nothing was pushed tonight.
+1. **Rotate `GEMINI_API_KEY` server-side** (Google AI Studio). The local
+   blanking does not revoke it.
+2. `git log --oneline origin/main..main` — review commits in the order of §1.
+3. `scripts/morning_verify.sh` (≈ 7 min; `--quick` skips the matrix). It
+   ends with `MORNING VERIFY: ALL PASS` and the proof table.
+4. `git remote -v` must equal the preflight snapshot below; `git status`
+   should show only the untracked `.claude/`, `.vscode/`, and the
+   `docs/…DIRECTIVE (1).md` copy.
+5. Set `GOOGLE_CLOUD_LOCATION=global` in `.env` (see §5).
+6. Push when satisfied. Nothing was pushed tonight.
+7. The day: film per `docs/DEMO_SCRIPT.md` (beats that need a real TTY or a
+   completed laboratory mission are marked RE-CAPTURE); cloud consoles
+   (Vertex request metrics + Cloud Billing for 12:29–14:10 UTC confirm the
+   receipts); decide on `retry_limit 2` for captures.
 
 ### Preflight integrity snapshot
 
@@ -168,24 +212,17 @@ HEAD    11251c932f00c07ed4c6198380976463cb5587d7   (origin/main was e1e580d7, on
 ### Preflight facts
 
 - Baseline on `11251c9`: `uv lock --check` ok; `uv sync --frozen` 73 resolved /
-  69 checked; `pytest tests/unit tests/integration tests/process
-  tests/adversarial --ignore=tests/process/test_mcp_stdio.py` → **1923 passed,
-  4 skipped** (the four opt-in gates) in 316 s; `ruff check .` clean;
-  `compileall` ok; `git diff --check` clean. No baseline repair was needed.
-- Secret scan (`scripts/secret_scan.py --commits 30 --include-untracked`):
-  20 findings, all of them deliberately fake secrets inside redaction test
-  fixtures under `tests/` (and the same lines in their introducing commits);
-  none in source, docs, contracts, or evidence. `.env` and `local/` are
+  69 checked; full credential-free matrix **1923 passed, 4 skipped** in
+  316 s; `ruff check .` clean; `compileall` ok; `git diff --check` clean.
+- Secret scan: 20 findings, all deliberately fake secrets inside redaction
+  test fixtures under `tests/`; none elsewhere. `.env` and `local/` are
   gitignored (`git check-ignore` confirmed).
 - Capture-script review: `scripts/capture_north_star_evidence.py` ingests no
-  repository files at all — it builds its own fixture repo and writes only
-  identifiers, digests, and counts. It cannot include `.env`, `local/`, or
-  credential paths. No change needed.
-- Demo target: materialized at `~/north-star-target` from
-  `demo/north_star`; policy `policy_0fe143f50ccfeb433952e23c`; target suite
-  `52 passed`.
+  repository files; it cannot include `.env`, `local/`, or credential paths.
+- Demo target: `demo/north_star` materialized at `~/north-star-target`
+  (policy `policy_0fe143f50ccfeb433952e23c`, suite `52 passed`), re-materialized
+  once after the attempt-budget fix (base `15c3ad52…`).
 - Doctor (`evidence/north_star/2026-08-23-doctor-preflight.json`):
-  `gemini_preflight.configuration_ready: true`, `modes.gemini-adk.credential_mode:
-  vertex_ai`, `check_executor.requested: host-sandbox, supported: true`,
-  `policy.status: usable`, `platform_isolation.status: usable`. The JSON
-  contains no project id, path, or credential.
+  `configuration_ready: true`, `credential_mode: vertex_ai`,
+  `check_executor: host-sandbox supported`, `policy: usable`; no project id,
+  path, or credential in the JSON.

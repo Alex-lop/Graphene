@@ -1,0 +1,13 @@
+# Drop this file into a `graphene watch inbox --dir DIR` folder to start the
+# North Star mission from a trigger. Edit `repo` to the absolute path of a
+# target materialized by scripts/materialize_north_star.py. The watcher can
+# only create the mission; plan approval stays with the operator.
+goal: "Add a redacted JSON status report and a Markdown status report to the ledger CLI; both must pass the existing suite plus new tests."
+repo: "/ABSOLUTE/PATH/TO/north-star-target"
+driver: gemini-adk
+max_workers: 2
+success_criteria:
+  - "Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy."
+  - "Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells."
+  - "The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider."
+  - "No file outside ledger_service/ and tests/ is created or modified."
