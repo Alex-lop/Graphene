@@ -23,7 +23,9 @@ graphene = "graphene.cli.main:main"
 graphene-mcp = "graphene.integrations.stdio:main"
 
 [dependency-groups]
-dev = ["pytest>=8,<10"]
+# Pinned, not floating: scripts/morning_verify.sh and CI both run these, and a
+# claim that only reproduces on a machine with an ambient linter is not a claim.
+dev = ["pytest>=8,<10", "pytest-timeout==2.4.0", "ruff==0.12.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/graphene"]
@@ -35,6 +37,10 @@ packages = ["backend/graphene"]
 exclude = ["/.claude", "/All_md_Files"]
 
 [tool.pytest.ini_options]
+# faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic;
+# pytest-timeout kills the test at 600s so one hang cannot eat a whole CI job.
 addopts = "-ra"
+faulthandler_timeout = 180
+timeout = 600
 pythonpath = ["backend", "."]
 testpaths = ["tests"]

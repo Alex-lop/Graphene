@@ -16,23 +16,27 @@ fail=0
 step() { printf '\n== %s\n' "$1"; }
 ok()   { printf 'PASS %s\n' "$1"; }
 bad()  { printf 'FAIL %s\n' "$1"; fail=1; }
+# Never swallow a step: on failure the captured output is printed, so a FAIL
+# always arrives with its diagnostic. That is the whole point of this script.
+run() { local label=$1; shift; local out; if out=$("$@" 2>&1); then ok "$label"; else
+  printf 'FAIL %s\n--- output of: %s\n%s\n--- end output\n' "$label" "$*" "$out"; fail=1; fi; }
 
 step "locked environment"
-uv lock --check >/dev/null 2>&1 && uv sync --frozen >/dev/null 2>&1 && ok "uv lock --check && uv sync --frozen" || bad "uv lock/sync"
+run "uv lock --check" uv lock --check
+run "uv sync --frozen" uv sync --frozen
 
+# pytest already exits non-zero on failure; run() prints the whole run when it does.
 if [ "$QUICK" = 0 ]; then
   step "full credential-free matrix (~5 min)"
-  out=$(uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial \
-        --ignore=tests/process/test_mcp_stdio.py -p no:cacheprovider 2>&1 | tail -1)
-  echo "$out"; echo "$out" | grep -q " passed" && ! echo "$out" | grep -q "failed" && ok "matrix" || bad "matrix"
+  run "matrix" uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial \
+        --ignore=tests/process/test_mcp_stdio.py -p no:cacheprovider
   step "MCP STDIO process tests"
-  out=$(uv run --frozen pytest -q tests/process/test_mcp_stdio.py -p no:cacheprovider 2>&1 | tail -1)
-  echo "$out"; echo "$out" | grep -q " passed" && ! echo "$out" | grep -q "failed" && ok "mcp" || bad "mcp"
+  run "mcp" uv run --frozen pytest -q tests/process/test_mcp_stdio.py -p no:cacheprovider
 fi
 
 step "ruff / compileall / git diff --check"
-uv run --frozen ruff check . >/dev/null 2>&1 && ok "ruff" || bad "ruff"
-uv run --frozen python -m compileall -q backend scripts tests >/dev/null 2>&1 && ok "compileall" || bad "compileall"
+run "ruff (locked)" uv run --frozen ruff check .
+run "compileall" uv run --frozen python -m compileall -q backend scripts tests
 git diff --check && ok "git diff --check" || bad "git diff --check"
 
 step "secret scan (locations + pattern names only; tests/ fixtures are expected)"
@@ -56,7 +60,8 @@ fi
 
 step "capsule cold-verify from a fresh clone (temp dir, no mission store)"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-git clone -q "$PWD" "$tmp/clone" && (cd "$tmp/clone" && uv sync --frozen >/dev/null 2>&1) || bad "clone/sync"
+git clone -q "$PWD" "$tmp/clone" || bad "clone"
+(cd "$tmp/clone" && run "fresh clone uv sync --frozen" uv sync --frozen) || fail=1
 for c in evidence/north_star/2026-08-23-mission1/mission_start_5291caad50a8ee7a222a9221.graphene-capsule \
          evidence/north_star/2026-08-23-mission4-failure-lab/mission_start_38129f17add65609de1c3388.graphene-capsule; do
   v=$(cd "$tmp/clone" && env -u GRAPHENE_STATE_DIR uv run --frozen python -m graphene.orchestration.capsule verify "$c" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["verified"], d["mission_id"])')
@@ -66,8 +71,7 @@ done
 
 step "watcher tests (inbox + GitHub poller, no network)"
 if [ -f tests/unit/cli/test_watch.py ]; then
-  out=$(uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py -p no:cacheprovider 2>&1 | tail -1)
-  echo "$out"; echo "$out" | grep -q " passed" && ! echo "$out" | grep -q "failed" && ok "watcher tests" || bad "watcher tests"
+  run "watcher tests" uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py -p no:cacheprovider
 else
   bad "tests/unit/cli/test_watch.py missing"
 fi

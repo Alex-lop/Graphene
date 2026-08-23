@@ -26,6 +26,8 @@ jobs:
           uv sync --frozen
       - name: Require the supported host sandbox
         run: test -x /usr/bin/sandbox-exec
+      - name: Lint with the locked ruff
+        run: uv run --frozen ruff check .
       - name: Unit, integration, process, and adversarial tests
         run: >-
           uv run --frozen pytest -q

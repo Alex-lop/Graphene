@@ -15,6 +15,7 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert workflow.count("uv sync --frozen") == 3
     assert "runs-on: macos-15" in workflow
     assert "test -x /usr/bin/sandbox-exec" in workflow
+    assert "uv run --frozen ruff check ." in workflow
     assert "tests/unit tests/integration tests/process tests/adversarial" in workflow
     assert "--ignore=tests/process/test_mcp_stdio.py" in workflow
     assert "pytest -q tests/process/test_mcp_stdio.py" in workflow
@@ -46,3 +47,26 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "id-token: write" not in workflow
     assert "gcloud" not in workflow
     assert " deploy" not in workflow.lower()
+
+
+def test_the_lint_and_hang_guards_are_locked_not_ambient() -> None:
+    """A claim that only reproduces where a linter happens to be installed is not a claim.
+
+    scripts/morning_verify.sh and CI both run ``uv run --frozen ruff check .``;
+    ``uv run`` falls through to PATH for binaries missing from the environment,
+    so the pin is what makes the PASS mean anything.
+    """
+    project = (ROOT / "pyproject.toml").read_text()
+    lock = (ROOT / "uv.lock").read_text()
+    verify = (ROOT / "scripts/morning_verify.sh").read_text()
+
+    assert '"ruff==0.12.0"' in project
+    assert '"pytest-timeout==2.4.0"' in project
+    assert 'name = "ruff"' in lock
+    assert 'name = "pytest-timeout"' in lock
+    assert "faulthandler_timeout = 180" in project
+    assert "timeout = 600" in project
+
+    # Every step reports its own failure output instead of hiding it in /dev/null.
+    assert "uv run --frozen ruff check ." in verify
+    assert ">/dev/null 2>&1" not in verify
