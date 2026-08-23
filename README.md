@@ -33,7 +33,7 @@ uv run --frozen graphene mission start \
   --driver gemini-adk
 ```
 
-The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG, and can run two to five bounded ADK workers after exact plan approval. Credential-free tests exercise the same orchestration with deterministic fake models, isolated workspaces, concurrent siblings, trusted checks, accepted-only fan-in, exact verification, and an unchanged source checkout. No credentialed provider mission or returned live worker receipt was captured, so Gemini remains **NOT PROVEN**. Missing credentials fail closed with no silent fallback.
+The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG, and can run two to five bounded ADK workers after exact plan approval. Credential-free tests exercise the same orchestration with deterministic fake models, isolated workspaces, concurrent siblings, trusted checks, accepted-only fan-in, exact verification, and an unchanged source checkout. One credentialed live run of `tests/process/test_gemini_live.py` has passed, returning real worker receipts, but its evidence lived in a temporary directory that was not persisted, so no mission ID or receipt digest is on record and Gemini remains **NOT PROVEN**. Missing credentials fail closed with no silent fallback. See [`docs/NORTH_STAR_RUNBOOK.md`](docs/NORTH_STAR_RUNBOOK.md) for the live-contact schema fix and the free-tier daily quota limit this run surfaced.
 
 ## Product loop
 
