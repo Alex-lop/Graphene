@@ -78,6 +78,15 @@ def collapse_home(path: str, home: Path | None = None) -> str:
     return path
 
 
+def collapse_home_in_text(text: str, home: Path | None = None) -> str:
+    """Replace every whole-component occurrence of the home directory with `~`."""
+
+    base = (Path.home() if home is None else home).as_posix().rstrip("/")
+    if not base:
+        return text
+    return re.sub(re.escape(base) + r"(?![^/\s'\"`)\]])", "~", text)
+
+
 def normalize_relative(path: str) -> str | None:
     """Canonical repository-relative POSIX path, or None when not expressible."""
 
@@ -150,6 +159,7 @@ __all__ = [
     "bounded_excerpt",
     "classify_path",
     "collapse_home",
+    "collapse_home_in_text",
     "normalize_relative",
     "redact_text",
 ]

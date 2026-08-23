@@ -219,6 +219,8 @@ def ingest_file(
         "has_source_claims": parsed.has_claims,
         "heuristics": {"claims": CLAIMS_MATCHER},
     }
+    if parsed.skipped:
+        summary["skipped_records"] = dict(parsed.skipped)
     shadow_id, created = store.ingest(
         events,
         adapter=adapter.name,

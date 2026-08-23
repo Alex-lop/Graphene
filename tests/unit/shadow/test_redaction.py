@@ -13,6 +13,7 @@ from graphene.shadow.redaction import (
     bounded_excerpt,
     classify_path,
     collapse_home,
+    collapse_home_in_text,
     normalize_relative,
     redact_text,
 )
@@ -170,6 +171,17 @@ def test_collapse_home_replaces_only_the_exact_prefix() -> None:
     assert collapse_home("/Users/alexander/file.py", home) == "/Users/alexander/file.py"
     assert collapse_home("/tmp/file.py", home) == "/tmp/file.py"
     assert collapse_home("/Users/alex/", Path("/Users/alex/")) == "~/"
+
+
+def test_collapse_home_in_text_replaces_whole_components_only() -> None:
+    home = Path("/Users/alex")
+    text = "cd /Users/alex/proj && cat /Users/alexander/x '/Users/alex' /Users/alex"
+    assert collapse_home_in_text(text, home) == (
+        "cd ~/proj && cat /Users/alexander/x '~' ~"
+    )
+    assert collapse_home_in_text("/Users/alex.bak", home) == "/Users/alex.bak"
+    assert collapse_home_in_text("nothing here", home) == "nothing here"
+    assert collapse_home_in_text("/etc/passwd", Path("/")) == "/etc/passwd"
 
 
 def test_collapse_home_with_root_home_is_a_no_op() -> None:

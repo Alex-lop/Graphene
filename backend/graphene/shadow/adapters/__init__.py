@@ -48,6 +48,10 @@ class ParsedSession(NamedTuple):
     unknown_count: int
     adapter: str
     adapter_version: str
+    # Source records the adapter recognized as carrying no event (session
+    # bookkeeping, hidden reasoning), counted by type so nothing is dropped
+    # silently; empty for formats whose every record is an event.
+    skipped: tuple[tuple[str, int], ...] = ()
 
 
 class Adapter(Protocol):
@@ -131,9 +135,19 @@ def materialize(session_id: str, drafts: Sequence[Draft]) -> tuple[ShadowEvent, 
                 **fields,
             )
         except ValueError as error:
-            raise AdapterError(f"draft {index}: {validation_message(error)}") from error
+            raise AdapterError(
+                f"draft {index}: {validation_message(error)}{_locator(fields)}"
+            ) from error
         events.append(event)
     return tuple(events)
+
+
+def _locator(fields: Mapping[str, object]) -> str:
+    """`` (at line:N)`` from the draft's source record_ref, or empty."""
+
+    source = fields.get("source")
+    record_ref = source.get("record_ref") if isinstance(source, Mapping) else None
+    return f" (at {record_ref})" if isinstance(record_ref, str) and record_ref else ""
 
 
 def _builtin_adapters() -> dict[str, Adapter]:

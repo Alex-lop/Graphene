@@ -110,7 +110,9 @@ def _decode(data: bytes) -> list[str]:
     return lines
 
 
-def _record(line_number: int, line: str) -> dict[str, object]:
+def _record(
+    line_number: int, line: str, *, max_nesting: int = MAX_NESTING
+) -> dict[str, object]:
     if line.endswith("\r"):
         raise AdapterError(f"line {line_number}: CR line ending")
     if "\r" in line:
@@ -127,10 +129,10 @@ def _record(line_number: int, line: str) -> dict[str, object]:
         raise AdapterError(f"line {line_number}: invalid JSON ({error})") from error
     if not isinstance(value, dict):
         raise AdapterError(f"line {line_number}: record is not a JSON object")
-    if _nesting(value) > MAX_NESTING:
+    if _nesting(value) > max_nesting:
         raise AdapterError(
             f"line {line_number}: record nests containers deeper than "
-            f"{MAX_NESTING} levels"
+            f"{max_nesting} levels"
         )
     return value
 
