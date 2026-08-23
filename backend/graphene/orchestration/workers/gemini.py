@@ -425,11 +425,33 @@ class GeminiWorkerAdapter:
             != _canonical_model(self.requested_model)
         ):
             raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED)
+        raw_output = "".join(output).strip()
+        receipt = self._receipt(
+            observation,
+            stamped,
+            stamps_before,
+            payload=payload,
+            raw_output=raw_output,
+            started=started,
+            call_started_at=call_started_at,
+            call_ended_at=call_ended_at,
+        )
+
+        def rejected(code: RuntimeErrorCode) -> WorkerCompletion:
+            # The call was made and billed; its receipt is bound to the
+            # failed attempt so spend and provider identity stay auditable.
+            return WorkerCompletion(
+                outcome=CompletionOutcome.TERMINAL_FAILURE,
+                result_code=code.value,
+                session_id=session.id,
+                invocation_id=next(iter(observation.invocation_ids)),
+                provider=receipt,
+            )
+
         try:
-            raw_output = "".join(output).strip()
             intent = WorkerIntent.model_validate_json(raw_output)
-        except ValueError as error:
-            raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED) from error
+        except ValueError:
+            return rejected(RuntimeErrorCode.ADAPTER_REJECTED)
         touched_paths = tuple(
             sorted(
                 {
@@ -441,7 +463,7 @@ class GeminiWorkerAdapter:
             )
         )
         if touched_paths != context.dispatch.write_paths:
-            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+            return rejected(RuntimeErrorCode.POLICY_REJECTED)
         for index, mutation in enumerate(intent.mutations):
             await context.apply_file_mutation(
                 index,
@@ -451,6 +473,26 @@ class GeminiWorkerAdapter:
                 new_path=mutation.new_path,
                 mode=mutation.mode,
             )
+        return WorkerCompletion(
+            outcome=CompletionOutcome.COMPLETED,
+            result_code="passed",
+            session_id=session.id,
+            invocation_id=next(iter(observation.invocation_ids)),
+            provider=receipt,
+        )
+
+    def _receipt(
+        self,
+        observation: _Observation,
+        stamped: StampedGemini | None,
+        stamps_before: int,
+        *,
+        payload: str,
+        raw_output: str,
+        started: float,
+        call_started_at: datetime,
+        call_ended_at: datetime,
+    ) -> WorkerProviderReceipt:
         usage = observation.usage
         usage_values = (
             None
@@ -472,33 +514,28 @@ class GeminiWorkerAdapter:
         # client recorded one, is the provider's own account of that call.
         new_stamps = stamped.stamps[stamps_before:] if stamped is not None else ()
         stamp = new_stamps[0] if len(new_stamps) == 1 else ProviderStamp()
-        return WorkerCompletion(
-            outcome=CompletionOutcome.COMPLETED,
-            result_code="passed",
-            session_id=session.id,
-            invocation_id=next(iter(observation.invocation_ids)),
-            provider=WorkerProviderReceipt(
-                driver=self.driver,
-                client_version=version("google-genai"),
-                requested_model=self.requested_model,
-                returned_model=_canonical_model(next(iter(observation.models))),
-                credential_mode=self.credential_mode,
-                input_bytes=len(payload.encode("utf-8")),
-                output_bytes=len(raw_output.encode("utf-8")),
-                latency_ms=min(300_000, int((time.monotonic() - started) * 1_000)),
-                call_started_at=format_provider_call_timestamp(call_started_at),
-                call_ended_at=format_provider_call_timestamp(call_ended_at),
-                provider_response_id=stamp.response_id,
-                provider_create_time=stamp.create_time,
-                provider_response_date=stamp.response_date,
-                usage_source="provider_reported" if reported else "unavailable",
-                prompt_tokens=counts[0],
-                candidate_tokens=counts[1],
-                thought_tokens=counts[2],
-                tool_tokens=counts[3],
-                cached_tokens=counts[4],
-                total_tokens=counts[5],
-            ),
+        return WorkerProviderReceipt(
+            driver=self.driver,
+            client_version=version("google-genai"),
+            requested_model=self.requested_model,
+            returned_model=_canonical_model(next(iter(observation.models))),
+            credential_mode=self.credential_mode,
+            input_bytes=len(payload.encode("utf-8")),
+            # An empty reply is still a billed call; the receipt floor is 1.
+            output_bytes=max(1, len(raw_output.encode("utf-8"))),
+            latency_ms=min(300_000, int((time.monotonic() - started) * 1_000)),
+            call_started_at=format_provider_call_timestamp(call_started_at),
+            call_ended_at=format_provider_call_timestamp(call_ended_at),
+            provider_response_id=stamp.response_id,
+            provider_create_time=stamp.create_time,
+            provider_response_date=stamp.response_date,
+            usage_source="provider_reported" if reported else "unavailable",
+            prompt_tokens=counts[0],
+            candidate_tokens=counts[1],
+            thought_tokens=counts[2],
+            tool_tokens=counts[3],
+            cached_tokens=counts[4],
+            total_tokens=counts[5],
         )
 
 

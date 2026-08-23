@@ -242,3 +242,62 @@ def test_receipt_without_stamps_serializes_byte_identically_to_before() -> None:
         "2026-08-23T12:00:05.000Z",
     ).model_dump(mode="json")
     assert stamped["provider_create_time"] == "2026-08-23T12:00:00.250Z"
+
+
+def test_rejected_worker_output_still_binds_its_provider_receipt(
+    tmp_path, monkeypatch
+) -> None:
+    """A billed call whose output fails validation must not vanish from evidence."""
+
+    from graphene.cli import mission as mission_cli
+    from graphene.orchestration.models import AttemptState, TaskKind
+    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+    from graphene.orchestration.workers import FileMutation
+    from tests.unit.orchestration.test_gemini_mission_runtime import (
+        prepare_fake_two_worker_mission,
+        quiet_resource_sampler,
+    )
+
+    prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
+    # Worker B answers with a mutation outside its leased write path.
+    prepared.model_b.bind(
+        (
+            FileMutation(
+                operation="create",
+                path=".graphene/generated/elsewhere.txt",
+                text="nope\n",
+                mode="100644",
+            ),
+        )
+    )
+    # policy_rejected is terminal, so the mission fails closed; the evidence
+    # of the billed call must still be bound to the failed attempt.
+    with pytest.raises(mission_cli.MissionCliError, match="failed closed"):
+        mission_cli._execute_adk_mission(
+            store=prepared.store,
+            mission_id=prepared.mission_id,
+            registry=prepared.registry,
+            resource_sampler=quiet_resource_sampler,
+        )
+    snapshot = prepared.store.snapshot(prepared.mission_id)
+    kinds = {task.task_id: task.kind for task in snapshot.tasks}
+    rejected = [
+        attempt
+        for attempt in snapshot.attempts
+        if kinds[attempt.task_id] == TaskKind.WORK
+        and attempt.result_code == "policy_rejected"
+    ]
+    assert rejected, "worker B's out-of-lease mutation must be rejected"
+    evidence = mission_cli._mission_evidence(prepared.store, prepared.mission_id)
+    for attempt in rejected:
+        assert attempt.state == AttemptState.FAILED
+        receipts = [
+            item
+            for item in attempt.evidence_refs
+            if item.kind == WORKER_PROVIDER_RECEIPT_KIND
+        ]
+        assert len(receipts) == 1
+        content = evidence.resolve(receipts[0].kind, receipts[0].id)
+        assert content is not None
+        receipt = WorkerProviderReceipt.model_validate_json(content)
+        assert receipt.driver == "adk_fake" and receipt.output_bytes >= 1
