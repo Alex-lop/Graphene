@@ -1,7 +1,36 @@
 # North Star runbook
 
-Status: **NOT RUN — NOT PROVEN**. This is the exact, ordered sequence for the one
-credentialed session that turns the North Star sentence into evidence:
+Status (2026-08-23): **RUN LIVE — sections 1–3 and 5 proven, section 4
+partially.** The evidence, what flipped, and what did not are in
+[`evidence/north_star/2026-08-23-north-star-live.md`](../evidence/north_star/2026-08-23-north-star-live.md)
+and `NIGHT_REPORT.md`. Running it surfaced these corrections to the text
+below, which is otherwise kept as the procedure:
+
+- Vertex AI serves `gemini-3.5-flash` to this project only with
+  `GOOGLE_CLOUD_LOCATION=global` (the regional endpoints return 404); the
+  Vertex checklist in 0.2 is therefore `GOOGLE_GENAI_USE_VERTEXAI=true`,
+  `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION=global`, valid ADC.
+- 3.3: `mission result show` does not print the bundle id; the pending
+  `FinalResultBundleV2` is registered and printed by
+  `graphene --json bundle create MISSION_ID --output FILE`, whose `bundle_id`
+  feeds `approve-result --bundle-id`.
+- 1.2: `git status --porcelain` shows the materializer's own untracked
+  `.graphene/`; "untouched" means HEAD still equals the base commit and no
+  other status line appears.
+- `mission start` is idempotent on goal, criteria, and repository; to run the
+  same goal again pass `--command-id` (the capture driver used
+  `night_run_<dir>_<timestamp>`), or drop a file on `graphene watch inbox`,
+  which derives the id from the file's digest.
+- The planner needs the explicit rules it now carries (two independent
+  roots, no shared `write_paths`, each task passes the suite alone) and the
+  demo policy needs `max_attempts` 16; without them the first live plans were
+  rejected or could not cover their attempt budget.
+- Approvals in an unattended session are `server_derived` with an operator
+  label and rationale; `--confirm-human` needs a real TTY and has **not**
+  been exercised live.
+
+This is the exact, ordered sequence for the credentialed session that turns
+the North Star sentence into evidence:
 
 > Graphene coordinates two real Gemini coding workers, survives one of them
 > failing, and proves exactly why the final repository result should be trusted.

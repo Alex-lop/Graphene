@@ -124,3 +124,26 @@ This update is recorded on top of the verified source commit above; it does not 
 Matrix on the series head: Python unit/integration/process/adversarial excluding MCP **1923 passed, 4 skipped** (the four opt-in gates), MCP STDIO **6 passed**, frontend **39 passed**, ruff/compileall/`git diff --check` clean. Run: `uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial --ignore=tests/process/test_mcp_stdio.py`.
 
 Owner actions still required, in order: Gemini credentials plus `GRAPHENE_RUN_LIVE_GEMINI=1`; a check executor (`GRAPHENE_CHECK_EXECUTOR=host-sandbox` on macOS, or a responsive Docker daemon with the built image); a real Claude Code transcript at `local/shadow/claude-code-session-raw.jsonl` with `SOURCE.txt`; the Google Cloud project decisions in [the cloud proof plan](CLOUD_PROOF_PLAN.md). The exact sequence is in [the North Star runbook](NORTH_STAR_RUNBOOK.md). No truth label flips in this update.
+
+## 2026-08-23 update: the live North Star run, the failure laboratory, and `graphene watch`
+
+Commit range: `9a0d1da` (preflight) through the series head recorded in
+`NIGHT_REPORT.md`. Full detail, spend, and authority use are in that report;
+the evidence lives under `evidence/north_star/`.
+
+| Area | Implemented | Current proof boundary |
+|---|---|---|
+| Live Gemini | Two complete two-worker missions on Vertex AI (`gemini-3.5-flash`, location `global`) with evidence-bound receipts, overlap on three clocks (store, runtime-stamped call, provider's own `create_time`→`Date`), exact verification, bundle-bound approval, isolated result | **`verified_live`**; approvals were operator-delegated (`server_derived`), so human attestation on a live mission stays **NOT PROVEN** |
+| Receipts | Provider-side stamps (`response_id`, server `create_time`, HTTP `Date`) via `StampedGemini`; receipts bound even when the reply is rejected or a mutation is refused; `model_output_rejected` is a bounded retryable failure | Live receipts carry all three stamps; absent stamps are omitted so older receipts hash identically |
+| Failure laboratory | `scripts/failure_lab.py auto`: unattended, registry-identified SIGKILL once a sibling is accepted; `why` gains `prior_attempts` | Live: four kills, `-9` receipts, sibling untouched, fenced retry accepted once; **completion after a live recovery NOT PROVEN** (rehearsal only) |
+| Capsule | Cold-verified from a fresh clone with no mission store on the completed and the laboratory missions | **`verified_live_cold`**; same laptop, no signature |
+| Watcher | `graphene watch inbox` / `watch github` (ETag/304, backoff, dedupe, fail-closed rejections), `mission.triggered` hash-chained annotation, `why` trigger stage | Fixture-tested; live inbox trigger created a real mission whose `why` starts at the trigger; **live GitHub polling NOT PROVEN** |
+| Planner hardening | Sanitized validation detail with token counts; model ordering canonicalized; explicit planner rules; 16 384-token cap; 120 s timeout; demo `max_attempts` 16 | What first live contact broke, fixed forward and regression-tested |
+| Operations | `scripts/secret_scan.py` (location-only), `scripts/morning_verify.sh` (one-command re-verification incl. cold capsule verify from a fresh clone) | `morning_verify.sh` passes |
+
+Matrix on the series head: **1960 passed, 4 opt-in skips**; ruff, compileall,
+`git diff --check` clean. Finding for later: a concurrent reader can see an
+attempt row before its evidence artifact exists (two SQLite files); the
+poller reopens, the writer-side fix is open. Model output quality on the
+demo's markdown task, not Graphene mechanics, is what kept most live
+missions from completing.

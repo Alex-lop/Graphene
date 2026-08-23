@@ -49,7 +49,9 @@ with fixture tests, and a dropped `mission.yaml` started a live mission whose
 | `a6aef3d` | Failure-lab poller reopens the store after a transient read error |
 | `e557715` | **Phase 2/3 evidence + label flip** (failure-recovery leg → `partially_verified_live`; capsule → `verified_live_cold`); `scripts/morning_verify.sh` |
 | `6af9587` … `44d9d06` | **Phase 4**: `mission.triggered` event + `store.record_trigger` + `why` trigger stage; `graphene watch inbox` / `watch github` (ETag, backoff, dedupe, fail-closed); 21 fixture tests; README + proof entry (five commits from the worktree agent, rebased, fast-forwarded) |
-| _(next)_ | Malformed model replies retryable (`model_output_rejected`); receipts kept when a mutation is refused at apply time; watcher command id from the trigger digest; trigger-demo evidence; `docs/DEMO_SCRIPT.md`; `demo/north_star/mission.yaml` |
+| `3236cc9` | Malformed model replies retryable (`model_output_rejected`); receipts kept when a mutation is refused at apply time |
+| `a407a26` | Watcher derives the mission command id from the trigger digest (each dropped file is its own event) |
+| `23eaeca` | **Trigger-demo evidence** (`why` begins at the trigger on a live mission), `docs/DEMO_SCRIPT.md`, `demo/north_star/mission.yaml`, this report |
 | _(if it lands)_ | Shadow v0 `claude-code` adapter from the worktree agent (synthetic fixture tests; real-transcript smoke reported as counts only) |
 
 ## 2. What is now proven, with evidence and verify commands
@@ -69,8 +71,8 @@ Run from the repo root; the night's store is
 | Human-attested (TTY) approval on a live mission | **NOT PROVEN** — every approval tonight was `server_derived`, operator-delegated | every `approve_plan.json` | — |
 | Docker, Cloud Run/Firestore, benchmark, media | unchanged (`not_proven` / `not_deployed`) | — | — |
 
-Counts: credential-free matrix on the final tree is stated in the last
-commit message; ruff / compileall / `git diff --check` clean. Secret scan:
+Counts: credential-free matrix on `3236cc9` **1960 passed, 4 opt-in
+skips** (5 min); ruff / compileall / `git diff --check` clean. Secret scan:
 findings only in test fixtures. Recordings: `local/recordings/` (gitignored)
 holds the console logs of every live mission (text, not pty capture — no
 `tmux`/`asciinema` on this machine and `script`(1) was refused by the session
@@ -181,6 +183,14 @@ have been a lie).
   traceback that reached `local/recordings/` and this session's transcript.
   It is a project id (already in the directive), not a credential; no
   committed file contains it (grep-checked before every evidence commit).
+- **Two full matrices at once can deadlock a process-control test.** With
+  a second full `pytest` run going in a worktree on the same laptop, one run
+  hung in `tests/process/test_mission_cli.py::…recovers_terminal_evidence…`
+  and the other in `tests/unit/orchestration/test_runner.py::…external_cancellation…`
+  (a zombie `/bin/sleep` child, 20+ min); each passes alone and the matrix
+  run alone is green. Default: run one matrix at a time (`morning_verify.sh`
+  does) and add `-o faulthandler_timeout=180` when in doubt so a hang dumps
+  its stack.
 - **Gated pytest** (`tests/process/test_gemini_live.py`) was not run; its
   budget went to the runbook missions. It remains skipped in the matrix.
 
