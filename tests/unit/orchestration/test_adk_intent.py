@@ -171,3 +171,56 @@ def test_compiler_rejects_uncovered_or_unknown_criterion_ids() -> None:
 
     with pytest.raises(PlannerOutputError, match="coverage is incomplete"):
         compile_plan_intent(policy, request, invalid)
+
+
+def test_sanitized_validation_detail_names_locations_and_types_only() -> None:
+    from graphene.orchestration.adk import PlanIntent, sanitized_validation_detail
+
+    secret_looking = "AIza" + "x" * 35
+    try:
+        PlanIntent.model_validate_json(
+            '{"mission_id": "%s", "revision": 0, "tasks": []}' % secret_looking
+        )
+    except ValueError as error:
+        detail = sanitized_validation_detail(error)
+    else:  # pragma: no cover - the input above is invalid by construction
+        raise AssertionError("expected a validation error")
+
+    assert secret_looking not in detail
+    assert "revision:greater_than_equal" in detail
+    assert "tasks:too_short" in detail
+    assert sanitized_validation_detail(ValueError("plain")) == "ValueError"
+
+
+def test_live_model_ordering_is_canonicalized_not_rejected() -> None:
+    from graphene.orchestration.adk import PlanIntent
+
+    def work(task_id: str, write: str, deps: list[str]) -> dict:
+        return {
+            "task_id": task_id,
+            "title": "t",
+            "contract": "c",
+            "criterion_ids": ["criterion-2", "criterion-1", "criterion-2"],
+            "dependencies": deps,
+            "assigned_role": "worker",
+            "read_paths": ["ledger_service/cli.py", "README.md"],
+            "write_paths": [write, "tests/test_" + write.split("/")[-1]],
+            "command_template_id": "fixture-tests",
+        }
+
+    intent = PlanIntent.model_validate(
+        {
+            "mission_id": "mission-1",
+            "revision": 1,
+            "tasks": [
+                work("zeta", "ledger_service/z.py", []),
+                work("alpha", "ledger_service/a.py", []),
+                work("tail", "ledger_service/cli.py", ["zeta", "alpha"]),
+            ],
+        }
+    )
+
+    assert [item.task_id for item in intent.tasks] == ["alpha", "tail", "zeta"]
+    assert intent.tasks[0].criterion_ids == ("criterion-1", "criterion-2")
+    assert intent.tasks[0].read_paths == ("README.md", "ledger_service/cli.py")
+    assert intent.tasks[1].dependencies == ("alpha", "zeta")

@@ -279,7 +279,7 @@ def test_policy_template_matches_documented_policy() -> None:
     assert (template["max_concurrency"], template["retry_limit"]) == (2, 1)
     assert template["resource_budget"] == {
         "max_worker_seconds": 900,
-        "max_attempts": 8,
+        "max_attempts": 16,
         "max_artifact_bytes": 10_485_760,
         "soft_managed_rss_bytes": 536_870_912,
         "hard_managed_rss_bytes": 805_306_368,

@@ -18,7 +18,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.telemetry import ContentCapturingMode, TelemetryConfig
 from google.genai import types
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
 from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
@@ -58,6 +58,26 @@ class PlannerOutputError(PlannerError):
     pass
 
 
+def sanitized_validation_detail(error: ValueError) -> str:
+    """Where and how model output failed validation, never what it contained.
+
+    Pydantic errors are reduced to ``location:type``; Graphene's own
+    ``value_error`` messages (written by this codebase, never echoing model
+    text) are kept. Anything else is named by class only.
+    """
+
+    if isinstance(error, ValidationError):
+        parts = []
+        for item in error.errors()[:8]:
+            location = ".".join(str(part) for part in item["loc"]) or "root"
+            detail = f"{location}:{item['type']}"
+            if item["type"] == "value_error":
+                detail += f" ({str(item.get('ctx', {}).get('error', ''))[:120]})"
+            parts.append(detail)
+        return "; ".join(parts) or "validation_error"
+    return type(error).__name__
+
+
 class PlanningExcerpt(FrozenModel):
     path: RepoPath
     start_line: int = Field(ge=1)
@@ -84,7 +104,9 @@ class PlanningRequest(FrozenModel):
     repository_excerpts: tuple[PlanningExcerpt, ...] = Field(
         default=(), max_length=16
     )
-    timeout_seconds: float = Field(default=60, gt=0, le=300)
+    # Live gemini-3.5-flash planning calls took 38-60+ s (thinking); 60 s
+    # cancelled a billed call. 120 s matches the worker model timeout.
+    timeout_seconds: float = Field(default=120, gt=0, le=300)
 
     @model_validator(mode="after")
     def criteria_are_canonical(self) -> PlanningRequest:
@@ -129,6 +151,21 @@ class WorkIntent(FrozenModel):
     command_template_id: Identifier
     priority: int = Field(default=0, ge=-1_000, le=1_000)
 
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_model_ordering(cls, value: object) -> object:
+        # Live contact: Gemini lists paths, criteria, and dependencies in
+        # whatever order it thinks of them. Order carries no meaning here, so
+        # model output is canonicalized before the strict check below, which
+        # still rejects duplicates-by-construction and direct non-canonical use.
+        if isinstance(value, dict):
+            value = dict(value)
+            for key in ("criterion_ids", "dependencies", "read_paths", "write_paths"):
+                items = value.get(key)
+                if isinstance(items, list) and all(isinstance(i, str) for i in items):
+                    value[key] = sorted(set(items))
+        return value
+
     @model_validator(mode="after")
     def collections_are_canonical(self) -> WorkIntent:
         collections = (
@@ -153,6 +190,21 @@ class PlanIntent(FrozenModel):
     mission_id: Identifier
     revision: int = Field(ge=1)
     tasks: tuple[WorkIntent, ...] = Field(min_length=2, max_length=254)
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_task_ordering(cls, value: object) -> object:
+        # Same live-contact rule as WorkIntent: task order in model output is
+        # meaningless; dependencies, not position, define the graph.
+        if isinstance(value, dict) and isinstance(value.get("tasks"), list):
+            value = dict(value)
+            value["tasks"] = sorted(
+                value["tasks"],
+                key=lambda item: str(item.get("task_id", ""))
+                if isinstance(item, dict)
+                else "",
+            )
+        return value
 
     @model_validator(mode="after")
     def graph_is_bounded_and_canonical(self) -> PlanIntent:
@@ -383,6 +435,22 @@ class AdkPlanner:
                 "roles, command template and criterion IDs, and repository evidence. "
                 "Graphene deterministically adds assembly, verification, artifacts, "
                 "retries, and concurrency."
+                "\nHard rules, checked before anything runs: at least TWO tasks must "
+                "have an empty dependencies list (these are the independent roots) "
+                "and those roots must not share any write_paths; every write_path "
+                "is an exact file path (no globs); a task may depend only on "
+                "task_ids in this same plan; an integration task that depends on "
+                "the roots is welcome but must not be the only root. No two tasks "
+                "may share a write_path, even when one depends on the other: each "
+                "file is written by exactly one task, so put the wiring of "
+                "existing files in the task that owns them. Each task's "
+                "acceptance check (its command_template_id) runs in an isolated "
+                "workspace holding ONLY that task's own writes on top of the base "
+                "repository, so every task must pass the full test suite by "
+                "itself: keep a feature and the tests that exercise it in the "
+                "SAME task, never split tests from the code they test across "
+                "tasks, and never write tests for code another task creates. A "
+                "plan that breaks any of these rules is rejected outright."
             ),
             include_contents="none",
             tools=[],
@@ -390,7 +458,10 @@ class AdkPlanner:
             disallow_transfer_to_parent=True,
             disallow_transfer_to_peers=True,
             generate_content_config=types.GenerateContentConfig(
-                max_output_tokens=8_192,
+                # Gemini 3.5 counts its thinking tokens against this cap; a
+                # live planner call spent ~7.4k thought tokens and truncated
+                # a ~0.7k JSON object at 8_192. 16_384 matches the workers.
+                max_output_tokens=16_384,
                 response_mime_type="application/json",
             ),
             after_model_callback=observation.after_model,
@@ -451,10 +522,24 @@ class AdkPlanner:
         try:
             intent = PlanIntent.model_validate_json(raw_output)
             plan = compile_plan_intent(policy, request, intent)
-        except ValueError:
+        except ValueError as error:
             if self._driver != "adk_fake":
+                # Token counts ride along so a rejected (but billed) planner
+                # call can still be accounted for; they are numbers, not text.
+                usage = observation.usage
+                counts = (
+                    ""
+                    if usage is None
+                    else (
+                        f" [prompt_tokens={usage.prompt_token_count} "
+                        f"candidate_tokens={usage.candidates_token_count} "
+                        f"thought_tokens={usage.thoughts_token_count}]"
+                    )
+                )
                 raise PlannerOutputError(
-                    "ADK planner output does not match PlanIntent"
+                    "ADK planner output does not match PlanIntent: "
+                    + sanitized_validation_detail(error)
+                    + counts
                 ) from None
             # Compatibility for existing injected fakes. Live Gemini must always
             # return the narrower intent schema.
