@@ -158,10 +158,28 @@ def build_parser() -> argparse.ArgumentParser:
         rationale=None,
     )
 
-    watch = commands.add_parser("watch", allow_abbrev=False)
-    watch.add_argument("run_id")
+    watch = commands.add_parser(
+        "watch",
+        allow_abbrev=False,
+        help="stream a run or mission, or trigger missions from an inbox/GitHub",
+        description=(
+            "graphene watch RUN_OR_MISSION_ID streams committed events. "
+            "graphene watch inbox --dir PATH and graphene watch github --repo "
+            "OWNER/NAME create proposed missions from external signals; they "
+            "never approve anything."
+        ),
+    )
+    watch.add_argument("run_id", help="run/mission ID, or the literal inbox or github")
     watch.add_argument("--after-seq", type=_nonnegative_integer, default=0)
     watch.add_argument("--snapshot", action="store_true")
+    watch.add_argument("--dir", type=Path, dest="inbox_dir", help="inbox: drop folder")
+    watch.add_argument("--once", action="store_true", help="inbox/github: one pass")
+    watch.add_argument("--poll", type=int, help="inbox/github: seconds between polls")
+    watch.add_argument("--repo", help="github: OWNER/NAME to poll read-only")
+    watch.add_argument("--label", default="graphene-mission", help="github: issue label")
+    watch.add_argument("--state", type=Path, help="github: state file path")
+    watch.add_argument("--target-repo", type=Path, help="github: initialized repository")
+    watch.add_argument("--driver", choices=("gemini-adk", "scripted-local"))
 
     inspect = commands.add_parser("inspect", allow_abbrev=False)
     inspect.add_argument("evidence_id")
@@ -1478,6 +1496,10 @@ def main(argv: list[str] | None = None) -> int:
         from .shadow import handle as handle_shadow
 
         return handle_shadow(args, json_mode=args.json_mode)
+    if args.command == "watch" and args.run_id in {"inbox", "github"}:
+        from .watch import handle as handle_watch
+
+        return handle_watch(args)
     mission_alias = (
         args.command
         in {
