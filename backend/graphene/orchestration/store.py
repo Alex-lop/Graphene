@@ -37,6 +37,7 @@ from .models import (
     MissionHead,
     MissionSnapshot,
     MissionStatus,
+    MissionTrigger,
     Plan,
     ProjectPolicy,
     ProjectPolicySummary,
@@ -4987,6 +4988,55 @@ class SQLiteMissionStore:
                 result = self._head_result(head)
                 self._record_command(
                     connection, receipt.mission_id, command_id, request_sha, result
+                )
+                connection.commit()
+                return head
+            except Exception:
+                connection.rollback()
+                raise
+
+    def record_trigger(
+        self,
+        mission_id: str,
+        trigger: MissionTrigger,
+        command_id: str,
+        *,
+        recorded_at: datetime,
+    ) -> MissionHead:
+        """Append the watcher's ``mission.triggered`` annotation; no state changes."""
+
+        command_id = _COMMAND_ID.validate_python(command_id)
+        recorded_at = self._time(recorded_at)
+        payload = trigger.model_dump(mode="json")
+        request = {"trigger": payload, "recorded_at": recorded_at.isoformat()}
+        request_sha = self._request_sha256("record_trigger", request)
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing = self._existing_command(
+                    connection, mission_id, command_id, request_sha
+                )
+                if existing is not None:
+                    connection.commit()
+                    return self._result_head(existing)
+                self._mission_row(connection, mission_id)
+                head = self._append(
+                    connection,
+                    mission_id,
+                    command_id,
+                    (
+                        self._draft(
+                            MissionEventType.MISSION_TRIGGERED,
+                            payload,
+                            truth_kind=TruthKind.RUNTIME_OBSERVED,
+                            authority=MissionAuthority.MISSION_SERVICE,
+                        ),
+                    ),
+                    recorded_at,
+                )
+                result = self._head_result(head)
+                self._record_command(
+                    connection, mission_id, command_id, request_sha, result
                 )
                 connection.commit()
                 return head

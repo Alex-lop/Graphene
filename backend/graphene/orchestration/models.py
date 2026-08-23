@@ -135,6 +135,7 @@ class MissionEventType(StrEnum):
     WORKER_REGISTERED = "worker.registered"
     WORKER_REVOKED = "worker.revoked"
     TASK_INPUT_SUPPLIED = "task.input_supplied"
+    MISSION_TRIGGERED = "mission.triggered"
 
 
 TASK_TRANSITIONS = frozenset(
@@ -457,6 +458,24 @@ class Mission(FrozenModel):
         if self.unknowns != tuple(sorted(set(self.unknowns))):
             raise ValueError("unknowns must be sorted and unique")
         return self
+
+
+class MissionTrigger(FrozenModel):
+    """Why a watcher created a mission: an annotation event payload, never state.
+
+    ``source_ref`` is a bare file name or ``OWNER/NAME#NUMBER``; absolute paths
+    are rejected by the event payload filter. ``source_sha256`` digests the raw
+    inbox bytes or the canonical JSON of an issue's title and body. The key is
+    not ``content_sha256`` because event payload keys containing ``content``
+    are refused by design.
+    """
+
+    source_kind: Literal["inbox_file", "github_issue"]
+    source_ref: Annotated[str, Field(min_length=1, max_length=256)]
+    source_url: Annotated[str, Field(min_length=1, max_length=512)] | None = None
+    source_sha256: Sha256
+    observed_at: UtcDateTime
+    watcher_id: Identifier
 
 
 class GenericEvidenceLink(FrozenModel):

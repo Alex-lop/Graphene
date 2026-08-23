@@ -51,6 +51,7 @@ class CausalNode(FrozenModel):
 
 class CausalLink(FrozenModel):
     stage: Literal[
+        "trigger",
         "target",
         "producer_attempt",
         "prior_attempts",
@@ -219,6 +220,32 @@ def _event_ids(
     )
 
 
+def _trigger_links(events: Sequence[MissionEvent]) -> tuple[CausalLink, ...]:
+    """One ``trigger`` link when a watcher created the mission; nothing otherwise."""
+
+    return tuple(
+        CausalLink(
+            stage="trigger",
+            status="established",
+            nodes=(
+                CausalNode(
+                    node_type="event",
+                    node_id=event.event_id,
+                    kind=str(event.payload.get("source_kind")),
+                    sha256=event.payload.get("source_sha256"),
+                ),
+            ),
+            event_ids=(event.event_id,),
+            note=(
+                f"Triggered by {event.payload.get('source_kind')} "
+                f"{event.payload.get('source_ref')}."
+            )[:1024],
+        )
+        for event in events
+        if event.event_type == MissionEventType.MISSION_TRIGGERED
+    )
+
+
 def why(
     snapshot: MissionSnapshot,
     events: Sequence[MissionEvent],
@@ -261,9 +288,10 @@ def why(
         matched_by = "identifier" if targets else "none"
     targets = tuple(sorted(set(targets), key=lambda item: item.publication_id))
 
+    trigger_links = _trigger_links(committed)
     if not targets:
         unknowns.append(f"No committed publication or artifact matches {query}.")
-        links = tuple(
+        links = trigger_links + tuple(
             CausalLink(
                 stage=stage,
                 status="unknown",
@@ -296,6 +324,7 @@ def why(
         )
     )
     links = [
+        *trigger_links,
         CausalLink(
             stage="target",
             status="established",
