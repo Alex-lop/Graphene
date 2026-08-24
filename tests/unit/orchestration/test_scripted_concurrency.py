@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fcntl
+import os
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -16,7 +18,13 @@ from graphene.orchestration.process_control import (
     OwnedProcessRegistry,
     ProcessCancelled,
 )
-from graphene.orchestration.scripted import ScriptedWorker, _execute_scripted_batch, _git
+from graphene.hashing import sha256_hex
+from graphene.orchestration.scripted import (
+    ScriptedError,
+    ScriptedWorker,
+    _execute_scripted_batch,
+    _git,
+)
 from graphene.orchestration.store import LeaseConflict, MissionConflict, StaleWorker
 
 
@@ -241,3 +249,77 @@ def test_assembly_patch_stages_deleted_authorized_path(tmp_path: Path) -> None:
     assert changed == ("delete.txt",)
     assert b"deleted file mode" in patch
     assert b"delete.txt" in patch
+
+
+def test_a_contended_attempt_lock_fails_closed_instead_of_parking_the_thread(
+    tmp_path: Path,
+) -> None:
+    """``execute`` must never block on an attempt lock a live executor holds.
+
+    ``_execute_scripted_batch`` abandons a running worker on timeout
+    (``executor.shutdown(wait=False)``), and ``recover_dispatches`` rebuilds the
+    recovered Dispatch with the *same* ``attempt_id``. So the next batch hands
+    that attempt to a fresh pool thread while the abandoned one still holds the
+    attempt lock. A blocking ``flock`` parks that thread forever, and a
+    non-daemon pool thread is joined with **no timeout** by
+    ``concurrent.futures.thread._python_exit`` at interpreter shutdown -- after
+    the last test, after pytest's summary, and after pytest-timeout has
+    cancelled its per-item timer. Nothing in the suite can catch that: it is a
+    silent wedge with no traceback.
+
+    Owning an attempt exclusively means refusing it when someone else owns it,
+    which is what ``lineage/observation.py`` already does with ``LOCK_NB``.
+    """
+    class _UnreachableStore:
+        """Reaching the store means the contended lock was taken anyway."""
+
+        def snapshot(self, mission_id: str) -> object:
+            raise AssertionError("execute() acquired a lock another executor holds")
+
+    worker = object.__new__(ScriptedWorker)
+    worker.store = _UnreachableStore()
+    worker._attempt_locks = tmp_path / "attempt-locks"
+    worker._attempt_locks.mkdir(mode=0o700)
+    dispatch = _dispatch("contended")
+    lock = worker._attempt_locks / (sha256_hex(dispatch.attempt_id.encode()) + ".lock")
+
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold_the_lock() -> None:
+        descriptor = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            held.set()
+            release.wait(30)
+        finally:
+            os.close(descriptor)
+
+    # Both threads are daemons on purpose: if the assertion below fails, the
+    # parked thread must not become the very hang this test is about.
+    owner = threading.Thread(target=hold_the_lock, daemon=True)
+    owner.start()
+    try:
+        assert held.wait(10), "the stand-in executor never took the attempt lock"
+        outcome: list[BaseException | None] = []
+
+        def attempt() -> None:
+            try:
+                worker.execute(dispatch)
+                outcome.append(None)
+            except BaseException as error:  # noqa: BLE001 - recorded, then asserted
+                outcome.append(error)
+
+        second = threading.Thread(target=attempt, daemon=True)
+        second.start()
+        second.join(timeout=10)
+
+        assert not second.is_alive(), (
+            "execute() parked on an attempt lock another live executor holds; "
+            "_python_exit joins that thread without a timeout at shutdown"
+        )
+        assert isinstance(outcome[0], ScriptedError), outcome
+        assert "already owned" in str(outcome[0]), outcome
+    finally:
+        release.set()
+        owner.join(timeout=10)

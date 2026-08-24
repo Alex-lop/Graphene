@@ -1664,7 +1664,21 @@ class ScriptedWorker:
                 or stat.S_IMODE(metadata.st_mode) & 0o077
             ):
                 raise ScriptedError("scripted attempt lock is unsafe")
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            # An attempt lock asserts sole ownership of one attempt id, so a
+            # contended lock means a live executor already owns this attempt --
+            # precisely the case that must fail closed. Blocking here parks a
+            # non-daemon pool thread that `_execute_scripted_batch` has already
+            # abandoned, and `_python_exit` joins such a thread with no timeout
+            # at interpreter shutdown, after pytest has cancelled its timer.
+            # Waiting never produced a better outcome than refusing: the winner
+            # holds the lease, so the loser's late write is fenced off anyway.
+            # Same discipline as lineage/observation.py.
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ScriptedError(
+                    "scripted attempt is already owned by a live executor"
+                ) from error
             snapshot = self.store.snapshot(dispatch.mission_id)
             tasks = tuple(
                 item
