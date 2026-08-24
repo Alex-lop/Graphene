@@ -73,6 +73,7 @@ Alex can take.
 | **Three consecutive rehearsals of the exact filmed sequence** | `4902d76` | `evidence/contract/2026-08-24-rehearsals/` — three live runs, all exit 0, zero tracebacks, all thirteen beats present in each, distinct revision-2 digests, $0.12 / $0.11 / $0.09 | PASS — the edit beat runs live and repeatably | not the film: the edit is applied by a script rather than typed, and approval is `server_derived` |
 | Nine documents called live Gemini unproven after it was proven | `323e7d7` | grep for live-Gemini "not proven"/"not run" across `docs/`, `README.md`, `simplreadme.md` now returns only the failure-laboratory line, which is still true | PASS | no label was flipped; prose was made to agree with labels already flipped on their own evidence |
 | The whole `plan` surface is driven through the real parser | `378ac72` | `tests/unit/cli/test_plan_cli.py` -> `8 passed`; two verified to fail when the behaviour regresses | PASS | — |
+| The filmed sequence fits §9's two minutes | `09522fd` | one run timed end to end: **77s total**, 47s of it the mission itself; `evidence/contract/2026-08-24-rehearsals/timed-run.txt` | PASS | measured with a scripted edit; a person typing the edit spends the ~40s of headroom, and that has not been timed |
 
 ## Spend
 
@@ -81,7 +82,8 @@ Alex can take.
 | Rehearsal attempt 1 — died on the symlinked temp dir; planner call only | $0.07 | $0.07 |
 | Rehearsal attempts 2 and 3 — full sequence, before the traceback fix | $0.24 | $0.31 |
 | Rehearsal attempt 4 — died on the projection traceback | $0.09 | $0.40 |
-| **Three consecutive clean rehearsals** (`4902d76`) | $0.32 | **$0.72** |
+| **Three consecutive clean rehearsals** (`4902d76`) | $0.32 | $0.72 |
+| One timed run, to measure the sequence against §9's 2:00 (`09522fd`) | $0.12 | **$0.84** |
 
 Cap $40; per-mission ceiling $5 (highest observed: $0.12); soft checkpoint $20.
 Everything else recorded here is credential-free: the plan surface, the
