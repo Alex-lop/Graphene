@@ -43,6 +43,14 @@ shape with zero lint issues.
 | Dashboard survives the two-database visibility race; the demo stops measuring its own injected fault (§6.5, §8) | `732bd02` | **three consecutive rehearsals, all exit 0**, after a first attempt that was 1/3; `evidence/convergence/2026-08-23-demo-live/` | PASS | the race itself is unfixed at the writer; the dashboard rides it out and still raises when it never clears |
 | Cloud check authority labelled `executor_attested`; abandon disabled; multi-executor refused; Firestore seeding gap closed; emulator **success** path proven (§6.3, §6.4, §9) | `c971254` | matrix `2054 passed, 5 skipped`; real `emulators:exec` run `4 passed` | PASS | nothing hosted — `cloud-run-firestore` stays `not_deployed` |
 | Ctrl-C is honoured however the process was launched (found by morning_verify failing twice) | `27d35ea` | `scripts/morning_verify.sh` **ALL PASS** in the backgrounded case that exposed it; the new regression fails without the fix | PASS | — |
+| Cloud labels moved with their evidence and no further; `cloud-run-firestore` stays `not_deployed` with the reason in the contract (§9, §12) | `96fc43d` | `contracts/product_proof.json`, README and KNOWN_LIMITATIONS agree | PASS | the hosted smoke did not happen — see blockers |
+| Failure-aware retry proof made load-independent (found by the release verification) | _(final commit)_ | `6 passed in 29.77s` under deliberate heavy CPU load, the condition that broke it | PASS | — |
+
+**Release verification on the handoff commit: `scripts/morning_verify.sh` →
+`MORNING VERIFY: ALL PASS`** (locked environment, full credential-free matrix,
+MCP stdio, locked ruff, compileall, `git diff --check`, location-only secret
+scan, `store.verify` on all 22 missions, both capsules cold-verified from a
+fresh clone, watcher tests, proof table).
 
 ## Spend
 
