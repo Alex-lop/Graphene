@@ -40,3 +40,6 @@ local/
 # content; committed assets live under docs/assets/.
 /*.png
 /*.jpg
+
+# Reliability-lane run logs: evidence, not source.
+.nightwatch/

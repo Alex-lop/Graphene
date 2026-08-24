@@ -1,0 +1,15 @@
+# Source me. Removes every live-service credential/flag from THIS shell.
+# Never prints a value. Fails closed: exported vars are removed, not blanked.
+for v in GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_APPLICATION_CREDENTIALS \
+         GOOGLE_GENAI_USE_VERTEXAI GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_QUOTA_PROJECT \
+         GOOGLE_CLOUD_REGION GCLOUD_PROJECT CLOUDSDK_CORE_PROJECT \
+         GRAPHENE_RUN_LIVE_GEMINI GRAPHENE_RUN_LIVE_FIRESTORE GRAPHENE_RUN_CLOUD_SMOKE \
+         GRAPHENE_RUN_FIRESTORE_EMULATOR GRAPHENE_RUN_DOCKER_SMOKE GRAPHENE_WATCH_GITHUB_LIVE \
+         OPENAI_API_KEY ANTHROPIC_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
+         AZURE_OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN; do
+  unset "$v" 2>/dev/null || true
+done
+# Ambient ADC / gcloud session state counts as a credential too.
+export CLOUDSDK_CONFIG=/nonexistent-zero-spend
+export GOOGLE_APPLICATION_CREDENTIALS=/nonexistent-zero-spend
+unset GOOGLE_APPLICATION_CREDENTIALS
