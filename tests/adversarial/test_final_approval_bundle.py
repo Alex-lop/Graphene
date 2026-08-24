@@ -10,11 +10,13 @@ from graphene.models import TruthKind
 from graphene.orchestration.evidence import TrustedCheckReceipt
 from graphene.orchestration.final_bundle import (
     CriterionReceiptBinding,
+    FinalBundleVerificationReceiptV1,
     FinalResultBundleV2,
     MutationEntry,
     MutationManifest,
     OperatorDecisionState,
 )
+from graphene.orchestration.local_result import _recompute_final_bundle
 from graphene.orchestration.models import (
     AttemptResult,
     GenericEvidenceLink,
@@ -206,6 +208,9 @@ def test_decision_requires_exact_current_immutable_bundle(tmp_path, monkeypatch)
     reference = _artifacts(store).put(
         "final-result-bundle", canonical_json_bytes(bundle.model_dump(mode="json"))
     )
+    # This test pins bundle *identity*; the recompute itself is enforced by
+    # test_store_refuses_a_bundle_it_cannot_recompute below.
+    store.bind_final_bundle_verifier(lambda _raw, _snapshot: True)
     ready = store.register_final_result_bundle(
         "mission-1",
         reference,
@@ -300,3 +305,120 @@ def test_decision_requires_exact_current_immutable_bundle(tmp_path, monkeypatch)
     decision = cold.tail("mission-1", ready.seq, 1)[0]
     assert decision.payload["bundle_id"] == bundle.bundle_id
     assert decision.payload["decision_receipt"]["bundle_sha256"] == bundle.bundle_sha256
+
+
+def _awaiting_store(path) -> tuple[SQLiteMissionStore, FinalResultBundleV2]:
+    store = SQLiteMissionStore(path)
+    _create(store)
+    _complete_ready(store, "mission-1", at=NOW, round_number=1)
+    _complete_ready(store, "mission-1", at=NOW + timedelta(seconds=2), round_number=2)
+    _complete_trusted_verification(store)
+    store.enter_awaiting_result(
+        "mission-1", _command("await-bundle"), recorded_at=NOW + timedelta(seconds=6)
+    )
+    return store, _pending_bundle(store)
+
+
+def test_store_refuses_a_bundle_it_cannot_recompute(tmp_path) -> None:
+    """The invented path/tree bundle above used to register and approve cleanly.
+
+    ``_pending_bundle`` fabricates ``result_tree_id = "d" * 40`` and a mutation
+    entry for ``app/reviewed.py`` that no repository ever produced. Registration
+    is now the enforcement point: with no verifier bound it fails closed, and a
+    recompute that says no is final. Caller discipline is gone — the store asks.
+    """
+    store, bundle = _awaiting_store(tmp_path / "missions.sqlite")
+    reference = _artifacts(store).put(
+        "final-result-bundle", canonical_json_bytes(bundle.model_dump(mode="json"))
+    )
+
+    assert store.final_bundle_verifier is None
+    with pytest.raises(MissionConflict, match="verifier is not bound"):
+        store.register_final_result_bundle(
+            "mission-1",
+            reference,
+            _command("register-unbound"),
+            expected_head=store.head("mission-1"),
+            recorded_at=NOW + timedelta(seconds=7),
+        )
+
+    # The production recompute is fail-closed on an unusable repository, and this
+    # adversarial fixture has none — so the real helper, not a stand-in, says no.
+    raw = canonical_json_bytes(bundle.model_dump(mode="json"))
+    assert not _recompute_final_bundle(
+        raw,
+        store.snapshot("mission-1"),
+        evidence=_artifacts(store),
+        repository=tmp_path / "no-such-repository",
+    )
+
+    store.bind_final_bundle_verifier(lambda _raw, _snapshot: False)
+    with pytest.raises(MissionConflict, match="does not recompute"):
+        store.register_final_result_bundle(
+            "mission-1",
+            reference,
+            _command("register-rejected"),
+            expected_head=store.head("mission-1"),
+            recorded_at=NOW + timedelta(seconds=7),
+        )
+
+    # Nothing was written: no bundle is registered, so nothing can be approved.
+    with pytest.raises(MissionConflict, match="not current"):
+        store.approve_final_result(
+            "mission-1",
+            _command("approve-nothing"),
+            expected_head=store.head("mission-1"),
+            expected_bundle_id=bundle.bundle_id,
+            operator_label="reviewer",
+            rationale="Approved without a registration.",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW + timedelta(seconds=8),
+        )
+
+
+def test_approval_requires_a_server_issued_receipt_for_this_exact_bundle(
+    tmp_path,
+) -> None:
+    """The READY event carries the store's own verification receipt, and it binds."""
+    store, bundle = _awaiting_store(tmp_path / "missions.sqlite")
+    reference = _artifacts(store).put(
+        "final-result-bundle", canonical_json_bytes(bundle.model_dump(mode="json"))
+    )
+    store.bind_final_bundle_verifier(lambda _raw, _snapshot: True)
+    ready = store.register_final_result_bundle(
+        "mission-1",
+        reference,
+        _command("register-verified"),
+        expected_head=store.head("mission-1"),
+        recorded_at=NOW + timedelta(seconds=7),
+    )
+
+    event = store.tail("mission-1", ready.seq - 1, 1)[0]
+    receipt = FinalBundleVerificationReceiptV1.model_validate(
+        event.payload["verification_receipt"]
+    )
+    assert receipt.binds(bundle)
+    assert receipt.receipt_id.startswith("bundle_verified_")
+    assert receipt.verifier == "verify_final_result_bundle"
+
+    # A receipt issued for any other bundle does not bind this one, which is what
+    # _final_decision and the cold audit check before a decision is committed.
+    other = bundle.model_copy(update={"bundle_sha256": "a" * 64})
+    assert not FinalBundleVerificationReceiptV1.issue(
+        other, verified_at=NOW
+    ).binds(bundle)
+
+    store.approve_final_result(
+        "mission-1",
+        _command("approve-verified"),
+        expected_head=ready,
+        expected_bundle_id=bundle.bundle_id,
+        operator_label="reviewer",
+        rationale="Reviewed the displayed bundle.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=8),
+    )
+    cold = SQLiteMissionStore(
+        tmp_path / "missions.sqlite", artifact_resolver=_artifacts(store)
+    )
+    assert cold.verify("mission-1") == cold.head("mission-1")

@@ -5,6 +5,7 @@ import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -215,6 +216,92 @@ class FinalDecisionReceiptV1(FrozenModel):
             {
                 **canonical,
                 "receipt_id": f"final_decision_{digest[:32]}",
+                "receipt_sha256": digest,
+            }
+        )
+
+
+class FinalBundleVerificationReceiptV1(FrozenModel):
+    """The store's own record that it recomputed a bundle before registering it.
+
+    ``verify_final_result_bundle`` rebuilds the candidate patch, the mutation
+    manifest and the resulting tree from the repository. Registration used to be
+    caller discipline: the CLI called the verifier, the store took the caller's
+    word, and an invented path/tree combination registered and approved cleanly.
+    The store now runs the recompute itself and issues this receipt; approval
+    accepts nothing that does not carry one bound to the exact bundle.
+    """
+
+    schema_version: Literal[1] = 1
+    domain: Literal["graphene.final-bundle-verification.v1"] = (
+        "graphene.final-bundle-verification.v1"
+    )
+    receipt_id: Identifier
+    mission_id: Identifier
+    bundle_id: Identifier
+    bundle_sha256: Sha256
+    snapshot_sha256: Sha256
+    plan_revision: int = Field(ge=1)
+    policy_sha256: Sha256
+    base_commit: str = Field(min_length=40, max_length=40)
+    expected_head_seq: int = Field(ge=1)
+    expected_head_sha256: Sha256
+    verifier: Literal["verify_final_result_bundle"] = "verify_final_result_bundle"
+    verified_at: UtcDateTime
+    receipt_sha256: Sha256
+
+    @model_validator(mode="after")
+    def canonical_receipt(self) -> FinalBundleVerificationReceiptV1:
+        core = self.model_dump(mode="json", exclude={"receipt_id", "receipt_sha256"})
+        digest = canonical_json_sha256(core)
+        if (
+            self.receipt_id != f"bundle_verified_{digest[:32]}"
+            or self.receipt_sha256 != digest
+        ):
+            raise ValueError("final bundle verification receipt identity does not match")
+        return self
+
+    def binds(self, bundle: FinalResultBundleV2) -> bool:
+        """True when this receipt was issued for exactly ``bundle``."""
+
+        return (
+            self.mission_id == bundle.mission_id
+            and self.bundle_id == bundle.bundle_id
+            and self.bundle_sha256 == bundle.bundle_sha256
+            and self.snapshot_sha256 == bundle.snapshot_sha256
+            and self.plan_revision == bundle.plan_revision
+            and self.policy_sha256 == bundle.policy_sha256
+            and self.base_commit == bundle.base_commit
+            and self.expected_head_seq == bundle.event_head_seq
+            and self.expected_head_sha256 == bundle.event_head_sha256
+        )
+
+    @classmethod
+    def issue(
+        cls, bundle: FinalResultBundleV2, *, verified_at: datetime
+    ) -> FinalBundleVerificationReceiptV1:
+        core = cls.model_construct(
+            schema_version=1,
+            domain="graphene.final-bundle-verification.v1",
+            receipt_id="placeholder",
+            mission_id=bundle.mission_id,
+            bundle_id=bundle.bundle_id,
+            bundle_sha256=bundle.bundle_sha256,
+            snapshot_sha256=bundle.snapshot_sha256,
+            plan_revision=bundle.plan_revision,
+            policy_sha256=bundle.policy_sha256,
+            base_commit=bundle.base_commit,
+            expected_head_seq=bundle.event_head_seq,
+            expected_head_sha256=bundle.event_head_sha256,
+            verifier="verify_final_result_bundle",
+            verified_at=verified_at,
+            receipt_sha256="0" * 64,
+        ).model_dump(mode="json", exclude={"receipt_id", "receipt_sha256"})
+        digest = canonical_json_sha256(core)
+        return cls.model_validate(
+            {
+                **core,
+                "receipt_id": f"bundle_verified_{digest[:32]}",
                 "receipt_sha256": digest,
             }
         )
@@ -844,5 +931,6 @@ __all__ = [
     "MutationManifest",
     "OperatorDecisionState",
     "build_final_result_bundle",
+    "FinalBundleVerificationReceiptV1",
     "verify_final_result_bundle",
 ]

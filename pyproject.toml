@@ -37,10 +37,14 @@ packages = ["backend/graphene"]
 exclude = ["/.claude", "/All_md_Files"]
 
 [tool.pytest.ini_options]
-# faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic;
-# pytest-timeout kills the test at 600s so one hang cannot eat a whole CI job.
+# faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic.
+# pytest-timeout then hard-kills at 600s: `thread` (not the default `signal`)
+# because the hangs this suite produces are worker threads blocked in SQLite C
+# calls — a signal reaches the main thread but ThreadPoolExecutor shutdown then
+# waits on those threads forever, so only os._exit actually ends the run.
 addopts = "-ra"
 faulthandler_timeout = 180
 timeout = 600
+timeout_method = "thread"
 pythonpath = ["backend", "."]
 testpaths = ["tests"]

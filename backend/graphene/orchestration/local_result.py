@@ -851,6 +851,15 @@ def prepare_local_final_result_bundle(
         reference = evidence.put_artifact("final-result-bundle", raw)
     except Exception as error:
         raise LocalResultError("final result bundle could not be built") from error
+    if getattr(store, "final_bundle_verifier", None) is None:
+        try:
+            store.bind_final_bundle_verifier(
+                partial(_recompute_final_bundle, evidence=evidence, repository=repository)
+            )
+        except (AttributeError, RuntimeError, TypeError, ValueError) as error:
+            raise LocalResultError(
+                "final result bundle verifier could not be bound"
+            ) from error
     try:
         head = store.register_final_result_bundle(
             mission_id,
@@ -873,6 +882,33 @@ def prepare_local_final_result_bundle(
             raise LocalResultError("final result bundle preparation failed") from error
         return current.head, *recovered
     return head, bundle, reference
+
+
+def _recompute_final_bundle(
+    bundle_bytes: bytes,
+    snapshot: Any,
+    *,
+    evidence: SQLiteAttemptEvidenceStore,
+    repository: Path,
+) -> bool:
+    """Rebuild the bundle from the repository; the store refuses to register without it.
+
+    Bound as the store's ``final_bundle_verifier``. Everything path-, tree- and
+    manifest-shaped in the bundle is recomputed here — an invented
+    ``result_tree_id`` or an invented mutation entry cannot survive it.
+    """
+    from .final_bundle import verify_final_result_bundle
+
+    try:
+        return verify_final_result_bundle(
+            bundle_bytes,
+            snapshot,
+            evidence,
+            repository,
+            expected_policy_sha256=snapshot.policy.policy_sha256,
+        )
+    except Exception:
+        return False
 
 
 def finalize_local_result_decision(

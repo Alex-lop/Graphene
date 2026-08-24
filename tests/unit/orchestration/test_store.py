@@ -2295,6 +2295,9 @@ def test_final_decision_binds_candidate_and_verification_receipt(
         "final-result-bundle",
         canonical_json_bytes(bundle.model_dump(mode="json")),
     )
+    # Registration recomputes the bundle against a real repository; these
+    # fixtures have none, so they stand in for a recompute that said yes.
+    store.bind_final_bundle_verifier(lambda _raw, _snapshot: True)
     store.register_final_result_bundle(
         mission_id,
         bundle_reference,

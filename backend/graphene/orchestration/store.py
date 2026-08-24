@@ -452,6 +452,18 @@ class LocalCommitVerifier(Protocol):
     def __call__(self, receipt_bytes: bytes) -> bool: ...
 
 
+class FinalBundleVerifier(Protocol):
+    """Recomputes a final result bundle against the repository it claims to describe.
+
+    Bound like ``LocalCommitVerifier``: the store cannot reach a Git checkout on
+    its own, so the repository-aware recompute is injected — but registration
+    fails closed when nothing is bound, so this is an authority the store
+    *requires*, not a courtesy the caller may skip.
+    """
+
+    def __call__(self, bundle_bytes: bytes, snapshot: MissionSnapshot) -> bool: ...
+
+
 def _json_bytes(value: object) -> bytes:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
@@ -471,12 +483,14 @@ class SQLiteMissionStore:
         *,
         artifact_resolver: ArtifactResolver | None = None,
         local_commit_verifier: LocalCommitVerifier | None = None,
+        final_bundle_verifier: FinalBundleVerifier | None = None,
     ) -> None:
         if str(path) == ":memory:":
             raise ValueError("mission state requires a durable SQLite path")
         self.path = str(path)
         self.artifact_resolver = artifact_resolver
         self.local_commit_verifier = local_commit_verifier
+        self.final_bundle_verifier = final_bundle_verifier
         self._integrity_monitor: sqlite3.Connection | None = None
         self._integrity_monitor_pid: int | None = None
         self._integrity_monitor_lock = RLock()
@@ -531,6 +545,16 @@ class SQLiteMissionStore:
         ):
             raise MissionConflict("mission local commit verifier is already bound")
         self.local_commit_verifier = verifier
+
+    def bind_final_bundle_verifier(self, verifier: FinalBundleVerifier) -> None:
+        """Bind the repository-aware recompute registration refuses to run without."""
+
+        if (
+            self.final_bundle_verifier is not None
+            and self.final_bundle_verifier is not verifier
+        ):
+            raise MissionConflict("mission final bundle verifier is already bound")
+        self.final_bundle_verifier = verifier
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, isolation_level=None, timeout=5)
@@ -843,7 +867,11 @@ class SQLiteMissionStore:
     def _verify_final_bundle_events(
         self, connection: sqlite3.Connection, mission_id: str
     ) -> None:
-        from .final_bundle import FinalDecisionReceiptV1, FinalResultBundleV2
+        from .final_bundle import (
+            FinalBundleVerificationReceiptV1,
+            FinalDecisionReceiptV1,
+            FinalResultBundleV2,
+        )
 
         prepared: dict[str, tuple[MissionEvent, EvidenceReference]] = {}
         rows = connection.execute(
@@ -883,6 +911,20 @@ class SQLiteMissionStore:
                     or bundle.event_head_sha256 != event.previous_event_sha256
                 ):
                     raise MissionStoreError("final result bundle evidence was swapped")
+                try:
+                    verification_receipt = (
+                        FinalBundleVerificationReceiptV1.model_validate(
+                            event.payload.get("verification_receipt")
+                        )
+                    )
+                except ValueError as error:
+                    raise MissionStoreError(
+                        "final result bundle verification receipt is invalid"
+                    ) from error
+                if not verification_receipt.binds(bundle):
+                    raise MissionStoreError(
+                        "final result bundle verification receipt is not for this bundle"
+                    )
                 prepared[bundle.bundle_id] = (event, reference)
             elif event.event_type in {
                 MissionEventType.FINAL_CANDIDATE_APPROVED,
@@ -5672,12 +5714,20 @@ class SQLiteMissionStore:
         expected_head: MissionHead,
         recorded_at: datetime,
     ) -> MissionHead:
-        from .final_bundle import FinalResultBundleV2
+        from .final_bundle import FinalBundleVerificationReceiptV1, FinalResultBundleV2
 
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
         if bundle_reference.kind != "final-result-bundle":
             raise MissionConflict("final result bundle evidence kind is invalid")
+        verifier = self.final_bundle_verifier
+        if verifier is None:
+            raise MissionConflict("final result bundle verifier is not bound")
+        # Read the snapshot before the write transaction opens: the recompute is a
+        # bare clone plus write-tree, and holding BEGIN IMMEDIATE across it would
+        # stall every other writer. A snapshot that goes stale is caught inside by
+        # _require_expected_head and by the bundle's own head bindings below.
+        verification_snapshot = self.snapshot(mission_id)
         request = {
             "bundle_reference": bundle_reference.model_dump(mode="json"),
             "expected_head": self._expected_head_value(mission_id, expected_head),
@@ -5746,6 +5796,15 @@ class SQLiteMissionStore:
                     raise MissionConflict(
                         "final result bundle does not match current mission state"
                     )
+                if verification_snapshot.head != expected_head or not verifier(
+                    raw, verification_snapshot
+                ):
+                    raise MissionConflict(
+                        "final result bundle does not recompute from the repository"
+                    )
+                receipt = FinalBundleVerificationReceiptV1.issue(
+                    bundle, verified_at=recorded_at
+                )
                 head = self._append(
                     connection,
                     mission_id,
@@ -5758,6 +5817,7 @@ class SQLiteMissionStore:
                                 "bundle_sha256": bundle.bundle_sha256,
                                 "candidate_sha256": candidate.sha256,
                                 "status": MissionStatus.AWAITING_RESULT.value,
+                                "verification_receipt": receipt.model_dump(mode="json"),
                                 "verification_sha256": verification.sha256,
                             },
                             references=(
@@ -5856,7 +5916,10 @@ class SQLiteMissionStore:
         recorded_at: datetime,
         approved: bool,
     ) -> MissionHead:
-        from .final_bundle import FinalDecisionReceiptV1
+        from .final_bundle import (
+            FinalBundleVerificationReceiptV1,
+            FinalDecisionReceiptV1,
+        )
 
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
@@ -5901,6 +5964,20 @@ class SQLiteMissionStore:
                     or bundle.verification_publication != verification
                 ):
                     raise MissionConflict("final result bundle changed after display")
+                try:
+                    verification_receipt = (
+                        FinalBundleVerificationReceiptV1.model_validate(
+                            bundle_event.payload.get("verification_receipt")
+                        )
+                    )
+                except ValueError as error:
+                    raise MissionConflict(
+                        "final result bundle carries no server verification receipt"
+                    ) from error
+                if not verification_receipt.binds(bundle):
+                    raise MissionConflict(
+                        "final result bundle verification receipt is not for this bundle"
+                    )
                 target = (
                     current
                     if approved
