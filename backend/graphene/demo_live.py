@@ -207,7 +207,12 @@ def _edit_plan(
 
     view = _plan_view(mission_id)
     revision = int(view["plan_revision"])
-    export = Path(tempfile.gettempdir()) / f"{mission_id}-plan-v{revision}.yaml"
+    # `_new_file_path` refuses a parent reached through a symlink, and on macOS
+    # the temp dir is exactly that (/var/folders -> /private/var/folders).
+    export = (
+        Path(tempfile.gettempdir()).resolve(strict=True)
+        / f"{mission_id}-plan-v{revision}.yaml"
+    )
     export.unlink(missing_ok=True)
     _plan_export_value(mission_id, export)
     _say(console, f"The plan is yours to change. It is exported to {export}.")
@@ -324,6 +329,7 @@ def _follow(
         # process has exited nothing can append events: the projection is not
         # going to move again and a crashed mission cannot hang the demo.
         stop=lambda: process.poll() is not None,
+        reopen=lambda: mission_cli._projection(mission_id),
     )
 
 
@@ -494,8 +500,15 @@ def run_live_demo(
         from .cli.mission import MissionCliError
         from .cli.watch import WatchError
 
-        if isinstance(error, (MissionCliError, WatchError)):
-            _say(console, str(error))
+        if isinstance(error, (MissionCliError, WatchError)) or type(
+            error
+        ).__module__.startswith("graphene."):
+            # A traceback on screen is the one thing a one-take demo cannot
+            # survive, and every failure Graphene raises about itself is a
+            # failure it can describe in a sentence. Anything from outside
+            # Graphene still propagates: that is a bug in this file, and it
+            # should be loud.
+            _say(console, f"The demo stopped: {error}")
             return 1
         raise
 

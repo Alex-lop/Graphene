@@ -98,7 +98,11 @@ def _console() -> Console:
 
 
 def _drive(
-    monkeypatch, tmp_path: Path, *, status: str = "awaiting_result"
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    status: str = "awaiting_result",
+    follow=None,
 ) -> tuple[int, Path, list[list[str]], list[str]]:
     """Run the whole story with every expensive seam faked out."""
     inbox = tmp_path / "inbox"
@@ -130,7 +134,9 @@ def _drive(
         return 2
 
     monkeypatch.setattr(demo_live, "_edit_plan", fake_edit)
-    monkeypatch.setattr(demo_live, "_follow", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        demo_live, "_follow", follow or (lambda *args, **kwargs: None)
+    )
     monkeypatch.setattr(demo_live, "_mission_status", lambda mission_id: status)
     monkeypatch.setattr(demo_live, "_fault_fired", lambda mission_id: True)
     monkeypatch.setattr(
@@ -168,7 +174,8 @@ def _drive(
         sleeper=lambda seconds: None,
         clock=lambda: 0.0,
     )
-    assert edit_calls == ["mission_start_demo"], "the edit beat must always run"
+    if follow is None:
+        assert edit_calls == ["mission_start_demo"], "the edit beat must always run"
     return code, inbox, runner_calls, feature_calls
 
 
@@ -349,3 +356,112 @@ def test_the_edit_beat_revises_lints_diffs_and_never_approves_by_itself(
     assert "edited render_json: read scope gained b.py" in out
     for line in out.splitlines():
         assert not line.lstrip().startswith("{")
+
+
+def test_the_export_path_survives_a_symlinked_temp_directory(monkeypatch, tmp_path) -> None:
+    """Caught by the first live rehearsal, which died before the edit beat.
+
+    `_new_file_path` refuses a parent reached through a symlink, and on macOS
+    `tempfile.gettempdir()` is exactly that — `/var/folders` is a symlink to
+    `/private/var/folders`. The demo exported into it and the run ended on a
+    path error instead of pausing for the edit.
+    """
+    from graphene.cli import mission as mission_cli
+
+    real = tmp_path / "real-tmp"
+    real.mkdir()
+    linked = tmp_path / "linked-tmp"
+    linked.symlink_to(real)
+    monkeypatch.setattr(demo_live.tempfile, "gettempdir", lambda: str(linked))
+    monkeypatch.setattr(demo_live, "_plan_view", lambda mission_id: PLAN_VIEW)
+
+    written: list[Path] = []
+
+    def export(mission_id: str, output):
+        # The real guard runs: this is the call that failed in the rehearsal.
+        path = mission_cli._new_file_path(Path(output))
+        mission_cli._atomic_create(path, b"exported\n")
+        written.append(path)
+        return {"status": "exported", "plan_revision": 1, "exported_to": str(path)}
+
+    monkeypatch.setattr(mission_cli, "_plan_export_value", export)
+    monkeypatch.setattr(
+        mission_cli,
+        "_plan_revise_value",
+        lambda source: {
+            "status": "revised",
+            "mission_id": "mission_start_demo",
+            "previous_plan_revision": 1,
+            "plan_revision": 2,
+            "plan_sha256": "f" * 64,
+            "needs_approval": True,
+        },
+    )
+    monkeypatch.setattr(
+        mission_cli,
+        "_plan_lint_value",
+        lambda mission_id: {
+            "status": "valid",
+            "valid": True,
+            "mission_id": mission_id,
+            "plan_revision": 2,
+            "plan_sha256": "f" * 64,
+            "criterion_coverage": [],
+            "topological_order": [],
+            "issues": [],
+        },
+    )
+    monkeypatch.setattr(
+        mission_cli,
+        "_plan_diff_value",
+        lambda mission_id, previous, current: {
+            "mission_id": mission_id,
+            "previous_plan_revision": previous,
+            "plan_revision": current,
+            "previous_plan_sha256": "e" * 64,
+            "plan_sha256": "f" * 64,
+            "max_concurrency": {"before": 2, "after": 2},
+            "criteria": {"added": [], "removed": [], "changed": []},
+            "tasks": {"added": [], "removed": [], "changed": []},
+        },
+    )
+    editor = tmp_path / "edit.py"
+    editor.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text('edited\\n')\n"
+    )
+
+    revision = demo_live._edit_plan(
+        _console(),
+        "mission_start_demo",
+        edit_command=f"{sys.executable} {editor}",
+        prompt=lambda text: pytest.fail("a prepared edit must not wait on a person"),
+    )
+
+    assert revision == 2
+    assert written and written[0].read_text() == "edited\n"
+
+
+def test_a_graphene_failure_mid_run_is_one_sentence_not_a_traceback(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """Caught by a live rehearsal that printed 30 lines of traceback on screen.
+
+    The dashboard raised `MissionProjectionError` while following the mission.
+    It is not `MissionCliError` or `WatchError`, so it propagated out of the
+    demo and rich printed the whole stack — during the beat a camera would be
+    pointed at.
+    """
+    from graphene.orchestration.projection import MissionProjectionError
+
+    def explode(*args, **kwargs):
+        raise MissionProjectionError("mission evidence is quarantined")
+
+    code, _inbox, _runner_calls, feature_calls = _drive(
+        monkeypatch, tmp_path, follow=explode
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "Traceback" not in out
+    assert "mission evidence is quarantined" in out
+    assert feature_calls == []

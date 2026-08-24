@@ -409,3 +409,57 @@ def test_follow_surfaces_a_projection_error_that_never_clears() -> None:
             clock=lambda: 0.0,
             sleeper=lambda _s: None,
         )
+
+
+def test_follow_reopens_a_projection_that_quarantined_itself() -> None:
+    """Caught by a live rehearsal that died mid-mission with a traceback.
+
+    `MissionProjection` refuses a mission for the rest of its life once it has
+    seen inconsistent evidence. That is right for a viewer and fatal for the
+    follow loop's ride-it-out budget, which otherwise spends every retry on the
+    same sticky refusal. Reopening re-runs every check on a fresh instance, so
+    a transient mid-write race recovers — and evidence that is genuinely bad is
+    refused again, because nothing about the check is skipped.
+    """
+
+    class _PoisonsItself:
+        """One good snapshot, then quarantined for good, like the real thing."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.poisoned = False
+
+        def snapshot(self, mission_id: str) -> Any:
+            self.calls += 1
+            if self.poisoned:
+                raise MissionProjectionError("mission evidence is quarantined")
+            self.poisoned = True
+            return _stub_snapshot("running")
+
+    def run(projection, reopen) -> Frame:
+        return follow(
+            projection,
+            "mission-1",
+            console=Console(file=io.StringIO(), force_terminal=False, width=100),
+            spend=lambda snapshot: None,
+            latest=lambda snapshot: None,
+            clock=lambda: 0.0,
+            sleeper=lambda seconds: None,
+            poll_seconds=0,
+            reopen=reopen,
+        )
+
+    reopened: list[_SeqProjection] = []
+
+    def reopen() -> _SeqProjection:
+        healthy = _SeqProjection([_stub_snapshot("completed")])
+        reopened.append(healthy)
+        return healthy
+
+    frame = run(_PoisonsItself(), reopen)
+    assert frame.status == "completed"
+    assert reopened, "the loop must reopen rather than retry the same refusal"
+
+    # Without `reopen`, the retry budget is spent on the identical refusal.
+    with pytest.raises(MissionProjectionError):
+        run(_PoisonsItself(), None)

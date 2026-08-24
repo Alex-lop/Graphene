@@ -243,6 +243,7 @@ def follow(
     sleeper: Callable[[float], None],
     poll_seconds: float = 0.25,
     stop: Callable[[], bool] | None = None,
+    reopen: Callable[[], Any] | None = None,
 ) -> Frame:
     """Poll until the mission is terminal; Ctrl-C hands back the last frame."""
     started = clock()
@@ -250,7 +251,7 @@ def follow(
 
     def _poll(previous: Frame | None) -> Frame:
         """One frame, tolerating a projection caught mid-write."""
-        nonlocal transient
+        nonlocal transient, projection
         while True:
             try:
                 snapshot = projection.snapshot(mission_id)
@@ -258,6 +259,16 @@ def follow(
                 transient += 1
                 if previous is None or transient > _MAX_TRANSIENT_POLLS:
                     raise
+                # A projection that has seen inconsistent evidence refuses to
+                # serve that mission again, for the rest of its life. That is
+                # the right answer for a viewer and the wrong one for a retry:
+                # without a fresh instance every retry hits the same refusal
+                # and riding out a mid-write race is impossible. Reopening
+                # weakens nothing — the new projection re-runs every check
+                # from scratch, so evidence that is genuinely inconsistent is
+                # refused again.
+                if reopen is not None:
+                    projection = reopen()
                 sleeper(poll_seconds)
                 continue
             transient = 0

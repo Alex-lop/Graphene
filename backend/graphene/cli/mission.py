@@ -1882,22 +1882,24 @@ def _new_file_path(value: Path) -> Path:
     requested = value.expanduser()
     requested = requested if requested.is_absolute() else Path.cwd() / requested
     if not requested.name:
-        raise MissionCliError("bundle output must name a new file")
+        raise MissionCliError("output must name a new file")
     try:
         unresolved_parent = requested.parent.absolute()
         parent = unresolved_parent.resolve(strict=True)
         metadata = parent.lstat()
     except OSError as error:
-        raise MissionCliError("bundle output parent is unavailable") from error
+        raise MissionCliError("output directory is unavailable") from error
     if (
         unresolved_parent != parent
         or stat.S_ISLNK(metadata.st_mode)
         or not stat.S_ISDIR(metadata.st_mode)
     ):
-        raise MissionCliError("bundle output parent must be a real directory")
+        raise MissionCliError(
+            "output directory must be a real directory, not a symlink"
+        )
     path = parent / requested.name
     if path.exists() or path.is_symlink():
-        raise MissionCliError("bundle output must be a new non-symlink file")
+        raise MissionCliError("output must be a new non-symlink file")
     return path
 
 
