@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
 from collections.abc import Sequence
 
@@ -87,6 +88,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         _diagnostic(_STARTUP_ERROR)
         return 1
 
+    # A shell that starts a job in the background sets SIGINT to SIG_IGN for the
+    # child, and SIG_IGN survives exec — so relying on Python's default handler
+    # means this server silently ignores Ctrl-C whenever it was launched from a
+    # background job, a service manager, or a CI step that backgrounds its work.
+    # Claim the signal explicitly, whatever we inherited.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     _diagnostic(_READY)
     exit_code = 0
     exit_diagnostic: str | None = None

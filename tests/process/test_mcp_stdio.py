@@ -443,3 +443,48 @@ def test_stdio_invalid_arguments_do_not_echo_client_input(tmp_path: Path):
     assert result.stderr == b"GRAPHENE_MCP_ARGUMENT_ERROR\n"
     assert canary.encode() not in result.stderr
     assert tuple(runtime.iterdir()) == ()
+
+
+def test_interrupt_is_honoured_even_when_launched_from_a_background_job(
+    tmp_path: Path,
+):
+    """SIG_IGN survives exec, so an inherited-default handler is not enough.
+
+    A shell that starts a job in the background sets SIGINT to SIG_IGN for the
+    child. Relying on Python's default handler therefore made `graphene-mcp`
+    and every `graphene` command silently ignore Ctrl-C whenever they were
+    started from a background job, a service manager, or a CI step that
+    backgrounds its work — the exact commands an operator interrupts. This
+    reproduces that launch mode by setting SIG_IGN in the child before exec.
+    """
+
+    async def scenario() -> None:
+        runtime = tmp_path / "runtime"
+        runtime.mkdir(mode=0o700)
+        database = runtime / "lineage.sqlite3"
+        process = await asyncio.create_subprocess_exec(
+            str(GRAPHENE_MCP),
+            "--task",
+            "baseline_max_attempts",
+            "--profile",
+            "platform-maintainer@1",
+            cwd=runtime,
+            env=_environment(database),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+        )
+        assert process.stderr is not None
+        assert (
+            await asyncio.wait_for(process.stderr.readline(), timeout=10)
+            == b"GRAPHENE_MCP_STDIO_READY\n"
+        )
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+        assert process.returncode == 130
+        assert stdout == b""
+        assert stderr == b"GRAPHENE_MCP_INTERRUPTED\n"
+
+    asyncio.run(scenario())

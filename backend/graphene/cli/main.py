@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import signal
 import sqlite3
 import stat
 import sys
@@ -1499,7 +1500,26 @@ def _write_result(value: dict[str, object], *, json_mode: bool) -> None:
         sys.stdout.write(f"GRAPHENE {fields}\n")
 
 
+def _claim_interrupt() -> None:
+    """Honour Ctrl-C however this process was launched.
+
+    A shell that starts a job in the background sets SIGINT to SIG_IGN for the
+    child, and SIG_IGN survives exec. Relying on Python's default handler
+    therefore means every `graphene` command silently ignores Ctrl-C whenever it
+    was started from a background job, a service manager, or a CI step that
+    backgrounds its work — including the watchers and the live dashboard, which
+    are exactly the commands an operator interrupts. Claim the signal
+    explicitly, whatever we inherited.
+    """
+    try:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    except (OSError, ValueError):
+        # Not the main thread, or a platform without SIGINT: nothing to claim.
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _claim_interrupt()
     args = build_parser().parse_args(argv)
     if args.command == "why" and getattr(args, "json_mode_local", False):
         # `graphene why ... --json` means the same as the global `--json` flag.
