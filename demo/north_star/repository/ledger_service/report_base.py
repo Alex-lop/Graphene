@@ -1,8 +1,5 @@
-"""Shared aggregation every report renderer builds on.
-
-Renderers take a ``Report`` from ``build_report`` so they agree with each
-other and with the ``balances`` command; notes are redacted once, here.
-"""
+"""Shared aggregation every report renderer builds on: renderers take a
+``Report`` from ``build_report``; notes are redacted exactly once, here."""
 
 from __future__ import annotations
 

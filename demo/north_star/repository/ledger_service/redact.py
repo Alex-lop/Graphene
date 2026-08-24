@@ -1,16 +1,9 @@
-"""Redaction of free-text notes before they leave the service.
-
-Notes may contain e-mail addresses, credential assignments such as
-``token=...`` or ``password: ...``, bearer credentials, or long hex digests.
-"""
+"""Redaction of free-text notes before they leave the service."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass, replace
-
-from .models import Movement
+from dataclasses import dataclass
 
 PLACEHOLDER = "[REDACTED]"
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -49,21 +42,3 @@ def redact_text(text: str, policy: RedactionPolicy = DEFAULT_POLICY) -> str:
     if policy.emails:
         result = EMAIL.sub(policy.placeholder, result)
     return result
-
-
-def is_sensitive(text: str, policy: RedactionPolicy = DEFAULT_POLICY) -> bool:
-    return redact_text(text, policy) != text
-
-
-def redact_movement(
-    movement: Movement, policy: RedactionPolicy = DEFAULT_POLICY
-) -> Movement:
-    """Return the movement with a redacted note (same object if unchanged)."""
-    note = redact_text(movement.note, policy)
-    return movement if note == movement.note else replace(movement, note=note)
-
-
-def redact_movements(
-    movements: Iterable[Movement], policy: RedactionPolicy = DEFAULT_POLICY
-) -> tuple[Movement, ...]:
-    return tuple(redact_movement(movement, policy) for movement in movements)

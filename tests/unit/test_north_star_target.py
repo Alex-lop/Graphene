@@ -9,8 +9,11 @@ Proven here, credential-free:
   ``graphene.cli.mission._load_project_policy`` and binds the frozen fixed
   test command, and it refuses (exit 1, nothing deleted) when the destination
   exists or the target suite fails;
-* ``report --format json|markdown`` raises ``NotImplementedError`` today and
-  no report tests exist yet, so the mission's work is real;
+* the renderer modules are absent at base: ``report --format json|markdown``
+  exits 1 with a clean ``error:`` line (no traceback), the golden contract
+  test in ``tests/test_report_contract.py`` skips, and the CLI already
+  dispatches both formats — the mission's work is exactly the two renderer
+  modules plus their tests, the only paths the policy lets it write;
 * ``goal.json`` and ``GOAL.md`` agree, and ``policy.template.json`` matches
   the documented policy;
 * size and hygiene bounds hold: source line count, every tracked file inside
@@ -55,7 +58,11 @@ PLANNER_EXCERPT_BYTES = 4_096
 PLANNER_EXCERPT_COUNT = 16
 PLANNER_BUDGET_BYTES = 32_768
 SECRET_MARKERS = ("api_key", "token=", "password")
-SECRET_ALLOWED = {"ledger_service/redact.py", "tests/test_redact.py"}
+SECRET_ALLOWED = {
+    "ledger_service/redact.py",
+    "tests/test_redact.py",
+    "tests/test_report_contract.py",
+}
 SAMPLE_LEDGER = {
     "items": [{"sku": "BOLT-M8", "name": "M8 bolt"}],
     "movements": [
@@ -130,7 +137,8 @@ def test_target_suite_passes_in_sanitized_environment(tmp_path: Path) -> None:
     result = _run_in_target(target, *_FIXED_TEST_COMMAND[1:])
     summary = result.stdout.strip().splitlines()[-1]
     assert result.returncode == 0, result.stdout
-    assert re.fullmatch(r"\d+ passed in [\d.]+s", summary), summary
+    # Exactly the two golden-contract tests skip while the renderers are absent.
+    assert re.fullmatch(r"\d+ passed, 2 skipped in [\d.]+s", summary), summary
     leftovers = [p for p in target.rglob("*") if p.name in IGNORED_NAMES or p.suffix == ".pyc"]
     assert leftovers == [], "the sanitized run must not write bytecode or caches"
 
@@ -151,7 +159,12 @@ def test_materializer_produces_policy_that_mission_start_loads(tmp_path: Path) -
     )
     assert policy.command_templates == (expected_template,)
     assert policy.allowed_read_globs == ("README.md", "ledger_service/**", "tests/**")
-    assert policy.allowed_write_globs == ("ledger_service/**", "tests/**")
+    assert policy.allowed_write_globs == (
+        "ledger_service/report_json.py",
+        "ledger_service/report_markdown.py",
+        "tests/test_report_json.py",
+        "tests/test_report_markdown.py",
+    )
     assert ".graphene/**" in policy.exclusions and ".git/**" in policy.exclusions
     assert policy.network.mode is NetworkMode.DENY and policy.network.allowed_hosts == ()
     assert (policy.max_concurrency, policy.retry_limit, policy.revision) == (2, 1, 1)
@@ -211,7 +224,7 @@ def test_materializer_refuses_when_target_suite_fails(
 
 
 @pytest.mark.parametrize("fmt", ["json", "markdown"])
-def test_report_renderers_are_not_implemented_yet(tmp_path: Path, fmt: str) -> None:
+def test_report_renderers_are_absent_and_cli_fails_cleanly(tmp_path: Path, fmt: str) -> None:
     target = _copy_target(tmp_path)
     ledger = tmp_path / "ledger.json"
     ledger.write_text(json.dumps(SAMPLE_LEDGER), encoding="utf-8")
@@ -219,7 +232,8 @@ def test_report_renderers_are_not_implemented_yet(tmp_path: Path, fmt: str) -> N
         target, "-m", "ledger_service", "--ledger", str(ledger), "report", "--format", fmt
     )
     assert result.returncode == 1
-    assert "NotImplementedError: report renderers are added by the mission" in result.stdout
+    assert f"error: no {fmt} report renderer (ledger_service.report_{fmt} is missing)" in result.stdout
+    assert "Traceback" not in result.stdout
     balances = _run_in_target(target, "-m", "ledger_service", "--ledger", str(ledger), "balances")
     assert (balances.returncode, balances.stdout) == (0, "BOLT-M8\t3\teach\n")
 
@@ -227,7 +241,7 @@ def test_report_renderers_are_not_implemented_yet(tmp_path: Path, fmt: str) -> N
 def test_no_report_tests_or_renderers_exist_yet() -> None:
     names = [p.relative_to(REPOSITORY).as_posix() for p in _tracked_files()]
     report_tests = [n for n in names if n.startswith("tests/") and "report" in n]
-    assert report_tests == ["tests/test_report_base.py"]
+    assert report_tests == ["tests/test_report_base.py", "tests/test_report_contract.py"]
     assert not [n for n in names if "json" in n or "markdown" in n]
     assert "ledger_service/report_base.py" in names
     for path in _tracked_files():
@@ -263,7 +277,12 @@ def test_policy_template_matches_documented_policy() -> None:
     assert placeholders == {"policy_id", "repo_id", "base_ref", "base_sha", "revision"}
     assert template["schema_version"] == 1
     assert template["allowed_read_globs"] == ["README.md", "ledger_service/**", "tests/**"]
-    assert template["allowed_write_globs"] == ["ledger_service/**", "tests/**"]
+    assert template["allowed_write_globs"] == [
+        "ledger_service/report_json.py",
+        "ledger_service/report_markdown.py",
+        "tests/test_report_json.py",
+        "tests/test_report_markdown.py",
+    ]
     assert template["exclusions"] == [
         "**/*.key", "**/*.pem", ".env", ".env.*", ".git/**", ".graphene/**"
     ]

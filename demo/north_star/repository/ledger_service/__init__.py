@@ -1,7 +1,4 @@
-"""ledger_service: a small stock ledger with an audit trail and a CLI.
-
-Standard library only; a Graphene demo target (see README.md).
-"""
+"""A small stock ledger with an audit trail and a CLI; stdlib only."""
 
 from .ledger import (
     AuditEntry,

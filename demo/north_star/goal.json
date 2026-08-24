@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "goal": "Add a redacted JSON status report and a Markdown status report to the ledger CLI; both must pass the existing suite plus new tests.",
+  "goal": "Add a redacted JSON status report and a Markdown status report to the ledger CLI; the CLI already dispatches both formats, so implement the two renderer modules and their tests.",
   "success_criteria": [
-    "Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy.",
-    "Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells.",
+    "ledger_service/report_json.py defines render_json(report) returning one JSON object with item_count, total_quantity, below_reorder and rows, where rows are the report rows as dictionaries, per-item quantities equal the balances command, and notes have passed through the redaction policy.",
+    "ledger_service/report_markdown.py defines render_markdown(report) returning a Markdown table with the exact header and separator rows, one row per item in report order, pipe characters inside cells escaped, and notes joined with a semicolon and a space.",
     "The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider.",
-    "No file outside ledger_service/ and tests/ is created or modified."
+    "No file outside ledger_service/report_json.py, ledger_service/report_markdown.py, tests/test_report_json.py and tests/test_report_markdown.py is created or modified."
   ]
 }

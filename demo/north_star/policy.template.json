@@ -6,7 +6,12 @@
   "base_ref": "<materialized>",
   "base_sha": "<materialized>",
   "allowed_read_globs": ["README.md", "ledger_service/**", "tests/**"],
-  "allowed_write_globs": ["ledger_service/**", "tests/**"],
+  "allowed_write_globs": [
+    "ledger_service/report_json.py",
+    "ledger_service/report_markdown.py",
+    "tests/test_report_json.py",
+    "tests/test_report_markdown.py"
+  ],
   "exclusions": ["**/*.key", "**/*.pem", ".env", ".env.*", ".git/**", ".graphene/**"],
   "command_templates": [
     {

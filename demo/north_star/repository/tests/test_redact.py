@@ -1,15 +1,6 @@
 import pytest
 
-from ledger_service.models import Movement
-from ledger_service.redact import (
-    RedactionPolicy,
-    is_sensitive,
-    redact_movement,
-    redact_movements,
-    redact_text,
-)
-
-T = "2024-05-01T10:00:00+00:00"
+from ledger_service.redact import RedactionPolicy, redact_text
 
 
 @pytest.mark.parametrize(
@@ -38,30 +29,3 @@ def test_policy_toggles() -> None:
 
 def test_custom_placeholder() -> None:
     assert redact_text("token=abc", RedactionPolicy(placeholder="***")) == "token=***"
-
-
-def test_is_sensitive() -> None:
-    assert is_sensitive("password=x")
-    assert not is_sensitive("plain")
-
-
-def test_redact_movement_returns_same_object_when_clean() -> None:
-    movement = Movement("m1", "BOLT-M8", "receipt", 1, T, note="clean")
-    assert redact_movement(movement) is movement
-
-
-def test_redact_movement_replaces_note_only() -> None:
-    movement = Movement("m1", "BOLT-M8", "receipt", 1, T, note="password=x")
-    redacted = redact_movement(movement)
-    assert redacted.note == "password=[REDACTED]"
-    assert redacted.movement_id == movement.movement_id
-    assert movement.note == "password=x"
-
-
-def test_redact_movements_keeps_order() -> None:
-    movements = [
-        Movement("m2", "BOLT-M8", "receipt", 1, T, note="b@example.com"),
-        Movement("m1", "BOLT-M8", "receipt", 1, T, note="fine"),
-    ]
-    redacted = redact_movements(movements)
-    assert [(m.movement_id, m.note) for m in redacted] == [("m2", "[REDACTED]"), ("m1", "fine")]

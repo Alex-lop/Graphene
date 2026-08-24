@@ -1,7 +1,7 @@
 """Command line: ``python -m ledger_service --ledger FILE <command>``.
 
 Commands: ``balances``, ``audit [--sku SKU]`` (notes redacted), and
-``report --format json|markdown`` (renderers not implemented yet).
+``report --format json|markdown`` (renderer modules may be absent).
 """
 
 from __future__ import annotations
@@ -14,10 +14,15 @@ from typing import IO
 
 from .ledger import DocumentError, Ledger, LedgerError
 from .redact import DEFAULT_POLICY, RedactionPolicy, redact_text
+from .report_base import build_report
 
 REPORT_FORMATS = ("json", "markdown")
 EXIT_OK = 0
 EXIT_FAILURE = 1
+
+
+class MissingRendererError(LedgerError):
+    """The ``fmt`` renderer module does not exist yet."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,8 +86,18 @@ def render_audit(ledger: Ledger, sku: str | None, policy: RedactionPolicy) -> st
 
 
 def render_report(ledger: Ledger, fmt: str, policy: RedactionPolicy) -> str:
-    """Render a status report in ``fmt`` (one of ``REPORT_FORMATS``)."""
-    raise NotImplementedError("report renderers are added by the mission")
+    """Build the report once and dispatch to the ``fmt`` renderer."""
+    report = build_report(ledger, policy)
+    try:
+        if fmt == "json":
+            from .report_json import render_json as render
+        else:
+            from .report_markdown import render_markdown as render
+    except ModuleNotFoundError as error:
+        raise MissingRendererError(
+            f"no {fmt} report renderer ({error.name} is missing)"
+        ) from error
+    return render(report)
 
 
 def main(

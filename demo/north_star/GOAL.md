@@ -8,19 +8,20 @@ machine-readable twin of this file, and prints the exact command;
 
 ## Goal
 
-> Add a redacted JSON status report and a Markdown status report to the ledger CLI; both must pass the existing suite plus new tests.
+> Add a redacted JSON status report and a Markdown status report to the ledger CLI; the CLI already dispatches both formats, so implement the two renderer modules and their tests.
 
 ## Success criteria
 
-Each criterion is one sentence and is checkable by the target's own test
-suite, which is the policy's only command template
+Each criterion is one sentence and is mechanically checked by the golden
+contract test that ships in the target (`tests/test_report_contract.py`),
+run by the policy's only command template
 (`python -m pytest -q -p no:cacheprovider`). The CLI sorts criteria before
 planning, so their order here carries no meaning.
 
-1. Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy.
-2. Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells.
+1. ledger_service/report_json.py defines render_json(report) returning one JSON object with item_count, total_quantity, below_reorder and rows, where rows are the report rows as dictionaries, per-item quantities equal the balances command, and notes have passed through the redaction policy.
+2. ledger_service/report_markdown.py defines render_markdown(report) returning a Markdown table with the exact header and separator rows, one row per item in report order, pipe characters inside cells escaped, and notes joined with a semicolon and a space.
 3. The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider.
-4. No file outside ledger_service/ and tests/ is created or modified.
+4. No file outside ledger_service/report_json.py, ledger_service/report_markdown.py, tests/test_report_json.py and tests/test_report_markdown.py is created or modified.
 
 ## Expected plan shape (an expectation, not a fixture)
 
@@ -28,20 +29,40 @@ The planner is live Gemini. Nothing in this section is fed to it, scripted,
 or enforced; it is what a good plan for this goal looks like, so a reviewer
 can judge the proposal that comes back before approving it.
 
-- Work task A (parallel): a JSON renderer, for example
-  `ledger_service/report_json.py`, built on `report_base.build_report`,
+- Work task A (parallel): `ledger_service/report_json.py` defining
+  `render_json(report)` over the `Report` from `report_base.build_report`,
   plus `tests/test_report_json.py`.
-- Work task B (parallel): a Markdown renderer, for example
-  `ledger_service/report_markdown.py`, with one table row per item and pipe
-  characters escaped, plus `tests/test_report_markdown.py`.
-- Integration tail (depends on A and B): replace the `NotImplementedError`
-  in `ledger_service/cli.py::render_report` with dispatch to both renderers
-  and extend `tests/test_cli.py`.
-- Verification: the `fixture-tests` command template run against the
-  assembled candidate.
+- Work task B (parallel): `ledger_service/report_markdown.py` defining
+  `render_markdown(report)`, plus `tests/test_report_markdown.py`.
+- Deterministic assembly, already in the repository: `ledger_service/cli.py`
+  ships dispatching `report --format json|markdown` to the two renderer
+  modules, and the policy's write scope excludes `cli.py`, so no integration
+  task can even be planned.
+- Verification tail: the `fixture-tests` command template against the
+  assembled candidate. `tests/test_report_contract.py` skips while a
+  renderer module is absent and binds the moment it appears, so the tail is
+  exact rather than prose-judged.
 
-A and B touch disjoint files, so two workers can run them concurrently; the
-tail is where the mission proves assembly and exact verification.
+A and B touch disjoint files, so two workers can run them concurrently.
+
+## Why this shape
+
+Twelve live missions ran against the previous shape of this target; two
+completed, and every other failure was on the model-generated report tasks or
+on a model-invented `cli_integration` task wiring the renderers together. The
+convergence directive prescribes two disjoint Gemini work tasks, deterministic
+assembly, and a verification tail — and that whatever remains model-generated
+gets a sharper criterion, not a weaker check. So assembly stopped being model
+work (the dispatch ships in `cli.py`, which the policy makes unwritable), and
+the two model tasks kept their subjects but lost the guesswork: the golden
+contract test ships in the base repository, readable but not writable under
+the policy, turning the criteria from prose into exact assertions — strictly
+stronger, never weaker. The markdown renderer stayed as the second task
+because this target has no other naturally disjoint second task, and the
+flakiness it caused was underspecification, now removed by the contract test.
+A reviewer who reads "the flaky markdown-report generation leaves the
+critical path" more literally can drop criterion 2 and its task without
+touching anything else.
 
 ## Machine-readable twin
 
@@ -50,12 +71,12 @@ The block below is byte-for-byte the content of `goal.json`:
 ```json
 {
   "schema_version": 1,
-  "goal": "Add a redacted JSON status report and a Markdown status report to the ledger CLI; both must pass the existing suite plus new tests.",
+  "goal": "Add a redacted JSON status report and a Markdown status report to the ledger CLI; the CLI already dispatches both formats, so implement the two renderer modules and their tests.",
   "success_criteria": [
-    "Running ledger_service with report --format json prints one JSON object whose per-item quantities equal the balances command and whose notes have passed through the redaction policy.",
-    "Running ledger_service with report --format markdown prints a Markdown table with a header row and exactly one row per item, escaping pipe characters inside cells.",
+    "ledger_service/report_json.py defines render_json(report) returning one JSON object with item_count, total_quantity, below_reorder and rows, where rows are the report rows as dictionaries, per-item quantities equal the balances command, and notes have passed through the redaction policy.",
+    "ledger_service/report_markdown.py defines render_markdown(report) returning a Markdown table with the exact header and separator rows, one row per item in report order, pipe characters inside cells escaped, and notes joined with a semicolon and a space.",
     "The existing tests and the new report tests all pass under python -m pytest -q -p no:cacheprovider.",
-    "No file outside ledger_service/ and tests/ is created or modified."
+    "No file outside ledger_service/report_json.py, ledger_service/report_markdown.py, tests/test_report_json.py and tests/test_report_markdown.py is created or modified."
   ]
 }
 ```
