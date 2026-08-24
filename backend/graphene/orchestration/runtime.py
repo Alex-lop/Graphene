@@ -645,6 +645,10 @@ class WorkerContext:
         self.assignment = assignment
         self.workspace = workspace
         self.operation_ids: set[str] = set()
+        # Which stages this attempt actually got through. A cancellation can
+        # land at any await, and "cancelled" on its own cannot say whether the
+        # acceptance check had already passed when it did.
+        self.completed_stages: list[str] = []
         self._baseline: WorkspaceBaseline | None = None
         self._admin_roots: tuple[tuple[str, Path], ...] = ()
         self._workspace_identity: tuple[int, int] | None = None
@@ -747,6 +751,7 @@ class WorkerContext:
             raise _OutcomeUnknown() from error
         if action_error is not None:
             raise action_error
+        self.completed_stages.append(label)
         return value
 
     def _target(self, path: str, allowed: tuple[str, ...]) -> Path:
@@ -1117,6 +1122,9 @@ class WorkerRuntime:
         self._attempt_locks: dict[str, asyncio.Lock] = {}
         self._cancellation_safe_attempts: set[str] = set()
         self._active: dict[str, Dispatch] = {}
+        # Kept only so a cancelled attempt can still say which stages it
+        # completed; discarded the moment the attempt ends.
+        self._contexts: dict[str, WorkerContext] = {}
 
     def cancellation_safe(self, dispatch: Dispatch) -> bool:
         """True only while cancellation cannot orphan a local thread/subprocess."""
@@ -1816,14 +1824,48 @@ class WorkerRuntime:
             )
         return evidence_id
 
+    def _record_cancelled_stage(self, dispatch: Dispatch) -> None:
+        """Say how far a cancelled attempt got, before it disappears.
+
+        A cancellation is a `BaseException`, so it bypasses every failure
+        handler in `_execute_locked` and none of the terminal bookkeeping
+        runs: the attempt reaches the store as a bare `cancelled` or
+        `outcome_unknown` with no evidence at all. That is exactly the case
+        where a reader most needs to know whether the acceptance check had
+        already passed. This adds one non-terminal evidence event naming the
+        stages the attempt completed, and changes nothing else.
+        """
+        context = self._contexts.get(dispatch.attempt_id)
+        stages = list(context.completed_stages) if context is not None else []
+        try:
+            self._record(
+                dispatch,
+                AttemptEvidenceEventType.OPERATION_FAILED,
+                {
+                    "reason": "cancelled",
+                    "stage_reached": stages[-1] if stages else "start",
+                    "check_completed": "check" in stages,
+                    "completed_stages": ",".join(stages),
+                },
+            )
+        except Exception:
+            # Losing the stage record must never turn a cancellation into a
+            # different failure; the cancellation is what propagates.
+            return
+
     async def execute_async(self, dispatch: Dispatch) -> WorkerRun:
         lock = self._attempt_locks.setdefault(dispatch.attempt_id, asyncio.Lock())
         async with lock:
             self._active[dispatch.attempt_id] = dispatch
             try:
                 return await self._execute_locked(dispatch)
+            except BaseException as error:
+                if not isinstance(error, Exception):
+                    self._record_cancelled_stage(dispatch)
+                raise
             finally:
                 self._active.pop(dispatch.attempt_id, None)
+                self._contexts.pop(dispatch.attempt_id, None)
 
     async def _execute_locked(self, dispatch: Dispatch) -> WorkerRun:
         recovered = self._load_receipt(dispatch)
@@ -1864,6 +1906,7 @@ class WorkerRuntime:
         )
         workspace = self._workspace(dispatch)
         context = WorkerContext(self, dispatch, assignment, workspace)
+        self._contexts[dispatch.attempt_id] = context
         self._record(
             dispatch,
             AttemptEvidenceEventType.ATTEMPT_STARTED,

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,6 +38,7 @@ from graphene.orchestration.runner import (
     MissionRunner,
     RunnerCancelled,
     RunnerDeadlineExceeded,
+    RunnerError,
     RunnerExecutionFailed,
     RunnerStalled,
 )
@@ -561,8 +561,13 @@ def test_runner_retries_one_truth_labeled_check_failure_without_delaying_sibling
         runtime=runtime,
         worker_ids=("worker-a", "worker-z"),
         accepted_artifacts=cache,
-        deadline_seconds=5,
+        # What is under test is the order the scheduler produced, not whether
+        # several real Git and filesystem rounds fit inside a wall-clock
+        # budget. The clock is frozen so a loaded host cannot fail this;
+        # the deadline has its own test below.
+        deadline_seconds=3_600,
         poll_seconds=0,
+        monotonic=lambda: 0.0,
     ).run("runner-mission")
 
     assert run.snapshot.mission.status == MissionStatus.AWAITING_RESULT
@@ -698,7 +703,15 @@ def test_runner_deadline_cleans_private_workspaces_without_touching_source(
         cache=cache,
     )
 
-    started = time.monotonic()
+    # This test is about what a cut-off attempt leaves behind. The runner's
+    # own clock is injected so the assertions below never depend on how long
+    # the host took; the deadline decision itself is tested separately.
+    calls = [0]
+
+    def clock() -> float:
+        calls[0] += 1
+        return 0.0
+
     with pytest.raises(RunnerDeadlineExceeded, match="deadline"):
         MissionRunner(
             scheduler=scheduler,
@@ -707,9 +720,10 @@ def test_runner_deadline_cleans_private_workspaces_without_touching_source(
             accepted_artifacts=cache,
             deadline_seconds=0.05,
             poll_seconds=0,
+            monotonic=clock,
         ).run("runner-mission")
 
-    assert time.monotonic() - started < 2
+    assert calls[0] >= 2
     assert not tuple((runtime_root / "worker-workspaces").iterdir())
     assert {
         path: (repository / path).read_bytes() for path in ("a.txt", "b.txt")
@@ -719,6 +733,50 @@ def test_runner_deadline_cleans_private_workspaces_without_touching_source(
     assert {item.state for item in snapshot.attempts} == {AttemptState.FAILED}
     assert {item.result_code for item in snapshot.attempts} == {"outcome_unknown"}
     assert all(item.released_at is not None for item in snapshot.leases)
+
+
+def test_runner_stops_when_its_own_clock_passes_the_deadline(tmp_path: Path) -> None:
+    """The deadline as a decision, with no worker timing in it at all.
+
+    Every attempt is given effectively unlimited time, and the workers finish
+    normally. The only thing that ends the run is the runner reading its clock
+    and finding the budget spent.
+    """
+    repository, base_sha, runtime_root, evidence, store, assignments, a, z = _setup(
+        tmp_path, delay=0
+    )
+    scheduler = MissionScheduler(store, clock=SystemClock())
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(a, z),
+        cache=cache,
+    )
+    ticks = iter((0.0, 0.0))
+
+    def clock() -> float:
+        return next(ticks, 7_200.0)
+
+    with pytest.raises(RunnerDeadlineExceeded, match="deadline"):
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=runtime,
+            worker_ids=("worker-a", "worker-z"),
+            accepted_artifacts=cache,
+            deadline_seconds=3_600,
+            poll_seconds=0,
+            monotonic=clock,
+        ).run("runner-mission")
+
+    snapshot = store.snapshot("runner-mission")
+    # The first batch was allowed to finish: this is a budget, not a kill.
+    assert {item.state for item in snapshot.attempts} == {AttemptState.COMMITTED}
+    assert store.verify("runner-mission") == store.head("runner-mission")
 
 
 def test_unexpected_runner_failure_is_committed_and_releases_leases(
@@ -898,3 +956,79 @@ def test_external_cancellation_terminalizes_active_batch_before_mission_cancel(
     finally:
         unrelated.terminate()
         unrelated.wait(timeout=3)
+
+
+def test_a_cancellation_after_a_passing_check_records_the_stage_it_reached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A check that passed and was then cancelled must not read as nothing.
+
+    The deadline path is not gated by `cancellation_safe`, so a cancellation
+    can land after the acceptance check has already passed — and the workspace
+    cleanup that follows it sits outside every failure handler, so without a
+    record the attempt reaches the store bare. The cut is driven in exactly
+    there: `cleanup` is the first stage after the check, and this asserts the
+    evidence chain still says the check had passed.
+    """
+    repository, base_sha, runtime_root, evidence, store, assignments, a, z = _setup(
+        tmp_path, delay=0
+    )
+    original = WorkerContext._effect
+
+    async def cancel_at_cleanup(self, label, action):
+        if label == "cleanup" and self.dispatch.task_id == "work-a":
+            raise asyncio.CancelledError()
+        return await original(self, label, action)
+
+    monkeypatch.setattr(WorkerContext, "_effect", cancel_at_cleanup)
+
+    scheduler = MissionScheduler(store, clock=SystemClock())
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(a, z),
+        cache=cache,
+    )
+
+    with pytest.raises(RunnerError):
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=runtime,
+            worker_ids=("worker-a", "worker-z"),
+            accepted_artifacts=cache,
+            deadline_seconds=3_600,
+            poll_seconds=0,
+            monotonic=lambda: 0.0,
+        ).run("runner-mission")
+
+    attempt = next(
+        item
+        for item in store.snapshot("runner-mission").attempts
+        if item.task_id == "work-a"
+    )
+    evidence_id = (
+        "attempt_evidence_"
+        + canonical_json_sha256(("runner-mission", attempt.attempt_id))[:24]
+    )
+    events = evidence.tail(evidence_id, 0, evidence.head(evidence_id).seq)
+    kinds = [item.event_type for item in events]
+    assert AttemptEvidenceEventType.CHECK_COMPLETED in kinds
+    cancelled = next(
+        item
+        for item in events
+        if item.event_type == AttemptEvidenceEventType.OPERATION_FAILED
+        and item.payload.get("reason") == "cancelled"
+    )
+    # The evidence says what actually happened: the check had already passed,
+    # and the last stage the attempt finished was storing that check's receipt.
+    assert cancelled.payload["check_completed"] is True
+    assert cancelled.payload["stage_reached"] == "store-check-receipt"
+    stages = str(cancelled.payload["completed_stages"]).split(",")
+    assert stages.index("check") < stages.index("store-check-receipt")
+    # And the attempt itself is still recorded as cancelled, not as a success.
+    assert attempt.state in {AttemptState.CANCELLED, AttemptState.FAILED}

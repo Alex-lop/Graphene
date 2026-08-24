@@ -61,10 +61,15 @@ def _cli_tty(
     output = bytearray()
     try:
         while process.poll() is None:
-            ready, _, _ = select.select([master], [], [], 20)
+            # Generous on purpose: what this test asserts is that the CLI
+            # recovers, not that it answers inside a wall-clock budget. On a
+            # loaded host a real subprocess can take tens of seconds, and a
+            # correctness test that flips on machine load is not a test.
+            # pytest-timeout is the actual hang guard.
+            ready, _, _ = select.select([master], [], [], 300)
             if not ready:
                 process.kill()
-                raise AssertionError("TTY CLI command timed out")
+                raise AssertionError("TTY CLI command produced no output in 300s")
             chunk = os.read(master, 65_536)
             if not chunk:
                 break

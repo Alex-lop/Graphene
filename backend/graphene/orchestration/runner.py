@@ -171,6 +171,7 @@ class MissionRunner:
         max_no_progress_cycles: int = 3,
         poll_seconds: float = 0.05,
         should_cancel: Callable[[], bool] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if not worker_ids or worker_ids != tuple(sorted(set(worker_ids))):
             raise ValueError("worker IDs must be sorted and unique")
@@ -190,6 +191,11 @@ class MissionRunner:
         self.max_no_progress_cycles = max_no_progress_cycles
         self.poll_seconds = poll_seconds
         self.should_cancel = should_cancel
+        # Injectable so a test can assert what the scheduler did without also
+        # asserting that the host finished several Git rounds inside a real
+        # wall-clock budget. Deadline behaviour gets its own test that drives
+        # this forward on purpose.
+        self.monotonic = monotonic
 
     def _cancellation_requested(self) -> bool:
         if self.should_cancel is None:
@@ -290,7 +296,7 @@ class MissionRunner:
             ) from failures[0]
 
     async def run_async(self, mission_id: str) -> MissionRun:
-        started = time.monotonic()
+        started = self.monotonic()
         no_progress = 0
         batches: list[tuple[str, ...]] = []
         completion_order: list[str] = []
@@ -312,7 +318,7 @@ class MissionRunner:
             if self._cancellation_requested():
                 raise RunnerCancelled("mission cancellation requested")
 
-            remaining = self.deadline_seconds - (time.monotonic() - started)
+            remaining = self.deadline_seconds - (self.monotonic() - started)
             if remaining <= 0:
                 raise RunnerDeadlineExceeded("mission deadline exceeded")
             dispatches = self.scheduler.tick(mission_id, self.worker_ids)
