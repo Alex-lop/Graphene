@@ -22,6 +22,12 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "graphene --help" in workflow
     assert "graphene --json watch \"$run_id\" --snapshot" in workflow
 
+    # "Generated files leave a clean diff" must actually be able to detect a
+    # changed file. `git diff --check` reports whitespace errors and exits 0
+    # when a tracked file's content changed, so the step name was a promise the
+    # command could not keep.
+    assert "git diff --exit-code" in workflow
+
     assert "runs-on: ubuntu-24.04" in workflow
     assert "tests/process/test_verified_replay.py" in workflow
     assert "graphene demo --driver verified-replay" in workflow

@@ -36,7 +36,12 @@ jobs:
       - name: MCP STDIO process tests
         run: uv run --frozen pytest -q tests/process/test_mcp_stdio.py
       - name: Generated files leave a clean diff
-        run: git diff --check
+        # --check reports whitespace errors and exits 0 on a file whose content
+        # changed, so it cannot detect what this step is named for. --exit-code
+        # is the half that does.
+        run: |
+          git diff --check
+          git diff --exit-code
       - name: CLI help and canonical NDJSON smoke
         shell: bash
         run: |

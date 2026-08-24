@@ -45,7 +45,9 @@ fi
 step "ruff / compileall / git diff --check"
 run "ruff (locked)" uv run --frozen ruff check .
 run "compileall" uv run --frozen python -m compileall -q backend scripts tests
-git diff --check && ok "git diff --check" || bad "git diff --check"
+# --check catches whitespace errors; --exit-code is what actually proves a
+# generated file did not drift. CI runs both under the same step name.
+git diff --check && git diff --exit-code && ok "git diff clean" || bad "git diff clean"
 
 step "secret scan (locations + pattern names only; tests/ fixtures are expected)"
 uv run --frozen python scripts/secret_scan.py --commits 40 | tail -1 && ok "secret scan: nothing outside tests/" || bad "secret scan"
