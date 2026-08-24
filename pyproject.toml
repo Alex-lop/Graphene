@@ -38,21 +38,21 @@ packages = ["backend/graphene"]
 exclude = ["/.claude", "/All_md_Files"]
 
 [tool.pytest.ini_options]
-# faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic.
-# pytest-timeout then hard-kills at 600s with `thread` rather than the default
-# `signal`, because a signal reaches the main thread while ThreadPoolExecutor
-# shutdown is already joining worker threads, and that join has no timeout.
-# The earlier note here blamed blocking SQLite calls; that is withdrawn —
-# every mission-store connection is opened with timeout=5 and
-# busy_timeout=5000, so no mission-store call waits forever. The mechanism of
-# the intermittent full-matrix hang is not established; see the
+# faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic,
+# and pytest-timeout hard-kills at 600s with `thread` rather than the default
+# `signal`: this suite's hangs park worker threads in SQLite C calls, a signal
+# reaches only the main thread, and ThreadPoolExecutor shutdown then joins
+# those threads with no timeout — so os._exit is what actually ends the run.
+# Captured stacks show those threads in __psynch_mutexwait inside libsqlite3's
+# unix VFS (unixOpen/findReusableFd on open, sqlite3WalClose/unixLock on
+# close). No SQLite timeout setting bounds that: connect(timeout=) and
+# busy_timeout configure the busy handler, which is a layer above it. See the
 # "Full-matrix hang under load" row in docs/KNOWN_LIMITATIONS.md.
 #
-# Do not read `timeout = 600` as covering that hang. pytest-timeout arms per
-# test item and disarms on the way out, so nothing is armed once the last item
-# has finished — which matches the observed shape: the run prints its pass
-# count and then goes silent with no traceback. The guard below bounds a test
-# that hangs; it does not bound a shutdown that hangs.
+# What `timeout` below does NOT cover: pytest-timeout arms per test item and
+# disarms on the way out, so a wedge that lands after the last item has
+# finished is unguarded. It bounds a test that hangs, not a shutdown that
+# hangs.
 addopts = "-ra"
 faulthandler_timeout = 180
 timeout = 600
