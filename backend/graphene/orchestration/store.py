@@ -1407,6 +1407,27 @@ class SQLiteMissionStore:
                 connection.rollback()
                 raise
 
+    def _approval_binding(
+        self, mission_id: str
+    ) -> tuple[MissionStatus, int, str, str]:
+        """Status, revision, `base_sha`, and plan digest that an approval binds.
+
+        Read before the approval transaction; `expected_head` inside that
+        transaction is what makes the read authoritative, because any change
+        to the mission, the policy, or the plan moves the head.
+        """
+        with closing(self._connect()) as connection:
+            mission_row = self._mission_row(connection, mission_id)
+            revision = int(mission_row["plan_revision"])
+            mission = self._initial_mission(connection, mission_row)
+            plan = self._plan(connection, mission_id, revision)
+        return (
+            MissionStatus(mission_row["status"]),
+            revision,
+            mission.base_sha,
+            canonical_json_sha256(plan.model_dump(mode="json")),
+        )
+
     def approve_plan(
         self,
         mission_id: str,
@@ -1418,27 +1439,41 @@ class SQLiteMissionStore:
         rationale: str | None,
         truth_kind: TruthKind,
         recorded_at: datetime,
+        expected_plan_sha256: str | None = None,
     ) -> MissionHead:
         if type(expected_revision) is not int or expected_revision < 1:
             raise ValueError("expected revision must be a positive integer")
         self._validate_operator_truth(truth_kind, operator_label, rationale)
+        status, revision, base_sha, plan_sha256 = self._approval_binding(mission_id)
+        if revision != expected_revision:
+            raise MissionConflict("plan revision changed")
+        if expected_plan_sha256 is not None and expected_plan_sha256 != plan_sha256:
+            raise MissionConflict("plan digest does not match the revision approved")
         return self._mission_status_command(
             mission_id,
             command_id,
             recorded_at=recorded_at,
             expected_head=expected_head,
             operation="approve_plan",
+            # A revision reached before any dispatch leaves the mission
+            # PROPOSED; one reached mid-mission leaves it PAUSED. Both are
+            # approvable, and neither is decided by the revision number.
             expected=(
-                MissionStatus.PROPOSED
-                if expected_revision == 1
-                else MissionStatus.PAUSED
+                status
+                if status in {MissionStatus.PROPOSED, MissionStatus.PAUSED}
+                else MissionStatus.PROPOSED
             ),
             target=MissionStatus.RUNNING,
             event_type=MissionEventType.PLAN_APPROVED,
             payload={
+                # All four elements of the binding live in the approval event
+                # itself: the mission owns the event stream, and these three
+                # make the approval readable without joining anything.
+                "base_sha": base_sha,
                 "operator_label": operator_label,
                 "operator_rationale": rationale,
                 "plan_revision": expected_revision,
+                "plan_sha256": plan_sha256,
                 "status": "approved",
             },
             truth_kind=truth_kind,
@@ -1867,6 +1902,43 @@ class SQLiteMissionStore:
             ):
                 return False
         return True
+
+    @staticmethod
+    def _approved_plan_sha256(
+        connection: sqlite3.Connection, mission_id: str, revision: int
+    ) -> str | None:
+        """The plan digest an approval bound to this revision, or None.
+
+        Approval authority for a revision is exactly one PLAN_APPROVED event
+        naming that revision. Nothing else grants it: a mission that reaches
+        RUNNING by any other route — `resume` after a revision, an operator
+        retry out of FAILED — carries no authority for the plan it would
+        dispatch. Callers that dispatch must treat None as a refusal.
+        """
+        # The LIKE is a prefilter over canonical JSON, not authority: it only
+        # keeps this off the dispatch hot path for long missions. The parsed
+        # event type and revision below are what decide.
+        for row in connection.execute(
+            "SELECT event_bytes FROM mission_events WHERE mission_id = ? "
+            "AND event_bytes LIKE ? ORDER BY seq DESC",
+            (mission_id, f"%{MissionEventType.PLAN_APPROVED.value}%"),
+        ):
+            event = MissionEvent.model_validate_json(row["event_bytes"])
+            if (
+                event.event_type == MissionEventType.PLAN_APPROVED
+                and event.payload.get("plan_revision") == revision
+            ):
+                digest = event.payload.get("plan_sha256")
+                return digest if isinstance(digest, str) else ""
+        return None
+
+    def _require_approved_plan(
+        self, connection: sqlite3.Connection, mission_id: str, revision: int
+    ) -> None:
+        if self._approved_plan_sha256(connection, mission_id, revision) is None:
+            raise MissionConflict(
+                f"plan revision {revision} has not been approved"
+            )
 
     @staticmethod
     def _has_unresolved_mission_gate(
@@ -2541,6 +2613,15 @@ class SQLiteMissionStore:
                 if MissionStatus(mission_row["status"]) != MissionStatus.RUNNING:
                     raise LeaseConflict("mission is not dispatchable")
                 revision = mission_row["plan_revision"]
+                # The last gate before a worker is handed authority. Status
+                # RUNNING is not approval: a revised plan reaches RUNNING again
+                # through `resume` or an operator retry, and neither of those
+                # asks a human about the new graph.
+                approved_sha256 = self._approved_plan_sha256(
+                    connection, mission_id, revision
+                )
+                if approved_sha256 is None:
+                    raise LeaseConflict("mission plan revision is not approved")
                 row = self._task_row(connection, mission_id, revision, task_id)
                 task = self._task_from_row(connection, row)
                 if task.state != TaskState.READY:
@@ -2617,6 +2698,12 @@ class SQLiteMissionStore:
                     raise BudgetExhausted("mission worker-time budget is exhausted")
                 ttl_seconds = min(ttl_seconds, remaining_worker_seconds)
                 plan = self._plan(connection, mission_id, revision)
+                plan_sha256 = canonical_json_sha256(plan.model_dump(mode="json"))
+                # An approval that named a different digest is not an approval
+                # of this graph. Old approvals recorded no digest at all; they
+                # bind by revision only and are accepted as such.
+                if approved_sha256 not in {"", plan_sha256}:
+                    raise LeaseConflict("approved plan digest does not match the plan")
                 active_count = connection.execute(
                     "SELECT COUNT(*) FROM mission_leases WHERE mission_id = ? "
                     "AND plan_revision = ? AND released_at IS NULL AND expires_at > ?",
@@ -2764,7 +2851,7 @@ class SQLiteMissionStore:
                 dispatch = Dispatch(
                     mission_id=mission_id,
                     plan_revision=revision,
-                    plan_sha256=canonical_json_sha256(plan.model_dump(mode="json")),
+                    plan_sha256=plan_sha256,
                     task_id=task_id,
                     task_kind=task.kind,
                     attempt_id=attempt_id,
@@ -4089,6 +4176,7 @@ class SQLiteMissionStore:
             },
             truth_kind=truth_kind,
             authority=self._authority_for_truth(truth_kind),
+            require_approved_plan=True,
         )
 
     def request_replan(
@@ -4226,7 +4314,17 @@ class SQLiteMissionStore:
         *,
         expected_head: MissionHead,
         recorded_at: datetime,
+        allow_after_dispatch: bool = False,
     ) -> MissionHead:
+        """Compile an edited plan into immutable revision N+1.
+
+        Two entry states are legal. Before any dispatch the mission is still
+        PROPOSED and the edit is the product's plan-editing path; the revision
+        supersedes a plan nobody has run. Mid-mission the mission must be
+        PAUSED with a recorded replan request, and the revision invalidates
+        work — that path is deliberately not reachable from the terminal edit
+        surface, so it stays behind `allow_after_dispatch`.
+        """
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
         if any(
@@ -4255,8 +4353,15 @@ class SQLiteMissionStore:
                 self._require_expected_head(connection, mission_id, expected_head)
                 mission_row = self._mission_row(connection, mission_id)
                 current_revision = mission_row["plan_revision"]
-                if MissionStatus(mission_row["status"]) != MissionStatus.PAUSED:
+                status = MissionStatus(mission_row["status"])
+                pre_dispatch = status == MissionStatus.PROPOSED
+                if not pre_dispatch and status != MissionStatus.PAUSED:
                     raise MissionConflict("mission must be paused before plan revision")
+                if not allow_after_dispatch and connection.execute(
+                    "SELECT 1 FROM mission_attempts WHERE mission_id = ? LIMIT 1",
+                    (mission_id,),
+                ).fetchone():
+                    raise MissionConflict("plan cannot be revised after dispatch")
                 if (
                     plan.mission_id != mission_id
                     or plan.revision != current_revision + 1
@@ -4290,7 +4395,7 @@ class SQLiteMissionStore:
                     )
                     if event.event_type == MissionEventType.OPERATOR_REPLAN_REQUESTED
                 )
-                if (
+                if not pre_dispatch and (
                     not replan_requests
                     or replan_requests[0].payload.get("current_plan_revision")
                     != current_revision
@@ -4456,7 +4561,7 @@ class SQLiteMissionStore:
                             "plan_sha256": plan_sha256,
                             "previous_plan_revision": current_revision,
                             "previous_plan_sha256": diff["previous_plan_sha256"],
-                            "status": MissionStatus.PAUSED.value,
+                            "status": status.value,
                         },
                         authority=MissionAuthority.MISSION_SERVICE,
                     )
@@ -4651,6 +4756,7 @@ class SQLiteMissionStore:
         truth_kind: TruthKind,
         authority: MissionAuthority,
         expected_plan_revision: int | None = None,
+        require_approved_plan: bool = False,
     ) -> MissionHead:
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
@@ -4680,6 +4786,10 @@ class SQLiteMissionStore:
                 current = MissionStatus(row["status"])
                 if current != expected:
                     raise MissionConflict(f"mission is not {expected.value}")
+                if require_approved_plan:
+                    self._require_approved_plan(
+                        connection, mission_id, row["plan_revision"]
+                    )
                 transition_mission(current, target)
                 connection.execute(
                     "UPDATE missions SET status = ? WHERE mission_id = ?",
@@ -6267,6 +6377,9 @@ class SQLiteMissionStore:
                 drafts: list[MissionEventInput] = []
                 current = MissionStatus(mission_row["status"])
                 if current == MissionStatus.FAILED:
+                    self._require_approved_plan(
+                        connection, mission_id, mission_row["plan_revision"]
+                    )
                     target = transition_mission(current, MissionStatus.RUNNING)
                     connection.execute(
                         "UPDATE missions SET status = ?, final_outcome = NULL WHERE mission_id = ?",

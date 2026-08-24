@@ -1722,6 +1722,7 @@ def test_attempt_budget_exhaustion_after_replan_commits_a_budget_block(
         "mission-1",
         revised,
         _command("attempt-revise"),
+        allow_after_dispatch=True,
         expected_head=store.head("mission-1"),
         recorded_at=NOW + timedelta(seconds=tick + 1),
     )

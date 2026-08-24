@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from graphene.hashing import canonical_json_sha256
 from graphene.models import TruthKind
 from graphene.orchestration.models import (
+    ArtifactRequirement,
     AttemptState,
     MissionEventType,
     MissionStatus,
@@ -19,6 +20,7 @@ from graphene.orchestration.models import (
 )
 from graphene.orchestration.projection import MissionProjection
 from graphene.orchestration.store import (
+    LeaseConflict,
     MissionConflict,
     SQLiteMissionStore,
     StaleWorker,
@@ -26,6 +28,7 @@ from graphene.orchestration.store import (
 from graphene.orchestration.validation import PlanValidationError
 from tests.unit.orchestration.test_store import (
     NOW,
+    _task,
     _artifacts,
     _command,
     _create,
@@ -117,6 +120,9 @@ def test_revision_invalidates_old_work_and_cold_replay_uses_fresh_tasks(
         "mission-1",
         revised,
         _command("revise-current"),
+        # Mid-mission revision is not the product's edit path this release; it
+        # is exercised here as the primitive it is, behind its explicit flag.
+        allow_after_dispatch=True,
         expected_head=requested,
         recorded_at=NOW + timedelta(seconds=3),
     )
@@ -250,3 +256,256 @@ def test_revision_rejects_unrequested_or_mission_mismatched_plan(tmp_path) -> No
     noncontiguous["previous_revision"] = 2
     with pytest.raises(ValidationError, match="link contiguously"):
         Plan.model_validate(noncontiguous)
+
+
+def _pre_dispatch_revision_two() -> Plan:
+    """Revision 2 the way a user would make it: one added, wired-in node.
+
+    `export` is disjoint in output from every other task, it depends on
+    `work-a`, and `assemble` consumes what it publishes — so the added node
+    has to run, its position in the order matters, and its artifact reaches
+    the assembled result.
+    """
+    original = _plan()
+    export = _task(
+        "export",
+        "export-a",
+        "patch",
+        "out/export.json",
+        dependencies=("work-a",),
+        inputs=(
+            ArtifactRequirement(
+                producer_task_id="work-a", name="patch-a", kind="patch"
+            ),
+        ),
+    )
+    assemble = next(task for task in original.tasks if task.task_id == "assemble")
+    rewired = Task.model_validate(
+        {
+            **assemble.model_dump(mode="json"),
+            "dependencies": ["export", "work-a", "work-b"],
+            "inputs": sorted(
+                (
+                    *(item.model_dump(mode="json") for item in assemble.inputs),
+                    {
+                        "producer_task_id": "export",
+                        "name": "export-a",
+                        "kind": "patch",
+                    },
+                ),
+                key=lambda item: (item["producer_task_id"], item["name"], item["kind"]),
+            ),
+        }
+    )
+    tasks = sorted(
+        (
+            export,
+            rewired,
+            *(task for task in original.tasks if task.task_id != "assemble"),
+        ),
+        key=lambda item: item.task_id,
+    )
+    return Plan.model_validate(
+        {
+            **original.model_dump(mode="json"),
+            "previous_revision": 1,
+            "revision": 2,
+            "tasks": [item.model_dump(mode="json") for item in tasks],
+        }
+    )
+
+
+def test_a_plan_revision_nobody_approved_cannot_be_dispatched(tmp_path) -> None:
+    """The gate the product's edit path stands on.
+
+    Revising before dispatch is legal and leaves the mission PROPOSED. What
+    must not be legal is reaching a worker with revision 2 on the strength of
+    the approval that was given to revision 1.
+    """
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    approved = next(
+        event
+        for event in store.tail("mission-1", 0, 256)
+        if event.event_type == MissionEventType.PLAN_APPROVED
+    )
+    # All four elements of the binding are readable from the approval itself.
+    assert approved.payload["plan_revision"] == 1
+    assert approved.payload["base_sha"] == store.snapshot("mission-1").mission.base_sha
+    assert approved.payload["plan_sha256"] == canonical_json_sha256(
+        _plan().model_dump(mode="json")
+    )
+
+    # An approval of a digest the store does not hold is refused outright.
+    store.pause(
+        "mission-1",
+        _command("pause-for-revision"),
+        expected_head=store.head("mission-1"),
+        operator_label="api-operator",
+        rationale="Revise before running.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=1),
+    )
+    with pytest.raises(MissionConflict, match="digest does not match"):
+        store.approve_plan(
+            "mission-1",
+            _command("approve-wrong-digest"),
+            expected_revision=1,
+            expected_head=store.head("mission-1"),
+            operator_label="api-operator",
+            rationale="Wrong digest.",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW + timedelta(seconds=2),
+            expected_plan_sha256="0" * 64,
+        )
+    store.request_replan(
+        "mission-1",
+        _command("request-the-revision"),
+        expected_head=store.head("mission-1"),
+        reason="Add an audit node.",
+        operator_label="api-operator",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=3),
+    )
+    store.revise_plan(
+        "mission-1",
+        _pre_dispatch_revision_two(),
+        _command("revise-to-two"),
+        expected_head=store.head("mission-1"),
+        recorded_at=NOW + timedelta(seconds=4),
+    )
+    assert store.snapshot("mission-1").mission.plan_revision == 2
+
+    # Revision 1's approval does not carry across the edit, so `resume` — the
+    # one way back to RUNNING that never asks a person about the new graph —
+    # is refused.
+    with pytest.raises(MissionConflict, match="has not been approved"):
+        store.resume(
+            "mission-1",
+            _command("resume-unapproved"),
+            expected_head=store.head("mission-1"),
+            operator_label="api-operator",
+            rationale="Sneak revision 2 in.",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW + timedelta(seconds=5),
+        )
+    # Approving the revision that is no longer current is refused too.
+    with pytest.raises(MissionConflict, match="revision changed"):
+        store.approve_plan(
+            "mission-1",
+            _command("approve-stale-revision"),
+            expected_revision=1,
+            expected_head=store.head("mission-1"),
+            operator_label="api-operator",
+            rationale="Re-approve the old revision.",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW + timedelta(seconds=6),
+        )
+
+    store.approve_plan(
+        "mission-1",
+        _command("approve-revision-two"),
+        expected_revision=2,
+        expected_head=store.head("mission-1"),
+        operator_label="api-operator",
+        rationale="The added audit node is approved.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=7),
+        expected_plan_sha256=canonical_json_sha256(
+            _pre_dispatch_revision_two().model_dump(mode="json")
+        ),
+    )
+    snapshot = store.snapshot("mission-1")
+    assert snapshot.mission.status == MissionStatus.RUNNING
+    assert "export" in {task.task_id for task in snapshot.plan.tasks}
+
+
+def test_a_worker_cannot_claim_a_node_whose_revision_lost_its_approval(
+    tmp_path, monkeypatch
+) -> None:
+    """The last gate, not only the operator's front door.
+
+    After the `resume` and retry refusals above there is no API route left
+    that reaches RUNNING with an unapproved revision — which is the point,
+    and which also means no API sequence can reach this guard. So the
+    approval lookup is neutered directly: the claim must be refused rather
+    than dispatched. Delete the guard in `claim_task` and this test fails.
+    """
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("ready-guard"), recorded_at=NOW)
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
+
+    monkeypatch.setattr(
+        SQLiteMissionStore,
+        "_approved_plan_sha256",
+        staticmethod(lambda *_args, **_kwargs: None),
+    )
+    with pytest.raises(LeaseConflict, match="not approved"):
+        store.claim_task(
+            "mission-1",
+            "work-a",
+            "worker-a",
+            _command("claim-unapproved"),
+            recorded_at=NOW + timedelta(seconds=1),
+            ttl_seconds=30,
+        )
+
+    # And an approval that names a different plan than the one on disk is
+    # refused for the same reason: the approval is of a graph, not a number.
+    monkeypatch.setattr(
+        SQLiteMissionStore,
+        "_approved_plan_sha256",
+        staticmethod(lambda *_args, **_kwargs: "0" * 64),
+    )
+    with pytest.raises(LeaseConflict, match="digest does not match"):
+        store.claim_task(
+            "mission-1",
+            "work-a",
+            "worker-a",
+            _command("claim-wrong-digest"),
+            recorded_at=NOW + timedelta(seconds=2),
+            ttl_seconds=30,
+        )
+
+
+def test_the_plan_cannot_be_edited_once_a_worker_has_claimed_a_node(tmp_path) -> None:
+    """Editing before execution is the product; editing after it is not."""
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("ready-dispatch"), recorded_at=NOW)
+    _register_worker(store, "worker-a", capabilities=(TaskKind.WORK,))
+    store.claim_task(
+        "mission-1",
+        "work-a",
+        "worker-a",
+        _command("claim-before-edit"),
+        recorded_at=NOW + timedelta(seconds=1),
+        ttl_seconds=30,
+    )
+    store.pause(
+        "mission-1",
+        _command("pause-after-claim"),
+        expected_head=store.head("mission-1"),
+        operator_label="api-operator",
+        rationale="Try to edit mid-flight.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=2),
+    )
+    store.request_replan(
+        "mission-1",
+        _command("request-after-claim"),
+        expected_head=store.head("mission-1"),
+        reason="Add an audit node.",
+        operator_label="api-operator",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW + timedelta(seconds=3),
+    )
+    with pytest.raises(MissionConflict, match="cannot be revised after dispatch"):
+        store.revise_plan(
+            "mission-1",
+            _pre_dispatch_revision_two(),
+            _command("revise-after-claim"),
+            expected_head=store.head("mission-1"),
+            recorded_at=NOW + timedelta(seconds=4),
+        )
