@@ -57,8 +57,10 @@ def test_env_example_contains_names_only_and_cloud_gates():
 def test_private_coordinator_has_a_separate_container_entrypoint():
     dockerfile = (ROOT / "deploy/cloudrun/coordinator.Dockerfile").read_text()
     build = (ROOT / "deploy/cloudrun/coordinator-cloudbuild.yaml").read_text()
+    ignore = (ROOT / ".gcloudignore").read_text()
     assert "create_private_coordinator_app" in dockerfile
     assert "deploy/cloudrun/coordinator.Dockerfile" in build
+    assert "!deploy/cloudrun/coordinator.Dockerfile" in ignore
     assert "create_cloud_app" not in dockerfile
 
 

@@ -281,10 +281,12 @@ def test_live_firestore_exact_namespace_round_trip() -> None:
             lease_id=delivered.lease.lease_id,
             fencing_token=delivered.lease.fencing_token,
         )
+        completion_head = store.head(mission_id)
+        assert completion_head.seq == head.seq + 1
         completed = store.complete_dispatch(
             mission_id,
             heartbeat.attempt_id,
-            head,
+            completion_head,
             f"command_live_complete_{suffix}",
             executor_id=heartbeat.executor_id,
             session_id=heartbeat.session_id,
@@ -303,7 +305,10 @@ def test_live_firestore_exact_namespace_round_trip() -> None:
         authoritative = store.snapshot(mission_id)
         assert authoritative.mission.status == MissionStatus.FAILED
         assert store.head(mission_id) == authoritative.head
-        assert store.tail(mission_id, head.seq)[0].event_type == MissionEventType.TASK_FAILED
+        assert (
+            store.tail(mission_id, completion_head.seq)[0].event_type
+            == MissionEventType.TASK_FAILED
+        )
     finally:
         try:
             _cleanup(

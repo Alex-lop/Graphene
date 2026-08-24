@@ -26,3 +26,5 @@
 !deploy/cloudrun/
 !deploy/cloudrun/Dockerfile
 !deploy/cloudrun/cloudbuild.yaml
+!deploy/cloudrun/coordinator.Dockerfile
+!deploy/cloudrun/coordinator-cloudbuild.yaml
