@@ -255,15 +255,20 @@ def check_policy_loads(root: Path, policy: ProjectPolicy, base_sha: str) -> None
 
 
 def run_target_tests(root: Path) -> str:
-    """Run the frozen test command once in the sanitized environment."""
-    environment = _sanitized_environment()
-    interpreter_bin = str(Path(sys.executable).resolve().parent)
-    environment["PATH"] = os.pathsep.join((interpreter_bin, environment["PATH"]))
+    """Run the frozen test command once in the sanitized environment.
+
+    argv[0] is the literal "python" the executor substitutes for the running
+    interpreter (``adapter._sandboxed_test_command`` does the same). Leaving it
+    to PATH would not do that: ``.venv/bin/python`` is a symlink to the base
+    interpreter, so resolving it escapes the locked environment and runs the
+    target suite under whatever pytest that base happens to have -- green on a
+    developer box, "No module named pytest" on a clean runner.
+    """
     try:
         result = subprocess.run(
-            _FIXED_TEST_COMMAND,
+            (sys.executable, *_FIXED_TEST_COMMAND[1:]),
             cwd=root,
-            env=environment,
+            env=_sanitized_environment(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

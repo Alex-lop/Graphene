@@ -143,6 +143,58 @@ def test_target_suite_passes_in_sanitized_environment(tmp_path: Path) -> None:
     assert leftovers == [], "the sanitized run must not write bytecode or caches"
 
 
+def test_target_tests_run_under_the_locked_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The frozen test command must name *this* interpreter, never ask PATH.
+
+    argv[0] of the frozen command is the literal "python" that the executor
+    substitutes for the running interpreter (``_sandboxed_test_command`` and
+    ``_run_in_target`` both do exactly that). Handing the choice to PATH makes
+    the result depend on the developer's machine three different ways, because
+    ``.venv/bin/python`` is a symlink and resolving it escapes the locked
+    environment:
+
+    * base bin has ``python`` and an ambient pytest (Anaconda) -> green;
+    * base bin has no file named ``python`` (Homebrew) -> PATH falls through
+      to ``.venv/bin`` -> green;
+    * base bin has ``python`` and no pytest (the macOS CI runner) -> red with
+      "No module named pytest".
+
+    Two lucky greens and one red is not a test. Asserting the absolute path
+    removes PATH from the decision, so this fails at baseline on every machine.
+    """
+    module = _load_materializer()
+    captured: dict[str, object] = {}
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        captured["argv"] = tuple(argv)
+        return subprocess.CompletedProcess(list(argv), 0, "1 passed in 0.01s", None)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    module.run_target_tests(tmp_path)
+    monkeypatch.undo()  # the patch is global; the probe below must be real
+
+    argv = captured["argv"]
+    assert argv[1:] == _FIXED_TEST_COMMAND[1:], argv
+    assert argv[0] == sys.executable, (
+        f"the frozen test command starts with {argv[0]!r}, so PATH picks the "
+        f"interpreter; it must name the locked one ({sys.executable})"
+    )
+    prefix = subprocess.run(
+        (argv[0], "-c", "import sys; print(sys.prefix)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout.strip()
+    assert prefix == sys.prefix, (
+        f"the target suite would run under {argv[0]} (sys.prefix {prefix}), "
+        f"not the locked interpreter (sys.prefix {sys.prefix})"
+    )
+
+
 def test_materializer_produces_policy_that_mission_start_loads(tmp_path: Path) -> None:
     module = _load_materializer()
     dest = tmp_path / "north-star"
