@@ -53,10 +53,32 @@ def _scan_text(text: str, label: str, findings: list[str]) -> None:
                 findings.append(f"{where} {name}")
 
 
+class ScanUnavailable(RuntimeError):
+    """git could not be consulted, so the scan has no idea what it missed."""
+
+
 def _git(*args: str) -> str:
-    return subprocess.run(
-        ("git", *args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-    ).stdout
+    """Fail loudly. A scan that finds nothing because git failed is a lie.
+
+    The return code was previously ignored and stderr discarded, so a git that
+    could not run -- wrong directory, missing binary, locked index -- yielded
+    empty output, an empty finding list and a clean exit. `morning_verify.sh`
+    then printed PASS for a step that had scanned nothing.
+    """
+    try:
+        result = subprocess.run(
+            ("git", *args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ScanUnavailable(f"git {args[0]} could not run: {error}") from error
+    if result.returncode:
+        raise ScanUnavailable(f"git {args[0]} failed: {result.stderr.strip()}")
+    return result.stdout
 
 
 def main() -> int:
@@ -99,5 +121,13 @@ def main() -> int:
     return 1 if (outside_tests or (args.strict and findings)) else 0
 
 
+def _main() -> int:
+    try:
+        return main()
+    except ScanUnavailable as error:
+        print(f"secret-scan: UNAVAILABLE — {error}", file=sys.stderr)
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_main())
