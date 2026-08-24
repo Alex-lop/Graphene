@@ -109,16 +109,28 @@ assembly → verification → committed approval.
 ## The two commands to show after the take
 
 ```bash
-uv run --frozen graphene demo                       # free, replay-backed, no credentials
-bash scripts/morning_verify.sh                      # release verification, spends nothing
+uv run --frozen graphene demo --driver verified-replay --no-open --exit-after-demo
+uv run --frozen graphene demo --no-open --exit-after-demo --automated-fixture
+bash scripts/morning_verify.sh
 ```
 
-`graphene demo` in its default mode contacts no provider and creates no
-authoritative state — it prints its own truth counters (`Live agent executions:
-0`, `Gemini calls: 0`). `morning_verify.sh` re-runs the locked environment, the
-full credential-free matrix, ruff, the location-only secret scan, `store.verify`
-on every mission, capsule cold verification from a fresh clone, and the proof
-table, and only it may print `ALL PASS`.
+Neither demo spends anything or contacts a provider.
+
+`--driver verified-replay` is the zero-setup one: a hash-checked replay that
+prints its own truth counters — `Live agent executions: 0`, `Gemini calls: 0`,
+`Authoritative lineage writes: 0` — and creates no authoritative state. It is
+the mode CI smokes, so it cannot rot.
+
+The default driver (`scripted-local`, macOS only) runs the deterministic
+fixture workflow end to end and finishes on `DEMO COMPLETE — committed lineage
+verified`, `Promotion state: PROMOTED`, and `Local isolated commit — not pushed
+/ no PR / no deployment`. Its operator gate is labelled on screen as
+`SIMULATED OPERATOR — NOT HUMAN ATTESTATION`; say that out loud if you show it.
+
+`morning_verify.sh` re-runs the locked environment, the full credential-free
+matrix, the locked ruff, the location-only secret scan, `store.verify` on every
+mission, capsule cold verification from a fresh clone, and the proof table. It
+is the only thing allowed to print `ALL PASS`.
 
 ## What this demo does not claim
 
