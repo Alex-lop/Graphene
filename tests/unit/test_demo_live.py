@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from rich.console import Console
 
 from graphene import demo_live
@@ -25,29 +26,66 @@ class StubProcess:
         return self.returncode
 
 
+def _task(task_id: str, kind: str, dependencies: list[str], writes: list[str]) -> dict:
+    """A task shaped like a real `Plan` dump, so the renderers see real keys."""
+    return {
+        "task_id": task_id,
+        "kind": kind,
+        "state": "queued",
+        "title": task_id,
+        "contract": f"Complete {task_id}.",
+        "dependencies": dependencies,
+        "assigned_role": "worker",
+        "read_paths": ["ledger_service/report.py"],
+        "write_paths": writes,
+        "allowed_commands": ["fixture-tests"],
+        "acceptance_checks": ["fixture-tests"],
+        "inputs": [],
+        "expected_outputs": [{"name": "patch", "kind": "patch", "paths": writes}],
+        "attempt_count": 0,
+        "attempt_limit": 2,
+        "priority": 1,
+        "evidence_adapter": "generic_v1",
+    }
+
+
 PLAN = {
     "revision": 1,
     "tasks": [
-        {
-            "task_id": "work_json",
-            "kind": "work",
-            "dependencies": [],
-            "write_paths": ["ledger_service/report_json.py"],
-        },
-        {
-            "task_id": "work_markdown",
-            "kind": "work",
-            "dependencies": [],
-            "write_paths": ["ledger_service/report_markdown.py"],
-        },
-        {
-            "task_id": "verify",
-            "kind": "verification",
-            "dependencies": ["work_json", "work_markdown"],
-            "write_paths": [],
-        },
+        _task("work_json", "work", [], ["ledger_service/report_json.py"]),
+        _task("work_markdown", "work", [], ["ledger_service/report_markdown.py"]),
+        _task("verify", "verification", ["work_json", "work_markdown"], []),
     ],
-    "criteria": [{"description": "Both renderers exist and the target tests pass."}],
+    "criteria": [
+        {
+            "criterion_id": "criterion-reports",
+            "description": "Both renderers exist and the target tests pass.",
+            "producer_task_ids": ["work_json", "work_markdown"],
+            "verification_kind": "deterministic_check",
+            "verifier_task_id": "verify",
+            "verifier_id": "fixture-tests",
+        }
+    ],
+}
+
+
+PLAN_VIEW = {
+    "mission_id": "mission_start_demo",
+    "base_sha": "b" * 40,
+    "goal": "Add the two report renderers",
+    "mission_status": "proposed",
+    "plan_revision": 1,
+    "previous_plan_revision": None,
+    "plan_sha256": "e" * 64,
+    "approved_revision": None,
+    "critical_path": ["work_json", "verify"],
+    "resource_budget": {},
+    "ready_frontier": ["work_json", "work_markdown"],
+    "frontier_is_projected": True,
+    "needs_you": None,
+    "task_states": {},
+    "task_blockers": {},
+    "plan": PLAN,
 }
 
 
@@ -80,6 +118,16 @@ def _drive(
         lambda inbox_dir, fault: ("mission_start_demo", "a" * 64),
     )
     monkeypatch.setattr(demo_live, "_plan", lambda mission_id: PLAN)
+    monkeypatch.setattr(demo_live, "_plan_view", lambda mission_id: PLAN_VIEW)
+    monkeypatch.setattr(demo_live, "_print_node", lambda *args: None)
+    edit_calls: list[str] = []
+
+    def fake_edit(console, mission_id, *, edited_plan, prompt):
+        edit_calls.append(mission_id)
+        console.print("PLAN REVISED mission_start_demo v1 -> v2", markup=False)
+        return 2
+
+    monkeypatch.setattr(demo_live, "_edit_plan", fake_edit)
     monkeypatch.setattr(demo_live, "_follow", lambda *args, **kwargs: None)
     monkeypatch.setattr(demo_live, "_mission_status", lambda mission_id: status)
     monkeypatch.setattr(demo_live, "_fault_fired", lambda mission_id: True)
@@ -118,6 +166,7 @@ def _drive(
         sleeper=lambda seconds: None,
         clock=lambda: 0.0,
     )
+    assert edit_calls == ["mission_start_demo"], "the edit beat must always run"
     return code, inbox, runner_calls, feature_calls
 
 
@@ -175,7 +224,7 @@ def test_mission_subprocess_argv_is_exact(monkeypatch, tmp_path, capsys) -> None
             "approve-plan",
             "mission_start_demo",
             "--revision",
-            "1",
+            "2",
             "--operator-label",
             "demo",
             "--rationale",
@@ -196,3 +245,97 @@ def test_incomplete_mission_skips_feature_beat_honestly(
     assert "The mission ended failed" in out
     assert "skipping the result and feature beats" in out
     assert "generated feature" not in out
+
+
+def test_the_edit_beat_revises_lints_diffs_and_never_approves_by_itself(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """The demo's own edit beat, with the real CLI value functions behind it.
+
+    What matters on film is the order: the plan is exported, the user's edit
+    becomes revision 2 with a new digest, lint and diff are shown, and the
+    approval is a separate act — `_edit_plan` returns a revision number and
+    approves nothing.
+    """
+    from graphene.cli import mission as mission_cli
+
+    calls: list[str] = []
+    supplied = tmp_path / "edited.yaml"
+    supplied.write_text("edited-plan-document\n")
+
+    def fake_export(mission_id: str, output):
+        calls.append("export")
+        Path(output).write_text("exported-plan-document\n")
+        return {"status": "exported", "plan_revision": 1, "exported_to": str(output)}
+
+    def fake_revise(source):
+        calls.append("revise")
+        # The demo must hand the compiler the *edited* bytes, not the export.
+        assert Path(source).read_text() == "edited-plan-document\n"
+        return {
+            "status": "revised",
+            "mission_id": "mission_start_demo",
+            "previous_plan_revision": 1,
+            "plan_revision": 2,
+            "plan_sha256": "f" * 64,
+            "needs_approval": True,
+        }
+
+    monkeypatch.setattr(demo_live, "_plan_view", lambda mission_id: PLAN_VIEW)
+    monkeypatch.setattr(mission_cli, "_plan_export_value", fake_export)
+    monkeypatch.setattr(mission_cli, "_plan_revise_value", fake_revise)
+    monkeypatch.setattr(
+        mission_cli,
+        "_plan_lint_value",
+        lambda mission_id: {
+            "status": "valid",
+            "valid": True,
+            "mission_id": mission_id,
+            "plan_revision": 2,
+            "plan_sha256": "f" * 64,
+            "criterion_coverage": [],
+            "topological_order": [],
+            "issues": [],
+        },
+    )
+    monkeypatch.setattr(
+        mission_cli,
+        "_plan_diff_value",
+        lambda mission_id, previous, current: {
+            "mission_id": mission_id,
+            "previous_plan_revision": previous,
+            "plan_revision": current,
+            "previous_plan_sha256": "e" * 64,
+            "plan_sha256": "f" * 64,
+            "max_concurrency": {"before": 2, "after": 2},
+            "criteria": {"added": [], "removed": [], "changed": []},
+            "tasks": {
+                "added": [],
+                "removed": [],
+                "changed": [
+                    {
+                        "before": {"task_id": "work_json", "read_paths": ["a.py"]},
+                        "after": {"task_id": "work_json", "read_paths": ["a.py", "b.py"]},
+                    }
+                ],
+            },
+        },
+    )
+
+    revision = demo_live._edit_plan(
+        _console(),
+        "mission_start_demo",
+        edited_plan=supplied,
+        prompt=lambda text: pytest.fail("a supplied edit must not wait on a person"),
+    )
+
+    out = capsys.readouterr().out
+    assert revision == 2
+    assert calls == ["export", "revise"]
+    assert "PLAN v2" in out or "revision 2" in out
+    assert "SCOPE EXPANSION" in out
+    assert "PLAN DIFF mission_start_demo v1 -> v2" in out
+    # The beat stops at the diff. Approval is the next, separate act.
+    assert "approve this revision" in out
+    for line in out.splitlines():
+        assert not line.lstrip().startswith("{")

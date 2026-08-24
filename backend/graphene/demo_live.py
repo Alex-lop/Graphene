@@ -145,25 +145,96 @@ def _trigger_mission(inbox: Path, inject_check_fault: bool) -> tuple[str, str]:
     raise _DemoError("The watcher never saw the trigger file it was given.")
 
 
-def _plan(mission_id: str) -> dict[str, Any]:
+def _plan_view(mission_id: str) -> dict[str, Any]:
     from .cli.mission import _plan_show_value
 
-    return _plan_show_value(mission_id)["plan"]
+    return _plan_show_value(mission_id)
 
 
-def _print_plan(console: Console, goal: str, plan: dict[str, Any]) -> None:
+def _plan(mission_id: str) -> dict[str, Any]:
+    return _plan_view(mission_id)["plan"]
+
+
+def _print_plan(console: Console, goal: str, mission_id: str) -> None:
+    """The product's own plan table — the thing the user is about to change."""
+    from .cli.mission import _render_plan_table
+
     _say(console, f"Goal: {goal}")
-    _say(console, f"Bounded plan, revision {plan['revision']}:")
-    for task in plan["tasks"]:
-        needs = ", ".join(task.get("dependencies", ())) or "nothing"
-        writes = ", ".join(task.get("write_paths", ())) or "nothing"
-        _say(console, f"  {task['task_id']}  {task['kind']}  needs {needs}  writes {writes}")
-    _say(console, "Success criteria:")
-    for criterion in plan.get("criteria", ()):
-        _say(console, f"  - {criterion['description']}")
+    console.print(
+        _render_plan_table(_plan_view(mission_id)), markup=False, highlight=False, end=""
+    )
 
 
-def _mission_argv(mission_id: str) -> list[str]:
+def _print_node(console: Console, mission_id: str, task_id: str) -> None:
+    """One node's full contract: outcome, scopes, checks, budget, binding."""
+    from .cli.mission import _render_node_contract
+
+    view = _plan_view(mission_id)
+    task = next(
+        item for item in view["plan"]["tasks"] if item["task_id"] == task_id
+    )
+    _say(console, f"What exactly is {task_id} allowed to do?")
+    console.print(
+        _render_node_contract(task, view) + "\n", markup=False, highlight=False, end=""
+    )
+
+
+def _edit_plan(
+    console: Console,
+    mission_id: str,
+    *,
+    edited_plan: Path | None,
+    prompt: Callable[[str], str],
+) -> int:
+    """Pause for the user's edit, then compile, lint, and diff the revision.
+
+    This is the beat the product exists for, so it is the only place the demo
+    stops. `--plan-edit FILE` supplies an already-edited export instead of
+    waiting on a person, which is how the rehearsals run the same code path
+    three times without a human in the loop.
+    """
+    from .cli.mission import (
+        _plan_diff_value,
+        _plan_export_value,
+        _plan_lint_value,
+        _plan_revise_value,
+        _render_plan_diff,
+        _render_plan_lint,
+    )
+
+    view = _plan_view(mission_id)
+    revision = int(view["plan_revision"])
+    export = Path(tempfile.gettempdir()) / f"{mission_id}-plan-v{revision}.yaml"
+    export.unlink(missing_ok=True)
+    _plan_export_value(mission_id, export)
+    _say(console, f"The plan is yours to change. It is exported to {export}.")
+    if edited_plan is not None:
+        export.write_text(Path(edited_plan).read_text())
+        _say(console, f"Applying the prepared edit from {edited_plan}.")
+    else:
+        prompt("Edit it, then press Enter to compile the revision: ")
+    result = _plan_revise_value(export)
+    next_revision = int(result["plan_revision"])
+    _say(
+        console,
+        f"That is revision {next_revision}, digest "
+        f"{str(result['plan_sha256'])[:12]}… — a different graph, so the old "
+        "approval no longer covers it.",
+    )
+    lint = _plan_lint_value(mission_id)
+    console.print(_render_plan_lint(lint), markup=False, highlight=False, end="")
+    if not lint["valid"]:
+        raise _DemoError("The revision did not pass lint; nothing was approved.")
+    console.print(
+        _render_plan_diff(_plan_diff_value(mission_id, revision, next_revision)),
+        markup=False,
+        highlight=False,
+        end="",
+    )
+    return next_revision
+
+
+def _mission_argv(mission_id: str, revision: int = 1) -> list[str]:
     executable = shutil.which("graphene")
     base = (
         [executable]
@@ -180,12 +251,21 @@ def _mission_argv(mission_id: str) -> list[str]:
         "approve-plan",
         mission_id,
         "--revision",
-        "1",
+        str(revision),
         "--operator-label",
         "demo",
         "--rationale",
         _RATIONALE,
     ]
+
+
+def _frontier_node(mission_id: str) -> str:
+    """The node that would run first — the one worth inspecting on camera."""
+    view = _plan_view(mission_id)
+    frontier = view.get("ready_frontier") or []
+    if frontier:
+        return str(frontier[0])
+    return str(view["plan"]["tasks"][0]["task_id"])
 
 
 def _default_runner(argv: Sequence[str]) -> subprocess.Popen:
@@ -323,6 +403,8 @@ def run_live_demo(
     clock: Callable[[], float] = time.monotonic,
     inject_check_fault: bool = True,
     stdout: IO[str] | None = None,
+    edited_plan: Path | None = None,
+    prompt: Callable[[str], str] = input,
 ) -> int:
     # The materializer's own chatter is captured, not printed: a one-take demo
     # shows the story, not the setup script's "next commands" block.
@@ -344,11 +426,18 @@ def run_live_demo(
         mission_id, digest = _trigger_mission(inbox, inject_check_fault)
         _say(console, f"A change arrived in the inbox (sha256 {digest[:12]}); "
              f"mission {mission_id} was proposed from it.")
+        _print_plan(console, target.goal, mission_id)
+        _print_node(console, mission_id, _frontier_node(mission_id))
+        revision = _edit_plan(
+            console, mission_id, edited_plan=edited_plan, prompt=prompt
+        )
+        _say(
+            console,
+            f"Approving revision {revision} — this demo runs under a "
+            "pre-authorized bounded policy — and starting the mission now.",
+        )
         plan = _plan(mission_id)
-        _print_plan(console, target.goal, plan)
-        _say(console, "This demo runs under a pre-authorized bounded policy; approving "
-             "the plan and starting the mission now.")
-        process = launch(_mission_argv(mission_id))
+        process = launch(_mission_argv(mission_id, revision))
         _follow(mission_id, console, clock, sleeper, process)
         exit_code = process.wait()
         status = _mission_status(mission_id)

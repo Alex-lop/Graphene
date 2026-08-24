@@ -1,11 +1,18 @@
 # Demo script — one take, one command
 
-> A change appears, Graphene wakes up, coordinates two real Gemini workers,
-> survives a check failing, hands over a result that runs, and proves why it
-> should be trusted.
+> A change appears, Graphene proposes a route, **you change the route**, the
+> new revision is linted and diffed and approved on its own digest, and then
+> two real Gemini workers follow the graph you approved — surviving a check
+> failing, handing over a result that runs, and proving why it should be
+> trusted.
 
-Everything below was executed on 2026-08-23 on the commit that carries this
-file. The captured transcript of the live run is
+The edit beat is the point of the film. Everything a judge needs is in one
+moment: they watch the graph change, they watch a new digest appear, and then
+they watch the workers obey the changed route.
+
+Everything below except the edit beat was executed on 2026-08-23 on the commit
+that carries this file; the edit beat is **NOT YET CAPTURED LIVE** and is
+labelled again where it appears. The captured transcript of the live run is
 [`evidence/convergence/2026-08-23-demo-live/run-1.txt`](../evidence/convergence/2026-08-23-demo-live/run-1.txt);
 the completion-gate numbers are in
 [`evidence/convergence/2026-08-23-completion-gate/`](../evidence/convergence/2026-08-23-completion-gate/README.md).
@@ -40,9 +47,18 @@ uv run --frozen graphene demo --live
 ```
 
 That is the whole demo. It materializes its own target, drops its own trigger,
-approves under a pre-authorized bounded policy, runs the mission while it
-renders the dashboard, and finishes with the result, the feature, and `why`.
-No second terminal, no `sed`, no hand-driven steps.
+shows the proposed plan and one node's full contract, **stops once for your
+edit**, compiles it into revision 2, lints and diffs it, approves the new
+digest under a pre-authorized bounded policy, runs the mission while it renders
+the dashboard, and finishes with the result, the feature, and `why`. One
+terminal, one pause, no `sed`, no hand-driven steps.
+
+For a rehearsal that does not wait on a person, prepare the edit first and pass
+it in — the same revise/lint/diff/approve path runs either way:
+
+```bash
+uv run --frozen graphene demo --live --plan-edit /path/to/edited-plan.yaml
+```
 
 ### What appears, and what to say over it
 
@@ -60,7 +76,34 @@ and a verification tail.
 > scope is a lease — a worker that touches anything else is rejected, not
 > warned. Assembly isn't a model's job here; it already ships in the target."
 
-**0:30 — two real workers.** The dashboard shows both work tasks `● running` at
+**0:20 — one node, in full.** The frontier node's whole contract prints: the
+outcome it owns, what it requires, what it may read and write, the commands it
+may run, its acceptance checks, its budget, and the exact mission, base commit,
+revision and digest it is bound to.
+
+> "This is the entire authority of one node. Nothing here is advisory."
+
+**0:25 — you change the route.** The plan is exported as canonical YAML. Edit
+it — add a node, rewire an edge, widen or tighten a scope — and Graphene
+compiles it into **revision 2** with a new digest.
+
+> "The agent proposed a route. I'm changing it. That is not a suggestion to the
+> model; it is the contract the runtime will be held to."
+
+**0:35 — lint, diff, and a new approval.** `plan lint` re-validates the whole
+revision atomically. `plan diff 1 2` names the changed nodes and edges and
+flags any scope that only grew as a **SCOPE EXPANSION**. The old approval is
+already void; the new digest needs its own.
+
+> "Every scope I widened is called out, and the approval I gave a minute ago no
+> longer covers this graph. I approve revision 2, and only revision 2 can run."
+
+**NOT YET CAPTURED LIVE:** the edit beat has not been recorded end to end
+against a live Gemini mission. Its credential-free proof is
+`tests/integration/test_plan_edit_path.py`, which shows the scheduler
+executing the user's revision rather than the proposal.
+
+**0:50 — two real workers, obeying revision 2.** The dashboard shows both work tasks `● running` at
 attempt 1, fence 1, and SPEND starts moving from real provider receipts.
 
 > "Two real Gemini workers, in parallel, on disjoint files. The cost you see is

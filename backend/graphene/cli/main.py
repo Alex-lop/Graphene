@@ -267,6 +267,15 @@ def build_parser() -> argparse.ArgumentParser:
             "generated feature, and explain it. SPENDS MONEY on the Gemini API."
         ),
     )
+    demo.add_argument(
+        "--plan-edit",
+        type=Path,
+        help=(
+            "supply an already-edited plan export instead of waiting for a "
+            "person; the same revise/lint/diff/approve path runs either way, "
+            "so rehearsals exercise exactly what the filmed take does"
+        ),
+    )
     demo.add_argument("--speed", type=_positive_number, default=1.0)
     demo.add_argument("--no-open", action="store_true")
     demo.add_argument("--cleanup", action="store_true")
@@ -1574,7 +1583,10 @@ def main(argv: list[str] | None = None) -> int:
             inbox = root / "inbox"
             inbox.mkdir(mode=0o700)
             return run_live_demo(
-                target_root=root / "target", inbox=inbox, console=Console()
+                target_root=root / "target",
+                inbox=inbox,
+                console=Console(),
+                edited_plan=args.plan_edit,
             )
         try:
             return run_demo(
