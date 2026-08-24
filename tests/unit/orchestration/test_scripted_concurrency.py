@@ -251,24 +251,27 @@ def test_assembly_patch_stages_deleted_authorized_path(tmp_path: Path) -> None:
     assert b"delete.txt" in patch
 
 
-def test_a_contended_attempt_lock_fails_closed_instead_of_parking_the_thread(
+def test_a_contended_attempt_lock_is_refused_once_its_lease_expires(
     tmp_path: Path,
 ) -> None:
-    """``execute`` must never block on an attempt lock a live executor holds.
+    """``execute`` must stop waiting for an attempt lock its lease cannot cover.
 
-    ``_execute_scripted_batch`` abandons a running worker on timeout
-    (``executor.shutdown(wait=False)``), and ``recover_dispatches`` rebuilds the
-    recovered Dispatch with the *same* ``attempt_id``. So the next batch hands
-    that attempt to a fresh pool thread while the abandoned one still holds the
-    attempt lock. A blocking ``flock`` parks that thread forever, and a
-    non-daemon pool thread is joined with **no timeout** by
-    ``concurrent.futures.thread._python_exit`` at interpreter shutdown -- after
+    A *live* duplicate delivery must serialize here and take the recovered
+    result -- `test_scripted_worker_serializes_duplicate_dispatch_delivery`
+    proves that, and this test does not weaken it.
+
+    What it forbids is the *unbounded* wait. ``_execute_scripted_batch``
+    abandons a running worker on timeout (``executor.shutdown(wait=False)``),
+    and ``recover_dispatches`` rebuilds the recovered Dispatch with the *same*
+    ``attempt_id``. So the next batch hands that attempt to a fresh pool thread
+    while the abandoned one still holds the lock -- and a non-daemon pool thread
+    parked in ``flock`` is joined with **no timeout** by
+    ``concurrent.futures.thread._python_exit`` at interpreter shutdown, after
     the last test, after pytest's summary, and after pytest-timeout has
-    cancelled its per-item timer. Nothing in the suite can catch that: it is a
-    silent wedge with no traceback.
+    cancelled its per-item timer. Nothing in the suite can catch that.
 
-    Owning an attempt exclusively means refusing it when someone else owns it,
-    which is what ``lineage/observation.py`` already does with ``LOCK_NB``.
+    Past the dispatch's own lease expiry the holder's attempt is dead by the
+    store's definition, so waiting longer cannot yield an authoritative result.
     """
     class _UnreachableStore:
         """Reaching the store means the contended lock was taken anyway."""
@@ -280,7 +283,10 @@ def test_a_contended_attempt_lock_fails_closed_instead_of_parking_the_thread(
     worker.store = _UnreachableStore()
     worker._attempt_locks = tmp_path / "attempt-locks"
     worker._attempt_locks.mkdir(mode=0o700)
-    dispatch = _dispatch("contended")
+    # A lease that has almost run out: the bound under test, not an invented one.
+    dispatch = _dispatch("contended").model_copy(
+        update={"expires_at": datetime.now(UTC) + timedelta(seconds=1)}
+    )
     lock = worker._attempt_locks / (sha256_hex(dispatch.attempt_id.encode()) + ".lock")
 
     held = threading.Event()
@@ -315,11 +321,11 @@ def test_a_contended_attempt_lock_fails_closed_instead_of_parking_the_thread(
         second.join(timeout=10)
 
         assert not second.is_alive(), (
-            "execute() parked on an attempt lock another live executor holds; "
-            "_python_exit joins that thread without a timeout at shutdown"
+            "execute() parked on an attempt lock past the lease that justified "
+            "waiting for it; _python_exit joins that thread without a timeout"
         )
         assert isinstance(outcome[0], ScriptedError), outcome
-        assert "already owned" in str(outcome[0]), outcome
+        assert "past its lease expiry" in str(outcome[0]), outcome
     finally:
         release.set()
         owner.join(timeout=10)

@@ -97,6 +97,8 @@ _MAX_FIXTURE_BYTES = 1_048_576
 _MAX_FIXTURE_TOTAL_BYTES = 2_097_152
 _MAX_FIXTURE_NODES = 512
 _WORKER_TIMEOUT_GRACE_SECONDS = 2
+# The attempt lock has no timed acquire on macOS; poll it instead of parking.
+_ATTEMPT_LOCK_POLL_SECONDS = 0.05
 
 
 def _wall_duration_bucket(seconds: float) -> str:
@@ -1644,9 +1646,27 @@ class ScriptedWorker:
             accepted[requirement.producer_task_id] = matches[0]
         return accepted
 
-    def execute(self, dispatch: Dispatch) -> AttemptResult:
+    @staticmethod
+    def _acquire_attempt_lock(descriptor: int, dispatch: Dispatch) -> None:
+        """Take the attempt lock, or refuse once its lease can no longer be honoured."""
+
         import fcntl
 
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError as error:
+                remaining = (
+                    dispatch.expires_at - datetime.now(UTC)
+                ).total_seconds()
+                if remaining <= 0:
+                    raise ScriptedError(
+                        "scripted attempt is still owned past its lease expiry"
+                    ) from error
+                time.sleep(min(_ATTEMPT_LOCK_POLL_SECONDS, remaining))
+
+    def execute(self, dispatch: Dispatch) -> AttemptResult:
         if self.store is None:
             raise ScriptedError("scripted worker is not bound to mission state")
         lock_path = self._attempt_locks / (
@@ -1664,21 +1684,22 @@ class ScriptedWorker:
                 or stat.S_IMODE(metadata.st_mode) & 0o077
             ):
                 raise ScriptedError("scripted attempt lock is unsafe")
-            # An attempt lock asserts sole ownership of one attempt id, so a
-            # contended lock means a live executor already owns this attempt --
-            # precisely the case that must fail closed. Blocking here parks a
-            # non-daemon pool thread that `_execute_scripted_batch` has already
-            # abandoned, and `_python_exit` joins such a thread with no timeout
-            # at interpreter shutdown, after pytest has cancelled its timer.
-            # Waiting never produced a better outcome than refusing: the winner
-            # holds the lease, so the loser's late write is fenced off anyway.
-            # Same discipline as lineage/observation.py.
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise ScriptedError(
-                    "scripted attempt is already owned by a live executor"
-                ) from error
+            # A duplicate delivery of the same attempt MUST serialize here and
+            # then return the first executor's recovered result -- that is the
+            # at-most-once contract proven by
+            # test_scripted_worker_serializes_duplicate_dispatch_delivery. So
+            # this wait is not removable. What is removable is its being
+            # unbounded: `_execute_scripted_batch` abandons a running worker on
+            # timeout, and a non-daemon pool thread parked here is then joined
+            # with NO timeout by concurrent.futures._python_exit at interpreter
+            # shutdown -- after the last test, after pytest has cancelled its
+            # per-item timer. That is a wedge with no traceback.
+            #
+            # The bound is the dispatch's own lease expiry, not an invented
+            # number: past it the holder's attempt is dead by the store's own
+            # definition, so waiting longer cannot yield an authoritative
+            # result. Wait until then, then fail closed and say so.
+            self._acquire_attempt_lock(descriptor, dispatch)
             snapshot = self.store.snapshot(dispatch.mission_id)
             tasks = tuple(
                 item
