@@ -1,0 +1,110 @@
+$ graphene plan "Add redacted JSON and Markdown status reports to the fixture CLI." --repo TARGET --driver scripted-local
+Mission: mission_start_b2e344868f963d9a3472ada4      Base: e5995606e3cd      Plan: v1 / sha256:cfc96860bf0c…
+
+ID                  STATE   DEPS                                               ROLE           READ/WRITE  CHECKS
+assemble_candidate  queued  redact_notes,render_json,render_markdown,wire_cli  assembler      12 / 8      1
+redact_notes        queued  -                                                  report-worker  2 / 2       1
+render_json         queued  -                                                  report-worker  2 / 2       1
+render_markdown     queued  -                                                  report-worker  2 / 2       1
+verify_candidate    queued  assemble_candidate                                 verifier       12 / 0      1
+wire_cli            queued  redact_notes,render_json,render_markdown           integrator     12 / 2      1
+
+Critical path: render_markdown → wire_cli → assemble_candidate → verify_candidate
+Frontier on approval: redact_notes, render_json, render_markdown          Needs approval: plan v1
+Inspect one node: graphene plan show mission_start_b2e344868f963d9a3472ada4 --detail
+
+$ graphene mission status mission_start_b2e344868f963d9a3472ada4
+MISSION mission_start_b2e344868f963d9a3472ada4 PROPOSED
+GOAL Add redacted JSON and Markdown status reports to the fixture CLI.
+PLAN v1 sha256:cfc96860bf0c… approval: none
+ROUTE DONE nothing yet
+FRONTIER ON APPROVAL redact_notes, render_json, render_markdown
+RUNNING none
+CRITICAL PATH render_markdown → wire_cli → assemble_candidate → verify_candidate
+CHANGED nothing accepted yet
+REMAINING SCOPES assemble_candidate→status_report/cli.py,status_report/redact.py,status_report/render_json.py,status_report/render_markdown.py,tests/test_cli.py,tests/test_redact.py,tests/test_render_json.py,tests/test_render_markdown.py; redact_notes→status_report/redact.py,tests/test_redact.py; render_json→status_report/render_json.py,tests/test_render_json.py; render_markdown→status_report/render_markdown.py,tests/test_render_markdown.py; wire_cli→status_report/cli.py,tests/test_cli.py
+LAST FAILURE none
+BLOCKED none
+NEEDS YOU approve plan v1 on sha256:cfc96860bf0c…, or revise it first
+NEXT graphene plan show mission_start_b2e344868f963d9a3472ada4 --detail
+NEXT graphene plan export mission_start_b2e344868f963d9a3472ada4 --output plan.yaml
+NEXT graphene plan approve mission_start_b2e344868f963d9a3472ada4 --revision 1
+
+$ graphene plan show mission_start_b2e344868f963d9a3472ada4 --detail    # first two nodes
+Mission: mission_start_b2e344868f963d9a3472ada4      Base: e5995606e3cd      Plan: v1 / sha256:cfc96860bf0c…
+Goal: Add redacted JSON and Markdown status reports to the fixture CLI.
+
+CRITERION criterion-assembled-tests  The assembled candidate passes the full fixture test suite.
+  produced by      assemble_candidate
+  verified by      deterministic_check verify_candidate
+CRITERION criterion-json-canonical  JSON output is canonical and deterministic.
+  produced by      render_json
+  verified by      deterministic_check verify_candidate
+CRITERION criterion-markdown-escaped  Markdown output escapes table delimiters.
+  produced by      render_markdown
+  verified by      deterministic_check verify_candidate
+CRITERION criterion-notes-redacted  Secret-bearing notes are redacted before rendering.
+  produced by      redact_notes
+  verified by      deterministic_check verify_candidate
+
+NODE assemble_candidate  assembly  state=queued
+  title            Assemble accepted patches
+  contract         Apply only accepted task patches to the frozen base.
+  outcome owned    assembled-candidate:patch -> status_report/cli.py, status_report/redact.py, status_report/render_json.py, status_report/render_markdown.py, tests/test_cli.py, tests/test_redact.py, tests/test_render_json.py, tests/test_render_markdown.py
+  requires         redact_notes, render_json, render_markdown, wire_cli
+  consumes         redact_notes/candidate-patch:patch; render_json/candidate-patch:patch; render_markdown/candidate-patch:patch; wire_cli/candidate-patch:patch
+  read scope       status_report/__init__.py, status_report/cli.py, status_report/model.py, status_report/redact.py, status_report/render_json.py, status_report/render_markdown.py, tests/__init__.py, tests/test_cli.py, tests/test_model.py, tests/test_redact.py, tests/test_render_json.py, tests/test_render_markdown.py
+  write scope      status_report/cli.py, status_report/redact.py, status_report/render_json.py, status_report/render_markdown.py, tests/test_cli.py, tests/test_redact.py, tests/test_render_json.py, tests/test_render_markdown.py
+  allowed commands fixture-tests
+  acceptance       fixture-tests
+  role             assembler
+  attempts         0 of 1
+  priority         100
+  evidence         generic_v1 (attempt evidence, trusted check receipt)
+  bound to         mission mission_start_b2e344868f963d9a3472ada4 base e5995606e3cd plan v1 sha256:cfc96860bf0c…
+  mission budget   120s worker time, 8 attempts, 1048576 artifact bytes
+
+NODE redact_notes  work  state=queued
+  title            Redact secret-bearing notes
+  contract         Replace secret-bearing notes with a stable redacted marker.
+  outcome owned    candidate-patch:patch -> status_report/redact.py, tests/test_redact.py
+  requires         nothing
+  consumes         nothing
+  read scope       status_report/model.py, tests/test_model.py
+
+$ graphene plan revise plan.yaml     # after widening one node's read scope
+PLAN REVISED mission_start_b2e344868f963d9a3472ada4 v1 -> v2 sha256:0170be81c70a…
+Not approved yet — the new digest needs its own approval.
+  graphene plan diff mission_start_b2e344868f963d9a3472ada4 1 2
+  graphene plan lint mission_start_b2e344868f963d9a3472ada4
+  graphene plan approve mission_start_b2e344868f963d9a3472ada4 --revision 2
+
+$ graphene plan lint mission_start_b2e344868f963d9a3472ada4
+PLAN mission_start_b2e344868f963d9a3472ada4 VALID revision=2
+CRITERION criterion-assembled-tests producers=assemble_candidate verifier=verify_candidate:fixture-tests
+CRITERION criterion-json-canonical producers=render_json verifier=verify_candidate:fixture-tests
+CRITERION criterion-markdown-escaped producers=render_markdown verifier=verify_candidate:fixture-tests
+CRITERION criterion-notes-redacted producers=redact_notes verifier=verify_candidate:fixture-tests
+
+$ graphene plan diff mission_start_b2e344868f963d9a3472ada4 1 2
+PLAN DIFF mission_start_b2e344868f963d9a3472ada4 v1 -> v2
+  from sha256:cfc96860bf0c… to sha256:0170be81c70a…
+  ~ NODE redact_notes changed
+    field contract: 'Replace secret-bearing notes with a stable redacted marker.' -> "Replace secret-bearing notes with a stable redacted marker. Match the shape of render_json's output."
+    field read_paths: +status_report/render_json.py, +tests/test_render_json.py  ** SCOPE EXPANSION **
+  approve this revision: graphene plan approve mission_start_b2e344868f963d9a3472ada4 --revision 2
+
+$ graphene plan show mission_start_b2e344868f963d9a3472ada4           # the table again, now on revision 2
+Mission: mission_start_b2e344868f963d9a3472ada4      Base: e5995606e3cd      Plan: v2 / sha256:0170be81c70a…
+
+ID                  STATE   DEPS                                               ROLE           READ/WRITE  CHECKS
+assemble_candidate  queued  redact_notes,render_json,render_markdown,wire_cli  assembler      12 / 8      1
+redact_notes        queued  -                                                  report-worker  4 / 2       1
+render_json         queued  -                                                  report-worker  2 / 2       1
+render_markdown     queued  -                                                  report-worker  2 / 2       1
+verify_candidate    queued  assemble_candidate                                 verifier       12 / 0      1
+wire_cli            queued  redact_notes,render_json,render_markdown           integrator     12 / 2      1
+
+Critical path: render_markdown → wire_cli → assemble_candidate → verify_candidate
+Frontier on approval: redact_notes, render_json, render_markdown          Needs approval: plan v2
+Inspect one node: graphene plan show mission_start_b2e344868f963d9a3472ada4 --detail
