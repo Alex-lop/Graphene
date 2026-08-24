@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import pathlib
+import re
+from contextlib import closing
 from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
 
+import graphene.orchestration.store as store_module
 from graphene.hashing import canonical_json_sha256
 from graphene.models import TruthKind
 from graphene.orchestration.models import (
     ArtifactRequirement,
+    MissionEvent,
     AttemptState,
     MissionEventType,
     MissionStatus,
@@ -509,3 +514,73 @@ def test_the_plan_cannot_be_edited_once_a_worker_has_claimed_a_node(tmp_path) ->
             expected_head=store.head("mission-1"),
             recorded_at=NOW + timedelta(seconds=4),
         )
+
+
+def test_the_approval_lookup_never_pattern_matches_sql_against_stored_bytes() -> None:
+    """The guard that would have caught a green macOS run breaking Linux CI.
+
+    `mission_events.event_bytes` is a BLOB. SQLite's `LIKE` matches against a
+    BLOB on 3.51 (macOS) and matches nothing on 3.46 (this project's Linux
+    CI), so a prefilter written in SQL made `claim_task` refuse every
+    approved plan on Linux while every macOS check stayed green — including
+    `scripts/morning_verify.sh`, which is a macOS result by construction and
+    structurally cannot see this.
+
+    Any prefiltering belongs in Python, where the semantics do not move with
+    the library version.
+    """
+    code = "\n".join(
+        line
+        for line in pathlib.Path(store_module.__file__).read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    offending = re.findall(r"event_bytes\s*(?:\"\s*\n\s*\")?\s*LIKE", code, re.I)
+    assert offending == [], (
+        "SQL pattern-matches against the event_bytes BLOB; prefilter in Python"
+    )
+
+
+def test_the_approval_prefilter_drops_nothing_an_unfiltered_scan_would_find(
+    tmp_path,
+) -> None:
+    """The invariant the old comment asserted and did not have.
+
+    Pinning one platform's behaviour would only fail where the bug already
+    shows. This pins the property instead: whatever the lookup filters with,
+    it must reach the same answer as a scan that filters nothing. It fails on
+    every platform if the prefilter ever drops a real match — including the
+    way it would fail if the pattern were `str` against `bytes`, where the
+    containment test silently matches nothing.
+    """
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    _create(store)
+    snapshot = store.snapshot("mission-1")
+    digest = canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+
+    def unfiltered(connection, revision: int) -> str | None:
+        """The same question, asked with no prefilter of any kind."""
+        for row in connection.execute(
+            "SELECT event_bytes FROM mission_events WHERE mission_id = ? "
+            "ORDER BY seq DESC",
+            ("mission-1",),
+        ):
+            event = MissionEvent.model_validate_json(row["event_bytes"])
+            if (
+                event.event_type == MissionEventType.PLAN_APPROVED
+                and event.payload.get("plan_revision") == revision
+            ):
+                value = event.payload.get("plan_sha256")
+                return value if isinstance(value, str) else ""
+        return None
+
+    with closing(store._connect()) as connection:
+        for revision in (1, 2, 3):
+            assert store._approved_plan_sha256(
+                connection, "mission-1", revision
+            ) == unfiltered(connection, revision), (
+                f"the prefilter and an unfiltered scan disagree at revision {revision}"
+            )
+        assert store._approved_plan_sha256(connection, "mission-1", 1) == digest
+        # A revision nobody approved is None, never an empty string: an empty
+        # string means "approved before the digest field existed".
+        assert store._approved_plan_sha256(connection, "mission-1", 2) is None
