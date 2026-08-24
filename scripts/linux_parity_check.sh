@@ -43,13 +43,16 @@ git archive HEAD | tar -x -C "$scratch"
 # -D` is GNU-only and fails silently on BSD/macOS, which would leave this
 # checking HEAD while appearing to check the working tree — the exact kind of
 # check-that-cannot-fail this script exists to prevent.
+# `git diff` lists modifications only, so a brand-new test file would be
+# checked at HEAD — that is, not checked at all. `git status --porcelain`
+# includes untracked paths and still honours .gitignore.
 overlaid=0
 while IFS= read -r path; do
   [ -n "$path" ] && [ -f "$path" ] || continue
   mkdir -p "$scratch/$(dirname "$path")"
   cp "$path" "$scratch/$path"
   overlaid=$((overlaid + 1))
-done < <(git diff --name-only HEAD)
+done < <(git status --porcelain --untracked-files=all | sed 's/^...//')
 echo "  overlaid $overlaid uncommitted file(s) onto $(git rev-parse --short HEAD)"
 
 echo "== linux parity against $IMAGE"
@@ -80,6 +83,7 @@ run "mission replay taskmaster" uv run --frozen graphene mission replay \
 # approvals shows up first, so it is worth the seconds.
 run "approval and revision authority" uv run --frozen pytest -q \
   tests/adversarial/test_plan_revision.py tests/unit/orchestration/test_store.py
+run "plan CLI surface" uv run --frozen pytest -q tests/unit/cli/test_plan_cli.py
 exit $fail
 '
 status=$?
