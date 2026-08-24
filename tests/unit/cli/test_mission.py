@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tomllib
@@ -197,19 +198,108 @@ def test_init_writes_one_atomic_valid_deny_by_default_policy(tmp_path: Path) -> 
     assert not tuple(path.parent.glob(".project.json-*.tmp"))
 
 
-def test_planning_context_is_bounded_to_policy_and_tracked_files(
+def test_planning_context_is_bounded_to_policy_and_the_bound_commit(
     tmp_path: Path,
 ) -> None:
     repository = _repository(tmp_path)
     _, policy = initialize(repository)
     (repository / "secret.py").write_text("TOKEN = 'must-not-be-read'\n")
-    subprocess.run(("git", "add", "secret.py"), cwd=repository, check=True)
 
     manifest, excerpts = _planning_repository_context(repository, policy)
 
     assert manifest == ("README.md",)
     assert tuple(item.path for item in excerpts) == ("README.md",)
     assert excerpts[0].text == "# Fixture\n"
+
+
+def test_planning_rejects_dirty_worktree_bytes_the_workers_will_never_see(
+    tmp_path: Path,
+) -> None:
+    """Workers run against ``policy.base_sha``; the planner must see the same bytes."""
+    repository = _repository(tmp_path)
+    _, policy = initialize(repository)
+    (repository / "README.md").write_text("# Fixture\nLEAKED = 'dirty worktree'\n")
+
+    with pytest.raises(MissionCliError, match="planning source drift: README.md"):
+        _planning_repository_context(repository, policy)
+
+
+def test_planning_rejects_staged_but_uncommitted_content(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _, policy = initialize(repository)
+    (repository / "staged.py").write_text("TOKEN = 'staged, never committed'\n")
+    subprocess.run(("git", "add", "staged.py"), cwd=repository, check=True)
+
+    with pytest.raises(MissionCliError, match="planning source drift: staged.py"):
+        _planning_repository_context(repository, policy)
+
+
+def test_planning_rejects_a_file_deleted_from_the_worktree(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _, policy = initialize(repository)
+    (repository / "README.md").unlink()
+
+    with pytest.raises(MissionCliError, match="planning source drift: README.md"):
+        _planning_repository_context(repository, policy)
+
+
+def test_planning_cannot_be_redirected_by_an_intermediate_directory_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """O_NOFOLLOW only guarded the leaf; reading Git objects guards every component.
+
+    ``.graphene/generated/**`` is readable by the default policy. Replacing the
+    intermediate ``generated`` directory with a symlink out of the repository used
+    to send an outside file to Gemini under an innocent in-repo path. Planning now
+    reads blobs out of ``base_sha``, so the symlink has nothing to redirect and the
+    outside bytes are unreachable by construction.
+    """
+    repository = _repository(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "note.md").write_text("# Outside\nSECRET = 'must never reach a model'\n")
+
+    generated = repository / ".graphene" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "note.md").write_text("# In repository\n")
+    subprocess.run(("git", "add", "--all", "--"), cwd=repository, check=True)
+    subprocess.run(
+        ("git", "commit", "-q", "-m", "generated"),
+        cwd=repository,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+0000",
+            "GIT_AUTHOR_EMAIL": "fixture@graphene.invalid",
+            "GIT_AUTHOR_NAME": "Fixture",
+            "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+0000",
+            "GIT_COMMITTER_EMAIL": "fixture@graphene.invalid",
+            "GIT_COMMITTER_NAME": "Fixture",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+        },
+        check=True,
+    )
+    _, policy = initialize(repository)
+
+    shutil.rmtree(generated)
+    generated.symlink_to(outside, target_is_directory=True)
+
+    # Layer 1: Git does not descend into a symlinked directory, so the swap shows
+    # up as drift and planning stops before it reads anything.
+    with pytest.raises(
+        MissionCliError, match=r"planning source drift: \.graphene/generated/note\.md"
+    ):
+        _planning_repository_context(repository, policy)
+
+    # Layer 2: even with the drift gate disabled, the excerpt comes out of the
+    # commit, so the outside bytes are unreachable — no path is ever opened.
+    monkeypatch.setattr(mission_cli, "_planning_source_drift", lambda *_a: ())
+    manifest, excerpts = _planning_repository_context(repository, policy)
+
+    texts = "".join(item.text for item in excerpts)
+    assert ".graphene/generated/note.md" in manifest
+    assert "SECRET" not in texts
+    assert "# In repository\n" in texts
 
 
 def test_doctor_reports_modes_without_echoing_credentials(

@@ -2720,28 +2720,96 @@ def _approve_scripted_start(
     )
 
 
-def _planning_repository_context(
-    repository: Path, policy: ProjectPolicy
-) -> tuple[tuple[str, ...], tuple[PlanningExcerpt, ...]]:
+def _git_read(repository: Path, *arguments: str) -> bytes:
+    """Run one read-only Git command in ``repository`` and return its stdout."""
+    executable = shutil.which("git")
+    if executable is None:
+        raise MissionCliError("Git is unavailable")
     try:
         result = subprocess.run(
-            ("git", "-C", str(repository), "ls-files", "-z", "--cached"),
+            (executable, "-C", str(repository), *arguments),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            timeout=15,
+            timeout=30,
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise MissionCliError("repository manifest could not be read") from error
     if result.returncode:
         raise MissionCliError("repository manifest could not be read")
-    tracked = tuple(
-        sorted({os.fsdecode(raw) for raw in result.stdout.split(b"\0") if raw})
+    return result.stdout
+
+
+def _planning_source_drift(repository: Path, base_sha: str) -> tuple[str, ...]:
+    """Tracked or staged paths whose bytes differ from the bound commit.
+
+    ``.graphene/project.json`` is the one exception, for the same reason
+    ``_load_project_policy`` already tolerates it: ``graphene init`` writes the
+    policy after the base commit and the planner never reads it.
+    """
+    drift: set[str] = set()
+    for arguments in (
+        ("diff", "--name-only", "-z", base_sha, "--"),
+        ("diff", "--cached", "--name-only", "-z", base_sha, "--"),
+    ):
+        drift.update(
+            os.fsdecode(raw)
+            for raw in _git_read(repository, *arguments).split(b"\0")
+            if raw
+        )
+    return tuple(sorted(drift - {".graphene/project.json"}))
+
+
+def _committed_blobs(repository: Path, base_sha: str) -> dict[str, tuple[str, int]]:
+    """``{path: (object_id, size)}`` for every regular file in ``base_sha``.
+
+    Symlink (``120000``) and submodule (``160000``) entries are dropped: the
+    planner reads file content, and a tree symlink's content is a path.
+    """
+    records = _git_read(
+        repository, "ls-tree", "-r", "-l", "-z", "--full-tree", base_sha
     )
+    blobs: dict[str, tuple[str, int]] = {}
+    for raw in records.split(b"\0"):
+        if not raw:
+            continue
+        header, separator, encoded = raw.partition(b"\t")
+        if not separator:
+            raise MissionCliError("repository manifest could not be read")
+        fields = header.split()
+        if len(fields) != 4:
+            raise MissionCliError("repository manifest could not be read")
+        mode, kind, object_id, size = (item.decode("ascii", "replace") for item in fields)
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            continue
+        blobs[os.fsdecode(encoded)] = (object_id, int(size))
+    return blobs
+
+
+def _planning_repository_context(
+    repository: Path, policy: ProjectPolicy
+) -> tuple[tuple[str, ...], tuple[PlanningExcerpt, ...]]:
+    """Manifest and excerpts read out of ``policy.base_sha``, never off the disk.
+
+    Workers execute against the committed ``base_sha``; a planner fed live
+    worktree bytes plans against content nobody will run, and uncommitted work
+    would leave the machine inside the prompt. Reading Git objects also settles
+    the symlink question outright — no path under ``repository`` is opened, so an
+    intermediate directory symlink has nothing left to redirect.
+    """
+    drift = _planning_source_drift(repository, policy.base_sha)
+    if drift:
+        shown = ", ".join(drift[:8])
+        extra = f" (+{len(drift) - 8} more)" if len(drift) > 8 else ""
+        raise MissionCliError(
+            f"planning source drift: {shown}{extra} differ from the bound commit "
+            f"{policy.base_sha[:12]}; commit or stash them before planning"
+        )
+    blobs = _committed_blobs(repository, policy.base_sha)
     allowed = tuple(
         path
-        for path in tracked
+        for path in sorted(blobs)
         if any(
             PurePosixPath(path).full_match(pattern)
             for pattern in policy.allowed_read_globs
@@ -2762,21 +2830,11 @@ def _planning_repository_context(
             ".yml",
         }:
             continue
-        try:
-            descriptor = os.open(
-                repository / relative,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
-            )
-            try:
-                metadata = os.fstat(descriptor)
-                if not stat.S_ISREG(metadata.st_mode):
-                    continue
-                content = os.read(descriptor, min(4_096, remaining) + 1)
-            finally:
-                os.close(descriptor)
-        except OSError as error:
-            raise MissionCliError("repository planning excerpt is unsafe") from error
-        if len(content) > min(4_096, remaining) or b"\0" in content:
+        object_id, size = blobs[relative]
+        if size > min(4_096, remaining):
+            continue
+        content = _git_read(repository, "cat-file", "blob", object_id)
+        if len(content) != size or b"\0" in content:
             continue
         try:
             text = content.decode("utf-8")
