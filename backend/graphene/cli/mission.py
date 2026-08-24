@@ -56,6 +56,7 @@ from ..orchestration.models import (
     CommandTemplate,
     Dispatch,
     Mission,
+    PLAN_AWAITING_REVIEW_UNKNOWN,
     MissionEventType,
     MissionHead,
     MissionStatus,
@@ -2589,7 +2590,7 @@ def _gemini_proposal(
         plan_revision=1,
         creation_source="operator",
         resource_budget=policy.resource_budget,
-        unknowns=("The model-proposed plan awaits operator review.",),
+        unknowns=(PLAN_AWAITING_REVIEW_UNKNOWN,),
         created_at=created_at,
     )
     store.create_mission(

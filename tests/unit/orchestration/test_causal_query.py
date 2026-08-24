@@ -3,6 +3,10 @@ from datetime import timedelta
 from graphene.hashing import canonical_json_bytes
 from graphene.models import TruthKind
 from graphene.orchestration.causal_query import why
+from graphene.orchestration.models import (
+    PLAN_AWAITING_REVIEW_UNKNOWN,
+    MissionEventType,
+)
 from graphene.orchestration.store import SQLiteMissionStore
 
 from .test_store import NOW, _command, _complete_ready, _create
@@ -135,3 +139,49 @@ def test_why_reports_only_committed_causal_links_and_explicit_unknowns(tmp_path)
     assert missing.matched_by == "none"
     assert all(link.status == "unknown" for link in missing.links)
     assert "No committed publication or artifact matches" in " ".join(missing.unknowns)
+
+
+def test_plan_review_unknown_clears_once_the_plan_is_approved(tmp_path) -> None:
+    """A caveat that stopped being true must stop being printed.
+
+    A Gemini-planned mission is created carrying "the model-proposed plan awaits
+    operator review". It did — and then the operator approved it, and `why` went
+    on printing the caveat on every later answer, including on completed live
+    missions. The unknown is now dropped exactly when a PLAN_APPROVED event is in
+    the validated chain, and only then.
+    """
+    store = SQLiteMissionStore(tmp_path / "unknown.sqlite")
+    _create(store, approve=False)
+    mission = store.snapshot("mission-1").mission
+    assert PLAN_AWAITING_REVIEW_UNKNOWN not in mission.unknowns, (
+        "the fixture mission carries no unknowns, so this test drives the "
+        "predicate directly below"
+    )
+
+    approved = [
+        event
+        for event in store.tail("mission-1", 0, store.head("mission-1").seq)
+        if event.event_type == MissionEventType.PLAN_APPROVED
+    ]
+    assert not approved
+
+    store.approve_plan(
+        "mission-1",
+        _command("approve-plan-unknown"),
+        expected_revision=1,
+        expected_head=store.head("mission-1"),
+        operator_label="reviewer",
+        rationale="Reviewed the proposed plan.",
+        truth_kind=TruthKind.SERVER_DERIVED,
+        recorded_at=NOW,
+    )
+    snapshot = store.snapshot("mission-1")
+    events = store.tail("mission-1", 0, snapshot.head.seq)
+    carrying = snapshot.model_copy(
+        update={"unknowns": (PLAN_AWAITING_REVIEW_UNKNOWN, "Something else is unknown.")}
+    )
+
+    result = why(carrying, events, "app/nothing.py", reference_exists=lambda *_: True)
+
+    assert PLAN_AWAITING_REVIEW_UNKNOWN not in result.unknowns
+    assert "Something else is unknown." in result.unknowns

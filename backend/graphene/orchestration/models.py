@@ -90,6 +90,12 @@ class MissionAuthority(StrEnum):
     SIMULATED_FIXTURE = "simulated_fixture"
 
 
+# The unknown a Gemini-planned mission is created with. It is true at creation and
+# false the moment the operator approves the plan, so `why` clears it there
+# instead of carrying a stale caveat onto every later answer.
+PLAN_AWAITING_REVIEW_UNKNOWN = "The model-proposed plan awaits operator review."
+
+
 class MissionEventType(StrEnum):
     PROJECT_CREATED = "project.created"
     MISSION_CREATED = "mission.created"

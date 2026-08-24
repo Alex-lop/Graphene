@@ -13,6 +13,7 @@ from .models import (
     Attempt,
     EvidenceReference,
     MissionEvent,
+    PLAN_AWAITING_REVIEW_UNKNOWN,
     MissionEventType,
     MissionSnapshot,
     PublicationState,
@@ -261,7 +262,14 @@ def why(
     publications = tuple(snapshot.publications)
     attempts = {attempt.attempt_id: attempt for attempt in snapshot.attempts}
     tasks = {task.task_id: task for task in snapshot.tasks}
-    unknowns = list(snapshot.unknowns)
+    unknowns = [
+        item
+        for item in snapshot.unknowns
+        if item != PLAN_AWAITING_REVIEW_UNKNOWN
+        or not any(
+            event.event_type == MissionEventType.PLAN_APPROVED for event in committed
+        )
+    ]
 
     targets = tuple(item for item in publications if query in item.paths)
     matched_by: Literal["path", "identifier", "none"] = "path" if targets else "none"
