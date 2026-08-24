@@ -143,14 +143,20 @@ def _run(
         runtime=runtime,
         worker_ids=("worker-a", "worker-z"),
         accepted_artifacts=cache,
-        deadline_seconds=5,
+        # Generous on purpose. The runner returns as soon as the mission
+        # settles, so a large budget costs a fast machine nothing — and a small
+        # one turns this into a load-dependent test that fails when it runs
+        # after a full matrix.
+        deadline_seconds=120,
         poll_seconds=0,
     )
     try:
-        run = runner.run("runner-mission")
+        runner.run("runner-mission")
     except RunnerExecutionFailed:
-        run = None
-    return run, store, evidence, assignments
+        pass
+    # Assertions read committed store state, never the runner's return value:
+    # a mission that ends FAILED is a legitimate outcome here.
+    return store.snapshot("runner-mission"), store, evidence, assignments
 
 
 def _reopen(root: Path) -> SQLiteMissionStore:
@@ -174,11 +180,11 @@ def _work_a_attempts(store):
 def test_a_failed_check_leaves_a_redacted_diagnostic_the_retry_can_read(
     tmp_path: Path,
 ) -> None:
-    run, store, evidence, assignments = _run(tmp_path, _DiagnosticCheckRunner())
+    snapshot, store, evidence, assignments = _run(tmp_path, _DiagnosticCheckRunner())
 
-    assert run.snapshot.mission.status == MissionStatus.AWAITING_RESULT
+    assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
     attempts = sorted(
-        (item for item in run.snapshot.attempts if item.task_id == "work-a"),
+        (item for item in snapshot.attempts if item.task_id == "work-a"),
         key=lambda item: item.attempt_number,
     )
     assert [item.state for item in attempts] == [
@@ -210,9 +216,9 @@ def test_a_failed_check_leaves_a_redacted_diagnostic_the_retry_can_read(
 def test_the_retry_assignment_carries_the_prior_failure_and_not_a_wider_scope(
     tmp_path: Path,
 ) -> None:
-    run, store, evidence, assignments = _run(tmp_path, _DiagnosticCheckRunner())
+    snapshot, store, evidence, assignments = _run(tmp_path, _DiagnosticCheckRunner())
     attempts = sorted(
-        (item for item in run.snapshot.attempts if item.task_id == "work-a"),
+        (item for item in snapshot.attempts if item.task_id == "work-a"),
         key=lambda item: item.attempt_number,
     )
     failed, retried = attempts
@@ -285,9 +291,9 @@ def test_prior_failure_is_none_when_the_diagnostic_cannot_be_resolved(
     tmp_path: Path,
 ) -> None:
     """A missing or tampered diagnostic degrades to the old blind retry, never a crash."""
-    run, store, evidence, _assignments = _run(tmp_path, _DiagnosticCheckRunner())
+    snapshot, store, evidence, _assignments = _run(tmp_path, _DiagnosticCheckRunner())
     retried = max(
-        (item for item in run.snapshot.attempts if item.task_id == "work-a"),
+        (item for item in snapshot.attempts if item.task_id == "work-a"),
         key=lambda item: item.attempt_number,
     )
 
