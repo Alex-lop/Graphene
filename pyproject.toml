@@ -39,10 +39,20 @@ exclude = ["/.claude", "/All_md_Files"]
 
 [tool.pytest.ini_options]
 # faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic.
-# pytest-timeout then hard-kills at 600s: `thread` (not the default `signal`)
-# because the hangs this suite produces are worker threads blocked in SQLite C
-# calls — a signal reaches the main thread but ThreadPoolExecutor shutdown then
-# waits on those threads forever, so only os._exit actually ends the run.
+# pytest-timeout then hard-kills at 600s with `thread` rather than the default
+# `signal`, because a signal reaches the main thread while ThreadPoolExecutor
+# shutdown is already joining worker threads, and that join has no timeout.
+# The earlier note here blamed blocking SQLite calls; that is withdrawn —
+# every mission-store connection is opened with timeout=5 and
+# busy_timeout=5000, so no mission-store call waits forever. The mechanism of
+# the intermittent full-matrix hang is not established; see the
+# "Full-matrix hang under load" row in docs/KNOWN_LIMITATIONS.md.
+#
+# Do not read `timeout = 600` as covering that hang. pytest-timeout arms per
+# test item and disarms on the way out, so nothing is armed once the last item
+# has finished — which matches the observed shape: the run prints its pass
+# count and then goes silent with no traceback. The guard below bounds a test
+# that hangs; it does not bound a shutdown that hangs.
 addopts = "-ra"
 faulthandler_timeout = 180
 timeout = 600

@@ -35,3 +35,8 @@ local/
 # create` / `mission result export`. They carry real mission digests and are
 # a user artifact, not repository content.
 /bundle.json
+
+# Stray images dropped at the repo root are working material, not repository
+# content; committed assets live under docs/assets/.
+/*.png
+/*.jpg

@@ -368,6 +368,14 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
             "it is not the committed revision",
         ),
     )
+    plan.add_argument(
+        "--plan-sha256",
+        help=_option_help(
+            "the exact plan digest you are approving, as shown by plan show/diff",
+            "--plan-sha256 8b3f…",
+            "it is not the digest of the committed revision",
+        ),
+    )
     plan.add_argument("--repo", type=Path)
     plan.add_argument(
         "--success-criterion",
@@ -759,6 +767,14 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         failure="the revision, head, validation, or human attestation is invalid",
     )
     approve_plan.add_argument("mission_id", help="exact mission ID")
+    approve_plan.add_argument(
+        "--plan-sha256",
+        help=_option_help(
+            "the exact plan digest you are approving, as shown by plan show/diff",
+            "--plan-sha256 8b3f…",
+            "it is not the digest of the committed revision",
+        ),
+    )
     approve_plan.add_argument(
         "--revision",
         required=True,
@@ -2564,6 +2580,8 @@ def _plan_action(args: argparse.Namespace) -> tuple[int, object | None]:
         raise MissionCliError(f"plan {action} does not accept revision arguments")
     if action != "export" and args.output is not None:
         raise MissionCliError(f"plan {action} does not accept --output")
+    if action != "approve" and args.plan_sha256 is not None:
+        raise MissionCliError(f"plan {action} does not accept --plan-sha256")
     if action not in {"approve", "show"} and args.detail:
         raise MissionCliError(f"plan {action} does not accept --detail")
 
@@ -5479,6 +5497,16 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             raise MissionCliError(
                 "plan approval revision does not match committed state"
             )
+        # Approve the graph, not the number. The digest the store holds is
+        # always bound; if the operator names one, it must be the same one, so
+        # a plan that moved between reading the diff and approving it cannot
+        # be approved by accident.
+        plan_sha256 = canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+        expected = getattr(args, "plan_sha256", None)
+        if expected is not None and expected != plan_sha256:
+            raise MissionCliError(
+                "plan approval digest does not match the committed revision"
+            )
         command_id = args.command_id or _command_id(
             action,
             args.mission_id,
@@ -5519,6 +5547,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     rationale=args.rationale,
                     truth_kind=truth_kind,
                     recorded_at=now,
+                    expected_plan_sha256=plan_sha256,
                 )
             run = execute_scripted_mission(
                 store=store,
@@ -5549,6 +5578,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     rationale=args.rationale,
                     truth_kind=truth_kind,
                     recorded_at=now,
+                    expected_plan_sha256=plan_sha256,
                 )
             return _execute_adk_mission(store=store, mission_id=args.mission_id)
         result = store.approve_plan(
@@ -5560,6 +5590,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             rationale=args.rationale,
             truth_kind=truth_kind,
             recorded_at=now,
+            expected_plan_sha256=plan_sha256,
         )
     elif action == "decide-gate":
         truth_kind = _truth_kind(args)
@@ -5615,7 +5646,12 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
             raise MissionCliError("multi-word plan goals must be quoted")
         if args.repo is None:
             raise MissionCliError("plan requires --repo")
-        if args.detail or args.output is not None or args.revision is not None:
+        if (
+            args.detail
+            or args.output is not None
+            or args.revision is not None
+            or args.plan_sha256 is not None
+        ):
             raise MissionCliError("proposing a plan does not accept action options")
         return 0, _start(args)
     if args.command == "status":

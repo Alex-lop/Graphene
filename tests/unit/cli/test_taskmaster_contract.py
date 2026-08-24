@@ -676,3 +676,105 @@ def test_confirm_human_binds_authoritative_local_principal(
     assert looked_up == [501]
     assert args.operator_label.startswith("reviewer@local-")
     assert len(args.operator_label) <= 64
+
+
+class _Head:
+    seq = 4
+
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        return {"seq": self.seq}
+
+
+class _MissionStub:
+    mission_id = "mission_1"
+    creation_source = "api"
+    status = MissionStatus.PROPOSED
+    base_sha = "a" * 40
+
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        return {"mission_id": self.mission_id, "status": str(self.status)}
+
+
+def _mission_stub() -> _MissionStub:
+    return _MissionStub()
+
+
+def test_plan_approval_binds_the_digest_the_operator_was_shown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Approving a revision number is not approving a graph.
+
+    The CLI always hands the store the digest of the plan it just read, and
+    refuses outright when the operator names a different one — so a plan that
+    moved between reading the diff and typing the approval cannot be approved
+    by accident.
+    """
+    plan = _plan()
+    digest = canonical_json_sha256(plan.model_dump(mode="json"))
+    head = _Head()
+    snapshot = SimpleNamespace(
+        head=head,
+        plan=plan,
+        # `creation_source` is neither "scripted_fixture" nor "operator", so
+        # the branch under test is the plain store approval, not an execution.
+        mission=_mission_stub(),
+    )
+    calls: list[dict[str, object]] = []
+
+    def approve_plan(mission_id, command_id, **kwargs):
+        calls.append(kwargs)
+        return head
+
+    store = SimpleNamespace(
+        snapshot=lambda _mission_id: snapshot,
+        head=lambda _mission_id: head,
+        approve_plan=approve_plan,
+    )
+    monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _mission_id: store)
+    monkeypatch.setattr(mission_cli, "_store", lambda *args, **kwargs: store)
+
+    args = build_parser().parse_args(
+        ["plan", "approve", "mission_1", "--revision", "1", "--operator-label", "alex"]
+    )
+    mission_cli._dispatch(args)
+    assert calls[-1]["expected_plan_sha256"] == digest
+
+    wrong = build_parser().parse_args(
+        [
+            "plan",
+            "approve",
+            "mission_1",
+            "--revision",
+            "1",
+            "--plan-sha256",
+            "0" * 64,
+            "--operator-label",
+            "alex",
+        ]
+    )
+    with pytest.raises(mission_cli.MissionCliError, match="digest does not match"):
+        mission_cli._dispatch(wrong)
+
+    named = build_parser().parse_args(
+        [
+            "plan",
+            "approve",
+            "mission_1",
+            "--revision",
+            "1",
+            "--plan-sha256",
+            digest,
+            "--operator-label",
+            "alex",
+        ]
+    )
+    mission_cli._dispatch(named)
+    assert calls[-1]["expected_plan_sha256"] == digest
+
+    # The flag belongs to approval alone.
+    with pytest.raises(mission_cli.MissionCliError, match="does not accept"):
+        mission_cli._dispatch(
+            build_parser().parse_args(
+                ["plan", "show", "mission_1", "--plan-sha256", digest]
+            )
+        )

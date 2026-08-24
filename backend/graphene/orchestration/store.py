@@ -1915,13 +1915,21 @@ class SQLiteMissionStore:
         retry out of FAILED — carries no authority for the plan it would
         dispatch. Callers that dispatch must treat None as a refusal.
         """
-        # The LIKE is a prefilter over canonical JSON, not authority: it only
-        # keeps this off the dispatch hot path for long missions. The parsed
-        # event type and revision below are what decide.
+        # Both LIKEs are prefilters over canonical JSON, never authority: the
+        # parsed event type and revision below are what decide. They exist so
+        # this does not scan and parse the whole event log on every dispatch,
+        # inside the write transaction. Canonical JSON has no spaces after
+        # separators (`hashing.canonical_json_bytes`), so the revision
+        # substring is exact; a true match must contain both, so nothing real
+        # is filtered out and a false positive only costs one parse.
         for row in connection.execute(
             "SELECT event_bytes FROM mission_events WHERE mission_id = ? "
-            "AND event_bytes LIKE ? ORDER BY seq DESC",
-            (mission_id, f"%{MissionEventType.PLAN_APPROVED.value}%"),
+            "AND event_bytes LIKE ? AND event_bytes LIKE ? ORDER BY seq DESC",
+            (
+                mission_id,
+                f"%{MissionEventType.PLAN_APPROVED.value}%",
+                f'%"plan_revision":{revision}%',
+            ),
         ):
             event = MissionEvent.model_validate_json(row["event_bytes"])
             if (
