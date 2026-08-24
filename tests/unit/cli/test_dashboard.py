@@ -15,6 +15,8 @@ from typing import Any
 import pytest
 from rich.console import Console
 
+from graphene.orchestration.projection import MissionProjectionError
+
 from graphene.cli.dashboard import (
     GEMINI_3_5_FLASH_USD_PER_TOKEN,
     Frame,
@@ -312,3 +314,85 @@ def test_follow_stops_when_the_mission_needs_a_person() -> None:
     )
     assert gated.waiting is True
     assert slept == []
+
+
+class _ScriptedProjection:
+    """Replays a script of snapshots and MissionProjectionErrors, in order."""
+
+    def __init__(self, script: list[object]) -> None:
+        self._script = script
+        self.calls = 0
+
+    def snapshot(self, mission_id: str) -> SimpleNamespace:
+        self.calls += 1
+        step = self._script.pop(0) if len(self._script) > 1 else self._script[0]
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+def test_follow_rides_out_a_projection_caught_mid_write() -> None:
+    """A live mission writes two SQLite files; a poll can land between them.
+
+    Caught by a real rehearsal of `graphene demo --live`, which died with
+    "mission materialized state changed during validation" while the mission was
+    still running. The projection is right to refuse a half-state; a dashboard
+    polling a moving store must expect it and keep the last good frame.
+    """
+    console = Console(file=io.StringIO(), force_terminal=False, width=100)
+    error = MissionProjectionError("mission materialized state changed")
+    projection = _ScriptedProjection(
+        [
+            _stub_snapshot("running"),
+            error,
+            error,
+            error,
+            _stub_snapshot("completed"),
+        ]
+    )
+    slept: list[float] = []
+
+    frame = follow(
+        projection,
+        "mission-1",
+        console=console,
+        spend=lambda _s: None,
+        latest=lambda _s: None,
+        clock=lambda: 0.0,
+        sleeper=slept.append,
+    )
+
+    assert frame.status == "completed"
+    assert projection.calls == 5
+    # Three transient polls plus the loop's own tick between frames.
+    assert len(slept) == 4
+
+
+def test_follow_surfaces_a_projection_error_that_never_clears() -> None:
+    """Transient is forgiven; permanent is not. A corrupted store still shouts."""
+    console = Console(file=io.StringIO(), force_terminal=False, width=100)
+    error = MissionProjectionError("mission materialized state changed")
+
+    # Failing on the very first poll has no last-good frame to keep: it raises.
+    with pytest.raises(MissionProjectionError):
+        follow(
+            _ScriptedProjection([error]),
+            "mission-1",
+            console=console,
+            spend=lambda _s: None,
+            latest=lambda _s: None,
+            clock=lambda: 0.0,
+            sleeper=lambda _s: None,
+        )
+
+    # And a failure that never clears eventually raises rather than spinning.
+    with pytest.raises(MissionProjectionError):
+        follow(
+            _ScriptedProjection([_stub_snapshot("running"), error]),
+            "mission-1",
+            console=console,
+            spend=lambda _s: None,
+            latest=lambda _s: None,
+            clock=lambda: 0.0,
+            sleeper=lambda _s: None,
+        )

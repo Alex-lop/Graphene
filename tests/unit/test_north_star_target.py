@@ -167,7 +167,7 @@ def test_materializer_produces_policy_that_mission_start_loads(tmp_path: Path) -
     )
     assert ".graphene/**" in policy.exclusions and ".git/**" in policy.exclusions
     assert policy.network.mode is NetworkMode.DENY and policy.network.allowed_hosts == ()
-    assert (policy.max_concurrency, policy.retry_limit, policy.revision) == (2, 1, 1)
+    assert (policy.max_concurrency, policy.retry_limit, policy.revision) == (2, 2, 1)
     assert policy.risk_gates == ("final-result", "network", "scope-expansion")
 
     policy_path = dest / ".graphene" / "project.json"
@@ -295,7 +295,11 @@ def test_policy_template_matches_documented_policy() -> None:
     ]
     assert template["network"] == {"mode": "deny", "allowed_hosts": []}
     assert template["agent_roles"] == ["assembler", "planner", "verifier", "worker"]
-    assert (template["max_concurrency"], template["retry_limit"]) == (2, 1)
+    # retry_limit 2, not 1: --inject-check-fault deliberately burns a task's
+    # first attempt, and a demo that leaves the model no real attempt at all
+    # measures the fault, not the product. A repeat of the same failure
+    # signature still terminalizes, so a third attempt is never blind.
+    assert (template["max_concurrency"], template["retry_limit"]) == (2, 2)
     assert template["resource_budget"] == {
         "max_worker_seconds": 900,
         "max_attempts": 16,

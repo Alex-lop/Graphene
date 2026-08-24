@@ -17,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ..orchestration.models import MissionStatus
+from ..orchestration.projection import MissionProjectionError
 from .render import _fit
 
 # Paid-tier published price for gemini-3.5-flash, USD per token as
@@ -36,6 +37,12 @@ _STATES: dict[str, tuple[str, str]] = {
     "failed": ("failed", "✗"),
     "cancelled": ("failed", "✗"),
 }
+
+# A live mission writes to two SQLite files, so a poll can land between the two
+# writes and the projection refuses the half-state. That is correct of the
+# projection and transient for a dashboard: keep the last good frame, poll
+# again, and only surface it when it stops being transient.
+_MAX_TRANSIENT_POLLS = 40
 
 _TERMINAL: frozenset[str] = frozenset(
     status.value
@@ -205,23 +212,35 @@ def follow(
 ) -> Frame:
     """Poll until the mission is terminal; Ctrl-C hands back the last frame."""
     started = clock()
+    transient = 0
 
-    def _poll() -> Frame:
-        snapshot = projection.snapshot(mission_id)
-        return build_frame(
-            snapshot,
-            elapsed_seconds=clock() - started,
-            spend_usd=spend(snapshot),
-            latest=latest(snapshot),
-        )
+    def _poll(previous: Frame | None) -> Frame:
+        """One frame, tolerating a projection caught mid-write."""
+        nonlocal transient
+        while True:
+            try:
+                snapshot = projection.snapshot(mission_id)
+            except MissionProjectionError:
+                transient += 1
+                if previous is None or transient > _MAX_TRANSIENT_POLLS:
+                    raise
+                sleeper(poll_seconds)
+                continue
+            transient = 0
+            return build_frame(
+                snapshot,
+                elapsed_seconds=clock() - started,
+                spend_usd=spend(snapshot),
+                latest=latest(snapshot),
+            )
 
-    frame = _poll()
+    frame = _poll(None)
     try:
         if console.is_terminal:
             with Live(render_frame(frame), console=console) as live:
                 while not _finished(frame, stop):
                     sleeper(poll_seconds)
-                    frame = _poll()
+                    frame = _poll(frame)
                     live.update(render_frame(frame), refresh=True)
         else:
             shown: Frame | None = None
@@ -235,7 +254,7 @@ def follow(
                 if _finished(frame, stop):
                     break
                 sleeper(poll_seconds)
-                frame = _poll()
+                frame = _poll(frame)
     except KeyboardInterrupt:
         pass
     return frame

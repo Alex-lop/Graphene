@@ -64,6 +64,21 @@ A reviewer who reads "the flaky markdown-report generation leaves the
 critical path" more literally can drop criterion 2 and its task without
 touching anything else.
 
+## Retry budget
+
+`policy.template.json` sets `retry_limit: 2`, not 1. `graphene demo --live`
+starts its mission with `--inject-check-fault`, which deliberately fails a
+task's first trusted check, so at `retry_limit: 1` the model would be left with
+exactly one real attempt and no recovery — the demo would be measuring the
+injected fault rather than the product. Two retries give the sequence: injected
+fault, one real attempt, and one diagnostic-aware repair. It is never a blind
+extra draw, because a repeat of the same failure signature terminalizes the task
+immediately.
+
+The 2026-08-23 completion gate (9/10 ordinary, 3/3 controlled-failure) was
+measured at `retry_limit: 1`, which is the stricter setting; raising it does not
+retroactively loosen that number.
+
 ## Machine-readable twin
 
 The block below is byte-for-byte the content of `goal.json`:

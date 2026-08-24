@@ -23,7 +23,7 @@
   "network": {"mode": "deny", "allowed_hosts": []},
   "agent_roles": ["assembler", "planner", "verifier", "worker"],
   "max_concurrency": 2,
-  "retry_limit": 1,
+  "retry_limit": 2,
   "resource_budget": {
     "max_worker_seconds": 900,
     "max_attempts": 16,
