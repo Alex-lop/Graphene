@@ -1,0 +1,36 @@
+WHY mission_start_b0b61fac3a6b1b3279329462 ledger_service/report_json.py matched_by=path
+STAGE target established
+  node publication publication_7f8c70f39365ad6f79f13acab40c583e kind=patch task=implement-report-json attempt=attempt_e16f3a6081228b33c23762fa0fa09580 worker=none attempt_number=none fence=none sha256=231ba8a8e9bb
+  events mission_event_c144645da0d617864d905637be5177a5,mission_event_2adaf48dca3f008029bb6cb46f7466eb
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_e16f3a6081228b33c23762fa0fa09580 kind=none task=implement-report-json attempt=attempt_e16f3a6081228b33c23762fa0fa09580 worker=gemini-worker-1 attempt_number=2 fence=2 sha256=none
+  receipt test-receipt artifact_6def726e2b518bd58eb2e7cf38572cfe resolvable=True
+  receipt worker-provider-receipt artifact_9df1c9001f5a35b330fe218ef3b88bdb resolvable=True
+  events mission_event_8a3485be313684bb614ab5c41c88f51a,mission_event_a555a0dc4512d896d5cd21b6ba32e6da
+  note The verified snapshot binds each target to its producer attempt.
+STAGE prior_attempts established
+  node attempt attempt_8df82e4a53ae89cd872320a8aee63944 kind=none task=implement-report-json attempt=attempt_8df82e4a53ae89cd872320a8aee63944 worker=gemini-worker-2 attempt_number=1 fence=1 sha256=none state=failed result_code=acceptance_check_failed
+  receipt test-receipt artifact_91c5a81336af4733a31741d6cc77ee9f resolvable=True
+  receipt worker-provider-receipt artifact_b75911b23bc5eceecf98233fb530a439 resolvable=True
+  events mission_event_81a15478ce44c063d0f65d4f2b97d35f,mission_event_5e0458484a89b64d2fc8fe9cd70667b1
+  note Earlier attempts of the producing task ended without an accepted publication; the producer above ran under a strictly higher fence.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate established
+  node publication publication_6a458a72ed4f9e60c78b556241364fbd kind=patch task=assemble attempt=attempt_4f672ebc6434825e5b5b4b8a0ab429df worker=none attempt_number=none fence=none sha256=73af58ddca6b
+  receipt test-receipt artifact_aa3b7581ccb2adc5c5b5f57fb36bc77a resolvable=True
+  events mission_event_e039a0c09e34da774b26b3c7869ed5a3
+  note Accepted assembly output consumes the target publication.
+STAGE verification established
+  node publication publication_4dc60df0763dcbd97c1e0553daccb5db kind=test-receipt task=verify attempt=attempt_65d136bc9f29d214169be642dc934a7f worker=none attempt_number=none fence=none sha256=eeffc5ca1faa
+  receipt test-receipt artifact_eeffc5ca1faa7d7d57fd2002caa47a6e resolvable=True
+  events mission_event_582adbc7d1b90489e90e0d1c8d49a7fe
+  note Accepted verification output consumes the assembly candidate.
+STAGE approval established
+  node event mission_event_2003912161406aae311e62f3646c4b9c kind=none task=none attempt=none worker=none attempt_number=none fence=none sha256=none
+  events mission_event_2003912161406aae311e62f3646c4b9c
+  note A committed final approval references the assembly candidate.
+UNKNOWN The model-proposed plan awaits operator review.
+TRUST: every line above is derived from hash-chained mission events and resolvable evidence references; unknowns are listed, never guessed.

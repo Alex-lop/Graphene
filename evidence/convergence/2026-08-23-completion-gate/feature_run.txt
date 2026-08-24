@@ -1,0 +1,16 @@
+# The generated feature, executed from the approved isolated commit
+# mission mission_start_b0b61fac3a6b1b3279329462  commit 64e8aecc9ff7c35d2bfe6a365fdbb5128deda032
+$ python -m ledger_service --ledger ledger.json report --format markdown
+| sku | name | unit | quantity | reorder_level | below_reorder | notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| BOLT-M8 | M8 bolt | each | 55 | 70 | True | from [REDACTED]; line a\|b |
+| NUT-M8 | M8 nut | each | 10 | 0 | False |  |
+$ python -m ledger_service --ledger ledger.json report --format json
+{"below_reorder": ["BOLT-M8"], "item_count": 2, "rows": [{"below_reorder": true, "last_movement_at": "2024-05-02T09:00:00+00:00", "movement_count": 2, "name": "M8 bolt", "notes": ["from [REDACTED]", "line a|b"], "quantity": 55, "reorder_level": 70, "sku": "BOLT-M8", "unit": "each"}, {"below_reorder": false, "last_movement_at": "2024-05-03T09:00:00+00:00", "movement_count": 1, "name": "M8 nut", "notes": [], "quantity": 10, "reorder_level": 0, "sku": "NUT-M8", "unit": "each"}], "total_quantity": 65}
+# files the mission created (git show --stat)
+64e8aec Graphene approved isolated mission result
+ ledger_service/report_json.py     | 18 ++++++++++++++++++
+ ledger_service/report_markdown.py | 26 ++++++++++++++++++++++++++
+ tests/test_report_json.py         | 30 ++++++++++++++++++++++++++++++
+ tests/test_report_markdown.py     | 32 ++++++++++++++++++++++++++++++++
+ 4 files changed, 106 insertions(+)

@@ -11,7 +11,13 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 QUICK=0; [ "${1:-}" = "--quick" ] && QUICK=1
-STATE="${GRAPHENE_STATE_DIR:-$HOME/.graphene/north-star-state}"
+# The convergence store holds the 2026-08-23 completion-gate missions. The
+# night store (~/.graphene/north-star-state) predates the final-bundle
+# verification receipt the store now issues at registration, so its two
+# bundle-carrying missions fail the new cold audit BY DESIGN — the store could
+# not have recomputed a bundle it had no authority over. Their durable record
+# is the committed capsule, cold-verified below.
+STATE="${GRAPHENE_STATE_DIR:-$HOME/.graphene/convergence-state}"
 fail=0
 step() { printf '\n== %s\n' "$1"; }
 ok()   { printf 'PASS %s\n' "$1"; }
@@ -42,15 +48,15 @@ git diff --check && ok "git diff --check" || bad "git diff --check"
 step "secret scan (locations + pattern names only; tests/ fixtures are expected)"
 uv run --frozen python scripts/secret_scan.py --commits 40 | tail -1 && ok "secret scan: nothing outside tests/" || bad "secret scan"
 
-step "night mission store ($STATE)"
+step "mission store ($STATE)"
 if [ -d "$STATE" ]; then
   out=$(GRAPHENE_STATE_DIR="$STATE" uv run --frozen graphene --json mission db verify 2>/dev/null)
   echo "$out"
-  python3 - "$out" <<'PY' && ok "store.verify on every night mission" || bad "store.verify"
+  python3 - "$out" <<'PY' && ok "store.verify on every mission in the store" || bad "store.verify"
 import json, sys
 d = json.loads(sys.argv[1]); assert d["status"] == "current" and d["verified_missions"] == d["mission_count"] > 0
 PY
-  for m in mission_start_5291caad50a8ee7a222a9221 mission_start_38129f17add65609de1c3388; do
+  for m in mission_start_b0b61fac3a6b1b3279329462 mission_start_b6be7f35ba803c6dc34597b1; do
     st=$(GRAPHENE_STATE_DIR="$STATE" uv run --frozen graphene --json mission status "$m" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["mission"]["status"], d["head"]["seq"], d["head"]["event_sha256"][:16])')
     echo "  $m -> $st"
   done
