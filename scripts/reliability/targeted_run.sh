@@ -11,6 +11,8 @@ SEL="${SEL:-tests/unit/orchestration/test_runner.py tests/unit/orchestration/tes
 LOGDIR=".nightwatch/logs/$LABEL"; mkdir -p "$LOGDIR"
 N=$(printf '%03d' "$ITER"); LOG="$LOGDIR/$N.log"; META="$LOGDIR/$N.json"
 . scripts/reliability/zero_spend_env.sh
+load1=$(/usr/bin/uptime | sed -E 's/.*averages?: ([0-9.]+).*/\1/' | tr -d ' ')
+concurrent=$(pgrep -f "bin/pytest -q tests/unit tests/integration" 2>/dev/null | wc -l | tr -d ' ')
 start=$(date +%s); started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run --frozen pytest -q $SEL >"$LOG" 2>&1 &
 pid=$!
@@ -23,7 +25,7 @@ pid=$!
 wait "$pid"; rc=$?
 kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
 end=$(date +%s); timed_out=0; grep -q "HARD TIMEOUT" "$LOG" && timed_out=1
-printf '{"label":"%s","iteration":%s,"started":"%s","duration_s":%s,"exit":%s,"timed_out":%s,"summary":%s}\n' \
-  "$LABEL" "$ITER" "$started" "$((end-start))" "$rc" "$timed_out" \
+printf '{"label":"%s","iteration":%s,"started":"%s","load1":%s,"concurrent_matrices":%s,"duration_s":%s,"exit":%s,"timed_out":%s,"summary":%s}\n' \
+  "$LABEL" "$ITER" "$started" "$load1" "$concurrent" "$((end-start))" "$rc" "$timed_out" \
   "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$(tail -1 "$LOG" | tr -d '\r')")" | tee "$META"
 exit "$rc"

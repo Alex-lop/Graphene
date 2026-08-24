@@ -15,6 +15,8 @@ LOG="$LOGDIR/$(printf '%03d' "$ITER").log"
 META="$LOGDIR/$(printf '%03d' "$ITER").json"
 . scripts/reliability/zero_spend_env.sh
 
+load1=$(/usr/bin/uptime | sed -E 's/.*averages?: ([0-9.]+).*/\1/' | tr -d ' ')
+concurrent=$(pgrep -f "bin/pytest -q tests/unit tests/integration" 2>/dev/null | wc -l | tr -d ' ')
 start=$(date +%s); started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run --frozen pytest -q \
   tests/unit tests/integration tests/process tests/adversarial \
@@ -32,7 +34,7 @@ kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
 end=$(date +%s)
 grep -q "HARD TIMEOUT" "$LOG" && timed_out=1
 summary=$(tail -1 "$LOG" | tr -d '\r')
-printf '{"label":"%s","iteration":%s,"started":"%s","duration_s":%s,"exit":%s,"timed_out":%s,"log":"%s","summary":%s}\n' \
-  "$LABEL" "$ITER" "$started" "$((end-start))" "$rc" "$timed_out" "$LOG" \
+printf '{"label":"%s","iteration":%s,"started":"%s","load1":%s,"concurrent_matrices":%s,"duration_s":%s,"exit":%s,"timed_out":%s,"log":"%s","summary":%s}\n' \
+  "$LABEL" "$ITER" "$started" "$load1" "$concurrent" "$((end-start))" "$rc" "$timed_out" "$LOG" \
   "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$summary")" | tee "$META"
 exit "$rc"
