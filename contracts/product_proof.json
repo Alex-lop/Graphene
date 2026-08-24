@@ -21,6 +21,18 @@
     ]
   },
   "category": "The Taskmaster",
+  "cloud_check_authority": {
+    "limit": "A cloud smoke must never inherit the local trusted_check claim. Local SQLite missions run their checks under the coordinator's own trusted check runner.",
+    "post_hackathon": "Deterministic server-side check execution and server-minted receipts.",
+    "status": "executor_attested",
+    "truth": "For the cloud dispatch path an authenticated remote executor is part of the trusted computing base. The coordinator recomputes the receipt's bindings \u2014 mission/task/attempt/plan/fence/policy identity, the exact publication envelopes, and the receipt-to-evidence digest \u2014 and does NOT recompute template_sha256, candidate_tree_sha256, output_sha256, exit_code, timed_out or cleanup_complete, nor re-run any check. A hand-built passing receipt with arbitrary digests is accepted at this boundary by design. Every successful cloud completion records check_authority: executor_attested in the committed task.completed payload, inside payload_sha256 and the event_sha256 chain."
+  },
+  "cloud_unsupported_transitions": {
+    "abandon": "Disabled for this release. The route returns 501 ABANDON_UNSUPPORTED and never reaches the store, and connect_executor no longer calls it: abandon_dispatch wrote the lease slot, outbox and session but emitted no event, did not advance the head, and left the attempt and task RUNNING with the lease still counting against max_concurrency. A shutdown after a claim now leaves the lease to expire on TTL.",
+    "multi_executor": "Refused at registration with MultiExecutorUnsupported -> 409 MULTI_EXECUTOR_UNSUPPORTED. One mission-wide expected head means a second executor's claim would conflict at a random later moment; it now fails closed immediately with a named reason. Same-id reconnect still works and a session idle past the lease bound stops blocking. Cloud parallelism is NOT claimed anywhere.",
+    "post_hackathon": "The transactional-head redesign: the server reads the current head transactionally for executor operations, the client head becomes observation rather than mutation authority, and two interleaved sessions are tested against the emulator.",
+    "status": "fails_closed"
+  },
   "costly_problem": "The developer becomes the scheduler: preventing conflicting edits, relaying context, noticing failures, integrating outputs, and reconstructing whether the result is safe.",
   "deferred": [
     "truthful Mission Control screenshot/GIF capture and output digests",
@@ -152,7 +164,9 @@
     },
     "cloud-run-firestore": {
       "command": "See deploy/cloudrun/README.md",
+      "emulator_success_vertical": "verified_local_on_official_emulator \u2014 seed (initialize_namespace_schema, create_mission, approve_plan, refresh_ready via orchestration/cloud_seed.py, idempotent on retry) -> one executor session registered, a second refused -> claim -> heartbeat -> completion with succeeded=True and a real TrustedCheckReceipt -> task DONE, attempt COMMITTED, publication ACCEPTED, lease released, check_authority executor_attested, the payload_sha256 / event_sha256 / previous_event_sha256 chain recomputed from seq 1, and the sharded materialization invariants intact. Ran under `firebase emulators:exec --only firestore --project demo-graphene-emulator`: 4 passed. This is the official Firestore client against the official emulator; it is NOT a deployed service.",
       "firestore_emulator": "VERIFIED_LOCAL \u2014 official emulator/client production create/approve/readiness/claim/heartbeat/completion plus sharded materialization/reconcile; 3 passed",
+      "not_deployed_because": "Nothing was enabled, created or billed on any Google Cloud project. Billing is enabled on the configured project and one account is authenticated, but the Cloud Run, Cloud Build, Artifact Registry, Firestore and IAM APIs are all disabled, and the configured project is a Gemini-API auto-created gen-lang-client-* project rather than the dedicated sandbox docs/ALEX_CLOUD_SETUP.md requires \u2014 that document says to stop if the project differs from the intended one. Choosing the project is the owner's decision; the ordered remaining command list is in CONVERGENCE_REPORT.md.",
       "status": "not_deployed",
       "truth_label": "NOT DEPLOYED \u2014 AUTHORIZED PROJECT, GCLOUD, DEPLOYMENT, AND CAPTURED SMOKE REQUIRED",
       "unsupported_scheduler_store_mutations": [
@@ -280,6 +294,7 @@
   "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
   "product_media": {
     "blocker": "docs/assets/demo-capture.json records the verified replay source/checkpoint, but no reproducible screenshot, GIF, or four-minute submission video has completed. No product media or video proof is claimed.",
+    "demo_live": "verified_live \u2014 `graphene demo --live` ran the whole sequence end to end and then three CONSECUTIVE rehearsals, all exit 0, each hitting every beat with zero tracebacks and zero raw JSON lines; evidence: evidence/convergence/2026-08-23-demo-live/. The video itself is still NOT PROVEN \u2014 nothing has been filmed.",
     "logo": "docs/assets/Graphene_main_img.png",
     "required": [
       "docs/assets/mission-control-hero.png",
