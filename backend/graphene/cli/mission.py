@@ -56,6 +56,7 @@ from ..orchestration.models import (
     CommandTemplate,
     Dispatch,
     Mission,
+    MissionEventType,
     MissionHead,
     MissionStatus,
     NetworkPolicy,
@@ -65,12 +66,16 @@ from ..orchestration.models import (
     Task,
     TaskKind,
 )
+from ..orchestration.diagnostics import CHECK_DIAGNOSTIC_KIND, CheckDiagnostic
 from ..orchestration.overlap import measure_overlap
+from ..orchestration.projection import MissionProjection
+from .dashboard import GEMINI_3_5_FLASH_USD_PER_TOKEN, spend_from_receipts
 from ..orchestration.runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     DockerCheckRunner,
     HostSandboxCheckRunner,
+    PriorFailure,
     RuntimeAssignment,
     WorkerProviderReceipt,
     WorkerRegistry,
@@ -590,6 +595,15 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
             "include the verified current projection",
             "--snapshot",
             "the projection cannot be verified",
+        ),
+    )
+    watch.add_argument(
+        "--follow",
+        action="store_true",
+        help=_option_help(
+            "keep following the live mission dashboard until it is terminal",
+            "--follow",
+            "the mission cannot be projected or Ctrl-C interrupts the follow",
         ),
     )
 
@@ -3046,6 +3060,75 @@ def _runtime_assignment(task: Task, policy: ProjectPolicy) -> RuntimeAssignment:
     )
 
 
+def _prior_failure(store, evidence, mission_id: str, dispatch) -> PriorFailure | None:
+    """What the previous attempt at this task's check reported, or None first time.
+
+    Read from committed attempt evidence, not from memory: the retry is a fresh
+    lease under a strictly higher fence and may be served by a different worker.
+    Anything unresolvable or tampered with yields None, so a missing diagnostic
+    degrades to the old blind retry rather than failing the mission.
+    """
+    if getattr(dispatch, "attempt_number", 1) <= 1:
+        return None
+    try:
+        snapshot = store.snapshot(mission_id)
+    except Exception:
+        return None
+    prior = next(
+        (
+            item
+            for item in snapshot.attempts
+            if item.task_id == dispatch.task_id
+            and item.attempt_number == dispatch.attempt_number - 1
+        ),
+        None,
+    )
+    if prior is None or not prior.result_code:
+        return None
+    diagnostic_ref = next(
+        (item for item in prior.evidence_refs if item.kind == CHECK_DIAGNOSTIC_KIND),
+        None,
+    )
+    receipt_ref = next(
+        (item for item in prior.evidence_refs if item.kind == "test-receipt"), None
+    )
+    if diagnostic_ref is None or receipt_ref is None:
+        return None
+    raw = evidence.resolve(diagnostic_ref.kind, diagnostic_ref.id)
+    if raw is None or sha256_hex(raw) != diagnostic_ref.sha256:
+        return None
+    try:
+        diagnostic = CheckDiagnostic.model_validate_json(raw)
+        return PriorFailure(
+            attempt_id=prior.attempt_id,
+            attempt_number=prior.attempt_number,
+            fencing_token=prior.fencing_token,
+            result_code=prior.result_code,
+            failure_class=diagnostic.failure_class,
+            failed_check_names=diagnostic.failed_check_names,
+            summary=diagnostic.summary,
+            receipt_sha256=receipt_ref.sha256,
+            failure_signature=diagnostic.signature(),
+        )
+    except ValueError:
+        return None
+
+
+def _diagnostic_aware_assignment(
+    assignments: dict[str, RuntimeAssignment], store, evidence, mission_id: str
+) -> Callable[[object], RuntimeAssignment]:
+    """Resolve a dispatch to its assignment, carrying the prior failure on a retry."""
+
+    def resolve(dispatch) -> RuntimeAssignment:
+        assignment = assignments[dispatch.task_id]
+        failure = _prior_failure(store, evidence, mission_id, dispatch)
+        if failure is None:
+            return assignment
+        return assignment.model_copy(update={"prior_failure": failure})
+
+    return resolve
+
+
 async def _policy_check(
     workspace: Path, assignment: RuntimeAssignment, owner_id: str
 ) -> CheckOutcome:
@@ -3624,7 +3707,9 @@ def _execute_adk_mission(
         runtime=runtime_root,
         evidence=evidence,
         registry=registry,
-        assignment=lambda dispatch: assignments[dispatch.task_id],
+        assignment=_diagnostic_aware_assignment(
+            assignments, store, evidence, mission_id
+        ),
         accepted_artifact=accepted_artifacts,
         check_runner=check_runner,
         policy_sha256=snapshot.policy.policy_sha256,
@@ -4815,6 +4900,8 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
         return 0, _status_value(args.mission_id)
     if args.command == "watch":
         args.mission_id = args.run_id
+        if getattr(args, "follow", False):
+            return _follow_mission(args.mission_id), None
         return 0, _watch_value(args)
     if args.command == "why":
         return 0, _why_value(args)
@@ -4852,6 +4939,8 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
     if args.mission_action == "open":
         return _open_live(args.mission_id), None
     if args.mission_action == "watch":
+        if getattr(args, "follow", False):
+            return _follow_mission(args.mission_id), None
         return 0, _watch_value(args)
     if args.mission_action == "start":
         return 0, _start(args)
@@ -4862,6 +4951,84 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
     if args.mission_action == "db":
         return 0, _database_command(args)
     return 0, _mutate(args)
+
+
+MISSION_PRICE_PER_TOKEN = GEMINI_3_5_FLASH_USD_PER_TOKEN
+
+# Event types worth putting on the dashboard's one "Latest" line, newest first.
+_LATEST_LINES: dict[str, str] = {
+    MissionEventType.TASK_RETRIED.value: (
+        "check failed → retry authorized with diagnostic"
+    ),
+    MissionEventType.TASK_FAILED.value: "task failed",
+    MissionEventType.TASK_COMPLETED.value: "task accepted",
+    MissionEventType.TASK_LEASED.value: "worker leased a task",
+    MissionEventType.TASK_STARTED.value: "worker started",
+    MissionEventType.PLAN_APPROVED.value: "plan approved",
+    MissionEventType.MISSION_TRIGGERED.value: "trigger received",
+    MissionEventType.FINAL_RESULT_BUNDLE_READY.value: (
+        "final bundle recomputed and ready for review"
+    ),
+    MissionEventType.FINAL_CANDIDATE_APPROVED.value: "result approved",
+}
+
+
+def _mission_spend(store, evidence, mission_id: str) -> float | None:
+    """Cost from evidence-bound provider receipts only; None means unknown."""
+    try:
+        snapshot = store.snapshot(mission_id)
+    except Exception:
+        return None
+    receipts = []
+    for attempt in snapshot.attempts:
+        for reference in attempt.evidence_refs:
+            if reference.kind != WORKER_PROVIDER_RECEIPT_KIND:
+                continue
+            raw = evidence.resolve(reference.kind, reference.id)
+            if raw is None or sha256_hex(raw) != reference.sha256:
+                continue
+            try:
+                receipts.append(WorkerProviderReceipt.model_validate_json(raw))
+            except ValueError:
+                continue
+    return spend_from_receipts(receipts, price_per_token=MISSION_PRICE_PER_TOKEN)
+
+
+def _latest_line(store, mission_id: str, head_seq: int) -> str | None:
+    """The newest event a human would call news, as one short phrase."""
+    if head_seq <= 0:
+        return None
+    try:
+        events = store.tail(mission_id, max(0, head_seq - 32), 32)
+    except Exception:
+        return None
+    for event in reversed(events):
+        phrase = _LATEST_LINES.get(event.event_type.value)
+        if phrase is not None:
+            return phrase
+    return None
+
+
+def _follow_mission(mission_id: str) -> int:
+    """Render the live dashboard until the mission is terminal. Ctrl-C is clean."""
+    from rich.console import Console
+
+    from .dashboard import follow as dashboard_follow
+
+    store = _store_for_mission(mission_id)
+    evidence = _mission_evidence(store, mission_id)
+    projection = MissionProjection(store)
+    console = Console()
+    frame = dashboard_follow(
+        projection,
+        mission_id,
+        console=console,
+        spend=lambda _snapshot: _mission_spend(store, evidence, mission_id),
+        latest=lambda snapshot: _latest_line(store, mission_id, snapshot.head.seq),
+        clock=time.monotonic,
+        sleeper=time.sleep,
+    )
+    return 0 if frame.status not in {"failed", "cancelled", "rejected"} else 1
 
 
 def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:

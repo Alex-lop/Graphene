@@ -29,6 +29,7 @@ from ..hashing import (
     sha256_hex,
 )
 from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256, TruthKind
+from .diagnostics import CHECK_DIAGNOSTIC_KIND, CheckDiagnostic, summarize_check_failure
 from .evidence import (
     AttemptEvidenceAuthority,
     AttemptEvidenceEventType,
@@ -106,10 +107,17 @@ class CompletionOutcome(StrEnum):
 
 class RuntimeFailure(RuntimeError):
     def __init__(
-        self, code: RuntimeErrorCode, *, outcome_unknown: bool = False
+        self,
+        code: RuntimeErrorCode,
+        *,
+        outcome_unknown: bool = False,
+        terminal: bool = False,
     ) -> None:
         self.code = code
         self.outcome_unknown = outcome_unknown
+        # An otherwise-retryable code that has already been seen with the exact
+        # same failure signature. Retrying it again is a blind third attempt.
+        self.terminal = terminal
         super().__init__(code.value)
 
 
@@ -129,6 +137,29 @@ class WorkerCapabilities(FrozenModel):
         return self
 
 
+class PriorFailure(FrozenModel):
+    """What the previous attempt at this task learned, in a form safe to send onward.
+
+    A retry that re-sends a byte-identical prompt is a coin flip, not recovery.
+    This carries exactly what the next attempt needs and nothing that could leak:
+    the prior attempt's identity and fence, its result code, the names of the
+    checks that failed, the digest of its trusted check receipt, and a redacted,
+    bounded summary. The repair scope is deliberately absent — it is unchanged,
+    and it is already on the assignment as ``output_paths``.
+    """
+
+    schema_version: Literal[1] = 1
+    attempt_id: Identifier
+    attempt_number: int = Field(ge=1)
+    fencing_token: int = Field(ge=1)
+    result_code: Identifier
+    failure_class: Identifier
+    failed_check_names: tuple[BoundedText, ...] = Field(default=(), max_length=8)
+    summary: BoundedText
+    receipt_sha256: Sha256
+    failure_signature: BoundedText
+
+
 class RuntimeAssignment(FrozenModel):
     task_id: Identifier
     title: BoundedText
@@ -138,6 +169,7 @@ class RuntimeAssignment(FrozenModel):
     output_kind: Identifier
     output_paths: tuple[RepoPath, ...] = Field(default=(), max_length=64)
     command_template: CommandTemplate
+    prior_failure: PriorFailure | None = None
 
     @model_validator(mode="after")
     def assignment_is_canonical(self) -> RuntimeAssignment:
@@ -157,6 +189,10 @@ class CheckOutcome(FrozenModel):
     cleanup_complete: bool
     truth_kind: Literal["simulated_fixture"] | None = None
     truth_label: Identifier | None = None
+    # Populated by the runner only when the check did not pass. The raw output is
+    # still never persisted; this is the redacted, bounded structure derived from
+    # it, and it is the only thing a retry is allowed to learn.
+    diagnostic: CheckDiagnostic | None = None
 
     @model_validator(mode="after")
     def simulation_truth_is_explicit(self) -> CheckOutcome:
@@ -431,6 +467,31 @@ class WorkerRegistry:
         return tuple(self._adapters[key].capabilities for key in sorted(self._adapters))
 
 
+def _check_diagnostic(
+    output: str,
+    *,
+    exit_code: int,
+    timed_out: bool,
+    output_truncated: bool,
+    cleanup_complete: bool,
+    output_sha256: str,
+    output_byte_count: int,
+) -> CheckDiagnostic | None:
+    """Summarise a failing check; a passing check has nothing to teach a retry."""
+
+    if exit_code == 0 and not timed_out and not output_truncated and cleanup_complete:
+        return None
+    return summarize_check_failure(
+        output,
+        exit_code=exit_code,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
+        cleanup_complete=cleanup_complete,
+        output_sha256=output_sha256,
+        output_byte_count=output_byte_count,
+    )
+
+
 class DockerCheckRunner:
     def __init__(self, executor: DockerExecutor) -> None:
         self.executor = executor
@@ -459,6 +520,15 @@ class DockerCheckRunner:
             output_sha256=sha256_hex(result.output),
             output_truncated=result.output_truncated,
             cleanup_complete=result.cleanup_complete,
+            diagnostic=_check_diagnostic(
+                result.output.decode("utf-8", "replace"),
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                output_truncated=result.output_truncated,
+                cleanup_complete=result.cleanup_complete,
+                output_sha256=sha256_hex(result.output),
+                output_byte_count=len(result.output),
+            ),
         )
 
 
@@ -531,16 +601,29 @@ class HostSandboxCheckRunner:
             raise RuntimeFailure(RuntimeErrorCode.CANCELLED) from error
         except (ExecutionError, ProcessControlError) as error:
             raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE) from error
+        cleanup_complete = not self.registry.has_record(dispatch.attempt_id)
+        encoded = run.output.encode("utf-8")
         return CheckOutcome(
             template_id=template.template_id,
             template_sha256=command_template_sha256(template),
             exit_code=run.exit_code,
             timed_out=run.timed_out,
-            output_sha256=sha256_hex(run.output.encode("utf-8")),
+            output_sha256=sha256_hex(encoded),
             output_truncated=run.output_truncated,
             # Measured, not asserted: the controlled runner removes the owned
             # record only after the process group is confirmed gone.
-            cleanup_complete=not self.registry.has_record(dispatch.attempt_id),
+            cleanup_complete=cleanup_complete,
+            # run.output has already been through the adapter's sanitiser; the
+            # summariser is idempotent with respect to it and redacts again.
+            diagnostic=_check_diagnostic(
+                run.output,
+                exit_code=run.exit_code,
+                timed_out=run.timed_out,
+                output_truncated=run.output_truncated,
+                cleanup_complete=cleanup_complete,
+                output_sha256=sha256_hex(encoded),
+                output_byte_count=len(encoded),
+            ),
         )
 
 
@@ -1528,6 +1611,7 @@ class WorkerRuntime:
         EvidenceReference,
         ArtifactEnvelopeReferenceV2,
         EvidenceReference | None,
+        EvidenceReference | None,
     ]:
         candidate_tree = self._candidate_tree(context.workspace)
         outcome = await context._effect(
@@ -1605,6 +1689,19 @@ class WorkerRuntime:
             receipt.event_payload(reference.sha256),
             (reference,),
         )
+        diagnostic_reference = None
+        if outcome.diagnostic is not None:
+            diagnostic = outcome.diagnostic
+            diagnostic_reference = await context._effect(
+                "store-check-diagnostic",
+                lambda: self.evidence.put_artifact(
+                    CHECK_DIAGNOSTIC_KIND,
+                    canonical_json_bytes(diagnostic.model_dump(mode="json")),
+                    visibility=ArtifactVisibility.MISSION,
+                ),
+            )
+            if not isinstance(diagnostic_reference, EvidenceReference):
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
         truth_reference = None
         if outcome.truth_label is not None:
             truth_reference = await context._effect(
@@ -1625,7 +1722,13 @@ class WorkerRuntime:
                     visibility=ArtifactVisibility.MISSION,
                 ),
             )
-        return outcome, reference, envelope_reference, truth_reference
+        return (
+            outcome,
+            reference,
+            envelope_reference,
+            truth_reference,
+            diagnostic_reference,
+        )
 
     async def _store_provider_receipt(
         self, context: WorkerContext, provider: WorkerProviderReceipt
@@ -1905,18 +2008,29 @@ class WorkerRuntime:
                 check_reference,
                 check_envelope,
                 truth_reference,
+                diagnostic_reference,
             ) = await self._check(context, candidate_references)
             references.append(check_reference)
             envelope_references.append(check_envelope)
             if truth_reference is not None:
                 references.append(truth_reference)
+            if diagnostic_reference is not None:
+                references.append(diagnostic_reference)
             if (
                 check.exit_code
                 or check.timed_out
                 or check.output_truncated
                 or not check.cleanup_complete
             ):
-                raise RuntimeFailure(RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED)
+                prior = assignment.prior_failure
+                repeated = (
+                    prior is not None
+                    and check.diagnostic is not None
+                    and check.diagnostic.signature() == prior.failure_signature
+                )
+                raise RuntimeFailure(
+                    RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED, terminal=repeated
+                )
             output_reference = (
                 check_reference
                 if dispatch.task_kind == TaskKind.VERIFICATION
@@ -1947,7 +2061,7 @@ class WorkerRuntime:
                 else error.code.value
             )
             succeeded = False
-            retryable = error.code in {
+            retryable = not error.terminal and error.code in {
                 RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED,
                 RuntimeErrorCode.MODEL_OUTPUT_REJECTED,
                 RuntimeErrorCode.PROVIDER_RATE_LIMITED,

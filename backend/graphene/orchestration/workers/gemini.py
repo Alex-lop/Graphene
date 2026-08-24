@@ -303,18 +303,21 @@ class GeminiWorkerAdapter:
             if source_bytes > 1_048_576:
                 raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
             sources.append({"path": path, "text": text})
-        payload = canonical_json_bytes(
-            {
-                "contract": assignment.contract,
-                "operator_inputs": [
-                    {"reference_id": reference_id, "text": text}
-                    for reference_id, text in await context.read_supplied_inputs()
-                ],
-                "sources": sources,
-                "title": assignment.title,
-                "write_paths": context.dispatch.write_paths,
-            }
-        ).decode()
+        request: dict[str, object] = {
+            "contract": assignment.contract,
+            "operator_inputs": [
+                {"reference_id": reference_id, "text": text}
+                for reference_id, text in await context.read_supplied_inputs()
+            ],
+            "sources": sources,
+            "title": assignment.title,
+            "write_paths": context.dispatch.write_paths,
+        }
+        # The one thing a retry is allowed to learn. Absent on a first attempt, so
+        # the first prompt is byte-identical to what it always was.
+        if assignment.prior_failure is not None:
+            request["prior_failure"] = assignment.prior_failure.model_dump(mode="json")
+        payload = canonical_json_bytes(request).decode()
         sessions = InMemorySessionService()
         session = await sessions.create_session(
             app_name="graphene-workers", user_id=context.dispatch.worker_id
@@ -340,6 +343,17 @@ class GeminiWorkerAdapter:
                 "path and both rename endpoints must equal the exact write_paths "
                 "lease. Do not return explanations, commands, credentials, or hidden "
                 "reasoning."
+                + (
+                    ""
+                    if assignment.prior_failure is None
+                    else (
+                        "\nA prior_failure object is present: your previous attempt at "
+                        "this exact task failed its trusted check. Repair the cause it "
+                        "names. The write_paths lease is unchanged — do not widen it, "
+                        "do not touch any other file, and do not weaken or delete a "
+                        "check to make it pass."
+                    )
+                )
             ),
             include_contents="none",
             tools=[],

@@ -19,6 +19,7 @@ class DeterministicWorkerModel(BaseLlm):
     _release: asyncio.Event | None = PrivateAttr(default=None)
     _calls: int = PrivateAttr(default=0)
     _prompt: str = PrivateAttr(default="")
+    _instruction: str = PrivateAttr(default="")
 
     def bind(
         self,
@@ -43,6 +44,12 @@ class DeterministicWorkerModel(BaseLlm):
     def prompt(self) -> str:
         return self._prompt
 
+    @property
+    def instruction(self) -> str:
+        """The system instruction as sent, so a test can pin what the worker is told."""
+
+        return self._instruction
+
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
@@ -54,6 +61,7 @@ class DeterministicWorkerModel(BaseLlm):
             llm_request.config.system_instruction or ""
         )
         self._calls += 1
+        self._instruction = llm_request.config.system_instruction or ""
         self._prompt = "".join(
             part.text or ""
             for content in llm_request.contents

@@ -315,7 +315,11 @@ class _OneShotCheckRunner(_CheckRunner):
 
 
 def _setup(
-    tmp_path: Path, *, delay: float = 0.15, retry_work_a: bool = False
+    tmp_path: Path,
+    *,
+    delay: float = 0.15,
+    retry_work_a: bool = False,
+    attempt_limit: int = 2,
 ):
     repository, base_sha = _repository(tmp_path / "supplied-repository")
     runtime_root = tmp_path / "private-runtime"
@@ -324,14 +328,16 @@ def _setup(
     store = SQLiteMissionStore(tmp_path / "missions.sqlite", artifact_resolver=evidence)
     policy, mission, plan = _contracts(base_sha)
     if retry_work_a:
-        policy = policy.model_copy(update={"retry_limit": 1})
+        policy = policy.model_copy(update={"retry_limit": attempt_limit - 1})
         plan = Plan.model_validate(
             {
                 **plan.model_dump(mode="json"),
                 "tasks": [
                     {
                         **task.model_dump(mode="json"),
-                        "attempt_limit": 2 if task.task_id == "work-a" else 1,
+                        "attempt_limit": (
+                            attempt_limit if task.task_id == "work-a" else 1
+                        ),
                     }
                     for task in plan.tasks
                 ],
