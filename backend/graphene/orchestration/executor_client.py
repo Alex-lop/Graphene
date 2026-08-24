@@ -14,7 +14,6 @@ from pydantic import BaseModel
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from .cloud_protocol import (
-    AbandonRequest,
     ArtifactFetchCapability,
     ArtifactFetchRequest,
     ClaimRequest,
@@ -268,6 +267,8 @@ def connect_executor(
 
     Every reconnect retries the same idempotency key. A caller should implement
     ``should_stop`` with a signal-safe event and may pass ``event.wait`` as sleep.
+    Shutdown or failure never abandons a claimed dispatch: abandon is
+    unsupported in this release, so the claimed lease expires on its TTL.
     """
 
     if expected_head.mission_id != mission_id:
@@ -431,30 +432,6 @@ def connect_executor(
             heartbeat_number += 1
             return result.dispatch
 
-        def abandon(reason_code: str) -> None:
-            nonlocal head
-            request = AbandonRequest(
-                command_id=_command(
-                    "abandon_dispatch", dispatch.dispatch_sha256, reason_code
-                ),
-                expected_head=head,
-                session_id=session_id,
-                worker_id=worker_id,
-                lease_id=dispatch.lease.lease_id,
-                fencing_token=dispatch.lease.fencing_token,
-                reason_code=reason_code,
-            )
-            result = _post_with_reconnect(
-                client,
-                attempt_path + ":abandon",
-                request,
-                max_reconnect_attempts=max_reconnect_attempts,
-                sleep=sleep,
-            )
-            if result.status != "abandoned":
-                raise CoordinatorClientError("INVALID_COORDINATOR_RESPONSE", 200)
-            head = result.head
-
         def fetch_artifact(reference: EvidenceReference) -> bytes:
             key = (reference.kind, reference.id, reference.sha256)
             capability = capability_by_reference.get(key)
@@ -468,18 +445,12 @@ def connect_executor(
             )
 
         if should_stop():
-            abandon("executor_shutdown")
+            # §6.4: abandon is unsupported in this release; shut down without
+            # it and let the claimed lease expire on its TTL.
             return summary()
-        try:
-            completion = execute(dispatch, heartbeat, fetch_artifact)
-            if not isinstance(completion, ExecutorCompletion):
-                raise TypeError("execute must return ExecutorCompletion")
-        except BaseException:
-            try:
-                abandon("executor_failed")
-            except Exception:
-                pass
-            raise
+        completion = execute(dispatch, heartbeat, fetch_artifact)
+        if not isinstance(completion, ExecutorCompletion):
+            raise TypeError("execute must return ExecutorCompletion")
 
         complete = CompleteRequest(
             command_id=_command(

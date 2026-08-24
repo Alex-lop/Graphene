@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from graphene.hashing import sha256_hex
+from graphene.artifact_envelope import ArtifactEnvelopeV2
+from graphene.hashing import canonical_json_sha256, sha256_hex
 from graphene.orchestration.cloud_protocol import (
     ArtifactFetchCapability,
     ArtifactFetchGrant,
@@ -17,10 +18,12 @@ from graphene.orchestration.cloud_protocol import (
     DispatchOutboxState,
     DispatchTransition,
     ExecutorArtifactObservation,
+    ExecutorArtifactReference,
     ExecutorSession,
     RegisterExecutorRequest,
     new_dispatch_record,
 )
+from graphene.orchestration.completion import reduce_successful_completion
 from graphene.orchestration.coordinator import create_coordinator_app
 from graphene.orchestration.evidence import TrustedCheckReceipt
 from graphene.orchestration.executor_client import (
@@ -30,16 +33,37 @@ from graphene.orchestration.executor_client import (
     GoogleAdcAudienceTokenProvider,
     connect_executor,
 )
-from graphene.orchestration.firestore import DomainTransitionUnavailable
+from graphene.orchestration.firestore import (
+    DomainTransitionUnavailable,
+    FirestoreMissionStore,
+    MultiExecutorUnsupported,
+)
 from graphene.orchestration.models import (
+    ArtifactEnvelopeReferenceV2,
     AttemptResult,
     EvidenceReference,
     GenericEvidenceLink,
     Lease,
+    MissionEventType,
     MissionHead,
+    PublicationDraft,
     TaskKind,
 )
 from graphene.orchestration.store import MissionConflict
+
+from .test_firestore import (
+    MISSION_ID as FIRESTORE_MISSION_ID,
+    START as FIRESTORE_START,
+    Client as FakeFirestoreClient,
+    Clock as FirestoreClock,
+    cloud_dispatch,
+    draft as firestore_draft,
+    empty_head as firestore_empty_head,
+    fake_transactional,  # noqa: F401  (autouse fixture for FirestoreMissionStore)
+    head as firestore_head,
+    lease as firestore_lease,
+    running_cloud_snapshot,
+)
 
 
 MISSION_ID = "mission_cloud_api_1"
@@ -173,10 +197,6 @@ class RecorderStore:
         self._record("complete", args, values)
         return None
 
-    def abandon_dispatch(self, *args, **values):
-        self._record("abandon", args, values)
-        return None
-
     def grant_artifact_fetch(self, grant, expected_head):
         self._record("grant_artifact", (grant, expected_head), {})
         self.grant = grant
@@ -253,20 +273,24 @@ def test_coordinator_binds_server_identity_and_exposes_all_transport_actions():
         "command_id": "command_abandon_api_01",
         "reason_code": "provider_unavailable",
     }
-    assert client.post(attempt_path + ":abandon", headers=headers, json=abandon).status_code == 200
+    refused = client.post(attempt_path + ":abandon", headers=headers, json=abandon)
+    assert refused.status_code == 501
+    assert refused.json()["code"] == "ABANDON_UNSUPPORTED"
     assert [item[0] for item in store.calls] == [
         "register",
         "claim",
         "heartbeat",
         "complete",
-        "abandon",
     ]
     assert all(
         call[2]["executor_id"] == IDENTITY.executor_id for call in store.calls
     )
 
 
-def test_success_completion_accepts_observation_and_binds_identity_server_side():
+def test_success_completion_accepts_executor_attested_receipt_and_binds_identity_server_side():
+    # The hand-built receipt below carries arbitrary digests ("e"*64, "f"*64,
+    # "a"*64) and is accepted by design: cloud check results are
+    # executor-attested (completion.py module docstring, directive §6.3).
     store = RecorderStore()
     client = TestClient(create_coordinator_app(store, verifier))
     reference = EvidenceReference(
@@ -730,7 +754,10 @@ def test_connect_executor_preflight_refuses_work_without_completion_authority():
     ]
 
 
-def test_connect_executor_abandons_claimed_work_on_shutdown_before_execution():
+def test_connect_executor_shutdown_and_failure_leave_the_lease_to_ttl_without_abandon():
+    # §6.4: abandon is disabled for this release, so neither shutdown after a
+    # claim nor a failing execution may call the abandon endpoint; the claimed
+    # lease honestly expires on its TTL instead.
     client = LoopClient()
 
     summary = connect_executor(
@@ -748,11 +775,257 @@ def test_connect_executor_abandons_claimed_work_on_shutdown_before_execution():
     )
 
     assert (summary.claimed, summary.completed) == (1, 0)
-    assert client.abandoned is True
-    abandon = next(
-        request for path, request in client.calls if path.endswith(":abandon")
+    assert client.abandoned is False
+    assert not any(path.endswith(":abandon") for path, _request in client.calls)
+
+    failing = LoopClient()
+    with pytest.raises(RuntimeError, match="executor work exploded"):
+        connect_executor(
+            failing,
+            mission_id=MISSION_ID,
+            expected_head=HEAD,
+            session_id="session_cloud_api_1",
+            worker_id="worker_cloud_api_1",
+            capabilities=(TaskKind.WORK,),
+            execute=lambda *_args: (_ for _ in ()).throw(
+                RuntimeError("executor work exploded")
+            ),
+            should_stop=lambda: False,
+            sleep=lambda _seconds: None,
+        )
+    assert failing.abandoned is False
+    assert not any(path.endswith(":abandon") for path, _request in failing.calls)
+
+
+def test_abandon_endpoint_is_disabled_in_this_release_and_never_reaches_the_store():
+    store = RecorderStore()
+    client = TestClient(create_coordinator_app(store, verifier))
+    response = client.post(
+        f"/v1/missions/{MISSION_ID}/attempts/attempt_cloud_api_1:abandon",
+        headers={"Authorization": "Bearer oidc-test-token"},
+        json={
+            **body("command_abandon_api_02"),
+            "lease_id": "lease_cloud_api_1",
+            "fencing_token": 1,
+            "reason_code": "executor_shutdown",
+        },
     )
-    assert abandon.reason_code == "executor_shutdown"
+
+    assert response.status_code == 501
+    assert response.json() == {
+        "code": "ABANDON_UNSUPPORTED",
+        "detail": (
+            "Dispatch abandon is unsupported in this release; "
+            "the lease expires on its TTL."
+        ),
+    }
+    assert store.calls == []
+
+
+def test_coordinator_reports_multi_executor_unsupported_with_a_named_code():
+    store = RecorderStore()
+    store.failure = MultiExecutorUnsupported("PRIVATE_SECOND_SESSION_CANARY")
+    client = TestClient(
+        create_coordinator_app(store, verifier), raise_server_exceptions=False
+    )
+    response = client.post(
+        f"/v1/missions/{MISSION_ID}/executor-sessions",
+        headers={"Authorization": "Bearer oidc-test-token"},
+        json={
+            "command_id": "command_register_003",
+            "expected_head": HEAD.model_dump(mode="json"),
+            "session_id": "session_cloud_api_2",
+            "worker_ids": ["worker_cloud_api_1"],
+            "capabilities": ["work"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "MULTI_EXECUTOR_UNSUPPORTED",
+        "detail": (
+            "Cloud multi-executor is unsupported in this release; "
+            "the mission already has a live executor session."
+        ),
+    }
+    assert "CANARY" not in response.text
+
+
+def test_second_concurrent_executor_session_is_refused_until_the_first_goes_stale():
+    clock = FirestoreClock(FIRESTORE_START)
+    store = FirestoreMissionStore(
+        FakeFirestoreClient(),
+        namespace="test",
+        clock=clock,
+        allow_test_bootstrap=True,
+    )
+    event = store.append(
+        FIRESTORE_MISSION_ID,
+        firestore_empty_head(),
+        "command_multi_event_0001",
+        firestore_draft("created"),
+    )
+    current = firestore_head(event)
+
+    def register(session_id: str, command_id: str) -> ExecutorSession:
+        return store.register_executor_session(
+            FIRESTORE_MISSION_ID,
+            current,
+            command_id,
+            principal="principal@example.invalid",
+            executor_id="executor_multi_1",
+            session_id=session_id,
+            worker_ids=("worker_multi_1",),
+            capabilities=(TaskKind.WORK,),
+        )
+
+    first = register("session_multi_a", "command_multi_register_a1")
+    with pytest.raises(MultiExecutorUnsupported, match="unsupported in this release"):
+        register("session_multi_b", "command_multi_register_b1")
+    assert register("session_multi_a", "command_multi_register_a1") == first
+    # A crashed executor stops blocking once its session sits idle past the
+    # store's lease bound; until then the mission honestly refuses new sessions.
+    clock.value = FIRESTORE_START + timedelta(seconds=301)
+    superseding = register("session_multi_b", "command_multi_register_b2")
+    assert superseding.session_id == "session_multi_b"
+
+
+def test_reduce_successful_completion_records_executor_attested_check_authority():
+    # §6.3 made explicit: the receipt's template/tree/output digests are
+    # invented here and never recomputed by the coordinator; the transition is
+    # accepted and permanently labels the check authority in the committed
+    # task.completed payload, inside the event hash chain.
+    active = firestore_lease("lease_authority_1", 1, FIRESTORE_START)
+    dispatch = cloud_dispatch(active)
+    current = MissionHead(
+        mission_id=FIRESTORE_MISSION_ID,
+        seq=1,
+        event_sha256="b" * 64,
+        event_count=1,
+    )
+    snapshot = running_cloud_snapshot(current, active, dispatch)
+    task = next(item for item in snapshot.tasks if item.task_id == active.task_id)
+    output = task.expected_outputs[0]
+    output_bytes = b"executor attested candidate bytes"
+    envelope = ArtifactEnvelopeV2.create(
+        output_bytes,
+        mission_id=FIRESTORE_MISSION_ID,
+        plan_revision=active.plan_revision,
+        plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
+        task_id=active.task_id,
+        attempt_id=active.attempt_id,
+        fencing_token=active.fencing_token,
+        policy_sha256=snapshot.policy.policy_sha256,
+        base_git_commit=snapshot.policy.base_sha,
+        direct_inputs=(),
+        output_name=output.name,
+        artifact_kind=output.kind,
+        media_type="application/vnd.graphene.patch",
+        created_by="trusted-worker-wrapper",
+    )
+    envelope_reference = ArtifactEnvelopeReferenceV2(
+        schema_version=2,
+        artifact_id="artifact_authority_output_1",
+        producer_task_id=active.task_id,
+        output_name=output.name,
+        kind=output.kind,
+        media_type=envelope.media_type,
+        byte_count=envelope.byte_count,
+        content_sha256=envelope.content_sha256,
+        artifact_envelope_sha256=envelope.artifact_envelope_sha256,
+    )
+    output_reference = EvidenceReference(
+        kind=output.kind,
+        id=envelope_reference.artifact_id,
+        sha256=envelope_reference.content_sha256,
+    )
+    receipt = TrustedCheckReceipt(
+        schema_version=2,
+        mission_id=FIRESTORE_MISSION_ID,
+        task_id=active.task_id,
+        attempt_id=active.attempt_id,
+        plan_revision=active.plan_revision,
+        fencing_token=active.fencing_token,
+        policy_sha256=snapshot.policy.policy_sha256,
+        base_sha=snapshot.policy.base_sha,
+        runner_id="graphene_check_runner_v1",
+        template_id=task.acceptance_checks[0],
+        template_sha256="e" * 64,
+        accepted_input_references=(),
+        candidate_references=(envelope_reference,),
+        candidate_tree_hash_version="graphene.tree.v2",
+        candidate_tree_sha256="f" * 64,
+        result_code="passed",
+        exit_code=0,
+        timed_out=False,
+        output_sha256="a" * 64,
+        output_truncated=False,
+        cleanup_complete=True,
+    )
+    receipt_reference = EvidenceReference(
+        kind="test-receipt",
+        id="artifact_authority_receipt_1",
+        sha256=canonical_json_sha256(receipt.model_dump(mode="json")),
+    )
+    references = tuple(
+        sorted(
+            (output_reference, receipt_reference),
+            key=lambda item: (item.kind, item.id, item.sha256),
+        )
+    )
+    result = AttemptResult(
+        succeeded=True,
+        result_code="passed",
+        session_id=dispatch.session_id,
+        invocation_id="invocation_authority_1",
+        evidence_link=GenericEvidenceLink(evidence_id="evidence_authority_1"),
+        evidence_refs=references,
+        artifact_envelopes=(envelope_reference,),
+        publications=(
+            PublicationDraft(
+                output_name=output.name,
+                kind=output.kind,
+                sha256=output_reference.sha256,
+                artifact=envelope_reference,
+                paths=output.paths,
+            ),
+        ),
+    )
+    artifacts = (
+        ExecutorArtifactReference(
+            reference=output_reference,
+            byte_count=len(output_bytes),
+            envelope=envelope,
+            executor_id=dispatch.executor_id,
+        ),
+        ExecutorArtifactReference(
+            reference=receipt_reference,
+            byte_count=128,
+            executor_id=dispatch.executor_id,
+        ),
+    )
+
+    transition = reduce_successful_completion(
+        snapshot,
+        dispatch,
+        result,
+        artifacts,
+        receipt,
+        recorded_at=FIRESTORE_START + timedelta(seconds=3),
+    )
+
+    completed = next(
+        item
+        for item in transition.drafts
+        if item.event_type == MissionEventType.TASK_COMPLETED
+    )
+    assert completed.payload["check_authority"] == "executor_attested"
+    assert completed.payload["task_id"] == active.task_id
+    # The arbitrary attested digests really were accepted, not recomputed.
+    assert (receipt.template_sha256, receipt.candidate_tree_sha256) == (
+        "e" * 64,
+        "f" * 64,
+    )
 
 
 def test_protocol_models_forbid_unknown_identity_fields():

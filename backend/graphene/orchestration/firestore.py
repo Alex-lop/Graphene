@@ -109,6 +109,16 @@ class ExecutorSessionRejected(FirestoreMissionError):
     """The authenticated executor does not own the requested session."""
 
 
+class MultiExecutorUnsupported(ExecutorSessionRejected):
+    """Cloud multi-executor is unsupported in this release (§6.4).
+
+    The store keeps one mission-wide expected head, so a second concurrent
+    executor session would fail at a random later claim with a bare conflict.
+    Registration refuses the second session up front instead; the
+    transactional-head redesign is post-demo work.
+    """
+
+
 class DispatchStateRejected(FirestoreMissionError):
     """The dispatch outbox state does not allow the requested transition."""
 
@@ -1863,6 +1873,24 @@ class FirestoreMissionStore:
                 return ExecutorSession.model_validate(result)
             self._require_expected_head(transaction, mission, expected_head)
             existing = self._stored_session(session_ref.get(transaction=transaction))
+            now = self._clock()
+            stale_before = now - timedelta(seconds=self._max_lease_seconds)
+            # ponytail: full scan of the per-mission session collection; the
+            # guard below keeps it at one live session, so it stays bounded.
+            for stored in mission.collection(_EXECUTOR_SESSIONS).stream(
+                transaction=transaction
+            ):
+                other = self._stored_session(stored)
+                if (
+                    other is not None
+                    and other.session_id != session_id
+                    and other.state == ExecutorSessionState.ACTIVE
+                    and other.last_seen_at > stale_before
+                ):
+                    raise MultiExecutorUnsupported(
+                        "cloud multi-executor is unsupported in this release: "
+                        "the mission already has a live executor session"
+                    )
             if existing is not None:
                 if (
                     existing.mission_id != mission_id
@@ -1884,7 +1912,6 @@ class FirestoreMissionStore:
                     },
                 )
                 return existing
-            now = self._clock()
             session = ExecutorSession(
                 mission_id=mission_id,
                 session_id=session_id,
@@ -3388,4 +3415,5 @@ __all__ = [
     "LeaseFenceRejected",
     "MissionConflict",
     "MissionStateInvalid",
+    "MultiExecutorUnsupported",
 ]

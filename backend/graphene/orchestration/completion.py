@@ -1,3 +1,22 @@
+"""Credential-free completion reducers for the cloud dispatch path.
+
+Trust boundary (convergence directive §6.3): an authenticated remote executor
+is part of the trusted computing base for cloud check results. The coordinator
+recomputes *bindings* — the receipt's mission/task/attempt/plan/fence/policy
+identity, the exact publication envelopes, and the receipt-to-evidence digest —
+not test results: ``template_sha256``, ``candidate_tree_sha256``,
+``output_sha256``, ``exit_code``, ``timed_out``, and ``cleanup_complete`` are
+attested by the executor and are never independently re-executed or recomputed
+server-side, and the ``test-receipt`` evidence reference binds the receipt to
+itself by hashing the receipt's own canonical JSON. A hand-built passing
+receipt with arbitrary digests is therefore accepted at this boundary by
+design. To keep that provenance in the hash chain, every successful cloud
+completion records ``check_authority: "executor_attested"`` in the committed
+``task.completed`` event payload, where a local SQLite mission's checks run
+under the coordinator's own trusted check runner (authority label
+``trusted_check``; the local event payload is owned by ``store.py``).
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -514,6 +533,9 @@ def reduce_successful_completion(
             authority=MissionAuthority.SCHEDULER,
             payload={
                 "attempt_id": attempt.attempt_id,
+                # See the module docstring: cloud check results are attested by
+                # the authenticated executor, not recomputed server-side.
+                "check_authority": "executor_attested",
                 "evidence_kind": result.evidence_link.kind,
                 "result_code": result.result_code,
                 "state": target.value,

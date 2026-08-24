@@ -33,6 +33,7 @@ from .firestore import (
     MissionConflict,
     MissionNotFound,
     MissionStateInvalid,
+    MultiExecutorUnsupported,
 )
 
 _MAX_REQUEST_BYTES = 65_536
@@ -49,8 +50,6 @@ class CoordinatorStore(Protocol):
     def heartbeat_dispatch(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def complete_dispatch(self, *args: Any, **kwargs: Any) -> Any: ...
-
-    def abandon_dispatch(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def grant_artifact_fetch(self, *args: Any, **kwargs: Any) -> Any: ...
 
@@ -189,6 +188,17 @@ def create_coordinator_app(
     ):
         return _error(
             "EXECUTOR_SESSION_REJECTED", "Executor session is unavailable.", 403
+        )
+
+    @app.exception_handler(MultiExecutorUnsupported)
+    async def multi_executor_unsupported(
+        _request: Request, _error_value: MultiExecutorUnsupported
+    ):
+        return _error(
+            "MULTI_EXECUTOR_UNSUPPORTED",
+            "Cloud multi-executor is unsupported in this release; "
+            "the mission already has a live executor session.",
+            409,
         )
 
     @app.exception_handler(DispatchStateRejected)
@@ -464,33 +474,25 @@ def create_coordinator_app(
 
     @app.post(
         "/v1/missions/{mission_id}/attempts/{attempt_id}:abandon",
-        response_model=CoordinatorResult,
+        response_class=Response,
     )
     async def abandon(
         mission_id: str,
         attempt_id: str,
         body: AbandonRequest,
         identity: AuthenticatedExecutor = Depends(authenticated),
-    ) -> CoordinatorResult:
-        require_path_head(mission_id, body)
-        dispatch = await asyncio.to_thread(
-            store.abandon_dispatch,
-            mission_id,
-            attempt_id,
-            body.expected_head,
-            body.command_id,
-            executor_id=identity.executor_id,
-            session_id=body.session_id,
-            worker_id=body.worker_id,
-            lease_id=body.lease_id,
-            fencing_token=body.fencing_token,
-            result_code=body.reason_code,
-        )
-        return CoordinatorResult(
-            mission_id=mission_id,
-            head=body.expected_head,
-            dispatch=dispatch,
-            status="abandoned",
+    ) -> Response:
+        # §6.4: abandon never reached the domain state (no event, no head
+        # advance, the attempt stayed RUNNING), so the endpoint is disabled
+        # for this release instead of committing a divergent transition. The
+        # store method remains for the post-demo atomic redesign; leases
+        # expire on their TTL.
+        del mission_id, attempt_id, body, identity
+        return _error(
+            "ABANDON_UNSUPPORTED",
+            "Dispatch abandon is unsupported in this release; "
+            "the lease expires on its TTL.",
+            501,
         )
 
     return app
