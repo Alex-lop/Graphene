@@ -10,9 +10,11 @@ The edit beat is the point of the film. Everything a judge needs is in one
 moment: they watch the graph change, they watch a new digest appear, and then
 they watch the workers obey the changed route.
 
-Everything below except the edit beat was executed on 2026-08-23 on the commit
-that carries this file; the edit beat is **NOT YET CAPTURED LIVE** and is
-labelled again where it appears. The captured transcript of the live run is
+Everything below was executed live. The sequence including the edit beat ran
+four times on 2026-08-24 on the commit that carries this file — three
+consecutive clean rehearsals captured in
+[`evidence/contract/2026-08-24-rehearsals/`](../evidence/contract/2026-08-24-rehearsals/README.md),
+plus one timed run. No beat here is a splice. The captured transcript of the live run is
 [`evidence/convergence/2026-08-23-demo-live/run-1.txt`](../evidence/convergence/2026-08-23-demo-live/run-1.txt);
 the completion-gate numbers are in
 [`evidence/convergence/2026-08-23-completion-gate/`](../evidence/convergence/2026-08-23-completion-gate/README.md).
@@ -37,10 +39,20 @@ mkdir -p -m 700 "$GRAPHENE_STATE_DIR"
 for this project; regional endpoints 404. Check the project is the funded one
 before going further.
 
-Cost: **$0.17 per run**, from evidence-bound receipts — roughly $0.07 planner
-and $0.10 for the two workers. Three rehearsals plus a take is about $0.70.
+Cost: **$0.09–$0.12 per run** on 2026-08-24, from evidence-bound receipts
+across four runs. Three rehearsals plus a take is under $0.50.
 
-## The take (about three minutes)
+**Timing, measured rather than estimated.** One full run, timed end to end with
+the edit applied by a script: **77 seconds**, of which the mission itself —
+approval to `awaiting_result` — was 47 seconds. That leaves roughly 30 seconds
+for everything around it: materializing the target, the inbox trigger, the plan
+table, one node's full contract, revise/lint/diff, the result, the generated
+feature, and `why`. The one variable is you: on camera the scripted edit is
+replaced by however long you take to type one, and the budget for that inside
+§9's two minutes is about 40 seconds. Rehearse the edit itself, not just the
+command.
+
+## The take (measured: 1:17 with a scripted edit)
 
 ```bash
 uv run --frozen graphene demo --live
@@ -107,10 +119,9 @@ already void; the new digest needs its own.
 > "Every scope I widened is called out, and the approval I gave a minute ago no
 > longer covers this graph. I approve revision 2, and only revision 2 can run."
 
-**NOT YET CAPTURED LIVE:** the edit beat has not been recorded end to end
-against a live Gemini mission. Its credential-free proof is
-`tests/integration/test_plan_edit_path.py`, which shows the scheduler
-executing the user's revision rather than the proposal.
+The credential-free proof that the runtime obeys the revision rather than the
+proposal is `tests/integration/test_plan_edit_path.py`; these beats are that
+same property, live.
 
 **0:50 — two real workers, obeying revision 2.** The dashboard shows both work tasks `● running` at
 attempt 1, fence 1, and SPEND starts moving from real provider receipts.

@@ -23,6 +23,22 @@ feature running with a redacted note, and `why` naming the mission. All
 thirteen are present in all three runs, and the three revision-2 digests are
 different, because each run plans its own mission.
 
+## The timed run
+
+`timed-run.txt` is a fourth clean run, timed end to end because §9 requires the
+film to be **≤ 2:00 in one continuous take** and `docs/DEMO_SCRIPT.md` said
+"about three minutes", which was never measured against this sequence.
+
+    total wall clock   77s
+    mission phase      47s   (approval -> awaiting_result, from the dashboard)
+    everything else    ~30s  (materialize, trigger, plan table, node contract,
+                              revise/lint/diff, result, feature, why)
+
+The edit in this run is applied by `scripts/demo_plan_edit.py` and costs
+essentially nothing. On camera that step is a person typing, so the budget for
+the human edit inside two minutes is roughly 40 seconds. The sequence fits;
+the edit is the part to rehearse.
+
 **What these prove.** The edit beat runs live, end to end, repeatably: a user
 changes the proposed graph, the change becomes an immutable revision with a
 new digest, the old approval stops covering it, and the workers execute the
