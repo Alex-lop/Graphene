@@ -617,9 +617,10 @@ nothing.
 Until section 6 lands, every one of these stays labelled exactly as it is
 today:
 
-- Live Gemini two-worker mission (`NOT PROVEN — REQUIRES EXPLICIT CREDENTIALS
-  AND A RETURNED GEMINI RECEIPT`): no credentialed provider run, returned
-  model/session/invocation receipt, or measured overlap has been captured.
+- Live Gemini two-worker mission: **NO LONGER PENDING.** This ran on
+  2026-08-23 with returned model/session/invocation receipts and measured
+  overlap, and was rehearsed 3/3 on 2026-08-24. The rest of this section still
+  applies to everything below it.
 - Live failure laboratory: only the credential-free fake-ADK regression
   exists; no live run has exhibited steps 1–6, and `scripts/failure_lab.py
   kill` against a live host-sandbox check is itself unproven because the

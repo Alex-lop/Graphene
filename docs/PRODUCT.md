@@ -20,7 +20,7 @@ Gate-scoped private input can resume a `needs_input` task through `graphene task
 
 The verified local product path is the checked-in Taskmaster replay plus the macOS scripted fixture. The fixture proves scheduler mechanics, real bounded fixture checks, retry, accepted-only assembly, exact verification, and isolated-result mechanics. It is not independent model behavior or arbitrary-repository support.
 
-The checked-in Gemini path includes a credential-gated typed planner and bounded two-to-five-worker runtime. Credential-free tests run the same ADK worker adapter with deterministic fake models against an isolated disposable repository; that proves local wiring, not Gemini behavior. No live credentialed run or provider receipt was captured, so live Gemini remains **NOT PROVEN**. The Docker boundary has deterministic argument/ownership tests, but no responsive daemon smoke was captured. The official Firestore emulator production path is verified locally. Cloud Run and real Firestore remain **NOT DEPLOYED — NOT PROVEN**.
+The checked-in Gemini path includes a credential-gated typed planner and bounded two-to-five-worker runtime. Credential-free tests run the same ADK worker adapter with deterministic fake models against an isolated disposable repository; that proves local wiring, not Gemini behavior. Live Gemini is separately **VERIFIED_LIVE** (2026-08-23): two `gemini-3.5-flash` workers completed the North Star mission with evidence-bound provider receipts, and a completion gate of 9/10 ordinary and 3/3 controlled-failure missions finished end to end. Approvals in those runs were operator-delegated (`server_derived`), not TTY-attested. The Docker boundary has deterministic argument/ownership tests, but no responsive daemon smoke was captured. The official Firestore emulator production path is verified locally. Cloud Run and real Firestore remain **NOT DEPLOYED — NOT PROVEN**.
 
 The exact supported matrix is:
 
@@ -28,7 +28,7 @@ The exact supported matrix is:
 |---|---|---|
 | Mission replay | Generated sanitized fixture; portable read-only viewer | Verified local |
 | Scripted mission | Frozen status-report fixture; macOS `/usr/bin/sandbox-exec` | Verified local |
-| Gemini planner/workers | Bounded ADK proposal and worker implementation; explicit credentials/model | Implementation tested locally; live provider run not proven |
+| Gemini planner/workers | Bounded ADK proposal and worker implementation; explicit credentials/model | **VERIFIED_LIVE** 2026-08-23 with provider receipts; approvals were operator-delegated, not TTY-attested |
 | Generic Docker executor | Narrow Python/pytest contract | Not proven live |
 | Firestore emulator | Production create/approve/readiness/claim/heartbeat/completion plus sharded materialization/reconcile | Verified local; not a deployment |
 | Cloud control plane | Read-only viewer plus packaged coordinator/client/local-executor protocol | Partial authoritative vertical; real cloud behavior not proven and not deployed |

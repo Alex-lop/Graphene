@@ -4,7 +4,7 @@
 
 The working tree implements a real Google ADK Runner planner seam with typed output, bounded calls, disabled content capture, and no fallback. Bounded manifests/excerpts and a small `PlanIntent` are deterministically compiled into criterion-bearing scheduler contracts. After exact plan approval, the same product path can dispatch two to five typed ADK worker adapters in Graphene-owned workspaces, commit siblings in completion order, run trusted deterministic checks, integrate accepted artifacts, and stop at `awaiting_result`.
 
-Credential-free tests exercise that runtime with real ADK sessions and deterministic fake models against a disposable repository. They prove local contracts, concurrency, isolation, and recovery—not live Gemini behavior. No credential or provider receipt was used in this proof pass, so Gemini remains **NOT PROVEN**.
+Credential-free tests exercise that runtime with real ADK sessions and deterministic fake models against a disposable repository. They prove local contracts, concurrency, isolation, and recovery—not live Gemini behavior. Live Gemini is proven separately and is **VERIFIED_LIVE** (2026-08-23) with evidence-bound provider receipts; the credential-free tests described here neither need nor claim it.
 
 The deterministic `scripted-local` runtime is a fixture, not an agent. Its checked-in overlays prove scheduler and evidence mechanics only.
 
@@ -46,7 +46,7 @@ Every attempt whose worker returned a provider completion binds a sanitized `wor
 
 Deterministic fake-ADK tests may prove routing and contracts, never Gemini behavior. A real-agent claim requires two distinct returned model/session/invocation identities, measured provider-call overlap, no fixture overlay, scoped tool receipts, accepted-only fan-in, exact verification, and unchanged user checkout evidence.
 
-The literal demo entrypoint is `graphene mission demo`. It selects only `gemini-adk`, defaults to two workers, creates a Graphene-owned Taskmaster repository, and still requires explicit plan approval. It has no fake or replay fallback. Its live outcome is **NOT PROVEN**.
+The literal demo entrypoint is `graphene mission demo`. It selects only `gemini-adk`, defaults to two workers, creates a Graphene-owned Taskmaster repository, and still requires explicit plan approval. It has no fake or replay fallback. Its live outcome is **VERIFIED_LIVE** (2026-08-23): 9/10 ordinary and 3/3 controlled-failure missions completed end to end.
 
 ## Failure laboratory
 

@@ -24,7 +24,7 @@ machine-readable proof only and is verified separately.
 
 | Area | Implemented | Current proof boundary |
 |---|---|---|
-| Runtime | Bounded manifest/excerpts, typed `PlanIntent`, distinct ADK planner/workers, operation journal, trusted scoped tools/checks, completion-order coordination, accepted-only fan-in, deterministic assembly/verification, typed terminal cleanup | Fake-model ADK and deterministic tests only; live Gemini **NOT RUN — NOT PROVEN** |
+| Runtime | Bounded manifest/excerpts, typed `PlanIntent`, distinct ADK planner/workers, operation journal, trusted scoped tools/checks, completion-order coordination, accepted-only fan-in, deterministic assembly/verification, typed terminal cleanup | Fake-model ADK and deterministic tests here; live Gemini is proven separately and is **VERIFIED_LIVE** (2026-08-23) |
 | Scheduler/processes | Owner/capability-scoped claim and recovery, exact lease/fence validation, sibling-independent completions, retries with higher fences, bounded polling, durable owned-process registry, cleanup-before-cancel | Local deterministic and adversarial proof; responsive Docker smoke absent |
 | Evidence/SQLite | Schema ledger, immutable canonical records and state roots, exhaustive materialized-row comparison, artifact-byte verification, sticky read quarantine, `graphene.tree.v2`, V2 publication envelopes, exact pending final bundle | Local/adversarial tests; v1 is never silently reinterpreted or migrated |
 | Human control | Expected-head idempotent plan/gate/pause/resume/retry/cancel commands, CLI private `needs_input`, request-replan pause, bundle-ID-bound final decisions, restart-safe isolated commit | Browser input seam is tested but hidden pending safe staged cleanup; live capture absent |
@@ -89,7 +89,7 @@ Credential gates:
 
 | Claim | Status |
 |---|---|
-| Full two-worker Gemini mission | **NOT RUN — NOT PROVEN — ALEX ACTION REQUIRED**; the gated test requires returned model/session/invocation receipts and measured overlap |
+| Full two-worker Gemini mission | **VERIFIED_LIVE** (2026-08-23): returned model/session/invocation receipts and measured overlap were captured; see `evidence/north_star/2026-08-23-north-star-live.md` |
 | Docker execution | **NOT RUN on a responsive daemon — NOT PROVEN** |
 | Cloud Run + real Firestore | **NOT DEPLOYED — NOT PROVEN — ALEX ACTION REQUIRED** |
 | Graph-economics benchmark result | **NOT RUN — NOT PROVEN**; harness tests do not establish cost/latency/quality |
@@ -114,7 +114,7 @@ This update is recorded on top of the verified source commit above; it does not 
 | Area | Implemented | Current proof boundary |
 |---|---|---|
 | Shadow Agent | `shadow.event.v1` canonical identities, ingest-time redaction, isolated `shadow.sqlite3`, ndjson adapter with every documented fail-closed rule, `segments.v1`, `claims.v1` with precision locks, the six `lint.v1` rules and three defined ratios, `graphene shadow` CLI, self-verifying capsule | Synthetic fixture and hand-built records only; **claude-code adapter NOT IMPLEMENTED** pending a real transcript; source faithfulness never claimed |
-| Worker receipts | Sanitized `worker-provider-receipt` artifacts bound to attempt evidence on success and failure; replay rebuilds them from evidence; live output lists only evidence-bound receipts | Fake ADK workers; live Gemini receipts **NOT PROVEN** |
+| Worker receipts | Sanitized `worker-provider-receipt` artifacts bound to attempt evidence on success and failure; replay rebuilds them from evidence; live output lists only evidence-bound receipts | Fake ADK workers here; live Gemini receipts are **VERIFIED_LIVE** (2026-08-23) and are what the North Star evidence cites |
 | Overlap | Attempt-lifetime, lease, and provider-call bases from evidence receipts; serialized execution proven to disagree with lifetimes | Fake workers; live provider-call overlap **NOT PROVEN** |
 | Check executors | `GRAPHENE_CHECK_EXECUTOR=host-sandbox` (macOS `sandbox-exec`, owned-process registration, template timeout honoured, exec-in-place identity) beside Docker; upfront fail-closed selection on both the local and outbound paths | Docker smoke still **NOT PROVEN** on a responsive daemon |
 | Failure laboratory | SIGKILL of worker B's registered check group via `scripts/failure_lab.py kill`; sibling publication untouched; automatic retry under a higher fence; stale fence rejected; `why` names the retry | Fake workers on macOS; live run **NOT PROVEN** |
