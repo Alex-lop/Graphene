@@ -303,7 +303,7 @@
     ],
     "status": "not_proven_capture_pending"
   },
-  "product_thesis": "Graphene is a local-first mission control for bounded multi-agent coding work. Give it one engineering outcome; it validates a dependency-aware work graph, dispatches only policy-allowed isolated work, adapts to bounded failures, assembles accepted artifacts, verifies the result, and creates an isolated local commit only after explicit approval.",
+  "product_thesis": "Graphene is a terminal-native workflow playground for coding agents. It turns a goal into a proposed, commit-bound DAG; lets you reshape and approve one exact revision; gives each worker only the context and authority its node allows; shows the planned route, the actual path, and the next frontier; and produces a verified result.",
   "result": "An exact verified candidate decision and optional isolated local commit with V2 publication evidence, a registered immutable pre-decision bundle, explicit resource semantics, and unresolved unknowns. Bounded ADK workers, collision-safe tree hashing, cold integrity verification, revision/invalidation, and a partial authoritative Firestore/outbound-executor vertical are credential-free tested; external proof remains separate.",
   "schema_version": 2,
   "shadow_agent": {

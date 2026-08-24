@@ -6,7 +6,32 @@
 
 [![CI](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml)
 
-Graphene is a local-first mission control for bounded multi-agent coding work. Give it one engineering outcome; it validates a dependency-aware work graph, dispatches only policy-allowed isolated work, adapts to bounded failures, assembles accepted artifacts, verifies the result, and creates an isolated local commit only after explicit approval.
+Graphene is a terminal-native workflow playground for coding agents. It turns a goal into a proposed, commit-bound DAG; lets you reshape and approve one exact revision; gives each worker only the context and authority its node allows; shows the planned route, the actual path, and the next frontier; and produces a verified result.
+
+You give it a goal. It proposes one mission DAG bound to an exact commit and stops, because a proposal is not a decision. You inspect any node in full, reshape the graph — add a node, rewire an edge, tighten a scope, change a check — and approve one exact revision. From that moment the approved revision is the contract: each worker gets only the context and authority its node allows, the dashboard shows the planned route against the actual path and the next frontier, and the result is verified before anything is committed.
+
+Graphene is not a graph that merely looks good, and it is not a picture of the files an agent touched after the interesting work is over. **It is the place where you design how agents should work, and then watch your approved workflow run.** The proof engine underneath is what lets it make that promise honestly.
+
+```bash
+graphene plan "Add a status export to the ledger service" --repo PATH
+graphene plan show MISSION_ID --detail          # the full contract of every node
+graphene plan export MISSION_ID --output plan.yaml   # canonical YAML — edit it
+graphene plan revise plan.yaml                  # -> immutable revision 2, new digest
+graphene plan lint MISSION_ID                   # atomic: cycles, scopes, checks, budgets
+graphene plan diff MISSION_ID 1 2               # what changed, and where a scope grew
+graphene plan approve MISSION_ID --revision 2   # binds mission + base_sha + revision + digest
+```
+
+Approval binds four things at once: the mission, the `base_sha` the plan was written against, the revision number, and the plan's SHA-256. Change any one of them and the approval is void. Editing an approved plan produces immutable revision N+1 with a new digest that needs its own approval; editing after dispatch has begun fails closed; and no worker can claim a node of a revision nobody approved.
+
+## What Graphene is not
+
+Planning graphs are not new, and neither is repository mapping. Graphene's claim is narrower than either: the complete loop from proposal to a binding, executed revision.
+
+- **Not a code-context layer.** Graft and Aider's RepoMap build maps of a codebase so an agent can find its way around. Graphene has no native code knowledge graph and does not compete with one — a context provider of that kind is a natural future *advisor to the planner*, never a replacement for the approved plan. Any performance figure attributed to Graft, here or anywhere else, is **reported by NanoNets** and is not measured by this project.
+- **Not another task planner.** CoderMind, Beads, and Task Master also model agent work as a graph of tasks; they are adjacent neighbours, not strawmen. What Graphene adds is enforcement: one authoritative DAG per mission rather than one per agent, an approval bound to an exact digest, per-node read/write scopes and command allow-lists, fenced leases, trusted checks as the only completion authority, and a store that refuses to dispatch anything the approval does not cover.
+- **Not a benchmark.** There is no leaderboard here, no token-efficiency claim, and no speed or cost comparison. `benchmarks/graph_economics.py` is a truth-labelled harness whose results are `NOT PROVEN`; until it produces data there is nothing to claim.
+- **Not a security sandbox.** A Git worktree isolates edits. It is not a jail — see the safety boundary below.
 
 **[What the latest implementation changed](docs/IMPLEMENTATION_REPORT.md)** · [Product](docs/PRODUCT.md) · [Architecture](docs/ARCHITECTURE.md) · [Documentation index](docs/README.md)
 
@@ -106,7 +131,8 @@ Shadow Agent v0: credential-free tests pass on the synthetic ndjson and claude-c
 - Workers have no arbitrary shell, installer, ambient credential, user-checkout mount, or autonomous push/PR/merge/deploy path.
 - Public state excludes raw prompts, source, diffs, command arguments/output, environment variables, secrets, and chain-of-thought.
 - Skills are not resource-isolation units. Stateless MCP is sessionless, not processless.
-- Cancellation targets only strongly identified Graphene-owned processes; unreceipted external effects become `outcome_unknown`, never silently repeated.
+- Cancellation targets only strongly identified Graphene-owned processes; unreceipted external effects become `outcome_unknown`, never silently repeated. A cancelled attempt records the stages it completed in its evidence chain, so a check that had already passed is not lost in the word "cancelled".
+- Two tasks may not write the same file, and that rule holds even when one depends on the other: an ordered ownership transfer is safe in principle but is still refused. See [Known limitations](docs/KNOWN_LIMITATIONS.md).
 
 See [Security and sovereignty](docs/SECURITY_AND_SOVEREIGNTY.md) and the [Taskmaster product contract](docs/TASKMASTER_PRODUCT_CONTRACT.md).
 
@@ -133,9 +159,13 @@ Taskmaster entrypoints: `graphene init`, `graphene doctor`, `graphene plan`, `gr
 
 ```bash
 graphene plan GOAL --repo PATH --success-criterion CRITERION
-graphene plan show MISSION_ID
+graphene plan show MISSION_ID [--detail]
+graphene plan export MISSION_ID [--output FILE]
+graphene plan revise EDITED_PLAN_FILE
+graphene plan edit MISSION_ID
 graphene plan diff MISSION_ID PREVIOUS_REVISION REVISION
 graphene plan lint MISSION_ID
+graphene plan approve MISSION_ID --revision N
 graphene run MISSION_ID
 graphene task input MISSION_ID TASK_ID --gate GATE_ID --file INPUT_FILE
 graphene bundle verify FINAL_RESULT_ID
@@ -143,7 +173,7 @@ graphene bundle verify FINAL_RESULT_ID
 
 Mission commands: `graphene mission start`, `graphene mission status`, `graphene mission watch`, `graphene mission open`, `graphene mission pause`, `graphene mission resume`, `graphene mission cancel`, `graphene mission retry`, `graphene mission request-replan`, `graphene mission approve-plan`, `graphene mission decide-gate`, `graphene mission approve-result`, `graphene mission reject-result`, `graphene mission result`, `graphene mission capsule`, `graphene mission db`, `graphene mission replay`, `graphene mission demo`, and `graphene mission executor`.
 
-`graphene plan show/diff` reads verified revisions; `request-replan` pauses dispatch but generates no linked replacement revision. `graphene task input` accepts 1–4096 private UTF-8 bytes from a regular file or stdin and commits only their evidence reference. The browser-input seam is tested but hidden in one-command live mode because no safe staged-input cleanup API is wired. Automatic expiry and purge are not implemented. Current mission-plan validation rejects `legacy_auth_v2`. Cloud streaming uses per-client polling; there is no shared listener or fan-out.
+`graphene plan show/diff/lint` reads verified revisions. `plan export` writes the canonical YAML a person edits, `plan revise` compiles the edited file into immutable revision N+1, and `plan edit` is a thin `$EDITOR` wrapper over exactly that path — there is no second way to change a plan. `request-replan` still only pauses dispatch and records the request: it generates no linked replacement revision, and nothing in Graphene asks a model to produce one. The revision a `revise` compiles is the user's, not the planner's. `graphene task input` accepts 1–4096 private UTF-8 bytes from a regular file or stdin and commits only their evidence reference. The browser-input seam is tested but hidden in one-command live mode because no safe staged-input cleanup API is wired. Automatic expiry and purge are not implemented. Current mission-plan validation rejects `legacy_auth_v2`. Cloud streaming uses per-client polling; there is no shared listener or fan-out.
 
 The outbound surface is `graphene mission executor connect --repo PATH --mission MISSION_ID --coordinator-url URL --audience AUDIENCE --workers 2`. It touches local workspaces; Cloud Run does not.
 
