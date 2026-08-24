@@ -310,7 +310,11 @@ def test_attached_output_is_bounded(tmp_path: Path) -> None:
     output, truncated, timed_out = CaptureExecutor(
         docker_bin=fake_docker,
         limits=SandboxLimits(output_bytes=32),
-    )._capture(CONTAINER_ID, "attempt-1", 1)
+        # Budget, not a stopwatch: the subject here is the 32-byte output
+        # cap, and one second is not enough to start a CPython interpreter
+        # on a busy machine — the capture then returns b"" and the cap is
+        # never exercised. Observed in a full matrix under load.
+    )._capture(CONTAINER_ID, "attempt-1", 60)
     assert output == b"x" * 32
     assert truncated
     assert not timed_out
