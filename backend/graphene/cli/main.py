@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import stat
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from contextlib import closing
@@ -253,6 +254,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--driver",
         choices=("verified-replay", "scripted-local", "adk-fake"),
         default="scripted-local",
+    )
+    demo.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "run the real three-act North Star sequence end to end — materialize "
+            "the target, trigger it from an inbox drop, approve a bounded plan, "
+            "run two live Gemini workers on the dashboard, fail one owned check "
+            "on purpose, retry with a diagnostic, isolate the result, run the "
+            "generated feature, and explain it. SPENDS MONEY on the Gemini API."
+        ),
     )
     demo.add_argument("--speed", type=_positive_number, default=1.0)
     demo.add_argument("--no-open", action="store_true")
@@ -1533,6 +1545,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "demo":
         from ..demo import DemoError, run_demo
 
+        if args.live:
+            from rich.console import Console
+
+            from ..demo_live import run_live_demo
+
+            root = Path(tempfile.mkdtemp(prefix="graphene-demo-live-"))
+            inbox = root / "inbox"
+            inbox.mkdir(mode=0o700)
+            return run_live_demo(
+                target_root=root / "target", inbox=inbox, console=Console()
+            )
         try:
             return run_demo(
                 driver=args.driver,

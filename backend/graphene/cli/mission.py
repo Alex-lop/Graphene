@@ -66,7 +66,11 @@ from ..orchestration.models import (
     Task,
     TaskKind,
 )
-from ..orchestration.diagnostics import CHECK_DIAGNOSTIC_KIND, CheckDiagnostic
+from ..orchestration.diagnostics import (
+    CHECK_DIAGNOSTIC_KIND,
+    CheckDiagnostic,
+    summarize_check_failure,
+)
 from ..orchestration.overlap import measure_overlap
 from ..orchestration.projection import MissionProjection
 from .dashboard import GEMINI_3_5_FLASH_USD_PER_TOKEN, spend_from_receipts
@@ -498,6 +502,18 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
             "bounded worker capacity, 1-5; Gemini requires 2-5",
             "--max-workers 2",
             "the count is outside the driver bounds",
+        ),
+    )
+    start.add_argument(
+        "--inject-check-fault",
+        dest="demo_injected_check_fault",
+        action="store_true",
+        help=_option_help(
+            "fail this mission's first trusted check once, deterministically, "
+            "labelled simulated_fixture in evidence, so the retry path can be "
+            "demonstrated and measured; it can only make a check fail, never pass",
+            "--inject-check-fault",
+            "the driver has no supported deterministic check runner",
         ),
     )
     start.add_argument(
@@ -3226,6 +3242,11 @@ class _DemoOneShotCheckRunner:
                 "task_id": assignment.task_id,
             },
         ):
+            detail = (
+                f"The owned check process for {assignment.task_id} exited 97 under "
+                f"the deterministic injected fault {label}. No test assertion "
+                "failed; the check process itself was made to fail."
+            )
             return CheckOutcome(
                 template_id=assignment.command_template.template_id,
                 template_sha256=sha256_hex(
@@ -3240,6 +3261,17 @@ class _DemoOneShotCheckRunner:
                 cleanup_complete=True,
                 truth_kind="simulated_fixture",
                 truth_label=label,
+                # The retry learns from an injected fault exactly as it learns
+                # from a real one, and the summary says plainly which it was.
+                diagnostic=summarize_check_failure(
+                    detail,
+                    exit_code=97,
+                    timed_out=False,
+                    output_truncated=False,
+                    cleanup_complete=True,
+                    output_sha256=sha256_hex(label.encode()),
+                    output_byte_count=len(label.encode()),
+                ),
             )
         outcome = await self._runner(workspace, assignment, owner_id)
         if (
