@@ -1,0 +1,206 @@
+# `graphene demo --live` — first complete end-to-end run, 2026-08-23
+#
+# One terminal, one continuous sequence, no splicing and no second window:
+# target materialized -> a mission.yaml lands in an inbox -> bounded plan shown
+# as human text -> delegated approval under a pre-authorized bounded policy ->
+# two live gemini-3.5-flash workers on the dashboard -> an owned CHECK PROCESS
+# fails deterministically on purpose -> the retry runs at a strictly higher
+# fence carrying the redacted diagnostic -> assembly and verification ->
+# bundle-bound approval and an isolated commit, nothing pushed -> THE GENERATED
+# FEATURE RUNS -> `why` chains from the trigger to the approval.
+#
+# Narration note: the failure is a check process, made to fail by
+# `--inject-check-fault`, recorded with a `simulated_fixture` receipt. It is
+# NOT a Gemini worker dying and must never be narrated as one.
+#
+# Temp paths and the home directory are redacted; everything else is verbatim.
+
+Materializing the North Star target repository...
+Target ready at 
+<temp>
+u_ve/target on base commit 680f42fb6a5b; its own suite is green before we start.
+Preflight is clean: git, the check executor, and the Gemini configuration are 
+ready.
+A change arrived in the inbox (sha256 7adca3fa6783); mission 
+mission_start_93ff1980f18c9665f627e9fa was proposed from it.
+Goal: Add a redacted JSON status report and a Markdown status report to the 
+ledger CLI; the CLI already dispatches both formats, so implement the two 
+renderer modules and their tests.
+Bounded plan, revision 1:
+  assemble  assembly  needs implement_report_json, implement_report_markdown  
+writes nothing
+  implement_report_json  work  needs nothing  writes 
+ledger_service/report_json.py, tests/test_report_json.py
+  implement_report_markdown  work  needs nothing  writes 
+ledger_service/report_markdown.py, tests/test_report_markdown.py
+  verify  verification  needs assemble  writes nothing
+Success criteria:
+  - ledger_service/report_markdown.py defines render_markdown(report) returning 
+a Markdown table with the exact header and separator rows, one row per item in 
+report order, pipe characters inside cells escaped, and notes joined with a 
+semicolon and a space.
+  - The existing tests and the new report tests all pass under python -m pytest 
+-q -p no:cacheprovider.
+  - ledger_service/report_json.py defines render_json(report) returning one JSON
+object with item_count, total_quantity, below_reorder and rows, where rows are 
+the report rows as dictionaries, per-item quantities equal the balances command,
+and notes have passed through the redaction policy.
+  - No file outside ledger_service/report_json.py, 
+ledger_service/report_markdown.py, tests/test_report_json.py and 
+tests/test_report_markdown.py is created or modified.
+This demo runs under a pre-authorized bounded policy; approving the plan and 
+starting the mission now.
+GOAL Add a redacted JSON status rep~ | STATUS proposed | ELAPSED 00:00 | SPEND —
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ○ queued    attempt —  fence —
+implement_report_markdown  ○ queued    attempt —  fence —
+verify                     ○ queued    attempt —  fence —
+Latest: trigger received
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status repo~ | STATUS running | ELAPSED 00:01 | SPEND —
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ○ queued    attempt —  fence —
+implement_report_markdown  ○ queued    attempt —  fence —
+verify                     ○ queued    attempt —  fence —
+Latest: plan approved
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status repo~ | STATUS running | ELAPSED 00:02 | SPEND —
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ● running   attempt 1  fence 1
+implement_report_markdown  ● running   attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: worker started
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:17 | SPEND $0.04
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ↻ retrying  attempt 1  fence 1
+implement_report_markdown  ● running   attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: check failed → retry authorized with diagnostic
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:30 | SPEND $0.11
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ↻ retrying  attempt 1  fence 1
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: task accepted
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:31 | SPEND $0.11
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ● running   attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: worker started
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:44 | SPEND $0.14
+assemble                   ○ queued    attempt —  fence —
+implement_report_json      ✓ accepted  attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: task accepted
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:44 | SPEND $0.14
+assemble                   ● running   attempt 1  fence 1
+implement_report_json      ✓ accepted  attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: worker started
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:46 | SPEND $0.14
+assemble                   ✓ accepted  attempt 1  fence 1
+implement_report_json      ✓ accepted  attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ○ queued    attempt —  fence —
+Latest: task accepted
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON status ~ | STATUS running | ELAPSED 00:46 | SPEND $0.14
+assemble                   ✓ accepted  attempt 1  fence 1
+implement_report_json      ✓ accepted  attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ● running   attempt 1  fence 1
+Latest: worker started
+Result: No final result decision has been committed.
+GOAL Add a redacted JSON~ | STATUS awaiting_result | ELAPSED 00:47 | SPEND $0.14
+assemble                   ✓ accepted  attempt 1  fence 1
+implement_report_json      ✓ accepted  attempt 2  fence 2
+implement_report_markdown  ✓ accepted  attempt 1  fence 1
+verify                     ✓ accepted  attempt 1  fence 1
+Latest: task accepted
+Result: The final candidate and verification evidence are being bound into an 
+exact review bundle.
+The injected check fault fired: one check failed on purpose and a bounded retry 
+was authorized with a diagnostic.
+Result approved and isolated: commit 7ffc514879b8 on 
+refs/graphene/results/7cd6f713af9c9c859e15316e; nothing was pushed anywhere.
+The generated feature, run from the isolated result commit:
+  | sku | name | unit | quantity | reorder_level | below_reorder | notes |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | BOLT-M8 | M8 bolt | each | 60 | 70 | True | shipped; ask [REDACTED] |
+  | NUT-M8 | M8 nut | each | 25 | 0 | False |  |
+And why did ledger_service/report_json.py change? The mission can answer:
+WHY mission_start_93ff1980f18c9665f627e9fa ledger_service/report_json.py 
+matched_by=path
+STAGE trigger established
+  node event mission_event_84a2666dc570c04b54bf948b287505ac kind=inbox_file 
+task=none attempt=none worker=none attempt_number=none fence=none 
+sha256=7adca3fa6783
+  events mission_event_84a2666dc570c04b54bf948b287505ac
+  note Triggered by inbox_file north-star.yaml.
+STAGE target established
+  node publication publication_eb547b142267dbe0ee9b15fe326e56ed kind=patch 
+task=implement_report_json attempt=attempt_033d09b2dcfcab24401aaf1751dd6d76 
+worker=none attempt_number=none fence=none sha256=59d18249c76b
+  events 
+mission_event_38e24ae3460cd7ee335657af417a7072,mission_event_311ec84b08462f39b32
+f836a5764e165
+  note Committed publication metadata matches the query.
+STAGE producer_attempt established
+  node attempt attempt_033d09b2dcfcab24401aaf1751dd6d76 kind=none 
+task=implement_report_json attempt=attempt_033d09b2dcfcab24401aaf1751dd6d76 
+worker=gemini-worker-1 attempt_number=2 fence=2 sha256=none
+  receipt test-receipt artifact_14b1cffac7a9c66c8a71c3391b6765bc resolvable=True
+  receipt worker-provider-receipt artifact_4bd89446d8887ba8bfcbf3e2e2c0017c 
+resolvable=True
+  events 
+mission_event_327e0ccaedc6d950df4ff751b35dddf5,mission_event_53fd9ecc8e43cee0f79
+4d12cfa61f4ea
+  note The verified snapshot binds each target to its producer attempt.
+STAGE prior_attempts established
+  node attempt attempt_70a750cc0ed97c0fe16672c31b75c51c kind=none 
+task=implement_report_json attempt=attempt_70a750cc0ed97c0fe16672c31b75c51c 
+worker=gemini-worker-1 attempt_number=1 fence=1 sha256=none state=failed 
+result_code=acceptance_check_failed
+  receipt test-receipt artifact_d3b0dc9054ebebd9b044fedc34fa9597 resolvable=True
+  receipt worker-provider-receipt artifact_cb83697f1e533ae69710ad00214e45b4 
+resolvable=True
+  events 
+mission_event_35b608a02d5d55d4c79915866e9fb36e,mission_event_6d833842a4cbdae1649
+0622ae22536e5
+  note Earlier attempts of the producing task ended without an accepted 
+publication; the producer above ran under a strictly higher fence.
+STAGE accepted_inputs not_present
+  events none
+  note Producer attempts declare no accepted inputs.
+STAGE assembly_candidate established
+  node publication publication_7e96becbcbbb71478a7f3fcf63b42816 kind=patch 
+task=assemble attempt=attempt_7a50448bf29b7bc164b86f43250ef03f worker=none 
+attempt_number=none fence=none sha256=a6f30487bab1
+  receipt test-receipt artifact_78b8902859e3d410dff59f5a092c11dd resolvable=True
+  events mission_event_00add3d45e896e1f0c883e6d54c1e25d
+  note Accepted assembly output consumes the target publication.
+STAGE verification established
+  node publication publication_0501b11e7bd2f8454d783e8f1fa50b19 
+kind=test-receipt task=verify attempt=attempt_ce7c3e4adcbc556b800439c7513b9392 
+worker=none attempt_number=none fence=none sha256=31dec6f5d9eb
+  receipt test-receipt artifact_31dec6f5d9ebc21d9208bbb9720cb716 resolvable=True
+  events mission_event_99ae11ede0be90a484018895d27cdee3
+  note Accepted verification output consumes the assembly candidate.
+STAGE approval established
+  node event mission_event_6ba03dc9d3407caf668a39602c2e5a22 kind=none task=none 
+attempt=none worker=none attempt_number=none fence=none sha256=none
+  events mission_event_6ba03dc9d3407caf668a39602c2e5a22
+  note A committed final approval references the assembly candidate.
+TRUST: every line above is derived from hash-chained mission events and 
+resolvable evidence references; unknowns are listed, never guessed.
+The story is complete: trigger, bounded plan, approval, execution, isolated 
+result, working feature, and provenance.

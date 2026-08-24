@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -80,10 +81,21 @@ def _materialize(dest: Path, stdout: IO[str]) -> Any:
     if spec is None or spec.loader is None:
         raise _DemoError("The North Star materialization script could not load.")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # dataclasses(slots=True) resolves its own module through sys.modules, so a
+    # file loaded outside sys.modules blows up on the first slotted dataclass.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        del sys.modules[spec.name]
+        raise _DemoError(
+            f"The North Star materialization script could not load: {error}"
+        ) from error
     try:
         return module.materialize(dest, stdout)
     except module.MaterializeError as error:
+        raise _DemoError(f"Materializing the target failed: {error}") from error
+    except Exception as error:
         raise _DemoError(f"Materializing the target failed: {error}") from error
 
 
@@ -240,8 +252,11 @@ def _finalize(mission_id: str) -> dict[str, Any]:
     from .cli import mission as mission_cli
 
     with tempfile.TemporaryDirectory(prefix="graphene-demo-bundle-") as scratch:
+        # `bundle create` requires an already-resolved parent, and on macOS a
+        # temp dir arrives as /var/... which is a symlink to /private/var.
+        output = Path(scratch).resolve(strict=True) / "bundle.json"
         bundle = mission_cli._bundle_create_value(
-            argparse.Namespace(mission_id=mission_id, output=Path(scratch) / "bundle.json")
+            argparse.Namespace(mission_id=mission_id, output=output)
         )
     return mission_cli._mutate(
         argparse.Namespace(
@@ -309,12 +324,19 @@ def run_live_demo(
     inject_check_fault: bool = True,
     stdout: IO[str] | None = None,
 ) -> int:
-    out = stdout if stdout is not None else sys.stdout
+    # The materializer's own chatter is captured, not printed: a one-take demo
+    # shows the story, not the setup script's "next commands" block.
+    captured_setup = stdout if stdout is not None else io.StringIO()
     launch = runner if runner is not None else _default_runner
     try:
         _preflight()
         _say(console, "Materializing the North Star target repository...")
-        target = _materialize(target_root, out)
+        target = _materialize(target_root, captured_setup)
+        _say(
+            console,
+            f"Target ready at {target.repository} on base commit "
+            f"{target.base_sha[:12]}; its own suite is green before we start.",
+        )
         _doctor_ready(target.repository)
         _say(console, "Preflight is clean: git, the check executor, and the Gemini "
              "configuration are ready.")
