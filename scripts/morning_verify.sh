@@ -8,6 +8,8 @@
 # night's mission store -> capsule cold-verify from a fresh clone in a temp dir
 # -> watcher tests -> proof-table status from contracts/product_proof.json.
 # Spends nothing and contacts no provider. Prints only identifiers and counts.
+# Every interpreter here is the locked one: a verification whose own verdict
+# is computed by whatever `python3` the developer's PATH yields is not locked.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 QUICK=0; [ "${1:-}" = "--quick" ] && QUICK=1
@@ -52,12 +54,12 @@ step "mission store ($STATE)"
 if [ -d "$STATE" ]; then
   out=$(GRAPHENE_STATE_DIR="$STATE" uv run --frozen graphene --json mission db verify 2>/dev/null)
   echo "$out"
-  python3 - "$out" <<'PY' && ok "store.verify on every mission in the store" || bad "store.verify"
+  uv run --frozen python - "$out" <<'PY' && ok "store.verify on every mission in the store" || bad "store.verify"
 import json, sys
 d = json.loads(sys.argv[1]); assert d["status"] == "current" and d["verified_missions"] == d["mission_count"] > 0
 PY
   for m in mission_start_b0b61fac3a6b1b3279329462 mission_start_b6be7f35ba803c6dc34597b1; do
-    st=$(GRAPHENE_STATE_DIR="$STATE" uv run --frozen graphene --json mission status "$m" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["mission"]["status"], d["head"]["seq"], d["head"]["event_sha256"][:16])')
+    st=$(GRAPHENE_STATE_DIR="$STATE" uv run --frozen graphene --json mission status "$m" 2>/dev/null | uv run --frozen python -c 'import json,sys; d=json.load(sys.stdin); print(d["mission"]["status"], d["head"]["seq"], d["head"]["event_sha256"][:16])')
     echo "  $m -> $st"
   done
 else
@@ -70,7 +72,7 @@ git clone -q "$PWD" "$tmp/clone" || bad "clone"
 (cd "$tmp/clone" && run "fresh clone uv sync --frozen" uv sync --frozen) || fail=1
 for c in evidence/north_star/2026-08-23-mission1/mission_start_5291caad50a8ee7a222a9221.graphene-capsule \
          evidence/north_star/2026-08-23-mission4-failure-lab/mission_start_38129f17add65609de1c3388.graphene-capsule; do
-  v=$(cd "$tmp/clone" && env -u GRAPHENE_STATE_DIR uv run --frozen python -m graphene.orchestration.capsule verify "$c" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["verified"], d["mission_id"])')
+  v=$(cd "$tmp/clone" && env -u GRAPHENE_STATE_DIR uv run --frozen python -m graphene.orchestration.capsule verify "$c" 2>/dev/null | uv run --frozen python -c 'import json,sys; d=json.load(sys.stdin); print(d["verified"], d["mission_id"])')
   echo "  $v  manifest $(shasum -a 256 "$c/manifest.json" | cut -c1-16)…"
   [ "${v%% *}" = "True" ] && ok "cold verify $(basename "$c")" || bad "cold verify $(basename "$c")"
 done
