@@ -66,6 +66,9 @@ class Frame:
     rows: tuple[TaskRow, ...]
     latest: str | None
     result: str
+    # The mission cannot advance without a person: a gate is open, or it is
+    # awaiting the final decision. Following past this point is just polling.
+    waiting: bool = False
 
 
 def spend_from_receipts(
@@ -121,6 +124,10 @@ def build_frame(
         rows=rows,
         latest=latest,
         result=snapshot.result.summary,
+        waiting=(
+            snapshot.needs_you is not None
+            or snapshot.mission.status == MissionStatus.AWAITING_RESULT.value
+        ),
     )
 
 
@@ -177,7 +184,11 @@ def render_plain(frame: Frame) -> str:
 
 
 def _finished(frame: Frame, stop: Callable[[], bool] | None) -> bool:
-    return frame.status in _TERMINAL or (stop is not None and stop())
+    return (
+        frame.status in _TERMINAL
+        or frame.waiting
+        or (stop is not None and stop())
+    )
 
 
 def follow(

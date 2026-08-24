@@ -89,7 +89,10 @@ def mid_mission_snapshot(tmp_path_factory: pytest.TempPathFactory) -> Any:
 
 
 def _stub_snapshot(
-    status: str = "running", tasks: tuple[SimpleNamespace, ...] | None = None
+    status: str = "running",
+    tasks: tuple[SimpleNamespace, ...] | None = None,
+    *,
+    needs_you: object = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         mission=SimpleNamespace(goal="Stub goal", status=status),
@@ -97,6 +100,7 @@ def _stub_snapshot(
         if tasks is not None
         else (SimpleNamespace(task_id="assemble", state="blocked"),),
         attempts=(),
+        needs_you=needs_you,
         result=SimpleNamespace(summary="isolated commit pending"),
     )
 
@@ -269,3 +273,42 @@ def test_follow_keyboard_interrupt_returns_last_frame() -> None:
     frame, _sleeps, output = _follow(projection, sleeper=interrupt)
     assert frame.status == "running"
     assert output.count("GOAL ") == 1
+
+
+def test_follow_stops_when_the_mission_needs_a_person() -> None:
+    """A mission awaiting the operator will not advance on its own: stop, do not poll.
+
+    Caught against a real completed mission — `awaiting_result` is not a terminal
+    MissionStatus, so the first `--follow` polled forever after the work was done.
+    """
+    console = Console(file=io.StringIO(), force_terminal=False, width=100)
+    projection = _SeqProjection(
+        [_stub_snapshot("awaiting_result"), _stub_snapshot("awaiting_result")]
+    )
+    slept: list[float] = []
+
+    frame = follow(
+        projection,
+        "mission-1",
+        console=console,
+        spend=lambda _s: None,
+        latest=lambda _s: None,
+        clock=lambda: 0.0,
+        sleeper=slept.append,
+    )
+
+    assert frame.waiting is True
+    assert frame.status == "awaiting_result"
+    assert slept == []
+
+    gated = follow(
+        _SeqProjection([_stub_snapshot("running", needs_you=object())]),
+        "mission-1",
+        console=console,
+        spend=lambda _s: None,
+        latest=lambda _s: None,
+        clock=lambda: 0.0,
+        sleeper=slept.append,
+    )
+    assert gated.waiting is True
+    assert slept == []
