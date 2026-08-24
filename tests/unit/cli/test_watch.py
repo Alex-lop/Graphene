@@ -145,7 +145,10 @@ def test_inbox_creates_one_proposed_mission_with_a_trigger_first_in_why(
     assert why["links"][0]["note"] == "Triggered by inbox_file mission.yaml."
     assert main(["why", "status_report/redact.py", "--mission", mission_id]) == 0
     rendered = capsys.readouterr().out.splitlines()
-    assert rendered[1] == "STAGE trigger established"
+    # The plan line sits between the header and the first stage: an answer
+    # about a file names the revision it was produced under.
+    assert rendered[1].startswith("PLAN v1 sha256:")
+    assert rendered[2] == "STAGE trigger established"
 
     # The same content dropped again is a recorded duplicate, never a second mission.
     (inbox / "again.yaml").write_bytes(content)

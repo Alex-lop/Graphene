@@ -196,9 +196,20 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
         "plan_revision": 2,
         "diff_sha256": "d" * 64,
     }
+    mission = SimpleNamespace(
+        mission_id="mission_1",
+        base_sha="a" * 40,
+        goal="Implement the bounded mission.",
+        status=MissionStatus.PROPOSED,
+        resource_budget=_policy().resource_budget,
+    )
+    head = SimpleNamespace(seq=4)
     store = SimpleNamespace(
-        snapshot=lambda _mission_id: SimpleNamespace(head=head, plan=plan),
+        snapshot=lambda _mission_id: SimpleNamespace(
+            head=head, plan=plan, mission=mission
+        ),
         verify=lambda _mission_id: head,
+        tail=lambda *_args: (),
         plan_diff=lambda mission_id, previous, current: (
             diff
             if (mission_id, previous, current) == ("mission_1", 1, 2)
@@ -206,6 +217,25 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
         ),
     )
     monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _mission_id: store)
+    monkeypatch.setattr(
+        mission_cli,
+        "_projection",
+        lambda _mission_id: SimpleNamespace(
+            snapshot=lambda _identifier: SimpleNamespace(
+                tasks=tuple(
+                    SimpleNamespace(
+                        task_id=task.task_id,
+                        state="queued",
+                        blocker_reason=None,
+                        dependency_ids=task.dependencies,
+                    )
+                    for task in plan.tasks
+                ),
+                critical_path_task_ids=("work-a", "assemble", "verify"),
+                needs_you=None,
+            )
+        ),
+    )
 
     shown = mission_cli._dispatch(
         build_parser().parse_args(["plan", "show", "mission_1"])
@@ -217,6 +247,14 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
     assert shown[0] == 0
     assert shown[1]["plan"] == plan.model_dump(mode="json")
     assert shown[1]["plan_revision"] == plan.revision
+    # Nothing has been approved, and the table says so rather than implying it.
+    assert shown[1]["approved_revision"] is None
+    assert shown[1]["frontier_is_projected"] is True
+    assert shown[1]["ready_frontier"] == ["work-a", "work-b"]
+    rendered = mission_cli._render_plan_table(shown[1])
+    assert "Needs approval: plan v1" in rendered
+    assert "Frontier on approval: work-a, work-b" in rendered
+    assert "{" not in rendered and "[" not in rendered
     assert compared == (0, diff)
 
     with pytest.raises(mission_cli.MissionCliError, match="two revisions"):

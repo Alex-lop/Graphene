@@ -76,6 +76,13 @@ class MissionView(ViewModel):
     success_criteria: tuple[str, ...] = Field(min_length=1, max_length=32)
     status: str = Field(min_length=1, max_length=64)
     plan_revision: int = Field(ge=1)
+    # The revision alone names a number; the digest names the graph. Both are
+    # carried so a dashboard row, a `why` chain, and an orientation view can
+    # each say which exact plan they are describing, and whether a person
+    # approved it. A view recorded before this field existed carries None —
+    # "this projection does not say", never a fabricated digest.
+    plan_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    approved_plan_revision: int | None = Field(default=None, ge=1)
     outcome: str | None = Field(default=None, max_length=512)
     creation_source: str = Field(min_length=1, max_length=64)
 
@@ -955,6 +962,15 @@ def _resources(events: tuple[MissionEvent, ...]) -> ResourceSummaryView:
     )
 
 
+def _approved_plan_revision(events: tuple[MissionEvent, ...]) -> int | None:
+    """The revision the last approval named, or None if none has been given."""
+    for event in reversed(events):
+        if event.event_type == MissionEventType.PLAN_APPROVED:
+            revision = event.payload.get("plan_revision")
+            return revision if isinstance(revision, int) else None
+    return None
+
+
 def _critical_path(tasks: tuple[TaskView, ...]) -> tuple[str, ...]:
     by_id = {task.task_id: task for task in tasks}
     active = {task.task_id for task in tasks if task.state not in {"done", "cancelled"}}
@@ -1269,6 +1285,8 @@ def project_snapshot(
         ),
         status=str(snapshot.mission.status),
         plan_revision=snapshot.mission.plan_revision,
+        plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
+        approved_plan_revision=_approved_plan_revision(verified_events),
         outcome=str(snapshot.mission.final_outcome)
         if snapshot.mission.final_outcome
         else None,

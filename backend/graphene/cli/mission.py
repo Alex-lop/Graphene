@@ -8,6 +8,7 @@ import math
 import os
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import socket
@@ -320,18 +321,52 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         description="Propose only; execution requires a separate graphene run command.",
     )
     plan.add_argument(
-        "goal", help="bounded goal, or the literal lint, show, or diff action"
+        "goal",
+        help=(
+            "bounded goal, or one of the actions: show, lint, export, revise, "
+            "diff, approve, edit"
+        ),
     )
     plan.add_argument(
         "plan_id",
         nargs="?",
-        help="mission ID for a plan action; otherwise the goal must be quoted",
+        help=(
+            "mission ID for a plan action, or the edited plan file for revise; "
+            "otherwise the goal must be quoted"
+        ),
     )
     plan.add_argument(
         "previous_revision", nargs="?", type=_revision, help="plan diff source revision"
     )
     plan.add_argument(
-        "revision", nargs="?", type=_revision, help="plan diff target revision"
+        "target_revision", nargs="?", type=_revision, help="plan diff target revision"
+    )
+    plan.add_argument(
+        "--detail",
+        action="store_true",
+        help=_option_help(
+            "render the full node contract, not the mission table",
+            "graphene plan show mission_123 --detail",
+            "the mission cannot be verified",
+        ),
+    )
+    plan.add_argument(
+        "--output",
+        type=Path,
+        help=_option_help(
+            "write the canonical export to a new file instead of stdout",
+            "--output plan.yaml",
+            "the path already exists",
+        ),
+    )
+    plan.add_argument(
+        "--revision",
+        type=_revision,
+        help=_option_help(
+            "the exact plan revision to approve",
+            "--revision 2",
+            "it is not the committed revision",
+        ),
     )
     plan.add_argument("--repo", type=Path)
     plan.add_argument(
@@ -350,6 +385,32 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     plan.add_argument("--max-workers", type=_worker_count, default=2)
     plan.add_argument("--command-id", type=_command_key)
     plan.add_argument("--open", action="store_true", dest="open_viewer")
+    plan.add_argument(
+        "--operator-label",
+        default="local-operator",
+        help=_option_help(
+            "public decision label for plan approve, never a credential",
+            "--operator-label alex",
+            "the label is invalid",
+        ),
+    )
+    plan.add_argument(
+        "--rationale",
+        help=_option_help(
+            "optional public rationale for plan approve, max 280 chars",
+            "--rationale 'Added the export node'",
+            "the rationale exceeds the bound",
+        ),
+    )
+    plan.add_argument(
+        "--confirm-human",
+        action="store_true",
+        help=_option_help(
+            "attest deliberate interactive approval",
+            "--confirm-human",
+            "stdin or stdout is not a TTY",
+        ),
+    )
     plan.set_defaults(auto_approve=False)
 
     cancel_alias = commands.add_parser(
@@ -1582,14 +1643,155 @@ def _verified_plan_snapshot(mission_id: str, operation: str):
 
 
 def _plan_show_value(mission_id: str) -> dict[str, object]:
+    """The mission contract as one value: the plan, plus where it stands.
+
+    The plan itself comes from the immutable revision the store holds; the
+    state, critical path, frontier, and pending decision come from the same
+    projection the dashboard reads, so the table and the dashboard cannot
+    disagree about what is ready.
+    """
     _store_value, snapshot = _verified_plan_snapshot(mission_id, "show")
     plan = snapshot.plan.model_dump(mode="json")
+    view = _projection(mission_id).snapshot(mission_id)
+    states = {task.task_id: task.state for task in view.tasks}
+    blockers = {task.task_id: task.blocker_reason for task in view.tasks}
     return {
         "status": "shown",
         "mission_id": mission_id,
+        "base_sha": snapshot.mission.base_sha,
+        "goal": snapshot.mission.goal,
+        "mission_status": snapshot.mission.status.value,
         "plan_revision": snapshot.plan.revision,
+        "previous_plan_revision": snapshot.plan.previous_revision,
         "plan_sha256": sha256_hex(canonical_json_bytes(plan)),
+        "approved_revision": _approved_revision(snapshot),
+        "critical_path": list(view.critical_path_task_ids),
+        "resource_budget": snapshot.mission.resource_budget.model_dump(mode="json"),
+        "ready_frontier": _frontier(view.tasks),
+        # Before approval nothing is `ready` yet, so the frontier shown is the
+        # one the graph implies. Say which it is rather than let the reader
+        # assume work has started.
+        "frontier_is_projected": not any(
+            task.state == "ready" for task in view.tasks
+        ),
+        "needs_you": (
+            None if view.needs_you is None else view.needs_you.model_dump(mode="json")
+        ),
+        "task_states": states,
+        "task_blockers": {key: item for key, item in blockers.items() if item},
         "plan": plan,
+    }
+
+
+def _frontier(tasks) -> list[str]:
+    """What can run right now — or, before dispatch, what would run first."""
+    ready = [task.task_id for task in tasks if task.state == "ready"]
+    if ready:
+        return ready
+    open_ids = {
+        task.task_id for task in tasks if task.state not in {"done", "cancelled"}
+    }
+    return [
+        task.task_id
+        for task in tasks
+        if task.task_id in open_ids
+        and not (set(task.dependency_ids) & open_ids)
+    ]
+
+
+def _approved_revision(snapshot) -> int | None:
+    """The revision an approval names, or None while one is still needed."""
+    store = _store_for_mission(snapshot.mission.mission_id)
+    events = store.tail(snapshot.mission.mission_id, 0, snapshot.head.seq)
+    for event in reversed(events):
+        if event.event_type.value == "plan.approved":
+            revision = event.payload.get("plan_revision")
+            return revision if isinstance(revision, int) else None
+    return None
+
+
+def _plan_export_value(mission_id: str, output: Path | None) -> dict[str, object]:
+    """Write the canonical YAML a person edits."""
+    from ..orchestration.plan_yaml import plan_to_yaml
+
+    _store_value, snapshot = _verified_plan_snapshot(mission_id, "export")
+    document = plan_to_yaml(snapshot.plan)
+    digest = sha256_hex(canonical_json_bytes(snapshot.plan.model_dump(mode="json")))
+    value: dict[str, object] = {
+        "status": "exported",
+        "mission_id": mission_id,
+        "plan_revision": snapshot.plan.revision,
+        "plan_sha256": digest,
+        "document": document,
+    }
+    if output is not None:
+        path = _new_file_path(output)
+        _atomic_create(path, document.encode())
+        value["exported_to"] = str(path)
+        value["document"] = ""
+    return value
+
+
+def _plan_revise_value(source: Path) -> dict[str, object]:
+    """Compile an edited export into immutable revision N+1.
+
+    The file names its own mission and the revision it was taken from; this
+    refuses to guess either. The new revision is not approved by making it —
+    that is a separate decision, on a new digest.
+    """
+    from ..orchestration.models import Plan
+    from ..orchestration.plan_yaml import PlanDocumentError, plan_from_yaml
+    from ..orchestration.store import MissionConflict
+    from ..orchestration.validation import PlanValidationError
+
+    try:
+        text = source.expanduser().read_text()
+    except OSError as error:
+        raise MissionCliError("the edited plan file cannot be read") from error
+    try:
+        edited = plan_from_yaml(text)
+    except PlanDocumentError as error:
+        raise MissionCliError(f"plan revise refused the document: {error}") from error
+
+    store, snapshot = _verified_plan_snapshot(edited.mission_id, "revise")
+    current = snapshot.plan
+    if edited.revision != current.revision:
+        raise MissionCliError(
+            f"the edited plan is revision {edited.revision} but the mission is on "
+            f"revision {current.revision}; export it again"
+        )
+    if edited == current:
+        raise MissionCliError("the edited plan is identical to the committed revision")
+    revised = Plan.model_validate(
+        {
+            **edited.model_dump(mode="json"),
+            "previous_revision": current.revision,
+            "revision": current.revision + 1,
+        }
+    )
+    try:
+        store.revise_plan(
+            edited.mission_id,
+            revised,
+            _command_id("revise-plan", edited.mission_id, str(revised.revision)),
+            expected_head=snapshot.head,
+            recorded_at=datetime.now(UTC),
+        )
+    except PlanValidationError as error:
+        raise MissionCliError(
+            f"the revised plan is not valid under this project policy: {error}"
+        ) from error
+    except MissionConflict as error:
+        raise MissionCliError(f"plan revise was refused: {error}") from error
+    return {
+        "status": "revised",
+        "mission_id": edited.mission_id,
+        "previous_plan_revision": current.revision,
+        "plan_revision": revised.revision,
+        "plan_sha256": sha256_hex(
+            canonical_json_bytes(revised.model_dump(mode="json"))
+        ),
+        "needs_approval": True,
     }
 
 
@@ -1600,13 +1802,34 @@ def _plan_diff_value(
     return store.plan_diff(mission_id, previous_revision, revision)
 
 
+def _scripted_policy(mission_id: str):
+    """The fixture's own project policy — the bound the edit still lives under."""
+    from ..orchestration.scripted import _persisted_scenario
+
+    store = _store_for_mission(mission_id)
+    snapshot = store.snapshot(mission_id)
+    scenario = _persisted_scenario(_mission_runtime(mission_id))
+    policy, _mission, _plan = scenario.contracts(
+        mission_id=mission_id,
+        repo_id=snapshot.mission.repo_id,
+        base_sha=snapshot.mission.base_sha,
+        created_at=snapshot.mission.created_at,
+    )
+    return policy
+
+
 def _plan_lint_value(mission_id: str) -> dict[str, object]:
     from ..orchestration.validation import validate_plan
 
     store, snapshot = _verified_plan_snapshot(mission_id, "lint")
     if snapshot.mission.creation_source == "scripted_fixture":
-        result = scripted_plan_validation(
-            store, _mission_runtime(mission_id), mission_id
+        # Revision 1 of a fixture mission is checked against the fixture that
+        # produced it. Once a person has edited it, that comparison is no
+        # longer the question — the policy is.
+        result = (
+            scripted_plan_validation(store, _mission_runtime(mission_id), mission_id)
+            if snapshot.plan.revision == 1
+            else validate_plan(_scripted_policy(mission_id), snapshot.plan)
         )
     elif snapshot.mission.creation_source == "operator":
         _repository, policy, _workers = _gemini_source(mission_id, snapshot)
@@ -1858,19 +2081,143 @@ def _bundle_verify_value(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+_TERMINAL_MISSION_STATES = frozenset(
+    {"completed", "rejected", "failed", "cancelled"}
+)
+
+
+def _next_legal_actions(value: dict[str, object]) -> list[str]:
+    """The exact commands that are legal right now, derived from the store.
+
+    Not advice: each line is a command whose preconditions the projection says
+    are met. A mission that needs a person names that decision first.
+    """
+    mission = value["mission"]
+    mission_id = mission["mission_id"]
+    status = str(mission["status"])
+    needs = value.get("needs_you")
+    if status in _TERMINAL_MISSION_STATES:
+        return [f"graphene why {mission_id} PATH", f"graphene mission capsule export {mission_id} --output DIR"]
+    if status == "proposed":
+        revision = mission["plan_revision"]
+        return [
+            f"graphene plan show {mission_id} --detail",
+            f"graphene plan export {mission_id} --output plan.yaml",
+            f"graphene plan approve {mission_id} --revision {revision}",
+        ]
+    if isinstance(needs, dict):
+        options = [str(item["value"]) for item in needs.get("options", ())]
+        gate = needs.get("gate_id")
+        if str(gate or "").startswith("final"):
+            return [
+                f"graphene mission result show {mission_id}",
+                f"graphene mission approve-result {mission_id} --bundle-id FINAL_RESULT_ID",
+                f"graphene mission reject-result {mission_id} --bundle-id FINAL_RESULT_ID",
+            ]
+        return [
+            f"graphene mission decide-gate {mission_id} --gate {gate} --decision {item}"
+            for item in options
+        ] or [f"graphene mission status {mission_id}"]
+    if status == "paused":
+        return [f"graphene mission resume {mission_id}"]
+    return [
+        f"graphene mission watch {mission_id} --follow",
+        f"graphene mission cancel {mission_id} --confirm {mission_id}",
+    ]
+
+
+def _frontier_line(value: dict[str, object]) -> str:
+    """What can run now, or — before dispatch — what the graph says would."""
+    tasks = value["tasks"]
+    ready = [str(task["task_id"]) for task in tasks if task["state"] == "ready"]
+    if ready:
+        return "FRONTIER " + ", ".join(ready)
+    open_ids = {
+        str(task["task_id"])
+        for task in tasks
+        if task["state"] not in {"done", "cancelled"}
+    }
+    projected = [
+        str(task["task_id"])
+        for task in tasks
+        if str(task["task_id"]) in open_ids
+        and not (set(task["dependency_ids"]) & open_ids)
+    ]
+    return "FRONTIER ON APPROVAL " + (", ".join(projected) or "none")
+
+
 def _render_status(value: dict[str, object]) -> str:
+    """The orientation view: everything a fresh process needs, from the store.
+
+    No transcript is involved. Approved revision and digest, the route already
+    taken, what can run next, what changed on disk, what scope is still
+    outstanding, the last structured failure, blockers, the decision waiting on
+    a person, and the exact next legal commands — all reduced from committed
+    mission events.
+    """
     mission = value["mission"]
     tasks = value["tasks"]
-    counts: dict[str, int] = {}
+    by_state: dict[str, list[str]] = {}
     for task in tasks:
-        counts[task["state"]] = counts.get(task["state"], 0) + 1
-    rendered = " ".join(f"{key}={counts[key]}" for key in sorted(counts))
-    needs = value.get("needs_you")
-    need_text = needs.get("reason") if isinstance(needs, dict) else "No decision needed"
-    return (
-        f"MISSION {mission['mission_id']} {str(mission['status']).upper()}\n"
-        f"GOAL {mission['goal']}\nTASKS {rendered}\nNEEDS YOU {need_text}\n"
+        by_state.setdefault(str(task["state"]), []).append(str(task["task_id"]))
+    approved = mission.get("approved_plan_revision")
+    lines = [
+        f"MISSION {mission['mission_id']} {str(mission['status']).upper()}",
+        f"GOAL {mission['goal']}",
+        f"PLAN v{mission['plan_revision']} {_short(mission.get('plan_sha256'))} "
+        + (
+            "approved"
+            if approved == mission["plan_revision"]
+            else f"approval: {'none' if approved is None else f'v{approved}'}"
+        ),
+        "ROUTE DONE " + (", ".join(by_state.get("done", ())) or "nothing yet"),
+        _frontier_line(value),
+        "RUNNING " + (", ".join(by_state.get("running", ())) or "none"),
+        "CRITICAL PATH "
+        + (" → ".join(str(item) for item in value.get("critical_path_task_ids", ())) or "none"),
+    ]
+    changed = sorted(
+        {
+            str(path)
+            for item in value.get("publications", ())
+            if item.get("state") == "accepted"
+            for path in item.get("paths", ())
+        }
     )
+    lines.append("CHANGED " + (", ".join(changed) or "nothing accepted yet"))
+    remaining = [
+        f"{task['task_id']}→{','.join(task['write_scope']) or 'nothing'}"
+        for task in tasks
+        if task["state"] not in {"done", "cancelled"} and task["write_scope"]
+    ]
+    lines.append("REMAINING SCOPES " + ("; ".join(remaining) or "none"))
+    failures = [
+        f"{item['task_id']} attempt {item['number']} {item['result_code']}"
+        for item in value.get("attempts", ())
+        if item.get("result_code") not in {None, "passed"}
+    ]
+    lines.append("LAST FAILURE " + (failures[-1] if failures else "none"))
+    blockers = [
+        f"{task['task_id']} — {task['blocker_reason']}"
+        for task in tasks
+        if task.get("blocker_reason")
+    ]
+    lines.extend(f"BLOCKED {item}" for item in blockers or ["none"])
+    needs = value.get("needs_you")
+    if isinstance(needs, dict):
+        decision = needs.get("reason")
+    elif approved != mission["plan_revision"]:
+        # A mission waiting on plan approval is waiting on a person, whatever
+        # the runtime gates say.
+        decision = (
+            f"approve plan v{mission['plan_revision']} on "
+            f"{_short(mission.get('plan_sha256'))}, or revise it first"
+        )
+    else:
+        decision = "No decision needed"
+    lines.append(f"NEEDS YOU {decision}")
+    lines.extend(f"NEXT {item}" for item in _next_legal_actions(value))
+    return "\n".join(lines) + "\n"
 
 
 _WHY_RECEIPT_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
@@ -1909,8 +2256,15 @@ def _render_why_node(node: dict[str, object]) -> str:
 def _render_why(value: dict[str, object]) -> str:
     # The first line is pinned by tests and docs; everything after it is one
     # block per causal link, then explicit unknowns, then the trust statement.
+    approved = value.get("approved_plan_revision")
     lines = [
-        f"WHY {value['mission_id']} {value['query']} matched_by={value['matched_by']}"
+        f"WHY {value['mission_id']} {value['query']} matched_by={value['matched_by']}",
+        f"PLAN v{value['plan_revision']} {_short(value['plan_sha256'])} "
+        + (
+            "approved"
+            if approved == value["plan_revision"]
+            else f"approval: {'none' if approved is None else f'v{approved}'}"
+        ),
     ]
     for link in value["links"]:
         lines.append(f"STAGE {link['stage']} {link['status']}")
@@ -1920,6 +2274,357 @@ def _render_why(value: dict[str, object]) -> str:
     lines.extend(f"UNKNOWN {item}" for item in value["unknowns"])
     lines.append(_WHY_TRUST_LINE)
     return "\n".join(lines) + "\n"
+
+
+def _short(digest: object) -> str:
+    return f"sha256:{str(digest)[:12]}…" if digest else "sha256:none"
+
+
+def _plan_table_rows(value: dict[str, object]) -> list[tuple[str, ...]]:
+    plan = value["plan"]
+    states = value.get("task_states", {})
+    rows: list[tuple[str, ...]] = [
+        ("ID", "STATE", "DEPS", "ROLE", "READ/WRITE", "CHECKS")
+    ]
+    for task in plan["tasks"]:
+        task_id = task["task_id"]
+        rows.append(
+            (
+                task_id,
+                str(states.get(task_id, task["state"])),
+                ",".join(task.get("dependencies", ())) or "-",
+                task["assigned_role"],
+                f"{len(task['read_paths'])} / {len(task['write_paths'])}",
+                str(len(task["acceptance_checks"])),
+            )
+        )
+    return rows
+
+
+def _columns(rows: list[tuple[str, ...]]) -> str:
+    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
+    return "\n".join(
+        "  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)).rstrip()
+        for row in rows
+    )
+
+
+def _render_plan_table(value: dict[str, object]) -> str:
+    """The mission contract, at a glance: what runs, in what order, under what scope."""
+    plan = value["plan"]
+    approved = value.get("approved_revision")
+    revision = value["plan_revision"]
+    lines = [
+        f"Mission: {value['mission_id']}      Base: {str(value['base_sha'])[:12]}      "
+        f"Plan: v{revision} / {_short(value['plan_sha256'])}",
+        "",
+        _columns(_plan_table_rows(value)),
+        "",
+    ]
+    path = value.get("critical_path") or [
+        task["task_id"] for task in plan["tasks"]
+    ][:1]
+    lines.append("Critical path: " + " → ".join(path))
+    frontier = value.get("ready_frontier") or []
+    approval = (
+        f"Needs approval: plan v{revision}"
+        if approved != revision
+        else f"Approved: plan v{revision}"
+    )
+    label = "Frontier on approval" if value.get("frontier_is_projected") else "Ready frontier"
+    lines.append(
+        f"{label}: {', '.join(frontier) or 'none'}          {approval}"
+    )
+    blockers = value.get("task_blockers") or {}
+    lines.extend(f"Blocked: {key} — {item}" for key, item in sorted(blockers.items()))
+    needs = value.get("needs_you")
+    if isinstance(needs, dict):
+        lines.append(f"Needs you: {needs.get('question') or needs.get('gate_id')}")
+    lines.append(f"Inspect one node: graphene plan show {value['mission_id']} --detail")
+    return "\n".join(lines) + "\n"
+
+
+def _render_node_contract(task: dict[str, object], value: dict[str, object]) -> str:
+    """Everything the approved node authorizes — nothing summarized away."""
+    states = value.get("task_states", {})
+    budget = value.get("resource_budget") or {}
+    lines = [
+        f"NODE {task['task_id']}  {task['kind']}  "
+        f"state={states.get(task['task_id'], task['state'])}",
+        f"  title            {task['title']}",
+        f"  contract         {task['contract']}",
+        "  outcome owned    "
+        + "; ".join(
+            f"{item['name']}:{item['kind']}"
+            + (f" -> {', '.join(item['paths'])}" if item["paths"] else "")
+            for item in task["expected_outputs"]
+        ),
+        f"  requires         {', '.join(task['dependencies']) or 'nothing'}",
+        "  consumes         "
+        + (
+            "; ".join(
+                f"{item['producer_task_id']}/{item['name']}:{item['kind']}"
+                for item in task["inputs"]
+            )
+            or "nothing"
+        ),
+        f"  read scope       {', '.join(task['read_paths'])}",
+        f"  write scope      {', '.join(task['write_paths']) or 'nothing'}",
+        f"  allowed commands {', '.join(task['allowed_commands'])}",
+        f"  acceptance       {', '.join(task['acceptance_checks'])}",
+        f"  role             {task['assigned_role']}",
+        f"  attempts         {task['attempt_count']} of {task['attempt_limit']}",
+        f"  priority         {task['priority']}",
+        f"  evidence         {task['evidence_adapter']} "
+        f"(attempt evidence, trusted check receipt)",
+        f"  bound to         mission {value['mission_id']} base "
+        f"{str(value['base_sha'])[:12]} plan v{value['plan_revision']} "
+        f"{_short(value['plan_sha256'])}",
+    ]
+    if budget:
+        lines.append(
+            f"  mission budget   {budget.get('max_worker_seconds')}s worker time, "
+            f"{budget.get('max_attempts')} attempts, "
+            f"{budget.get('max_artifact_bytes')} artifact bytes"
+        )
+    blocker = (value.get("task_blockers") or {}).get(task["task_id"])
+    if blocker:
+        lines.append(f"  blocker          {blocker}")
+    return "\n".join(lines)
+
+
+def _render_plan_detail(value: dict[str, object]) -> str:
+    plan = value["plan"]
+    lines = [
+        f"Mission: {value['mission_id']}      Base: {str(value['base_sha'])[:12]}      "
+        f"Plan: v{value['plan_revision']} / {_short(value['plan_sha256'])}",
+        f"Goal: {value['goal']}",
+        "",
+    ]
+    for criterion in plan.get("criteria", ()):
+        lines.append(
+            f"CRITERION {criterion['criterion_id']}  {criterion['description']}"
+        )
+        lines.append(
+            f"  produced by      {', '.join(criterion['producer_task_ids']) or 'none'}"
+        )
+        lines.append(
+            f"  verified by      {criterion['verification_kind']} "
+            f"{criterion['verifier_task_id'] or 'human gate'}"
+        )
+    lines.append("")
+    for task in plan["tasks"]:
+        lines.append(_render_node_contract(task, value))
+        lines.append("")
+    lines.append(
+        f"Human gate: this plan cannot dispatch until revision {value['plan_revision']} "
+        f"is approved on {_short(value['plan_sha256'])}."
+        if value.get("approved_revision") != value["plan_revision"]
+        else f"Approved: revision {value['plan_revision']} on "
+        f"{_short(value['plan_sha256'])}."
+    )
+    return "\n".join(lines) + "\n"
+
+
+_SCOPE_FIELDS = ("read_paths", "write_paths", "allowed_commands", "acceptance_checks")
+_EDGE_FIELDS = ("dependencies", "inputs")
+
+
+def _item_label(item: object) -> str:
+    """A short identity for a structured list entry, not its whole dump."""
+    if not isinstance(item, dict):
+        return str(item)
+    for keys in (
+        ("producer_task_id", "name", "kind"),
+        ("name", "kind"),
+        ("criterion_id",),
+        ("task_id",),
+    ):
+        if all(key in item for key in keys):
+            return "/".join(str(item[key]) for key in keys)
+    return ",".join(f"{key}={item[key]}" for key in sorted(item))
+
+
+def _list_change(field: str, before: list[object], after: list[object]) -> str:
+    old_by_label = {_item_label(item): item for item in before}
+    new_by_label = {_item_label(item): item for item in after}
+    added = sorted(new_by_label.keys() - old_by_label.keys())
+    removed = sorted(old_by_label.keys() - new_by_label.keys())
+    altered = sorted(
+        label
+        for label in old_by_label.keys() & new_by_label.keys()
+        if old_by_label[label] != new_by_label[label]
+    )
+    parts = [
+        *(f"+{label}" for label in added),
+        *(f"-{label}" for label in removed),
+        *(f"~{label}" for label in altered),
+    ]
+    detail = ", ".join(parts)
+    # A scope that only grew is the change a reviewer must not miss.
+    widened = field in _SCOPE_FIELDS and added and not removed
+    return f"{detail}{'  ** SCOPE EXPANSION **' if widened else ''}"
+
+
+def _field_change(before: dict[str, object], after: dict[str, object]) -> list[str]:
+    """Name the fields that moved, and say when a scope grew."""
+    lines: list[str] = []
+    for field in sorted(set(before) | set(after)):
+        if before.get(field) == after.get(field):
+            continue
+        old, new = before.get(field), after.get(field)
+        if isinstance(old, list) and isinstance(new, list):
+            kind = "edge" if field in _EDGE_FIELDS else "field"
+            lines.append(f"    {kind} {field}: {_list_change(field, old, new)}")
+        else:
+            lines.append(f"    field {field}: {old!r} -> {new!r}")
+    return lines
+
+
+def _render_plan_diff(value: dict[str, object]) -> str:
+    """What changed between two revisions, in the terms a person edited."""
+    lines = [
+        f"PLAN DIFF {value['mission_id']} "
+        f"v{value['previous_plan_revision']} -> v{value['plan_revision']}",
+        f"  from {_short(value['previous_plan_sha256'])} "
+        f"to {_short(value['plan_sha256'])}",
+    ]
+    concurrency = value["max_concurrency"]
+    if concurrency["before"] != concurrency["after"]:
+        lines.append(
+            f"  max_concurrency {concurrency['before']} -> {concurrency['after']}"
+        )
+    for section in ("tasks", "criteria"):
+        label = "NODE" if section == "tasks" else "CRITERION"
+        key = "task_id" if section == "tasks" else "criterion_id"
+        block = value[section]
+        for item in block["added"]:
+            lines.append(f"  + {label} {item[key]} added")
+            if section == "tasks":
+                lines.append(
+                    f"    writes {', '.join(item['write_paths']) or 'nothing'}; "
+                    f"needs {', '.join(item['dependencies']) or 'nothing'}"
+                )
+        for item in block["removed"]:
+            lines.append(f"  - {label} {item[key]} removed")
+        for item in block["changed"]:
+            lines.append(f"  ~ {label} {item['after'][key]} changed")
+            lines.extend(_field_change(item["before"], item["after"]))
+    if len(lines) == 2:
+        lines.append("  no change")
+    lines.append(
+        f"  approve this revision: graphene plan approve {value['mission_id']} "
+        f"--revision {value['plan_revision']}"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _render_plan_revised(value: dict[str, object]) -> str:
+    return (
+        f"PLAN REVISED {value['mission_id']} "
+        f"v{value['previous_plan_revision']} -> v{value['plan_revision']} "
+        f"{_short(value['plan_sha256'])}\n"
+        f"Not approved yet — the new digest needs its own approval.\n"
+        f"  graphene plan diff {value['mission_id']} "
+        f"{value['previous_plan_revision']} {value['plan_revision']}\n"
+        f"  graphene plan lint {value['mission_id']}\n"
+        f"  graphene plan approve {value['mission_id']} "
+        f"--revision {value['plan_revision']}\n"
+    )
+
+
+_PLAN_ACTIONS = frozenset(
+    {"approve", "diff", "edit", "export", "lint", "revise", "show"}
+)
+
+
+def _plan_action(args: argparse.Namespace) -> tuple[int, object | None]:
+    """The plan verb's actions: inspect, export, revise, lint, diff, approve.
+
+    One shape for all of them — an exact target, no planning options, and a
+    refusal rather than a guess when the arguments do not name one thing.
+    """
+    action = args.goal
+    if (
+        args.repo is not None
+        or args.success_criteria
+        or args.driver != "gemini-adk"
+        or args.max_workers != 2
+        or args.open_viewer
+    ):
+        raise MissionCliError(f"plan {action} does not accept planning options")
+    if args.plan_id is None:
+        raise MissionCliError(
+            f"plan {action} requires "
+            + ("an edited plan file" if action == "revise" else "a mission ID")
+        )
+    if action != "diff" and (
+        args.previous_revision is not None or args.target_revision is not None
+    ):
+        raise MissionCliError(f"plan {action} does not accept revision arguments")
+    if action != "export" and args.output is not None:
+        raise MissionCliError(f"plan {action} does not accept --output")
+    if action not in {"approve", "show"} and args.detail:
+        raise MissionCliError(f"plan {action} does not accept --detail")
+
+    if action == "diff":
+        if args.previous_revision is None or args.target_revision is None:
+            raise MissionCliError("plan diff requires a mission ID and two revisions")
+        return 0, _plan_diff_value(
+            args.plan_id, args.previous_revision, args.target_revision
+        )
+    if action == "show":
+        return 0, _plan_show_value(args.plan_id)
+    if action == "export":
+        return 0, _plan_export_value(args.plan_id, args.output)
+    if action == "revise":
+        return 0, _plan_revise_value(Path(args.plan_id))
+    if action == "edit":
+        return 0, _plan_edit_value(args.plan_id)
+    if action == "approve":
+        if args.revision is None:
+            raise MissionCliError("plan approve requires --revision")
+        args.mission_id = args.plan_id
+        args.mission_action = "approve-plan"
+        return 0, _mutate(args)
+    value = _plan_lint_value(args.plan_id)
+    return (0 if value["valid"] else 1), value
+
+
+def _plan_edit_value(mission_id: str) -> dict[str, object]:
+    """Open the canonical export in $EDITOR, then take the same revise path.
+
+    A convenience over `export` + edit + `revise`, not a second way to change
+    a plan: it writes the same YAML and calls the same compiler.
+    """
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        raise MissionCliError(
+            "plan edit needs $EDITOR or $VISUAL; use plan export and plan revise"
+        )
+    exported = _plan_export_value(mission_id, None)
+    directory = _state_root() / "plan-edits"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / f"{mission_id}-v{exported['plan_revision']}.yaml"
+    if path.exists() or path.is_symlink():
+        path.unlink()
+    _atomic_create(path, str(exported["document"]).encode())
+    completed = subprocess.run([*shlex.split(editor), str(path)], check=False)
+    if completed.returncode != 0:
+        raise MissionCliError("the editor exited non-zero; the plan was not revised")
+    return _plan_revise_value(path)
+
+
+def _render_plan_export(value: dict[str, object]) -> str:
+    """Either the document itself, or where it was written."""
+    if value.get("exported_to"):
+        return (
+            f"PLAN EXPORTED {value['mission_id']} v{value['plan_revision']} "
+            f"{_short(value['plan_sha256'])}\n"
+            f"  {value['exported_to']}\n"
+            f"  edit it, then: graphene plan revise {value['exported_to']}\n"
+        )
+    return str(value["document"])
 
 
 def _render_plan_lint(value: dict[str, object]) -> str:
@@ -4782,6 +5487,16 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             args.rationale,
         )
         if snapshot.mission.creation_source == "scripted_fixture":
+            if snapshot.plan.revision != 1:
+                # scripted-local replays a recorded fixture keyed to the exact
+                # fixture plan. Approving an edited revision here would move the
+                # mission to RUNNING and only then discover that no scripted
+                # worker exists for it, leaving a mission nobody can finish.
+                raise MissionCliError(
+                    "scripted-local replays a recorded fixture and cannot execute an "
+                    "edited plan; propose the mission with --driver gemini-adk to run "
+                    "a revised plan"
+                )
             if not scripted_supported():
                 raise MissionCliError(
                     "scripted-local execution is unavailable because the fixture sandbox is not proven on this host"
@@ -4890,44 +5605,18 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
     if args.command == "doctor":
         return 0, doctor(args.repo)
     if args.command == "plan":
-        if args.goal in {"diff", "lint", "show"}:
-            if (
-                args.repo is not None
-                or args.success_criteria
-                or args.driver != "gemini-adk"
-                or args.max_workers != 2
-                or args.command_id is not None
-                or args.open_viewer
-            ):
-                raise MissionCliError(
-                    f"plan {args.goal} does not accept planning options"
-                )
-            if args.plan_id is None:
-                raise MissionCliError(f"plan {args.goal} requires a mission ID")
-            if args.goal == "diff":
-                if args.previous_revision is None or args.revision is None:
-                    raise MissionCliError(
-                        "plan diff requires a mission ID and two revisions"
-                    )
-                return 0, _plan_diff_value(
-                    args.plan_id, args.previous_revision, args.revision
-                )
-            if args.previous_revision is not None or args.revision is not None:
-                raise MissionCliError(
-                    f"plan {args.goal} does not accept revision arguments"
-                )
-            if args.goal == "show":
-                return 0, _plan_show_value(args.plan_id)
-            value = _plan_lint_value(args.plan_id)
-            return (0 if value["valid"] else 1), value
+        if args.goal in _PLAN_ACTIONS:
+            return _plan_action(args)
         if (
             args.plan_id is not None
             or args.previous_revision is not None
-            or args.revision is not None
+            or args.target_revision is not None
         ):
             raise MissionCliError("multi-word plan goals must be quoted")
         if args.repo is None:
             raise MissionCliError("plan requires --repo")
+        if args.detail or args.output is not None or args.revision is not None:
+            raise MissionCliError("proposing a plan does not accept action options")
         return 0, _start(args)
     if args.command == "status":
         return 0, _status_value(args.mission_id)
@@ -5101,10 +5790,31 @@ def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
                 sys.stdout.write(_render_capsule_verify(value))
             elif args.command == "plan" and args.goal == "lint":
                 sys.stdout.write(_render_plan_lint(value))
-            elif args.command == "plan" and args.goal in {"diff", "show"}:
-                sys.stdout.write(canonical_json_bytes(value).decode() + "\n")
+            elif args.command == "plan" and args.goal == "diff":
+                sys.stdout.write(_render_plan_diff(value))
+            elif args.command == "plan" and args.goal in {"edit", "revise"}:
+                sys.stdout.write(_render_plan_revised(value))
+            elif args.command == "plan" and args.goal == "export":
+                sys.stdout.write(_render_plan_export(value))
+            elif args.command == "plan" and args.goal == "show":
+                sys.stdout.write(
+                    _render_plan_detail(value)
+                    if args.detail
+                    else _render_plan_table(value)
+                )
             elif args.command == "why":
                 sys.stdout.write(_render_why(value))
+            elif (
+                args.command == "plan"
+                and args.goal not in _PLAN_ACTIONS
+                and isinstance(value, dict)
+                and value.get("mission_id")
+            ):
+                # A proposal prints the contract it just compiled, not an
+                # identifier the user then has to go look up.
+                sys.stdout.write(_render_plan_table(_plan_show_value(
+                    str(value["mission_id"])
+                )))
             else:
                 fields = " ".join(
                     f"{key}={item}"

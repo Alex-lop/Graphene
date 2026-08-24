@@ -97,10 +97,23 @@ def _stub_snapshot(
     needs_you: object = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        mission=SimpleNamespace(goal="Stub goal", status=status),
+        mission=SimpleNamespace(
+            goal="Stub goal",
+            status=status,
+            plan_revision=2,
+            plan_sha256="a" * 64,
+            approved_plan_revision=2,
+        ),
         tasks=tasks
         if tasks is not None
-        else (SimpleNamespace(task_id="assemble", state="blocked"),),
+        else (
+            SimpleNamespace(
+                task_id="assemble",
+                state="blocked",
+                dependency_ids=("work-a",),
+                blocker_reason=None,
+            ),
+        ),
         attempts=(),
         needs_you=needs_you,
         result=SimpleNamespace(summary="isolated commit pending"),

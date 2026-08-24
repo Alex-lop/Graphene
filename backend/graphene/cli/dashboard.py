@@ -62,6 +62,8 @@ class TaskRow:
     glyph: str
     attempt: int
     fence: int
+    deps: tuple[str, ...] = ()
+    blocker: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +75,12 @@ class Frame:
     rows: tuple[TaskRow, ...]
     latest: str | None
     result: str
+    # The overlay: which exact plan these rows belong to, and whether a
+    # person approved it. Without these the dashboard shows activity without
+    # saying what it is activity against.
+    plan_revision: int = 1
+    plan_sha256: str = ""
+    plan_approved: bool = False
     # The mission cannot advance without a person: a gate is open, or it is
     # awaiting the final decision. Following past this point is just polling.
     waiting: bool = False
@@ -120,6 +128,8 @@ def build_frame(
             glyph=_STATES.get(task.state, (task.state, "○"))[1],
             attempt=latest_attempts.get(task.task_id, (0, 0))[0],
             fence=latest_attempts.get(task.task_id, (0, 0))[1],
+            deps=tuple(task.dependency_ids),
+            blocker=task.blocker_reason,
         )
         for task in snapshot.tasks
     )
@@ -134,6 +144,11 @@ def build_frame(
         waiting=(
             snapshot.needs_you is not None
             or snapshot.mission.status == MissionStatus.AWAITING_RESULT.value
+        ),
+        plan_revision=snapshot.mission.plan_revision,
+        plan_sha256=snapshot.mission.plan_sha256 or "",
+        plan_approved=(
+            snapshot.mission.approved_plan_revision == snapshot.mission.plan_revision
         ),
     )
 
@@ -157,12 +172,27 @@ def _header(frame: Frame) -> str:
     return "GOAL " + _fit(frame.goal, max(8, 80 - 5 - len(tail))) + tail
 
 
-def _cells(row: TaskRow) -> tuple[str, str, str, str]:
+def _plan_line(frame: Frame) -> str:
+    """Which revision is running, and whether it was approved."""
+    approval = "approved" if frame.plan_approved else "NEEDS APPROVAL"
+    digest = f"sha256:{frame.plan_sha256[:12]}…" if frame.plan_sha256 else "sha256:—"
+    frontier = ", ".join(
+        row.task_id for row in frame.rows if row.state == "ready"
+    )
+    return (
+        f"PLAN v{frame.plan_revision} {digest} {approval}"
+        f" | FRONTIER {frontier or '—'}"
+    )
+
+
+def _cells(row: TaskRow) -> tuple[str, str, str, str, str]:
+    needs = ",".join(row.deps)
     return (
         row.task_id,
         f"{row.glyph} {row.state}",
         f"attempt {row.attempt or '—'}",
         f"fence {row.fence or '—'}",
+        f"needs {needs}" if needs else "",
     )
 
 
@@ -172,6 +202,7 @@ def render_frame(frame: Frame) -> RenderableType:
         table.add_row(*_cells(row))
     return Group(
         Text(_header(frame)),
+        Text(_plan_line(frame)),
         table,
         Text(f"Latest: {frame.latest or '—'}"),
         Text(f"Result: {frame.result}"),
@@ -181,10 +212,13 @@ def render_frame(frame: Frame) -> RenderableType:
 def render_plain(frame: Frame) -> str:
     """ANSI-free rendering for pipes and tests: one line per element."""
     width = max((len(row.task_id) for row in frame.rows), default=0)
-    lines = [_header(frame)]
+    lines = [_header(frame), _plan_line(frame)]
     for row in frame.rows:
-        task_id, state, attempt, fence = _cells(row)
-        lines.append(f"{task_id:<{width}}  {state:<10}  {attempt}  {fence}")
+        task_id, state, attempt, fence, needs = _cells(row)
+        lines.append(
+            f"{task_id:<{width}}  {state:<10}  {attempt}  {fence}"
+            + (f"  {needs}" if needs else "")
+        )
     lines.append(f"Latest: {frame.latest or '—'}")
     lines.append(f"Result: {frame.result}")
     return "\n".join(lines)

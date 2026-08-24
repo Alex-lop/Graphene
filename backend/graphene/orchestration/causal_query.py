@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from ..hashing import canonical_json_sha256
 from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
 from .models import (
     ArtifactPublication,
@@ -74,11 +75,26 @@ class CausalWhyResult(FrozenModel):
     matched_by: Literal["path", "identifier", "none"]
     snapshot_sha256: Sha256
     event_head_sha256: Sha256 | None
+    # An answer about a file is an answer about the plan it was produced
+    # under. Naming the revision and its digest is what lets a reader check
+    # that the work followed the graph a person actually approved.
+    plan_revision: int = Field(ge=1)
+    plan_sha256: Sha256
+    approved_plan_revision: int | None = Field(default=None, ge=1)
     links: tuple[CausalLink, ...]
     unknowns: tuple[BoundedText, ...]
 
 
 ReferenceExists = Callable[[EvidenceReference], bool | None]
+
+
+def _approved_revision(events: Sequence[MissionEvent]) -> int | None:
+    """The revision the last approval named, or None if none has been given."""
+    for event in reversed(tuple(events)):
+        if event.event_type == MissionEventType.PLAN_APPROVED:
+            revision = event.payload.get("plan_revision")
+            return revision if isinstance(revision, int) else None
+    return None
 
 
 def _validated_events(
@@ -320,6 +336,9 @@ def why(
             matched_by="none",
             snapshot_sha256=snapshot.snapshot_sha256,
             event_head_sha256=snapshot.head.event_sha256,
+            plan_revision=snapshot.plan.revision,
+            plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
+            approved_plan_revision=_approved_revision(committed),
             links=links,
             unknowns=tuple(sorted(set(unknowns))),
         )
@@ -583,6 +602,9 @@ def why(
         matched_by=matched_by,
         snapshot_sha256=snapshot.snapshot_sha256,
         event_head_sha256=snapshot.head.event_sha256,
+        plan_revision=snapshot.plan.revision,
+        plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
+        approved_plan_revision=_approved_revision(committed),
         links=tuple(links),
         unknowns=tuple(sorted(set(unknowns))),
     )

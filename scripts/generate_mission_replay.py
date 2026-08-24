@@ -282,6 +282,10 @@ def snapshot(
         ),
         status=mission_status,
         plan_revision=1,
+        # The fixture is a mission that was approved at revision 1, so the
+        # replay says so rather than leaving the reader to assume it.
+        plan_sha256=digest("mission-plan:1"),
+        approved_plan_revision=1,
         outcome="Verified isolated result available."
         if mission_status == "completed"
         else None,

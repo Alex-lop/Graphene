@@ -181,6 +181,9 @@ def test_mission_handle_honours_local_json_flag(
         "mission_id": "mission_1",
         "query": "app/a.py",
         "matched_by": "none",
+        "plan_revision": 1,
+        "plan_sha256": "cd" * 32,
+        "approved_plan_revision": None,
         "links": [],
         "unknowns": ["No committed publication or artifact matches app/a.py."],
     }
@@ -200,6 +203,7 @@ def test_mission_handle_honours_local_json_flag(
     assert captured.err == ""
     assert captured.out == (
         "WHY mission_1 app/a.py matched_by=none\n"
+        "PLAN v1 sha256:cdcdcdcdcdcd… approval: none\n"
         "UNKNOWN No committed publication or artifact matches app/a.py.\n"
         f"{TRUST_LINE}\n"
     )
@@ -211,6 +215,9 @@ def test_render_why_labels_receipts_nodes_events_and_unknowns() -> None:
         "mission_id": "mission_1",
         "query": "app/a.py",
         "matched_by": "path",
+        "plan_revision": 2,
+        "plan_sha256": digest,
+        "approved_plan_revision": 2,
         "links": [
             {
                 "stage": "target",
@@ -301,6 +308,7 @@ def test_render_why_labels_receipts_nodes_events_and_unknowns() -> None:
 
     assert rendered == (
         "WHY mission_1 app/a.py matched_by=path\n"
+        "PLAN v2 sha256:abababababab… approved\n"
         "STAGE target established\n"
         "  node publication pub_1 kind=patch task=task_a attempt=attempt_1 "
         "worker=none attempt_number=none fence=none sha256=abababababab\n"
