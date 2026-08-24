@@ -53,12 +53,21 @@ digest under a pre-authorized bounded policy, runs the mission while it renders
 the dashboard, and finishes with the result, the feature, and `why`. One
 terminal, one pause, no `sed`, no hand-driven steps.
 
-For a rehearsal that does not wait on a person, prepare the edit first and pass
-it in — the same revise/lint/diff/approve path runs either way:
+For a rehearsal that does not wait on a person, hand it a command that makes
+the edit. The command is run as `COMMAND <exported-plan>`, so it transforms the
+plan the live planner actually returned — which is the only thing that can
+work, because that plan is not known until the run is underway. Everything
+after the edit is the same code the filmed take runs:
 
 ```bash
-uv run --frozen graphene demo --live --plan-edit /path/to/edited-plan.yaml
+uv run --frozen graphene demo --live \
+  --plan-edit "uv run --frozen python scripts/demo_plan_edit.py"
 ```
+
+`scripts/demo_plan_edit.py` gives one worker read access to the file another
+worker owns — a scope expansion, which is exactly what `plan diff` is built to
+make impossible to miss. If the command leaves the plan unchanged, or exits
+non-zero, the demo stops rather than approving anything.
 
 ### What appears, and what to say over it
 

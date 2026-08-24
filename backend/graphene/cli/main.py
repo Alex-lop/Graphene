@@ -269,11 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     demo.add_argument(
         "--plan-edit",
-        type=Path,
+        metavar="COMMAND",
         help=(
-            "supply an already-edited plan export instead of waiting for a "
-            "person; the same revise/lint/diff/approve path runs either way, "
-            "so rehearsals exercise exactly what the filmed take does"
+            "run COMMAND <exported-plan> instead of waiting for a person to "
+            "edit it; the same revise/lint/diff/approve path runs either way, "
+            "so a rehearsal exercises exactly what the filmed take does"
         ),
     )
     demo.add_argument("--speed", type=_positive_number, default=1.0)
@@ -1586,7 +1586,7 @@ def main(argv: list[str] | None = None) -> int:
                 target_root=root / "target",
                 inbox=inbox,
                 console=Console(),
-                edited_plan=args.plan_edit,
+                edit_command=args.plan_edit,
             )
         try:
             return run_demo(

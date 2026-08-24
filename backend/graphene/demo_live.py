@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -183,15 +184,17 @@ def _edit_plan(
     console: Console,
     mission_id: str,
     *,
-    edited_plan: Path | None,
+    edit_command: str | None,
     prompt: Callable[[str], str],
 ) -> int:
     """Pause for the user's edit, then compile, lint, and diff the revision.
 
     This is the beat the product exists for, so it is the only place the demo
-    stops. `--plan-edit FILE` supplies an already-edited export instead of
-    waiting on a person, which is how the rehearsals run the same code path
-    three times without a human in the loop.
+    stops. `--plan-edit COMMAND` runs `COMMAND <exported-plan>` instead of
+    waiting on a person — the plan a live planner returns is not known until
+    the run is underway, so a rehearsal has to *transform* the real export
+    rather than substitute a file written in advance. Everything after the
+    edit is the same code either way.
     """
     from .cli.mission import (
         _plan_diff_value,
@@ -208,11 +211,29 @@ def _edit_plan(
     export.unlink(missing_ok=True)
     _plan_export_value(mission_id, export)
     _say(console, f"The plan is yours to change. It is exported to {export}.")
-    if edited_plan is not None:
-        export.write_text(Path(edited_plan).read_text())
-        _say(console, f"Applying the prepared edit from {edited_plan}.")
+    before = export.read_text()
+    if edit_command is not None:
+        _say(console, f"Applying the prepared edit: {edit_command}")
+        edited = subprocess.run(
+            [*shlex.split(edit_command), str(export)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if edited.returncode:
+            raise _DemoError(
+                "The prepared edit failed; nothing was revised or approved."
+            )
+        for line in edited.stdout.splitlines():
+            _say(console, "  " + line)
     else:
         prompt("Edit it, then press Enter to compile the revision: ")
+    if export.read_text() == before:
+        raise _DemoError(
+            "The plan was not changed, so there is no revision to approve."
+        )
     result = _plan_revise_value(export)
     next_revision = int(result["plan_revision"])
     _say(
@@ -403,7 +424,7 @@ def run_live_demo(
     clock: Callable[[], float] = time.monotonic,
     inject_check_fault: bool = True,
     stdout: IO[str] | None = None,
-    edited_plan: Path | None = None,
+    edit_command: str | None = None,
     prompt: Callable[[str], str] = input,
 ) -> int:
     # The materializer's own chatter is captured, not printed: a one-take demo
@@ -429,7 +450,7 @@ def run_live_demo(
         _print_plan(console, target.goal, mission_id)
         _print_node(console, mission_id, _frontier_node(mission_id))
         revision = _edit_plan(
-            console, mission_id, edited_plan=edited_plan, prompt=prompt
+            console, mission_id, edit_command=edit_command, prompt=prompt
         )
         _say(
             console,

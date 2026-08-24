@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import sys
+
 import pytest
 from rich.console import Console
 
@@ -122,7 +124,7 @@ def _drive(
     monkeypatch.setattr(demo_live, "_print_node", lambda *args: None)
     edit_calls: list[str] = []
 
-    def fake_edit(console, mission_id, *, edited_plan, prompt):
+    def fake_edit(console, mission_id, *, edit_command, prompt):
         edit_calls.append(mission_id)
         console.print("PLAN REVISED mission_start_demo v1 -> v2", markup=False)
         return 2
@@ -260,8 +262,13 @@ def test_the_edit_beat_revises_lints_diffs_and_never_approves_by_itself(
     from graphene.cli import mission as mission_cli
 
     calls: list[str] = []
-    supplied = tmp_path / "edited.yaml"
-    supplied.write_text("edited-plan-document\n")
+    editor = tmp_path / "edit.py"
+    editor.write_text(
+        "import pathlib, sys\n"
+        "path = pathlib.Path(sys.argv[1])\n"
+        "path.write_text('edited-plan-document\\n')\n"
+        "print('edited render_json: read scope gained b.py')\n"
+    )
 
     def fake_export(mission_id: str, output):
         calls.append("export")
@@ -325,8 +332,8 @@ def test_the_edit_beat_revises_lints_diffs_and_never_approves_by_itself(
     revision = demo_live._edit_plan(
         _console(),
         "mission_start_demo",
-        edited_plan=supplied,
-        prompt=lambda text: pytest.fail("a supplied edit must not wait on a person"),
+        edit_command=f"{sys.executable} {editor}",
+        prompt=lambda text: pytest.fail("a prepared edit must not wait on a person"),
     )
 
     out = capsys.readouterr().out
@@ -337,5 +344,8 @@ def test_the_edit_beat_revises_lints_diffs_and_never_approves_by_itself(
     assert "PLAN DIFF mission_start_demo v1 -> v2" in out
     # The beat stops at the diff. Approval is the next, separate act.
     assert "approve this revision" in out
+    # The edit command's own report reaches the screen, so the take shows what
+    # changed rather than a silent transformation.
+    assert "edited render_json: read scope gained b.py" in out
     for line in out.splitlines():
         assert not line.lstrip().startswith("{")

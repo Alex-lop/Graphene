@@ -39,14 +39,30 @@ def widen_one_read_scope(document: str) -> tuple[str, str, tuple[str, ...]]:
     work = [task for task in plan.tasks if task.kind.value == "work"]
     if len(work) < 2:
         raise SystemExit("the plan has fewer than two work nodes to relate")
-    # Deterministic choice: the first work node in plan order reads what the
-    # last one writes.
-    reader, writer = work[0], work[-1]
-    gained = tuple(
-        path for path in writer.write_paths if path not in reader.read_paths
+    # Deterministic but not brittle: take the first ordered pair, in plan
+    # order, where the reader would actually gain something. A live planner
+    # does not promise any particular pairing, and a rehearsal that dies
+    # because the first pair happened to overlap is a rehearsal of nothing.
+    pair = next(
+        (
+            (reader, writer, gained)
+            for reader in work
+            for writer in work
+            if reader.task_id != writer.task_id
+            for gained in (
+                tuple(
+                    path
+                    for path in writer.write_paths
+                    if path not in reader.read_paths
+                ),
+            )
+            if gained
+        ),
+        None,
     )
-    if not gained:
-        raise SystemExit(f"{reader.task_id} already reads everything {writer.task_id} writes")
+    if pair is None:
+        raise SystemExit("every work node already reads what the others write")
+    reader, writer, gained = pair
     tasks = []
     for task in plan.tasks:
         value = task.model_dump(mode="json")
