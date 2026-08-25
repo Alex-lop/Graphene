@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import signal
 import stat
@@ -77,6 +78,33 @@ def _process_identity(pid: int) -> tuple[int, str, str, str]:
 # accepted only for a child that was recorded under one of these wrappers.
 _EXEC_IN_PLACE_WRAPPERS = frozenset({"/usr/bin/sandbox-exec"})
 
+# python.org's macOS framework build ships ``bin/python3.x`` as a launcher that
+# execs ``Resources/Python.app/Contents/MacOS/Python`` in place, so a child
+# started through that interpreter -- or a venv symlink to it -- is reported
+# under the app binary a few milliseconds after Popen returns. The GitHub macOS
+# runner's toolcache interpreter is exactly this build; Homebrew, uv and
+# Anaconda interpreters are not, which is why the refusal only reproduced in CI.
+_FRAMEWORK_LAUNCHER = re.compile(
+    r"(?P<framework>.*/Python\.framework/Versions/[^/]+)/bin/python[0-9.]*t?(-intel64)?$"
+)
+_FRAMEWORK_APP_BINARY = "/Resources/Python.app/Contents/MacOS/Python"
+
+
+def _expected_images(executable: str) -> frozenset[str] | None:
+    """Every image a child launched as ``executable`` may legitimately report.
+
+    ``None`` means any image: the executable is a wrapper that execs an
+    arbitrary command in place.
+    """
+    if executable in _EXEC_IN_PLACE_WRAPPERS:
+        return None
+    real = os.path.realpath(executable)
+    images = {executable, real}
+    match = _FRAMEWORK_LAUNCHER.match(real)
+    if match:
+        images.add(match.group("framework") + _FRAMEWORK_APP_BINARY)
+    return frozenset(images)
+
 
 class OwnedProcessRegistry:
     """Private identity records for Graphene-created process-group leaders."""
@@ -121,6 +149,14 @@ class OwnedProcessRegistry:
             or any(character in observed_executable for character in "\0\n\r")
         ):
             raise ProcessControlError("owned process identity is invalid")
+        if observed_executable.startswith("(") and observed_executable.endswith(")"):
+            # BSD ps parenthesises comm while the child is still replacing its
+            # image, which is exactly when a launcher that execs in place gets
+            # recorded under load. We launched this child with ``executable``
+            # as argv[0] a moment ago, so that is the better fact; whatever it
+            # becomes is judged later by _live_identity against the images that
+            # launcher is allowed to turn into.
+            observed_executable = executable
         if pgid != process.pid:
             raise ProcessControlError(
                 "child process did not establish its owned process group"
@@ -244,11 +280,14 @@ class OwnedProcessRegistry:
             return False
         if (pgid, started_at) != (owned.pgid, owned.started_at):
             raise ProcessControlError("owned process identity changed")
-        if (
-            executable != owned.executable
-            and owned.executable not in _EXEC_IN_PLACE_WRAPPERS
-        ):
-            raise ProcessControlError("owned process identity changed")
+        if executable != owned.executable:
+            images = _expected_images(owned.executable)
+            if (
+                images is not None
+                and executable not in images
+                and os.path.realpath(executable) not in images
+            ):
+                raise ProcessControlError("owned process identity changed")
         return True
 
     def has_record(self, attempt_id: str) -> bool:

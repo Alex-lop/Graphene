@@ -362,6 +362,152 @@ def test_exec_in_place_wrapper_keeps_identity_and_signals(tmp_path: Path) -> Non
             process.wait(timeout=2)
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="BSD ps semantics required")
+def test_framework_python_launcher_is_reidentified_under_its_app_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """python.org's framework ``bin/python3.x`` execs Python.app in place.
+
+    A child started through that interpreter (or a venv symlink to it) is
+    recorded under the path it was launched as and reported under
+    ``Resources/Python.app/Contents/MacOS/Python`` a few milliseconds later.
+    The registry refused every later validate/signal for such a child, so the
+    scripted worker could not reconcile an interrupted attempt on the GitHub
+    macOS runner -- the one place the framework build is the interpreter.
+    The layout is faked so this is red at baseline on every macOS host, not
+    only on one that has python.org's build installed.
+    """
+
+    from graphene.orchestration import process_control
+
+    # The launcher is a real file, as the Mach-O one is: realpath of the venv
+    # symlink must stop inside the framework, not skip through to /bin/sleep.
+    framework = Path(os.path.realpath(tmp_path)) / "Python.framework/Versions/3.13"
+    launcher = framework / "bin" / "python3.13"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text('#!/bin/sh\nexec /bin/sleep "$@"\n', encoding="utf-8")
+    launcher.chmod(0o755)
+    venv_python = tmp_path / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.symlink_to(launcher)
+    app_binary = str(framework / "Resources/Python.app/Contents/MacOS/Python")
+
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen((str(venv_python), "30"), start_new_session=True)
+    try:
+        real_identity = process_control._process_identity
+
+        # What the runner's ps reported at record time: the launched path.
+        def before_exec(pid: int):
+            pgid, started_at, state, _ = real_identity(pid)
+            return pgid, started_at, state, str(venv_python)
+
+        monkeypatch.setattr(process_control, "_process_identity", before_exec)
+        registry.record(dispatch, process, str(venv_python))
+        owned = registry.records_for_mission(dispatch.mission_id)[0]
+        assert owned.executable == str(venv_python)
+
+        def after_exec(pid: int):
+            pgid, started_at, state, _ = real_identity(pid)
+            return pgid, started_at, state, app_binary
+
+        monkeypatch.setattr(process_control, "_process_identity", after_exec)
+        assert registry.records_for_mission(dispatch.mission_id) == (owned,)
+        assert registry.validate(dispatch) == owned
+        registry.signal(dispatch, 15)
+        assert process.wait(timeout=5) == -15
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, 9)
+            process.wait(timeout=5)
+
+
+_FRAMEWORK_LAUNCHERS = sorted(
+    Path("/Library/Frameworks/Python.framework/Versions").glob("3.*/bin/python3.*[0-9]")
+)
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not _FRAMEWORK_LAUNCHERS,
+    reason="a python.org framework interpreter is required",
+)
+def test_real_framework_launcher_child_stays_owned_after_it_execs(
+    tmp_path: Path,
+) -> None:
+    """The un-faked version: the host's own python.org launcher, no monkeypatch."""
+
+    from graphene.orchestration import process_control
+
+    launcher = str(_FRAMEWORK_LAUNCHERS[-1])
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(
+        (launcher, "-c", "import time; time.sleep(30)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        registry.record(dispatch, process, launcher)
+        owned = registry.records_for_mission(dispatch.mission_id)[0]
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            _, _, _, observed = process_control._process_identity(process.pid)
+            if observed.endswith("/Python.app/Contents/MacOS/Python"):
+                break
+            time.sleep(0.02)
+        assert observed.endswith("/Python.app/Contents/MacOS/Python"), observed
+        assert registry.validate(dispatch) == owned
+        registry.signal(dispatch, 15)
+        assert process.wait(timeout=5) == -15
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, 9)
+            process.wait(timeout=5)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="BSD ps semantics required")
+def test_a_parenthesised_ps_read_records_the_launched_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BSD ps parenthesises comm while a process is replacing its image.
+
+    Persisting that string as the identity made every later live check
+    compare a real path against ``(name)`` and refuse. We launched the child
+    ourselves, so the launched path is the identity; forced here rather than
+    raced for. (First seen by the reliability lane as ``(sandbox-exec)``.)
+    """
+
+    from graphene.orchestration import process_control
+
+    launched = tmp_path / "bin" / "py"
+    launched.parent.mkdir()
+    launched.symlink_to("/bin/sleep")
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen((str(launched), "30"), start_new_session=True)
+    try:
+        real_identity = process_control._process_identity
+        monkeypatch.setattr(
+            process_control,
+            "_process_identity",
+            lambda pid: (*real_identity(pid)[:3], "(sleep)"),
+        )
+        registry.record(dispatch, process, str(launched))
+        monkeypatch.undo()
+        owned = registry.records_for_mission(dispatch.mission_id)[0]
+        assert owned.executable == str(launched)
+        assert registry.validate(dispatch) == owned
+        registry.signal(dispatch, 15)
+        assert process.wait(timeout=5) == -15
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, 9)
+            process.wait(timeout=5)
+
+
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
