@@ -1055,6 +1055,18 @@ class AttemptResult(FrozenModel):
         return self
 
 
+def stage_payload(result: AttemptResult) -> dict[str, str]:
+    """The stage an unsuccessful attempt reached, or nothing when it is unknown.
+
+    Absent stays absent: an outcome event without a stage is a runner that did
+    not know one, not a stage of "none". Both the SQLite store and the shared
+    cloud completion reducer build the same task-outcome payloads, so they
+    build this part from one place.
+    """
+
+    return {} if result.stage is None else {"stage": result.stage}
+
+
 class MissionSnapshot(FrozenModel):
     schema_version: Literal[1] = 1
     policy: ProjectPolicySummary

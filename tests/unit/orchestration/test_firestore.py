@@ -487,7 +487,9 @@ def test_sqlite_and_firestore_share_the_authoritative_failure_contract(tmp_path)
         sqlite_dispatch.worker_id,
         sqlite_dispatch.lease_id,
         sqlite_dispatch.fencing_token,
-        AttemptResult(succeeded=False, result_code="provider_unavailable"),
+        AttemptResult(
+            succeeded=False, result_code="provider_unavailable", stage="model"
+        ),
         "contract_sql_complete01",
         recorded_at=START + timedelta(seconds=5),
         retry_backoff_seconds=0,
@@ -614,6 +616,7 @@ def test_sqlite_and_firestore_share_the_authoritative_failure_contract(tmp_path)
             result_code="provider_unavailable",
             session_id="session_contract_01",
             invocation_id="invocation_contract_1",
+            stage="model",
         ),
         retry_backoff_seconds=0,
     )
@@ -651,6 +654,20 @@ def test_sqlite_and_firestore_share_the_authoritative_failure_contract(tmp_path)
     assert required_events <= {
         event.event_type for event in cloud.tail(MISSION_ID, 0, 256)
     }
+
+    # Two implementations build this payload — store.py inline and the shared
+    # `reduce_failed_completion` the cloud path uses. A stage the runner knew
+    # must survive both, or `why` answers differently depending on which
+    # scheduler ran the mission.
+    def failure_stage(events) -> list[object]:
+        return [
+            event.payload.get("stage")
+            for event in events
+            if event.event_type == MissionEventType.TASK_FAILED
+        ]
+
+    assert failure_stage(sqlite.tail(MISSION_ID, 0, 256)) == ["model"]
+    assert failure_stage(cloud.tail(MISSION_ID, 0, 256)) == ["model"]
     assert sqlite_approved.seq > sqlite_created.seq
     assert cloud_approved.seq > cloud_created.seq
 

@@ -45,6 +45,7 @@ from .models import (
     Task,
     TaskKind,
     TaskState,
+    stage_payload,
 )
 from .reducer import transition_mission, transition_task
 from .store import MissionConflict
@@ -196,6 +197,7 @@ def reduce_failed_completion(
                     "attempt_id": attempt.attempt_id,
                     "result_code": result.result_code,
                     "retry_at": retry_at.isoformat(),
+                    **stage_payload(result),
                     "state": target.value,
                     "task_id": task.task_id,
                 },
@@ -214,6 +216,7 @@ def reduce_failed_completion(
                 payload={
                     "attempt_id": attempt.attempt_id,
                     "result_code": result.result_code,
+                    **stage_payload(result),
                     "state": target.value,
                     "task_id": task.task_id,
                 },
