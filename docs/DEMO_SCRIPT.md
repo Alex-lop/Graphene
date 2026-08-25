@@ -14,7 +14,10 @@ Everything below was executed live. The sequence including the edit beat ran
 four times on 2026-08-24 on the commit that carries this file — three
 consecutive clean rehearsals captured in
 [`evidence/contract/2026-08-24-rehearsals/`](../evidence/contract/2026-08-24-rehearsals/README.md),
-plus one timed run. No beat here is a splice. The captured transcript of the live run is
+plus one timed run — and three more times on 2026-08-25 through the interactive
+edit prompt itself, driven by a scripted operator
+([`evidence/contract/2026-08-25-rehearsals/`](../evidence/contract/2026-08-25-rehearsals/README.md)).
+No beat here is a splice. The captured transcript of the live run is
 [`evidence/convergence/2026-08-23-demo-live/run-1.txt`](../evidence/convergence/2026-08-23-demo-live/run-1.txt);
 the completion-gate numbers are in
 [`evidence/convergence/2026-08-23-completion-gate/`](../evidence/convergence/2026-08-23-completion-gate/README.md).

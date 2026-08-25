@@ -294,7 +294,7 @@
   "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
   "product_media": {
     "blocker": "docs/assets/demo-capture.json records the verified replay source/checkpoint, but no reproducible screenshot, GIF, or four-minute submission video has completed. No product media or video proof is claimed.",
-    "demo_live": "verified_live \u2014 `graphene demo --live` ran the whole sequence end to end and then three CONSECUTIVE rehearsals, all exit 0, each hitting every beat with zero tracebacks and zero raw JSON lines; evidence: evidence/convergence/2026-08-23-demo-live/. The video itself is still NOT PROVEN \u2014 nothing has been filmed.",
+    "demo_live": "verified_live \u2014 `graphene demo --live` ran the whole sequence end to end and then three CONSECUTIVE rehearsals, all exit 0, each hitting every beat with zero tracebacks and zero raw JSON lines; evidence: evidence/convergence/2026-08-23-demo-live/. On 2026-08-25 three further consecutive runs took the interactive edit prompt \u2014 the branch a person uses, driven by a scripted operator \u2014 all exit 0 with every beat present; evidence: evidence/contract/2026-08-25-rehearsals/. A person's typing time remains unmeasured. The video itself is still NOT PROVEN \u2014 nothing has been filmed.",
     "logo": "docs/assets/Graphene_main_img.png",
     "required": [
       "docs/assets/mission-control-hero.png",

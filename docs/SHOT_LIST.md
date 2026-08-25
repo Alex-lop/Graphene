@@ -98,7 +98,7 @@ NODE implement_report_json  work  state=queued
   mission budget   900s worker time, 16 attempts, 10485760 artifact bytes
 ```
 
-### 4 — You change the route · untimed · **NOT RUN LIVE — see below**
+### 4 — You change the route · untimed · **MECHANISM LIVE 7/7, THE PERSON NOT TIMED — see below**
 
 Camera, in the measured run:
 
@@ -109,19 +109,25 @@ Applying the prepared edit: uv run --frozen python scripts/demo_plan_edit.py
 That is revision 2, digest b43792bf3f72… — a different graph, so the old approval no longer covers it.
 ```
 
-**This is the beat that has never been filmed or rehearsed as it will be shot.**
-All four recorded runs — three rehearsals and the timed run — passed
+**This is the beat no rehearsal can fully cover.** The four recorded runs of
+2026-08-24 — three rehearsals and the timed run — passed
 `--plan-edit "uv run --frozen python scripts/demo_plan_edit.py"`, so the line on
-screen is `Applying the prepared edit: …`. On camera there is no such line.
-`demo --live` instead prints a prompt and waits:
+screen there is `Applying the prepared edit: …`. On camera there is no such
+line. `demo --live` instead prints a prompt and waits:
 
 ```
 Edit it, then press Enter to compile the revision:
 ```
 
-Everything after that branch is the same revise → lint → diff → approve code, so
-the *mechanism* is rehearsed 4/4. The *performance* is rehearsed 0/4. Two ways
-this beat kills a take, both worth practising against:
+On 2026-08-25 three consecutive runs took exactly that branch
+([`evidence/contract/2026-08-25-rehearsals/`](../evidence/contract/2026-08-25-rehearsals/README.md)):
+the demo printed the prompt, a scripted operator (`scripts/rehearse_interactive_edit.py`)
+edited the export and pressed Enter, and everything after ran the same revise →
+lint → diff → approve code — exit 0, 3/3, every beat present. So the *mechanism*
+is rehearsed 7/7 and the interactive *branch* 3/3. The *performance* — a person
+reading the YAML, finding the node, typing two paths, saving — is rehearsed 0/7
+and its duration is unmeasured. Two ways this beat kills a take, both worth
+practising against:
 
 - **Save without changing anything** and the demo stops:
   `The plan was not changed, so there is no revision to approve.`
@@ -339,15 +345,16 @@ Which means the 1:17 does not transfer to the take. It is the floor. The take is
 paths, save, and press Enter. Forty seconds is enough for that and is not enough
 for reading the file to work out what to change.
 
-**Rehearse the edit, not the command.** The command has been rehearsed four
-times. The edit has been rehearsed zero.
+**Rehearse the edit, not the command.** The command has been rehearsed seven
+times, three of them through the interactive prompt. A person's edit has been
+rehearsed zero.
 
 ## Truth labels, one line each
 
 | Beat | Label |
 |---|---|
 | 1, 2, 3, 5, 6, 8, 11, 12, 13, 14, 15 | **LIVE** — ran under live Gemini, 4/4 recorded runs, exit 0 |
-| 4 (the edit) | **MECHANISM LIVE 4/4, PERFORMANCE NOT RUN 0/4** — every recorded run applied the edit with `--plan-edit FILE`; the interactive pause a person types into has never run live |
+| 4 (the edit) | **MECHANISM LIVE 7/7 (interactive prompt 3/3 on 2026-08-25), THE PERSON NOT TIMED 0/7** — the interactive pause has run live with a scripted operator; a human's typing time has never been measured |
 | 7 (approval) | **LIVE, DELEGATED** — `truth_kind: server_derived` under a pre-authorized bounded policy; not TTY human attestation |
 | 9 (the failure) | **LIVE RUN, INJECTED FAULT** — `--inject-check-fault`, stamped `simulated_fixture`; not an infrastructure failure |
 | The film | **NOT PROVEN** — `product_media` is `not_proven_capture_pending`; nothing has been recorded |

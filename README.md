@@ -64,7 +64,7 @@ On 2026-08-23 the North Star mission ran live against the `demo/north_star` targ
 
 `graphene demo --live` runs that whole path as one continuous sequence — trigger, bounded plan, a node's full contract, an edit that compiles revision 2, lint, diff, approval of the exact digest, two live workers, an injected check fault and its fenced retry, the isolated result, and `why`. It has run end to end and then three consecutive clean rehearsals, all exit 0 ([evidence](evidence/contract/2026-08-24-rehearsals/README.md)), and one run was timed end to end at **77 seconds** with the edit applied by a script. The script is [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) and the beat-by-beat shot list is [`docs/SHOT_LIST.md`](docs/SHOT_LIST.md).
 
-**What no rehearsal has covered:** every run so far applied the plan edit with `--plan-edit FILE`. The beat a camera would actually see is a person typing that edit into the interactive pause, and that branch has never been run under live Gemini. The submission video remains `NOT PROVEN` — nothing has been recorded.
+**What the rehearsals cover, and what they cannot:** the four runs of 2026-08-24 applied the plan edit with `--plan-edit FILE`; on 2026-08-25 three consecutive runs took the interactive pause instead — the prompt a person types into — with a scripted operator editing the export and pressing Enter ([evidence](evidence/contract/2026-08-25-rehearsals/README.md)), all exit 0, 69–90 s each. What no rehearsal can cover is the person: the time a human takes to type the edit is unmeasured. The submission video remains `NOT PROVEN` — nothing has been recorded.
 
 ## Product loop
 
