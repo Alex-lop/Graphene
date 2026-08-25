@@ -37,6 +37,29 @@ git diff --check
 
 The aggregate Python command deliberately excludes the separately bounded MCP STDIO process gate.
 
+### Parity checks — the two topologies this host is not
+
+Everything above is a result from *this* machine. Two CI jobs run somewhere it
+cannot see, and each has shipped a defect that no local run could reproduce:
+
+```bash
+scripts/linux_parity_check.sh          # the pinned python:3.13-slim image (SQLite 3.46)
+scripts/macos_parity_check.sh          # python.org's framework interpreter, the runner's
+scripts/macos_parity_check.sh --quick  # two files, under a minute, same topology
+```
+
+`linux_parity_check.sh` exists because a SQL `LIKE` against a BLOB matches on
+macOS SQLite 3.51 and matches nothing on the 3.46 in the deployment image.
+`macos_parity_check.sh` exists because python.org's `bin/python3.x` is a
+launcher that execs `Resources/Python.app/Contents/MacOS/Python` in place —
+which `actions/setup-python` installs on `macos-15` and Anaconda, Homebrew and
+uv interpreters do not do, so the owned-process registry refused its own child
+only in Actions. Both spend nothing, contact no provider, write nothing into
+the working tree, and print a SKIP naming what is then unchecked when the
+topology they need (Docker; a framework interpreter) is absent. `--quick`
+prints `MACOS PARITY (quick):`, which a grep for `MACOS PARITY: ALL PASS`
+deliberately does not match.
+
 Official Firestore emulator/client proof (credential-free, Node 22):
 
 ```bash
