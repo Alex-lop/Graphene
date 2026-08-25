@@ -52,6 +52,10 @@ replaced by however long you take to type one, and the budget for that inside
 §9's two minutes is about 40 seconds. Rehearse the edit itself, not just the
 command.
 
+Beat by beat — the exact frames, which of those timings a machine measured and
+which a person did, and what each beat is and is not proof of — is in
+[`docs/SHOT_LIST.md`](SHOT_LIST.md).
+
 ## The take (measured: 1:17 with a scripted edit)
 
 ```bash
@@ -82,6 +86,14 @@ make impossible to miss. If the command leaves the plan unchanged, or exits
 non-zero, the demo stops rather than approving anything.
 
 ### What appears, and what to say over it
+
+The cue times below are **narration pacing for the take, not the measured run.**
+They were written before the sequence was timed and they assume a person typing
+the edit, which is why they run past the 1:17 above: that measurement is the
+floor, with the edit applied by a script. Machine-measured timings — the eleven
+dashboard counters, `ELAPSED 00:00` to `00:47` — are in
+[`docs/SHOT_LIST.md`](SHOT_LIST.md), which also marks the beats no rehearsal has
+covered.
 
 **0:00 — a change arrives.** The target is materialized and its own suite is
 green; a `mission.yaml` lands in an inbox and a mission is proposed from it.
