@@ -70,8 +70,8 @@ Alex can take.
 | **The scheduler executes the user's revision, not the proposal** | `f987f33` | `tests/integration/test_plan_edit_path.py::test_the_scheduler_executes_the_users_revision_not_the_proposal` | PASS — the added node ran, its order mattered, its artifact reached the verified result, and every attempt carried `plan_revision=2` | the added node is wired by the test, not by a model |
 | Runner scheduling is asserted under an injected clock; the deadline is tested separately | `6f59be3` | `pytest -q tests/unit/orchestration/test_runner.py` -> `11 passed`, and the same file green under eight concurrent `yes` processes | PASS — the old test failed in this session's first matrix under load | — |
 | Four TTY CLI helpers no longer fail on host speed | `6f59be3` | `test_retained_promotion_precommit_recovers_after_final_append_failure` failed at load average 23 and passed in isolation in 22.36s against its own 20s window | PASS | pytest-timeout remains the real hang guard |
-| A cancellation after a passing check records the stage it reached, and the mission stream carries it | `6f59be3`, `470e0bd` | `test_a_cancellation_after_a_passing_check_records_the_stage_it_reached` — the chain names `store-check-receipt` and `check_completed: true`; `test_a_cancelled_attempt_names_its_stage_in_the_committed_mission_event` — the committed task-outcome event for that attempt carries `stage: store-check-receipt` | PASS | `why` is rooted at a publication, so it names the stage only for attempts of a task that published; a fully cancelled task is still unreachable from `why PATH` |
-| `plan export`/`revise`/`edit`/`lint`/`diff`/`approve`; canonical YAML round-trips and refuses unknown fields, duplicate keys, anchors | `e7eefbf` + this row's test file | `pytest -q tests/unit/orchestration/test_plan_yaml.py` -> `6 passed`; `pytest -q tests/unit/cli/test_plan_cli.py` -> `10 passed`; executed end to end against a real scripted mission | PASS | `plan edit`'s `$EDITOR` path is now driven through the real parser with a non-interactive editor program, both for a valid revision and for an editor that exits non-zero; no interactive terminal editor is exercised, and no test drives a human's `vim` |
+| A cancellation after a passing check records the stage it reached | `6f59be3` | `test_a_cancellation_after_a_passing_check_records_the_stage_it_reached` — the chain names `store-check-receipt` and `check_completed: true` | PASS | the event is not linked from the attempt row, so `why` does not surface it |
+| `plan export`/`revise`/`edit`/`lint`/`diff`/`approve`; canonical YAML round-trips and refuses unknown fields, duplicate keys, anchors | `e7eefbf` | `pytest -q tests/unit/orchestration/test_plan_yaml.py` -> `6 passed`; executed end to end against a real scripted mission | PASS | `plan edit`'s `$EDITOR` path has no test; the export/revise path it delegates to does |
 | No raw JSON in human mode on the plan path; the mission table, the full node contract, and a diff that flags scope expansion | `e7eefbf` | `test_plan_show_and_diff_reuse_verified_store_plan_authority` asserts the rendered table contains no JSON braces; real output captured in this session | PASS | `plan diff` is structural, not semantic |
 | Dashboard, `why`, and `mission status` all name the active revision and digest; `mission status` is the store-backed orientation view | `e7eefbf` | `pytest -q tests/unit/cli` -> `171 passed`; `mission status` on a real mission printed route, frontier, critical path, changed files, remaining scopes, last failure, blockers, decision, next legal commands | PASS | the frontier before dispatch is labelled `FRONTIER ON APPROVAL`, not claimed as ready |
 | `demo --live` stops once, for the user's edit, and approves the revision they made | `0b19345` | `pytest -q tests/unit/test_demo_live.py` -> `6 passed`; `test_mission_subprocess_argv_is_exact` pins `--revision 2` | PASS | **no live run of the new sequence has happened** — three rehearsals and the take are still ahead |
@@ -139,18 +139,11 @@ someone deliberately repins.
   live claim.
 - **Cloud eligibility gate: not met.** Unchanged from the convergence handoff —
   see blockers.
-- **`plan edit`'s `$EDITOR` path is tested under a non-interactive editor.**
-  `tests/unit/cli/test_plan_cli.py` launches a real editor program that asserts
-  it was handed the canonical export byte-for-byte and writes a valid revision
-  back, and a second test drives `false` as the editor and asserts nothing was
-  revised. What is still not exercised is an interactive terminal editor; the
-  filmed demo does not use `plan edit` either (it exports, pauses, compiles).
-- **The cancellation stage reaches `why` only where `why` can reach the
-  attempt.** `AttemptResult.stage` now carries it into the committed
-  task-outcome event and `why` prints `stage=` on attempt nodes. But `why` is
-  rooted at a publication, so a fully cancelled task — which publishes nothing
-  — still has no route from `why PATH`; what is proven is a prior attempt of a
-  task that later published.
+- **`plan edit`'s `$EDITOR` path is untested.** It delegates to the tested
+  export/revise path, and the filmed demo does not use it (the demo exports,
+  pauses, and compiles), so this is labelled rather than closed.
+- **The cancellation stage is not reachable from `why`.** It is in the attempt
+  evidence chain; linking it needs a stage field on `AttemptResult`.
 
 ## Environment note
 
