@@ -9,13 +9,25 @@ uses, blockers, Alex's checklist.
 `local/GRAPHENE_CONTRACT_DIRECTIVE.md` and `/GRAPHENE_*DIRECTIVE*.md` is now
 ignored at the repo root so a stray copy cannot be committed).
 
-**Preflight blocker, recorded not resolved:** the directive says to place
-`local/GRAPHENE_GRAFT_COMPARISON_AND_DIRECTION.md` and read it in full. That
-file does not exist on this machine. The directive states that it amends the
-memo, so the session proceeded on the directive's own text; every decision
-below traces to a numbered section of the directive, not to the memo. If the
-memo contains direction the directive did not restate, this session did not see
-it.
+**Preflight blocker — CLOSED 2026-08-25.** The Graft comparison memo was never
+missing, only misplaced: it sat in `~/Downloads/` and had not been moved to
+`local/GRAPHENE_GRAFT_COMPARISON_AND_DIRECTION.md`. It is now at that path
+(gitignored), SHA-256
+`2a4e32d31ac813685154bc12596470af757228e6b0b846719deba034bf42b86b`, and it has
+been read.
+
+**It changes nothing.** Its "minimum winning demo" is the sequence this session
+built and rehearsed — proposed DAG as a terminal table with ready frontier and
+scopes, approval of an exact revision/digest, two workers overlapping, a
+bounded failure and diagnostic retry, assembly and exact verification, `why`,
+the isolated result, and an honest Cloud status beat only if that path is
+proven. Its "Revamp" list is the work that landed: graph-as-executable-contract
+instead of graph-as-visualization, plan output as a real review surface,
+planned versus actual, retries consuming failure evidence, planning bound to the
+exact snapshot, and context/token benefits stated as hypotheses until
+benchmarked — which is why there is no token claim anywhere in this repository.
+The memo is also the source of the Graft figures the README attributes to
+NanoNets, and it makes the same attribution itself.
 
 ## Reconciliation (directive §1)
 
@@ -167,12 +179,43 @@ deliberate CPU load, and passed every time. Not reproduced; not called a flake.
 
 ## Active blockers
 
-- **The Graft comparison memo is absent** (see preflight above).
-- **Cloud remains `not_deployed`**, unchanged from the convergence handoff: the
-  configured project is a Gemini-API auto-created `gen-lang-client-*` project
-  rather than the dedicated sandbox `docs/ALEX_CLOUD_SETUP.md` requires, and
-  five APIs are disabled. Nothing was enabled, created, or billed.
-- **CI is unobserved.** Nothing has been pushed.
+- ~~The Graft comparison memo is absent~~ — **closed**, see preflight above.
+- **Cloud: the infrastructure is built, the proof is not captured.** Re-checked
+  read-only on 2026-08-25. This is much further along than the convergence
+  handoff recorded, because the setup was done after that report was written.
+
+  Present and correct: project `dauntless-host-506507-g2` — a dedicated
+  project, not the Gemini-API `gen-lang-client-*` one the setup guide says to
+  stop on; all five APIs enabled; Firestore `graphene-taskmaster`
+  (FIRESTORE_NATIVE, us-central1); Artifact Registry `graphene`; the three
+  service accounts; the `graphene-control-read-token` secret; and the
+  coordinator built, deployed and `Ready` at revision
+  `graphene-coordinator-00002-6mm` with `maxScale=1`.
+
+  Three things are missing, and the first two are why no evidence exists:
+
+  1. **Nothing may invoke the coordinator.** `gcloud run services
+     get-iam-policy graphene-coordinator` returns **zero bindings**. The
+     executor service account has no `roles/run.invoker` on the service, which
+     `docs/ALEX_CLOUD_SETUP.md` names as the one role it should have. The
+     authenticated round trip cannot happen.
+  2. **Firestore is empty** — zero collections. No mission has been seeded, so
+     `graphene mission executor connect` has never run and none of the evidence
+     `docs/CLOUD_PROOF_PLAN.md` §6 requires exists.
+  3. **The local side is unwired.** All eight `GRAPHENE_*` cloud variables in
+     `.env` are present as keys with empty values.
+
+  **A hazard that is specific to this repository's current state.** The
+  deployed image was built at `2026-08-24T09:24:56Z` from a source tree whose
+  `backend/graphene/orchestration/store.py` is byte-identical to `b7b174a` —
+  before this session. That is fortunate: it means the running coordinator does
+  **not** carry the BLOB-`LIKE` defect. But `origin/main` is `fa302a1`, which
+  **does** carry it and not the fix. **Rebuilding the coordinator from
+  `origin/main` as it stands would produce an image that cannot dispatch
+  anything.** Push through `ec309ea` first, or do not rebuild.
+
+- **CI is unobserved for this session's fixes.** `fa302a1` is pushed; the eight
+  commits that fix the red Linux job are not.
 
 ## Alex's checklist
 
