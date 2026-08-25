@@ -14,4 +14,6 @@ python benchmarks/graph_economics.py run \
   -- python path/to/local_runner.py
 ```
 
+**No result is claimed, and none is coming from the deterministic path.** `graph_economics` is deliberately deferred: the credential-free driver emits no token or cost field, and a coordinated-versus-uncoordinated comparison built on scripted workers would measure the fixture rather than the system. See [DEFERRAL.md](DEFERRAL.md) for the reasoning, the designs that were rejected, and what a real result requires.
+
 Outputs and raw directories must be new: the harness atomically creates files and refuses to overwrite evidence. The checked-in template is `NOT PROVEN`; replace it only with real equal-gate receipts, never estimates presented as measurements.

@@ -79,7 +79,7 @@
   },
   "graph_economics": {
     "status": "not_proven",
-    "truth": "The equal-quality-gate, three-mode, non-overwriting harness has a credential-free unit test. No real repeated run, token/cost/latency result, median, or P95 is claimed."
+    "truth": "The equal-quality-gate, three-mode, non-overwriting harness has a credential-free unit test. No real repeated run, token/cost/latency result, median, or P95 is claimed. Deferred deliberately on 2026-08-25 rather than filled with a deterministic stand-in: the only credential-free driver (scripted-local) emits no token, cost, or usage field, so every economics metric would be \"unavailable\"; and a coordinated-versus-uncoordinated comparison built on deterministic scripted workers would report a conflict rate chosen by whoever wrote the fixture, not one measured in the world. Graphene's write-scope refusal is real and separately tested (tests/unit/orchestration/test_validation.py), but that is a mechanism check, not an economic result. Reasons, rejected designs, and what a real result requires: benchmarks/DEFERRAL.md."
   },
   "legacy_protocol_tour": {
     "drivers": {
