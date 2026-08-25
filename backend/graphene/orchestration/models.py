@@ -1018,6 +1018,10 @@ class AttemptResult(FrozenModel):
     succeeded: bool
     retryable: bool = False
     result_code: Identifier
+    # The last runtime stage this attempt finished, for attempts that did not
+    # succeed. `cancelled` and `outcome_unknown` say nothing about how far the
+    # work got; this names the stage the runner already knew and nothing more.
+    stage: BoundedText | None = None
     session_id: Identifier | None = None
     invocation_id: Identifier | None = None
     evidence_link: EvidenceLink | None = None

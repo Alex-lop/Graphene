@@ -231,6 +231,9 @@ class MissionRunner:
                     result_code=result_code,
                     session_id="runner-" + dispatch.attempt_id[-16:],
                     invocation_id=stable_operation_id(dispatch, "runner-cancelled"),
+                    # The runtime, not the runner, knows how far the attempt
+                    # got. Without this the store sees a bare `cancelled`.
+                    stage=self.runtime.cancelled_stage(dispatch.attempt_id),
                 ),
                 error,
             )
@@ -259,6 +262,7 @@ class MissionRunner:
                 result_code=RuntimeErrorCode.OUTCOME_UNKNOWN,
                 session_id="runner-" + dispatch.attempt_id[-16:],
                 invocation_id=stable_operation_id(dispatch, "runner-failure"),
+                stage=self.runtime.cancelled_stage(dispatch.attempt_id),
             ),
             error,
         )

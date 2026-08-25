@@ -25,6 +25,7 @@ from graphene.orchestration.models import (
     CriterionVerificationKind,
     GenericEvidenceLink,
     Mission,
+    MissionEventType,
     MissionStatus,
     Plan,
     ProjectPolicy,
@@ -1032,3 +1033,74 @@ def test_a_cancellation_after_a_passing_check_records_the_stage_it_reached(
     assert stages.index("check") < stages.index("store-check-receipt")
     # And the attempt itself is still recorded as cancelled, not as a success.
     assert attempt.state in {AttemptState.CANCELLED, AttemptState.FAILED}
+
+
+def test_a_cancelled_attempt_names_its_stage_in_the_committed_mission_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mission stream, not only the attempt's private chain, says how far it got.
+
+    The stage was already recorded in the attempt's evidence chain, but that
+    event is not linked from the attempt row, so nothing reading the mission —
+    `graphene why` included — could reach it. The runner decides between
+    `cancelled` and `outcome_unknown`, so the runtime hands it the stage and
+    the runner carries it on `AttemptResult`; the store commits it into the
+    task-outcome event for that attempt.
+    """
+    repository, base_sha, runtime_root, evidence, store, assignments, a, z = _setup(
+        tmp_path, delay=0
+    )
+    original = WorkerContext._effect
+
+    async def cancel_at_cleanup(self, label, action):
+        if label == "cleanup" and self.dispatch.task_id == "work-a":
+            raise asyncio.CancelledError()
+        return await original(self, label, action)
+
+    monkeypatch.setattr(WorkerContext, "_effect", cancel_at_cleanup)
+
+    scheduler = MissionScheduler(store, clock=SystemClock())
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(a, z),
+        cache=cache,
+    )
+
+    with pytest.raises(RunnerError):
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=runtime,
+            worker_ids=("worker-a", "worker-z"),
+            accepted_artifacts=cache,
+            deadline_seconds=3_600,
+            poll_seconds=0,
+            monotonic=lambda: 0.0,
+        ).run("runner-mission")
+
+    snapshot = store.snapshot("runner-mission")
+    attempt = next(item for item in snapshot.attempts if item.task_id == "work-a")
+    outcomes = [
+        event
+        for event in store.tail("runner-mission", 0, snapshot.head.seq)
+        if event.event_type
+        in {
+            MissionEventType.TASK_CANCELLED,
+            MissionEventType.TASK_FAILED,
+            MissionEventType.TASK_RETRIED,
+        }
+        and event.payload.get("attempt_id") == attempt.attempt_id
+    ]
+    assert outcomes, "the cancelled attempt committed no task-outcome event"
+    # The cut is at `cleanup`, the first stage after the acceptance check, so
+    # the last stage the attempt finished is storing that check's receipt.
+    assert [event.payload.get("stage") for event in outcomes] == [
+        "store-check-receipt"
+    ] * len(outcomes)
+    # The runtime hands the stage over exactly once; a second read is empty.
+    assert runtime.cancelled_stage(attempt.attempt_id) is None

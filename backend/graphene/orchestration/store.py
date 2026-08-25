@@ -474,6 +474,16 @@ def _iso(value: datetime) -> str:
     return value.isoformat()
 
 
+def _stage_payload(result: AttemptResult) -> dict[str, str]:
+    """The stage an unsuccessful attempt reached, or nothing when it is unknown.
+
+    Absent stays absent: an outcome event without a stage is a runner that did
+    not know one, not a stage of "none".
+    """
+
+    return {} if result.stage is None else {"stage": result.stage}
+
+
 class SQLiteMissionStore:
     """Mission authority backed by an append-only stream and indexed views."""
 
@@ -3565,6 +3575,7 @@ class SQLiteMissionStore:
                                 {
                                     "attempt_id": attempt_id,
                                     "result_code": result.result_code,
+                                    **_stage_payload(result),
                                     "state": TaskState.CANCELLED.value,
                                     "task_id": task.task_id,
                                 },
@@ -3852,6 +3863,7 @@ class SQLiteMissionStore:
                                     "attempt_id": attempt_id,
                                     "result_code": result.result_code,
                                     "retry_at": retry_at.isoformat(),
+                                    **_stage_payload(result),
                                     "state": target.value,
                                     "task_id": task.task_id,
                                 },
@@ -3869,6 +3881,7 @@ class SQLiteMissionStore:
                                 {
                                     "attempt_id": attempt_id,
                                     "result_code": result.result_code,
+                                    **_stage_payload(result),
                                     "state": target.value,
                                     "task_id": task.task_id,
                                 },

@@ -1125,6 +1125,14 @@ class WorkerRuntime:
         # Kept only so a cancelled attempt can still say which stages it
         # completed; discarded the moment the attempt ends.
         self._contexts: dict[str, WorkerContext] = {}
+        # The stage a cancelled attempt reached, held until the runner — which
+        # is what decides between `cancelled` and `outcome_unknown` — takes it.
+        self._cancelled_stages: dict[str, str] = {}
+
+    def cancelled_stage(self, attempt_id: str) -> str | None:
+        """Take the stage a cancelled attempt reached, or None if it recorded none."""
+
+        return self._cancelled_stages.pop(attempt_id, None)
 
     def cancellation_safe(self, dispatch: Dispatch) -> bool:
         """True only while cancellation cannot orphan a local thread/subprocess."""
@@ -1837,6 +1845,9 @@ class WorkerRuntime:
         """
         context = self._contexts.get(dispatch.attempt_id)
         stages = list(context.completed_stages) if context is not None else []
+        # Set before the evidence append, which is allowed to fail: the stage
+        # the runner reports must not depend on the evidence store being up.
+        self._cancelled_stages[dispatch.attempt_id] = stages[-1] if stages else "start"
         try:
             self._record(
                 dispatch,
@@ -2175,6 +2186,15 @@ class WorkerRuntime:
             succeeded=succeeded,
             retryable=retryable,
             result_code=result_code,
+            stage=(
+                None
+                if succeeded
+                else (
+                    context.completed_stages[-1]
+                    if context.completed_stages
+                    else "start"
+                )
+            ),
             session_id=completion.session_id,
             invocation_id=completion.invocation_id,
             evidence_link=GenericEvidenceLink(evidence_id=evidence_id),
