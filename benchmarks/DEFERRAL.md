@@ -33,11 +33,19 @@ not an economic result.** `validate_plan`
 (`backend/graphene/orchestration/validation.py:97`) refuses any plan in which two
 `WORK` tasks share a declared write path, raising `parallel_write_conflict` or
 `ordered_write_conflict` (`validation.py:229`). That refusal is exact set
-intersection over *declared* `write_paths`, decided before dispatch, and it is
-already covered by `tests/unit/orchestration/test_validation.py:213` and `:408`.
-A benchmark that re-runs it would re-demonstrate a unit test under a name that
-promises economics. The mechanism's proof is the unit test; it is not evidence
-about cost.
+intersection over *declared* `write_paths`, decided before dispatch, and the
+plan-time half is already covered by `tests/unit/orchestration/test_validation.py:392`
+(ordered) and `:204-217` (parallel). A benchmark that re-runs it would
+re-demonstrate a unit test under a name that promises economics. The mechanism's
+proof is the unit test; it is not evidence about cost.
+
+(Precisely: the *plan-time* refusal is tested. The runtime defence-in-depth
+check — `LeaseConflict("task write scope conflicts with an active lease")` at
+`backend/graphene/orchestration/store.py:2727` — has **no test anywhere**; that
+string appears exactly once in the repository. It is left as a reported gap, not
+closed here, because the plan validator appears to make it unreachable through
+supported APIs and establishing that either way is orchestration work, not
+benchmark work. Neither check is an economic measurement.)
 
 **3. The decisive one: the headline number would be authored by whoever writes
 the fixture.** A coordinated-vs-uncoordinated comparison needs an uncoordinated
@@ -50,6 +58,16 @@ and `ledger_service/cli.py` already dispatches both formats, so the honest
 two-worker decomposition has no shared write path at all. To make an
 uncoordinated arm fail, the benchmark author must *introduce* the overlap. The
 resulting ratio then reports the fixture's construction back to itself.
+
+The API makes this concrete: **there is no supported way to commit a
+write-conflicting plan.** `require_valid_plan` guards both the scenario path
+(`backend/graphene/orchestration/scripted.py:249`) and the store itself
+(`backend/graphene/orchestration/store.py:1172`), so an uncoordinated arm cannot
+be built out of Graphene-with-coordination-removed. It can only be built by
+bypassing the product — hand-constructing tasks and calling `claim_task`
+directly. An arm assembled that way is a harness the benchmark author wrote, and
+comparing it to Graphene measures the author's harness. That is the straw man the
+charter names, reached by construction rather than by choice.
 
 Point 3 is the repo's own governing failure mode, one turn removed. A check that
 cannot observe what it certifies prints the same verdict either way
