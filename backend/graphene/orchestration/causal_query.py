@@ -49,6 +49,10 @@ class CausalNode(FrozenModel):
     # Populated on prior-attempt nodes only: how that earlier attempt ended.
     state: Identifier | None = None
     result_code: Identifier | None = None
+    # The last runtime stage that attempt finished, as its outcome event
+    # recorded it. `cancelled`/`outcome_unknown` alone cannot say whether the
+    # acceptance check had already passed; this can.
+    stage_reached: BoundedText | None = None
 
 
 class CausalLink(FrozenModel):
@@ -129,7 +133,34 @@ def _publication_node(publication: ArtifactPublication) -> CausalNode:
     )
 
 
-def _attempt_node(attempt: Attempt, *, outcome: bool = False) -> CausalNode:
+#: Outcome events whose payload can name the stage an attempt reached.
+_STAGE_EVENTS = frozenset(
+    {
+        MissionEventType.TASK_CANCELLED,
+        MissionEventType.TASK_FAILED,
+        MissionEventType.TASK_RETRIED,
+    }
+)
+
+
+def _attempt_stages(events: Sequence[MissionEvent]) -> dict[str, str]:
+    """Attempt id -> the stage its committed outcome event named, when it did."""
+
+    return {
+        str(event.payload["attempt_id"]): str(event.payload["stage"])
+        for event in events
+        if event.event_type in _STAGE_EVENTS
+        and isinstance(event.payload.get("attempt_id"), str)
+        and isinstance(event.payload.get("stage"), str)
+    }
+
+
+def _attempt_node(
+    attempt: Attempt,
+    *,
+    outcome: bool = False,
+    stages: dict[str, str] | None = None,
+) -> CausalNode:
     return CausalNode(
         node_type="attempt",
         node_id=attempt.attempt_id,
@@ -140,6 +171,7 @@ def _attempt_node(attempt: Attempt, *, outcome: bool = False) -> CausalNode:
         attempt_number=attempt.attempt_number,
         state=attempt.state.value if outcome else None,
         result_code=attempt.result_code if outcome else None,
+        stage_reached=(stages or {}).get(attempt.attempt_id) if outcome else None,
     )
 
 
@@ -312,6 +344,7 @@ def why(
         matched_by = "identifier" if targets else "none"
     targets = tuple(sorted(set(targets), key=lambda item: item.publication_id))
 
+    stages = _attempt_stages(committed)
     trigger_links = _trigger_links(committed)
     if not targets:
         unknowns.append(f"No committed publication or artifact matches {query}.")
@@ -423,7 +456,7 @@ def why(
                 node
                 for attempt in prior_attempts
                 for node in (
-                    _attempt_node(attempt, outcome=True),
+                    _attempt_node(attempt, outcome=True, stages=stages),
                     *_receipt_nodes(attempt, reference_exists, unknowns),
                 )
             ),

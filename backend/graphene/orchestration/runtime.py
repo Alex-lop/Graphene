@@ -1837,11 +1837,12 @@ class WorkerRuntime:
 
         A cancellation is a `BaseException`, so it bypasses every failure
         handler in `_execute_locked` and none of the terminal bookkeeping
-        runs: the attempt reaches the store as a bare `cancelled` or
-        `outcome_unknown` with no evidence at all. That is exactly the case
-        where a reader most needs to know whether the acceptance check had
-        already passed. This adds one non-terminal evidence event naming the
-        stages the attempt completed, and changes nothing else.
+        runs: without this the attempt reaches the store as a bare
+        `cancelled` or `outcome_unknown` with no evidence at all. That is
+        exactly the case where a reader most needs to know whether the
+        acceptance check had already passed. This adds one non-terminal
+        evidence event naming the stages the attempt completed, and remembers
+        the last of them for `cancelled_stage`, which the runner reads.
         """
         context = self._contexts.get(dispatch.attempt_id)
         stages = list(context.completed_stages) if context is not None else []

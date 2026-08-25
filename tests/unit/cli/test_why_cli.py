@@ -27,6 +27,8 @@ from graphene.orchestration.store import SQLiteMissionStore
 from tests.unit.orchestration.test_store import NOW, _command, _complete_ready, _create
 
 QUERY_PATH = "status_report/redact.py"
+#: The work-a output of the sandbox-free store fixture in test_store.
+QUERY_PATH_A = "app/a.py"
 STAGES = [
     "target",
     "producer_attempt",
@@ -410,3 +412,82 @@ def test_causal_query_attempt_nodes_carry_identity_and_attempt_bound_receipts(
         if node.node_type == "reference"
     )
     assert any("Reference availability is unknown" in item for item in blind.unknowns)
+
+
+def test_why_names_the_stage_a_prior_attempt_reached(tmp_path) -> None:
+    """A prior attempt that ended without a publication says how far it got.
+
+    `state` and `result_code` say an attempt failed; neither says whether the
+    model had run or the acceptance check had already passed when it did. The
+    stage the runtime recorded is committed into the task-outcome event, and
+    `why` reads it from the same validated chain it reads everything else
+    from — no new authority, no new store column. The `--json` body is this
+    exact model dump, and the human render is `_render_why` over it.
+    """
+    from graphene.orchestration.models import AttemptResult, TaskKind
+    from tests.unit.orchestration.test_store import _register_worker
+
+    store = SQLiteMissionStore(tmp_path / "stage.sqlite")
+    _create(store)
+    store.refresh_ready("mission-1", _command("ready-stage"), recorded_at=NOW)
+    task = next(
+        item for item in store.ready_tasks("mission-1") if item.task_id == "work-a"
+    )
+    _register_worker(store, "worker-stage", capabilities=(TaskKind.WORK,), at=NOW)
+    dispatch = store.claim_task(
+        "mission-1",
+        task.task_id,
+        "worker-stage",
+        _command("claim-stage"),
+        recorded_at=NOW,
+        ttl_seconds=30,
+    )
+    store.complete_attempt(
+        "mission-1",
+        dispatch.attempt_id,
+        dispatch.worker_id,
+        dispatch.lease_id,
+        dispatch.fencing_token,
+        AttemptResult(
+            succeeded=False,
+            retryable=True,
+            result_code="acceptance_check_failed",
+            stage="check",
+        ),
+        _command("complete-stage"),
+        recorded_at=NOW + timedelta(seconds=1),
+        retry_backoff_seconds=0,
+    )
+    # The retry publishes app/a.py, which is what makes the failed attempt
+    # reachable from `why` at all: the query is rooted at a publication.
+    _complete_ready(store, "mission-1", at=NOW + timedelta(seconds=5), round_number=1)
+    snapshot = store.snapshot("mission-1")
+    assert store.verify("mission-1") == snapshot.head
+
+    result = why(
+        snapshot,
+        store.tail("mission-1", 0, snapshot.head.seq),
+        QUERY_PATH_A,
+        reference_exists=lambda _reference: True,
+    )
+
+    payload = result.model_dump(mode="json")
+    prior = next(link for link in payload["links"] if link["stage"] == "prior_attempts")
+    assert prior["status"] == "established"
+    attempts = [item for item in prior["nodes"] if item["node_type"] == "attempt"]
+    assert [item["node_id"] for item in attempts] == [dispatch.attempt_id]
+    assert attempts[0]["result_code"] == "acceptance_check_failed"
+    assert attempts[0]["stage_reached"] == "check"
+    # The producing attempt succeeded, so it carries no stage.
+    producer = next(
+        link for link in payload["links"] if link["stage"] == "producer_attempt"
+    )
+    assert all(
+        item["stage_reached"] is None
+        for item in producer["nodes"]
+        if item["node_type"] == "attempt"
+    )
+    # The bytes `--json` prints are this dump; the human render names it too.
+    rendered = mission_cli._render_why(payload)
+    assert f"  node attempt {dispatch.attempt_id} " in rendered
+    assert " state=failed result_code=acceptance_check_failed stage=check" in rendered

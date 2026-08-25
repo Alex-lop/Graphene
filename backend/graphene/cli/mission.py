@@ -2268,6 +2268,8 @@ def _render_why_node(node: dict[str, object]) -> str:
         line += f" resolvable={field('resolvable')}"
     if node.get("state") is not None:
         line += f" state={field('state')} result_code={field('result_code')}"
+    if node.get("stage_reached") is not None:
+        line += f" stage={field('stage_reached')}"
     return line
 
 
