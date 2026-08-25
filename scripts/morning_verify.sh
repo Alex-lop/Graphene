@@ -21,6 +21,7 @@ QUICK=0; [ "${1:-}" = "--quick" ] && QUICK=1
 # is the committed capsule, cold-verified below.
 STATE="${GRAPHENE_STATE_DIR:-$HOME/.graphene/convergence-state}"
 fail=0
+skipped=0
 step() { printf '\n== %s\n' "$1"; }
 ok()   { printf 'PASS %s\n' "$1"; }
 bad()  { printf 'FAIL %s\n' "$1"; fail=1; }
@@ -28,6 +29,20 @@ bad()  { printf 'FAIL %s\n' "$1"; fail=1; }
 # always arrives with its diagnostic. That is the whole point of this script.
 run() { local label=$1; shift; local out; if out=$("$@" 2>&1); then ok "$label"; else
   printf 'FAIL %s\n--- output of: %s\n%s\n--- end output\n' "$label" "$*" "$out"; fail=1; fi; }
+
+# A parity check is the one step whose OUTPUT matters when it passes: both
+# scripts exit 0 when the topology they need is absent, so `run` would report a
+# SKIP as PASS -- the exact shape this script exists to stop. Print the output
+# either way, and count a skip as a skip.
+parity() {
+  local label=$1; shift; local out rc
+  out=$("$@" 2>&1); rc=$?
+  printf '%s\n' "$out" | sed 's/^/  /'
+  if [ "$rc" -ne 0 ]; then bad "$label"
+  elif printf '%s\n' "$out" | grep -q '^SKIP'; then
+    printf 'SKIP %s (unchecked here; see the lines above)\n' "$label"; skipped=$((skipped + 1))
+  else ok "$label"; fi
+}
 
 step "locked environment"
 run "uv lock --check" uv lock --check
@@ -40,6 +55,22 @@ if [ "$QUICK" = 0 ]; then
         --ignore=tests/process/test_mcp_stdio.py -p no:cacheprovider
   step "MCP STDIO process tests"
   run "mcp" uv run --frozen pytest -q tests/process/test_mcp_stdio.py -p no:cacheprovider
+fi
+
+step "parity: the two topologies this host is not"
+# Until now MORNING VERIFY: ALL PASS was a macOS/Anaconda result BY
+# CONSTRUCTION, and it printed on four consecutive commits while Linux CI was
+# red on every one of them. Both defects that caused it were invisible to
+# every command above: SQLite 3.46 in the deployment image, and python.org's
+# re-exec'ing framework launcher on the GitHub macOS runner.
+if [ "$QUICK" = 1 ]; then
+  parity "macOS parity (framework interpreter, quick scope)" scripts/macos_parity_check.sh --quick
+  echo "  linux parity not run in --quick: it is a container build, minutes not seconds."
+  echo "  SKIP linux parity (unchecked here; run scripts/linux_parity_check.sh)"
+  skipped=$((skipped + 1))
+else
+  parity "macOS parity (framework interpreter)" scripts/macos_parity_check.sh
+  parity "linux parity (pinned deployment image)" scripts/linux_parity_check.sh
 fi
 
 step "ruff / compileall / git diff --check"
@@ -107,5 +138,10 @@ for name, status in rows:
 PY
 
 printf '\n'
-[ "$fail" = 0 ] && echo "MORNING VERIFY: ALL PASS" || echo "MORNING VERIFY: FAILURES ABOVE"
+# "ALL PASS" is reserved for a run that actually saw both other topologies. A
+# grep for it must not match a run where one of them was never checked.
+if [ "$fail" != 0 ]; then echo "MORNING VERIFY: FAILURES ABOVE"
+elif [ "$skipped" != 0 ]; then
+  echo "MORNING VERIFY: PASS ON THIS HOST ONLY — $skipped parity check(s) SKIPPED"
+else echo "MORNING VERIFY: ALL PASS"; fi
 exit $fail

@@ -88,3 +88,12 @@ def test_the_lint_and_hang_guards_are_locked_not_ambient() -> None:
         if "python3" in line and not line.lstrip().startswith("#")
     ]
     assert not ambient, ambient
+
+    # And the verdict is not a single-topology result. `MORNING VERIFY: ALL
+    # PASS` printed on four consecutive commits while Linux CI was red on every
+    # one of them, because nothing it ran could see another topology. It now
+    # calls both parity checks, and reserves the bare "ALL PASS" for a run that
+    # actually saw them: a skipped parity check downgrades the verdict line.
+    assert "scripts/linux_parity_check.sh" in verify
+    assert "scripts/macos_parity_check.sh" in verify
+    assert "MORNING VERIFY: PASS ON THIS HOST ONLY" in verify
