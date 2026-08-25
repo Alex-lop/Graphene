@@ -62,6 +62,10 @@ The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG, and
 
 On 2026-08-23 the North Star mission ran live against the `demo/north_star` target through Vertex AI (location `global`; `us-central1` does not serve this model for the project): two workers, three work attempts, assembly, exact verification, a registered `FinalResultBundleV2`, a bundle-bound approval, and an isolated local result commit — with every worker call bound into evidence as a sanitized provider receipt and the two renderer calls overlapping for 25–28 s on three independent bases. **What that run does not prove:** approvals were operator-delegated (`truth_kind: server_derived`) under a recorded standing instruction, not TTY-attested; the live failure laboratory and the cold capsule verification are separate claims. Every identifier, digest, and count is in [`evidence/north_star/2026-08-23-north-star-live.md`](evidence/north_star/2026-08-23-north-star-live.md); missing credentials still fail closed with no silent fallback. See [`docs/NORTH_STAR_RUNBOOK.md`](docs/NORTH_STAR_RUNBOOK.md) for the live-contact fixes this run required.
 
+`graphene demo --live` runs that whole path as one continuous sequence — trigger, bounded plan, a node's full contract, an edit that compiles revision 2, lint, diff, approval of the exact digest, two live workers, an injected check fault and its fenced retry, the isolated result, and `why`. It has run end to end and then three consecutive clean rehearsals, all exit 0 ([evidence](evidence/contract/2026-08-24-rehearsals/README.md)), and one run was timed end to end at **77 seconds** with the edit applied by a script. The script is [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+
+**What no rehearsal has covered:** every run so far applied the plan edit with `--plan-edit FILE`. The beat a camera would actually see is a person typing that edit into the interactive pause, and that branch has never been run under live Gemini. The submission video remains `NOT PROVEN` — nothing has been recorded.
+
 ## Product loop
 
 - Turn a goal, criteria, and deny-by-default `ProjectPolicy` into a validated immutable DAG.
@@ -97,7 +101,8 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | Cloud Run + real Firestore | `NOT DEPLOYED — NOT PROVEN` | Packaging/emulator proof is not authenticated deployment proof. Nothing was enabled or created: the required APIs are disabled on the configured project, and the project is a Gemini-API auto-created one rather than the dedicated sandbox the setup guide requires, so the owner chooses the project first |
 | Firestore single-executor vertical | `VERIFIED_LOCAL` on the official emulator | Seed → register → claim → heartbeat → **successful** completion with a real check receipt, the event chain recomputed from seq 1, and the sharded materialization invariants intact. Abandon is disabled (501) and a second concurrent executor is refused (409); cloud parallelism is not claimed anywhere |
 | Cloud check authority | `EXECUTOR_ATTESTED` | The coordinator recomputes a receipt's bindings, not its test results, so an authenticated remote executor is inside the trusted computing base. Every successful cloud completion records `check_authority: executor_attested` in the hash chain. A cloud smoke never inherits the local `trusted_check` claim |
-| Benchmark/video/media | `NOT PROVEN` | Harness/runbook/capture metadata exist; results and media do not |
+| Graph economics benchmark | `NOT PROVEN` | The harness has a credential-free unit test. No repeated run, token/cost/latency result, median or P95 is claimed |
+| Product media and submission video | `NOT PROVEN — CAPTURE PENDING` | `docs/assets/demo-capture.json` records the verified replay source and checkpoint; the required hero screenshot and replay GIF do not exist, and nothing has been filmed. The live sequence those media would show is separately rehearsed — see below |
 | Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
 | Shadow Agent, claude-code adapter | `VERIFIED_LOCAL` on a synthetic fixture | Record-shape mapping, Bash classification, path and content digests, redaction, fail-closed rules, reconstruction, lint, capsule |
 | Shadow Agent, real Claude Code session | `NOT PROVEN` (private smoke only) | One real 110-record transcript ingested with zero unknown records and report and lint ran; counts only in the contract, the transcript is private and the run is not reproducible from the repository |
@@ -155,7 +160,7 @@ Use `graphene mission result show MISSION_ID` to verify the candidate. Use `grap
 
 ## Command map
 
-Taskmaster entrypoints: `graphene init`, `graphene doctor`, `graphene plan`, `graphene status`, `graphene bundle`, `graphene cancel`, `graphene mission`, `graphene request-replan`, `graphene retry`, `graphene run`, `graphene task`, `graphene watch`, `graphene why`. The compatibility-only Auth tour commands remain: `graphene inspect`, `graphene replay`, `graphene review`, `graphene feedback`, `graphene answer`, `graphene memory`, `graphene handoff`, `graphene promote`, `graphene demo`.
+Taskmaster entrypoints: `graphene init`, `graphene doctor`, `graphene plan`, `graphene status`, `graphene bundle`, `graphene cancel`, `graphene mission`, `graphene request-replan`, `graphene retry`, `graphene run`, `graphene task`, `graphene watch`, `graphene why`. The compatibility-only Auth tour commands remain: `graphene inspect`, `graphene replay`, `graphene review`, `graphene feedback`, `graphene answer`, `graphene memory`, `graphene handoff`, `graphene promote`, and `graphene demo --driver verified-replay|scripted-local|adk-fake`. `graphene demo --live` is not one of them: it is the live mission sequence described above.
 
 ```bash
 graphene plan GOAL --repo PATH --success-criterion CRITERION
