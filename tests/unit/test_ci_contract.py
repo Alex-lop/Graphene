@@ -76,3 +76,15 @@ def test_the_lint_and_hang_guards_are_locked_not_ambient() -> None:
     # Every step reports its own failure output instead of hiding it in /dev/null.
     assert "uv run --frozen ruff check ." in verify
     assert ">/dev/null 2>&1" not in verify
+
+    # The verdict is computed by the locked interpreter too. Three steps piped
+    # their evidence into a bare `python3`, i.e. whatever the developer's PATH
+    # yields (/opt/anaconda3 on this machine) decided whether the store, the
+    # mission status and the capsule cold-verify passed. Comments may name the
+    # ambient interpreter; steps may not.
+    ambient = [
+        line
+        for line in verify.splitlines()
+        if "python3" in line and not line.lstrip().startswith("#")
+    ]
+    assert not ambient, ambient
