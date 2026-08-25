@@ -3,7 +3,8 @@
 Status (2026-08-23): **RUN LIVE — sections 1–3 and 5 proven, section 4
 partially.** The evidence, what flipped, and what did not are in
 [`evidence/north_star/2026-08-23-north-star-live.md`](../evidence/north_star/2026-08-23-north-star-live.md)
-and `NIGHT_REPORT.md`. Running it surfaced these corrections to the text
+and [`docs/reports/2026-08-23-night-report.md`](reports/2026-08-23-night-report.md).
+Running it surfaced these corrections to the text
 below, which is otherwise kept as the procedure:
 
 - Vertex AI serves `gemini-3.5-flash` to this project only with

@@ -128,7 +128,8 @@ Owner actions still required, in order: Gemini credentials plus `GRAPHENE_RUN_LI
 ## 2026-08-23 update: the live North Star run, the failure laboratory, and `graphene watch`
 
 Commit range: `9a0d1da` (preflight) through the series head recorded in
-`NIGHT_REPORT.md`. Full detail, spend, and authority use are in that report;
+[`docs/reports/2026-08-23-night-report.md`](reports/2026-08-23-night-report.md).
+Full detail, spend, and authority use are in that report;
 the evidence lives under `evidence/north_star/`.
 
 | Area | Implemented | Current proof boundary |
