@@ -40,6 +40,90 @@ cut that loses those frames loses the claim.
 
 ---
 
+## Three new shots — added 2026-08-26, after `graphene ui` and the MCP loop landed
+
+The sequence below is unchanged; these three sit around it. Every timing on
+this page that is not a transcript counter is labelled; these are no different.
+
+### 0 — Cold start · separate shot, ~30 s real time, speed-up must be labelled · **VERIFIED IN A CONTAINER, NOT FILMED**
+
+A fresh terminal, nothing installed but `git` and `uv`. Type the three
+README lines and nothing else:
+
+```bash
+git clone https://github.com/Alex-lop/Graphene.git && cd Graphene
+uv sync --frozen
+uv run --frozen graphene mission replay taskmaster
+```
+
+Measured on 2026-08-26 in a fresh `python:3.13-slim` container: `uv sync
+--frozen` took **2 s** after the clone; the replay printed its truth label and
+served Mission Control until a 60 s timeout stopped it (a container has no
+browser to close it). On a laptop the clone dominates; if you speed the shot
+up, say so on screen. This shot is proof of the door, not of the product — cut
+to it, do not narrate over it.
+
+### 16 — The `/graphene` loop with the map in a split pane · the centerpiece · **MECHANISM LIVE ON THE FIXTURE 1/1 (2026-08-26); NOT YET UNDER LIVE GEMINI; NOT FILMED**
+
+Left pane, Claude Code with this clone open (it offers the `graphene` server
+from `.mcp.json`; approve it once). Right pane, before you type anything:
+
+```bash
+uv run --frozen graphene ui
+```
+
+It says `no active mission` until the plan exists — that is correct, not a
+bug; start it after step 1 if you want a clean first frame. Then, left pane:
+
+```
+/mcp__graphene__goal Add redacted JSON and Markdown status reports to the fixture CLI.
+```
+
+What the camera must catch, in order — every one of these is in
+[`evidence/integration/2026-08-26/transcript.md`](../evidence/integration/2026-08-26/transcript.md),
+where the client was the official MCP client and the signer was a script:
+
+1. The agent calls `plan_goal` and prints the map: mission id, `base_sha`,
+   **the digest**, six nodes with dependencies. Right pane: the DAG appears,
+   banner `UNSIGNED — nothing runs until you sign`.
+2. The agent **stops and asks you to sign.** This is the beat. Nothing is
+   running; the right pane is still and unsigned.
+3. You type the digest. The agent calls `approve_plan` with what you typed.
+   (If you mistype one character the store refuses — `plan approval digest
+   does not match the committed revision` — and the agent asks again. On the
+   fixture that refusal was rehearsed deliberately; it is a good frame if you
+   want one.)
+4. Right pane: banner flips to `SIGNED — revision 1 approved`, nodes go
+   `queued → ready → running → done`, `render_markdown` shows `↻ retrying`
+   once — the injected check fault — then `done`; `verify_candidate` shows
+   `? verifying` then `done`; the status line reaches `awaiting_result`.
+   Sixteen distinct frames on the fixture, about seven seconds.
+5. The agent relays `mission_summary`: goal, every node's outcome, artifacts
+   touched, result state, one receipts line. Press `s` in the right pane and
+   the same summary is on screen, from the same store.
+
+Not proven and say so if asked: a person has not yet signed inside Claude
+Code on this machine (the E2E signer is a script, `claude mcp list` proves
+discovery of the server and nothing more); this loop has not run under live
+Gemini with the map attached — the credentials were not present in the
+session that built it. Live it would be the same beats with a 47 s mission
+phase instead of seven.
+
+### 17 — Summary and `why`, the closer · untimed · **MECHANISM LIVE ON THE FIXTURE 1/1**
+
+Right pane: press `enter` on `render_markdown` (`j`/`k` to move). The why
+pane shows attempt #1 `failed · check_failed`, attempt #2
+`committed · passed_after_retry`, the checks, the receipts, and — when the
+store is attached, as it is here — the lineage stages. Left pane, ask the
+agent *why* one of the touched files looks the way it does; it calls `why`
+and relays `matched_by=path` with the stages, `prior_attempts` naming the
+failed attempt and its fence. Then `q`: the terminal comes back clean.
+
+The digest that appears on the plan you signed, in the banner the whole time,
+and in `why` at the end is the film's argument, exactly as beat 15 says below.
+
+---
+
 ## Beats
 
 ### 1 — A change arrives · untimed · **LIVE**
@@ -349,6 +433,9 @@ for reading the file to work out what to change.
 times, three of them through the interactive prompt. A person's edit has been
 rehearsed zero.
 
+The headroom line above is **arithmetic, not measured**: no person typed the
+edit in any recorded run, including the ones of 2026-08-26.
+
 ## Truth labels, one line each
 
 | Beat | Label |
@@ -357,6 +444,8 @@ rehearsed zero.
 | 4 (the edit) | **MECHANISM LIVE 7/7 (interactive prompt 3/3 on 2026-08-25), THE PERSON NOT TIMED 0/7** — the interactive pause has run live with a scripted operator; a human's typing time has never been measured |
 | 7 (approval) | **LIVE, DELEGATED** — `truth_kind: server_derived` under a pre-authorized bounded policy; not TTY human attestation |
 | 9 (the failure) | **LIVE RUN, INJECTED FAULT** — `--inject-check-fault`, stamped `simulated_fixture`; not an infrastructure failure |
+| 0 (cold start) | **VERIFIED IN A CONTAINER** — `python:3.13-slim`, 2026-08-26; sync 2 s; not filmed |
+| 16, 17 (the loop with the map, summary, why) | **MECHANISM LIVE ON THE FIXTURE 1/1** — official MCP client, scripted signer, `graphene ui` attached from a second process (`evidence/integration/2026-08-26/`); **NOT RUN under live Gemini with the map attached** — no credentials in the session that built it; **NOT FILMED** |
 | The film | **NOT PROVEN** — `product_media` is `not_proven_capture_pending`; nothing has been recorded |
 
 Cost, from evidence-bound receipts across four runs on 2026-08-24: **$0.09–$0.12
