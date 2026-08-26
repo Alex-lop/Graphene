@@ -79,6 +79,8 @@ run "demo --driver verified-replay" uv run --frozen graphene demo \
   --driver verified-replay --no-open --exit-after-demo
 run "mission replay taskmaster" uv run --frozen graphene mission replay \
   taskmaster --no-open --exit-after-replay
+run "terminal ui renders the replay read-only" uv run --frozen pytest -q tests/unit/ui
+run "graphene ui --replay taskmaster --once" uv run --frozen graphene ui --replay taskmaster --once
 # Not part of the CI job, but this is where a store that cannot read its own
 # approvals shows up first, so it is worth the seconds.
 run "approval and revision authority" uv run --frozen pytest -q \

@@ -95,6 +95,13 @@ jobs:
           uv run --frozen pytest -q tests/process/test_verified_replay.py
           uv run --frozen graphene demo --driver verified-replay --no-open --exit-after-demo
           uv run --frozen graphene mission replay taskmaster --no-open --exit-after-replay
+      - name: The terminal UI renders the replay read-only
+        # The live-attach test skips here (the scripted fixture needs macOS);
+        # the renderer, the Textual pilot, the read-only handle and the label
+        # check are platform-independent and run.
+        run: |
+          uv run --frozen pytest -q tests/unit/ui
+          uv run --frozen graphene ui --replay taskmaster --once >/dev/null
 
   firestore-emulator:
     name: Firestore official client / isolated emulator
