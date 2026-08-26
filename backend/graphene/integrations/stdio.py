@@ -12,6 +12,7 @@ from ..lineage.observation import wait_until_observed
 from ..lineage.recovery import recover_interrupted_run
 from ..core_models import EvidenceKind, SourceKind, SourceReference, TaskId
 from .mcp import create_mcp_server
+from .mission_mcp import create_mission_mcp_server
 
 _PROFILES = (
     "platform-maintainer@1",
@@ -37,7 +38,11 @@ class _Parser(argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog="graphene-mcp", allow_abbrev=False)
-    mode = parser.add_mutually_exclusive_group(required=True)
+    # No mode flag at all serves the mission control plane (plan_goal,
+    # get_digest, approve_plan, mission_status, why, mission_summary and the
+    # `goal` prompt) over the CLI's own state root. --task/--run keep the
+    # legacy protocol tour exactly as before.
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument(
         "--task",
         choices=tuple(item.value for item in TaskId),
@@ -60,6 +65,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except _InvalidArguments:
         _diagnostic(_ARGUMENT_ERROR)
         return 2
+    if arguments.task is None and arguments.run is None:
+        return _serve_missions()
 
     database = os.environ.get("GRAPHENE_LINEAGE_DB")
     if not database:
@@ -118,6 +125,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     if exit_diagnostic is not None:
         _diagnostic(exit_diagnostic)
     return exit_code
+
+
+def _serve_missions() -> int:
+    """`graphene-mcp` with no mode flag: the /graphene loop over stdio."""
+
+    try:
+        server = create_mission_mcp_server()
+    except Exception:  # noqa: BLE001 - never leak startup details
+        _diagnostic(_STARTUP_ERROR)
+        return 1
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    _diagnostic(_READY)
+    try:
+        server.run("stdio")
+    except KeyboardInterrupt:
+        _diagnostic(_INTERRUPTED)
+        return 130
+    except Exception:  # noqa: BLE001 - never leak protocol/runtime failures
+        _diagnostic(_RUNTIME_ERROR)
+        return 1
+    return 0
 
 
 def _recovery_source(runtime, record) -> SourceReference:
