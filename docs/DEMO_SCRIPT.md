@@ -172,8 +172,8 @@ refs/graphene/results/…; nothing was pushed anywhere.`
 > repository and agree — the store checks its own caller."
 
 **2:15 — the feature runs.** The generated Markdown report prints: a real
-table, a note redacted to `[REDACTED]`, a pipe escaped inside a cell, an item
-flagged below its reorder level.
+table, a note redacted to `[REDACTED]`, an item flagged below its reorder
+level.
 
 > "And here is the thing it built, running. Not a hash that says it would work."
 
