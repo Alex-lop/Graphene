@@ -1,0 +1,9 @@
+# `claude mcp list` run from this repository's root on 2026-08-26, after committing .mcp.json
+# (other servers in the output are this machine's own connectors and are omitted)
+
+graphene: uv run --frozen graphene-mcp - ⏸ Pending approval (run `claude` to approve)
+
+# Claude Code (v2.1.246) discovered the project-scope server from .mcp.json and gates it on a
+# one-time approval in an interactive session, as its documentation says. No interactive
+# session was run and no model call was made; this proves discovery and the launch command,
+# not a person driving the loop.

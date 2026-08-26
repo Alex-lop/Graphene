@@ -1,0 +1,28 @@
+GRAPHENE mission_start_5541d5c504fa7f8409087233  ·  running  ·  live · seq 30
+PLAN v1  digest cddcda3f1919  ·  SIGNED — revision 1 approved
+
+┌──────────────┐  ┌─────────────┐  ┌─────────────────┐
+│ redact_notes │  │ render_json │  │ render_markdown │
+│ ✓ done       │  │ ✓ done      │  │ ● running       │
+└───────┬──────┘  └──────┬──────┘  └────────┬────────┘
+        │                │                  │
+        └───────┬──┬─────┴──┬───────┬───────┘
+                │  │        ▼       │
+                │  │  ┌──────────┐  │
+                │  │  │ wire_cli │  │
+                │  │  │ ○ queued │  │
+                │  │  └─────┬────┘  │
+                │  │        │       │
+                └──┴───────┬┴───────┘
+                           ▼
+                ┌────────────────────┐
+                │ assemble_candidate │
+                │ ○ queued           │
+                └──────────┬─────────┘
+                           │
+                           │
+                           ▼
+                 ┌──────────────────┐
+                 │ verify_candidate │
+                 │ ○ queued         │
+                 └──────────────────┘

@@ -370,5 +370,31 @@
     "screenshot": "docs/assets/ui-terminal.png",
     "arrow_art": "forbidden: tests/unit/ui/test_dag_render.py fails if the renderer emits '->'",
     "recorded_at": "2026-08-26"
+  },
+  "mcp_goal_loop": {
+    "status": "verified_local",
+    "truth_label": "MCP GOAL LOOP \u2014 VERIFIED_LOCAL: SIX TOOLS AND THE goal PROMPT OVER STDIO, SIGNATURE-GATED APPROVAL, END TO END ON A CLONE OF THIS REPOSITORY WITH THE SCRIPTED FIXTURE; NO PERSON SIGNED IN A CHAT CLIENT; CODEX AND GEMINI CLI DOCUMENTED, NOT DRIVEN",
+    "server_command": "uv run --frozen graphene-mcp",
+    "config": ".mcp.json",
+    "tools": [
+      "plan_goal",
+      "get_digest",
+      "approve_plan",
+      "mission_status",
+      "why",
+      "mission_summary"
+    ],
+    "prompt": "goal",
+    "claude_code_prompt": "/mcp__graphene__goal",
+    "test_command": "uv run --frozen pytest -q tests/unit/integrations/test_mission_mcp.py tests/process/test_mission_mcp_stdio.py -p no:cacheprovider",
+    "e2e_command": "uv run --frozen python scripts/e2e_mcp_loop.py evidence/integration/2026-08-26",
+    "proves": "initialize, tools/list, prompts/list, prompts/get and tool calls over real stdio with the official client; approve_plan refuses a digest that is not the committed revision's and honours the one shown; approval runs the scripted fixture inside the signed map; mission_status, mission_summary and why come from the store; graphene ui followed the run from a second read-only process.",
+    "does_not_prove": [
+      "a person signing inside Claude Code, Codex, or Gemini CLI (the signer in the evidence is the script)",
+      "a live model mission driven over MCP",
+      "Codex CLI or Gemini CLI connecting to this server (their blocks are documented against current docs only)"
+    ],
+    "evidence": "evidence/integration/2026-08-26/transcript.md",
+    "recorded_at": "2026-08-26"
   }
 }

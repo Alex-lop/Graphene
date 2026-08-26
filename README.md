@@ -24,17 +24,17 @@ That replays a checked-in, SHA-256-verified mission in Mission Control. Nothing 
 
 ## Connect your agent
 
-The server is `graphene-mcp` over stdio. Each block below was checked against that tool's official docs on 2026-08-26; the label says how far each path is proven.
+The server is `graphene-mcp` over stdio: six tools (`plan_goal`, `get_digest`, `approve_plan`, `mission_status`, `why`, `mission_summary`) and one prompt, `goal`, that walks the agent through the loop and stops for your signature — `approve_plan` refuses any digest you did not sign. Each block below was checked against that tool's official docs on 2026-08-26; the label says how far each path is proven.
 
-**Claude Code** — *the server is protocol-tested in CI with the official MCP client; this bare launch form, the committed `.mcp.json`, and the `goal` prompt land 2026-08-28. Until then the server needs the lineage-database arguments in [`docs/mcp_client_config.example.json`](docs/mcp_client_config.example.json).*
+**Claude Code** — *tested: the bare server below is driven by the official MCP client in CI and ran the whole loop end to end on a clone of this repository on 2026-08-26 ([evidence](evidence/integration/2026-08-26/transcript.md)); a person signing inside Claude Code itself is not yet on film.*
 
 ```bash
 claude mcp add --scope project graphene -- uv run --directory /path/to/Graphene --frozen graphene-mcp
 ```
 
-A project-scope `.mcp.json` will ship in this clone, so Claude Code offers the server as soon as you open the directory and asks you to approve it once. Graphene's prompts then appear as `/mcp__graphene__<prompt>`.
+This clone ships a project-scope [`.mcp.json`](.mcp.json), so Claude Code offers the server as soon as you open the directory and asks you to approve it once. The loop is the prompt `/mcp__graphene__goal <goal>`; a bare `/graphene <goal>` is one file away — copy [`integrations/claude-code/graphene.md`](integrations/claude-code/graphene.md) into `.claude/commands/`.
 
-**Codex CLI** — *documented against the current docs, not yet tested here; same 2026-08-28 date.* In `~/.codex/config.toml` (or `codex mcp add graphene -- uv run --directory /path/to/Graphene --frozen graphene-mcp`):
+**Codex CLI** — *documented against its current docs on 2026-08-26, not tested here.* In `~/.codex/config.toml` (or `codex mcp add graphene -- uv run --directory /path/to/Graphene --frozen graphene-mcp`):
 
 ```toml
 [mcp_servers.graphene]
@@ -42,7 +42,7 @@ command = "uv"
 args = ["run", "--directory", "/path/to/Graphene", "--frozen", "graphene-mcp"]
 ```
 
-**Gemini CLI** — *documented against the current docs, not yet tested here; same date.* In `~/.gemini/settings.json`, then a command file so `/graphene <goal>` works:
+**Gemini CLI** — *documented against its current docs on 2026-08-26, not tested here.* In `~/.gemini/settings.json`, then a command file so `/graphene <goal>` works:
 
 ```json
 { "mcpServers": { "graphene": { "command": "uv",
@@ -77,6 +77,7 @@ Comparison scripts land after 2026-08-31. Until they produce equal-gate data the
 | Scripted local mission | `VERIFIED_LOCAL` on macOS | Real scheduler, fixture workers, retry, exact verification, isolated result |
 | Live Gemini workers | `VERIFIED_LIVE` 2026-08-23 | Two `gemini-3.5-flash` workers finished a mission with evidence-bound receipts; approvals were operator-delegated, not human-attested; missing credentials fail closed with no silent fallback |
 | Terminal UI (`graphene ui`) | `VERIFIED_LOCAL` 2026-08-26 | Replay and a scripted-local mission on macOS, read-only, snapshot-tested; not a live model mission, not filmed |
+| The `/graphene` loop over MCP | `VERIFIED_LOCAL` 2026-08-26 | Six tools and the `goal` prompt over stdio, end to end on a clone of this repo with the map attached; the signer was a script, not a person in a chat client |
 | Docker executor · Cloud Run · benchmark · film | `NOT PROVEN` / `NOT DEPLOYED` | Nothing filmed, nothing deployed, no comparison measured |
 
 The full table, every identifier, and what each row does not prove: [`docs/PROOF.md`](docs/PROOF.md). Machine-readable truth: [`contracts/product_proof.json`](contracts/product_proof.json).

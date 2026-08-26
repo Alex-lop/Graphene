@@ -85,6 +85,21 @@ proposed mission through the same `mission start` path and commits a
 The watcher only creates; plan approval stays with the operator. Proof status
 for both paths is in [PROOF.md](PROOF.md).
 
+## The MCP surface
+
+`graphene-mcp` with no arguments serves the mission control plane over stdio
+(the committed [`.mcp.json`](../.mcp.json) launches it as
+`uv run --frozen graphene-mcp`): tools `plan_goal`, `get_digest`,
+`approve_plan`, `mission_status`, `why`, `mission_summary`, and the prompt
+`goal`, which instructs the calling agent to compile, show the digest, **stop
+and ask the human to sign**, run inside the map, and relay the summary.
+`approve_plan` requires the digest string and the store refuses any other.
+Every argument is a string; forged or extra keys are rejected before dispatch.
+The state root is the CLI's (`GRAPHENE_STATE_DIR` or `~/.graphene/state`), so
+`graphene ui` sees the same missions. `graphene-mcp --task … --profile …` and
+`--run RUN` remain the compatibility-only lineage tour
+([`mcp_client_config.example.json`](mcp_client_config.example.json)).
+
 ## Compatibility-only commands
 
 The compatibility-only Auth tour commands remain: `graphene inspect`,

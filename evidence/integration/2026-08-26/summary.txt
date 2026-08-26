@@ -1,0 +1,29 @@
+what was done
+Add redacted JSON and Markdown status reports to the fixture CLI.
+mission awaiting_result
+
+nodes
+  assemble_candidate done         passed · 1 attempt
+  redact_notes       done         passed · 1 attempt
+  render_json        done         passed · 1 attempt
+  render_markdown    done         passed · 2 attempts
+  verify_candidate   done         passed · 1 attempt
+  wire_cli           done         passed · 1 attempt
+
+artifacts touched
+  status_report/cli.py
+  status_report/redact.py
+  status_report/render_json.py
+  status_report/render_markdown.py
+  tests/test_cli.py
+  tests/test_redact.py
+  tests/test_render_json.py
+  tests/test_render_markdown.py
+
+result
+  awaiting_decision · bundle final_result_be3df9ce374fa025d93f452e088d5803
+  The immutable final-result bundle is persisted and awaits an exact bundle-bound decision.
+
+receipts: 21 evidence-bound across 6 nodes · head seq 61
+unknowns: 2 (listed, never guessed)
+
