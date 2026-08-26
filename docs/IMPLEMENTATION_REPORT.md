@@ -107,6 +107,21 @@ Follow [Alex cloud setup](ALEX_CLOUD_SETUP.md) only after deliberately selecting
 
 See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md). Remaining product gaps are live provider/cloud/Docker proof, full Firestore scheduler parity, operator-complete replanning, transitive artifact subsumption, broader mutation/repository support, automatic retention purge, shared cloud stream fan-out, product media/video, benchmark results, and the comprehension study.
 
+## 2026-08-26 update: the door, the face, and `/graphene`
+
+Detail and evidence: [`reports/2026-08-26-goal-run.md`](reports/2026-08-26-goal-run.md).
+Recorded on top of the 2026-08-25 orchestrator run; nothing below re-verifies
+earlier claims.
+
+| Area | Implemented | Current proof boundary |
+|---|---|---|
+| The door | README rewritten for a newcomer (≤120 lines; proof table moved to [`PROOF.md`](PROOF.md), command map to [`COMMANDS.md`](COMMANDS.md)); Shadow Agent deleted with a receipt; nineteen modules renamed for role so no first-party basename repeats; four deletions, one commit each | Quickstart verified cold in `python:3.13-slim`; connect snippets verified against each tool's docs on 2026-08-26 |
+| The face | `graphene ui` (Textual): top-to-bottom DAG with box-drawing edges, per-node state, digest and signed/unsigned banner; live attach through a read-only SQLite handle; drill-in and summary panes from the store; `--once`/`--frames` plain-text frames | `terminal_ui: verified_local` — replay and the scripted-local fixture on macOS ([`evidence/ui/2026-08-26/`](../evidence/ui/2026-08-26/README.md)); not a live model mission; not filmed |
+| `/graphene` in the agents | `graphene-mcp` with no arguments serves six tools and the `goal` prompt; `approve_plan` requires the digest; `.mcp.json` committed; the Claude Code command file under `integrations/claude-code/` | `mcp_goal_loop: verified_local` — official client over stdio, end to end on a clone of this repo with the map attached ([`evidence/integration/2026-08-26/`](../evidence/integration/2026-08-26/transcript.md)); the signer was a script; Codex and Gemini CLI documented, not driven |
+
+Labels added with their checks: `terminal_ui`, `mcp_goal_loop`. No label flipped.
+Live rehearsals with the map attached did not run: no Gemini credential reached the session.
+
 ## 2026-08-22 update: North Star groundwork
 
 This update is recorded on top of the verified source commit above; it does not re-verify that commit. Commit range: `7b41d58` through the docs commit that follows this report.
