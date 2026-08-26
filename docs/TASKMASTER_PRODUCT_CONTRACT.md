@@ -43,7 +43,7 @@ The submission category is **The Taskmaster**. Collaborative Partner describes t
 - Attempt, worker-time, and artifact exhaustion commit `blocked_budget`, pause dispatch, and name `replan_or_cancel`; an ordinary resume cannot silently clear the task blocker.
 
 The executable contracts are the strict Pydantic models in
-`graphene.orchestration.models`; their `schema_version=1` fields and
+`graphene.orchestration.mission_models`; their `schema_version=1` fields and
 `model_json_schema()` output are the mission and event JSON Schemas. Unknown
 fields are rejected. `TASK_TRANSITIONS` and `MISSION_TRANSITIONS` are the
 authoritative transition tables:

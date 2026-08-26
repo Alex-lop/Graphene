@@ -12,9 +12,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from graphene.app import GOLDEN, GRAPH_CONTRACT, create_app
+from graphene.legacy_app import GOLDEN, GRAPH_CONTRACT, create_app
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.store import JsonFileStore
+from graphene.legacy_store import JsonFileStore
 
 TOKEN = "graphene-local-demo"
 HEADERS = {"authorization": f"Bearer {TOKEN}"}

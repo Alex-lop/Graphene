@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import (
+from .mission_models import (
     MISSION_TRANSITIONS,
     TASK_TRANSITIONS,
     Mission,

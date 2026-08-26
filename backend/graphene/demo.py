@@ -39,9 +39,9 @@ from .demo_adk import (
 )
 from .lineage.explain import explain_path, inspect_run_item
 from .lineage.service import ToolCallIdentity
-from .lineage.store import SQLiteLineageStore
+from .lineage.sqlite_lineage_store import SQLiteLineageStore
 from .lineage.artifacts import SQLiteArtifactStore
-from .models import (
+from .core_models import (
     GoldenContract,
     LineageEventType,
     LineageOperation,
@@ -98,7 +98,7 @@ def _preflight() -> None:
             "Run instead: uv run --frozen graphene demo --driver verified-replay"
         )
     try:
-        from .viewer.app import create_viewer_app  # noqa: F401
+        from .viewer.viewer_app import create_viewer_app  # noqa: F401
     except (ImportError, ModuleNotFoundError) as error:
         raise DemoError("the read-only v2 viewer is unavailable") from error
 
@@ -122,7 +122,7 @@ def _start_viewer(
     driver: str,
     automated_fixture: bool = False,
 ) -> _Viewer:
-    from .viewer.app import create_viewer_app
+    from .viewer.viewer_app import create_viewer_app
 
     port = _free_port()
     token = secrets.token_urlsafe(32)
@@ -158,7 +158,7 @@ def _start_viewer(
 
 
 def _start_verified_replay() -> tuple[_Viewer, str]:
-    from .viewer.replay import (
+    from .viewer.viewer_replay import (
         REPLAY_TRUTH_LABEL,
         ReplayEvidenceInvalid,
         create_verified_replay_app,

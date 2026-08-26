@@ -25,7 +25,7 @@ from graphene.orchestration.final_bundle import (
     build_final_result_bundle,
     verify_final_result_bundle,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactPublication,
     Attempt,

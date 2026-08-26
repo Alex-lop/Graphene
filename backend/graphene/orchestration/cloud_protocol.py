@@ -7,7 +7,7 @@ from pydantic import Field, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2
 from ..hashing import canonical_json_sha256
-from ..models import (
+from ..core_models import (
     BoundedText,
     FrozenModel,
     Identifier,
@@ -16,7 +16,7 @@ from ..models import (
     UtcDateTime,
 )
 from .evidence import TrustedCheckReceipt
-from .models import (
+from .mission_models import (
     MAX_ARTIFACT_BYTES,
     ArtifactInputReference,
     AttemptResult,

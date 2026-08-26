@@ -13,7 +13,7 @@ import re
 from typing import Literal
 
 from ..hashing import sha256_hex
-from ..models import FrozenModel, Sha256
+from ..core_models import FrozenModel, Sha256
 from ..redaction import bounded_excerpt, redact_text
 
 FailureClass = Literal[

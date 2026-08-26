@@ -25,7 +25,7 @@ The scheduler consumes only a validated approved plan. The browser graph and tab
 
 Strict frozen Pydantic contracts cover projects, missions, plans, criteria, tasks, attempts, leases, gates, publications, resources, evidence, and results. Unknown fields fail validation. Plans reject cycles, missing dependencies or artifacts, policy excess, undeclared checks, cross-task write conflicts, uncovered/self-verified criteria, incomplete artifact frontiers, and unsupported assembly/verification shapes.
 
-Mission and task transition tables live in [`graphene.orchestration.models`](../backend/graphene/orchestration/models.py). The accepted prose contract is [TASKMASTER_PRODUCT_CONTRACT.md](TASKMASTER_PRODUCT_CONTRACT.md).
+Mission and task transition tables live in [`graphene.orchestration.mission_models`](../backend/graphene/orchestration/mission_models.py). The accepted prose contract is [TASKMASTER_PRODUCT_CONTRACT.md](TASKMASTER_PRODUCT_CONTRACT.md).
 
 ## Local store
 

@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.promotion import SQLiteCheckpointRecorder
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     LineageAuthority,
     LineageEventType,
     SourceKind,

@@ -28,7 +28,7 @@ from ..hashing import (
     canonical_json_sha256,
     sha256_hex,
 )
-from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256, TruthKind
+from ..core_models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256, TruthKind
 from .diagnostics import CHECK_DIAGNOSTIC_KIND, CheckDiagnostic, summarize_check_failure
 from .evidence import (
     AttemptEvidenceAuthority,
@@ -37,7 +37,7 @@ from .evidence import (
     SQLiteAttemptEvidenceStore,
     TrustedCheckReceipt,
 )
-from .models import (
+from .mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactInputReference,
     ArtifactVisibility,

@@ -15,9 +15,9 @@ from fastapi.testclient import TestClient
 
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.promotion import SQLiteCheckpointRecorder
-from graphene.lineage.store import SQLiteLineageStore
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
 from graphene.hashing import canonical_json_sha256
-from graphene.models import (
+from graphene.core_models import (
     Event,
     EventInput,
     EvidenceKind,
@@ -37,14 +37,14 @@ from graphene.viewer import (
     diff_snapshots,
 )
 from graphene.viewer.contract import GraphDelta, GraphSnapshot
-from graphene.viewer.projection import (
+from graphene.viewer.viewer_projection import (
     UNKNOWN_LIMITS,
     _add_edge,
     _build_graph,
     _build_review_brief,
     snapshot_at_cursor,
 )
-from graphene.viewer.replay import apply_replay_envelope
+from graphene.viewer.viewer_replay import apply_replay_envelope
 from scripts.generate_viewer_replay import DEFAULT_SOURCE, materialize
 
 BASE_SHA = "a" * 40

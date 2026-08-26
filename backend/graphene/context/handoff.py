@@ -8,7 +8,7 @@ from fnmatch import fnmatchcase
 from typing import Protocol, TypeVar
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     AgentProfile,
     BriefEvidence,
     BriefMemory,

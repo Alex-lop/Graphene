@@ -19,7 +19,7 @@ from graphene.orchestration.overlap import (
     PROVIDER_REPORTED_BASIS,
     measure_overlap,
 )
-from graphene.orchestration.runtime import WorkerProviderReceipt
+from graphene.orchestration.worker_runtime import WorkerProviderReceipt
 from graphene.orchestration.workers.gemini import (
     ProviderStamp,
     StampedGemini,
@@ -250,8 +250,8 @@ def test_rejected_worker_output_still_binds_its_provider_receipt(
     """A billed call whose output fails validation must not vanish from evidence."""
 
     from graphene.cli import mission as mission_cli
-    from graphene.orchestration.models import AttemptState, TaskKind
-    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+    from graphene.orchestration.mission_models import AttemptState, TaskKind
+    from graphene.orchestration.worker_runtime import WORKER_PROVIDER_RECEIPT_KIND
     from graphene.orchestration.workers import FileMutation
     from tests.unit.orchestration.test_gemini_mission_runtime import (
         prepare_fake_two_worker_mission,
@@ -314,8 +314,8 @@ def test_malformed_model_reply_is_retried_under_a_higher_fence(
     from google.genai import types
 
     from graphene.cli import mission as mission_cli
-    from graphene.orchestration.models import AttemptState, MissionStatus, TaskKind
-    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+    from graphene.orchestration.mission_models import AttemptState, MissionStatus, TaskKind
+    from graphene.orchestration.worker_runtime import WORKER_PROVIDER_RECEIPT_KIND
     from graphene.orchestration.workers import DeterministicWorkerModel
     from tests.unit.orchestration.test_gemini_mission_runtime import (
         prepare_fake_two_worker_mission,
@@ -359,7 +359,7 @@ def test_malformed_model_reply_is_retried_under_a_higher_fence(
     path_b = prepared.model_b.mutations[0].path
     model_a = TaskAware(model="fixture-worker-a")
     model_b = TaskAware(model="fixture-worker-b", garble_path=path_b)
-    from graphene.orchestration.runtime import WorkerRegistry
+    from graphene.orchestration.worker_runtime import WorkerRegistry
     from graphene.orchestration.workers import GeminiWorkerAdapter
 
     registry = WorkerRegistry(

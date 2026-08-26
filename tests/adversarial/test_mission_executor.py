@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from graphene.orchestration.models import CommandTemplate
+from graphene.orchestration.mission_models import CommandTemplate
 from graphene.orchestration.sandbox import (
     SandboxError,
     SandboxLimits,

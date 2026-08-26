@@ -14,8 +14,8 @@ from graphene.lineage.service import (
     ScopedApplicationService,
     ToolCallIdentity,
 )
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     GoldenContract,

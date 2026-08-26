@@ -13,10 +13,10 @@ from .execution import ExecutionError, fixture_base_sha
 from .execution.adapter import _initialize_repository, _validate_fixture
 from .hashing import canonical_json_sha256, sha256_hex
 from .lineage.artifacts import SQLiteArtifactStore
-from .lineage.reducer import reduce_events
+from .lineage.lineage_reducer import reduce_events
 from .lineage.service import RuntimeHandle, ScopedApplicationService
-from .lineage.store import LineageConflict, SQLiteLineageStore
-from .models import (
+from .lineage.sqlite_lineage_store import LineageConflict, SQLiteLineageStore
+from .core_models import (
     AgentProfile,
     Event,
     EventInput,

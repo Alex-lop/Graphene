@@ -12,7 +12,7 @@ from graphene.lineage.promotion import (
     PromotionRetestError,
     promote,
 )
-from graphene.models import LineageEventType, VerifiedHead
+from graphene.core_models import LineageEventType, VerifiedHead
 
 from test_promotion import Harness, RUN_ID
 

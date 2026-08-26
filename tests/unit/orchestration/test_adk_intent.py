@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.genai import types
-from graphene.orchestration.adk import (
+from graphene.orchestration.adk_planner import (
     AdkPlanner,
     PlanIntent,
     describe_output_schema,
@@ -18,7 +18,7 @@ from graphene.orchestration.adk import (
     criterion_id,
     planning_context_sha256,
 )
-from graphene.orchestration.models import TaskKind
+from graphene.orchestration.mission_models import TaskKind
 from pydantic import PrivateAttr
 
 from .test_adk import _contracts
@@ -174,7 +174,7 @@ def test_compiler_rejects_uncovered_or_unknown_criterion_ids() -> None:
 
 
 def test_sanitized_validation_detail_names_locations_and_types_only() -> None:
-    from graphene.orchestration.adk import PlanIntent, sanitized_validation_detail
+    from graphene.orchestration.adk_planner import PlanIntent, sanitized_validation_detail
 
     secret_looking = "AIza" + "x" * 35
     try:
@@ -193,7 +193,7 @@ def test_sanitized_validation_detail_names_locations_and_types_only() -> None:
 
 
 def test_live_model_ordering_is_canonicalized_not_rejected() -> None:
-    from graphene.orchestration.adk import PlanIntent
+    from graphene.orchestration.adk_planner import PlanIntent
 
     def work(task_id: str, write: str, deps: list[str]) -> dict:
         return {

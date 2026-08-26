@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from graphene.hashing import canonical_json_bytes, sha256_hex
-from graphene.lineage.reducer import reduce_events
+from graphene.lineage.lineage_reducer import reduce_events
 from graphene.lineage.service import (
     EvidenceItem,
     RuntimeAccessDenied,
@@ -19,8 +19,8 @@ from graphene.lineage.service import (
     ScopedApplicationService,
     ToolCallIdentity,
 )
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     EvidenceReference,

@@ -29,7 +29,7 @@ from urllib.parse import quote
 import yaml
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..orchestration.models import MissionTrigger
+from ..orchestration.mission_models import MissionTrigger
 from . import mission as mission_cli
 
 INBOX_STATE_NAME = ".graphene-watch-state.json"

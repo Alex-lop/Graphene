@@ -10,9 +10,9 @@ from unittest.mock import patch
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.promotion import SQLiteCheckpointRecorder
-from graphene.lineage.reducer import reduce_events
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.lineage_reducer import reduce_events
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     Event,
     EventInput,
     EvidenceKind,
@@ -25,7 +25,7 @@ from graphene.models import (
     VerifiedHead,
 )
 from graphene.viewer.contract import GraphSnapshot, ViewHead
-from graphene.viewer.projection import (
+from graphene.viewer.viewer_projection import (
     _encode_cursor,
     apply_deltas,
     build_snapshot,
@@ -33,7 +33,7 @@ from graphene.viewer.projection import (
     diff_snapshots,
     snapshot_at_cursor,
 )
-from graphene.viewer.replay import apply_replay_envelope
+from graphene.viewer.viewer_replay import apply_replay_envelope
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,8 +106,8 @@ def materialize(
         return start + timedelta(seconds=counter)
 
     with (
-        patch("graphene.lineage.store._new_event_id", side_effect=event_id),
-        patch("graphene.lineage.store._now", side_effect=recorded_at),
+        patch("graphene.lineage.sqlite_lineage_store._new_event_id", side_effect=event_id),
+        patch("graphene.lineage.sqlite_lineage_store._now", side_effect=recorded_at),
     ):
         for run_alias, run in fixture["runs"].items():
             run_id = run["run_id"]

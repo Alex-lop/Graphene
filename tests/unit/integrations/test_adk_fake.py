@@ -17,8 +17,8 @@ from graphene.execution.adapter import TestRun as _TestRun
 from graphene.hashing import sha256_hex
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.service import EvidenceItem, ScopedApplicationService
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     GoldenContract,

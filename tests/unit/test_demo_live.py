@@ -452,7 +452,7 @@ def test_a_graphene_failure_mid_run_is_one_sentence_not_a_traceback(
     demo and rich printed the whole stack — during the beat a camera would be
     pointed at.
     """
-    from graphene.orchestration.projection import MissionProjectionError
+    from graphene.orchestration.mission_projection import MissionProjectionError
 
     def explode(*args, **kwargs):
         raise MissionProjectionError("mission evidence is quarantined")

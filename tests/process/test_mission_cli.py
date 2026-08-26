@@ -15,7 +15,7 @@ import pytest
 
 from graphene.execution import run_fixture_tests
 from graphene.hashing import canonical_json_bytes, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import (
     AttemptEvidenceAuthority,
     AttemptEvidenceEventType,
@@ -24,13 +24,13 @@ from graphene.orchestration.evidence import (
     TrustedCheckReceipt,
 )
 from graphene.orchestration.local_result import LocalResultError, approve_result
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptState,
     MissionEventType,
     MissionStatus,
     TaskState,
 )
-from graphene.orchestration.projection import MissionProjection
+from graphene.orchestration.mission_projection import MissionProjection
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
@@ -47,7 +47,7 @@ from graphene.orchestration.scripted import (
     scripted_result_artifacts,
     scripted_supported,
 )
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 
 ROOT = Path(__file__).resolve().parents[2]

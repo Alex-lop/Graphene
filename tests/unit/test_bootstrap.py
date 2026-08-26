@@ -13,7 +13,7 @@ from graphene.bootstrap import (
 )
 from graphene.hashing import canonical_json_sha256, sha256_hex
 from graphene.lineage.service import ToolCallIdentity
-from graphene.models import (
+from graphene.core_models import (
     LineageAuthority,
     LineageEventType,
     LineageOperation,

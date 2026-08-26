@@ -13,10 +13,10 @@ from pydantic import TypeAdapter
 
 from ..artifact_envelope import DirectArtifactInputV2
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import GitSha, IdempotencyKey, Sha256, TruthKind, UtcDateTime
+from ..core_models import GitSha, IdempotencyKey, Sha256, TruthKind, UtcDateTime
 from .evidence import TrustedCheckReceipt
 from .materialized_integrity import verify_materialized_artifacts
-from .models import (
+from .mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactInputReference,
     ArtifactPublication,
@@ -53,11 +53,11 @@ from .models import (
     artifact_input_reference_key,
     stage_payload,
 )
-from .reducer import TransitionError, reduce_events, transition_mission, transition_task
+from .mission_reducer import TransitionError, reduce_events, transition_mission, transition_task
 from .validation import require_valid_plan
 
 if TYPE_CHECKING:
-    from .adk import PlanProposalReceipt
+    from .adk_planner import PlanProposalReceipt
 
 _COMMAND_ID = TypeAdapter(IdempotencyKey)
 _GIT_SHA = TypeAdapter(GitSha)
@@ -1136,7 +1136,7 @@ class SQLiteMissionStore:
         if raw is None or sha256_hex(raw) != reference.sha256:
             raise MissionConflict("plan proposal receipt is unavailable")
         try:
-            from .adk import PlanProposalReceipt, planning_input_sha256
+            from .adk_planner import PlanProposalReceipt, planning_input_sha256
 
             proposal = PlanProposalReceipt.model_validate_json(raw)
         except (ImportError, ValueError) as error:

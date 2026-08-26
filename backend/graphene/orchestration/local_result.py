@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import FrozenModel, GitSha, Identifier, RepoPath, Sha256, TruthKind
+from ..core_models import FrozenModel, GitSha, Identifier, RepoPath, Sha256, TruthKind
 from .evidence import SQLiteAttemptEvidenceStore, TrustedCheckReceipt
-from .models import (
+from .mission_models import (
     AttemptState,
     EvidenceReference,
     MissionEvent,

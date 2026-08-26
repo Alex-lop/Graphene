@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_sha256
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     ArtifactContract,
     ArtifactRequirement,
     CommandTemplate,

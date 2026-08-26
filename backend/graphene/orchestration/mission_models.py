@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
-from ..models import (
+from ..core_models import (
     BoundedText,
     FrozenModel,
     GitSha,

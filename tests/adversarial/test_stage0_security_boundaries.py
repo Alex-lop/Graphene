@@ -7,12 +7,12 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from graphene import app as app_module
-from graphene import store as store_module
-from graphene.app import GOLDEN, create_app
+from graphene import legacy_app as app_module
+from graphene import legacy_store as store_module
+from graphene.legacy_app import GOLDEN, create_app
 from graphene.execution import TestRun as _TestRun
 from graphene.execution import adapter as adapter_module
-from graphene.store import FirestoreStore, InMemoryStore
+from graphene.legacy_store import FirestoreStore, InMemoryStore
 
 
 BEARER_CANARY = "stage0-synthetic-bearer-canary-7f0c1a"

@@ -6,12 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
-import graphene.lineage.store as store_module
-import graphene.lineage.reducer as reducer_module
+import graphene.lineage.sqlite_lineage_store as store_module
+import graphene.lineage.lineage_reducer as reducer_module
 import pytest
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage import EvidenceInvalid, LineageConflict, SQLiteLineageStore
-from graphene.models import (
+from graphene.core_models import (
     EventInput,
     EvidenceInvalidState,
     EvidenceKind,

@@ -22,7 +22,7 @@ import pytest
 import graphene.cli.mission as mission_cli
 from graphene.cli.main import main
 from graphene.orchestration.plan_yaml import plan_from_yaml, plan_to_yaml
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 from tests.unit.orchestration.test_store import _create, _policy
 
 MISSION = "mission-1"

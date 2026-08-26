@@ -1,5 +1,5 @@
 from .artifacts import SQLiteArtifactStore
-from .store import (
+from .sqlite_lineage_store import (
     EvidenceInvalid,
     LineageConflict,
     LineageStoreError,

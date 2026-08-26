@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from graphene.hashing import canonical_json_bytes
 from graphene.lineage import SQLiteArtifactStore, SQLiteLineageStore
-from graphene.models import (
+from graphene.core_models import (
     LineageAuthority,
     LineageEventType,
     SourceKind,

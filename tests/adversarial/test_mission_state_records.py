@@ -8,9 +8,9 @@ from datetime import timedelta
 import pytest
 
 from graphene.hashing import canonical_json_bytes
-from graphene.models import TruthKind
-from graphene.orchestration.models import Gate, GateDecision, TaskKind
-from graphene.orchestration.store import MissionStoreError, SQLiteMissionStore
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import Gate, GateDecision, TaskKind
+from graphene.orchestration.sqlite_mission_store import MissionStoreError, SQLiteMissionStore
 from tests.unit.orchestration.test_store import (
     NOW,
     _artifacts,

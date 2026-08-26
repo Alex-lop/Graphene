@@ -13,8 +13,8 @@ import pytest
 import yaml
 
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     AttemptState,
     MissionEventType,
     MissionStatus,
@@ -27,12 +27,12 @@ from graphene.orchestration.plan_yaml import plan_from_yaml, plan_to_yaml
 from graphene.orchestration.runner import AcceptedArtifactCache, MissionRunner
 from graphene.orchestration.scheduler import MissionScheduler, SystemClock
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
-from graphene.orchestration.store import (
+from graphene.orchestration.sqlite_mission_store import (
     LeaseConflict,
     MissionConflict,
     SQLiteMissionStore,
 )
-from graphene.orchestration.runtime import CheckOutcome, RuntimeAssignment
+from graphene.orchestration.worker_runtime import CheckOutcome, RuntimeAssignment
 from tests.unit.orchestration.test_runner import (
     CHECK,
     _Adapter,

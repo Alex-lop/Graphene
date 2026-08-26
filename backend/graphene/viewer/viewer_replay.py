@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from .contract import GraphDelta, GraphSnapshot
-from .projection import ViewerEvidenceInvalid, apply_deltas
+from .viewer_projection import ViewerEvidenceInvalid, apply_deltas
 
 
 STATIC_DIR = Path(__file__).with_name("static")

@@ -4,8 +4,8 @@ import json
 
 from graphene.cli.render import render_evidence_invalid, render_human, render_ndjson
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256
-from graphene.lineage.reducer import reduce_events
-from graphene.models import (
+from graphene.lineage.lineage_reducer import reduce_events
+from graphene.core_models import (
     Event,
     EventInput,
     EvidenceInvalidState,

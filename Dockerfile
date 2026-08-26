@@ -29,4 +29,4 @@ ENV GRAPHENE_ENTRYPOINT_MODE="legacy-http-compatibility" \
     PYTHONUNBUFFERED=1
 
 # Compatibility entry point. The served page repeats this warning persistently.
-CMD ["sh", "-c", "echo 'LEGACY HTTP COMPATIBILITY DEMO — NOT AUTHORITATIVE V2' >&2; exec uvicorn graphene.app:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["sh", "-c", "echo 'LEGACY HTTP COMPATIBILITY DEMO — NOT AUTHORITATIVE V2' >&2; exec uvicorn graphene.legacy_app:app --host 0.0.0.0 --port ${PORT:-8080}"]

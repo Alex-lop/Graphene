@@ -10,9 +10,9 @@ from google.genai import types
 from graphene.bootstrap import bootstrap_local_run
 from graphene.cli.main import main
 from graphene.hashing import canonical_json_bytes
-from graphene.integrations.adk import AdkRuntimeAdapter
+from graphene.integrations.adk_adapter import AdkRuntimeAdapter
 from graphene.lineage.service import RuntimeIdentityError
-from graphene.models import LineageEventType
+from graphene.core_models import LineageEventType
 
 ROOT = Path(__file__).parents[2]
 CANARY = "PRIVATE_PROVIDER_MODEL_CANARY_8f63a7"

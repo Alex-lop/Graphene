@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 from graphene.bootstrap import bootstrap_local_run
-from graphene.lineage.reducer import ProjectionError, reduce_events
+from graphene.lineage.lineage_reducer import ProjectionError, reduce_events
 from graphene.lineage.service import RuntimeServiceError, ToolCallIdentity
-from graphene.models import VerifiedHead
+from graphene.core_models import VerifiedHead
 
 ROOT = Path(__file__).parents[2]
 

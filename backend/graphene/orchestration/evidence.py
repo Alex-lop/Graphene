@@ -12,7 +12,7 @@ from pydantic import Field, TypeAdapter, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2, verify_artifact_envelope
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     FrozenModel,
     GitSha,
     Identifier,
@@ -21,7 +21,7 @@ from ..models import (
     TruthKind,
     UtcDateTime,
 )
-from .models import (
+from .mission_models import (
     MAX_ARTIFACT_BYTES,
     MAX_EVENT_PAYLOAD_BYTES,
     ArtifactEnvelopeReferenceV2,

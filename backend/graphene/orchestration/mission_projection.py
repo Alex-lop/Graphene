@@ -9,7 +9,7 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
-from .models import (
+from .mission_models import (
     ArtifactPublication,
     Attempt,
     AttemptState,
@@ -22,9 +22,9 @@ from .models import (
     TaskKind,
     TaskState,
 )
-from .reducer import TransitionError, reduce_events
-from .store import MissionNotFound as StoreMissionNotFound
-from .store import MissionStoreError
+from .mission_reducer import TransitionError, reduce_events
+from .sqlite_mission_store import MissionNotFound as StoreMissionNotFound
+from .sqlite_mission_store import MissionStoreError
 
 TaskStateValue = Literal[
     "queued",

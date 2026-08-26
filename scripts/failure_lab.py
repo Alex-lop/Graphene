@@ -52,7 +52,7 @@ from datetime import UTC, datetime
 from typing import IO
 
 from graphene.cli.mission import MissionCliError, _mission_runtime, _store_for_mission
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptState,
     Dispatch,
     MissionStatus,
@@ -64,7 +64,7 @@ from graphene.orchestration.process_control import (
     OwnedProcessRegistry,
     ProcessControlError,
 )
-from graphene.orchestration.store import MissionNotFound, MissionStoreError
+from graphene.orchestration.sqlite_mission_store import MissionNotFound, MissionStoreError
 
 
 class FailureLabError(RuntimeError):

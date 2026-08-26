@@ -21,8 +21,8 @@ from google.genai import types
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
-from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
-from .models import (
+from ..core_models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
+from .mission_models import (
     ArtifactContract,
     ArtifactRequirement,
     Criterion,

@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from graphene.models import RunRecord, RunState, TaskId
-from graphene import store as store_module
-from graphene.store import FirestoreStore, IdempotencyConflict, JsonFileStore
+from graphene.core_models import RunRecord, RunState, TaskId
+from graphene import legacy_store as store_module
+from graphene.legacy_store import FirestoreStore, IdempotencyConflict, JsonFileStore
 
 
 def test_json_store_restarts_and_keeps_idempotency(tmp_path: Path):

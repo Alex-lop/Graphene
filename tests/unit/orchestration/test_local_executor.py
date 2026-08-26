@@ -25,7 +25,7 @@ from graphene.orchestration.local_executor import (
     LocalExecutorError,
     run_local_executor,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptResult,
     EvidenceReference,
     Lease,

@@ -11,11 +11,11 @@ from google.cloud import firestore
 
 from ..hashing import canonical_json_bytes
 from .coordinator import IdentityVerifier, create_coordinator_app
-from .firestore import FirestoreMissionStore
+from .firestore_mission_store import FirestoreMissionStore
 from .google_oidc import GoogleOidcExecutorVerifier
 from .mission_control import create_mission_control_app
-from .models import MissionHead
-from .projection import MissionProjection
+from .mission_models import MissionHead
+from .mission_projection import MissionProjection
 
 CLOUD_PROOF = "NOT PROVEN"
 CLOUD_STREAM_INTERVAL_SECONDS = 2.0

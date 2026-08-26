@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from graphene.lineage import LineageConflict, SQLiteArtifactStore
-from graphene.models import EvidenceKind
+from graphene.core_models import EvidenceKind
 
 
 def test_private_artifacts_are_canonical_restart_safe_and_fail_closed(tmp_path: Path):

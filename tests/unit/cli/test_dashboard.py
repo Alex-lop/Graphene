@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from rich.console import Console
 
-from graphene.orchestration.projection import MissionProjectionError
+from graphene.orchestration.mission_projection import MissionProjectionError
 
 from graphene.cli.dashboard import (
     GEMINI_3_5_FLASH_USD_PER_TOKEN,
@@ -26,9 +26,9 @@ from graphene.cli.dashboard import (
     render_plain,
     spend_from_receipts,
 )
-from graphene.orchestration.models import AttemptResult, TaskKind
-from graphene.orchestration.projection import MissionProjection
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.mission_models import AttemptResult, TaskKind
+from graphene.orchestration.mission_projection import MissionProjection
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 from tests.unit.orchestration.test_store import (
     NOW,
     _artifacts,

@@ -1,7 +1,7 @@
 {
   "authority": {
     "compatibility_only": [
-      "backend/graphene/app.py",
+      "backend/graphene/legacy_app.py",
       "frontend",
       "Dockerfile"
     ],

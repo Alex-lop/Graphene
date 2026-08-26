@@ -5,7 +5,7 @@ import pytest
 
 from graphene.context import build_context_packet, load_catalog, profile_for_task
 from graphene.hashing import canonical_json_sha256
-from graphene.models import (
+from graphene.core_models import (
     ContextDecision,
     GoldenContract,
     GraphMvpContract,

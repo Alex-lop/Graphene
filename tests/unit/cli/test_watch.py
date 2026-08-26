@@ -21,9 +21,9 @@ import graphene.cli.watch as watch
 from graphene.cli.main import build_parser, main
 from graphene.hashing import canonical_json_sha256, sha256_hex
 from graphene.orchestration.capsule import verify_mission_capsule
-from graphene.orchestration.models import MissionEventType, MissionStatus
+from graphene.orchestration.mission_models import MissionEventType, MissionStatus
 from graphene.orchestration.scripted import load_scenario, scripted_supported
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 requires_scripted = pytest.mark.skipif(

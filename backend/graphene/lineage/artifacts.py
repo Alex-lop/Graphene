@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from ..hashing import canonical_json_bytes, sha256_hex
-from ..models import EvidenceKind, EvidenceReference
-from .store import LineageConflict
+from ..core_models import EvidenceKind, EvidenceReference
+from .sqlite_lineage_store import LineageConflict
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS lineage_artifacts (

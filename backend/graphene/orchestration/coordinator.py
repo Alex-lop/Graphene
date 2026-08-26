@@ -23,7 +23,7 @@ from .cloud_protocol import (
     HeartbeatRequest,
     RegisterExecutorRequest,
 )
-from .firestore import (
+from .firestore_mission_store import (
     ArtifactCapabilityRejected,
     ArtifactLocalityUnavailable,
     DispatchStateRejected,

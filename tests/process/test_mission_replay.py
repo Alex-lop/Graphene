@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from graphene.orchestration.replay import (
+from graphene.orchestration.mission_replay import (
     MISSION_REPLAY_TRUTH_LABEL,
     load_verified_mission_replay,
 )
@@ -37,7 +37,7 @@ def test_mission_replay_runs_cross_platform_without_execution_or_state(tmp_path:
     code = """
 import os
 import uvicorn
-from graphene.orchestration.replay import create_mission_replay_app
+from graphene.orchestration.mission_replay import create_mission_replay_app
 uvicorn.run(create_mission_replay_app(os.environ['MISSION_REPLAY_TOKEN'], stream_interval_seconds=.05), host='127.0.0.1', port=int(os.environ['MISSION_REPLAY_PORT']), log_level='critical', access_log=False)
 """
     process = subprocess.Popen(

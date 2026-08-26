@@ -12,7 +12,7 @@ from graphene.lineage.explain import (
 )
 from graphene.lineage.human import HumanWorkflowService
 from graphene.lineage.service import ToolCallIdentity
-from graphene.models import (
+from graphene.core_models import (
     Event,
     EvidenceKind,
     GoldenContract,

@@ -10,7 +10,7 @@ from graphene.hashing import sha256_hex
 from graphene.integrations.mcp import create_mcp_server
 from graphene.lineage import SQLiteArtifactStore, SQLiteLineageStore
 from graphene.lineage.service import EvidenceItem, ScopedApplicationService
-from graphene.models import (
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     GoldenContract,

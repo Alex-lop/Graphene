@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     AgentProfileId,
     Event,
     EventInput,
@@ -36,7 +36,7 @@ from ..models import (
 )
 from .artifacts import SQLiteArtifactStore
 from .promotion import PromotionReceiptV2, SQLiteCheckpointRecorder
-from .store import EvidenceInvalid, LineageConflict, SQLiteLineageStore
+from .sqlite_lineage_store import EvidenceInvalid, LineageConflict, SQLiteLineageStore
 
 LOCAL_COMMIT_APPROVAL_LABEL = "Approve and create isolated local commit"
 LOCAL_COMMIT_RESULT_LABEL = (

@@ -6,8 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_sha256
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     MISSION_TRANSITIONS,
     TASK_TRANSITIONS,
     ArtifactContract,
@@ -27,7 +27,7 @@ from graphene.orchestration.models import (
     Task,
     TaskState,
 )
-from graphene.orchestration.reducer import (
+from graphene.orchestration.mission_reducer import (
     TransitionError,
     transition_mission,
     transition_task,

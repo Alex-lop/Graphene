@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..hashing import canonical_json_bytes
 from .contract import GraphSnapshot
-from .projection import (
+from .viewer_projection import (
     ViewerEvidenceInvalid,
     ViewerRunNotFound,
     build_snapshot,

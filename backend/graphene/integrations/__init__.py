@@ -1,4 +1,4 @@
-from .adk import ADK_VERSION, AdkRuntimeAdapter
+from .adk_adapter import ADK_VERSION, AdkRuntimeAdapter
 from .mcp import create_mcp_server
 from .stdio import main as stdio_main
 

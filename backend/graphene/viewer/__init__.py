@@ -1,6 +1,6 @@
-from .app import create_viewer_app
+from .viewer_app import create_viewer_app
 from .contract import GraphDelta, GraphSnapshot, ViewEdge, ViewHead, ViewNode, ViewReference
-from .projection import (
+from .viewer_projection import (
     ViewerEvidenceInvalid,
     ViewerRunNotFound,
     apply_deltas,

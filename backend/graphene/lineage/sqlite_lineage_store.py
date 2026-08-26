@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     Event,
     EventInput,
     EvidenceInvalidState,
@@ -353,7 +353,7 @@ class SQLiteLineageStore:
             ):
                 return _invalid(run_id, "checkpointed prefix is unresolved"), ()
         try:
-            from .reducer import (
+            from .lineage_reducer import (
                 ProjectionError,
                 reduce_events,
                 validate_semantic_artifacts,
@@ -486,7 +486,7 @@ class SQLiteLineageStore:
 
                 event = self._event(run_id, state, idempotency_key, draft)
                 try:
-                    from .reducer import (
+                    from .lineage_reducer import (
                         ProjectionError,
                         reduce_events,
                         validate_semantic_artifacts,

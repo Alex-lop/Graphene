@@ -14,14 +14,14 @@ from pydantic import ValidationError
 from ..hashing import canonical_json_bytes, canonical_json_sha256
 from ..lineage.artifacts import SQLiteArtifactStore
 from ..lineage.promotion import PromotionCheckpointError, SQLiteCheckpointRecorder
-from ..lineage.reducer import ProjectionError, reduce_events
-from ..lineage.store import (
+from ..lineage.lineage_reducer import ProjectionError, reduce_events
+from ..lineage.sqlite_lineage_store import (
     CheckpointReader,
     EvidenceInvalid,
     LineageStoreError,
     SQLiteLineageStore,
 )
-from ..models import Event, EvidenceInvalidState, LineageEventType, LineageOperation
+from ..core_models import Event, EvidenceInvalidState, LineageEventType, LineageOperation
 from .contract import (
     GraphDelta,
     GraphSnapshot,

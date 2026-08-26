@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
 from graphene.orchestration.local_result import (
     LocalResultError,
@@ -23,7 +23,7 @@ from graphene.orchestration.local_result import (
     finalize_local_result_decision,
     prepare_local_final_result_bundle,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptState,
     EvidenceReference,
     MissionEventType,
@@ -33,12 +33,12 @@ from graphene.orchestration.models import (
     TaskKind,
 )
 from graphene.orchestration.mission_control import create_mission_control_app
-from graphene.orchestration.projection import (
+from graphene.orchestration.mission_projection import (
     MissionControlSnapshot,
     MissionProjection,
     apply_delta,
 )
-from graphene.orchestration.replay import (
+from graphene.orchestration.mission_replay import (
     MISSION_REPLAY_TRUTH_LABEL,
     ReplayMissionProjection,
     VerifiedMissionReplay,
@@ -49,7 +49,7 @@ from graphene.orchestration.scripted import (
     run_scripted_mission,
     scripted_supported,
 )
-from graphene.orchestration.store import MissionConflict, SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import MissionConflict, SQLiteMissionStore
 
 TOKEN = "ephemeral-mission-token"
 COMMAND_TOKEN = "separate-command-token"

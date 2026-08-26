@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .models import Plan
+from .mission_models import Plan
 
 # A plan is bounded by its own model (256 tasks, bounded text); this is the
 # outer guard so a hostile document cannot be expanded before Pydantic ever

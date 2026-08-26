@@ -6,7 +6,7 @@ import pytest
 
 from graphene.graph import GraphBuildError, GraphBuilder
 from graphene.hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
-from graphene.models import (
+from graphene.core_models import (
     CandidateArtifact,
     ContextDecision,
     ContextPacket,

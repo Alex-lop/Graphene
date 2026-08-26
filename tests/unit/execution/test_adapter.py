@@ -23,7 +23,7 @@ from graphene.execution import (
     fixture_base_sha,
 )
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import (
+from graphene.core_models import (
     GoldenContract,
     GraphMvpContract,
     HumanDecision,
@@ -35,7 +35,7 @@ from graphene.models import (
     RunState,
     TaskId,
 )
-from graphene.store import InMemoryStore
+from graphene.legacy_store import InMemoryStore
 
 ROOT = Path(__file__).parents[3]
 FIXTURE = ROOT / "demo/fixture"

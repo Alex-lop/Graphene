@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .models import CommandTemplate
+from .mission_models import CommandTemplate
 
 
 _FIXTURE_ARGV = ("python", "-m", "pytest", "-q", "-p", "no:cacheprovider")

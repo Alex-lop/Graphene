@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..hashing import canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     Event,
     EventInput,
     EvidenceInvalidState,
@@ -20,7 +20,7 @@ from ..models import (
     TruthKind,
     VerifiedHead,
 )
-from .reducer import ProjectionError, reduce_events
+from .lineage_reducer import ProjectionError, reduce_events
 
 
 class RecoveryStore(Protocol):

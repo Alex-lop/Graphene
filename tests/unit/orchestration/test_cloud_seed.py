@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.cloud_seed import seed_mission
-from graphene.orchestration.firestore import FirestoreMissionStore
-from graphene.orchestration.models import MissionStatus, TaskState
+from graphene.orchestration.firestore_mission_store import FirestoreMissionStore
+from graphene.orchestration.mission_models import MissionStatus, TaskState
 from graphene.orchestration.scripted import load_scenario
 
 from .test_firestore import (

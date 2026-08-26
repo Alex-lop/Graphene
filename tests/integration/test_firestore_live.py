@@ -9,10 +9,10 @@ import pytest
 from google.cloud import firestore
 
 from graphene.hashing import canonical_json_sha256
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.cloud_protocol import DispatchOutboxState, new_dispatch_record
-from graphene.orchestration.firestore import FirestoreMissionStore
-from graphene.orchestration.models import (
+from graphene.orchestration.firestore_mission_store import FirestoreMissionStore
+from graphene.orchestration.mission_models import (
     Attempt,
     AttemptResult,
     AttemptState,

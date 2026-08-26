@@ -31,7 +31,7 @@ from ..context.handoff import (
     HandoffCompileError,
     compile_verified_handoff,
 )
-from ..context.runtime import RuntimeBindingError, bind_and_dispatch
+from ..context.context_runtime import RuntimeBindingError, bind_and_dispatch
 from ..execution import run_fixture_tests
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..lineage import (
@@ -62,8 +62,8 @@ from ..lineage.promotion import (
     prepare_verified_promotion,
     promote,
 )
-from ..lineage.reducer import ProjectionError, reduce_events
-from ..models import (
+from ..lineage.lineage_reducer import ProjectionError, reduce_events
+from ..core_models import (
     ContextBrief,
     Event,
     EventInput,

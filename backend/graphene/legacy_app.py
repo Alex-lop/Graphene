@@ -25,7 +25,7 @@ from .execution import (
 from .execution.adapter import _git, _initialize_repository
 from .graph import GraphBuildError, GraphBuilder
 from .hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
-from .models import (
+from .core_models import (
     CreateRunRequest,
     DemoResetRequest,
     ExecuteRunRequest,
@@ -52,7 +52,7 @@ from .models import (
     RunState,
     TaskId,
 )
-from .store import (
+from .legacy_store import (
     FirestoreStore,
     IdempotencyConflict,
     InMemoryStore,

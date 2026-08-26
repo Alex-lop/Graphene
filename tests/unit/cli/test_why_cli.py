@@ -17,13 +17,13 @@ import graphene.cli.mission as mission_cli
 from graphene.cli.main import build_parser, main
 from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.orchestration.causal_query import RECEIPT_REFERENCE_KINDS, why
-from graphene.orchestration.models import MissionStatus
+from graphene.orchestration.mission_models import MissionStatus
 from graphene.orchestration.scripted import (
     load_scenario,
     run_scripted_mission,
     scripted_supported,
 )
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 from tests.unit.orchestration.test_store import NOW, _command, _complete_ready, _create
 
 QUERY_PATH = "status_report/redact.py"
@@ -424,7 +424,7 @@ def test_why_names_the_stage_a_prior_attempt_reached(tmp_path) -> None:
     from — no new authority, no new store column. The `--json` body is this
     exact model dump, and the human render is `_render_why` over it.
     """
-    from graphene.orchestration.models import AttemptResult, TaskKind
+    from graphene.orchestration.mission_models import AttemptResult, TaskKind
     from tests.unit.orchestration.test_store import _register_worker
 
     store = SQLiteMissionStore(tmp_path / "stage.sqlite")

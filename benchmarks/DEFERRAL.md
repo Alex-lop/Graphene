@@ -41,7 +41,7 @@ proof is the unit test; it is not evidence about cost.
 
 (Precisely: the *plan-time* refusal is tested. The runtime defence-in-depth
 check — `LeaseConflict("task write scope conflicts with an active lease")` at
-`backend/graphene/orchestration/store.py:2727` — has **no test anywhere**; that
+`backend/graphene/orchestration/sqlite_mission_store.py:2727` — has **no test anywhere**; that
 string appears exactly once in the repository. It is left as a reported gap, not
 closed here, because the plan validator appears to make it unreachable through
 supported APIs and establishing that either way is orchestration work, not
@@ -62,7 +62,7 @@ resulting ratio then reports the fixture's construction back to itself.
 The API makes this concrete: **there is no supported way to commit a
 write-conflicting plan.** `require_valid_plan` guards both the scenario path
 (`backend/graphene/orchestration/scripted.py:249`) and the store itself
-(`backend/graphene/orchestration/store.py:1172`), so an uncoordinated arm cannot
+(`backend/graphene/orchestration/sqlite_mission_store.py:1172`), so an uncoordinated arm cannot
 be built out of Graphene-with-coordination-removed. It can only be built by
 bypassing the product — hand-constructing tasks and calling `claim_task`
 directly. An arm assembled that way is a harness the benchmark author wrote, and

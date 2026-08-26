@@ -14,7 +14,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from ..hashing import canonical_json_bytes
-from ..models import FrozenModel, Identifier, UtcDateTime
+from ..core_models import FrozenModel, Identifier, UtcDateTime
 
 AttributionQuality = Literal[
     "measured_bound",

@@ -17,7 +17,7 @@ from graphene.context import (
     start_handoff,
 )
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from graphene.models import (
+from graphene.core_models import (
     BriefEvidence,
     EvidenceReference,
     GoldenContract,

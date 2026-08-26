@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import uvicorn
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import TruthKind
+from ..core_models import TruthKind
 from ..orchestration.evidence import SQLiteAttemptEvidenceStore, TrustedCheckReceipt
 from ..orchestration.cloud_protocol import ExecutorArtifactObservation
 from ..orchestration.executor_client import (
@@ -38,7 +38,7 @@ from ..orchestration.executor_client import (
     GoogleAdcAudienceTokenProvider,
 )
 from ..orchestration.local_executor import run_local_executor
-from ..orchestration.adk import (
+from ..orchestration.adk_planner import (
     AdkPlanner,
     PlannerError,
     PlanningExcerpt,
@@ -51,7 +51,7 @@ from ..orchestration.local_result import (
     verified_result_artifacts,
     verify_local_result_receipt,
 )
-from ..orchestration.models import (
+from ..orchestration.mission_models import (
     AttemptResult,
     AttemptState,
     CommandTemplate,
@@ -74,9 +74,9 @@ from ..orchestration.diagnostics import (
     summarize_check_failure,
 )
 from ..orchestration.overlap import measure_overlap
-from ..orchestration.projection import MissionProjection
+from ..orchestration.mission_projection import MissionProjection
 from .dashboard import GEMINI_3_5_FLASH_USD_PER_TOKEN, spend_from_receipts
-from ..orchestration.runtime import (
+from ..orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     DockerCheckRunner,
@@ -1535,7 +1535,7 @@ def _state_root() -> Path:
 
 def _store(mission_id: str | None = None):
     try:
-        from ..orchestration.store import SQLiteMissionStore
+        from ..orchestration.sqlite_mission_store import SQLiteMissionStore
     except ImportError as error:
         raise MissionCliError("mission store is unavailable") from error
     store = SQLiteMissionStore(_state_root() / "missions.sqlite3")
@@ -1587,7 +1587,7 @@ def _mission_runtime(mission_id: str) -> Path:
 
 
 def _projection(mission_id: str):
-    from ..orchestration.projection import MissionProjection
+    from ..orchestration.mission_projection import MissionProjection
 
     return MissionProjection(_store(mission_id), legacy_viewer_base=None)
 
@@ -1755,9 +1755,9 @@ def _plan_revise_value(source: Path) -> dict[str, object]:
     refuses to guess either. The new revision is not approved by making it —
     that is a separate decision, on a new digest.
     """
-    from ..orchestration.models import Plan
+    from ..orchestration.mission_models import Plan
     from ..orchestration.plan_yaml import PlanDocumentError, plan_from_yaml
-    from ..orchestration.store import MissionConflict
+    from ..orchestration.sqlite_mission_store import MissionConflict
     from ..orchestration.validation import PlanValidationError
 
     try:
@@ -2749,7 +2749,7 @@ def _serve(
 
 def _open_live(mission_id: str, *, coordinate_gemini: bool = False) -> int:
     from ..orchestration.mission_control import create_mission_control_app
-    from ..orchestration.projection import MissionProjection
+    from ..orchestration.mission_projection import MissionProjection
 
     read_token = secrets.token_urlsafe(32)
     command_token = secrets.token_urlsafe(32)
@@ -2866,7 +2866,7 @@ def _open_live(mission_id: str, *, coordinate_gemini: bool = False) -> int:
 
 
 def _replay(args: argparse.Namespace) -> int:
-    from ..orchestration.replay import (
+    from ..orchestration.mission_replay import (
         MISSION_REPLAY_TRUTH_LABEL,
         create_mission_replay_app,
         load_verified_mission_replay,
@@ -3112,7 +3112,7 @@ def _bind_start_request(runtime: Path, binding: dict[str, object]) -> None:
 
 
 def _existing_mission_snapshot(store, mission_id: str):
-    from ..orchestration.store import MissionNotFound
+    from ..orchestration.sqlite_mission_store import MissionNotFound
 
     try:
         return store.snapshot(mission_id)

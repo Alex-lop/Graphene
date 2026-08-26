@@ -10,7 +10,7 @@ from ..bootstrap import bootstrap_local_run
 from ..context.consumer import resume_fresh_consumer
 from ..lineage.observation import wait_until_observed
 from ..lineage.recovery import recover_interrupted_run
-from ..models import EvidenceKind, SourceKind, SourceReference, TaskId
+from ..core_models import EvidenceKind, SourceKind, SourceReference, TaskId
 from .mcp import create_mcp_server
 
 _PROFILES = (

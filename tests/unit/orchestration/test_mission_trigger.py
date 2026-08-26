@@ -8,13 +8,13 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.orchestration.causal_query import why
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     MissionEventInput,
     MissionEventType,
     MissionStatus,
     MissionTrigger,
 )
-from graphene.orchestration.store import MissionConflict, SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import MissionConflict, SQLiteMissionStore
 
 from .test_store import NOW, _command, _create
 

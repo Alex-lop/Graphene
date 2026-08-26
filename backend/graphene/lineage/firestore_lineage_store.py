@@ -10,7 +10,7 @@ from google.api_core.exceptions import Aborted, AlreadyExists, Conflict
 from google.cloud import firestore
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     Event,
     EventInput,
     EvidenceInvalidState,
@@ -20,7 +20,7 @@ from ..models import (
     SourceReference,
     VerifiedHead,
 )
-from .store import _NO_APPEND_AFTER, EvidenceInvalid, LineageConflict
+from .sqlite_lineage_store import _NO_APPEND_AFTER, EvidenceInvalid, LineageConflict
 
 ArtifactResolver = Callable[[str, str], bytes | None]
 CheckpointReader = Callable[[str], Iterable[HeadCheckpoint]]
@@ -479,7 +479,7 @@ class FirestoreLineageStore:
             ):
                 return _invalid(run_id, "checkpointed prefix is unresolved"), ()
         try:
-            from .reducer import (
+            from .lineage_reducer import (
                 ProjectionError,
                 reduce_events,
                 validate_semantic_artifacts,
@@ -617,7 +617,7 @@ class FirestoreLineageStore:
                 recorded_at=recorded_at,
             )
             try:
-                from .reducer import (
+                from .lineage_reducer import (
                     ProjectionError,
                     reduce_events,
                     validate_semantic_artifacts,

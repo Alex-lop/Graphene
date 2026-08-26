@@ -30,7 +30,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import Identifier
+from ..core_models import Identifier
 from .evidence import (
     AttemptEvidenceEvent,
     AttemptEvidenceEventType,
@@ -38,7 +38,7 @@ from .evidence import (
     TrustedCheckReceipt,
 )
 from .final_bundle import FinalResultBundleV2
-from .models import (
+from .mission_models import (
     Attempt,
     Criterion,
     EvidenceReference,
@@ -53,7 +53,7 @@ from .models import (
     TaskState,
 )
 from .overlap import measure_overlap
-from .reducer import TransitionError, transition_mission
+from .mission_reducer import TransitionError, transition_mission
 
 CAPSULE_SCHEMA = "graphene.mission-capsule.v1"
 CAPSULE_SUFFIX = ".graphene-capsule"
@@ -462,7 +462,7 @@ def _provider_call_receipts(
     provider-call overlap basis in ``overlap.json`` cites nothing unbound.
     """
 
-    from .runtime import WorkerProviderReceipt  # lazy: cold verify stays light
+    from .worker_runtime import WorkerProviderReceipt  # lazy: cold verify stays light
 
     mapping: dict[str, object] = {}
     for attempt in snapshot.attempts:
@@ -1249,7 +1249,7 @@ def _check_receipt_references(context: _Verification) -> str:
 def _check_worker_provider_receipt(identifier: str, content: bytes) -> None:
     # Lazy: the runtime module pulls in the sandbox stack, which a cold verifier
     # only needs when a capsule actually carries a worker-provider receipt.
-    from .runtime import WorkerProviderReceipt
+    from .worker_runtime import WorkerProviderReceipt
 
     try:
         receipt = WorkerProviderReceipt.model_validate_json(content)

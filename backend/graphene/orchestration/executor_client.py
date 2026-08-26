@@ -26,7 +26,7 @@ from .cloud_protocol import (
     RegisterExecutorRequest,
 )
 from .evidence import TrustedCheckReceipt
-from .models import AttemptResult, EvidenceReference, MissionHead, TaskKind
+from .mission_models import AttemptResult, EvidenceReference, MissionHead, TaskKind
 
 
 class AudienceTokenProvider(Protocol):

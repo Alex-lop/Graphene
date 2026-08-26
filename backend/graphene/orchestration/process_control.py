@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from ..hashing import canonical_json_bytes, sha256_hex
-from .models import Dispatch, MissionStatus
+from .mission_models import Dispatch, MissionStatus
 
 
 class ProcessControlError(RuntimeError):

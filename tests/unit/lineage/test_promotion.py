@@ -18,9 +18,9 @@ from graphene.lineage.promotion import (
     SQLiteCheckpointRecorder,
     promote,
 )
-from graphene.lineage.reducer import reduce_events
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.lineage_reducer import reduce_events
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     EvidenceReference,

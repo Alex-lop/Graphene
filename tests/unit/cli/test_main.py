@@ -13,7 +13,7 @@ import pytest
 from graphene.cli.main import build_parser, main
 from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.lineage import SQLiteArtifactStore, SQLiteLineageStore
-from graphene.models import (
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     LineageAuthority,
@@ -414,7 +414,7 @@ def test_replay_speed_drives_capped_committed_timeline_with_no_initial_delay(
 ):
     first = datetime(2026, 8, 12, tzinfo=UTC)
     recorded = iter((first, first + timedelta(seconds=1), first + timedelta(seconds=5)))
-    store_module = importlib.import_module("graphene.lineage.store")
+    store_module = importlib.import_module("graphene.lineage.sqlite_lineage_store")
     monkeypatch.setattr(store_module, "_now", lambda: next(recorded))
     path, _ = _database(tmp_path)
     events, projection = cli_main._load(path, RUN_ID)

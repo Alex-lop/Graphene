@@ -19,14 +19,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..hashing import canonical_json_bytes, sha256_hex
-from ..models import TruthKind
-from ..viewer.app import STATIC_DIR as LEGACY_VIEWER_STATIC_DIR
+from ..core_models import TruthKind
+from ..viewer.viewer_app import STATIC_DIR as LEGACY_VIEWER_STATIC_DIR
 from .local_result import (
     LocalResultError,
     LocalResultRecoveryRequired,
     finalize_local_result_decision,
 )
-from .projection import (
+from .mission_projection import (
     GenericAttemptEvidence,
     MissionControlSnapshot,
     MissionNotFound,
@@ -38,8 +38,8 @@ from .projection import (
     diff_snapshots,
     task_detail as project_task_detail,
 )
-from .models import MissionHead
-from .store import MissionConflict, MissionStoreError
+from .mission_models import MissionHead
+from .sqlite_mission_store import MissionConflict, MissionStoreError
 
 STATIC_DIR = Path(__file__).with_name("static")
 VENDOR_DIR = LEGACY_VIEWER_STATIC_DIR / "vendor"

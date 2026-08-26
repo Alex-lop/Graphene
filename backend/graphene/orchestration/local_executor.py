@@ -14,7 +14,7 @@ from .executor_client import (
     ExecutorConnectionSummary,
     connect_executor,
 )
-from .models import EvidenceReference, MissionHead, TaskKind
+from .mission_models import EvidenceReference, MissionHead, TaskKind
 
 
 LOCAL_EXECUTOR_TRUTH = (

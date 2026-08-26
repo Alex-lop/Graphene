@@ -9,14 +9,14 @@ from pathlib import Path
 import pytest
 
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import (
     AttemptEvidenceAuthority,
     AttemptEvidenceEventType,
     SQLiteAttemptEvidenceStore,
     TrustedCheckReceipt,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     ArtifactContract,
     ArtifactRequirement,
     AttemptState,
@@ -43,7 +43,7 @@ from graphene.orchestration.runner import (
     RunnerExecutionFailed,
     RunnerStalled,
 )
-from graphene.orchestration.runtime import (
+from graphene.orchestration.worker_runtime import (
     CheckOutcome,
     CompletionOutcome,
     RuntimeAssignment,
@@ -55,7 +55,7 @@ from graphene.orchestration.runtime import (
     WorkerRuntime,
 )
 from graphene.orchestration.scheduler import MissionScheduler, SystemClock
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 
 CHECK = CommandTemplate(

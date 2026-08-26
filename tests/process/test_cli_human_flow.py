@@ -11,7 +11,7 @@ from pathlib import Path
 
 from graphene.bootstrap import bootstrap_local_run
 from graphene.lineage.service import ToolCallIdentity
-from graphene.models import GoldenContract
+from graphene.core_models import GoldenContract
 
 ROOT = Path(__file__).parents[2]
 GRAPHENE = ROOT / ".venv/bin/graphene"

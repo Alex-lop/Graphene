@@ -13,7 +13,7 @@ from ..execution.adapter import (
     run_fixture_tests,
 )
 from ..hashing import canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     Event,
     EventInput,
     EvidenceInvalidState,
@@ -30,7 +30,7 @@ from ..models import (
     VerifiedHead,
 )
 from .recovery import quarantine_checkout, recover_interrupted_run
-from .reducer import ProjectionError, reduce_events
+from .lineage_reducer import ProjectionError, reduce_events
 
 
 class LineageStore(Protocol):

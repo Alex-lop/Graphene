@@ -23,8 +23,8 @@ from ..lineage.service import (
     RuntimeIntegrityError,
     ScopedApplicationService,
 )
-from ..lineage.store import LineageStoreError, SQLiteLineageStore
-from ..models import (
+from ..lineage.sqlite_lineage_store import LineageStoreError, SQLiteLineageStore
+from ..core_models import (
     ContextBrief,
     ContextInjectionReceipt,
     EvidenceInvalidState,
@@ -34,7 +34,7 @@ from ..models import (
     LineageEventType,
 )
 from .handoff import CompiledHandoff, render_fresh_prompt
-from .runtime import RuntimeBindingError, _runtime_evidence, bind_and_dispatch
+from .context_runtime import RuntimeBindingError, _runtime_evidence, bind_and_dispatch
 
 
 class ConsumerStartError(RuntimeError):

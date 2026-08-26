@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, model_validator
 
 from .hashing import TREE_HASH_VERSION, canonical_json_bytes, sha256_hex
-from .models import FrozenModel, GitSha, Identifier, Sha256
+from .core_models import FrozenModel, GitSha, Identifier, Sha256
 
 
 ARTIFACT_ENVELOPE_DOMAIN = "graphene.artifact.v2"

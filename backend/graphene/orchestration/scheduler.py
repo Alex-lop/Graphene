@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from ..hashing import canonical_json_sha256
-from ..models import TruthKind
-from .models import (
+from ..core_models import TruthKind
+from .mission_models import (
     AttemptResult,
     Dispatch,
     Lease,

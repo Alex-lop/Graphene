@@ -12,20 +12,20 @@ from pathlib import Path
 
 import pytest
 
-import graphene.orchestration.runtime as runtime_module
+import graphene.orchestration.worker_runtime as runtime_module
 from graphene.hashing import canonical_json_sha256, sha256_hex
 from graphene.orchestration.evidence import (
     AttemptEvidenceEventType,
     SQLiteAttemptEvidenceStore,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     ArtifactVisibility,
     CommandTemplate,
     Dispatch,
     PublishedArtifactReferenceV2,
     TaskKind,
 )
-from graphene.orchestration.runtime import (
+from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     CompletionOutcome,

@@ -13,10 +13,10 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.tools import FunctionTool
 from google.genai import types
 from graphene.hashing import canonical_json_bytes, sha256_hex
-from graphene.integrations.adk import ADK_VERSION, AdkRuntimeAdapter
+from graphene.integrations.adk_adapter import ADK_VERSION, AdkRuntimeAdapter
 from graphene.lineage.service import ScopedApplicationService
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     EvidenceReference,

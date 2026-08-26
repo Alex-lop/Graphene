@@ -35,10 +35,10 @@ machine-readable proof only and is verified separately.
 
 ## Important implementation files
 
-- [`../backend/graphene/orchestration/runtime.py`](../backend/graphene/orchestration/runtime.py), [`runner.py`](../backend/graphene/orchestration/runner.py), and [`workers/`](../backend/graphene/orchestration/workers/) — bounded worker effects, identities, recovery, and coordination.
-- [`../backend/graphene/orchestration/store.py`](../backend/graphene/orchestration/store.py), [`materialized_integrity.py`](../backend/graphene/orchestration/materialized_integrity.py), and [`evidence.py`](../backend/graphene/orchestration/evidence.py) — SQLite authority and private evidence.
+- [`../backend/graphene/orchestration/worker_runtime.py`](../backend/graphene/orchestration/worker_runtime.py), [`runner.py`](../backend/graphene/orchestration/runner.py), and [`workers/`](../backend/graphene/orchestration/workers/) — bounded worker effects, identities, recovery, and coordination.
+- [`../backend/graphene/orchestration/sqlite_mission_store.py`](../backend/graphene/orchestration/sqlite_mission_store.py), [`materialized_integrity.py`](../backend/graphene/orchestration/materialized_integrity.py), and [`evidence.py`](../backend/graphene/orchestration/evidence.py) — SQLite authority and private evidence.
 - [`../backend/graphene/artifact_envelope.py`](../backend/graphene/artifact_envelope.py), [`final_bundle.py`](../backend/graphene/orchestration/final_bundle.py), and [`local_result.py`](../backend/graphene/orchestration/local_result.py) — V2 publication and exact final-decision chain.
-- [`../backend/graphene/orchestration/firestore.py`](../backend/graphene/orchestration/firestore.py), [`coordinator.py`](../backend/graphene/orchestration/coordinator.py), and [`executor_client.py`](../backend/graphene/orchestration/executor_client.py) — cloud vertical and outbound execution.
+- [`../backend/graphene/orchestration/firestore_mission_store.py`](../backend/graphene/orchestration/firestore_mission_store.py), [`coordinator.py`](../backend/graphene/orchestration/coordinator.py), and [`executor_client.py`](../backend/graphene/orchestration/executor_client.py) — cloud vertical and outbound execution.
 - [`../backend/graphene/orchestration/mission_control.py`](../backend/graphene/orchestration/mission_control.py) and [`../backend/graphene/cli/mission.py`](../backend/graphene/cli/mission.py) — shared operator/result paths.
 
 ## Migrations and compatibility

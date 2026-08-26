@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from ..hashing import canonical_json_sha256
-from .models import ResourceReceipt
+from .mission_models import ResourceReceipt
 from .resources import (
     DispatchGovernorPolicy,
     ResourcePoint,

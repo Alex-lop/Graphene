@@ -10,7 +10,7 @@ from typing import Protocol
 
 from google.cloud import firestore
 
-from .models import (
+from .core_models import (
     ContextPacket,
     FeedbackRecord,
     HumanDecision,

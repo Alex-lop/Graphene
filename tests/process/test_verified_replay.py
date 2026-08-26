@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from graphene.viewer.contract import GraphSnapshot
-from graphene.viewer.replay import (
+from graphene.viewer.viewer_replay import (
     REPLAY_TRUTH_LABEL,
     apply_replay_envelope,
     load_verified_replay,
@@ -39,7 +39,7 @@ def test_verified_replay_runs_cross_platform_without_authoritative_state(
     code = """
 import os
 import uvicorn
-from graphene.viewer.replay import create_verified_replay_app
+from graphene.viewer.viewer_replay import create_verified_replay_app
 uvicorn.run(
     create_verified_replay_app(
         os.environ['GRAPHENE_REPLAY_TEST_TOKEN'], stream_interval_seconds=0.01

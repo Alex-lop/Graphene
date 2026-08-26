@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from graphene.orchestration.replay import (
+from graphene.orchestration.mission_replay import (
     MISSION_REPLAY_TRUTH_LABEL,
     MissionReplayInvalid,
     load_verified_mission_replay,

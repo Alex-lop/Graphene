@@ -16,7 +16,7 @@ from ..hashing import (
     canonical_json_sha256,
     sha256_hex,
 )
-from ..models import (
+from ..core_models import (
     MAX_PATCH_BYTES,
     BoundedText,
     ClarificationAnswer,

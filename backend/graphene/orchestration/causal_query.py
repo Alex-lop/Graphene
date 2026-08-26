@@ -8,8 +8,8 @@ from typing import Literal
 from pydantic import Field
 
 from ..hashing import canonical_json_sha256
-from ..models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
-from .models import (
+from ..core_models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
+from .mission_models import (
     ArtifactPublication,
     Attempt,
     EvidenceReference,

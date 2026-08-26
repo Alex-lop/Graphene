@@ -23,8 +23,8 @@ from graphene.execution import fixture_base_sha
 from graphene.execution.adapter import _initialize_repository
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.lineage.artifacts import SQLiteArtifactStore
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     BriefEvidence,
     EventInput,
     EvidenceKind,

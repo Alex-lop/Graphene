@@ -22,9 +22,9 @@ from ..hashing import (
     candidate_tree_sha256,
     sha256_hex,
 )
-from ..models import FrozenModel, Identifier, RepoPath, Sha256, TruthKind, UtcDateTime
+from ..core_models import FrozenModel, Identifier, RepoPath, Sha256, TruthKind, UtcDateTime
 from .evidence import TrustedCheckReceipt
-from .models import (
+from .mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactPublication,
     Attempt,

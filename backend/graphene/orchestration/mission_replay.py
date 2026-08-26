@@ -8,7 +8,7 @@ from typing import Any
 
 from ..hashing import canonical_json_bytes, sha256_hex
 from .mission_control import create_mission_control_app
-from .projection import (
+from .mission_projection import (
     GenericAttemptEvidence,
     MissionControlSnapshot,
     MissionDelta,

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from graphene.hashing import canonical_json_bytes, sha256_hex
-from graphene.orchestration.projection import (
+from graphene.orchestration.mission_projection import (
     AttemptEvidenceView,
     AttemptView,
     EvidenceRefView,
@@ -25,7 +25,7 @@ from graphene.orchestration.projection import (
     diff_snapshots,
     encode_cursor,
 )
-from graphene.orchestration.replay import MISSION_REPLAY_TRUTH_LABEL
+from graphene.orchestration.mission_replay import MISSION_REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "backend/graphene/orchestration/static/mission-replay.json"

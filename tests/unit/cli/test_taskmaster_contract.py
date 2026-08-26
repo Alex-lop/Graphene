@@ -10,9 +10,9 @@ import graphene.orchestration.causal_query as causal_query
 import graphene.orchestration.final_bundle as final_bundle
 from graphene.cli.main import build_parser, main
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
-from graphene.orchestration.models import MissionSnapshot, MissionStatus
+from graphene.orchestration.mission_models import MissionSnapshot, MissionStatus
 from tests.unit.orchestration.test_final_bundle import _repository, _snapshot
 from tests.unit.orchestration.test_store import _plan, _policy
 

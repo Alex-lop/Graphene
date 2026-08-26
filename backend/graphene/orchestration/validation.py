@@ -4,8 +4,8 @@ from pathlib import PurePosixPath
 
 from pydantic import Field
 
-from ..models import FrozenModel
-from .models import (
+from ..core_models import FrozenModel
+from .mission_models import (
     CriterionVerificationKind,
     Plan,
     ProjectPolicy,

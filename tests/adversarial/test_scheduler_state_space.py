@@ -4,9 +4,9 @@ from itertools import permutations
 
 import pytest
 
-from graphene.orchestration.models import AttemptState, MissionEventType
+from graphene.orchestration.mission_models import AttemptState, MissionEventType
 from graphene.orchestration.scheduler import MissionScheduler
-from graphene.orchestration.store import SQLiteMissionStore, StaleWorker
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore, StaleWorker
 
 from tests.unit.orchestration.test_scheduler import FakeClock
 from tests.unit.orchestration.test_store import (

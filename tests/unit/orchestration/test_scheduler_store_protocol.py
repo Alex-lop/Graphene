@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     AttemptResult,
     Dispatch,
     Lease,
@@ -19,7 +19,7 @@ from graphene.orchestration.models import (
 )
 from graphene.orchestration.ports import SchedulerStore
 from graphene.orchestration.scheduler import MissionScheduler
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 NOW = datetime(2026, 8, 20, tzinfo=UTC)
 

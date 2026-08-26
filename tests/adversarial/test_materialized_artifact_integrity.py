@@ -7,13 +7,13 @@ import pytest
 
 from graphene.cli import mission as mission_cli
 from graphene.hashing import canonical_json_bytes
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
 from graphene.orchestration.materialized_integrity import (
     MaterializedArtifactError,
     verify_materialized_artifacts,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     Attempt,
     AttemptState,
     Criterion,
@@ -24,12 +24,12 @@ from graphene.orchestration.models import (
     Plan,
     Task,
 )
-from graphene.orchestration.projection import MissionProjection, MissionProjectionError
-from graphene.orchestration.runtime import (
+from graphene.orchestration.mission_projection import MissionProjection, MissionProjectionError
+from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     WorkerProviderReceipt,
 )
-from graphene.orchestration.store import MissionStoreError, SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import MissionStoreError, SQLiteMissionStore
 from tests.unit.orchestration.test_gemini_mission_runtime import (
     prepare_fake_two_worker_mission,
     quiet_resource_sampler,

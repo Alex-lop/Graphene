@@ -9,7 +9,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from graphene.hashing import canonical_json_sha256, candidate_tree_sha256
-from graphene.models import GoldenContract, GraphMvpContract, RepoPath
+from graphene.core_models import GoldenContract, GraphMvpContract, RepoPath
 
 ROOT = Path(__file__).parents[2]
 CONTRACT_PATH = ROOT / "contracts/golden_path.json"

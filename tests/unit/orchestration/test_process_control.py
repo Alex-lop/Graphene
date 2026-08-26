@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from graphene.orchestration.models import MissionStatus
+from graphene.orchestration.mission_models import MissionStatus
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
     ProcessControlError,
 )
 from graphene.orchestration.scheduler import MissionScheduler
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 from .test_scheduler import FakeClock
 from .test_store import NOW, _create

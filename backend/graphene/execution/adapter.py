@@ -15,7 +15,7 @@ from typing import Awaitable, Callable
 
 from ..context import profile_for_task
 from ..hashing import canonical_json_sha256, candidate_tree_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     MAX_PATCH_BYTES,
     MAX_TEST_OUTPUT_BYTES,
     CandidateArtifact,
@@ -34,7 +34,7 @@ from ..models import (
     TaskSpec,
     TestReceipt,
 )
-from ..store import Store
+from ..legacy_store import Store
 
 EXECUTION_MODE = "deterministic-local"
 _FIXED_TEST_COMMAND = (

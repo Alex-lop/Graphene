@@ -10,7 +10,7 @@ from typing import Any, Protocol
 from pydantic import TypeAdapter, ValidationError
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     ContextBrief,
     ContextInjectionReceipt,
     Event,

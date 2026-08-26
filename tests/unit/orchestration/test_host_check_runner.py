@@ -11,7 +11,7 @@ import pytest
 
 from graphene.cli import mission as mission_cli
 from graphene.orchestration.evidence import TrustedCheckReceipt
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptState,
     CommandTemplate,
     Dispatch,
@@ -19,7 +19,7 @@ from graphene.orchestration.models import (
     TaskKind,
 )
 from graphene.orchestration.process_control import OwnedProcessRegistry
-from graphene.orchestration.runtime import (
+from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     HostSandboxCheckRunner,
     RuntimeAssignment,

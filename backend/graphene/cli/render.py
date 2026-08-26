@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..hashing import canonical_json_bytes
-from ..models import (
+from ..core_models import (
     Event,
     EvidenceInvalidState,
     LineageProjection,

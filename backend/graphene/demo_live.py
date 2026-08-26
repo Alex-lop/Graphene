@@ -341,7 +341,7 @@ def _mission_status(mission_id: str) -> str:
 
 def _fault_fired(mission_id: str) -> bool:
     from .cli import mission as mission_cli
-    from .orchestration.models import MissionEventType
+    from .orchestration.mission_models import MissionEventType
 
     store = mission_cli._store_for_mission(mission_id)
     after = 0

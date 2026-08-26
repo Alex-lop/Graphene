@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     ArtifactRequirement,
     Criterion,
     CriterionVerificationKind,
@@ -21,7 +21,7 @@ from graphene.orchestration.models import (
     WorkerRegistration,
 )
 from graphene.orchestration.scheduler import MissionScheduler
-from graphene.orchestration.store import (
+from graphene.orchestration.sqlite_mission_store import (
     LeaseConflict,
     MissionStoreError,
     SQLiteMissionStore,

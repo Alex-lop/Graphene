@@ -27,7 +27,7 @@ from graphene.cli.mission import (
     handle,
     initialize,
 )
-from graphene.orchestration.models import ProjectPolicy
+from graphene.orchestration.mission_models import ProjectPolicy
 from graphene.orchestration.scripted import DEFAULT_SCENARIO_PATH, load_scenario
 
 

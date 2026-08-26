@@ -15,9 +15,9 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-from .integrations.adk import ADK_VERSION, AdkRuntimeAdapter
+from .integrations.adk_adapter import ADK_VERSION, AdkRuntimeAdapter
 from .lineage.service import RuntimeHandle, ScopedApplicationService
-from .models import Identifier, LineageOperation
+from .core_models import Identifier, LineageOperation
 
 ADK_FAKE_PROOF_LABEL = (
     "REAL ADK RUNNER + DETERMINISTIC FAKE MODEL — "

@@ -41,7 +41,7 @@ import pytest
 from graphene.cli.mission import _load_project_policy
 from graphene.execution.adapter import _FIXED_TEST_COMMAND, _sanitized_environment
 from graphene.hashing import canonical_json_bytes
-from graphene.orchestration.models import CommandTemplate, NetworkMode, ProjectPolicy
+from graphene.orchestration.mission_models import CommandTemplate, NetworkMode, ProjectPolicy
 
 ROOT = Path(__file__).resolve().parents[2]
 NORTH_STAR = ROOT / "demo" / "north_star"

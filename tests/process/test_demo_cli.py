@@ -18,7 +18,7 @@ import pytest
 
 from graphene.cli.main import _load
 from graphene.lineage import SQLiteArtifactStore, SQLiteLineageStore
-from graphene.models import (
+from graphene.core_models import (
     EvidenceKind,
     LineageEventType,
     LineageRunState,
@@ -26,7 +26,7 @@ from graphene.models import (
     VerifiedHead,
 )
 from graphene.viewer import build_snapshot
-from graphene.viewer.replay import REPLAY_TRUTH_LABEL
+from graphene.viewer.viewer_replay import REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).parents[2]
 GRAPHENE = ROOT / ".venv/bin/graphene"

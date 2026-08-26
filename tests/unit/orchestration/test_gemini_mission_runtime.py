@@ -14,15 +14,15 @@ import pytest
 
 from graphene.cli import mission as mission_cli
 from graphene.hashing import canonical_json_bytes, sha256_hex
-from graphene.models import TruthKind
-from graphene.orchestration.adk import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.adk_planner import (
     PlanIntent,
     PlanningRequest,
     WorkIntent,
     compile_plan_intent,
     criterion_id,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptState,
     CriterionVerificationKind,
     Mission,
@@ -32,7 +32,7 @@ from graphene.orchestration.models import (
     TaskKind,
 )
 from graphene.orchestration.resources import ResourcePoint
-from graphene.orchestration.runtime import (
+from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     RuntimeAssignment,
@@ -473,7 +473,7 @@ def test_open_live_cancels_running_mission_when_coordinator_setup_fails(
         lambda *args, **kwargs: object(),
     )
     monkeypatch.setattr(
-        "graphene.orchestration.projection.MissionProjection",
+        "graphene.orchestration.mission_projection.MissionProjection",
         lambda *args, **kwargs: object(),
     )
 
@@ -547,7 +547,7 @@ def test_open_live_waits_for_active_runner_cleanup_before_cancel_authority(
         "graphene.orchestration.mission_control.create_mission_control_app", create_app
     )
     monkeypatch.setattr(
-        "graphene.orchestration.projection.MissionProjection",
+        "graphene.orchestration.mission_projection.MissionProjection",
         lambda *args, **kwargs: object(),
     )
 
@@ -916,7 +916,7 @@ def test_live_result_lists_only_evidence_bound_provider_receipts(
     import sqlite3
 
     from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
-    from graphene.orchestration.runtime import WORKER_PROVIDER_RECEIPT_KIND
+    from graphene.orchestration.worker_runtime import WORKER_PROVIDER_RECEIPT_KIND
 
     prepared = prepare_fake_two_worker_mission(tmp_path, monkeypatch)
     original = SQLiteAttemptEvidenceStore.put_artifact

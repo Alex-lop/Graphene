@@ -7,7 +7,7 @@ from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.genai import types
 from pydantic import PrivateAttr
 
-from ..adk import describe_output_schema
+from ..adk_planner import describe_output_schema
 from .gemini import FileMutation, WorkerIntent
 
 

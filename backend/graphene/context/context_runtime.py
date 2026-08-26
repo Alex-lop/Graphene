@@ -10,8 +10,8 @@ from typing import TypeVar
 from ..hashing import sha256_hex
 from ..lineage.artifacts import SQLiteArtifactStore
 from ..lineage.service import EvidenceItem, RuntimeHandle
-from ..lineage.store import SQLiteLineageStore
-from ..models import (
+from ..lineage.sqlite_lineage_store import SQLiteLineageStore
+from ..core_models import (
     ContextBrief,
     Event,
     EventInput,

@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_bytes
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import (
     AttemptEvidenceAuthority,
     AttemptEvidenceConflict,
@@ -17,7 +17,7 @@ from graphene.orchestration.evidence import (
     SQLiteAttemptEvidenceStore,
     TrustedCheckReceipt,
 )
-from graphene.orchestration.models import ArtifactVisibility, EvidenceReference
+from graphene.orchestration.mission_models import ArtifactVisibility, EvidenceReference
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)

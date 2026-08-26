@@ -3,15 +3,15 @@ import tomllib
 from pathlib import Path
 
 from graphene import __version__
-from graphene.app import create_app
+from graphene.legacy_app import create_app
 from graphene.cli.main import build_parser as cli_parser
 from graphene.cli.mission import _MISSION_COMMANDS
 from graphene.demo import _SCRIPTED_LABEL
 from graphene.demo_adk import ADK_FAKE_PROOF_LABEL
 from graphene.integrations.stdio import build_parser as mcp_parser
-from graphene.orchestration.replay import MISSION_REPLAY_TRUTH_LABEL
-from graphene.store import InMemoryStore
-from graphene.viewer.replay import REPLAY_TRUTH_LABEL
+from graphene.orchestration.mission_replay import MISSION_REPLAY_TRUTH_LABEL
+from graphene.legacy_store import InMemoryStore
+from graphene.viewer.viewer_replay import REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).parents[2]
 

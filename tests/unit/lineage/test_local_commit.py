@@ -15,7 +15,7 @@ from graphene.lineage.local_commit import (
     create_isolated_local_commit,
     local_commit_event_input,
 )
-from graphene.models import (
+from graphene.core_models import (
     EvidenceKind,
     EvidenceReference,
     HumanDecision,

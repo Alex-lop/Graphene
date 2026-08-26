@@ -12,9 +12,9 @@ from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from graphene.bootstrap import bootstrap_local_run
-from graphene.integrations.adk import AdkRuntimeAdapter
+from graphene.integrations.adk_adapter import AdkRuntimeAdapter
 from graphene.integrations.mcp import create_mcp_server
-from graphene.lineage.reducer import reduce_events
+from graphene.lineage.lineage_reducer import reduce_events
 from graphene.lineage.service import (
     RuntimeIdentityError,
     RuntimeIntegrityError,
@@ -22,7 +22,7 @@ from graphene.lineage.service import (
     ScopedApplicationService,
     ToolCallIdentity,
 )
-from graphene.models import (
+from graphene.core_models import (
     LineageAuthority,
     LineageEventType,
     LineageRunState,

@@ -16,10 +16,10 @@ from graphene.context.handoff import AUTH_CAPABILITIES, compile_verified_handoff
 from graphene.lineage import HumanWorkflowService
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.promotion import SQLiteCheckpointRecorder
-from graphene.lineage.reducer import reduce_events
+from graphene.lineage.lineage_reducer import reduce_events
 from graphene.lineage.service import ToolCallIdentity
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EvidenceKind,
     GoldenContract,
     GraphMvpContract,

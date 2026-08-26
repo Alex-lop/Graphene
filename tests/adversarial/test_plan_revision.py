@@ -8,10 +8,10 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
-import graphene.orchestration.store as store_module
+import graphene.orchestration.sqlite_mission_store as store_module
 from graphene.hashing import canonical_json_sha256
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     ArtifactRequirement,
     MissionEvent,
     AttemptState,
@@ -23,8 +23,8 @@ from graphene.orchestration.models import (
     TaskKind,
     TaskState,
 )
-from graphene.orchestration.projection import MissionProjection
-from graphene.orchestration.store import (
+from graphene.orchestration.mission_projection import MissionProjection
+from graphene.orchestration.sqlite_mission_store import (
     LeaseConflict,
     MissionConflict,
     SQLiteMissionStore,

@@ -13,8 +13,8 @@ from graphene.context.handoff import (
 )
 from graphene.hashing import canonical_json_sha256
 from graphene.lineage.artifacts import SQLiteArtifactStore
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import (
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import (
     EventInput,
     EvidenceKind,
     EvidenceReference,

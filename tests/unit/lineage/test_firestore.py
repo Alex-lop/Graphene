@@ -5,13 +5,13 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from threading import RLock
 
-import graphene.lineage.firestore as firestore_module
-import graphene.lineage.reducer as reducer_module
+import graphene.lineage.firestore_lineage_store as firestore_module
+import graphene.lineage.lineage_reducer as reducer_module
 import pytest
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from graphene.lineage.firestore import FirestoreLineageStore
-from graphene.lineage.store import EvidenceInvalid, LineageConflict
-from graphene.models import (
+from graphene.lineage.firestore_lineage_store import FirestoreLineageStore
+from graphene.lineage.sqlite_lineage_store import EvidenceInvalid, LineageConflict
+from graphene.core_models import (
     EventInput,
     EvidenceInvalidState,
     EvidenceKind,

@@ -28,7 +28,7 @@ from ..hashing import (
     candidate_tree_sha256,
     sha256_hex,
 )
-from ..models import (
+from ..core_models import (
     BoundedText,
     FixturePolicy,
     FrozenModel,
@@ -46,7 +46,7 @@ from .evidence import (
     TrustedCheckReceipt,
 )
 from .local_result import prepare_local_final_result_bundle
-from .models import (
+from .mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactVisibility,
     AttemptResult,
@@ -76,7 +76,7 @@ from .process_control import (
     ProcessControlError,
 )
 from .scheduler import MissionScheduler, SystemClock
-from .store import LeaseConflict, MissionConflict, SQLiteMissionStore, StaleWorker
+from .sqlite_mission_store import LeaseConflict, MissionConflict, SQLiteMissionStore, StaleWorker
 from .validation import PlanValidationResult, require_valid_plan, validate_plan
 
 

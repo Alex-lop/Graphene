@@ -4,11 +4,11 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from threading import RLock
 
-import graphene.orchestration.firestore as firestore_module
+import graphene.orchestration.firestore_mission_store as firestore_module
 import pytest
 from graphene.artifact_envelope import ArtifactEnvelopeV2
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.cloud_protocol import (
     ArtifactFetchGrant,
     DispatchOutboxState,
@@ -16,7 +16,7 @@ from graphene.orchestration.cloud_protocol import (
     new_dispatch_record,
 )
 from graphene.orchestration.evidence import TrustedCheckReceipt
-from graphene.orchestration.firestore import (
+from graphene.orchestration.firestore_mission_store import (
     ArtifactCapabilityRejected,
     ArtifactLocalityUnavailable,
     DomainTransitionUnavailable,
@@ -26,7 +26,7 @@ from graphene.orchestration.firestore import (
     MissionConflict,
     MissionStateInvalid,
 )
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     Attempt,
     ArtifactEnvelopeReferenceV2,
     ArtifactPublication,
@@ -48,9 +48,9 @@ from graphene.orchestration.models import (
     TaskKind,
     TaskState,
 )
-from graphene.orchestration.projection import MissionProjection
+from graphene.orchestration.mission_projection import MissionProjection
 from graphene.orchestration.scripted import load_scenario
-from graphene.orchestration.store import SQLiteMissionStore, StaleWorker
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore, StaleWorker
 
 
 class Snapshot:

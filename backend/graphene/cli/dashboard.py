@@ -16,8 +16,8 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from ..orchestration.models import MissionStatus
-from ..orchestration.projection import MissionProjectionError
+from ..orchestration.mission_models import MissionStatus
+from ..orchestration.mission_projection import MissionProjectionError
 from .render import _fit
 
 # Paid-tier published price for gemini-3.5-flash, USD per token as

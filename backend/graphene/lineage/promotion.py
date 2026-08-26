@@ -13,7 +13,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..models import (
+from ..core_models import (
     AgentProfileId,
     ContextBrief,
     ContextInjectionReceipt,
@@ -39,8 +39,8 @@ from ..models import (
     TruthKind,
     VerifiedHead,
 )
-from .reducer import ProjectionError, reduce_events
-from .store import EvidenceInvalid, LineageConflict
+from .lineage_reducer import ProjectionError, reduce_events
+from .sqlite_lineage_store import EvidenceInvalid, LineageConflict
 
 
 class PromotionStore(Protocol):

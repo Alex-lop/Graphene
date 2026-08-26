@@ -7,7 +7,7 @@ import pytest
 from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.adk.runners import Runner
 from google.genai import types
-from graphene.orchestration.adk import (
+from graphene.orchestration.adk_planner import (
     LIVE_GEMINI_MODEL,
     AdkPlanner,
     PlannerOutputError,
@@ -16,7 +16,7 @@ from graphene.orchestration.adk import (
     planning_input_sha256,
 )
 from graphene.hashing import canonical_json_sha256
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     ArtifactContract,
     ArtifactRequirement,
     CommandTemplate,

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from graphene.models import TruthKind
+from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import TrustedCheckReceipt
 from graphene.orchestration.final_bundle import (
     CriterionReceiptBinding,
@@ -17,7 +17,7 @@ from graphene.orchestration.final_bundle import (
     OperatorDecisionState,
 )
 from graphene.orchestration.local_result import _recompute_final_bundle
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptResult,
     GenericEvidenceLink,
     MissionStatus,
@@ -25,8 +25,8 @@ from graphene.orchestration.models import (
     TaskKind,
 )
 from graphene.orchestration.mission_control import create_mission_control_app
-from graphene.orchestration.projection import MissionProjection
-from graphene.orchestration.store import MissionConflict, SQLiteMissionStore
+from graphene.orchestration.mission_projection import MissionProjection
+from graphene.orchestration.sqlite_mission_store import MissionConflict, SQLiteMissionStore
 from tests.unit.orchestration.test_store import (
     NOW,
     _artifacts,

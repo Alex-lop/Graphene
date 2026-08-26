@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.lineage.artifacts import SQLiteArtifactStore
 from graphene.lineage.promotion import SQLiteCheckpointRecorder
-from graphene.lineage.store import SQLiteLineageStore
-from graphene.models import VerifiedHead
+from graphene.lineage.sqlite_lineage_store import SQLiteLineageStore
+from graphene.core_models import VerifiedHead
 from graphene.viewer.contract import GraphSnapshot
-from graphene.viewer.replay import (
+from graphene.viewer.viewer_replay import (
     REPLAY_TRUTH_LABEL,
     ReplayEvidenceInvalid,
     apply_replay_envelope,

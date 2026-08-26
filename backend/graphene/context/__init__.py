@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from fnmatch import fnmatchcase
 
 from ..hashing import canonical_json_sha256
-from ..models import (
+from ..core_models import (
     AgentProfile,
     ContextDecision,
     ContextPacket,

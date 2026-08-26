@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..models import Identifier, RepoPath, ScopeId
+from ..core_models import Identifier, RepoPath, ScopeId
 
 ReviewSectionKey = Literal[
     "attention",

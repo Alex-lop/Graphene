@@ -7,8 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256
-from graphene.models import TruthKind
-from graphene.orchestration.models import (
+from graphene.core_models import TruthKind
+from graphene.orchestration.mission_models import (
     EvidenceReference,
     Gate,
     GateDecision,
@@ -18,7 +18,7 @@ from graphene.orchestration.models import (
     TaskKind,
     TaskState,
 )
-from graphene.orchestration.projection import (
+from graphene.orchestration.mission_projection import (
     MissionControlSnapshot,
     MissionProjection,
     MissionProjectionError,
@@ -30,7 +30,7 @@ from graphene.orchestration.projection import (
     diff_snapshots,
     task_detail,
 )
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 from scripts.generate_mission_replay import stages
 
 from .test_store import NOW, _command, _complete_ready, _create, _register_worker

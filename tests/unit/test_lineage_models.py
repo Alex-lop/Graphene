@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_sha256, sha256_hex
-from graphene.models import (
+from graphene.core_models import (
     ContextBrief,
     Event,
     EventInput,

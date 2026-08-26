@@ -14,9 +14,9 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from ..models import TruthKind
-from .firestore import FirestoreMissionStore
-from .models import Mission, MissionHead, Plan, ProjectPolicy
+from ..core_models import TruthKind
+from .firestore_mission_store import FirestoreMissionStore
+from .mission_models import Mission, MissionHead, Plan, ProjectPolicy
 
 # Derived ids append "_create" / "_approve" / "_ready"; the store requires
 # command ids matching ^[A-Za-z0-9_-]{16,128}$, so the prefix carries the rest.

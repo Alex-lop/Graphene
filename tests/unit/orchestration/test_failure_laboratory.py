@@ -43,7 +43,7 @@ from pydantic import PrivateAttr
 
 from graphene.cli import mission as mission_cli
 from graphene.orchestration.evidence import TrustedCheckReceipt
-from graphene.orchestration.models import (
+from graphene.orchestration.mission_models import (
     AttemptResult,
     AttemptState,
     CommandTemplate,
@@ -57,12 +57,12 @@ from graphene.orchestration.models import (
     TaskState,
 )
 from graphene.orchestration.process_control import OwnedProcessRegistry
-from graphene.orchestration.runtime import (
+from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     WorkerProviderReceipt,
     WorkerRegistry,
 )
-from graphene.orchestration.store import StaleWorker
+from graphene.orchestration.sqlite_mission_store import StaleWorker
 from graphene.orchestration.workers import (
     DeterministicWorkerModel,
     FileMutation,
@@ -683,7 +683,7 @@ def test_auto_reopens_the_store_after_a_transient_read_error() -> None:
 
     from types import SimpleNamespace
 
-    from graphene.orchestration.store import MissionStoreError
+    from graphene.orchestration.sqlite_mission_store import MissionStoreError
 
     lab = _load_failure_lab()
 

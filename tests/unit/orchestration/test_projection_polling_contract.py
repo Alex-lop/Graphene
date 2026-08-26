@@ -4,8 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from graphene.orchestration.mission_control import create_mission_control_app
-from graphene.orchestration.projection import MissionProjection, MissionProjectionError
-from graphene.orchestration.store import SQLiteMissionStore
+from graphene.orchestration.mission_projection import MissionProjection, MissionProjectionError
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 
 from .test_store import _create
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256
-from graphene.lineage.reducer import ProjectionError, reduce_events
-from graphene.models import (
+from graphene.lineage.lineage_reducer import ProjectionError, reduce_events
+from graphene.core_models import (
     Event,
     EventInput,
     LineageAuthority,

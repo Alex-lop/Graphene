@@ -10,7 +10,7 @@ from graphene.hashing import (
     candidate_tree_sha256,
     sha256_hex,
 )
-from graphene.models import (
+from graphene.core_models import (
     MAX_TEST_OUTPUT_BYTES,
     CandidateArtifact,
     FileChange,

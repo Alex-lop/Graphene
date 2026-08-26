@@ -18,17 +18,17 @@ from demo.graph_mvp import (  # noqa: E402
     prepare_waiting_demo,
     promotion_request,
 )
-from graphene.app import FIXTURE_ROOT, GOLDEN, GRAPH_CONTRACT, create_app  # noqa: E402
+from graphene.legacy_app import FIXTURE_ROOT, GOLDEN, GRAPH_CONTRACT, create_app  # noqa: E402
 from graphene.context import build_context_packet  # noqa: E402
 from graphene.execution import FixtureAccessError, ScopedFixtureTools  # noqa: E402
 from graphene.hashing import canonical_json_sha256  # noqa: E402
-from graphene.models import (  # noqa: E402
+from graphene.core_models import (  # noqa: E402
     ExecuteRunRequest,
     GraphResponse,
     PromoteRunRequest,
     TaskSpec,
 )
-from graphene.store import InMemoryStore, JsonFileStore  # noqa: E402
+from graphene.legacy_store import InMemoryStore, JsonFileStore  # noqa: E402
 
 
 def _flip(value: str) -> str:

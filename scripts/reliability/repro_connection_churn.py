@@ -18,7 +18,7 @@ connection is held). ``cached`` does exactly the same work with one connection
 per thread per database, reused.
 
 This is a measurement harness, not a test: it prints the numbers whoever
-implements the real fix in ``backend/graphene/orchestration/store.py`` needs as
+implements the real fix in ``backend/graphene/orchestration/sqlite_mission_store.py`` needs as
 a before/after target. It touches no product code and needs no credentials.
 """
 

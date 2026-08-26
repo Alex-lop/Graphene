@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Protocol
 
 from ..hashing import sha256_hex
-from .models import Attempt, Gate
+from .mission_models import Attempt, Gate
 
 
 class ArtifactResolver(Protocol):
