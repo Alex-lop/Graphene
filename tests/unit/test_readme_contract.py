@@ -19,6 +19,11 @@ ROOT = Path(__file__).parents[2]
 def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     readme = (ROOT / "README.md").read_text()
     simple = (ROOT / "simplreadme.md").read_text()
+    # The README is the newcomer's door (<=120 lines); the proof table and the
+    # command map moved to these two documents on 2026-08-26 and the contract
+    # follows the content: each assertion names the document that owns it.
+    proof = (ROOT / "docs/PROOF.md").read_text()
+    commands_doc = (ROOT / "docs/COMMANDS.md").read_text()
     product = json.loads((ROOT / "contracts/product_proof.json").read_text())
     parser = cli_parser()
     commands = parser._subparsers._group_actions[0].choices
@@ -55,8 +60,9 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
         "demo",
     }
     assert set(mission) == set(_MISSION_COMMANDS)
-    assert all(f"`graphene {command}" in readme for command in commands)
-    assert all(f"`graphene mission {command}" in readme for command in mission)
+    assert all(f"`graphene {command}" in commands_doc for command in commands)
+    assert all(f"`graphene mission {command}" in commands_doc for command in mission)
+    assert len(readme.splitlines()) <= 120
 
     assert set(driver_action.choices) == set(legacy)
     assert all(driver in demo.format_help() for driver in legacy)
@@ -74,26 +80,28 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     scripted = product["mission_paths"]["scripted-local"]
     assert replay["truth_label"] == MISSION_REPLAY_TRUTH_LABEL
     assert replay["command"] in readme and replay["command"] in simple
-    assert scripted["truth_label"] in readme
-    assert scripted["execute_command"] in readme and "--auto-approve" in readme
+    assert replay["truth_label"] in proof and replay["truth_label"] in simple
+    assert scripted["truth_label"] in proof
+    assert scripted["execute_command"] in proof and "--auto-approve" in proof
     assert replay["status"] == scripted["status"] == "verified_local"
     gemini = product["mission_paths"]["gemini-adk-planner"]
     assert gemini["status"] == "verified_live"
     # A live label must cite evidence that is in the tree and names the mission.
     evidence = (ROOT / gemini["evidence"]).read_text()
-    assert gemini["mission_id"] in evidence and gemini["mission_id"] in readme
+    assert gemini["mission_id"] in evidence and gemini["mission_id"] in proof
     assert all(digest in evidence for digest in gemini["receipt_sha256"])
     assert gemini["head_event_sha256"] in evidence
-    assert "VERIFIED_LIVE" in readme and "NOT HUMAN-ATTESTED" in gemini["truth_label"]
+    assert "VERIFIED_LIVE" in readme and "VERIFIED_LIVE" in proof
+    assert "NOT HUMAN-ATTESTED" in gemini["truth_label"]
     assert (
         product["mission_paths"]["gemini-adk-planner"]["product_command"]
-        in " ".join(readme.replace("\\\n", "").split())
+        in " ".join(proof.replace("\\\n", "").split())
     )
     assert product["mission_paths"]["cloud-run-firestore"]["status"] == "not_deployed"
     watcher = product["watch"]
     assert watcher["status"] == "verified_local"
-    assert watcher["truth_label"] in readme and "NOT PROVEN" in watcher["truth_label"]
-    assert watcher["live_gate_env"] in readme and watcher["live_gate_env"] in watcher["github_command"]
+    assert watcher["truth_label"] in proof and "NOT PROVEN" in watcher["truth_label"]
+    assert watcher["live_gate_env"] in proof and watcher["live_gate_env"] in watcher["github_command"]
 
     assert product["product_thesis"] in readme
     assert package["description"] == (
@@ -105,7 +113,7 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert mcp_parser().parse_args(entry["args"]).task == "baseline_max_attempts"
     assert entry["command"].endswith("/.venv/bin/graphene-mcp")
     assert set(entry["env"]) == {"GRAPHENE_LINEAGE_DB"}
-    assert "compatibility-only" in readme
+    assert "compatibility-only" in commands_doc
 
     dockerfile = (ROOT / "Dockerfile").read_text()
     assert 'GRAPHENE_ENTRYPOINT_MODE="legacy-http-compatibility"' in dockerfile

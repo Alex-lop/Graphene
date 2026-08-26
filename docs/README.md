@@ -4,6 +4,8 @@ The root [README](../README.md) is the canonical product doorway. This index own
 
 ## Product and operation
 
+- [Proof](PROOF.md) — the full proof table: every path, its label, what it establishes and what it does not; the README carries only the four-row summary.
+- [Command map](COMMANDS.md) — every `graphene` verb, the plan loop, mission commands, the watcher, and the compatibility-only Auth tour commands.
 - [Product](PRODUCT.md) — user, problem, loop, and supported scope.
 - [Architecture](ARCHITECTURE.md) — authority, state, stores, and control plane.
 - [Agent runtime](AGENT_RUNTIME.md) — planner, workers, tools, recovery, and proof status.

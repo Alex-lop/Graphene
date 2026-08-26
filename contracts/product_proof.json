@@ -302,7 +302,7 @@
     ],
     "status": "not_proven_capture_pending"
   },
-  "product_thesis": "Graphene is a terminal-native workflow playground for coding agents. It turns a goal into a proposed, commit-bound DAG; lets you reshape and approve one exact revision; gives each worker only the context and authority its node allows; shows the planned route, the actual path, and the next frontier; and produces a verified result.",
+  "product_thesis": "Graphene is a terminal-native workflow control plane for coding agents: a coordination-and-provenance layer, not an agent and not a harness. You give it a goal. It compiles the goal into a small typed graph of broad nodes, each with its own scope, checks, and budget. You read the map, reshape it if you want, and sign one exact revision; nothing runs until you do. Your connected agent then works only inside that map, and you watch it move node by node in your terminal. When it finishes you get a what-was-done summary, and `graphene why` answers what happened to any file with the lineage that produced it. The map is the contract, and your signature is what makes it binding.",
   "result": "An exact verified candidate decision and optional isolated local commit with V2 publication evidence, a registered immutable pre-decision bundle, explicit resource semantics, and unresolved unknowns. Bounded ADK workers, collision-safe tree hashing, cold integrity verification, revision/invalidation, and a partial authoritative Firestore/outbound-executor vertical are credential-free tested; external proof remains separate.",
   "schema_version": 2,
   "status": "canonical",

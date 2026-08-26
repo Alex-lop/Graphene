@@ -20,7 +20,12 @@ The submission category is **The Taskmaster**. Collaborative Partner describes t
   that store behind separate authentication/CSRF/current-head checks, and
   has backend/frontend contract coverage; a live end-to-end operator capture
   remains pending.
-- A Git worktree isolates edits; it is not a security sandbox. Untrusted code runs only in a separately proven execution boundary or fails closed.
+- A Git worktree provides edit isolation; it is not a security sandbox. Untrusted code runs only in a separately proven execution boundary or fails closed.
+- Workers have no arbitrary shell, installer, ambient credential, user-checkout mount, or autonomous push/PR/merge/deploy path. `graphene init` writes a narrow policy template; every scope and exact argv-form command in it is the operator's to review.
+- Public state excludes raw prompts, source, diffs, command arguments/output, environment variables, secrets, and chain-of-thought.
+- Skills are not resource-isolation units. Stateless MCP is sessionless, not processless.
+- Cancellation targets only strongly identified Graphene-owned processes; unreceipted external effects become `outcome_unknown`, never silently repeated. A cancelled attempt records the stages it completed in its evidence chain, so a check that had already passed is not lost in the word "cancelled".
+- Two tasks may not write the same file, and that rule holds even when one depends on the other: an ordered ownership transfer is safe in principle but is still refused (see [Known limitations](KNOWN_LIMITATIONS.md)).
 - Product-created commits stay on a Graphene-owned result ref. Graphene never pushes, opens a pull request, deploys, or mutates the user's branch.
 
 ## Durable semantics
@@ -83,9 +88,9 @@ shapes. The scheduler consumes only a validated, immutable approved revision.
 
 The default scripted start commits a validated proposal. Explicit
 `approve-plan` executes it; an interactive prompt may record human approval,
-while `--auto-approve` is always a simulated fixture decision. A replan command
-records the request and pauses dispatch; no CLI/model path creates a linked
-replacement revision. The lower-level store can validate, link, diff, and
+while `--auto-approve` is always a simulated fixture decision. A replan command records
+the request and pauses dispatch: it generates no linked replacement revision,
+and nothing in Graphene asks a model to produce one. The lower-level store can validate, link, diff, and
 invalidate a supplied revision N+1. Retention policy metadata is durable, but
 automatic expiry and purge are not implemented. Cloud streaming is per-client Firestore polling at a
 two-second interval; no shared listener or fan-out is implemented.

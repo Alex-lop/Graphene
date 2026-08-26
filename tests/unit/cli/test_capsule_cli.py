@@ -169,8 +169,9 @@ def test_capsule_help_states_redaction_and_the_verify_command() -> None:
     assert "never opens the mission store" in verify_help
 
 
-def test_readme_and_contract_document_the_capsule_command() -> None:
-    readme = (ROOT / "README.md").read_text()
+def test_command_map_and_contract_document_the_capsule_command() -> None:
+    # The command map moved from README.md to docs/COMMANDS.md on 2026-08-26.
+    readme = (ROOT / "docs/COMMANDS.md").read_text()
     contract = (ROOT / "docs/TASKMASTER_PRODUCT_CONTRACT.md").read_text()
 
     assert "`graphene mission capsule`" in readme

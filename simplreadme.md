@@ -1,12 +1,5 @@
-# Graphene quick path
-
-This page is superseded by the canonical [README](README.md) and [documentation index](docs/README.md). It remains only for existing judge links.
-
-```bash
-uv sync --frozen
-uv run --frozen graphene mission replay taskmaster
-```
-
-> **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD**
-
-The replay is a generated, SHA-256-verified scripted fixture. It runs nothing new. The official Firestore emulator production round trip is separately verified locally, and live Gemini is separately **VERIFIED_LIVE** (2026-08-23). Docker, real Google Cloud deployment, benchmark results, media, and the submission video remain **NOT PROVEN** or **NOT DEPLOYED**. See the [proof matrix](README.md#proof-and-support).
+# Graphene
+Superseded by the canonical [README](README.md); this page stays only because existing judge links resolve here.
+Quickstart, no credentials: `uv sync --frozen` then `uv run --frozen graphene mission replay taskmaster`.
+> **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD** — it runs nothing new.
+What is proven and what is not: [docs/PROOF.md](docs/PROOF.md).

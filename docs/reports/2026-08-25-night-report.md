@@ -56,7 +56,7 @@ nothing deployed, ≈$0.40 spent, no secret surfaced.
 
 1. **Lanes ran as worktrees under one parent (`~/Desktop/graphene-lanes/`), not clones**, and PRODUCT was split into two worktrees (gaps, bench) to keep hot files apart. Same isolation, cheaper setup; all pushes and all live runs stayed with the orchestrator.
 2. **The gate ran under the runner's interpreter, not the development one.** The directive says "full macOS CI job scope passes locally"; a local Anaconda run is exactly the environment that hid tonight's failure, so every gate matrix (four of them) ran in a locked venv on the framework interpreter. Anaconda results were used only for targeted suites.
-3. **The product-gaps lane's edits to `CONTRACT_REPORT.md` were dropped** (`ea52645`) rather than applied to the moved file, because LEGIBLE's index makes reports a dated record. The closures are real and are recorded above.
+3. **The product-gaps lane's edits to the contract report at its old root path were dropped** (`ea52645`) rather than applied to the moved file, because LEGIBLE's index makes reports a dated record. The closures are real and are recorded above.
 4. **`simplreadme.md` was not moved** (LEGIBLE's call, upheld): it is a forwarding stub for external judge links, not a session report.
 5. **Rehearsals were run one at a time in the foreground** after the harness's permission layer blocked the batch runner; the runs are identical to what the runner would have done.
 6. **The Graft memo is present**, not absent as §8 says (`local/GRAPHENE_GRAFT_COMPARISON_AND_DIRECTION.md`, 585 lines, dated 2026-08-23). Skimmed; its direction is the settled mission's. Nothing relitigated.
