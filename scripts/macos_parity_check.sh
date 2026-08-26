@@ -67,11 +67,23 @@ case "$base" in
      echo "MACOS PARITY: FAILED"; exit 1 ;;
 esac
 
+# The process tests exec `.venv/bin/graphene` and `.venv/bin/graphene-mcp`
+# literally, so a clean checkout (a gate worktree) with no `.venv` fails every
+# one of them with FileNotFoundError while looking like a product failure.
+# Point `.venv` at the parity environment for the run when it is absent — that
+# is exactly what CI's `.venv` is — and remove the link afterwards.
+linked_venv=0
+if [ ! -e .venv ]; then
+  ln -s "$VENV" .venv && linked_venv=1
+  trap '[ "$linked_venv" = 1 ] && rm -f .venv' EXIT
+fi
+
 echo "== macOS parity for the \"Python 3.13 / macOS sandbox\" job"
 echo "  interpreter   $FRAMEWORK"
 echo "  base_prefix   $base"
 echo "  app binary    $(ls "$base"/Resources/Python.app/Contents/MacOS/Python 2>/dev/null || echo '(absent — this launcher may not re-exec)')"
 echo "  environment   $VENV ($built)"
+echo "  .venv         $(readlink .venv 2>/dev/null || echo "$(pwd)/.venv")$([ "$linked_venv" = 1 ] && echo " (linked for this run)")"
 echo "  tree          $(git rev-parse --short HEAD) + $(git status --porcelain --untracked-files=all | wc -l | tr -d ' ') uncommitted file(s)"
 
 fail=0
