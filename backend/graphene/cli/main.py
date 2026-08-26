@@ -146,10 +146,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_commands(commands)
 
-    from .shadow import register_commands as register_shadow
-
-    register_shadow(commands)
-
     run = commands.add_parser("run", allow_abbrev=False)
     run.add_argument("task", help="plan ID, or compatibility task with --profile")
     run.add_argument("--profile", choices=_PROFILES)
@@ -1533,10 +1529,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "why" and getattr(args, "json_mode_local", False):
         # `graphene why ... --json` means the same as the global `--json` flag.
         args.json_mode = True
-    if args.command == "shadow":
-        from .shadow import handle as handle_shadow
-
-        return handle_shadow(args, json_mode=args.json_mode)
     if args.command == "watch" and args.run_id in {"inbox", "github"}:
         from .watch import handle as handle_watch
 

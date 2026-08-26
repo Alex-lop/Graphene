@@ -103,31 +103,10 @@ The durable DAG is execution authority. Mission Control is a projection; authent
 | Cloud check authority | `EXECUTOR_ATTESTED` | The coordinator recomputes a receipt's bindings, not its test results, so an authenticated remote executor is inside the trusted computing base. Every successful cloud completion records `check_authority: executor_attested` in the hash chain. A cloud smoke never inherits the local `trusted_check` claim |
 | Graph economics benchmark | `NOT PROVEN` | The harness has a credential-free unit test. No repeated run, token/cost/latency result, median or P95 is claimed |
 | Product media and submission video | `NOT PROVEN — CAPTURE PENDING` | `docs/assets/demo-capture.json` records the verified replay source and checkpoint; the required hero screenshot and replay GIF do not exist, and nothing has been filmed. The live sequence those media would show is separately rehearsed — see below |
-| Shadow Agent, ndjson path | `VERIFIED_LOCAL` on a synthetic fixture | Canonical events, isolated store, fail-closed adapter, reconstruction, six lint rules, self-verifying capsule |
-| Shadow Agent, claude-code adapter | `VERIFIED_LOCAL` on a synthetic fixture | Record-shape mapping, Bash classification, path and content digests, redaction, fail-closed rules, reconstruction, lint, capsule |
-| Shadow Agent, real Claude Code session | `NOT PROVEN` (private smoke only) | One real 110-record transcript ingested with zero unknown records and report and lint ran; counts only in the contract, the transcript is private and the run is not reproducible from the repository |
 | Mission capsule | `VERIFIED_LIVE_COLD` (2026-08-23) | Capsules of the completed live mission and the live failure-lab mission verify from a fresh clone with no mission store (11 checks each); not producer authenticity, same laptop |
 | North Star | `VERIFIED_LIVE` (2026-08-23) | Two real workers, survives one failing *and completes*, and `why` chains — all live. Completion gate: **9/10 ordinary** and **3/3 controlled-failure** missions finished end to end, $2.30 of receipt-derived spend across 14 missions. The controlled failure is `--inject-check-fault`, an owned check process failed on purpose with a `simulated_fixture` receipt — not a real infrastructure failure. The night's SIGKILL laboratory remains the real-process variant and its completion leg is unchanged. [Evidence](evidence/convergence/2026-08-23-completion-gate/README.md) |
 
 Machine-readable truth lives in [`contracts/product_proof.json`](contracts/product_proof.json).
-
-## Shadow Agent
-
-> **"Your agent said the tests passed. Graphene knows whether they actually ran."**
-
-Code review for agent sessions Graphene did not run. Point it at a finished transcript: Graphene reconstructs the session as inferred segments with a read-after-write graph, lints it for claims without checks, edits without checks, overlapping writes, scope drift, unverified deletes, and network or install activity, and exports a redacted capsule that verifies from its own bytes.
-
-```bash
-graphene shadow ingest PATH --format claude-code|ndjson [--repo PATH]   # -> shadow_id
-graphene shadow report SHADOW_ID [--json]
-graphene shadow lint   SHADOW_ID [--rule RULE ...] [--json]
-graphene shadow graph  SHADOW_ID --json|--dot
-graphene shadow export SHADOW_ID --output DIR               # -> SHADOW_ID.graphene-shadow capsule
-```
-
-`graphene shadow list` and `graphene shadow verify SHADOW_ID` enumerate and re-verify stored sessions. Shadow data lives in its own `shadow.sqlite3` with its own schema ledger: `graphene shadow` never opens the mission store, and nothing in the mission trust chain ever cites a shadow record. Every reconstruction is labeled `inferred`, and there is no trust score. See [Shadow Agent](docs/SHADOW.md) and the [adapter specification](docs/SHADOW_ADAPTER_SPEC.md).
-
-Shadow Agent v0: credential-free tests pass on the synthetic ndjson and claude-code fixtures. The claude-code adapter was built against one real Claude Code transcript that stays private; it ingested with zero unknown records in a smoke whose counts are in the contract, so the real-session report remains NOT PROVEN and source faithfulness is never claimed.
 
 ## Safety boundary
 

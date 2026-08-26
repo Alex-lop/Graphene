@@ -107,13 +107,12 @@ Follow [Alex cloud setup](ALEX_CLOUD_SETUP.md) only after deliberately selecting
 
 See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md). Remaining product gaps are live provider/cloud/Docker proof, full Firestore scheduler parity, operator-complete replanning, transitive artifact subsumption, broader mutation/repository support, automatic retention purge, shared cloud stream fan-out, product media/video, benchmark results, and the comprehension study.
 
-## 2026-08-22 update: Shadow Agent v0 and North Star groundwork
+## 2026-08-22 update: North Star groundwork
 
-This update is recorded on top of the verified source commit above; it does not re-verify that commit. Commit range: `7b41d58` (shadow schema) through the docs commit that follows this report.
+This update is recorded on top of the verified source commit above; it does not re-verify that commit. Commit range: `7b41d58` through the docs commit that follows this report.
 
 | Area | Implemented | Current proof boundary |
 |---|---|---|
-| Shadow Agent | `shadow.event.v1` canonical identities, ingest-time redaction, isolated `shadow.sqlite3`, ndjson adapter with every documented fail-closed rule, `segments.v1`, `claims.v1` with precision locks, the six `lint.v1` rules and three defined ratios, `graphene shadow` CLI, self-verifying capsule | Synthetic fixture and hand-built records only; **claude-code adapter NOT IMPLEMENTED** pending a real transcript; source faithfulness never claimed |
 | Worker receipts | Sanitized `worker-provider-receipt` artifacts bound to attempt evidence on success and failure; replay rebuilds them from evidence; live output lists only evidence-bound receipts | Fake ADK workers here; live Gemini receipts are **VERIFIED_LIVE** (2026-08-23) and are what the North Star evidence cites |
 | Overlap | Attempt-lifetime, lease, and provider-call bases from evidence receipts; serialized execution proven to disagree with lifetimes | Fake workers; live provider-call overlap **NOT PROVEN** |
 | Check executors | `GRAPHENE_CHECK_EXECUTOR=host-sandbox` (macOS `sandbox-exec`, owned-process registration, template timeout honoured, exec-in-place identity) beside Docker; upfront fail-closed selection on both the local and outbound paths | Docker smoke still **NOT PROVEN** on a responsive daemon |
@@ -123,7 +122,7 @@ This update is recorded on top of the verified source commit above; it does not 
 
 Matrix on the series head: Python unit/integration/process/adversarial excluding MCP **1923 passed, 4 skipped** (the four opt-in gates), MCP STDIO **6 passed**, frontend **39 passed**, ruff/compileall/`git diff --check` clean. Run: `uv run --frozen pytest -q tests/unit tests/integration tests/process tests/adversarial --ignore=tests/process/test_mcp_stdio.py`.
 
-Owner actions still required, in order: Gemini credentials plus `GRAPHENE_RUN_LIVE_GEMINI=1`; a check executor (`GRAPHENE_CHECK_EXECUTOR=host-sandbox` on macOS, or a responsive Docker daemon with the built image); a real Claude Code transcript at `local/shadow/claude-code-session-raw.jsonl` with `SOURCE.txt`; the Google Cloud project decisions in [the cloud proof plan](CLOUD_PROOF_PLAN.md). The exact sequence is in [the North Star runbook](NORTH_STAR_RUNBOOK.md). No truth label flips in this update.
+Owner actions still required, in order: Gemini credentials plus `GRAPHENE_RUN_LIVE_GEMINI=1`; a check executor (`GRAPHENE_CHECK_EXECUTOR=host-sandbox` on macOS, or a responsive Docker daemon with the built image); the Google Cloud project decisions in [the cloud proof plan](CLOUD_PROOF_PLAN.md). The exact sequence is in [the North Star runbook](NORTH_STAR_RUNBOOK.md). No truth label flips in this update.
 
 ## 2026-08-23 update: the live North Star run, the failure laboratory, and `graphene watch`
 

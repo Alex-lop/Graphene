@@ -53,7 +53,6 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
         "handoff",
         "promote",
         "demo",
-        "shadow",
     }
     assert set(mission) == set(_MISSION_COMMANDS)
     assert all(f"`graphene {command}" in readme for command in commands)

@@ -1,11 +1,9 @@
 """Secret-shaped text scrubbing, shared by every subsystem that emits text.
 
-Both the shadow store's ingest path and the mission runtime's check diagnostics
-put third-party text where a human or a model will read it, and neither may
-carry a credential there. One definition, so a pattern added here reaches both:
-``graphene.orchestration`` and ``graphene.shadow`` are deliberately forbidden
-from importing each other (tests/unit/shadow/test_isolation.py), and this module
-is the neutral ground that keeps that true without duplicating the patterns.
+The mission runtime's check diagnostics put third-party text where a human or
+a model will read it, and nothing there may carry a credential. One definition,
+kept outside ``graphene.orchestration`` so any subsystem that emits text can
+reach it without duplicating the patterns.
 """
 
 from __future__ import annotations
