@@ -352,5 +352,23 @@
     "tree_hash": "graphene.tree.v2 length-prefixes count, path, mode/type, and content; the exact former NUL encoding collision and an independent reference encoder are covered locally.",
     "trusted_checks": "Only check.completed from the check-runner authority can bind deterministic success to the exact attempt/fence, plan/policy, inputs, template, candidate tree, and result.",
     "workspace_audit": "The generic ADK WorkerRuntime uses a bounded Git workspace auditor to independently measure base/admin identity, path and mode changes, and a content-addressed patch before publication; the separate scripted fixture does not inherit this claim."
+  },
+  "terminal_ui": {
+    "status": "verified_local",
+    "truth_label": "TERMINAL UI \u2014 VERIFIED_LOCAL: REPLAY AND SCRIPTED-LOCAL FIXTURE ON MACOS; NOT A LIVE MODEL MISSION, NOT FILMED",
+    "command": "uv run --frozen graphene ui --replay taskmaster",
+    "once_command": "uv run --frozen graphene ui --replay taskmaster --once",
+    "live_command": "uv run --frozen graphene ui",
+    "test_command": "uv run --frozen pytest -q tests/unit/ui -p no:cacheprovider",
+    "proves": "The verified replay renders as a top-to-bottom DAG with box-drawing edges, per-node state, and a banner carrying mission id, plan revision, digest, and signed/unsigned state; the viewer attaches read-only (SQLite mode=ro, query_only=ON) and node states change on screen while a scripted-local mission runs; selecting a node shows its attempts, checks, receipts, and lineage; a finished mission shows the what-was-done summary from the store.",
+    "does_not_prove": [
+      "a live Gemini mission watched by a person (the live proof is the credential-free scripted fixture on macOS)",
+      "the film \u2014 nothing has been recorded",
+      "Linux live attach: the scripted fixture needs /usr/bin/sandbox-exec, so only the replay path is proven there"
+    ],
+    "evidence": "evidence/ui/2026-08-26/README.md",
+    "screenshot": "docs/assets/ui-terminal.png",
+    "arrow_art": "forbidden: tests/unit/ui/test_dag_render.py fails if the renderer emits '->'",
+    "recorded_at": "2026-08-26"
   }
 }

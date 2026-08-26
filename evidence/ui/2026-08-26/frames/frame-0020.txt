@@ -1,0 +1,58 @@
+GRAPHENE mission_start_90826373827b3f2244e6150f  ·  awaiting_result  ·  live · seq 60
+PLAN v1  digest 7e8326c9d22d  ·  SIGNED — revision 1 approved
+
+┌──────────────┐  ┌─────────────┐  ┌─────────────────┐
+│ redact_notes │  │ render_json │  │ render_markdown │
+│ ✓ done       │  │ ✓ done      │  │ ✓ done          │
+└───────┬──────┘  └──────┬──────┘  └────────┬────────┘
+        │                │                  │
+        └───────┬──┬─────┴──┬───────┬───────┘
+                │  │        ▼       │
+                │  │  ┌──────────┐  │
+                │  │  │ wire_cli │  │
+                │  │  │ ✓ done   │  │
+                │  │  └─────┬────┘  │
+                │  │        │       │
+                └──┴───────┬┴───────┘
+                           ▼
+                ┌────────────────────┐
+                │ assemble_candidate │
+                │ ✓ done             │
+                └──────────┬─────────┘
+                           │
+                           │
+                           ▼
+                 ┌──────────────────┐
+                 │ verify_candidate │
+                 │ ✓ done           │
+                 └──────────────────┘
+
+what was done
+Add redacted JSON and Markdown status reports to the fixture CLI.
+mission awaiting_result
+
+nodes
+  assemble_candidate done         passed · 1 attempt
+  redact_notes       done         passed · 1 attempt
+  render_json        done         passed · 1 attempt
+  render_markdown    done         passed · 2 attempts
+  verify_candidate   done         passed · 1 attempt
+  wire_cli           done         passed · 1 attempt
+
+artifacts touched
+  status_report/cli.py
+  status_report/redact.py
+  status_report/render_json.py
+  status_report/render_markdown.py
+  tests/test_cli.py
+  tests/test_redact.py
+  tests/test_render_json.py
+  tests/test_render_markdown.py
+
+result
+  preparing
+  The final candidate and verification evidence are being bound into an exact review bundle.
+
+receipts: 21 evidence-bound across 6 nodes · head seq 60
+unknowns: 2 (listed, never guessed)
+

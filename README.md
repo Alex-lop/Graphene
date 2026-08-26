@@ -57,7 +57,7 @@ prompt = "Run the Graphene loop toward this goal: {{args}}"
 
 ## The terminal view
 
-`graphene ui` draws the signed map in your terminal — every node, its state, and the digest you approved in the banner — and follows the mission live as agents move through it. It lands on 2026-08-27; until then `graphene mission watch MISSION_ID --follow` is the live terminal view.
+`graphene ui` draws the signed map in your terminal — every node, its state, and the digest you approved in the banner — and follows the mission live, read-only, as agents move through it; select a node for its attempts, checks, receipts, and lineage, or press `s` for the what-was-done summary. Try it without credentials: `uv run --frozen graphene ui --replay taskmaster`.
 
 ![Graphene terminal UI](docs/assets/ui-terminal.png)
 
@@ -76,7 +76,8 @@ Comparison scripts land after 2026-08-31. Until they produce equal-gate data the
 | Verified mission replay | `VERIFIED_LOCAL` | Hash-checked fixture; the quickstart above. Runs nothing new |
 | Scripted local mission | `VERIFIED_LOCAL` on macOS | Real scheduler, fixture workers, retry, exact verification, isolated result |
 | Live Gemini workers | `VERIFIED_LIVE` 2026-08-23 | Two `gemini-3.5-flash` workers finished a mission with evidence-bound receipts; approvals were operator-delegated, not human-attested; missing credentials fail closed with no silent fallback |
-| Docker executor · Cloud Run · benchmark · film · `graphene ui` | `NOT PROVEN` / `NOT DEPLOYED` | Nothing filmed, nothing deployed, no comparison measured, no terminal screenshot yet |
+| Terminal UI (`graphene ui`) | `VERIFIED_LOCAL` 2026-08-26 | Replay and a scripted-local mission on macOS, read-only, snapshot-tested; not a live model mission, not filmed |
+| Docker executor · Cloud Run · benchmark · film | `NOT PROVEN` / `NOT DEPLOYED` | Nothing filmed, nothing deployed, no comparison measured |
 
 The full table, every identifier, and what each row does not prove: [`docs/PROOF.md`](docs/PROOF.md). Machine-readable truth: [`contracts/product_proof.json`](contracts/product_proof.json).
 

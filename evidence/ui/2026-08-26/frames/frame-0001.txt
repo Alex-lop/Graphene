@@ -1,0 +1,28 @@
+GRAPHENE mission_start_90826373827b3f2244e6150f  ·  proposed  ·  live · seq 4
+PLAN v1  digest 7e8326c9d22d  ·  UNSIGNED — nothing runs until you sign
+
+┌──────────────┐  ┌─────────────┐  ┌─────────────────┐
+│ redact_notes │  │ render_json │  │ render_markdown │
+│ ○ queued     │  │ ○ queued    │  │ ○ queued        │
+└───────┬──────┘  └──────┬──────┘  └────────┬────────┘
+        │                │                  │
+        └───────┬──┬─────┴──┬───────┬───────┘
+                │  │        ▼       │
+                │  │  ┌──────────┐  │
+                │  │  │ wire_cli │  │
+                │  │  │ ○ queued │  │
+                │  │  └─────┬────┘  │
+                │  │        │       │
+                └──┴───────┬┴───────┘
+                           ▼
+                ┌────────────────────┐
+                │ assemble_candidate │
+                │ ○ queued           │
+                └──────────┬─────────┘
+                           │
+                           │
+                           ▼
+                 ┌──────────────────┐
+                 │ verify_candidate │
+                 │ ○ queued         │
+                 └──────────────────┘
