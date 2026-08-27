@@ -340,7 +340,7 @@ def _live(record: SupervisorProcess | _LegacySupervisorProcess) -> bool:
 
     from .process_control import (
         ProcessControlError,
-        _expected_images,
+        _matches_live_image,
         _owned_process_identity,
     )
 
@@ -364,10 +364,7 @@ def _live(record: SupervisorProcess | _LegacySupervisorProcess) -> bool:
         record.birth_token,
     ):
         return False
-    images = _expected_images(record.executable)
-    return (
-        images is None or executable in images or os.path.realpath(executable) in images
-    )
+    return _matches_live_image(record.pid, record.executable, executable)
 
 
 def _runtime_environment() -> dict[str, str]:
@@ -527,7 +524,7 @@ def _spawn_planner_child(directory: Path, child_request) -> None:
 def _stop_planner_child(process) -> None:
     from .process_control import (
         ProcessControlError,
-        _matches_expected_image,
+        _matches_live_image,
         _owned_process_identity,
     )
 
@@ -546,7 +543,7 @@ def _stop_planner_child(process) -> None:
         process.pgid,
         process.started_at,
         process.birth_token,
-    ) or not _matches_expected_image(process.executable, executable):
+    ) or not _matches_live_image(process.pid, process.executable, executable):
         raise SupervisorError("planner child identity changed")
     os.killpg(process.pgid, signal.SIGKILL)
 

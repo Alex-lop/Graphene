@@ -629,6 +629,60 @@ def test_same_second_pid_reuse_with_another_birth_token_is_not_live(
     assert not _live(record)
 
 
+def test_linux_strong_legacy_comm_supervisor_and_planner_stay_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = SupervisorProcess(
+        mission_id="mission-supervisor-linux-legacy-comm",
+        request_sha256="a" * 64,
+        generation=1,
+        pid=424242,
+        pgid=424242,
+        started_at="Thu Aug 27 12:00:00 2026",
+        birth_token="linux:boot:123",
+        executable="python3",
+    )
+    current = (
+        record.pgid,
+        record.started_at,
+        "S",
+        "/usr/bin/python3.13",
+        record.birth_token,
+    )
+    matched: list[tuple[int, str, str]] = []
+    monkeypatch.setattr(process_control, "_owned_process_identity", lambda _pid: current)
+    monkeypatch.setattr(
+        process_control,
+        "_matches_live_image",
+        lambda pid, expected, observed: not matched.append((pid, expected, observed)),
+    )
+    monkeypatch.setattr(os, "killpg", lambda _pgid, _signal: None)
+
+    assert _live(record)
+    supervisor_module._stop_planner_child(
+        PlannerChildProcess(
+            pid=record.pid,
+            pgid=record.pgid,
+            started_at=record.started_at,
+            birth_token=record.birth_token,
+            executable=record.executable,
+        )
+    )
+    assert matched == [
+        (record.pid, "python3", "/usr/bin/python3.13"),
+        (record.pid, "python3", "/usr/bin/python3.13"),
+    ]
+
+    def unavailable(*_args):
+        raise process_control.ProcessControlError(
+            "owned process identity is unavailable"
+        )
+
+    monkeypatch.setattr(process_control, "_matches_live_image", unavailable)
+    with pytest.raises(process_control.ProcessControlError):
+        _live(record)
+
+
 def test_two_processes_share_one_mission_execution_authority(
     isolated_runtime,
 ) -> None:

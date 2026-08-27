@@ -165,7 +165,17 @@ def _process_identity(pid: int) -> tuple[int, str, str, str]:
         pgid = int(fields[0])
     except ValueError as error:
         raise ProcessControlError("owned process identity is invalid") from error
-    return pgid, " ".join(fields[1:6]), fields[6], fields[7]
+    state = fields[6]
+    executable = fields[7]
+    if sys.platform.startswith("linux"):
+        try:
+            executable = os.readlink(f"/proc/{pid}/exe")
+        except OSError as error:
+            if not state.startswith("Z"):
+                raise ProcessControlError(
+                    "owned process identity is unavailable"
+                ) from error
+    return pgid, " ".join(fields[1:6]), state, executable
 
 
 def _owned_process_identity(pid: int) -> tuple[int, str, str, str, str]:
@@ -232,6 +242,19 @@ def _expected_images(executable: str) -> frozenset[str] | None:
 def _matches_expected_image(executable: str, observed: str) -> bool:
     images = _expected_images(executable)
     return images is None or observed in images or os.path.realpath(observed) in images
+
+
+def _matches_live_image(pid: int, executable: str, observed: str) -> bool:
+    if _matches_expected_image(executable, observed):
+        return True
+    if not sys.platform.startswith("linux") or "/" in executable:
+        return False
+    if executable == "sh":
+        return True
+    try:
+        return Path(f"/proc/{pid}/comm").read_text().strip() == executable
+    except OSError as error:
+        raise ProcessControlError("owned process identity is unavailable") from error
 
 
 class OwnedProcessRegistry:
@@ -343,7 +366,11 @@ class OwnedProcessRegistry:
             or any(character in observed_executable for character in "\0\n\r")
         ):
             raise ProcessControlError("owned process identity is invalid")
-        if observed_executable.startswith("(") and observed_executable.endswith(")"):
+        if (
+            _expected_images(executable) is None
+            or observed_executable.startswith("(")
+            and observed_executable.endswith(")")
+        ):
             observed_executable = executable
         if not _matches_expected_image(executable, observed_executable):
             raise ProcessControlError("owned process executable does not match child")
@@ -852,7 +879,7 @@ class OwnedProcessRegistry:
             return False
         if (pgid, started_at) != (owned.pgid, owned.started_at):
             raise ProcessControlError("owned process identity changed")
-        if not _matches_expected_image(owned.executable, executable):
+        if not _matches_live_image(owned.pid, owned.executable, executable):
             raise ProcessControlError("owned process identity changed")
         return True
 
