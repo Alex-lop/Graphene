@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
-from threading import RLock
 from typing import TYPE_CHECKING, Protocol
 
 from pydantic import TypeAdapter
@@ -17,6 +15,7 @@ from ..core_models import GitSha, IdempotencyKey, Sha256, TruthKind, UtcDateTime
 from .evidence import TrustedCheckReceipt
 from .materialized_integrity import verify_materialized_artifacts
 from .mission_models import (
+    AuthorizationMode,
     ArtifactEnvelopeReferenceV2,
     ArtifactInputReference,
     ArtifactPublication,
@@ -25,6 +24,7 @@ from .mission_models import (
     AttemptState,
     Dispatch,
     EvidenceReference,
+    FinalizationMode,
     Gate,
     GenericEvidenceLink,
     Lease,
@@ -39,6 +39,7 @@ from .mission_models import (
     MissionStatus,
     MissionTrigger,
     Plan,
+    PlanPolicyDecisionV1,
     ProjectPolicy,
     ProjectPolicySummary,
     PublishedArtifactReferenceV2,
@@ -51,10 +52,12 @@ from .mission_models import (
     WorkerRegistration,
     WorkerRevocation,
     artifact_input_reference_key,
+    plan_policy_decision,
     stage_payload,
 )
 from .mission_reducer import TransitionError, reduce_events, transition_mission, transition_task
-from .validation import require_valid_plan
+from .sqlite_lifecycle import serialized_connection, serialized_sqlite
+from .validation import evaluate_plan_policy, require_valid_plan
 
 if TYPE_CHECKING:
     from .adk_planner import PlanProposalReceipt
@@ -65,6 +68,7 @@ _SHA256 = TypeAdapter(Sha256)
 _UTC_TIME = TypeAdapter(UtcDateTime)
 
 _SCHEMA_VERSION = 2
+_POLICY_FINALIZER_LABEL = "graphene-policy"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS mission_policies (
@@ -494,8 +498,7 @@ class SQLiteMissionStore:
         self.final_bundle_verifier = final_bundle_verifier
         self._integrity_monitor: sqlite3.Connection | None = None
         self._integrity_monitor_pid: int | None = None
-        self._integrity_monitor_lock = RLock()
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()[0]
             if str(mode).lower() != "wal":
                 raise MissionStoreError("SQLite WAL mode is required")
@@ -509,8 +512,8 @@ class SQLiteMissionStore:
                 )
             if version not in {0, _SCHEMA_VERSION}:
                 raise MissionStoreError(f"unsupported mission schema version {version}")
-            connection.executescript(_SCHEMA)
             if version == 0:
+                connection.executescript(_SCHEMA)
                 schema_sha256 = sha256_hex(_SCHEMA.encode("utf-8"))
                 connection.execute(
                     "INSERT INTO schema_migrations VALUES (?, ?, ?)",
@@ -564,6 +567,17 @@ class SQLiteMissionStore:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA synchronous=FULL")
         return connection
+
+    def close(self) -> None:
+        """Close the store's long-lived integrity monitor after callers stop."""
+
+        with serialized_sqlite():
+            connection = self._integrity_monitor
+            monitor_pid = self._integrity_monitor_pid
+            self._integrity_monitor = None
+            self._integrity_monitor_pid = None
+            if connection is not None and monitor_pid == os.getpid():
+                connection.close()
 
     @staticmethod
     def empty_head(mission_id: str) -> MissionHead:
@@ -1197,7 +1211,7 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
         }
         request_sha = self._request_sha256("create_mission", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -1410,24 +1424,165 @@ class SQLiteMissionStore:
 
     def _approval_binding(
         self, mission_id: str
-    ) -> tuple[MissionStatus, int, str, str]:
-        """Status, revision, `base_sha`, and plan digest that an approval binds.
+    ) -> tuple[MissionStatus, int, str, str, int, PlanPolicyDecisionV1 | None]:
+        """Status, revision, base/plan digests, and policy decision for approval.
 
         Read before the approval transaction; `expected_head` inside that
         transaction is what makes the read authoritative, because any change
         to the mission, the policy, or the plan moves the head.
         """
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             mission_row = self._mission_row(connection, mission_id)
             revision = int(mission_row["plan_revision"])
             mission = self._initial_mission(connection, mission_row)
             plan = self._plan(connection, mission_id, revision)
+            policy, _policy_sha256 = self._policy(
+                connection,
+                mission_row["policy_id"],
+                mission_row["policy_revision"],
+                mission_id=mission_id,
+            )
+            decision = self._committed_policy_decision(connection, mission_row)
         return (
             MissionStatus(mission_row["status"]),
             revision,
             mission.base_sha,
             canonical_json_sha256(plan.model_dump(mode="json")),
+            policy.schema_version,
+            decision,
         )
+
+    def _committed_policy_decision(
+        self, connection: sqlite3.Connection, mission_row: sqlite3.Row
+    ) -> PlanPolicyDecisionV1 | None:
+        mission_id = str(mission_row["mission_id"])
+        events = tuple(
+            MissionEvent.model_validate_json(row["event_bytes"])
+            for row in connection.execute(
+                "SELECT event_bytes FROM mission_events WHERE mission_id = ? ORDER BY seq",
+                (mission_id,),
+            )
+        )
+        try:
+            decision = plan_policy_decision(
+                events, int(mission_row["plan_revision"])
+            )
+        except ValueError as error:
+            raise MissionStoreError("committed policy decision is invalid") from error
+        if decision is None:
+            return None
+        policy, _policy_sha256 = self._policy(
+            connection,
+            mission_row["policy_id"],
+            mission_row["policy_revision"],
+            mission_id=mission_id,
+        )
+        plan = self._plan(connection, mission_id, mission_row["plan_revision"])
+        expected = evaluate_plan_policy(
+            policy,
+            plan,
+            goal_request_id=decision.goal_request_id,
+            requested_mode=decision.requested_mode,
+            requested_finalization_mode=decision.finalization_mode,
+        )
+        if decision != expected:
+            raise MissionStoreError("committed policy decision bindings are invalid")
+        return decision
+
+    def record_plan_policy_decision(
+        self,
+        mission_id: str,
+        command_id: str,
+        decision: PlanPolicyDecisionV1,
+        *,
+        expected_head: MissionHead,
+        recorded_at: datetime,
+    ) -> MissionHead:
+        """Persist exact policy evaluation and atomically dispatch preauthorized work."""
+
+        command_id = _COMMAND_ID.validate_python(command_id)
+        recorded_at = self._time(recorded_at)
+        decision = PlanPolicyDecisionV1.model_validate(decision)
+        request = {
+            "decision": decision.model_dump(mode="json"),
+            "expected_head": self._expected_head_value(mission_id, expected_head),
+            "recorded_at": recorded_at.isoformat(),
+        }
+        request_sha = self._request_sha256("record_plan_policy_decision", request)
+        with serialized_connection(self._connect) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing = self._existing_command(
+                    connection, mission_id, command_id, request_sha
+                )
+                if existing is not None:
+                    connection.commit()
+                    return self._result_head(existing)
+                self._require_expected_head(connection, mission_id, expected_head)
+                mission_row = self._mission_row(connection, mission_id)
+                status = MissionStatus(mission_row["status"])
+                if status not in {MissionStatus.PROPOSED, MissionStatus.PAUSED}:
+                    raise MissionConflict("mission cannot record a policy decision now")
+                if self._committed_policy_decision(connection, mission_row) is not None:
+                    raise MissionConflict("plan policy decision is already committed")
+                policy, _policy_sha256 = self._policy(
+                    connection,
+                    mission_row["policy_id"],
+                    mission_row["policy_revision"],
+                    mission_id=mission_id,
+                )
+                plan = self._plan(
+                    connection, mission_id, mission_row["plan_revision"]
+                )
+                expected = evaluate_plan_policy(
+                    policy,
+                    plan,
+                    goal_request_id=decision.goal_request_id,
+                    requested_mode=decision.requested_mode,
+                    requested_finalization_mode=decision.finalization_mode,
+                )
+                if decision != expected:
+                    raise MissionConflict("policy decision does not match current plan")
+                drafts = [
+                    self._draft(
+                        MissionEventType.PLAN_POLICY_DECIDED,
+                        {"policy_decision": decision.model_dump(mode="json")},
+                        truth_kind=TruthKind.POLICY_AUTHORITATIVE,
+                        authority=MissionAuthority.POLICY_ENGINE,
+                    )
+                ]
+                if decision.effective_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED:
+                    target = transition_mission(status, MissionStatus.RUNNING)
+                    connection.execute(
+                        "UPDATE missions SET status = ? WHERE mission_id = ?",
+                        (target.value, mission_id),
+                    )
+                    drafts.append(
+                        self._draft(
+                            MissionEventType.PLAN_APPROVED,
+                            {
+                                "base_sha": decision.base_sha,
+                                "plan_revision": decision.plan_revision,
+                                "plan_sha256": decision.plan_sha256,
+                                "policy_decision_sha256": decision.decision_sha256,
+                                "status": "approved",
+                            },
+                            truth_kind=TruthKind.POLICY_AUTHORITATIVE,
+                            authority=MissionAuthority.POLICY_ENGINE,
+                        )
+                    )
+                head = self._append(
+                    connection, mission_id, command_id, tuple(drafts), recorded_at
+                )
+                result = self._head_result(head)
+                self._record_command(
+                    connection, mission_id, command_id, request_sha, result
+                )
+                connection.commit()
+                return head
+            except Exception:
+                connection.rollback()
+                raise
 
     def approve_plan(
         self,
@@ -1445,11 +1600,24 @@ class SQLiteMissionStore:
         if type(expected_revision) is not int or expected_revision < 1:
             raise ValueError("expected revision must be a positive integer")
         self._validate_operator_truth(truth_kind, operator_label, rationale)
-        status, revision, base_sha, plan_sha256 = self._approval_binding(mission_id)
+        (
+            status,
+            revision,
+            base_sha,
+            plan_sha256,
+            policy_schema_version,
+            decision,
+        ) = self._approval_binding(mission_id)
         if revision != expected_revision:
             raise MissionConflict("plan revision changed")
         if expected_plan_sha256 is not None and expected_plan_sha256 != plan_sha256:
             raise MissionConflict("plan digest does not match the revision approved")
+        if policy_schema_version >= 2 and decision is None:
+            raise MissionConflict("plan policy decision is not committed")
+        if decision is not None and (
+            decision.effective_mode != AuthorizationMode.REVIEW_REQUIRED
+        ):
+            raise MissionConflict("plan does not require manual review")
         return self._mission_status_command(
             mission_id,
             command_id,
@@ -1475,6 +1643,11 @@ class SQLiteMissionStore:
                 "operator_rationale": rationale,
                 "plan_revision": expected_revision,
                 "plan_sha256": plan_sha256,
+                **(
+                    {}
+                    if decision is None
+                    else {"policy_decision_sha256": decision.decision_sha256}
+                ),
                 "status": "approved",
             },
             truth_kind=truth_kind,
@@ -2159,7 +2332,7 @@ class SQLiteMissionStore:
         recorded_at = self._time(recorded_at)
         request = {"mission_id": mission_id, "recorded_at": recorded_at.isoformat()}
         request_sha = self._request_sha256("refresh_ready", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -2253,7 +2426,7 @@ class SQLiteMissionStore:
                 raise
 
     def ready_tasks(self, mission_id: str) -> tuple[Task, ...]:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             mission_row = self._mission_row(connection, mission_id)
             if self._has_unresolved_mission_gate(connection, mission_id):
                 return ()
@@ -2271,7 +2444,7 @@ class SQLiteMissionStore:
         *,
         active_only: bool = False,
     ) -> WorkerRegistration | None:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN")
             self._mission_row(connection, mission_id)
             self._verify_state_record(connection, mission_id)
@@ -2360,7 +2533,7 @@ class SQLiteMissionStore:
             "worker_id": worker_id,
         }
         request_sha = self._request_sha256("register_worker", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -2466,7 +2639,7 @@ class SQLiteMissionStore:
             "worker_id": worker_id,
         }
         request_sha = self._request_sha256("revoke_worker", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -2586,7 +2759,7 @@ class SQLiteMissionStore:
             "ttl_seconds": ttl_seconds,
         }
         request_sha = self._request_sha256("claim_task", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 mission_row = self._mission_row(connection, mission_id)
@@ -2914,6 +3087,7 @@ class SQLiteMissionStore:
         lease_id: str,
         fencing_token: int,
         recorded_at: datetime,
+        expired_receipt: bool = False,
     ) -> None:
         if (
             attempt.state != AttemptState.RUNNING
@@ -2925,7 +3099,11 @@ class SQLiteMissionStore:
             or lease.fencing_token != fencing_token
             or attempt.fencing_token != fencing_token
             or recorded_at < lease.heartbeat_at
-            or recorded_at >= lease.expires_at
+            or (
+                recorded_at < lease.expires_at
+                if expired_receipt
+                else recorded_at >= lease.expires_at
+            )
         ):
             raise StaleWorker("worker lease is stale or expired")
 
@@ -2938,7 +3116,7 @@ class SQLiteMissionStore:
         if not isinstance(dispatch, Dispatch):
             raise TypeError("assert_fence requires a validated Dispatch")
         recorded_at = self._time(recorded_at)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN")
             mission_row = self._mission_row(connection, dispatch.mission_id)
             self._verify_state_record(connection, dispatch.mission_id)
@@ -3051,7 +3229,7 @@ class SQLiteMissionStore:
             "ttl_seconds": ttl_seconds,
         }
         request_sha = self._request_sha256("heartbeat", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -3445,9 +3623,12 @@ class SQLiteMissionStore:
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        expired_receipt: bool = False,
     ) -> MissionHead:
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
+        if type(expired_receipt) is not bool:
+            raise TypeError("expired receipt flag must be boolean")
         if (
             type(retry_backoff_seconds) is not int
             or not 0 <= retry_backoff_seconds <= 3_600
@@ -3462,8 +3643,10 @@ class SQLiteMissionStore:
             "result": result.model_dump(mode="json"),
             "retry_backoff_seconds": retry_backoff_seconds,
         }
+        if expired_receipt:
+            request["expired_receipt"] = True
         request_sha = self._request_sha256("complete_attempt", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -3494,6 +3677,7 @@ class SQLiteMissionStore:
                     lease_id=lease_id,
                     fencing_token=fencing_token,
                     recorded_at=recorded_at,
+                    expired_receipt=expired_receipt,
                 )
                 task = self._task_from_row(connection, task_row)
                 if isinstance(result.evidence_link, LegacyEvidenceLink) and (
@@ -3927,9 +4111,25 @@ class SQLiteMissionStore:
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        reconciled_results: dict[str, AttemptResult] | None = None,
     ) -> tuple[str, ...]:
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
+        reconciled_results = {} if reconciled_results is None else reconciled_results
+        if type(reconciled_results) is not dict or any(
+            not isinstance(attempt_id, str)
+            or not isinstance(result, AttemptResult)
+            or result.succeeded
+            or not result.retryable
+            or result.result_code != "provider_interrupted"
+            or result.session_id is None
+            or result.invocation_id is None
+            or result.evidence_link is None
+            or result.publications
+            or result.artifact_envelopes
+            for attempt_id, result in reconciled_results.items()
+        ):
+            raise ValueError("reconciled expiry results are invalid")
         if (
             type(retry_backoff_seconds) is not int
             or not 0 <= retry_backoff_seconds <= 3_600
@@ -3938,10 +4138,14 @@ class SQLiteMissionStore:
         request = {
             "mission_id": mission_id,
             "recorded_at": recorded_at.isoformat(),
+            "reconciled_results": {
+                attempt_id: result.model_dump(mode="json")
+                for attempt_id, result in sorted(reconciled_results.items())
+            },
             "retry_backoff_seconds": retry_backoff_seconds,
         }
         request_sha = self._request_sha256("expire_leases", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -3966,16 +4170,7 @@ class SQLiteMissionStore:
                     attempt, _ = self._attempt_and_lease(connection, lease.attempt_id)
                     if attempt.state != AttemptState.RUNNING:
                         raise MissionStoreError("active lease attempt is not running")
-                    abandoned = Attempt.model_validate(
-                        {
-                            **attempt.model_dump(mode="json"),
-                            "ended_at": recorded_at,
-                            "result_code": "lease_expired",
-                            "state": AttemptState.ABANDONED,
-                        }
-                    )
-                    self._update_attempt(connection, abandoned)
-                    self._release_lease(connection, lease, recorded_at, "expired")
+                    reconciled = reconciled_results.get(attempt.attempt_id)
                     task_row = self._task_row(
                         connection,
                         mission_id,
@@ -3983,6 +4178,70 @@ class SQLiteMissionStore:
                         attempt.task_id,
                     )
                     task = self._task_from_row(connection, task_row)
+                    if reconciled is not None:
+                        if isinstance(
+                            reconciled.evidence_link, LegacyEvidenceLink
+                        ) and task.evidence_adapter != "legacy_auth_v2":
+                            raise MissionConflict(
+                                "legacy v2 evidence is not valid for this task"
+                            )
+                        if isinstance(
+                            reconciled.evidence_link, GenericEvidenceLink
+                        ) and task.evidence_adapter != "generic_v1":
+                            raise MissionConflict(
+                                "generic evidence is not valid for this task"
+                            )
+                        mission_contract = Mission.model_validate_json(
+                            self._mission_row(connection, mission_id)["mission_bytes"]
+                        )
+                        policy, policy_sha256 = self._policy(
+                            connection,
+                            mission_contract.policy_id,
+                            mission_contract.policy_revision,
+                            mission_id=mission_id,
+                        )
+                        plan_sha256 = canonical_json_sha256(
+                            self._plan(
+                                connection, mission_id, attempt.plan_revision
+                            ).model_dump(mode="json")
+                        )
+                        self._require_attempt_evidence(
+                            attempt,
+                            reconciled,
+                            task,
+                            policy,
+                            policy_sha256,
+                            plan_sha256,
+                        )
+                    abandoned = Attempt.model_validate(
+                        {
+                            **attempt.model_dump(mode="json"),
+                            "ended_at": recorded_at,
+                            "evidence_link": (
+                                reconciled.evidence_link if reconciled else None
+                            ),
+                            "evidence_refs": (
+                                reconciled.evidence_refs if reconciled else ()
+                            ),
+                            "invocation_id": (
+                                reconciled.invocation_id if reconciled else None
+                            ),
+                            "result_code": (
+                                reconciled.result_code
+                                if reconciled
+                                else "lease_expired"
+                            ),
+                            "session_id": (
+                                reconciled.session_id if reconciled else None
+                            ),
+                            "state": AttemptState.ABANDONED,
+                        }
+                    )
+                    self._update_attempt(connection, abandoned)
+                    self._release_lease(connection, lease, recorded_at, "expired")
+                    result_code = (
+                        reconciled.result_code if reconciled else "lease_expired"
+                    )
                     if task.attempt_count < task.attempt_limit:
                         target = transition_task(task.state, TaskState.RETRYING)
                         retry_at = recorded_at + timedelta(
@@ -3998,7 +4257,9 @@ class SQLiteMissionStore:
                         event_type = MissionEventType.TASK_RETRIED
                         payload = {
                             "attempt_id": attempt.attempt_id,
-                            "result_code": "lease_expired",
+                            "lease_reason": "expired",
+                            "result_code": result_code,
+                            **(stage_payload(reconciled) if reconciled else {}),
                             "retry_at": retry_at.isoformat(),
                             "state": target.value,
                             "task_id": task.task_id,
@@ -4011,7 +4272,9 @@ class SQLiteMissionStore:
                         event_type = MissionEventType.TASK_FAILED
                         payload = {
                             "attempt_id": attempt.attempt_id,
-                            "result_code": "lease_expired",
+                            "lease_reason": "expired",
+                            "result_code": result_code,
+                            **(stage_payload(reconciled) if reconciled else {}),
                             "state": target.value,
                             "task_id": task.task_id,
                         }
@@ -4019,6 +4282,12 @@ class SQLiteMissionStore:
                     self._update_task(connection, task_row, updated)
                     expired.append(attempt.attempt_id)
                     drafts.append(self._draft(event_type, payload))
+                if set(reconciled_results) != set(reconciled_results).intersection(
+                    expired
+                ):
+                    raise MissionConflict(
+                        "reconciled result does not name an expired active attempt"
+                    )
                 if mission_failed:
                     current = MissionStatus(mission_row["status"])
                     if current not in {MissionStatus.FAILED, MissionStatus.CANCELLED}:
@@ -4046,13 +4315,16 @@ class SQLiteMissionStore:
         worker_ids: tuple[str, ...],
         *,
         recorded_at: datetime,
+        include_expired: bool = False,
     ) -> tuple[Dispatch, ...]:
         recorded_at = self._time(recorded_at)
+        if type(include_expired) is not bool:
+            raise TypeError("include_expired must be a boolean")
         if len(worker_ids) != len(set(worker_ids)):
             raise ValueError("worker IDs must be unique")
         if len(worker_ids) > 256:
             raise ValueError("worker owner set is too large")
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN")
             self._mission_row(connection, mission_id)
             self._verify_state_record(connection, mission_id)
@@ -4067,6 +4339,13 @@ class SQLiteMissionStore:
                 for worker_id in worker_ids
             }
             placeholders = ",".join("?" for _ in worker_ids)
+            expiry_clause = "" if include_expired else "AND l.expires_at > ? "
+            parameters: tuple[object, ...] = (
+                mission_id,
+                AttemptState.RUNNING.value,
+                *((_iso(recorded_at),) if not include_expired else ()),
+                *worker_ids,
+            )
             rows = connection.execute(
                 "SELECT a.attempt_bytes, l.lease_bytes, t.task_bytes, "
                 "p.plan_bytes, p.plan_sha256 "
@@ -4080,14 +4359,9 @@ class SQLiteMissionStore:
                 "LEFT JOIN mission_worker_revocations r ON r.mission_id = w.mission_id "
                 "AND r.worker_id = w.worker_id "
                 "WHERE a.mission_id = ? AND a.state = ? AND l.released_at IS NULL "
-                f"AND l.expires_at > ? AND l.owner IN ({placeholders}) "
+                f"{expiry_clause}AND l.owner IN ({placeholders}) "
                 "AND r.worker_id IS NULL ORDER BY a.task_id",
-                (
-                    mission_id,
-                    AttemptState.RUNNING.value,
-                    _iso(recorded_at),
-                    *worker_ids,
-                ),
+                parameters,
             ).fetchall()
         result: list[Dispatch] = []
         for row in rows:
@@ -4210,7 +4484,7 @@ class SQLiteMissionStore:
             "truth_kind": truth_kind.value,
         }
         request_sha = self._request_sha256("request_replan", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -4309,7 +4583,7 @@ class SQLiteMissionStore:
     ) -> dict[str, object]:
         if revision != previous_revision + 1:
             raise ValueError("plan diff revisions must be contiguous")
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             self._mission_row(connection, mission_id)
             previous = self._plan(connection, mission_id, previous_revision)
             current = self._plan(connection, mission_id, revision)
@@ -4351,7 +4625,7 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
         }
         request_sha = self._request_sha256("revise_plan", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -4667,7 +4941,7 @@ class SQLiteMissionStore:
             "value": value,
         }
         request_sha = self._request_sha256(event_type.value, request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -4777,7 +5051,7 @@ class SQLiteMissionStore:
             **payload,
         }
         request_sha = self._request_sha256(operation, request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -4839,10 +5113,23 @@ class SQLiteMissionStore:
         rationale: str | None,
         truth_kind: TruthKind,
         recorded_at: datetime,
+        cancelled_attempt_results: tuple[tuple[str, AttemptResult], ...] = (),
     ) -> MissionHead:
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
         self._validate_operator_truth(truth_kind, operator_label, rationale)
+        attempt_ids = tuple(item[0] for item in cancelled_attempt_results)
+        if (
+            attempt_ids != tuple(sorted(set(attempt_ids)))
+            or any(
+                not isinstance(item, AttemptResult)
+                or item.succeeded
+                or item.publications
+                or item.artifact_envelopes
+                for _, item in cancelled_attempt_results
+            )
+        ):
+            raise ValueError("cancelled attempt results are invalid")
         request = {
             "expected_head": self._expected_head_value(mission_id, expected_head),
             "mission_id": mission_id,
@@ -4851,8 +5138,13 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
             "truth_kind": truth_kind.value,
         }
+        if cancelled_attempt_results:
+            request["cancelled_attempt_results"] = [
+                [attempt_id, result.model_dump(mode="json")]
+                for attempt_id, result in cancelled_attempt_results
+            ]
         request_sha = self._request_sha256("cancel", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -4881,6 +5173,52 @@ class SQLiteMissionStore:
                         authority=self._authority_for_truth(truth_kind),
                     )
                 ]
+                bound_results = dict(cancelled_attempt_results)
+                active_attempts: dict[str, Attempt] = {}
+                for attempt_id in bound_results:
+                    attempt, lease = self._attempt_and_lease(connection, attempt_id)
+                    if (
+                        attempt.mission_id != mission_id
+                        or attempt.state != AttemptState.RUNNING
+                        or lease.released_at is not None
+                    ):
+                        raise MissionConflict(
+                            "cancelled attempt result is not an active mission attempt"
+                        )
+                    task_row = self._task_row(
+                        connection,
+                        mission_id,
+                        attempt.plan_revision,
+                        attempt.task_id,
+                    )
+                    task = self._task_from_row(connection, task_row)
+                    mission_contract = Mission.model_validate_json(
+                        mission_row["mission_bytes"]
+                    )
+                    policy, policy_sha256 = self._policy(
+                        connection,
+                        mission_contract.policy_id,
+                        mission_contract.policy_revision,
+                        mission_id=mission_id,
+                    )
+                    plan_sha256 = canonical_json_sha256(
+                        self._plan(
+                            connection, mission_id, attempt.plan_revision
+                        ).model_dump(mode="json")
+                    )
+                    self._require_attempt_evidence(
+                        attempt,
+                        bound_results[attempt_id],
+                        task,
+                        policy,
+                        policy_sha256,
+                        plan_sha256,
+                    )
+                    active_attempts[attempt_id] = attempt
+                results_by_task = {
+                    active_attempts[attempt_id].task_id: (attempt_id, result)
+                    for attempt_id, result in bound_results.items()
+                }
                 task_rows = connection.execute(
                     "SELECT * FROM mission_tasks WHERE mission_id = ? AND state NOT IN (?, ?, ?)",
                     (
@@ -4892,6 +5230,7 @@ class SQLiteMissionStore:
                 ).fetchall()
                 for task_row in task_rows:
                     task = self._task_from_row(connection, task_row)
+                    attempt_result = results_by_task.get(task.task_id)
                     cancelled = Task.model_validate(
                         {
                             **task.model_dump(mode="json"),
@@ -4905,6 +5244,15 @@ class SQLiteMissionStore:
                         self._draft(
                             MissionEventType.TASK_CANCELLED,
                             {
+                                **(
+                                    {}
+                                    if attempt_result is None
+                                    else {
+                                        "attempt_id": attempt_result[0],
+                                        "result_code": attempt_result[1].result_code,
+                                        **stage_payload(attempt_result[1]),
+                                    }
+                                ),
                                 "state": TaskState.CANCELLED.value,
                                 "task_id": task.task_id,
                             },
@@ -4918,11 +5266,22 @@ class SQLiteMissionStore:
                 for lease_row in lease_rows:
                     lease = Lease.model_validate_json(lease_row["lease_bytes"])
                     attempt, _ = self._attempt_and_lease(connection, lease.attempt_id)
+                    bound_result = bound_results.get(attempt.attempt_id)
                     cancelled_attempt = Attempt.model_validate(
                         {
                             **attempt.model_dump(mode="json"),
                             "ended_at": recorded_at,
-                            "result_code": "mission_cancelled",
+                            **(
+                                {"result_code": "mission_cancelled"}
+                                if bound_result is None
+                                else {
+                                    "evidence_link": bound_result.evidence_link,
+                                    "evidence_refs": bound_result.evidence_refs,
+                                    "invocation_id": bound_result.invocation_id,
+                                    "result_code": bound_result.result_code,
+                                    "session_id": bound_result.session_id,
+                                }
+                            ),
                             "state": AttemptState.CANCELLED,
                         }
                     )
@@ -4985,7 +5344,7 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
         }
         request_sha = self._request_sha256("request_gate", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5089,7 +5448,7 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
         }
         request_sha = self._request_sha256("record_resource_summary", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5172,7 +5531,7 @@ class SQLiteMissionStore:
         payload = trigger.model_dump(mode="json")
         request = {"trigger": payload, "recorded_at": recorded_at.isoformat()}
         request_sha = self._request_sha256("record_trigger", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5233,7 +5592,7 @@ class SQLiteMissionStore:
             "truth_kind": truth_kind.value,
         }
         request_sha = self._request_sha256("decide_gate", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5408,7 +5767,7 @@ class SQLiteMissionStore:
             "truth_kind": truth_kind.value,
         }
         request_sha = self._request_sha256("supply_task_input", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5734,7 +6093,7 @@ class SQLiteMissionStore:
         recorded_at = self._time(recorded_at)
         request = {"mission_id": mission_id, "recorded_at": recorded_at.isoformat()}
         request_sha = self._request_sha256("enter_awaiting_result", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -5825,6 +6184,28 @@ class SQLiteMissionStore:
             approved=True,
         )
 
+    def approve_final_result_by_policy(
+        self,
+        mission_id: str,
+        command_id: str,
+        *,
+        expected_head: MissionHead,
+        expected_bundle_id: str,
+        recorded_at: datetime,
+    ) -> MissionHead:
+        return self._final_decision(
+            mission_id,
+            command_id,
+            expected_head=expected_head,
+            expected_bundle_id=expected_bundle_id,
+            operator_label=_POLICY_FINALIZER_LABEL,
+            rationale=None,
+            truth_kind=TruthKind.POLICY_AUTHORITATIVE,
+            recorded_at=recorded_at,
+            approved=True,
+            policy_authorized=True,
+        )
+
     def register_final_result_bundle(
         self,
         mission_id: str,
@@ -5853,7 +6234,7 @@ class SQLiteMissionStore:
             "expected_head": self._expected_head_value(mission_id, expected_head),
         }
         request_sha = self._request_sha256("register_final_result_bundle", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -6035,6 +6416,7 @@ class SQLiteMissionStore:
         truth_kind: TruthKind,
         recorded_at: datetime,
         approved: bool,
+        policy_authorized: bool = False,
     ) -> MissionHead:
         from .final_bundle import (
             FinalBundleVerificationReceiptV1,
@@ -6044,8 +6426,23 @@ class SQLiteMissionStore:
         command_id = _COMMAND_ID.validate_python(command_id)
         recorded_at = self._time(recorded_at)
         expected_bundle_id = _COMMAND_ID.validate_python(expected_bundle_id)
-        self._validate_operator_truth(truth_kind, operator_label, rationale)
-        operation = "approve_final_result" if approved else "reject_final_result"
+        if policy_authorized:
+            if (
+                not approved
+                or truth_kind != TruthKind.POLICY_AUTHORITATIVE
+                or operator_label != _POLICY_FINALIZER_LABEL
+                or rationale is not None
+            ):
+                raise ValueError("policy finalization attribution is invalid")
+        else:
+            self._validate_operator_truth(truth_kind, operator_label, rationale)
+        operation = (
+            "approve_final_result_by_policy"
+            if policy_authorized
+            else "approve_final_result"
+            if approved
+            else "reject_final_result"
+        )
         request = {
             "expected_bundle_id": expected_bundle_id,
             "expected_head": self._expected_head_value(mission_id, expected_head),
@@ -6055,7 +6452,7 @@ class SQLiteMissionStore:
             "truth_kind": truth_kind.value,
         }
         request_sha = self._request_sha256(operation, request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -6071,6 +6468,24 @@ class SQLiteMissionStore:
                     raise MissionConflict("mission is not awaiting a final decision")
                 if mission_row["final_outcome"] is not None:
                     raise MissionConflict("a final decision is already committed")
+                policy_decision = self._committed_policy_decision(
+                    connection, mission_row
+                )
+                automatic = (
+                    policy_decision is not None
+                    and policy_decision.effective_mode
+                    == AuthorizationMode.POLICY_PRE_AUTHORIZED
+                    and policy_decision.finalization_mode
+                    == FinalizationMode.AUTO_FINALIZE_ISOLATED
+                )
+                if policy_authorized and not automatic:
+                    raise MissionConflict(
+                        "mission is not authorized for automatic finalization"
+                    )
+                if approved and not policy_authorized and automatic:
+                    raise MissionConflict(
+                        "automatic finalization requires policy authority"
+                    )
                 candidate, verification = self._final_publications(
                     connection, mission_id, mission_row["plan_revision"]
                 )
@@ -6155,6 +6570,18 @@ class SQLiteMissionStore:
                                 "operator_label": operator_label,
                                 "operator_rationale": rationale,
                                 "outcome": outcome,
+                                **(
+                                    {}
+                                    if not policy_authorized
+                                    else {
+                                        "decision_mode": (
+                                            FinalizationMode.AUTO_FINALIZE_ISOLATED.value
+                                        ),
+                                        "policy_decision_sha256": (
+                                            policy_decision.decision_sha256
+                                        ),
+                                    }
+                                ),
                                 "status": target.value,
                                 "verification_sha256": verification.sha256,
                                 "verification_proof_sha256": (
@@ -6162,7 +6589,11 @@ class SQLiteMissionStore:
                                 ),
                             },
                             truth_kind=truth_kind,
-                            authority=self._authority_for_truth(truth_kind),
+                            authority=(
+                                MissionAuthority.POLICY_ENGINE
+                                if policy_authorized
+                                else self._authority_for_truth(truth_kind)
+                            ),
                             references=(bundle_reference, *references),
                         ),
                     ),
@@ -6196,7 +6627,7 @@ class SQLiteMissionStore:
             "recorded_at": recorded_at.isoformat(),
         }
         request_sha = self._request_sha256("record_isolated_commit", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -6357,7 +6788,7 @@ class SQLiteMissionStore:
             "truth_kind": truth_kind.value,
         }
         request_sha = self._request_sha256("retry_task", request)
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = self._existing_command(
@@ -6439,7 +6870,7 @@ class SQLiteMissionStore:
                 raise
 
     def head(self, mission_id: str) -> MissionHead:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             head = self._head(connection, mission_id)
             if (
                 head.seq == 0
@@ -6454,11 +6885,14 @@ class SQLiteMissionStore:
     def integrity_marker(self, mission_id: str) -> tuple[int, int, int, int, int, str]:
         """Return an O(1) marker that changes after any external database write."""
 
-        with self._integrity_monitor_lock:
+        with serialized_sqlite():
             pid = os.getpid()
-            if self._integrity_monitor is None or self._integrity_monitor_pid != pid:
-                if self._integrity_monitor is not None:
-                    self._integrity_monitor.close()
+            if self._integrity_monitor_pid != pid:
+                # Never touch a connection inherited across fork. SQLite's
+                # internal mutex may have been owned by a vanished thread.
+                self._integrity_monitor = None
+                self._integrity_monitor_pid = None
+            if self._integrity_monitor is None:
                 connection = sqlite3.connect(
                     self.path,
                     isolation_level=None,
@@ -6508,7 +6942,7 @@ class SQLiteMissionStore:
             raise ValueError("after_seq must be non-negative")
         if type(limit) is not int or not 1 <= limit <= 256:
             raise ValueError("limit must be between 1 and 256")
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             self._mission_row(connection, mission_id)
             rows = connection.execute(
                 "SELECT event_bytes FROM mission_events WHERE mission_id = ? "
@@ -6520,7 +6954,7 @@ class SQLiteMissionStore:
         )
 
     def verify(self, mission_id: str) -> MissionHead:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN")
             mission_row = self._mission_row(connection, mission_id)
             self._verify_state_record(connection, mission_id)
@@ -6702,7 +7136,7 @@ class SQLiteMissionStore:
         return head
 
     def snapshot(self, mission_id: str) -> MissionSnapshot:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             # Pin every integrity and projection read below to one committed
             # SQLite view. Writers update materialized rows, events, commands,
             # and the state record atomically, but autocommit SELECTs could
@@ -6752,6 +7186,7 @@ class SQLiteMissionStore:
             head = self._head(connection, mission_id)
             tasks = tuple(self._task_from_row(connection, row) for row in task_rows)
         summary = ProjectPolicySummary(
+            schema_version=policy.schema_version,
             policy_id=policy.policy_id,
             revision=policy.revision,
             repo_id=policy.repo_id,
@@ -6764,6 +7199,8 @@ class SQLiteMissionStore:
             retry_limit=policy.retry_limit,
             network_mode=policy.network.mode,
             policy_sha256=policy_sha256,
+            authorization_mode=policy.authorization_mode,
+            finalization_mode=policy.finalization_mode,
         )
         values = {
             "schema_version": 1,

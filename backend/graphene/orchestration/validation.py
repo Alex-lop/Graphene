@@ -5,9 +5,13 @@ from pathlib import PurePosixPath
 from pydantic import Field
 
 from ..core_models import FrozenModel
+from ..hashing import canonical_json_sha256
 from .mission_models import (
+    AuthorizationMode,
     CriterionVerificationKind,
+    FinalizationMode,
     Plan,
+    PlanPolicyDecisionV1,
     ProjectPolicy,
     Task,
     TaskKind,
@@ -397,3 +401,55 @@ def require_valid_plan(policy: ProjectPolicy, plan: Plan) -> PlanValidationResul
     if not result.valid:
         raise PlanValidationError(result)
     return result
+
+
+def evaluate_plan_policy(
+    policy: ProjectPolicy,
+    plan: Plan,
+    *,
+    goal_request_id: str,
+    requested_mode: AuthorizationMode,
+    requested_finalization_mode: FinalizationMode | None = None,
+) -> PlanPolicyDecisionV1:
+    """Bind a valid plan to the narrowest effective authorization and result mode."""
+
+    require_valid_plan(policy, plan)
+    pre_authorized = (
+        requested_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
+        and policy.authorization_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
+    )
+    effective_mode = (
+        AuthorizationMode.POLICY_PRE_AUTHORIZED
+        if pre_authorized
+        else AuthorizationMode.REVIEW_REQUIRED
+    )
+    requested_finalization = requested_finalization_mode or policy.finalization_mode
+    finalization_mode = (
+        FinalizationMode.AUTO_FINALIZE_ISOLATED
+        if pre_authorized
+        and requested_finalization == FinalizationMode.AUTO_FINALIZE_ISOLATED
+        and policy.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
+        else FinalizationMode.REVIEW_REQUIRED
+    )
+    reasons = ["plan_within_policy"]
+    if requested_mode == AuthorizationMode.REVIEW_REQUIRED:
+        reasons.append("review_requested")
+    elif not pre_authorized:
+        reasons.append("policy_requires_review")
+    if finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED:
+        reasons.append("isolated_result_pre_authorized")
+    elif pre_authorized:
+        reasons.append("final_review_required")
+    return PlanPolicyDecisionV1.create(
+        goal_request_id=goal_request_id,
+        requested_mode=requested_mode,
+        effective_mode=effective_mode,
+        finalization_mode=finalization_mode,
+        policy_id=policy.policy_id,
+        policy_revision=policy.revision,
+        policy_sha256=canonical_json_sha256(policy.model_dump(mode="json")),
+        base_sha=policy.base_sha,
+        plan_revision=plan.revision,
+        plan_sha256=canonical_json_sha256(plan.model_dump(mode="json")),
+        reason_codes=tuple(sorted(reasons)),
+    )

@@ -5,11 +5,13 @@ from pydantic import ValidationError
 
 from graphene.hashing import canonical_json_sha256
 from graphene.orchestration.mission_models import (
+    AuthorizationMode,
     ArtifactContract,
     ArtifactRequirement,
     CommandTemplate,
     Criterion,
     CriterionVerificationKind,
+    FinalizationMode,
     Plan,
     ProjectPolicy,
     ResourceBudget,
@@ -19,6 +21,7 @@ from graphene.orchestration.mission_models import (
 )
 from graphene.orchestration.validation import (
     PlanValidationError,
+    evaluate_plan_policy,
     require_valid_plan,
     validate_plan,
 )
@@ -511,3 +514,64 @@ def test_output_name_is_the_publication_identity() -> None:
     assert "duplicate_output_name" in {
         item.code for item in validate_plan(_policy(), duplicate).issues
     }
+
+
+def test_schema_one_policy_bytes_remain_legacy_review_required() -> None:
+    policy = _policy()
+
+    assert policy.authorization_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert policy.finalization_mode == FinalizationMode.REVIEW_REQUIRED
+    assert "authorization_mode" not in policy.model_dump(mode="json")
+    assert "finalization_mode" not in policy.model_dump(mode="json")
+
+
+def test_policy_evaluation_binds_exact_valid_plan_and_modes() -> None:
+    policy = ProjectPolicy.model_validate(
+        {
+            **_policy().model_dump(mode="json"),
+            "schema_version": 2,
+            "authorization_mode": AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            "finalization_mode": FinalizationMode.AUTO_FINALIZE_ISOLATED,
+        }
+    )
+    plan = _plan()
+
+    decision = evaluate_plan_policy(
+        policy,
+        plan,
+        goal_request_id="goal-request-0001",
+        requested_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+    )
+
+    assert decision.effective_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
+    assert decision.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
+    assert decision.policy_sha256 == canonical_json_sha256(
+        policy.model_dump(mode="json")
+    )
+    assert decision.plan_sha256 == canonical_json_sha256(plan.model_dump(mode="json"))
+
+
+def test_policy_evaluation_downgrades_legacy_policy_to_review() -> None:
+    decision = evaluate_plan_policy(
+        _policy(),
+        _plan(),
+        goal_request_id="goal-request-0001",
+        requested_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+    )
+
+    assert decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert decision.finalization_mode == FinalizationMode.REVIEW_REQUIRED
+    assert "policy_requires_review" in decision.reason_codes
+
+
+def test_automatic_finalization_rejects_a_final_result_gate() -> None:
+    with pytest.raises(ValidationError, match="no final-result gate"):
+        ProjectPolicy.model_validate(
+            {
+                **_policy().model_dump(mode="json"),
+                "schema_version": 2,
+                "risk_gates": ["final-result"],
+                "authorization_mode": AuthorizationMode.POLICY_PRE_AUTHORIZED,
+                "finalization_mode": FinalizationMode.AUTO_FINALIZE_ISOLATED,
+            }
+        )

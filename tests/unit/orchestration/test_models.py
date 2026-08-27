@@ -10,6 +10,7 @@ from graphene.core_models import TruthKind
 from graphene.orchestration.mission_models import (
     MISSION_TRANSITIONS,
     TASK_TRANSITIONS,
+    AuthorizationMode,
     ArtifactContract,
     AttemptResult,
     Gate,
@@ -23,6 +24,8 @@ from graphene.orchestration.mission_models import (
     MissionStatus,
     NetworkMode,
     NetworkPolicy,
+    FinalizationMode,
+    PlanPolicyDecisionV1,
     ResourceBudget,
     Task,
     TaskState,
@@ -198,6 +201,39 @@ def test_truth_kind_requires_matching_authority() -> None:
             truth_kind=TruthKind.HUMAN_ATTESTED,
             authority=MissionAuthority.SCHEDULER,
             payload={"choice": "approve"},
+        )
+
+
+def test_plan_policy_decision_has_an_exact_canonical_digest() -> None:
+    decision = PlanPolicyDecisionV1.create(
+        goal_request_id="goal-request-0001",
+        requested_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+        effective_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+        finalization_mode=FinalizationMode.AUTO_FINALIZE_ISOLATED,
+        policy_id="policy-1",
+        policy_revision=2,
+        policy_sha256="a" * 64,
+        base_sha="b" * 40,
+        plan_revision=3,
+        plan_sha256="c" * 64,
+        reason_codes=("isolated_result_pre_authorized", "plan_within_policy"),
+    )
+
+    assert decision.decision_sha256 == canonical_json_sha256(
+        decision.model_dump(mode="json", exclude={"decision_sha256"})
+    )
+    with pytest.raises(ValidationError, match="digest"):
+        PlanPolicyDecisionV1.model_validate(
+            {**decision.model_dump(mode="json"), "plan_sha256": "d" * 64}
+        )
+    with pytest.raises(ValidationError, match="pre-authorization"):
+        PlanPolicyDecisionV1.create(
+            **{
+                **decision.model_dump(
+                    mode="json", exclude={"decision_sha256", "effective_mode"}
+                ),
+                "effective_mode": AuthorizationMode.REVIEW_REQUIRED,
+            }
         )
 
 

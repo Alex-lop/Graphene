@@ -60,6 +60,7 @@ class SchedulerStore(Protocol):
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        reconciled_results: dict[str, AttemptResult] | None = None,
     ) -> tuple[str, ...]: ...
 
     def snapshot(self, mission_id: str) -> MissionSnapshot: ...
@@ -86,6 +87,7 @@ class SchedulerStore(Protocol):
         worker_ids: tuple[str, ...],
         *,
         recorded_at: datetime,
+        include_expired: bool = False,
     ) -> tuple[Dispatch, ...]: ...
 
     def ready_tasks(self, mission_id: str) -> tuple[Task, ...]: ...
@@ -128,6 +130,7 @@ class SchedulerStore(Protocol):
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        expired_receipt: bool = False,
     ) -> MissionHead: ...
 
     def pause(
@@ -140,6 +143,7 @@ class SchedulerStore(Protocol):
         rationale: str | None,
         truth_kind: TruthKind,
         recorded_at: datetime,
+        cancelled_attempt_results: tuple[tuple[str, AttemptResult], ...] = (),
     ) -> MissionHead: ...
 
     def resume(

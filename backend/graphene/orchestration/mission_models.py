@@ -4,7 +4,7 @@ import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_serializer, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
 from ..core_models import (
@@ -79,6 +79,16 @@ class NetworkMode(StrEnum):
     ALLOWLIST = "allowlist"
 
 
+class AuthorizationMode(StrEnum):
+    POLICY_PRE_AUTHORIZED = "policy_pre_authorized"
+    REVIEW_REQUIRED = "review_required"
+
+
+class FinalizationMode(StrEnum):
+    AUTO_FINALIZE_ISOLATED = "auto_finalize_isolated"
+    REVIEW_REQUIRED = "review_required"
+
+
 class MissionAuthority(StrEnum):
     MISSION_SERVICE = "mission_service"
     SCHEDULER = "scheduler"
@@ -101,6 +111,7 @@ class MissionEventType(StrEnum):
     MISSION_CREATED = "mission.created"
     PLAN_PROPOSED = "plan.proposed"
     PLAN_VALIDATED = "plan.validated"
+    PLAN_POLICY_DECIDED = "plan.policy_decided"
     PLAN_APPROVED = "plan.approved"
     PLAN_REJECTED = "plan.rejected"
     PLAN_REVISED = "plan.revised"
@@ -247,7 +258,7 @@ class RetentionPolicy(FrozenModel):
 
 
 class ProjectPolicy(FrozenModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     policy_id: Identifier
     revision: int = Field(ge=1)
     repo_id: Identifier
@@ -264,6 +275,8 @@ class ProjectPolicy(FrozenModel):
     resource_budget: ResourceBudget
     retention: RetentionPolicy
     risk_gates: tuple[Identifier, ...] = Field(default=(), max_length=32)
+    authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
 
     @model_validator(mode="after")
     def collections_are_canonical(self) -> ProjectPolicy:
@@ -279,11 +292,36 @@ class ProjectPolicy(FrozenModel):
         ids = tuple(item.template_id for item in self.command_templates)
         if ids != tuple(sorted(ids)) or len(ids) != len(set(ids)):
             raise ValueError("command templates must have sorted unique IDs")
+        if self.schema_version == 1 and (
+            self.authorization_mode != AuthorizationMode.REVIEW_REQUIRED
+            or self.finalization_mode != FinalizationMode.REVIEW_REQUIRED
+        ):
+            raise ValueError("schema-1 policy supports review-required mode only")
+        if self.schema_version == 2 and not {
+            "authorization_mode",
+            "finalization_mode",
+        } <= self.model_fields_set:
+            raise ValueError("schema-2 policy must declare its execution modes")
+        if self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED and (
+            self.authorization_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
+            or "final-result" in self.risk_gates
+        ):
+            raise ValueError(
+                "automatic finalization requires pre-authorization and no final-result gate"
+            )
         return self
+
+    @model_serializer(mode="wrap")
+    def preserve_schema_one_bytes(self, handler: Any) -> dict[str, Any]:
+        value = handler(self)
+        if self.schema_version == 1:
+            value.pop("authorization_mode", None)
+            value.pop("finalization_mode", None)
+        return value
 
 
 class ProjectPolicySummary(FrozenModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     policy_id: Identifier
     revision: int = Field(ge=1)
     repo_id: Identifier
@@ -294,6 +332,74 @@ class ProjectPolicySummary(FrozenModel):
     retry_limit: int = Field(ge=0, le=10)
     network_mode: NetworkMode
     policy_sha256: Sha256
+    authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
+
+    @model_validator(mode="after")
+    def execution_modes_match_schema(self) -> ProjectPolicySummary:
+        if self.schema_version == 1 and (
+            self.authorization_mode != AuthorizationMode.REVIEW_REQUIRED
+            or self.finalization_mode != FinalizationMode.REVIEW_REQUIRED
+        ):
+            raise ValueError("schema-1 policy summary supports review-required mode only")
+        if self.schema_version == 2 and not {
+            "authorization_mode",
+            "finalization_mode",
+        } <= self.model_fields_set:
+            raise ValueError("schema-2 policy summary must declare its execution modes")
+        if self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED and (
+            self.authorization_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
+        ):
+            raise ValueError("automatic finalization requires pre-authorization")
+        return self
+
+    @model_serializer(mode="wrap")
+    def preserve_schema_one_bytes(self, handler: Any) -> dict[str, Any]:
+        value = handler(self)
+        if self.schema_version == 1:
+            value.pop("authorization_mode", None)
+            value.pop("finalization_mode", None)
+        return value
+
+
+class PlanPolicyDecisionV1(FrozenModel):
+    schema_version: Literal[1] = 1
+    goal_request_id: IdempotencyKey
+    requested_mode: AuthorizationMode
+    effective_mode: AuthorizationMode
+    finalization_mode: FinalizationMode
+    policy_id: Identifier
+    policy_revision: int = Field(ge=1)
+    policy_sha256: Sha256
+    base_sha: GitSha
+    plan_revision: int = Field(ge=1)
+    plan_sha256: Sha256
+    reason_codes: tuple[Identifier, ...] = Field(min_length=1, max_length=32)
+    decision_sha256: Sha256
+
+    @model_validator(mode="after")
+    def exact_policy_decision(self) -> PlanPolicyDecisionV1:
+        if self.reason_codes != tuple(sorted(set(self.reason_codes))):
+            raise ValueError("policy decision reasons must be sorted and unique")
+        if (
+            self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
+            and self.effective_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
+        ):
+            raise ValueError("automatic finalization requires effective pre-authorization")
+        expected = canonical_json_sha256(
+            self.model_dump(mode="json", exclude={"decision_sha256"})
+        )
+        if self.decision_sha256 != expected:
+            raise ValueError("policy decision digest does not match")
+        return self
+
+    @classmethod
+    def create(cls, **values: object) -> PlanPolicyDecisionV1:
+        core = {"schema_version": 1, **values}
+        core.pop("decision_sha256", None)
+        return cls.model_validate(
+            {**core, "decision_sha256": canonical_json_sha256(core)}
+        )
 
 
 class ArtifactContract(FrozenModel):
@@ -974,6 +1080,30 @@ class MissionEvent(MissionEventInput):
         if self.event_sha256 != expected:
             raise ValueError("mission event digest does not match")
         return self
+
+
+def plan_policy_decision(
+    events: tuple[MissionEvent, ...], plan_revision: int
+) -> PlanPolicyDecisionV1 | None:
+    """Return the one exact policy decision for a revision; absence means legacy review."""
+
+    decisions: dict[int, PlanPolicyDecisionV1] = {}
+    for event in events:
+        if event.event_type != MissionEventType.PLAN_POLICY_DECIDED:
+            continue
+        if (
+            event.truth_kind != TruthKind.POLICY_AUTHORITATIVE
+            or event.authority != MissionAuthority.POLICY_ENGINE
+            or set(event.payload) != {"policy_decision"}
+        ):
+            raise ValueError("plan policy decision authority is invalid")
+        decision = PlanPolicyDecisionV1.model_validate(
+            event.payload["policy_decision"]
+        )
+        if decision.plan_revision in decisions:
+            raise ValueError("plan policy decision is ambiguous")
+        decisions[decision.plan_revision] = decision
+    return decisions.get(plan_revision)
 
 
 class MissionHead(FrozenModel):

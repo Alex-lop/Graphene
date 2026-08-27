@@ -3,15 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .mission_models import (
+    AuthorizationMode,
+    FinalizationMode,
     MISSION_TRANSITIONS,
     TASK_TRANSITIONS,
     Mission,
+    MissionAuthority,
     MissionEvent,
     MissionEventType,
     MissionStatus,
+    PlanPolicyDecisionV1,
     Task,
     TaskKind,
     TaskState,
+    TruthKind,
 )
 
 
@@ -36,6 +41,10 @@ class ReducedMission:
     status: MissionStatus
     task_states: dict[str, TaskState]
     attempt_counts: dict[str, int]
+    requested_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
+    policy_decision_sha256: str | None = None
 
 
 _TASK_TARGETS = {
@@ -63,6 +72,8 @@ def reduce_events(
     states = {task.task_id: task.state for task in tasks}
     kinds = {task.task_id: task.kind for task in tasks}
     attempts = {task.task_id: task.attempt_count for task in tasks}
+    policy_decisions: dict[int, PlanPolicyDecisionV1] = {}
+    plan_digests: dict[int, str] = {}
     previous: str | None = None
     for seq, event in enumerate(events, 1):
         if (
@@ -73,7 +84,15 @@ def reduce_events(
             raise TransitionError("mission event stream is not contiguous")
         previous = event.event_sha256
 
-        if event.event_type == MissionEventType.PLAN_REVISED:
+        if event.event_type == MissionEventType.PLAN_PROPOSED:
+            revision = event.payload.get("plan_revision")
+            digest = event.payload.get("plan_sha256")
+            if revision != active_revision or not isinstance(digest, str):
+                raise TransitionError("plan proposal payload is invalid")
+            if revision in plan_digests:
+                raise TransitionError("plan proposal is ambiguous")
+            plan_digests[revision] = digest
+        elif event.event_type == MissionEventType.PLAN_REVISED:
             previous_revision = event.payload.get("previous_plan_revision")
             revision = event.payload.get("plan_revision")
             if (
@@ -84,7 +103,56 @@ def reduce_events(
             ):
                 raise TransitionError("plan revision sequence is not contiguous")
             active_revision = revision
+            digest = event.payload.get("plan_sha256")
+            if not isinstance(digest, str):
+                raise TransitionError("plan revision digest is missing")
+            if revision in plan_digests:
+                raise TransitionError("plan revision is ambiguous")
+            plan_digests[revision] = digest
+        elif event.event_type == MissionEventType.PLAN_POLICY_DECIDED:
+            if (
+                event.truth_kind != TruthKind.POLICY_AUTHORITATIVE
+                or event.authority != MissionAuthority.POLICY_ENGINE
+                or set(event.payload) != {"policy_decision"}
+            ):
+                raise TransitionError("plan policy decision authority is invalid")
+            try:
+                decision = PlanPolicyDecisionV1.model_validate(
+                    event.payload["policy_decision"]
+                )
+            except ValueError as error:
+                raise TransitionError("plan policy decision is invalid") from error
+            if (
+                decision.plan_revision != active_revision
+                or decision.policy_id != mission.policy_id
+                or decision.policy_revision != mission.policy_revision
+                or decision.base_sha != mission.base_sha
+                or decision.plan_sha256 != plan_digests.get(active_revision)
+            ):
+                raise TransitionError("plan policy decision bindings are invalid")
+            if decision.plan_revision in policy_decisions:
+                raise TransitionError("plan policy decision is ambiguous")
+            policy_decisions[decision.plan_revision] = decision
         elif event.event_type == MissionEventType.PLAN_APPROVED:
+            decision = policy_decisions.get(active_revision)
+            if decision is not None:
+                if (
+                    event.payload.get("plan_revision") != decision.plan_revision
+                    or event.payload.get("plan_sha256") != decision.plan_sha256
+                    or event.payload.get("base_sha") != decision.base_sha
+                    or event.payload.get("policy_decision_sha256")
+                    != decision.decision_sha256
+                ):
+                    raise TransitionError("plan approval does not bind its policy decision")
+                policy_grant = (
+                    event.truth_kind == TruthKind.POLICY_AUTHORITATIVE
+                    and event.authority == MissionAuthority.POLICY_ENGINE
+                )
+                if policy_grant != (
+                    decision.effective_mode
+                    == AuthorizationMode.POLICY_PRE_AUTHORIZED
+                ):
+                    raise TransitionError("plan approval authority disagrees with policy")
             status = transition_mission(status, MissionStatus.RUNNING)
         elif event.event_type == MissionEventType.PLAN_REJECTED:
             status = transition_mission(status, MissionStatus.REJECTED)
@@ -101,6 +169,23 @@ def reduce_events(
             status = transition_mission(status, MissionStatus.AWAITING_RESULT)
         elif event.event_type == MissionEventType.FINAL_CANDIDATE_REJECTED:
             status = transition_mission(status, MissionStatus.REJECTED)
+        elif event.event_type == MissionEventType.FINAL_CANDIDATE_APPROVED:
+            decision = policy_decisions.get(active_revision)
+            claims_automatic = (
+                event.payload.get("decision_mode")
+                == FinalizationMode.AUTO_FINALIZE_ISOLATED
+                or event.truth_kind == TruthKind.POLICY_AUTHORITATIVE
+            )
+            if claims_automatic and (
+                decision is None
+                or decision.finalization_mode
+                != FinalizationMode.AUTO_FINALIZE_ISOLATED
+                or event.payload.get("policy_decision_sha256")
+                != decision.decision_sha256
+                or event.truth_kind != TruthKind.POLICY_AUTHORITATIVE
+                or event.authority != MissionAuthority.POLICY_ENGINE
+            ):
+                raise TransitionError("automatic final approval authority is invalid")
         elif event.event_type == MissionEventType.ISOLATED_COMMIT_CREATED:
             status = transition_mission(status, MissionStatus.COMPLETED)
         elif event.event_type in {
@@ -146,4 +231,27 @@ def reduce_events(
                 raise TransitionError("task attempt sequence is not contiguous")
             attempts[task_id] = number
 
-    return ReducedMission(status=status, task_states=states, attempt_counts=attempts)
+    decision = policy_decisions.get(target_revision)
+    return ReducedMission(
+        status=status,
+        task_states=states,
+        attempt_counts=attempts,
+        requested_mode=(
+            AuthorizationMode.REVIEW_REQUIRED
+            if decision is None
+            else decision.requested_mode
+        ),
+        effective_mode=(
+            AuthorizationMode.REVIEW_REQUIRED
+            if decision is None
+            else decision.effective_mode
+        ),
+        finalization_mode=(
+            FinalizationMode.REVIEW_REQUIRED
+            if decision is None
+            else decision.finalization_mode
+        ),
+        policy_decision_sha256=(
+            None if decision is None else decision.decision_sha256
+        ),
+    )
