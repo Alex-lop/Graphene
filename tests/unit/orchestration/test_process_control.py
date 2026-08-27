@@ -534,6 +534,104 @@ def test_identity_read_refuses_birth_token_change(monkeypatch: pytest.MonkeyPatc
         process_control._owned_process_identity(123)
 
 
+def test_linux_identity_uses_proc_executable_instead_of_bare_ps_comm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from graphene.orchestration import process_control
+
+    monkeypatch.setattr(process_control.sys, "platform", "linux")
+    monkeypatch.setattr(
+        process_control.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=("/bin/ps",),
+            returncode=0,
+            stdout="424 Tue Aug 19 00:00:00 2026 S sleep\n",
+        ),
+    )
+    monkeypatch.setattr(
+        process_control.os,
+        "readlink",
+        lambda path: "/usr/bin/sleep" if path == "/proc/424/exe" else "",
+    )
+
+    assert process_control._process_identity(424) == (
+        424,
+        "Tue Aug 19 00:00:00 2026",
+        "S",
+        "/usr/bin/sleep",
+    )
+
+
+def test_linux_identity_recognizes_exit_during_executable_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from graphene.orchestration import process_control
+
+    observations = iter(
+        (
+            "424 Tue Aug 19 00:00:00 2026 S python3\n",
+            "424 Tue Aug 19 00:00:00 2026 Z python3\n",
+        )
+    )
+    monkeypatch.setattr(process_control.sys, "platform", "linux")
+    monkeypatch.setattr(
+        process_control.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=("/bin/ps",),
+            returncode=0,
+            stdout=next(observations),
+        ),
+    )
+
+    def missing_executable(_path: str) -> str:
+        raise FileNotFoundError
+
+    monkeypatch.setattr(
+        process_control.os,
+        "readlink",
+        missing_executable,
+    )
+
+    assert process_control._process_identity(424)[2:] == ("Z", "python3")
+    with pytest.raises(StopIteration):
+        next(observations)
+
+    observations = iter(
+        (
+            "424 Tue Aug 19 00:00:00 2026 S python3\n",
+            "424 Tue Aug 19 00:00:00 2026 S python3\n",
+        )
+    )
+    with pytest.raises(ProcessControlError, match="identity is unavailable"):
+        process_control._process_identity(424)
+
+
+def test_linux_strong_legacy_comm_identity_remains_recoverable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from graphene.orchestration import process_control
+
+    monkeypatch.setattr(process_control.sys, "platform", "linux")
+    monkeypatch.setattr(
+        process_control.Path,
+        "read_text",
+        lambda path: "python3\n" if str(path) == "/proc/424/comm" else "",
+    )
+
+    assert process_control._matches_live_image(424, "python3", "/usr/bin/python3.13")
+    assert process_control._matches_live_image(424, "sh", "/usr/bin/sleep")
+    assert not process_control._matches_live_image(424, "other", "/usr/bin/python3.13")
+
+    def unavailable(_path):
+        raise OSError("proc comm unavailable")
+
+    monkeypatch.setattr(process_control.Path, "read_text", unavailable)
+    with pytest.raises(ProcessControlError, match="identity is unavailable"):
+        process_control._matches_live_image(424, "python3", "/usr/bin/python3.13")
+
+
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )

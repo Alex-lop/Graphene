@@ -134,38 +134,54 @@ def _process_birth_token(pid: int) -> str:
 def _process_identity(pid: int) -> tuple[int, str, str, str]:
     if pid <= 1 or not Path("/bin/ps").is_file():
         raise ProcessControlError("owned process identity is unavailable")
-    try:
-        result = subprocess.run(
-            (
-                "/bin/ps",
-                "-o",
-                "pgid=",
-                "-o",
-                "lstart=",
-                "-o",
-                "state=",
-                "-o",
-                "comm=",
-                "-p",
-                str(pid),
-            ),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ProcessControlError("owned process identity is unavailable") from error
-    fields = result.stdout.strip().split(None, 7)
-    if result.returncode or len(fields) != 8:
-        raise ProcessControlError("owned process is no longer running")
-    try:
-        pgid = int(fields[0])
-    except ValueError as error:
-        raise ProcessControlError("owned process identity is invalid") from error
-    return pgid, " ".join(fields[1:6]), fields[6], fields[7]
+
+    def read_ps() -> tuple[int, str, str, str]:
+        try:
+            result = subprocess.run(
+                (
+                    "/bin/ps",
+                    "-o",
+                    "pgid=",
+                    "-o",
+                    "lstart=",
+                    "-o",
+                    "state=",
+                    "-o",
+                    "comm=",
+                    "-p",
+                    str(pid),
+                ),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ProcessControlError("owned process identity is unavailable") from error
+        fields = result.stdout.strip().split(None, 7)
+        if result.returncode or len(fields) != 8:
+            raise ProcessControlError("owned process is no longer running")
+        try:
+            pgid = int(fields[0])
+        except ValueError as error:
+            raise ProcessControlError("owned process identity is invalid") from error
+        return pgid, " ".join(fields[1:6]), fields[6], fields[7]
+
+    pgid, started_at, state, executable = read_ps()
+    if sys.platform.startswith("linux"):
+        try:
+            executable = os.readlink(f"/proc/{pid}/exe")
+        except OSError as error:
+            if not state.startswith("Z"):
+                current = read_ps()
+                if current[:2] != (pgid, started_at) or not current[2].startswith("Z"):
+                    raise ProcessControlError(
+                        "owned process identity is unavailable"
+                    ) from error
+                pgid, started_at, state, executable = current
+    return pgid, started_at, state, executable
 
 
 def _owned_process_identity(pid: int) -> tuple[int, str, str, str, str]:
@@ -232,6 +248,19 @@ def _expected_images(executable: str) -> frozenset[str] | None:
 def _matches_expected_image(executable: str, observed: str) -> bool:
     images = _expected_images(executable)
     return images is None or observed in images or os.path.realpath(observed) in images
+
+
+def _matches_live_image(pid: int, executable: str, observed: str) -> bool:
+    if _matches_expected_image(executable, observed):
+        return True
+    if not sys.platform.startswith("linux") or "/" in executable:
+        return False
+    if executable == "sh":
+        return True
+    try:
+        return Path(f"/proc/{pid}/comm").read_text().strip() == executable
+    except OSError as error:
+        raise ProcessControlError("owned process identity is unavailable") from error
 
 
 class OwnedProcessRegistry:
@@ -343,7 +372,11 @@ class OwnedProcessRegistry:
             or any(character in observed_executable for character in "\0\n\r")
         ):
             raise ProcessControlError("owned process identity is invalid")
-        if observed_executable.startswith("(") and observed_executable.endswith(")"):
+        if (
+            _expected_images(executable) is None
+            or observed_executable.startswith("(")
+            and observed_executable.endswith(")")
+        ):
             observed_executable = executable
         if not _matches_expected_image(executable, observed_executable):
             raise ProcessControlError("owned process executable does not match child")
@@ -852,7 +885,7 @@ class OwnedProcessRegistry:
             return False
         if (pgid, started_at) != (owned.pgid, owned.started_at):
             raise ProcessControlError("owned process identity changed")
-        if not _matches_expected_image(owned.executable, executable):
+        if not _matches_live_image(owned.pid, owned.executable, executable):
             raise ProcessControlError("owned process identity changed")
         return True
 
@@ -1370,10 +1403,7 @@ class ControlledProcessRunner:
                         reconcile_descendants()
                     if drain_deadline is None:
                         drain_deadline = time.monotonic() + 2
-                if (
-                    drain_deadline is not None
-                    and time.monotonic() >= drain_deadline
-                ):
+                if drain_deadline is not None and time.monotonic() >= drain_deadline:
                     for key in tuple(selector.get_map().values()):
                         selector.unregister(key.fileobj)
                         key.fileobj.close()
@@ -1389,9 +1419,7 @@ class ControlledProcessRunner:
                 if termination == "cancelled":
                     raise ProcessCancelled("scripted attempt was cancelled")
                 if termination == "timeout":
-                    raise subprocess.TimeoutExpired(
-                        arguments, timeout, stdout, stderr
-                    )
+                    raise subprocess.TimeoutExpired(arguments, timeout, stdout, stderr)
                 if self.status() == MissionStatus.CANCELLED:
                     raise ProcessCancelled("scripted attempt was cancelled")
                 return subprocess.CompletedProcess(
