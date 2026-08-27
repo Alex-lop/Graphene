@@ -4,6 +4,8 @@ import asyncio
 import inspect
 import os
 import re
+import secrets
+import signal
 import shutil
 import stat
 import subprocess
@@ -17,7 +19,14 @@ from typing import Any, Literal, Protocol
 from pydantic import Field, ValidationError, model_serializer, model_validator
 
 from ..artifact_envelope import ArtifactEnvelopeV2, DirectArtifactInputV2
-from ..execution.adapter import _FIXED_TEST_COMMAND, ExecutionError, run_fixture_tests
+from ..execution.adapter import (
+    NORTH_STAR_CHECK_COMMAND,
+    NORTH_STAR_FINAL_CHECK_COMMAND,
+    NORTH_STAR_CHECK_PATHS,
+    SANDBOX_CHECK_TEMPLATES,
+    ExecutionError,
+    run_fixture_tests,
+)
 from ..hashing import (
     EXECUTABLE_FILE_MODE,
     REGULAR_FILE_MODE,
@@ -28,7 +37,15 @@ from ..hashing import (
     canonical_json_sha256,
     sha256_hex,
 )
-from ..core_models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256, TruthKind
+from ..core_models import (
+    BoundedText,
+    FrozenModel,
+    Identifier,
+    MAX_TEST_OUTPUT_BYTES,
+    RepoPath,
+    Sha256,
+    TruthKind,
+)
 from .diagnostics import CHECK_DIAGNOSTIC_KIND, CheckDiagnostic, summarize_check_failure
 from .evidence import (
     AttemptEvidenceAuthority,
@@ -41,11 +58,14 @@ from .mission_models import (
     ArtifactEnvelopeReferenceV2,
     ArtifactInputReference,
     ArtifactVisibility,
+    Attempt,
     AttemptResult,
+    AttemptState,
     CommandTemplate,
     Dispatch,
     EvidenceReference,
     GenericEvidenceLink,
+    MissionSnapshot,
     MissionStatus,
     PublishedArtifactReferenceV2,
     PublicationDraft,
@@ -54,6 +74,8 @@ from .mission_models import (
 )
 from .process_control import (
     ControlledProcessRunner,
+    ModelDispatchBarrier,
+    OwnedProcess,
     OwnedProcessRegistry,
     ProcessCancelled,
     ProcessControlError,
@@ -72,6 +94,7 @@ from .workspace_audit import (
 # credential mode, byte and token counts; never prompts or outputs) to the
 # attempt that produced it.
 WORKER_PROVIDER_RECEIPT_KIND = "worker-provider-receipt"
+WORKER_PROVIDER_INTERRUPTION_KIND = "worker-provider-interruption"
 
 # The fixture policy caps a single check at 60 seconds; a template asking for
 # more cannot be honoured exactly and is rejected rather than silently clamped.
@@ -90,6 +113,7 @@ class RuntimeErrorCode(StrEnum):
     MODEL_OUTPUT_REJECTED = "model_output_rejected"
     OUTCOME_UNKNOWN = "outcome_unknown"
     POLICY_REJECTED = "policy_rejected"
+    PROVIDER_INTERRUPTED = "provider_interrupted"
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
     PROVIDER_TIMEOUT = "provider_timeout"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
@@ -143,7 +167,7 @@ class PriorFailure(FrozenModel):
     A retry that re-sends a byte-identical prompt is a coin flip, not recovery.
     This carries exactly what the next attempt needs and nothing that could leak:
     the prior attempt's identity and fence, its result code, the names of the
-    checks that failed, the digest of its trusted check receipt, and a redacted,
+    checks that failed, the digest of its trusted evidence, and a redacted,
     bounded summary. The repair scope is deliberately absent — it is unchanged,
     and it is already on the assignment as ``output_paths``.
     """
@@ -325,12 +349,65 @@ class WorkerProviderReceipt(FrozenModel):
         )
 
 
+class WorkerProviderInterruption(FrozenModel):
+    """Sanitized proof of a transport-entered call without a provider receipt."""
+
+    schema_version: Literal[1, 2] = 1
+    driver: Literal["gemini_live"] = "gemini_live"
+    requested_model: Identifier
+    mission_id: Identifier
+    task_id: Identifier
+    attempt_id: Identifier
+    lease_id: Identifier
+    fencing_token: int = Field(ge=1)
+    request_sha256: Sha256
+    input_bytes: int | None = Field(default=None, ge=1, le=2_097_152)
+    provider_dispatch_state: Literal[
+        "transport_acknowledged", "unconfirmed"
+    ] = "transport_acknowledged"
+    sdk_invocation_id: Identifier | None = None
+    dispatched_at: str | None = Field(
+        default=None, pattern=PROVIDER_CALL_TIMESTAMP_PATTERN
+    )
+    pid: int = Field(gt=1)
+    pgid: int = Field(gt=1)
+    process_started_at: BoundedText
+    process_identity_version: Literal[1, 2] = 2
+    process_birth_token: BoundedText | None = None
+    executable: BoundedText
+    exit_code: int
+    signal_name: Identifier | None = None
+    repository_effect: Literal["known_absent"] = "known_absent"
+    provider_outcome: Literal["unknown"] = "unknown"
+    billing_outcome: Literal["unknown"] = "unknown"
+    stderr_sha256: Sha256
+    stderr_truncated: bool
+
+    @model_validator(mode="after")
+    def process_group_is_owned(self) -> WorkerProviderInterruption:
+        if self.pid != self.pgid:
+            raise ValueError("interrupted model child must lead its process group")
+        acknowledged = self.provider_dispatch_state == "transport_acknowledged"
+        if acknowledged != (
+            self.sdk_invocation_id is not None and self.dispatched_at is not None
+        ):
+            raise ValueError("provider dispatch proof does not match its state")
+        if (self.process_identity_version == 1) != (
+            self.process_birth_token is None
+        ):
+            raise ValueError("process birth proof does not match its version")
+        if (self.schema_version == 1) != (self.input_bytes is not None):
+            raise ValueError("interruption input size does not match its version")
+        return self
+
+
 class WorkerCompletion(FrozenModel):
     outcome: CompletionOutcome
     result_code: Identifier
     session_id: Identifier
     invocation_id: Identifier
     provider: WorkerProviderReceipt | None = None
+    provider_interruption: WorkerProviderInterruption | None = None
 
     @model_validator(mode="after")
     def code_matches_outcome(self) -> WorkerCompletion:
@@ -340,6 +417,7 @@ class WorkerCompletion(FrozenModel):
                 RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED.value,
                 RuntimeErrorCode.MODEL_OUTPUT_REJECTED.value,
                 RuntimeErrorCode.PROVIDER_RATE_LIMITED.value,
+                RuntimeErrorCode.PROVIDER_INTERRUPTED.value,
                 RuntimeErrorCode.PROVIDER_TIMEOUT.value,
                 RuntimeErrorCode.PROVIDER_UNAVAILABLE.value,
                 RuntimeErrorCode.RUNTIME_UNAVAILABLE.value,
@@ -357,6 +435,14 @@ class WorkerCompletion(FrozenModel):
         }
         if self.result_code not in allowed[self.outcome]:
             raise ValueError("worker completion is outside the failure taxonomy")
+        if (
+            self.result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED.value
+            and self.provider_interruption is None
+        ) or (
+            self.outcome == CompletionOutcome.COMPLETED
+            and self.provider_interruption is not None
+        ):
+            raise ValueError("provider interruption proof does not match completion")
         return self
 
 
@@ -378,6 +464,12 @@ class RuntimeReceipt(FrozenModel):
     def receipt_is_bound(self) -> RuntimeReceipt:
         if self.operation_ids != tuple(sorted(set(self.operation_ids))):
             raise ValueError("runtime operations must be sorted and unique")
+        if (
+            self.completion.result_code != self.result.result_code
+            or self.completion.session_id != self.result.session_id
+            or self.completion.invocation_id != self.result.invocation_id
+        ):
+            raise ValueError("runtime completion and attempt result disagree")
         expected = canonical_json_sha256(
             self.model_dump(mode="json", exclude={"receipt_sha256"})
         )
@@ -500,12 +592,16 @@ class DockerCheckRunner:
         self, workspace: Path, assignment: RuntimeAssignment, owner_id: str
     ) -> CheckOutcome:
         try:
+            scopes = (*assignment.read_paths, *assignment.output_paths)
+            if tuple(assignment.command_template.argv) in {
+                NORTH_STAR_CHECK_COMMAND,
+                NORTH_STAR_FINAL_CHECK_COMMAND,
+            }:
+                scopes += NORTH_STAR_CHECK_PATHS
             result: SandboxResult = await asyncio.to_thread(
                 self.executor.execute,
                 source=workspace,
-                scopes=tuple(
-                    sorted(set((*assignment.read_paths, *assignment.output_paths)))
-                ),
+                scopes=tuple(sorted(set(scopes))),
                 exclusions=(),
                 template=assignment.command_template,
                 owner_id=owner_id,
@@ -533,7 +629,7 @@ class DockerCheckRunner:
 
 
 class HostSandboxCheckRunner:
-    """Run the frozen ``fixture-tests`` template on the host under sandbox-exec.
+    """Run one reviewed policy check on the host under sandbox-exec.
 
     This is the explicit macOS alternative to :class:`DockerCheckRunner`. It
     reuses the scripted path's trusted machinery: the same frozen command, the
@@ -562,7 +658,7 @@ class HostSandboxCheckRunner:
     ) -> CheckOutcome:
         template = assignment.command_template
         if (
-            tuple(template.argv) != _FIXED_TEST_COMMAND
+            (template.template_id, tuple(template.argv)) not in SANDBOX_CHECK_TEMPLATES
             or template.cwd is not None
             or not 0 < template.timeout_seconds <= HOST_SANDBOX_MAX_TIMEOUT_SECONDS
         ):
@@ -575,21 +671,26 @@ class HostSandboxCheckRunner:
             raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
         if not isinstance(dispatch, Dispatch) or dispatch.attempt_id != owner_id:
             raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        try:
+            policy = fixture_policy_for(
+                workspace,
+                test_timeout_seconds=template.timeout_seconds,
+                fixed_test_command=tuple(template.argv),
+            )
+        except (ScriptedError, ValidationError) as error:
+            # An unrepresentable workspace (for example a path longer than the
+            # fixture policy allows) is a deterministic policy condition.
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
         heartbeat = self.heartbeat
         process_runner = ControlledProcessRunner(
             self.registry,
             dispatch,
             self.status,
             heartbeat=None if heartbeat is None else (lambda: heartbeat(dispatch)),
+            max_output_bytes=min(
+                policy.max_test_output_bytes, MAX_TEST_OUTPUT_BYTES
+            ),
         )
-        try:
-            policy = fixture_policy_for(
-                workspace, test_timeout_seconds=template.timeout_seconds
-            )
-        except (ScriptedError, ValidationError) as error:
-            # An unrepresentable workspace (for example a path longer than the
-            # fixture policy allows) is a deterministic policy condition.
-            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED) from error
         try:
             run = await asyncio.to_thread(
                 run_fixture_tests,
@@ -601,7 +702,9 @@ class HostSandboxCheckRunner:
             raise RuntimeFailure(RuntimeErrorCode.CANCELLED) from error
         except (ExecutionError, ProcessControlError) as error:
             raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE) from error
-        cleanup_complete = not self.registry.has_record(dispatch.attempt_id)
+        cleanup_complete = not self.registry.has_record(
+            dispatch.attempt_id, model=False
+        )
         encoded = run.output.encode("utf-8")
         return CheckOutcome(
             template_id=template.template_id,
@@ -632,6 +735,10 @@ class _OutcomeUnknown(RuntimeFailure):
         super().__init__(RuntimeErrorCode.OUTCOME_UNKNOWN, outcome_unknown=True)
 
 
+class _ModelEffectUncommitted(_OutcomeUnknown):
+    """A model returned, but its post-effect journal/fence did not commit."""
+
+
 class WorkerContext:
     def __init__(
         self,
@@ -652,6 +759,18 @@ class WorkerContext:
         self._baseline: WorkspaceBaseline | None = None
         self._admin_roots: tuple[tuple[str, Path], ...] = ()
         self._workspace_identity: tuple[int, int] | None = None
+
+    def _has_exact_model_ownership(self) -> bool:
+        try:
+            return (
+                OwnedProcessRegistry(self.runtime.runtime.parent).owned_process(
+                    self.dispatch, require_live=False, model=True
+                )
+                is not None
+            )
+        except ProcessControlError:
+            # A present but unreadable exact proof must also fail closed.
+            return True
 
     def _identity(self) -> tuple[int, int]:
         try:
@@ -739,17 +858,32 @@ class WorkerContext:
             else:
                 raise _OutcomeUnknown()
         elif guard_workspace:
-            self._verify_workspace(after=True)
+            try:
+                self._verify_workspace(after=True)
+            except _OutcomeUnknown as error:
+                if label == "model" and self._has_exact_model_ownership():
+                    raise _ModelEffectUncommitted() from error
+                raise
         if non_replayable:
             try:
                 self.runtime._complete_nonreplayable(self.dispatch, operation_id, label)
             except Exception as error:
+                if label == "model" and self._has_exact_model_ownership():
+                    raise _ModelEffectUncommitted() from error
                 raise _OutcomeUnknown() from error
         try:
             await self.runtime._fence(self.dispatch, operation_id, after=True)
         except Exception as error:
+            if label == "model" and self._has_exact_model_ownership():
+                raise _ModelEffectUncommitted() from error
             raise _OutcomeUnknown() from error
         if action_error is not None:
+            if (
+                label == "model"
+                and isinstance(action_error, Exception)
+                and self._has_exact_model_ownership()
+            ):
+                raise _ModelEffectUncommitted() from action_error
             raise action_error
         self.completed_stages.append(label)
         return value
@@ -1302,6 +1436,100 @@ class WorkerRuntime:
         self._validate_directory(self.receipts)
         return self.receipts / (sha256_hex(dispatch.attempt_id.encode()) + ".json")
 
+    @staticmethod
+    def _read_receipt(path: Path) -> RuntimeReceipt | None:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except FileNotFoundError:
+            return None
+        try:
+            with os.fdopen(descriptor, "rb") as stream:
+                content = stream.read(1_048_577)
+        except OSError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        if len(content) > 1_048_576:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+        try:
+            return RuntimeReceipt.model_validate_json(content)
+        except ValueError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+
+    @staticmethod
+    def _sync_receipt(path: Path) -> None:
+        file_descriptor = directory_descriptor = -1
+        try:
+            file_descriptor = os.open(
+                path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            )
+            os.fsync(file_descriptor)
+            directory_descriptor = os.open(
+                path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            os.fsync(directory_descriptor)
+        except OSError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        finally:
+            if directory_descriptor >= 0:
+                os.close(directory_descriptor)
+            if file_descriptor >= 0:
+                os.close(file_descriptor)
+
+    @staticmethod
+    def _write_receipt(path: Path, receipt: RuntimeReceipt) -> None:
+        content = canonical_json_bytes(receipt.model_dump(mode="json"))
+        temporary = path.parent / f".{path.name}.{secrets.token_hex(12)}.tmp"
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, path, follow_symlinks=False)
+            except FileExistsError:
+                if WorkerRuntime._read_receipt(path) != receipt:
+                    raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+                WorkerRuntime._sync_receipt(path)
+                return
+            WorkerRuntime._sync_receipt(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _receipt_matches_dispatch(
+        receipt: RuntimeReceipt, dispatch: Dispatch
+    ) -> bool:
+        return (
+            receipt.worker_id,
+            receipt.attempt_id,
+            receipt.lease_id,
+            receipt.fencing_token,
+            receipt.workspace_id,
+        ) == (
+            dispatch.worker_id,
+            dispatch.attempt_id,
+            dispatch.lease_id,
+            dispatch.fencing_token,
+            dispatch.workspace_id,
+        ) and receipt.operation_id == stable_operation_id(
+            dispatch, "attempt"
+        ) and receipt.accepted_input_sha256 == tuple(
+            item.sha256
+            for item in sorted(
+                dispatch.input_publications,
+                key=lambda item: (item.kind, item.id, item.sha256),
+            )
+        ) and receipt.result.evidence_link == GenericEvidenceLink(
+            evidence_id=WorkerRuntime._evidence_id_for(dispatch)
+        )
+
     async def _fence(
         self, dispatch: Dispatch, operation_id: str, *, after: bool
     ) -> None:
@@ -1313,45 +1541,773 @@ class WorkerRuntime:
             raise RuntimeFailure(RuntimeErrorCode.STALE_LEASE) from error
 
     def _load_receipt(self, dispatch: Dispatch) -> RuntimeReceipt | None:
-        path = self._receipt_path(dispatch)
-        if not path.exists():
-            return None
-        try:
-            receipt = RuntimeReceipt.model_validate_json(path.read_bytes())
-        except (OSError, ValueError) as error:
-            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
-        if (
-            receipt.worker_id,
-            receipt.attempt_id,
-            receipt.lease_id,
-            receipt.fencing_token,
-            receipt.workspace_id,
-        ) != (
-            dispatch.worker_id,
-            dispatch.attempt_id,
-            dispatch.lease_id,
-            dispatch.fencing_token,
-            dispatch.workspace_id,
+        receipt = self._read_receipt(self._receipt_path(dispatch))
+        if receipt is not None and not self._receipt_matches_dispatch(
+            receipt, dispatch
         ):
             raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
         return receipt
 
+    def recover_durable_receipt(self, dispatch: Dispatch) -> WorkerRun | None:
+        """Return only the exact durable result after repairing terminal evidence."""
+
+        receipt = self._load_receipt(dispatch)
+        if receipt is None:
+            return None
+        self._sync_receipt(self._receipt_path(dispatch))
+        self._ensure_terminal_evidence(dispatch, receipt.result)
+        return WorkerRun(result=receipt.result, receipt=receipt, replayed=True)
+
     def _save_receipt(self, dispatch: Dispatch, receipt: RuntimeReceipt) -> None:
-        target = self._receipt_path(dispatch)
-        temporary = target.with_suffix(".tmp-" + receipt.receipt_sha256[:16])
-        descriptor = os.open(
-            temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
+        self._write_receipt(self._receipt_path(dispatch), receipt)
+
+    def _ensure_terminal_evidence(
+        self, dispatch: Dispatch, result: AttemptResult
+    ) -> None:
+        self._ensure_terminal_evidence_at(
+            self.evidence, self.clock, dispatch, result, record=self._record
         )
+
+    @staticmethod
+    def _ensure_terminal_evidence_at(
+        evidence: SQLiteAttemptEvidenceStore,
+        clock: Callable[[], datetime],
+        dispatch: Dispatch,
+        result: AttemptResult,
+        *,
+        record: Callable[
+            [
+                Dispatch,
+                AttemptEvidenceEventType,
+                dict[str, object],
+                tuple[EvidenceReference, ...],
+            ],
+            str,
+        ]
+        | None = None,
+    ) -> None:
+        append = record or (
+            lambda current_dispatch, event_type, payload, references=():
+            WorkerRuntime._record_at(
+                evidence,
+                clock,
+                current_dispatch,
+                event_type,
+                payload,
+                references,
+            )
+        )
+        evidence_id = WorkerRuntime._evidence_id_for(dispatch)
+        head = evidence.verify(evidence_id)
+        if not head.seq:
+            append(
+                dispatch,
+                AttemptEvidenceEventType.ATTEMPT_STARTED,
+                {
+                    "attempt_number": dispatch.attempt_number,
+                    "worker_id": dispatch.worker_id,
+                },
+            )
+            head = evidence.verify(evidence_id)
+        expected_type = (
+            AttemptEvidenceEventType.ATTEMPT_COMPLETED
+            if result.succeeded
+            else AttemptEvidenceEventType.ATTEMPT_FAILED
+        )
+        if head.seq:
+            last = evidence.tail(evidence_id, head.seq - 1, 1)[0]
+            if last.event_type in {
+                AttemptEvidenceEventType.ATTEMPT_COMPLETED,
+                AttemptEvidenceEventType.ATTEMPT_FAILED,
+            }:
+                if (
+                    last.event_type != expected_type
+                    or (
+                        last.mission_id,
+                        last.task_id,
+                        last.attempt_id,
+                    )
+                    != (
+                        dispatch.mission_id,
+                        dispatch.task_id,
+                        dispatch.attempt_id,
+                    )
+                    or last.payload != {"result_code": result.result_code}
+                    or last.references != result.evidence_refs
+                ):
+                    raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+                return
+        append(
+            dispatch,
+            expected_type,
+            {"result_code": result.result_code},
+            result.evidence_refs,
+        )
+
+    @staticmethod
+    def _external_receipt_path(runtime: Path, attempt_id: str) -> Path:
+        receipts = runtime / "worker-receipts"
+        root_descriptor = child_descriptor = -1
         try:
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(canonical_json_bytes(receipt.model_dump(mode="json")))
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, target)
+            root_descriptor = os.open(
+                runtime,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            child_descriptor = os.open(
+                receipts.name,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=root_descriptor,
+            )
+            opened_root = os.fstat(root_descriptor)
+            opened_child = os.fstat(child_descriptor)
+            visible_root = runtime.lstat()
+            visible_child = receipts.lstat()
+        except OSError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
         finally:
-            temporary.unlink(missing_ok=True)
+            if child_descriptor >= 0:
+                os.close(child_descriptor)
+            if root_descriptor >= 0:
+                os.close(root_descriptor)
+        if (
+            stat.S_ISLNK(visible_root.st_mode)
+            or stat.S_ISLNK(visible_child.st_mode)
+            or not stat.S_ISDIR(opened_root.st_mode)
+            or not stat.S_ISDIR(opened_child.st_mode)
+            or (opened_root.st_dev, opened_root.st_ino)
+            != (visible_root.st_dev, visible_root.st_ino)
+            or (opened_child.st_dev, opened_child.st_ino)
+            != (visible_child.st_dev, visible_child.st_ino)
+            or receipts.resolve(strict=True).parent != runtime.resolve(strict=True)
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+        return receipts / (sha256_hex(attempt_id.encode()) + ".json")
+
+    @classmethod
+    def reconcile_cancellation(
+        cls,
+        dispatch: Dispatch,
+        *,
+        runtime: Path,
+        evidence: SQLiteAttemptEvidenceStore,
+        interruption: WorkerProviderInterruption | None = None,
+        retryable: bool = False,
+        stage: str | None = None,
+        failure_code: RuntimeErrorCode | None = None,
+        recorded_at: datetime | None = None,
+        operation_ids: tuple[str, ...] = (),
+    ) -> WorkerRun:
+        """Durably journal one cancelled dispatch without clearing ownership."""
+
+        when = recorded_at or datetime.now(UTC)
+        if failure_code is not None and (
+            not retryable
+            or failure_code
+            not in {
+                RuntimeErrorCode.RUNTIME_UNAVAILABLE,
+                RuntimeErrorCode.SANDBOX_UNAVAILABLE,
+            }
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        if interruption is not None and (
+            interruption.mission_id,
+            interruption.task_id,
+            interruption.attempt_id,
+            interruption.lease_id,
+            interruption.fencing_token,
+        ) != (
+            dispatch.mission_id,
+            dispatch.task_id,
+            dispatch.attempt_id,
+            dispatch.lease_id,
+            dispatch.fencing_token,
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        path = cls._external_receipt_path(runtime, dispatch.attempt_id)
+        receipt = cls._read_receipt(path)
+        if receipt is not None and not cls._receipt_matches_dispatch(
+            receipt, dispatch
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        if receipt is None:
+            interruption_reference = (
+                None
+                if interruption is None
+                else cls._store_provider_interruption_at(evidence, interruption)
+            )
+            retained_references, retained_envelopes = cls._evidence_state_at(
+                evidence, dispatch
+            )
+            if interruption_reference is not None:
+                retained_references = (*retained_references, interruption_reference)
+            retained_references = tuple(
+                sorted(
+                    {
+                        (item.kind, item.id, item.sha256): item
+                        for item in retained_references
+                    }.values(),
+                    key=lambda item: (item.kind, item.id, item.sha256),
+                )
+            )
+            result_code = (
+                RuntimeErrorCode.CANCELLED.value
+                if not retryable
+                else failure_code.value
+                if failure_code is not None
+                else (
+                    RuntimeErrorCode.PROVIDER_INTERRUPTED.value
+                    if interruption is not None
+                    else RuntimeErrorCode.RUNTIME_UNAVAILABLE.value
+                )
+            )
+            completion = WorkerCompletion(
+                outcome=(
+                    CompletionOutcome.RETRYABLE_FAILURE
+                    if retryable
+                    else CompletionOutcome.TERMINAL_FAILURE
+                ),
+                result_code=result_code,
+                session_id="cancelled-" + dispatch.attempt_id[-16:],
+                invocation_id=(
+                    interruption.sdk_invocation_id
+                    if interruption is not None
+                    and interruption.sdk_invocation_id is not None
+                    else stable_operation_id(dispatch, "cancelled")
+                ),
+                provider_interruption=interruption,
+            )
+            result = AttemptResult(
+                succeeded=False,
+                retryable=retryable,
+                result_code=result_code,
+                stage=stage or "start",
+                session_id=completion.session_id,
+                invocation_id=completion.invocation_id,
+                evidence_link=GenericEvidenceLink(
+                    evidence_id=cls._evidence_id_for(dispatch)
+                ),
+                evidence_refs=retained_references,
+                artifact_envelopes=retained_envelopes,
+            )
+            receipt = RuntimeReceipt.create(
+                operation_id=stable_operation_id(dispatch, "attempt"),
+                worker_id=dispatch.worker_id,
+                attempt_id=dispatch.attempt_id,
+                lease_id=dispatch.lease_id,
+                fencing_token=dispatch.fencing_token,
+                workspace_id=dispatch.workspace_id,
+                completion=completion,
+                operation_ids=operation_ids,
+                accepted_input_sha256=tuple(
+                    item.sha256
+                    for item in sorted(
+                        dispatch.input_publications,
+                        key=lambda item: (item.kind, item.id, item.sha256),
+                    )
+                ),
+                result=result,
+            )
+            cls._write_receipt(path, receipt)
+        cls._ensure_terminal_evidence_at(
+            evidence, lambda: when, dispatch, receipt.result
+        )
+        return WorkerRun(result=receipt.result, receipt=receipt, replayed=False)
+
+    @staticmethod
+    def _evidence_state_at(
+        evidence: SQLiteAttemptEvidenceStore, dispatch: Dispatch
+    ) -> tuple[
+        tuple[EvidenceReference, ...],
+        tuple[ArtifactEnvelopeReferenceV2, ...],
+    ]:
+        evidence_id = WorkerRuntime._evidence_id_for(dispatch)
+        head = evidence.verify(evidence_id)
+        references: list[EvidenceReference] = []
+        envelopes: list[ArtifactEnvelopeReferenceV2] = []
+        after = 0
+        while after < head.seq:
+            batch = evidence.tail(evidence_id, after, min(256, head.seq - after))
+            if not batch:
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+            for event in batch:
+                if (
+                    event.mission_id,
+                    event.task_id,
+                    event.attempt_id,
+                ) != (
+                    dispatch.mission_id,
+                    dispatch.task_id,
+                    dispatch.attempt_id,
+                ):
+                    raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+                references.extend(event.references)
+                if event.event_type == AttemptEvidenceEventType.CHECK_COMPLETED:
+                    if (
+                        len(event.references) != 1
+                        or event.references[0].kind != "test-receipt"
+                    ):
+                        raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+                    content = evidence.resolve(
+                        event.references[0].kind, event.references[0].id
+                    )
+                    if content is None:
+                        raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+                    try:
+                        check_receipt = TrustedCheckReceipt.model_validate_json(content)
+                    except ValueError as error:
+                        raise RuntimeFailure(
+                            RuntimeErrorCode.POLICY_REJECTED
+                        ) from error
+                    envelopes.extend(
+                        item
+                        for item in check_receipt.candidate_references
+                        if isinstance(item, ArtifactEnvelopeReferenceV2)
+                    )
+            after = batch[-1].seq
+        return (
+            tuple(references),
+            tuple(
+                sorted(
+                    {
+                        item.artifact_envelope_sha256: item for item in envelopes
+                    }.values(),
+                    key=lambda item: item.artifact_envelope_sha256,
+                )
+            ),
+        )
+
+    @staticmethod
+    def cancellation_interruption(
+        dispatch: Dispatch,
+        owned: OwnedProcess,
+        barrier: ModelDispatchBarrier | None,
+        *,
+        requested_model: str,
+        signal_number: int | None = None,
+    ) -> WorkerProviderInterruption | None:
+        if owned.model_request_sha256 is None and barrier is None:
+            return None
+        request_sha256 = (
+            barrier.request_sha256
+            if owned.model_request_sha256 is None and barrier is not None
+            else owned.model_request_sha256
+        )
+        assert request_sha256 is not None
+        if barrier is not None and (
+            (
+                barrier.mission_id,
+                barrier.task_id,
+                barrier.attempt_id,
+                barrier.lease_id,
+                barrier.fencing_token,
+                barrier.request_sha256,
+                barrier.pid,
+                barrier.pgid,
+                barrier.started_at,
+                barrier.birth_token,
+                barrier.executable,
+            )
+            != (
+                dispatch.mission_id,
+                dispatch.task_id,
+                dispatch.attempt_id,
+                dispatch.lease_id,
+                dispatch.fencing_token,
+                request_sha256,
+                owned.pid,
+                owned.pgid,
+                owned.started_at,
+                owned.birth_token,
+                owned.executable,
+            )
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        signal_name = (
+            None
+            if signal_number is None
+            else signal.Signals(signal_number).name.lower()
+        )
+        return WorkerProviderInterruption(
+            schema_version=1 if owned.model_input_bytes is not None else 2,
+            requested_model=requested_model,
+            mission_id=dispatch.mission_id,
+            task_id=dispatch.task_id,
+            attempt_id=dispatch.attempt_id,
+            lease_id=dispatch.lease_id,
+            fencing_token=dispatch.fencing_token,
+            request_sha256=request_sha256,
+            input_bytes=owned.model_input_bytes,
+            provider_dispatch_state=(
+                "unconfirmed" if barrier is None else "transport_acknowledged"
+            ),
+            sdk_invocation_id=(None if barrier is None else barrier.sdk_invocation_id),
+            dispatched_at=None if barrier is None else barrier.dispatched_at,
+            pid=owned.pid,
+            pgid=owned.pgid,
+            process_started_at=owned.started_at,
+            process_identity_version=(
+                barrier.schema_version
+                if barrier is not None
+                else (1 if owned.birth_token is None else 2)
+            ),
+            process_birth_token=owned.birth_token,
+            executable=owned.executable,
+            exit_code=(-1 if signal_number is None else -int(signal_number)),
+            signal_name=signal_name,
+            stderr_sha256=sha256_hex(b""),
+            stderr_truncated=False,
+        )
+
+    @classmethod
+    def cancellation_receipt_for_attempt(
+        cls,
+        *,
+        runtime: Path,
+        evidence: SQLiteAttemptEvidenceStore,
+        attempt: Attempt,
+    ) -> RuntimeReceipt | None:
+        """Load only a receipt whose terminal evidence names this exact attempt."""
+
+        receipt = cls._read_receipt(
+            cls._external_receipt_path(runtime, attempt.attempt_id)
+        )
+        if receipt is None:
+            return None
+        if (
+            (
+                receipt.worker_id,
+                receipt.attempt_id,
+                receipt.lease_id,
+                receipt.fencing_token,
+                receipt.workspace_id,
+            )
+            != (
+                attempt.worker_id,
+                attempt.attempt_id,
+                attempt.lease_id,
+                attempt.fencing_token,
+                attempt.workspace_id,
+            )
+            or receipt.operation_id
+            != "op_"
+            + canonical_json_sha256(
+                {
+                    "attempt_id": attempt.attempt_id,
+                    "fencing_token": attempt.fencing_token,
+                    "label": "attempt",
+                    "lease_id": attempt.lease_id,
+                }
+            )[:32]
+            or receipt.accepted_input_sha256
+            != tuple(
+                item.sha256
+                for item in sorted(
+                    attempt.input_publications,
+                    key=lambda item: (item.kind, item.id, item.sha256),
+                )
+            )
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        evidence_id = cls._evidence_id_for_values(
+            attempt.mission_id, attempt.attempt_id
+        )
+        if receipt.result.evidence_link != GenericEvidenceLink(
+            evidence_id=evidence_id
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        head = evidence.verify(evidence_id)
+        if not head.seq:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        last = evidence.tail(evidence_id, head.seq - 1, 1)[0]
+        if (
+            last.event_type
+            != (
+                AttemptEvidenceEventType.ATTEMPT_COMPLETED
+                if receipt.result.succeeded
+                else AttemptEvidenceEventType.ATTEMPT_FAILED
+            )
+            or (last.mission_id, last.task_id, last.attempt_id)
+            != (attempt.mission_id, attempt.task_id, attempt.attempt_id)
+            or last.payload != {"result_code": receipt.result.result_code}
+            or last.references != receipt.result.evidence_refs
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        return receipt
+
+    @staticmethod
+    def cancellation_receipt_is_committed(
+        receipt: RuntimeReceipt, attempt: Attempt
+    ) -> bool:
+        return attempt.state == AttemptState.CANCELLED and WorkerRuntime.terminal_receipt_is_committed(
+            receipt, attempt
+        )
+
+    @staticmethod
+    def terminal_receipt_is_committed(
+        receipt: RuntimeReceipt, attempt: Attempt
+    ) -> bool:
+        return attempt.state in {
+            AttemptState.COMMITTED,
+            AttemptState.FAILED,
+            AttemptState.CANCELLED,
+        } and (
+            attempt.session_id,
+            attempt.invocation_id,
+            attempt.evidence_link,
+            attempt.evidence_refs,
+            attempt.result_code,
+        ) == (
+            receipt.result.session_id,
+            receipt.result.invocation_id,
+            receipt.result.evidence_link,
+            receipt.result.evidence_refs,
+            receipt.result.result_code,
+        )
+
+    @classmethod
+    def reconcile_terminal_receipt(
+        cls,
+        dispatch: Dispatch,
+        attempt: Attempt,
+        *,
+        runtime: Path,
+        evidence: SQLiteAttemptEvidenceStore,
+    ) -> bool:
+        """Idempotently clear retained process proof for a committed receipt."""
+
+        receipt = cls.cancellation_receipt_for_attempt(
+            runtime=runtime,
+            evidence=evidence,
+            attempt=attempt,
+        )
+        if receipt is None:
+            return False
+        if not cls._receipt_matches_dispatch(
+            receipt, dispatch
+        ) or not cls.terminal_receipt_is_committed(receipt, attempt):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        cls._clear_provider_process_at(runtime, dispatch, receipt.completion)
+        cls._clear_normal_process_at(runtime, dispatch)
+        return True
+
+    @staticmethod
+    def dispatch_from_snapshot(
+        snapshot: MissionSnapshot, attempt_id: str
+    ) -> tuple[Dispatch, Attempt]:
+        matches = tuple(
+            item for item in snapshot.attempts if item.attempt_id == attempt_id
+        )
+        if len(matches) != 1:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        attempt = matches[0]
+        tasks = tuple(
+            item
+            for item in snapshot.tasks
+            if item.task_id == attempt.task_id
+            and attempt.plan_revision == snapshot.plan.revision
+        )
+        leases = tuple(
+            item for item in snapshot.leases if item.lease_id == attempt.lease_id
+        )
+        if len(tasks) != 1 or len(leases) != 1:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        task, lease = tasks[0], leases[0]
+        return (
+            Dispatch(
+                mission_id=attempt.mission_id,
+                plan_revision=attempt.plan_revision,
+                plan_sha256=canonical_json_sha256(
+                    snapshot.plan.model_dump(mode="json")
+                ),
+                task_id=attempt.task_id,
+                task_kind=task.kind,
+                attempt_id=attempt.attempt_id,
+                attempt_number=attempt.attempt_number,
+                worker_id=attempt.worker_id,
+                workspace_id=attempt.workspace_id,
+                lease_id=attempt.lease_id,
+                fencing_token=attempt.fencing_token,
+                dispatch_command_id=attempt.dispatch_command_id,
+                write_paths=task.write_paths,
+                allowed_commands=task.allowed_commands,
+                acceptance_checks=task.acceptance_checks,
+                input_publications=attempt.input_publications,
+                expires_at=lease.expires_at,
+            ),
+            attempt,
+        )
+
+    def _clear_recovered_provider_process(
+        self, dispatch: Dispatch, completion: WorkerCompletion
+    ) -> None:
+        self._clear_provider_process_at(self.runtime, dispatch, completion)
+
+    @staticmethod
+    def _clear_provider_process_at(
+        runtime: Path, dispatch: Dispatch, completion: WorkerCompletion
+    ) -> None:
+        interruption = completion.provider_interruption
+        registry = OwnedProcessRegistry(runtime.parent)
+        try:
+            owned, barrier = registry.terminal_model_state(dispatch)
+        except ProcessControlError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        if owned is None and barrier is None:
+            return
+        if barrier is None:
+            assert owned is not None
+            provider_bound = (
+                interruption is None
+                and completion.provider is not None
+                and completion.provider.driver == "gemini_live"
+                and owned.model_request_sha256 is not None
+                and owned.model_input_bytes is not None
+            )
+            interruption_bound = (
+                interruption is not None
+                and interruption.provider_dispatch_state
+                in {"unconfirmed", "transport_acknowledged"}
+                and owned.model_request_sha256 is not None
+                and owned.model_input_bytes is not None
+                and (
+                    owned.model_request_sha256,
+                    owned.model_input_bytes,
+                )
+                == (
+                    interruption.request_sha256,
+                    interruption.input_bytes,
+                )
+                and (
+                    owned.pid,
+                    owned.pgid,
+                    owned.started_at,
+                    owned.birth_token,
+                    owned.executable,
+                )
+                == (
+                    interruption.pid,
+                    interruption.pgid,
+                    interruption.process_started_at,
+                    interruption.process_birth_token,
+                    interruption.executable,
+                )
+            )
+            if not provider_bound and not interruption_bound:
+                raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+            try:
+                registry.remove_exact(owned)
+            except ProcessControlError as error:
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+            return
+        if owned is None:
+            if interruption is None:
+                bound = (
+                    completion.provider is not None
+                    and completion.provider.driver == "gemini_live"
+                    and completion.invocation_id == barrier.sdk_invocation_id
+                )
+            else:
+                bound = (
+                    interruption.provider_dispatch_state
+                    == "transport_acknowledged"
+                    and (
+                        barrier.request_sha256,
+                        barrier.sdk_invocation_id,
+                        barrier.pid,
+                        barrier.pgid,
+                        barrier.started_at,
+                        barrier.birth_token,
+                        barrier.executable,
+                    )
+                    == (
+                        interruption.request_sha256,
+                        interruption.sdk_invocation_id,
+                        interruption.pid,
+                        interruption.pgid,
+                        interruption.process_started_at,
+                        interruption.process_birth_token,
+                        interruption.executable,
+                    )
+                )
+            if not bound:
+                raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+            try:
+                registry.remove_barrier_exact(dispatch, barrier)
+            except ProcessControlError as error:
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+            return
+        if interruption is None:
+            if (
+                completion.provider is None
+                or completion.provider.driver != "gemini_live"
+                or completion.invocation_id != barrier.sdk_invocation_id
+            ):
+                raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        elif (
+            interruption.provider_dispatch_state != "transport_acknowledged"
+            or (
+                barrier.request_sha256,
+                barrier.sdk_invocation_id,
+                barrier.pid,
+                barrier.pgid,
+                barrier.started_at,
+                barrier.birth_token,
+                barrier.executable,
+            )
+            != (
+                interruption.request_sha256,
+                interruption.sdk_invocation_id,
+                interruption.pid,
+                interruption.pgid,
+                interruption.process_started_at,
+                interruption.process_birth_token,
+                interruption.executable,
+            )
+            or (
+                owned.model_request_sha256 is None
+                and (
+                    interruption.schema_version != 2
+                    or interruption.input_bytes is not None
+                )
+            )
+            or (
+                owned.model_request_sha256 is not None
+                and (
+                    owned.model_request_sha256,
+                    owned.model_input_bytes,
+                )
+                != (
+                    interruption.request_sha256,
+                    interruption.input_bytes,
+                )
+            )
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        try:
+            registry.remove_exact(owned)
+        except ProcessControlError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+
+    @staticmethod
+    def _clear_normal_process_at(runtime: Path, dispatch: Dispatch) -> None:
+        registry = OwnedProcessRegistry(runtime.parent)
+        try:
+            normal = registry.owned_process(
+                dispatch, require_live=False, model=False
+            )
+            model = registry.owned_process(
+                dispatch, require_live=False, model=True
+            )
+            if normal is None or normal == model:
+                return
+            registry.terminate_owned(normal, retain_record=True)
+            registry.remove_exact(normal)
+        except ProcessControlError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
 
     @staticmethod
     def _git(
@@ -1778,21 +2734,66 @@ class WorkerRuntime:
             raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
         return stored
 
-    def _evidence_id(self, dispatch: Dispatch) -> str:
-        return (
-            "attempt_evidence_"
-            + canonical_json_sha256((dispatch.mission_id, dispatch.attempt_id))[:24]
+    @staticmethod
+    def _store_provider_interruption_at(
+        evidence: SQLiteAttemptEvidenceStore,
+        interruption: WorkerProviderInterruption,
+    ) -> EvidenceReference:
+        """Bind sanitized child-interruption proof without persisting stderr."""
+
+        record = canonical_json_bytes(interruption.model_dump(mode="json"))
+        try:
+            # Content addressing makes this write replay-safe across a crash
+            # before the whole-attempt receipt is durable.
+            stored = evidence.put_artifact(
+                WORKER_PROVIDER_INTERRUPTION_KIND,
+                record,
+                visibility=ArtifactVisibility.MISSION,
+            )
+        except RuntimeFailure:
+            raise
+        except Exception as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        if (
+            not isinstance(stored, EvidenceReference)
+            or stored.kind != WORKER_PROVIDER_INTERRUPTION_KIND
+            or stored.sha256 != sha256_hex(record)
+        ):
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+        return stored
+
+    def _store_provider_interruption(
+        self, interruption: WorkerProviderInterruption
+    ) -> EvidenceReference:
+        return self._store_provider_interruption_at(self.evidence, interruption)
+
+    @staticmethod
+    def _evidence_id_for(dispatch: Dispatch) -> str:
+        return WorkerRuntime._evidence_id_for_values(
+            dispatch.mission_id, dispatch.attempt_id
         )
 
-    def _record(
-        self,
+    @staticmethod
+    def _evidence_id_for_values(mission_id: str, attempt_id: str) -> str:
+        return (
+            "attempt_evidence_"
+            + canonical_json_sha256((mission_id, attempt_id))[:24]
+        )
+
+    def _evidence_id(self, dispatch: Dispatch) -> str:
+        return self._evidence_id_for(dispatch)
+
+    @staticmethod
+    def _record_at(
+        evidence: SQLiteAttemptEvidenceStore,
+        clock: Callable[[], datetime],
         dispatch: Dispatch,
         event_type: AttemptEvidenceEventType,
         payload: dict[str, object],
         references: tuple[EvidenceReference, ...] = (),
     ) -> str:
-        evidence_id = self._evidence_id(dispatch)
-        head = self.evidence.head(evidence_id)
+        evidence_id = WorkerRuntime._evidence_id_for(dispatch)
+        head = evidence.head(evidence_id)
         command_id = (
             "runtime_"
             + canonical_json_sha256(
@@ -1802,7 +2803,7 @@ class WorkerRuntime:
         if event_type == AttemptEvidenceEventType.CHECK_COMPLETED:
             if len(references) != 1:
                 raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
-            self.evidence.append_check(
+            evidence.append_check(
                 evidence_id,
                 head,
                 command_id,
@@ -1811,10 +2812,10 @@ class WorkerRuntime:
                 attempt_id=dispatch.attempt_id,
                 receipt=references[0],
                 payload=payload,
-                recorded_at=self.clock(),
+                recorded_at=clock(),
             )
         else:
-            self.evidence.append(
+            evidence.append(
                 evidence_id,
                 head,
                 command_id,
@@ -1828,9 +2829,25 @@ class WorkerRuntime:
                     references=references,
                     payload=payload,
                 ),
-                recorded_at=self.clock(),
+                recorded_at=clock(),
             )
         return evidence_id
+
+    def _record(
+        self,
+        dispatch: Dispatch,
+        event_type: AttemptEvidenceEventType,
+        payload: dict[str, object],
+        references: tuple[EvidenceReference, ...] = (),
+    ) -> str:
+        return self._record_at(
+            self.evidence,
+            self.clock,
+            dispatch,
+            event_type,
+            payload,
+            references,
+        )
 
     def _record_cancelled_stage(self, dispatch: Dispatch) -> None:
         """Say how far a cancelled attempt got, before it disappears.
@@ -1879,8 +2896,153 @@ class WorkerRuntime:
                 self._active.pop(dispatch.attempt_id, None)
                 self._contexts.pop(dispatch.attempt_id, None)
 
+    async def reconcile_expired_async(self, dispatch: Dispatch) -> WorkerRun | None:
+        """Durably stop an exact owned child without reviving an expired lease."""
+
+        lock = self._attempt_locks.setdefault(dispatch.attempt_id, asyncio.Lock())
+        async with lock:
+            normal = self._owned_normal_process(dispatch)
+            if normal is not None:
+                try:
+                    await asyncio.to_thread(
+                        OwnedProcessRegistry(self.runtime.parent).terminate_owned,
+                        normal,
+                        retain_record=True,
+                    )
+                except ProcessControlError as error:
+                    raise RuntimeFailure(
+                        RuntimeErrorCode.RUNTIME_UNAVAILABLE
+                    ) from error
+            container_reconciled = await self._reconcile_owned_container(dispatch)
+            recovered = self.recover_durable_receipt(dispatch)
+            if recovered is not None:
+                await self._remove_expired_workspace(dispatch)
+                return recovered
+            if dispatch.task_kind != TaskKind.WORK:
+                if normal is None and not container_reconciled:
+                    return None
+                reconciled = self.reconcile_cancellation(
+                    dispatch,
+                    runtime=self.runtime,
+                    evidence=self.evidence,
+                    retryable=True,
+                    stage="check",
+                    recorded_at=self.clock(),
+                    operation_ids=(
+                        stable_operation_id(dispatch, "expired-reconciliation"),
+                    ),
+                )
+                self._clear_normal_process_at(self.runtime, dispatch)
+                await self._remove_expired_workspace(dispatch)
+                return reconciled
+            adapter = self.registry.resolve(dispatch)
+            reconcile = getattr(adapter, "reconcile_owned", None)
+            if not callable(reconcile):
+                return None
+            completion = await asyncio.to_thread(
+                reconcile, dispatch, self.runtime.parent
+            )
+            if completion is None:
+                if normal is None and not container_reconciled:
+                    return None
+                reconciled = self.reconcile_cancellation(
+                    dispatch,
+                    runtime=self.runtime,
+                    evidence=self.evidence,
+                    retryable=True,
+                    stage="check",
+                    recorded_at=self.clock(),
+                    operation_ids=(
+                        stable_operation_id(dispatch, "expired-reconciliation"),
+                    ),
+                )
+                self._clear_normal_process_at(self.runtime, dispatch)
+                await self._remove_expired_workspace(dispatch)
+                return reconciled
+            interruption = completion.provider_interruption
+            if (
+                completion.result_code
+                != RuntimeErrorCode.PROVIDER_INTERRUPTED.value
+                or interruption is None
+                or (
+                    interruption.mission_id,
+                    interruption.task_id,
+                    interruption.attempt_id,
+                    interruption.lease_id,
+                    interruption.fencing_token,
+                )
+                != (
+                    dispatch.mission_id,
+                    dispatch.task_id,
+                    dispatch.attempt_id,
+                    dispatch.lease_id,
+                    dispatch.fencing_token,
+                )
+                or (
+                    interruption.sdk_invocation_id is not None
+                    and interruption.sdk_invocation_id != completion.invocation_id
+                )
+            ):
+                raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED)
+            reference = self._store_provider_interruption(interruption)
+            operation_id = stable_operation_id(dispatch, "expired-reconciliation")
+            result = AttemptResult(
+                succeeded=False,
+                retryable=True,
+                result_code=RuntimeErrorCode.PROVIDER_INTERRUPTED,
+                stage="model",
+                session_id=completion.session_id,
+                invocation_id=completion.invocation_id,
+                evidence_link=GenericEvidenceLink(
+                    evidence_id=self._evidence_id(dispatch)
+                ),
+                evidence_refs=(reference,),
+            )
+            receipt = RuntimeReceipt.create(
+                operation_id=stable_operation_id(dispatch, "attempt"),
+                worker_id=dispatch.worker_id,
+                attempt_id=dispatch.attempt_id,
+                lease_id=dispatch.lease_id,
+                fencing_token=dispatch.fencing_token,
+                workspace_id=dispatch.workspace_id,
+                completion=completion,
+                operation_ids=(operation_id,),
+                accepted_input_sha256=tuple(
+                    item.sha256
+                    for item in sorted(
+                        dispatch.input_publications,
+                        key=lambda item: (item.kind, item.id, item.sha256),
+                    )
+                ),
+                result=result,
+            )
+            self._save_receipt(dispatch, receipt)
+            self._ensure_terminal_evidence(dispatch, result)
+            self._clear_recovered_provider_process(dispatch, completion)
+            self._clear_normal_process_at(self.runtime, dispatch)
+            await self._remove_expired_workspace(dispatch)
+            return WorkerRun(result=result, receipt=receipt)
+
+    async def _remove_expired_workspace(self, dispatch: Dispatch) -> None:
+        self._validate_directory(self.workspaces)
+        workspace = self._workspace(dispatch)
+        try:
+            metadata = workspace.lstat()
+        except FileNotFoundError:
+            return
+        try:
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or workspace.resolve(strict=True).parent != self.workspaces
+            ):
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+            await asyncio.to_thread(shutil.rmtree, workspace)
+        except OSError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+
     async def _execute_locked(self, dispatch: Dispatch) -> WorkerRun:
-        recovered = self._load_receipt(dispatch)
+        recovered = self.recover_durable_receipt(dispatch)
         if recovered is not None:
             workspace = self._workspace(dispatch)
             cleanup_id = stable_operation_id(dispatch, "cleanup")
@@ -1888,7 +3050,10 @@ class WorkerRuntime:
             if workspace.exists():
                 await asyncio.to_thread(shutil.rmtree, workspace)
             await self._fence(dispatch, cleanup_id, after=True)
-            return WorkerRun(result=recovered.result, receipt=recovered, replayed=True)
+            return recovered
+        interrupted_check = await self._reconcile_started_check(dispatch)
+        if interrupted_check is not None:
+            return interrupted_check
         assignment = self.assignment(dispatch)
         if (
             assignment.task_id != dispatch.task_id
@@ -1965,20 +3130,51 @@ class WorkerRuntime:
                 assert adapter is not None
                 self._cancellation_safe_attempts.add(dispatch.attempt_id)
                 try:
-                    completion = await context._effect(
-                        "model", lambda: adapter.execute(context, assignment)
+                    recover = getattr(adapter, "recover_interrupted", None)
+                    completion = (
+                        await recover(context, assignment)
+                        if callable(recover)
+                        else None
                     )
+                    if completion is None:
+                        completion = await context._effect(
+                            "model", lambda: adapter.execute(context, assignment)
+                        )
                 finally:
                     self._cancellation_safe_attempts.discard(dispatch.attempt_id)
                 if not isinstance(completion, WorkerCompletion):
                     raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED)
+                interruption = completion.provider_interruption
+                if interruption is not None and (
+                    (
+                        interruption.mission_id,
+                        interruption.task_id,
+                        interruption.attempt_id,
+                        interruption.lease_id,
+                        interruption.fencing_token,
+                    )
+                    != (
+                        dispatch.mission_id,
+                        dispatch.task_id,
+                        dispatch.attempt_id,
+                        dispatch.lease_id,
+                        dispatch.fencing_token,
+                    )
+                    or (
+                        interruption.sdk_invocation_id is not None
+                        and interruption.sdk_invocation_id != completion.invocation_id
+                    )
+                ):
+                    raise RuntimeFailure(RuntimeErrorCode.ADAPTER_REJECTED)
+                if interruption is not None:
+                    references.append(
+                        self._store_provider_interruption(interruption)
+                    )
                 if completion.provider is not None:
                     # Bind the receipt on success and failure alike so the
                     # terminal evidence event and Attempt.evidence_refs cite it.
                     references.append(
-                        await self._store_provider_receipt(
-                            context, completion.provider
-                        )
+                        await self._store_provider_receipt(context, completion.provider)
                     )
                 if completion.outcome != CompletionOutcome.COMPLETED:
                     raise RuntimeFailure(
@@ -2109,6 +3305,12 @@ class WorkerRuntime:
             result_code = "passed"
             succeeded = True
             retryable = False
+        except _ModelEffectUncommitted:
+            # The adapter may have crossed provider transport while the local
+            # completion marker/fence failed. Leave the exact process/barrier
+            # and attempt untouched so Runner/restart can reconcile it into a
+            # capability-bound interruption receipt.
+            raise
         except RuntimeFailure as error:
             result_code = (
                 RuntimeErrorCode.OUTCOME_UNKNOWN.value
@@ -2120,12 +3322,13 @@ class WorkerRuntime:
                 RuntimeErrorCode.ACCEPTANCE_CHECK_FAILED,
                 RuntimeErrorCode.MODEL_OUTPUT_REJECTED,
                 RuntimeErrorCode.PROVIDER_RATE_LIMITED,
+                RuntimeErrorCode.PROVIDER_INTERRUPTED,
                 RuntimeErrorCode.PROVIDER_TIMEOUT,
                 RuntimeErrorCode.PROVIDER_UNAVAILABLE,
                 RuntimeErrorCode.RUNTIME_UNAVAILABLE,
                 RuntimeErrorCode.SANDBOX_UNAVAILABLE,
             }
-            completion = completion or WorkerCompletion(
+            completion = WorkerCompletion(
                 outcome=(
                     CompletionOutcome.OUTCOME_UNKNOWN
                     if error.outcome_unknown
@@ -2134,8 +3337,22 @@ class WorkerRuntime:
                     else CompletionOutcome.TERMINAL_FAILURE
                 ),
                 result_code=result_code,
-                session_id="runtime-" + dispatch.attempt_id[-16:],
-                invocation_id=stable_operation_id(dispatch, "failure"),
+                session_id=(
+                    completion.session_id
+                    if completion is not None
+                    else "runtime-" + dispatch.attempt_id[-16:]
+                ),
+                invocation_id=(
+                    completion.invocation_id
+                    if completion is not None
+                    else stable_operation_id(dispatch, "failure")
+                ),
+                provider=completion.provider if completion is not None else None,
+                provider_interruption=(
+                    completion.provider_interruption
+                    if completion is not None
+                    else None
+                ),
             )
         except Exception:
             result_code = RuntimeErrorCode.OUTCOME_UNKNOWN.value
@@ -2143,8 +3360,22 @@ class WorkerRuntime:
             completion = WorkerCompletion(
                 outcome=CompletionOutcome.OUTCOME_UNKNOWN,
                 result_code=result_code,
-                session_id="runtime-" + dispatch.attempt_id[-16:],
-                invocation_id=stable_operation_id(dispatch, "failure"),
+                session_id=(
+                    completion.session_id
+                    if completion is not None
+                    else "runtime-" + dispatch.attempt_id[-16:]
+                ),
+                invocation_id=(
+                    completion.invocation_id
+                    if completion is not None
+                    else stable_operation_id(dispatch, "failure")
+                ),
+                provider=completion.provider if completion is not None else None,
+                provider_interruption=(
+                    completion.provider_interruption
+                    if completion is not None
+                    else None
+                ),
             )
 
         references_tuple = tuple(
@@ -2172,17 +3403,17 @@ class WorkerRuntime:
                 outcome=CompletionOutcome.OUTCOME_UNKNOWN,
                 result_code=result_code,
                 session_id=completion.session_id if completion else "runtime-cleanup",
-                invocation_id=stable_operation_id(dispatch, "cleanup-failure"),
+                invocation_id=(
+                    completion.invocation_id
+                    if completion is not None
+                    else stable_operation_id(dispatch, "cleanup-failure")
+                ),
                 provider=completion.provider if completion else None,
+                provider_interruption=(
+                    completion.provider_interruption if completion else None
+                ),
             )
-        event_type = (
-            AttemptEvidenceEventType.ATTEMPT_COMPLETED
-            if succeeded
-            else AttemptEvidenceEventType.ATTEMPT_FAILED
-        )
-        evidence_id = self._record(
-            dispatch, event_type, {"result_code": result_code}, references_tuple
-        )
+        evidence_id = self._evidence_id(dispatch)
         result = AttemptResult(
             succeeded=succeeded,
             retryable=retryable,
@@ -2233,7 +3464,58 @@ class WorkerRuntime:
             result=result,
         )
         self._save_receipt(dispatch, receipt)
+        self._ensure_terminal_evidence(dispatch, result)
         return WorkerRun(result=result, receipt=receipt)
+
+    async def _reconcile_started_check(
+        self, dispatch: Dispatch
+    ) -> WorkerRun | None:
+        operation_id = stable_operation_id(dispatch, "check")
+        path = self._operation_path(operation_id)
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            return None
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE)
+        try:
+            content = path.read_bytes()
+        except OSError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        if content not in {
+            self._operation_record(dispatch, operation_id, "check", "started"),
+            self._operation_record(dispatch, operation_id, "check", "completed"),
+        }:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+
+        normal = self._owned_normal_process(dispatch)
+        if normal is not None:
+            try:
+                await asyncio.to_thread(
+                    OwnedProcessRegistry(self.runtime.parent).terminate_owned,
+                    normal,
+                    retain_record=True,
+                )
+            except ProcessControlError as error:
+                raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        await self._reconcile_owned_container(dispatch)
+        code = (
+            RuntimeErrorCode.SANDBOX_UNAVAILABLE
+            if isinstance(self.check_runner, DockerCheckRunner)
+            else RuntimeErrorCode.RUNTIME_UNAVAILABLE
+        )
+        reconciled = self.reconcile_cancellation(
+            dispatch,
+            runtime=self.runtime,
+            evidence=self.evidence,
+            retryable=True,
+            stage="check",
+            failure_code=code,
+            recorded_at=self.clock(),
+        )
+        self._clear_normal_process_at(self.runtime, dispatch)
+        await self._remove_expired_workspace(dispatch)
+        return reconciled
 
     def execute(self, dispatch: Dispatch) -> AttemptResult:
         return asyncio.run(self.execute_async(dispatch)).result
@@ -2249,10 +3531,93 @@ class WorkerRuntime:
 
         asyncio.run(cleanup())
 
+    def cancel_and_reconcile(
+        self, dispatch: Dispatch, *, retryable: bool = False
+    ) -> WorkerRun:
+        interruption = None
+        process_registry = OwnedProcessRegistry(self.runtime.parent)
+        try:
+            owned = process_registry.owned_process(
+                dispatch, require_live=False, model=True
+            )
+            normal = process_registry.owned_process(
+                dispatch, require_live=False, model=False
+            )
+            barrier = process_registry.confirm_model_dispatch_barrier(dispatch)
+            if normal is not None and normal != owned:
+                process_registry.terminate_owned(normal, retain_record=True)
+            if owned is not None and (
+                owned.model_request_sha256 is not None or barrier is not None
+            ):
+                requested_model = getattr(
+                    self.registry.resolve(dispatch), "requested_model", None
+                )
+                if not isinstance(requested_model, str):
+                    raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+                sent = process_registry.terminate_owned(
+                    owned, retain_record=True
+                )
+                interruption = self.cancellation_interruption(
+                    dispatch,
+                    owned,
+                    barrier,
+                    requested_model=requested_model,
+                    signal_number=sent,
+                )
+        except ProcessControlError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        asyncio.run(self._reconcile_owned_container(dispatch))
+        self.cancel(dispatch)
+        return self.reconcile_cancellation(
+            dispatch,
+            runtime=self.runtime,
+            evidence=self.evidence,
+            interruption=interruption,
+            retryable=retryable,
+            stage=self.cancelled_stage(dispatch.attempt_id),
+            recorded_at=self.clock(),
+        )
+
+    def finalize_reconciled_attempt(
+        self, dispatch: Dispatch, receipt: RuntimeReceipt
+    ) -> None:
+        """Clear exact process proof after the caller commits this receipt's result."""
+
+        if self._load_receipt(dispatch) != receipt:
+            raise RuntimeFailure(RuntimeErrorCode.POLICY_REJECTED)
+        self._ensure_terminal_evidence(dispatch, receipt.result)
+        self._clear_recovered_provider_process(dispatch, receipt.completion)
+        self._clear_normal_process_at(self.runtime, dispatch)
+
+    def _owned_normal_process(self, dispatch: Dispatch) -> OwnedProcess | None:
+        registry = OwnedProcessRegistry(self.runtime.parent)
+        try:
+            normal = registry.owned_process(
+                dispatch, require_live=False, model=False
+            )
+            model = registry.owned_process(
+                dispatch, require_live=False, model=True
+            )
+        except ProcessControlError as error:
+            raise RuntimeFailure(RuntimeErrorCode.RUNTIME_UNAVAILABLE) from error
+        return None if normal == model else normal
+
+    async def _reconcile_owned_container(self, dispatch: Dispatch) -> bool:
+        if not isinstance(self.check_runner, DockerCheckRunner):
+            return False
+        try:
+            return await asyncio.to_thread(
+                self.check_runner.executor.reconcile_owned,
+                dispatch.attempt_id,
+            )
+        except Exception as error:
+            raise RuntimeFailure(RuntimeErrorCode.SANDBOX_UNAVAILABLE) from error
+
 
 __all__ = [
     "PROVIDER_CALL_TIMESTAMP_PATTERN",
     "WORKER_PROVIDER_RECEIPT_KIND",
+    "WORKER_PROVIDER_INTERRUPTION_KIND",
     "AcceptedArtifactResolver",
     "CheckOutcome",
     "CheckRunner",
@@ -2268,6 +3633,7 @@ __all__ = [
     "WorkerCompletion",
     "WorkerContext",
     "WorkerProviderReceipt",
+    "WorkerProviderInterruption",
     "WorkerRegistry",
     "WorkerRun",
     "WorkerRuntime",

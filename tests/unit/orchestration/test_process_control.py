@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -10,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from graphene.hashing import canonical_json_bytes
 from graphene.orchestration.mission_models import MissionStatus
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
@@ -56,6 +58,169 @@ def _wait_for_owned_process(registry: OwnedProcessRegistry) -> None:
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
+def test_model_dispatch_barrier_is_bound_to_exact_process_and_fence(
+    tmp_path: Path,
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    try:
+        owned = registry.record_pid(
+            dispatch,
+            process.pid,
+            "/bin/sleep",
+            model_request_sha256="a" * 64,
+            model_input_bytes=1,
+        )
+        barrier = registry.acknowledge_model_dispatch(
+            dispatch,
+            owned,
+            request_sha256="a" * 64,
+            sdk_invocation_id="invocation-1",
+            dispatched_at="2026-08-27T12:00:00.000Z",
+        )
+
+        assert registry.model_dispatch_barrier(dispatch) == barrier
+        changed = dispatch.model_copy(
+            update={"fencing_token": dispatch.fencing_token + 1}
+        )
+        with pytest.raises(ProcessControlError, match="barrier identity changed"):
+            registry.model_dispatch_barrier(changed)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=2)
+        registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_fast_model_child_can_be_acknowledged_after_exact_exit(tmp_path: Path) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    owned = registry.record_pid(
+        dispatch,
+        process.pid,
+        "/bin/sleep",
+        model_request_sha256="c" * 64,
+        model_input_bytes=1,
+    )
+    process.kill()
+    process.wait(timeout=2)
+
+    barrier = registry.acknowledge_model_dispatch(
+        dispatch,
+        owned,
+        request_sha256="c" * 64,
+        sdk_invocation_id="invocation-fast-child",
+        dispatched_at="2026-08-27T12:00:00.000Z",
+    )
+
+    assert registry.model_dispatch_barrier(dispatch, require_live=False) == barrier
+    registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_linked_barrier_is_refsynced_after_initial_directory_fsync_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    owned = registry.record_pid(
+        dispatch,
+        process.pid,
+        "/bin/sleep",
+        model_request_sha256="d" * 64,
+        model_input_bytes=1,
+    )
+
+    def link_then_raise(_directory: Path, target: Path, value: object) -> None:
+        target.write_bytes(canonical_json_bytes(value))
+        target.chmod(0o600)
+        raise OSError("first directory fsync failed")
+
+    monkeypatch.setattr(registry, "_atomic_create", link_then_raise)
+    with pytest.raises(OSError, match="first directory fsync failed"):
+        registry.acknowledge_model_dispatch(
+            dispatch,
+            owned,
+            request_sha256="d" * 64,
+            sdk_invocation_id="invocation-refsync",
+            dispatched_at="2026-08-27T12:00:00.000Z",
+        )
+
+    barrier = registry.confirm_model_dispatch_barrier(dispatch)
+    assert barrier is not None
+    assert barrier.sdk_invocation_id == "invocation-refsync"
+    process.kill()
+    process.wait(timeout=2)
+    registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_model_and_check_records_coexist_and_model_signal_is_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    model = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    check = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    try:
+        model_owned = registry.record_pid(
+            dispatch,
+            model.pid,
+            "/bin/sleep",
+            model_request_sha256="b" * 64,
+            model_input_bytes=1,
+        )
+        registry.acknowledge_model_dispatch(
+            dispatch,
+            model_owned,
+            request_sha256="b" * 64,
+            sdk_invocation_id="invocation-model",
+            dispatched_at="2026-08-27T12:00:00.000Z",
+        )
+        registry.record(dispatch, check, "/bin/sleep")
+        signalled: list[tuple[int, int]] = []
+        monkeypatch.setattr(
+            os,
+            "killpg",
+            lambda pgid, requested: signalled.append((pgid, requested)),
+        )
+
+        registry.signal(dispatch, 9, model=True)
+
+        assert signalled == [(model.pid, 9)]
+        assert registry.validate(dispatch).pid == check.pid
+        assert registry.owned_process(dispatch, model=True) == model_owned
+        monkeypatch.undo()
+        with pytest.raises(ProcessControlError, match="still running"):
+            registry.remove(dispatch)
+        check.kill()
+        check.wait(timeout=2)
+        registry.remove(dispatch)
+        assert not registry.has_record(dispatch.attempt_id, model=False)
+        assert registry.has_record(dispatch.attempt_id, model=True)
+    finally:
+        monkeypatch.undo()
+        for process in (model, check):
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2)
+        registry.remove(dispatch)
+        registry.remove_exact(model_owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
 def test_pause_excludes_stopped_time_and_resume_completes(tmp_path: Path) -> None:
     _, dispatch = _dispatch(tmp_path)
     state = [MissionStatus.RUNNING]
@@ -95,10 +260,11 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     runner = ControlledProcessRunner(registry, dispatch, lambda: state[0])
     errors: list[Exception] = []
+    results: list[subprocess.CompletedProcess[str]] = []
 
     def execute() -> None:
         try:
-            _invoke(runner, 10)
+            results.append(_invoke(runner, 10))
         except Exception as error:
             errors.append(error)
 
@@ -111,7 +277,218 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(
     thread.join(timeout=3)
 
     assert errors == [] and not thread.is_alive()
+    assert len(results) == 1 and results[0].returncode < 0
     assert not tuple(registry.directory.iterdir())
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_child_killed_after_registration_before_release_returns_signal_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    runner = ControlledProcessRunner(
+        registry, dispatch, lambda: MissionStatus.RUNNING
+    )
+    record = registry.record
+
+    def kill_after_record(current_dispatch, process, executable):
+        record(current_dispatch, process, executable)
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=2)
+
+    monkeypatch.setattr(registry, "record", kill_after_record)
+    result = _invoke(runner, 10)
+
+    assert result.returncode == -signal.SIGKILL
+    assert result.stdout == result.stderr == ""
+    assert not registry.has_record(dispatch.attempt_id)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_controlled_process_kills_output_above_cap(tmp_path: Path) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    runner = ControlledProcessRunner(
+        registry,
+        dispatch,
+        lambda: MissionStatus.RUNNING,
+        max_output_bytes=1_024,
+    )
+
+    result = runner(
+        (sys.executable, "-c", "import sys; sys.stdout.write('x' * 1000000)"),
+        cwd=Path("/"),
+        env={"PATH": os.defpath},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert len((result.stdout + result.stderr).encode()) == 1_025
+    assert not registry.has_record(dispatch.attempt_id)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_completed_leader_cannot_leave_owned_group_descendant(
+    tmp_path: Path,
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    runner = ControlledProcessRunner(
+        registry, dispatch, lambda: MissionStatus.RUNNING
+    )
+
+    result = runner(
+        (
+            sys.executable,
+            "-c",
+            "import subprocess; p=subprocess.Popen(['/bin/sleep','30']); "
+            "print(p.pid, flush=True)",
+        ),
+        cwd=Path("/"),
+        env={"PATH": os.defpath},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    descendant = int(result.stdout.strip())
+
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(descendant, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail("completed controlled process left a live descendant")
+    assert result.returncode == 0
+    assert not registry.has_record(dispatch.attempt_id)
+
+
+@pytest.mark.parametrize("reap_leader", (False, True))
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_recovery_empties_descendants_after_owned_leader_exit(
+    tmp_path: Path, reap_leader: bool
+) -> None:
+    from graphene.orchestration import process_control
+
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    release = tmp_path / "release-leader"
+    program = (
+        "import os, pathlib, subprocess, sys, time; "
+        "p=subprocess.Popen(['/bin/sleep','30']); "
+        "print(p.pid, flush=True); "
+        f"path=pathlib.Path({str(release)!r}); "
+        "\nwhile not path.exists(): time.sleep(0.01)\n"
+        "os._exit(0)"
+    )
+    leader = subprocess.Popen(
+        (sys.executable, "-c", program),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+    assert leader.stdout is not None
+    descendant = int(leader.stdout.readline().strip())
+    owned = registry.record_pid(dispatch, leader.pid, sys.executable)
+    release.touch()
+    if reap_leader:
+        leader.wait(timeout=2)
+    else:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if process_control._process_identity(leader.pid)[2].startswith("Z"):
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("owned group leader did not become a zombie")
+
+    registry.terminate_owned(owned, retain_record=True)
+
+    observed = subprocess.run(
+        ("/bin/ps", "-o", "state=", "-p", str(descendant)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert observed.returncode or observed.stdout.strip().startswith("Z")
+    assert registry.has_record(dispatch.attempt_id)
+    if not reap_leader:
+        leader.wait(timeout=2)
+    registry.remove_exact(owned)
+    leader.stdout.close()
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_controller_crash_before_record_releases_no_host_child(tmp_path: Path) -> None:
+    pid_path = tmp_path / "inert-child.pid"
+    executed_path = tmp_path / "target-executed"
+    program = f"""
+import os
+import subprocess
+import sys
+from pathlib import Path
+from graphene.orchestration.mission_models import MissionStatus
+from graphene.orchestration.process_control import ControlledProcessRunner
+
+class CrashBeforeRecord:
+    def record(self, _dispatch, process, _executable):
+        Path({str(pid_path)!r}).write_text(str(process.pid), encoding="utf-8")
+        os._exit(73)
+
+runner = ControlledProcessRunner(
+    CrashBeforeRecord(), object(), lambda: MissionStatus.RUNNING
+)
+runner(
+    (sys.executable, "-c", "from pathlib import Path; Path({str(executed_path)!r}).touch()"),
+    cwd=Path("/"),
+    env={{**os.environ}},
+    stdin=subprocess.DEVNULL,
+    capture_output=True,
+    text=True,
+    timeout=5,
+    check=False,
+)
+"""
+    controller = subprocess.Popen((sys.executable, "-c", program))
+    assert controller.wait(timeout=5) == 73
+    pid = int(pid_path.read_text(encoding="utf-8"))
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        observed = subprocess.run(
+            ("/bin/ps", "-o", "state=", "-p", str(pid)),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if observed.returncode or observed.stdout.strip().startswith("Z"):
+            break
+        time.sleep(0.02)
+    else:
+        os.killpg(pid, signal.SIGKILL)
+        pytest.fail("pre-record controlled child survived its controller")
+
+    assert not executed_path.exists()
 
 
 @pytest.mark.skipif(
@@ -140,21 +517,108 @@ def test_identity_mismatch_refuses_to_signal(tmp_path: Path, monkeypatch) -> Non
         process.wait(timeout=2)
 
 
-def test_record_binds_live_popen_to_observed_exec_identity(
+def test_identity_read_refuses_birth_token_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    from graphene.orchestration import process_control
+
+    tokens = iter(("birth-before", "birth-after"))
+    monkeypatch.setattr(
+        process_control, "_process_birth_token", lambda _pid: next(tokens)
+    )
+    monkeypatch.setattr(
+        process_control,
+        "_process_identity",
+        lambda _pid: (123, "Thu Aug 27 12:00:00 2026", "S", "/bin/sleep"),
+    )
+
+    with pytest.raises(ProcessControlError, match="changed while reading"):
+        process_control._owned_process_identity(123)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_reused_pid_is_not_signalled_and_stale_record_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    registry.record(dispatch, process, "/bin/sleep")
+    owned = registry.validate(dispatch)
+    signalled: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_identity",
+        lambda _pid: (
+            owned.pgid,
+            owned.started_at,
+            "S",
+            owned.executable,
+        ),
+    )
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_birth_token",
+        lambda _pid: owned.birth_token + "-reused",
+    )
+    monkeypatch.setattr(
+        os, "killpg", lambda pgid, requested: signalled.append((pgid, requested))
+    )
+
+    try:
+        assert registry.signal_prepared(owned, 15) is False
+        registry.terminate_owned(owned)
+        assert signalled == []
+        assert not registry.has_record(dispatch.attempt_id)
+    finally:
+        process.kill()
+        process.wait(timeout=2)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_legacy_weak_record_is_read_but_never_signalled(tmp_path: Path) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    registry.record(dispatch, process, "/bin/sleep")
+    path = next(registry.directory.iterdir())
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.pop("birth_token")
+    record.pop("model_input_bytes")
+    record.pop("model_request_sha256")
+    record.pop("schema_version")
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(ProcessControlError, match="cannot be safely signalled"):
+        registry.signal(dispatch, 15)
+    assert process.poll() is None
+
+    process.kill()
+    process.wait(timeout=2)
+    legacy = registry.owned_process(dispatch, require_live=False)
+    assert legacy is not None and legacy.schema_version == 1
+    registry.terminate_owned(legacy)
+    assert not registry.has_record(dispatch.attempt_id)
+
+
+def test_record_binds_live_popen_to_validated_observed_exec_identity(
     tmp_path: Path, monkeypatch
 ) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     pid = 424_242
-    observed_executable = "Python-3.13-hosted-launcher-target"
     monkeypatch.setattr(
         "graphene.orchestration.process_control._process_identity",
         lambda observed_pid: (
             observed_pid,
             "Tue Aug 19 00:00:00 2026",
             "S",
-            observed_executable,
+            os.path.realpath(sys.executable),
         ),
+    )
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_birth_token",
+        lambda _pid: "test:birth:424242",
     )
 
     class Spawned:
@@ -172,7 +636,33 @@ def test_record_binds_live_popen_to_observed_exec_identity(
     )
     record = json.loads(next(registry.directory.iterdir()).read_text(encoding="utf-8"))
     assert record["pid"] == pid
-    assert record["executable"] == observed_executable
+    assert record["executable"] == os.path.realpath(sys.executable)
+    assert record["birth_token"] == "test:birth:424242"
+
+
+def test_record_pid_refuses_an_observed_image_other_than_the_launched_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_identity",
+        lambda pid: (
+            pid,
+            "Tue Aug 19 00:00:00 2026",
+            "S",
+            "/bin/other",
+        ),
+    )
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_birth_token",
+        lambda _pid: "test:birth:424244",
+    )
+
+    with pytest.raises(ProcessControlError, match="does not match child"):
+        registry.record_pid(dispatch, 424_244, sys.executable)
+
+    assert not tuple(registry.directory.iterdir())
 
 
 def test_record_refuses_child_that_exits_during_identity_capture(
@@ -180,14 +670,27 @@ def test_record_refuses_child_that_exits_during_identity_capture(
 ) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
-    monkeypatch.setattr(
-        "graphene.orchestration.process_control._process_identity",
-        lambda observed_pid: (
+    identity_reads = 0
+
+    def exiting_identity(observed_pid: int):
+        nonlocal identity_reads
+        identity_reads += 1
+        if identity_reads > 1:
+            raise ProcessControlError("owned process is no longer running")
+        return (
             observed_pid,
             "Tue Aug 19 00:00:00 2026",
             "S",
-            "Python-3.13-hosted-launcher-target",
-        ),
+            os.path.realpath(sys.executable),
+        )
+
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_identity",
+        exiting_identity,
+    )
+    monkeypatch.setattr(
+        "graphene.orchestration.process_control._process_birth_token",
+        lambda _pid: "test:birth:424243",
     )
 
     class Exited:
@@ -247,7 +750,12 @@ def test_zombie_state_is_confirmed_not_live_without_signalling(
     signalled: list[tuple[int, int]] = []
     monkeypatch.setattr(
         "graphene.orchestration.process_control._process_identity",
-        lambda _pid: (owned.pgid, owned.started_at, "Z", "<defunct>"),
+        lambda _pid: (
+            owned.pgid,
+            owned.started_at,
+            "Z",
+            "<defunct>",
+        ),
     )
     monkeypatch.setattr(
         os,

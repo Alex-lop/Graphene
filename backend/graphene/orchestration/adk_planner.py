@@ -330,6 +330,17 @@ class _Observation:
         self.returned_models: set[str] = set()
         self.usage: types.GenerateContentResponseUsageMetadata | None = None
 
+    def before_model(
+        self, callback_context: CallbackContext, llm_request: object
+    ) -> None:
+        del llm_request
+        if (
+            callback_context.session.id != self.session_id
+            or callback_context.agent_name != _AGENT_NAME
+        ):
+            raise PlannerOutputError("ADK planner callback identity mismatch")
+        self.invocation_ids.add(callback_context.invocation_id)
+
     def after_model(
         self,
         callback_context: CallbackContext,
@@ -367,6 +378,7 @@ class AdkPlanner:
         model: BaseLlm | str,
         driver: Literal["adk_fake", "gemini_live"],
         credential_mode: Literal["not_applicable", "gemini_api", "vertex_ai"],
+        dispatch_callback: Callable[[str], None] | None = None,
     ) -> None:
         if google.adk.__version__ != ADK_VERSION:
             raise PlannerUnavailable(
@@ -376,6 +388,7 @@ class AdkPlanner:
         self._driver = driver
         self._credential_mode = credential_mode
         self._requested_model = model.model if isinstance(model, BaseLlm) else model
+        self._dispatch_callback = dispatch_callback
 
     @classmethod
     def fake(cls, model: BaseLlm) -> AdkPlanner:
@@ -423,6 +436,11 @@ class AdkPlanner:
             user_id=_USER_ID,
         )
         observation = _Observation(session.id)
+        if self._dispatch_callback is not None:
+            bind = getattr(self._model, "bind_dispatch_callback", None)
+            if not callable(bind):
+                raise PlannerUnavailable("planner model has no dispatch boundary")
+            bind(lambda: self._dispatch_callback(observation.invocation_id()))
         agent = LlmAgent(
             name=_AGENT_NAME,
             description="Proposes bounded work intent for deterministic compilation.",
@@ -432,7 +450,7 @@ class AdkPlanner:
                 "markdown fences, prose, or explanation before or after it:\n"
                 + describe_output_schema(PlanIntent)
                 + "\nPropose at least two independent work roots, using only supplied "
-                "roles, command template and criterion IDs, and repository evidence. "
+                "roles, work command template and criterion IDs, and repository evidence. "
                 "Graphene deterministically adds assembly, verification, artifacts, "
                 "retries, and concurrency."
                 "\nHard rules, checked before anything runs: at least TWO tasks must "
@@ -464,6 +482,7 @@ class AdkPlanner:
                 max_output_tokens=16_384,
                 response_mime_type="application/json",
             ),
+            before_model_callback=observation.before_model,
             after_model_callback=observation.after_model,
         )
         runner = Runner(
@@ -606,9 +625,14 @@ def compile_plan_intent(
     if "assembler" not in roles or "verifier" not in roles:
         raise PlannerOutputError("policy requires assembler and verifier roles")
     templates = {item.template_id for item in policy.command_templates}
+    work_templates = (
+        templates - {policy.command_templates[0].template_id}
+        if len(policy.command_templates) > 1
+        else templates
+    )
     if any(item.assigned_role not in roles for item in intent.tasks):
         raise PlannerOutputError("work intent role is not allowed")
-    if any(item.command_template_id not in templates for item in intent.tasks):
+    if any(item.command_template_id not in work_templates for item in intent.tasks):
         raise PlannerOutputError("work intent command is not allowed")
     criterion_descriptions = {
         criterion_id(description): description for description in request.success_criteria
@@ -857,6 +881,15 @@ def _planning_message(policy: ProjectPolicy, request: PlanningRequest) -> str:
         "exclusions": policy.exclusions,
         "command_template_ids": tuple(
             item.template_id for item in policy.command_templates
+        ),
+        "final_command_template_id": policy.command_templates[0].template_id,
+        "work_command_template_ids": tuple(
+            item.template_id
+            for item in (
+                policy.command_templates[1:]
+                if len(policy.command_templates) > 1
+                else policy.command_templates
+            )
         ),
         "network_mode": policy.network.mode.value,
         "allowed_network_hosts": policy.network.allowed_hosts,

@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from graphene.cli import mission as mission_cli
 import graphene.orchestration.worker_runtime as runtime_module
-from graphene.hashing import canonical_json_sha256, sha256_hex
+from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.orchestration.evidence import (
     AttemptEvidenceEventType,
     SQLiteAttemptEvidenceStore,
@@ -26,19 +27,26 @@ from graphene.orchestration.mission_models import (
     TaskKind,
 )
 from graphene.orchestration.worker_runtime import (
+    WORKER_PROVIDER_INTERRUPTION_KIND,
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     CompletionOutcome,
+    DockerCheckRunner,
     RuntimeAssignment,
     RuntimeErrorCode,
     RuntimeFailure,
     WorkerCapabilities,
     WorkerCompletion,
     WorkerContext,
+    WorkerProviderInterruption,
     WorkerProviderReceipt,
     WorkerRegistry,
     WorkerRuntime,
     stable_operation_id,
+)
+from graphene.orchestration.process_control import (
+    OwnedProcessRegistry,
+    ProcessControlError,
 )
 from graphene.orchestration.workers import (
     DeterministicWorkerModel,
@@ -686,6 +694,173 @@ def _provider_receipt() -> WorkerProviderReceipt:
     )
 
 
+def _live_provider_completion(invocation_id: str) -> WorkerCompletion:
+    provider = _provider_receipt().model_copy(
+        update={
+            "driver": "gemini_live",
+            "credential_mode": "gemini_api",
+        }
+    )
+    return WorkerCompletion(
+        outcome=CompletionOutcome.COMPLETED,
+        result_code="passed",
+        session_id="session-terminal-cleanup",
+        invocation_id=invocation_id,
+        provider=provider,
+    )
+
+
+def _terminal_model_process(tmp_path: Path):
+    runtime = tmp_path / "mission-runtime" / "adk-runtime"
+    runtime.mkdir(parents=True)
+    dispatch = _dispatch(
+        task_id="work-cleanup",
+        worker_id="worker-cleanup",
+        workspace_id="workspace-cleanup",
+        attempt_id="attempt-cleanup",
+        lease_id="lease-cleanup",
+        fence=17,
+        writes=("a.txt",),
+    )
+    registry = OwnedProcessRegistry(runtime.parent)
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    owned = registry.record_pid(
+        dispatch,
+        process.pid,
+        "/bin/sleep",
+        model_request_sha256="d" * 64,
+        model_input_bytes=123,
+    )
+    barrier = registry.acknowledge_model_dispatch(
+        dispatch,
+        owned,
+        request_sha256="d" * 64,
+        sdk_invocation_id="invocation-terminal-cleanup",
+        dispatched_at="2026-08-20T00:00:00.000Z",
+    )
+    process.kill()
+    process.wait(timeout=2)
+    return runtime, dispatch, registry, owned, barrier
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_terminal_provider_cleanup_recovers_barrier_first_fsync_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime, dispatch, registry, owned, _barrier = _terminal_model_process(tmp_path)
+    completion = _live_provider_completion("invocation-terminal-cleanup")
+    original = OwnedProcessRegistry._fsync_directory
+    failed = False
+
+    def fail_after_barrier_unlink(directory: Path) -> None:
+        nonlocal failed
+        if not failed and directory == registry.barriers:
+            failed = True
+            raise ProcessControlError("injected barrier fsync crash")
+        original(directory)
+
+    monkeypatch.setattr(
+        OwnedProcessRegistry,
+        "_fsync_directory",
+        staticmethod(fail_after_barrier_unlink),
+    )
+    with pytest.raises(RuntimeFailure) as interrupted:
+        WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+    assert interrupted.value.code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
+    assert registry.terminal_model_state(dispatch) == (owned, None)
+
+    monkeypatch.setattr(
+        OwnedProcessRegistry, "_fsync_directory", staticmethod(original)
+    )
+    WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+    WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+    assert registry.terminal_model_state(dispatch) == (None, None)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_terminal_provider_cleanup_recovers_record_first_fsync_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime, dispatch, registry, owned, barrier = _terminal_model_process(tmp_path)
+    completion = _live_provider_completion("invocation-terminal-cleanup")
+    registry._owned_path(owned).unlink()
+    registry._fsync_directory(registry.directory)
+    assert registry.terminal_model_state(dispatch) == (None, barrier)
+    original = OwnedProcessRegistry._fsync_directory
+    failed = False
+
+    def fail_after_barrier_unlink(directory: Path) -> None:
+        nonlocal failed
+        if not failed and directory == registry.barriers:
+            failed = True
+            raise ProcessControlError("injected barrier fsync crash")
+        original(directory)
+
+    monkeypatch.setattr(
+        OwnedProcessRegistry,
+        "_fsync_directory",
+        staticmethod(fail_after_barrier_unlink),
+    )
+    with pytest.raises(RuntimeFailure) as interrupted:
+        WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+    assert interrupted.value.code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
+
+    monkeypatch.setattr(
+        OwnedProcessRegistry, "_fsync_directory", staticmethod(original)
+    )
+    WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+    assert registry.terminal_model_state(dispatch) == (None, None)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_terminal_acknowledged_interruption_clears_record_only_state(
+    tmp_path: Path,
+) -> None:
+    runtime, dispatch, registry, owned, barrier = _terminal_model_process(tmp_path)
+    registry._barrier_path(dispatch.attempt_id).unlink()
+    registry._fsync_directory(registry.barriers)
+    interruption = WorkerProviderInterruption(
+        requested_model="gemini-test",
+        mission_id=dispatch.mission_id,
+        task_id=dispatch.task_id,
+        attempt_id=dispatch.attempt_id,
+        lease_id=dispatch.lease_id,
+        fencing_token=dispatch.fencing_token,
+        request_sha256=barrier.request_sha256,
+        input_bytes=owned.model_input_bytes,
+        provider_dispatch_state="transport_acknowledged",
+        sdk_invocation_id=barrier.sdk_invocation_id,
+        dispatched_at=barrier.dispatched_at,
+        pid=owned.pid,
+        pgid=owned.pgid,
+        process_started_at=owned.started_at,
+        process_identity_version=barrier.schema_version,
+        process_birth_token=owned.birth_token,
+        executable=owned.executable,
+        exit_code=-9,
+        signal_name="sigkill",
+        stderr_sha256=sha256_hex(b""),
+        stderr_truncated=False,
+    )
+    completion = WorkerCompletion(
+        outcome=CompletionOutcome.RETRYABLE_FAILURE,
+        result_code=RuntimeErrorCode.PROVIDER_INTERRUPTED,
+        session_id="session-terminal-cleanup",
+        invocation_id=barrier.sdk_invocation_id,
+        provider_interruption=interruption,
+    )
+
+    WorkerRuntime._clear_provider_process_at(runtime, dispatch, completion)
+
+    assert registry.terminal_model_state(dispatch) == (None, None)
+
+
 def test_provider_receipt_call_window_is_validated() -> None:
     receipt = _provider_receipt()
     assert receipt.call_started_at <= receipt.call_ended_at
@@ -751,6 +926,166 @@ def _stub_runtime(
     return runtime, dispatch
 
 
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_fresh_restart_reconciles_started_host_check_before_model_replay(
+    tmp_path: Path,
+) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.COMPLETED,
+            result_code="passed",
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+        ),
+    )
+    runtime, dispatch = _stub_runtime(
+        tmp_path,
+        adapter,
+        evidence=evidence,
+        check_runner=lambda *_: None,
+    )
+    runtime._begin_nonreplayable(
+        dispatch, stable_operation_id(dispatch, "check"), "check"
+    )
+    workspace = runtime._workspace(dispatch)
+    workspace.mkdir()
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    registry = OwnedProcessRegistry(runtime.runtime.parent)
+    registry.record(dispatch, process, "/bin/sleep")
+
+    run = asyncio.run(runtime.execute_async(dispatch))
+
+    process.wait(timeout=2)
+    assert run.result.retryable is True
+    assert run.result.result_code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
+    assert adapter.calls == 0
+    assert not workspace.exists()
+    assert not registry.has_record(dispatch.attempt_id, model=False)
+
+
+def test_fresh_restart_reconciles_started_docker_check_before_model_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeDocker:
+        def __init__(self) -> None:
+            self.owners: list[str] = []
+
+        def reconcile_owned(self, owner_id: str) -> bool:
+            self.owners.append(owner_id)
+            return True
+
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.COMPLETED,
+            result_code="passed",
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+        ),
+    )
+    docker = FakeDocker()
+    mission_runtime = tmp_path / "mission-runtime"
+    mission_runtime.mkdir(mode=0o700)
+    binding = mission_runtime / "start-request.json"
+    binding.write_bytes(canonical_json_bytes({"check_executor": "docker"}) + b"\n")
+    binding.chmod(0o600)
+    monkeypatch.setattr(
+        mission_cli, "_mission_runtime", lambda _mission_id: mission_runtime
+    )
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "host-sandbox")
+    selected = mission_cli._mission_check_executor("mission-runtime-test")
+    runtime, dispatch = _stub_runtime(
+        tmp_path,
+        adapter,
+        evidence=evidence,
+        check_runner=(
+            DockerCheckRunner(docker)  # type: ignore[arg-type]
+            if selected == "docker"
+            else pytest.fail("durable Docker binding switched executor semantics")
+        ),
+    )
+    runtime._begin_nonreplayable(
+        dispatch, stable_operation_id(dispatch, "check"), "check"
+    )
+    workspace = runtime._workspace(dispatch)
+    workspace.mkdir()
+
+    run = asyncio.run(runtime.execute_async(dispatch))
+
+    assert run.result.retryable is True
+    assert run.result.result_code == RuntimeErrorCode.SANDBOX_UNAVAILABLE
+    assert adapter.calls == 0
+    assert docker.owners == [dispatch.attempt_id]
+    assert not workspace.exists()
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_expired_orphan_receipt_removes_exact_workspace(tmp_path: Path) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.COMPLETED,
+            result_code="passed",
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+        ),
+    )
+    runtime, dispatch = _stub_runtime(
+        tmp_path,
+        adapter,
+        evidence=evidence,
+        check_runner=lambda *_: None,
+    )
+    dispatch = dispatch.model_copy(update={"task_kind": TaskKind.ASSEMBLY})
+    workspace = runtime._workspace(dispatch)
+    workspace.mkdir()
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    registry = OwnedProcessRegistry(runtime.runtime.parent)
+    registry.record(dispatch, process, "/bin/sleep")
+
+    run = asyncio.run(runtime.reconcile_expired_async(dispatch))
+
+    process.wait(timeout=2)
+    assert run is not None
+    assert run.result.result_code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
+    assert not workspace.exists()
+
+
+def test_expired_loaded_receipt_removes_exact_workspace(tmp_path: Path) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.RETRYABLE_FAILURE,
+            result_code=RuntimeErrorCode.PROVIDER_TIMEOUT,
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+        ),
+    )
+    runtime, dispatch = _stub_runtime(
+        tmp_path,
+        adapter,
+        evidence=evidence,
+        check_runner=lambda *_: None,
+    )
+    receipt = asyncio.run(runtime.execute_async(dispatch)).receipt
+    workspace = runtime._workspace(dispatch)
+    workspace.mkdir()
+
+    replayed = asyncio.run(runtime.reconcile_expired_async(dispatch))
+
+    assert replayed is not None and replayed.receipt == receipt
+    assert not workspace.exists()
+
+
 def test_failed_provider_completion_still_binds_its_receipt_as_evidence(
     tmp_path: Path,
 ) -> None:
@@ -795,6 +1130,131 @@ def test_failed_provider_completion_still_binds_its_receipt_as_evidence(
     assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
     assert events[-1].references == references
     assert run.receipt.completion.provider == provider
+    assert adapter.calls == 1
+
+
+def test_receipt_replay_finishes_terminal_evidence_after_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.RETRYABLE_FAILURE,
+            result_code=RuntimeErrorCode.PROVIDER_TIMEOUT,
+            session_id="session-stub",
+            invocation_id="invocation-stub",
+        ),
+    )
+
+    async def check(*_):
+        raise AssertionError("check must not run after a failed completion")
+
+    runtime, dispatch = _stub_runtime(
+        tmp_path, adapter, evidence=evidence, check_runner=check
+    )
+    original_record = runtime._record
+    fsync_modes: list[int] = []
+    original_fsync = runtime_module.os.fsync
+
+    def observe_fsync(descriptor: int) -> None:
+        fsync_modes.append(runtime_module.os.fstat(descriptor).st_mode)
+        original_fsync(descriptor)
+
+    def crash_before_terminal(dispatch, event_type, payload, references=()):
+        if event_type in {
+            AttemptEvidenceEventType.ATTEMPT_COMPLETED,
+            AttemptEvidenceEventType.ATTEMPT_FAILED,
+        }:
+            raise RuntimeError("simulated crash after durable receipt")
+        return original_record(dispatch, event_type, payload, references)
+
+    monkeypatch.setattr(runtime_module.os, "fsync", observe_fsync)
+    monkeypatch.setattr(runtime, "_record", crash_before_terminal)
+    with pytest.raises(RuntimeError, match="after durable receipt"):
+        asyncio.run(runtime.execute_async(dispatch))
+
+    receipt = runtime._load_receipt(dispatch)
+    assert receipt is not None
+    assert stat.S_ISDIR(fsync_modes[-1])
+    events = evidence.tail(runtime._evidence_id(dispatch), 0, 256)
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_STARTED
+
+    monkeypatch.setattr(runtime, "_record", original_record)
+    replayed = asyncio.run(runtime.execute_async(dispatch))
+
+    assert replayed.replayed is True
+    assert replayed.receipt == receipt
+    assert adapter.calls == 1
+    events = evidence.tail(runtime._evidence_id(dispatch), 0, 256)
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
+
+
+def test_interrupted_provider_completion_is_retryable_and_preserves_absent_effect(
+    tmp_path: Path,
+) -> None:
+    evidence = SQLiteAttemptEvidenceStore(tmp_path / "evidence.sqlite")
+    interruption = WorkerProviderInterruption(
+        requested_model="gemini-3.5-flash",
+        mission_id="mission-runtime",
+        task_id="work-a",
+        attempt_id="attempt-a",
+        lease_id="lease-a",
+        fencing_token=11,
+        request_sha256="b" * 64,
+        input_bytes=123,
+        sdk_invocation_id="invocation-interrupted",
+        dispatched_at="2026-08-20T00:00:00.000Z",
+        pid=321,
+        pgid=321,
+        process_started_at="Thu Aug 20 00:00:00 2026",
+        process_birth_token="test:birth:321",
+        executable="/usr/bin/python3",
+        exit_code=-9,
+        signal_name="sigkill",
+        stderr_sha256=sha256_hex(b"private provider detail"),
+        stderr_truncated=False,
+    )
+    adapter = _StubAdapter(
+        "stub-worker",
+        WorkerCompletion(
+            outcome=CompletionOutcome.RETRYABLE_FAILURE,
+            result_code=RuntimeErrorCode.PROVIDER_INTERRUPTED,
+            session_id="session-interrupted",
+            invocation_id="invocation-interrupted",
+            provider_interruption=interruption,
+        ),
+    )
+
+    async def check(*_):
+        raise AssertionError("check must not run after an interrupted model child")
+
+    runtime, dispatch = _stub_runtime(
+        tmp_path, adapter, evidence=evidence, check_runner=check
+    )
+    run = asyncio.run(runtime.execute_async(dispatch))
+
+    assert run.result.succeeded is False
+    assert run.result.retryable is True
+    assert run.result.result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED
+    assert run.result.publications == ()
+    assert run.receipt.completion.provider_interruption == interruption
+    assert interruption.repository_effect == "known_absent"
+    references = tuple(
+        item
+        for item in run.result.evidence_refs
+        if item.kind == WORKER_PROVIDER_INTERRUPTION_KIND
+    )
+    assert len(references) == 1
+    content = evidence.resolve(WORKER_PROVIDER_INTERRUPTION_KIND, references[0].id)
+    assert content is not None
+    assert sha256_hex(content) == references[0].sha256
+    assert b"private provider detail" not in content
+    assert WorkerProviderInterruption.model_validate_json(content) == interruption
+    assert run.result.evidence_link is not None
+    events = evidence.tail(run.result.evidence_link.evidence_id, 0, 256)
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
+    assert events[-1].references == references
     assert adapter.calls == 1
 
 

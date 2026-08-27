@@ -13,6 +13,7 @@ import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from graphene.orchestration.overlap import (
@@ -106,6 +107,35 @@ def test_stamped_gemini_records_one_stamp_per_call(monkeypatch) -> None:
     assert model.stamps[0].create_time == "2026-08-23T12:00:00.250Z"
     assert model.stamps[0].response_date == "2026-08-23T12:00:03.000Z"
     assert len(calls) == 2 and calls[0]["model"] == "gemini-3.5-flash"
+
+
+def test_dispatch_barrier_fires_once_at_selected_httpx_transport_entry(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-never-sent")
+    monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
+    from httpx._utils import URLPattern
+
+    entered: list[str] = []
+
+    async def fake_transport(request):  # noqa: ANN001
+        entered.append("transport")
+        return httpx.Response(200, request=request)
+
+    model = StampedGemini(model="gemini-3.5-flash")
+    model.bind_dispatch_callback(lambda: entered.append("barrier"))
+    client = model.api_client
+    assert entered == []
+    httpx_client = client._api_client._async_httpx_client
+    httpx_client._mounts = {
+        URLPattern("https://example.invalid"): httpx.MockTransport(fake_transport)
+    }
+    request = httpx.Request("POST", "https://example.invalid/model")
+
+    asyncio.run(httpx_client.send(request))
+    asyncio.run(httpx_client.send(request))
+
+    assert entered == ["barrier", "transport", "transport"]
 
 
 def test_receipt_accepts_and_exposes_provider_window() -> None:

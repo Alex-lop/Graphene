@@ -131,7 +131,11 @@ class MissionScheduler:
         return active
 
     def tick(
-        self, mission_id: str, worker_ids: tuple[str, ...]
+        self,
+        mission_id: str,
+        worker_ids: tuple[str, ...],
+        *,
+        reconciled_results: dict[str, AttemptResult] | None = None,
     ) -> tuple[Dispatch, ...]:
         if len(worker_ids) != len(set(worker_ids)):
             raise ValueError("worker IDs must be unique")
@@ -142,6 +146,7 @@ class MissionScheduler:
             _command("expire", mission_id, head.seq, now.isoformat()),
             recorded_at=now,
             retry_backoff_seconds=self.retry_backoff_seconds,
+            reconciled_results=reconciled_results,
         )
         head = self.store.head(mission_id)
         snapshot = self.store.snapshot(mission_id)
@@ -237,11 +242,18 @@ class MissionScheduler:
         return (*recovered, *claimed)
 
     def recover(
-        self, mission_id: str, worker_ids: tuple[str, ...]
+        self,
+        mission_id: str,
+        worker_ids: tuple[str, ...],
+        *,
+        include_expired: bool = False,
     ) -> tuple[Dispatch, ...]:
         registrations = self._register_workers(mission_id, worker_ids)
         return self.store.recover_dispatches(
-            mission_id, tuple(sorted(registrations)), recorded_at=self.clock.now()
+            mission_id,
+            tuple(sorted(registrations)),
+            recorded_at=self.clock.now(),
+            include_expired=include_expired,
         )
 
     def heartbeat(self, dispatch: Dispatch) -> Lease:
@@ -261,6 +273,22 @@ class MissionScheduler:
         self.store.assert_fence(dispatch, recorded_at=self.clock.now())
 
     def complete(self, dispatch: Dispatch, result: AttemptResult) -> MissionHead:
+        return self._complete(dispatch, result, expired_receipt=False)
+
+    def reconcile_expired_receipt(
+        self, dispatch: Dispatch, result: AttemptResult
+    ) -> MissionHead:
+        """Commit an exact durable result after its otherwise-active lease expired."""
+
+        return self._complete(dispatch, result, expired_receipt=True)
+
+    def _complete(
+        self,
+        dispatch: Dispatch,
+        result: AttemptResult,
+        *,
+        expired_receipt: bool,
+    ) -> MissionHead:
         now = self.clock.now()
         head = self.store.complete_attempt(
             dispatch.mission_id,
@@ -276,6 +304,7 @@ class MissionScheduler:
             ),
             recorded_at=now,
             retry_backoff_seconds=self.retry_backoff_seconds,
+            expired_receipt=expired_receipt,
         )
         snapshot = self.store.snapshot(dispatch.mission_id)
         if (
