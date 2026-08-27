@@ -14,7 +14,6 @@ projection, `snapshot`, `head`, `tail`, and `integrity_marker` all go through
 from __future__ import annotations
 
 import sqlite3
-from contextlib import closing
 from pathlib import Path
 from threading import RLock
 
@@ -27,6 +26,7 @@ from ..orchestration.sqlite_mission_store import (
     MissionStoreError,
     SQLiteMissionStore,
 )
+from ..orchestration.sqlite_lifecycle import serialized_connection
 
 ACTIVE_STATUSES = frozenset(
     {MissionStatus.PROPOSED, MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.AWAITING_RESULT}
@@ -46,7 +46,7 @@ class ReadOnlyMissionStore(SQLiteMissionStore):
         self._integrity_monitor = None
         self._integrity_monitor_pid = None
         self._integrity_monitor_lock = RLock()
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version != _SCHEMA_VERSION:
                 raise MissionStoreError(f"unsupported mission schema version {version}")
@@ -66,14 +66,14 @@ class ReadOnlyMissionStore(SQLiteMissionStore):
         return connection
 
     def mission_ids(self) -> tuple[str, ...]:
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             rows = connection.execute("SELECT mission_id FROM missions ORDER BY mission_id").fetchall()
         return tuple(str(row["mission_id"]) for row in rows)
 
     def most_recent_active_mission(self) -> str | None:
         """The active mission with the latest event; None when nothing is active."""
 
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             rows = connection.execute(
                 "SELECT m.mission_id, m.status, m.mission_bytes, "
                 "(SELECT MAX(seq) FROM mission_events e WHERE e.mission_id = m.mission_id) AS last_seq "
@@ -98,7 +98,7 @@ class ReadOnlyAttemptEvidenceStore(SQLiteAttemptEvidenceStore):
             raise MissionStoreError(f"no attempt evidence store at {path}")
         self.path = str(path)
         self._lock = RLock()
-        with closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchone()
 
     def _connect(self) -> sqlite3.Connection:

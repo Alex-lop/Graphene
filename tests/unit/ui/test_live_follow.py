@@ -1,9 +1,8 @@
 """CP-B2: node states transition on screen while a scripted mission runs, read-only.
 
-The mission runs in a separate process on purpose. A reader thread churning
-SQLite connections beside the runner's own threads is the documented
-inode-mutex wedge (docs/KNOWN_LIMITATIONS.md, "Full-matrix hang under load"),
-and the real viewer is a separate process too.
+The mission runs in a separate process because that matches the real viewer.
+SQLite connection lifecycles are now serialized within each process; the
+separate lifecycle stress campaign guards the historical churn regression.
 """
 
 from __future__ import annotations
@@ -67,7 +66,7 @@ def test_live_viewer_sees_states_change_and_never_writes(tmp_path: Path) -> None
     source = build_source(build_parser().parse_args(["ui", "--state-dir", str(state), "--once"]))
     assert source.mission_id == mission_id  # the most recent active mission, found without --mission
     frames = [compose_frame(source)]
-    assert "proposed" in frames[0].splitlines()[0] and "UNSIGNED — nothing runs until you sign" in frames[0]
+    assert "proposed" in frames[0].splitlines()[0] and "NOT AUTHORIZED — plan approval required" in frames[0]
 
     runner = subprocess.Popen(
         [*cli, "--json", "mission", "approve-plan", mission_id, "--revision", "1",
@@ -87,7 +86,7 @@ def test_live_viewer_sees_states_change_and_never_writes(tmp_path: Path) -> None
 
     banners = [frame.splitlines()[0] for frame in frames]
     assert any("running" in banner for banner in banners), banners
-    assert "awaiting_result" in banners[-1] and "SIGNED — revision 1 approved" in frames[-1]
+    assert "awaiting_result" in banners[-1] and "AUTHORIZED — revision 1 approved" in frames[-1]
     drawn = {line.strip() for frame in frames for line in frame.splitlines() if "● running" in line or "✓ done" in line}
     assert drawn, "no running or done node was ever drawn"
     assert all("->" not in frame for frame in frames)

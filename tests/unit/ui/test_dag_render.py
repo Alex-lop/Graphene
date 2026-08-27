@@ -88,16 +88,16 @@ def test_banner_names_mission_revision_digest_and_signed_state() -> None:
         plan_sha256="b48aabfb4827" + "0" * 52, approved_plan_revision=2,
     ).plain
     assert "mission_x" in signed and "PLAN v2" in signed and "digest b48aabfb4827" in signed
-    assert "SIGNED — revision 2 approved" in signed
+    assert "AUTHORIZED — revision 2 approved" in signed
     stale = render_banner(
         mission_id="mission_x", status="proposed", plan_revision=2,
         plan_sha256="b48aabfb4827" + "0" * 52, approved_plan_revision=1,
     ).plain
-    assert "UNSIGNED" in stale and "revision 1 was signed" in stale
+    assert "NOT AUTHORIZED" in stale and "revision 1 was approved" in stale
     unsigned = render_banner(
         mission_id="mission_x", status="proposed", plan_revision=1, plan_sha256=None, approved_plan_revision=None,
     ).plain
-    assert "UNSIGNED — nothing runs until you sign" in unsigned and "no digest" in unsigned
+    assert "NOT AUTHORIZED — plan approval required" in unsigned and "no digest" in unsigned
 
 
 def test_the_no_arrow_art_rule_can_fail() -> None:

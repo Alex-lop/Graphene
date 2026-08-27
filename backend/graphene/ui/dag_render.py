@@ -269,9 +269,11 @@ def render_banner(
     approved_plan_revision: int | None,
     source: str | None = None,
 ) -> Text:
-    """Mission id, plan revision, digest, and the signed/unsigned state."""
+    """Mission id, plan revision, digest, and authorization state."""
 
-    signed = approved_plan_revision is not None and approved_plan_revision == plan_revision
+    authorized = (
+        approved_plan_revision is not None and approved_plan_revision == plan_revision
+    )
     banner = Text()
     banner.append("GRAPHENE ", "bold")
     banner.append(mission_id, "bold cyan")
@@ -282,15 +284,19 @@ def render_banner(
     banner.append(f"PLAN v{plan_revision}", "bold")
     digest = (plan_sha256 or "")[:12] or "no digest"
     banner.append(f"  digest {digest}", "white")
-    if signed:
-        banner.append(f"  ·  SIGNED — revision {approved_plan_revision} approved", "bold green")
+    if authorized:
+        banner.append(
+            f"  ·  AUTHORIZED — revision {approved_plan_revision} approved",
+            "bold green",
+        )
     elif approved_plan_revision is not None:
         banner.append(
-            f"  ·  UNSIGNED — revision {approved_plan_revision} was signed, v{plan_revision} is not",
+            f"  ·  NOT AUTHORIZED — revision {approved_plan_revision} was approved, "
+            f"v{plan_revision} is not",
             "bold red",
         )
     else:
-        banner.append("  ·  UNSIGNED — nothing runs until you sign", "bold red")
+        banner.append("  ·  NOT AUTHORIZED — plan approval required", "bold red")
     return banner
 
 

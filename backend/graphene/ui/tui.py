@@ -1,4 +1,4 @@
-"""`graphene ui`: the signed map in the terminal, followed live, read-only.
+"""`graphene ui`: the authorized mission map, followed live and read-only.
 
 Textual was chosen over a hand-rolled Rich Live loop because the directive's
 acceptance needs key handling (select a node, drill in, quit with the terminal
