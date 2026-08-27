@@ -1,223 +1,153 @@
-# Demo script — one take, one command
+# Demo script — Agents stop. The mission doesn't.
 
-> A change appears, Graphene proposes a route, **you change the route**, the
-> new revision is linted and diffed and approved on its own digest, and then
-> two real Gemini workers follow the graph you approved — surviving a check
-> failing, handing over a result that runs, and proving why it should be
-> trusted.
+Status: shot plan only. The credentialed current-SHA take has not run.
 
-The edit beat is the point of the film. Everything a judge needs is in one
-moment: they watch the graph change, they watch a new digest appear, and then
-they watch the workers obey the changed route.
+The autonomous hero begins at MCP `start_goal`. Do not use
+`graphene demo --live` for this claim: that command still drives the legacy
+watcher and interactive plan-edit/review path. Its North Star resources are
+packaged, but it neither proves the detached MCP lifecycle nor the new
+policy-pre-authorized Orders flow.
 
-Everything below was executed live. The sequence including the edit beat ran
-four times on 2026-08-24 on the commit that carries this file — three
-consecutive clean rehearsals captured in
-[`evidence/contract/2026-08-24-rehearsals/`](../evidence/contract/2026-08-24-rehearsals/README.md),
-plus one timed run — and three more times on 2026-08-25 through the interactive
-edit prompt itself, driven by a scripted operator
-([`evidence/contract/2026-08-25-rehearsals/`](../evidence/contract/2026-08-25-rehearsals/README.md)).
-No beat here is a splice. The captured transcript of the live run is
-[`evidence/convergence/2026-08-23-demo-live/run-1.txt`](../evidence/convergence/2026-08-23-demo-live/run-1.txt);
-the completion-gate numbers are in
-[`evidence/convergence/2026-08-23-completion-gate/`](../evidence/convergence/2026-08-23-completion-gate/README.md).
-No beat here is a rehearsal or a splice.
+## Truth card
 
-## Before you press record
+Show this before the terminal:
 
-One shell, one command block. Paste it whole — do **not** append trailing
-`# comments` to a pasted line; interactive zsh does not treat `#` as a comment
-start and `graphene` will reject the extra arguments.
+> LIVE TAKE REQUIRED — `google-adk==2.5.0`, requested
+> `gemini-3.5-flash`, source-checked 2026-08-27. No current live Gemini,
+> model-kill, Codex, cloud, or exact-SHA claim until this take and its evidence
+> pass. The checked-in no-key replay is a labelled fixture.
 
-```bash
-export GOOGLE_GENAI_USE_VERTEXAI=true
-export GOOGLE_CLOUD_PROJECT="$(gcloud config get-value project)"
-export GOOGLE_CLOUD_LOCATION=global
-export GRAPHENE_CHECK_EXECUTOR=host-sandbox
-export GRAPHENE_STATE_DIR="$HOME/.graphene/demo-state"
-mkdir -p -m 700 "$GRAPHENE_STATE_DIR"
-```
+## Setup, off camera
 
-`GOOGLE_CLOUD_LOCATION=global` is the only location serving `gemini-3.5-flash`
-for this project; regional endpoints 404. Check the project is the funded one
-before going further.
+1. Check out the intended committed implementation in a clean clone.
+2. Run `scripts/reliability/exact_sha_proof.py` with the expected SHA, matching
+   canonical `origin/BRANCH`, `--require-clean`, and an output root outside the
+   checkout; retain its SHA-named manifest and artifact hashes.
+3. Install that exact artifact.
+4. Materialize the Orders target with
+   `python scripts/materialize_north_star.py DEST`.
+5. Configure exactly one valid credential mode and the supported check
+   executor without printing values.
+6. Use a fresh private `GRAPHENE_STATE_DIR`.
+7. Open three panes: Codex/MCP controller, read-only `graphene ui`, and the
+   failure-lab command.
 
-Cost: **$0.09–$0.12 per run** on 2026-08-24, from evidence-bound receipts
-across four runs. Three rehearsals plus a take is under $0.50.
+If any step is unavailable, film the verified replay with its fixture label;
+do not substitute it into the live story.
 
-**Timing, measured rather than estimated.** One full run, timed end to end with
-the edit applied by a script: **77 seconds**, of which the mission itself —
-approval to `awaiting_result` — was 47 seconds. That leaves roughly 30 seconds
-for everything around it: materializing the target, the inbox trigger, the plan
-table, one node's full contract, revise/lint/diff, the result, the generated
-feature, and `why`. The one variable is you: on camera the scripted edit is
-replaced by however long you take to type one, and the budget for that inside
-§9's two minutes is about 40 seconds. Rehearse the edit itself, not just the
-command.
+## Beat 1 — the ordinary repository problem
 
-Beat by beat — the exact frames, which of those timings a machine measured and
-which a person did, and what each beat is and is not proof of — is in
-[`docs/SHOT_LIST.md`](SHOT_LIST.md).
+Show the unmodified Orders API and run its immutable suite. Say:
 
-## The take (measured: 1:17 with a scripted edit)
+> “This service is pinned to Pydantic 2 but still uses the v1 compatibility
+> layer. We need native v2 request and response models plus exact dependency
+> declarations without changing public behavior.”
 
-```bash
-uv run --frozen graphene demo --live
-```
+Show the checked-in policy: five exact write files, no network, one frozen test
+command, concurrency two, bounded retries, `policy_pre_authorized`, and
+`auto_finalize_isolated`.
 
-That is the whole demo. It materializes its own target, drops its own trigger,
-shows the proposed plan and one node's full contract, **stops once for your
-edit**, compiles it into revision 2, lints and diffs it, approves the new
-digest under a pre-authorized bounded policy, runs the mission while it renders
-the dashboard, and finishes with the result, the feature, and `why`. One
-terminal, one pause, no `sed`, no hand-driven steps.
+## Beat 2 — Codex starts and leaves
 
-For a rehearsal that does not wait on a person, hand it a command that makes
-the edit. The command is run as `COMMAND <exported-plan>`, so it transforms the
-plan the live planner actually returned — which is the only thing that can
-work, because that plan is not known until the run is underway. Everything
-after the edit is the same code the filmed take runs:
+Through the actual Codex MCP connection, call `start_goal` with the exact goal
+and success criteria from `demo/north_star/goal.json`, a stable request id,
+`driver=gemini-adk`, two workers, policy pre-authorization, and isolated
+auto-finalization.
 
-```bash
-uv run --frozen graphene demo --live \
-  --plan-edit "uv run --frozen python scripts/demo_plan_edit.py"
-```
+The call must return after durable acceptance in under five seconds. Point to
+the accepted request id, base SHA, policy revision/digest, mission id, and next
+instruction to poll. Do not call this an approved plan yet.
 
-`scripts/demo_plan_edit.py` gives one worker read access to the file another
-worker owns — a scope expansion, which is exactly what `plan diff` is built to
-make impossible to miss. If the command leaves the plan unchanged, or exits
-non-zero, the demo stops rather than approving anything.
+Then terminate the initiating Codex/MCP process. Say:
 
-### What appears, and what to say over it
+> “The controller stopped. The mission did not.”
 
-The cue times below are **narration pacing for the take, not the measured run.**
-They were written before the sequence was timed and they assume a person typing
-the edit, which is why they run past the 1:17 above: that measurement is the
-floor, with the edit applied by a script. Machine-measured timings — the eleven
-dashboard counters, `ELAPSED 00:00` to `00:47` — are in
-[`docs/SHOT_LIST.md`](SHOT_LIST.md), which also marks the beats no rehearsal has
-covered.
+## Beat 3 — a fresh controller reattaches
 
-**0:00 — a change arrives.** The target is materialized and its own suite is
-green; a `mission.yaml` lands in an inbox and a mission is proposed from it.
+Start a new Codex/MCP connection and call `mission_status` with the same
+mission id. Show the detached supervisor generation and the compiled plan.
 
-> "A change lands in a folder Graphene is watching. That drop is the first
-> event in the record — `why` will start there."
+Explain that pre-authorization became effective only after Graphene validated
+the exact plan inside policy and recorded the policy decision. If the mission
+reports `review_required`, stop the autonomous take; do not approve it by
+script and continue as if policy had allowed it.
 
-**0:15 — a bounded plan you approve.** Four tasks printed as plain text: two
-disjoint work tasks with their exact write scopes, a deterministic assembly,
-and a verification tail.
+Open `graphene ui` read-only. Show two disjoint work roots feeding integration,
+assembly, and verification.
 
-> "The plan is typed and validated before anything runs. Each task's write
-> scope is a lease — a worker that touches anything else is rejected, not
-> warned. Assembly isn't a model's job here; it already ships in the target."
+## Beat 4 — accepted work survives a real child death
 
-**0:20 — one node, in full.** The frontier node's whole contract prints: the
-outcome it owns, what it requires, what it may read and write, the commands it
-may run, its acceptance checks, its budget, and the exact mission, base commit,
-revision and digest it is bound to.
-
-> "This is the entire authority of one node. Nothing here is advisory."
-
-**0:25 — you change the route.** The plan is exported as canonical YAML. Edit
-it — add a node, rewire an edge, widen or tighten a scope — and Graphene
-compiles it into **revision 2** with a new digest.
-
-> "The agent proposed a route. I'm changing it. That is not a suggestion to the
-> model; it is the contract the runtime will be held to."
-
-**0:35 — lint, diff, and a new approval.** `plan lint` re-validates the whole
-revision atomically. `plan diff 1 2` names the changed nodes and edges and
-flags any scope that only grew as a **SCOPE EXPANSION**. The old approval is
-already void; the new digest needs its own.
-
-> "Every scope I widened is called out, and the approval I gave a minute ago no
-> longer covers this graph. I approve revision 2, and only revision 2 can run."
-
-The credential-free proof that the runtime obeys the revision rather than the
-proposal is `tests/integration/test_plan_edit_path.py`; these beats are that
-same property, live.
-
-**0:50 — two real workers, obeying revision 2.** The dashboard shows both work tasks `● running` at
-attempt 1, fence 1, and SPEND starts moving from real provider receipts.
-
-> "Two real Gemini workers, in parallel, on disjoint files. The cost you see is
-> read out of the provider's own receipts, not estimated."
-
-**1:00 — the failure, and this is the line that matters.**
-`↻ retrying`, and `Latest: check failed → retry authorized with diagnostic`.
-
-> "One of the **check processes** fails — deterministically, on purpose. Not
-> the model, not the network: Graphene's own check process, made to fail so you
-> can watch what happens next."
-
-**Never say "the Gemini worker died."** The failure is injected by
-`--inject-check-fault` and stamped `simulated_fixture` in evidence. Saying
-otherwise would be the one dishonest sentence in the demo.
-
-**1:15 — the retry learns.** The task comes back at **attempt 2, fence 2**, and
-its sibling stays `✓ accepted`, untouched.
-
-> "The retry runs under a strictly higher fence — the old attempt can no longer
-> write anything, even if it comes back. And it carries a redacted diagnostic:
-> which checks failed, and why. Retrying without that is just rolling the dice
-> twice. If the second attempt fails the same way, Graphene stops instead of
-> buying a third."
-
-**2:00 — the result is isolated.** `Result approved and isolated: commit … on
-refs/graphene/results/…; nothing was pushed anywhere.`
-
-> "The result is one commit on a private ref. Approving it required the store to
-> rebuild the patch, the mutation manifest and the resulting tree from the
-> repository and agree — the store checks its own caller."
-
-**2:15 — the feature runs.** The generated Markdown report prints: a real
-table, a note redacted to `[REDACTED]`, an item flagged below its reorder
-level.
-
-> "And here is the thing it built, running. Not a hash that says it would work."
-
-**2:30 — why.** `why` chains trigger → target → producer attempt →
-**prior_attempts**, which names the failed attempt, its fence and its receipts →
-assembly → verification → committed approval.
-
-> "Every line comes from hash-chained events and evidence you can resolve.
-> Where Graphene doesn't know, it says so. It never guesses."
-
-## The two commands to show after the take
+Wait until one work publication is accepted and another worker is inside a
+barrier-acknowledged live Gemini child. Run:
 
 ```bash
-uv run --frozen graphene demo --driver verified-replay --no-open --exit-after-demo
-uv run --frozen graphene demo --no-open --exit-after-demo --automated-fixture
-bash scripts/morning_verify.sh
+python scripts/failure_lab.py auto MISSION_ID --actor-label demo-operator --timeout 900
 ```
 
-Neither demo spends anything or contacts a provider.
+Show only the sanitized returned identity: attempt, worker, task, fence,
+pid/pgid/start time, request digest, SDK invocation id, provider-dispatch time,
+and accepted sibling publication id.
 
-`--driver verified-replay` is the zero-setup one: a hash-checked replay that
-prints its own truth counters — `Live agent executions: 0`, `Gemini calls: 0`,
-`Authoritative lineage writes: 0` — and creates no authoritative state. It is
-the mode CI smokes, so it cannot rot.
+Say:
 
-The default driver (`scripted-local`, macOS only) runs the deterministic
-fixture workflow end to end and finishes on `DEMO COMPLETE — committed lineage
-verified`, `Promotion state: PROMOTED`, and `Local isolated commit — not pushed
-/ no PR / no deployment`. Its operator gate is labelled on screen as
-`SIMULATED OPERATOR — NOT HUMAN ATTESTATION`; say that out loud if you show it.
+> “Graphene killed one exact owned model child, never a process name. The
+> provider outcome is unknown, but the child had no repository API, so its
+> repository effect is known absent.”
 
-`morning_verify.sh` re-runs the locked environment, the full credential-free
-matrix, the locked ruff, the location-only secret scan, `store.verify` on every
-mission, capsule cold verification from a fresh clone, and the proof table. It
-is the only thing allowed to print `ALL PASS`.
+Exit 2 or 3 is not a demo success. A check-process kill, fake worker, injected
+check failure, or cancelled controller is not a substitute for this beat.
 
-## What this demo does not claim
+## Beat 5 — only the failed work returns
 
-- The check failure is injected by Graphene, not a real infrastructure failure.
-  The night's SIGKILL laboratory is the real-process variant and is a separate,
-  narrower claim.
-- Nothing here involves Cloud Run or Firestore. There is no cloud claim in this
-  script.
-- 9/10 is this target, this contract test, this model, on one day. It is not a
-  claim about any model's general ability.
-- Approval is operator-delegated (`server_derived`), not human-attested; the
-  pre-authorized bounded policy is what keeps the take continuous.
+In Mission Control, show:
+
+- the sibling publication remains accepted and unchanged;
+- the victim attempt ends `provider_interrupted` and publishes nothing;
+- only its task returns as attempt 2;
+- the fence increases;
+- the retry receives a bounded diagnostic; and
+- assembly stays blocked until the retry publication is accepted.
+
+Do not say “exactly once.” The provider outcome is unknown. The safe claim is
+selective repository recovery under a higher fence.
+
+## Beat 6 — verified completion
+
+Let Graphene assemble accepted publications, run the immutable checks, bind the
+exact candidate/final bundle, and policy-finalize to an isolated result ref.
+The terminal state must be `completed`; `awaiting_result` is incomplete.
+
+Show that the supplied Orders checkout remains unchanged. Run the Orders tests
+and one public behavior example from the isolated result. Call
+`mission_summary`.
+
+Call `why` once for an accepted-sibling file and once for a retried file. The
+latter must show the failed attempt and the higher-fence producer.
+
+Say:
+
+> “Accepted work survived. Only failed work was replaced. The exact candidate
+> passed, and the result is isolated for review.”
+
+## Beat 7 — close with the proof boundary
+
+Show the clean implementation SHA, wheel/sdist hashes, mission head, result ref,
+and capsule verification. End with:
+
+> “Agents stop. The mission doesn't. This proves one local Orders mission on
+> this exact build. It does not prove Cloud Run, general repositories, human
+> attestation, a benchmark, or autonomous delivery.”
+
+## No-key fallback
+
+If credentials or eligibility are unavailable, run:
+
+```bash
+graphene mission replay taskmaster
+```
+
+Keep the visible label:
+
+> **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD**
+
+This fallback demonstrates UI/replay only and must not reuse the live narration.

@@ -4,15 +4,15 @@
 
 # Graphene
 
-**Draw the route. Sign the map. Watch your agents keep to it.**
+**Agents stop. The mission doesn't.**
 
 [![CI](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml)
 
 ## What Graphene does
 
-Graphene is a terminal-native workflow control plane for coding agents: a coordination-and-provenance layer, not an agent and not a harness. You give it a goal. It compiles the goal into a small typed graph of broad nodes, each with its own scope, checks, and budget. You read the map, reshape it if you want, and sign one exact revision; nothing runs until you do. Your connected agent then works only inside that map, and you watch it move node by node in your terminal. When it finishes you get a what-was-done summary, and `graphene why` answers what happened to any file with the lineage that produced it. The map is the contract, and your signature is what makes it binding.
+Graphene is a terminal-native recovery runtime for bounded coding missions. A goal becomes a typed graph with scopes, checks, budgets, leases, and fences. Graphene preserves accepted sibling work when an attempt fails, retries only the failed work under a higher fence, assembles an exact candidate, and records causal evidence for `graphene why`. The intended low-risk path is authorized by an explicit checked-in policy and can finalize only to an isolated local result ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.
 
-## Quickstart (30 seconds, no credentials)
+## Quickstart: verified replay, no credentials
 
 ```bash
 git clone https://github.com/Alex-lop/Graphene.git && cd Graphene
@@ -20,70 +20,95 @@ uv sync --frozen
 uv run --frozen graphene mission replay taskmaster
 ```
 
-That replays a checked-in, SHA-256-verified mission in Mission Control. Nothing runs live and nothing needs a key. Verified cold on 2026-08-26 in a fresh `python:3.13-slim` container; see [`docs/PROOF.md`](docs/PROOF.md) for the timing.
+> **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD**
 
-## Connect your agent
+The replay is SHA-256 checked and read-only. It demonstrates Mission Control,
+not a new agent run. Render the same fixture once with
+`uv run --frozen graphene ui --replay taskmaster --once`.
 
-The server is `graphene-mcp` over stdio: six tools (`plan_goal`, `get_digest`, `approve_plan`, `mission_status`, `why`, `mission_summary`) and one prompt, `goal`, that walks the agent through the loop and stops for your signature — `approve_plan` refuses any digest you did not sign. Each block below was checked against that tool's official docs on 2026-08-26; the label says how far each path is proven.
+## Connect an MCP controller
 
-**Claude Code** — *tested: the bare server below is driven by the official MCP client in CI and ran the whole loop end to end on a clone of this repository on 2026-08-26 ([evidence](evidence/integration/2026-08-26/transcript.md)); a person signing inside Claude Code itself is not yet on film.*
+`graphene-mcp` serves seven tools over stdio: `start_goal`, the deprecated
+`plan_goal` alias, `get_digest`, `approve_plan`, `mission_status`, `why`, and
+`mission_summary`. `start_goal` durably accepts a request and returns without
+waiting for planning or execution. A detached supervisor owns the mission, so
+a later MCP process can reattach and poll it.
+
+The committed [`.mcp.json`](.mcp.json) launches the source checkout. A packaged
+installation can launch `graphene-mcp` directly. The stdio protocol and
+controller-disconnect behavior are fixture-tested with the official MCP Python
+client. Claude Code, Codex CLI, and Gemini CLI have not been driven through the
+current recovery flow; their presence in configuration examples is not proof.
+
+```toml
+# Example Codex configuration — documented, not exercised as proof.
+[mcp_servers.graphene]
+command = "graphene-mcp"
+args = []
+```
+
+The ordinary MCP default is `gemini-adk` and requires explicit success
+criteria plus valid credentials. It never falls back to a fixture. For
+credential-free development, select `driver="scripted-local"`; that path only
+accepts its exact checked-in fixture and is always labelled simulated.
+There is no silent fallback from a live request to replay or fake work.
+
+## Authorization and recovery boundary
+
+`policy_pre_authorized` is not established because a caller requested it.
+Graphene first compiles the proposal, validates the exact plan against the
+committed policy revision, and records a policy-authoritative decision. A plan
+outside policy becomes `review_required`. MCP review approval is
+`server_derived` relay evidence, not proof that a human signed in a chat client.
+
+Live Gemini work is designed to run in a private length-framed child process
+with no repository API. After the child durably acknowledges provider dispatch,
+the owned-process registry can target that exact pid/process-group/start-time
+identity. A killed child is a retryable `provider_interrupted` attempt whose
+repository effect is known absent. This mechanism is locally tested; killing a
+real Gemini child and completing the Orders mission has not yet been proven.
+
+## The Orders hero target
+
+[`demo/north_star`](demo/north_star) materializes a small Orders API migration:
+replace Pydantic v1 compatibility APIs with native v2 APIs and freeze exact
+dependency declarations while preserving immutable behavior. Its policy
+allows only five named files, denies network access, caps concurrency at two,
+and authorizes isolated auto-finalization. The target and policy are tested;
+no credentialed current-tree mission has completed it.
+
+## Installed-artifact check
 
 ```bash
-claude mcp add --scope project graphene -- uv run --directory /path/to/Graphene --frozen graphene-mcp
+python scripts/verify_installed_artifacts.py
 ```
 
-This clone ships a project-scope [`.mcp.json`](.mcp.json), so Claude Code offers the server as soon as you open the directory and asks you to approve it once. The loop is the prompt `/mcp__graphene__goal <goal>`; a bare `/graphene <goal>` is one file away — copy [`integrations/claude-code/graphene.md`](integrations/claude-code/graphene.md) into `.claude/commands/`.
+The verifier builds an sdist, builds a wheel from that sdist, installs each
+into a separate environment, clears Python source-path overrides, changes to a
+directory outside the checkout, and checks entry points, replay, UI, MCP
+initialization, legacy resource consumers, installed Orders materialization,
+and no-key MCP start/disconnect/reattachment. The checked-in exact-SHA driver
+adds a clean-tree, expected-revision, and canonical-remote-ref gate, then emits
+a SHA-named manifest outside the checkout. Run-specific proof is intentionally
+not committed into the tree it claims to prove. Pytest remains a development
+dependency, not a runtime dependency.
 
-**Codex CLI** — *documented against its current docs on 2026-08-26, not tested here.* In `~/.codex/config.toml` (or `codex mcp add graphene -- uv run --directory /path/to/Graphene --frozen graphene-mcp`):
+## Proven vs. pending
 
-```toml
-[mcp_servers.graphene]
-command = "uv"
-args = ["run", "--directory", "/path/to/Graphene", "--frozen", "graphene-mcp"]
-```
+| Path | Current truth |
+|---|---|
+| Replay and UI | `VERIFIED_LOCAL` fixture; no live execution |
+| Detached supervisor and MCP reconnect | `VERIFIED_LOCAL` scripted fixture; not Codex and not Gemini |
+| Policy authorization and isolated auto-finalization | `VERIFIED_LOCAL` contracts/fixture |
+| Gemini child isolation and kill semantics | `VERIFIED_LOCAL` protocol/fake tests; real model kill not proven |
+| Live Gemini Orders mission | `NOT PROVEN` on the current implementation |
+| Wheel/sdist outside-tree execution | Verifier and clean/remote-bound exact-SHA gate implemented; a SHA-named external manifest or CI result is the run-specific proof |
+| Codex, Google Cloud, Docker, benchmark, and film | `NOT PROVEN`; cloud not deployed |
 
-**Gemini CLI** — *documented against its current docs on 2026-08-26, not tested here.* In `~/.gemini/settings.json`, then a command file so `/graphene <goal>` works:
+The benchmark remains deferred: there is no token-efficiency claim, and no speed or cost comparison.
 
-```json
-{ "mcpServers": { "graphene": { "command": "uv",
-    "args": ["run", "--directory", "/path/to/Graphene", "--frozen", "graphene-mcp"] } } }
-```
+The runtime pins `google-adk==2.5.0` and requests `gemini-3.5-flash`. Those
+identifiers were source-checked on 2026-08-27; eligibility and returned model
+identity must be revalidated before any live proof claim.
 
-```toml
-# ~/.gemini/commands/graphene.toml
-description = "Run the Graphene loop toward a goal."
-prompt = "Run the Graphene loop toward this goal: {{args}}"
-```
-
-## The terminal view
-
-`graphene ui` draws the signed map in your terminal — every node, its state, and the digest you approved in the banner — and follows the mission live, read-only, as agents move through it; select a node for its attempts, checks, receipts, and lineage, or press `s` for the what-was-done summary. Try it without credentials: `uv run --frozen graphene ui --replay taskmaster`.
-
-![Graphene terminal UI](docs/assets/ui-terminal.png)
-
-## How it compares
-
-Comparison scripts land after 2026-08-31. Until they produce equal-gate data there is no leaderboard here, no token-efficiency claim, and no speed or cost comparison — the harness and its written deferral are in [`benchmarks/`](benchmarks/DEFERRAL.md). The frames below are placeholders that name the planned comparison and nothing else.
-
-![Planned: one goal, a coordinated DAG run versus an uncoordinated baseline, equal gates, raw receipts](docs/assets/benchmarks/coordination-vs-baseline.png)
-![Planned: overlapping-write conflicts refused by the approved map versus conflicts reached without it](docs/assets/benchmarks/conflicts-prevented.png)
-![Planned: attempts retried under a fenced lease versus attempts repeated blind, same goal, same gates](docs/assets/benchmarks/rework-avoided.png)
-
-## Proven vs. not
-
-| Path | Status | In one line |
-|---|---|---|
-| Verified mission replay | `VERIFIED_LOCAL` | Hash-checked fixture; the quickstart above. Runs nothing new |
-| Scripted local mission | `VERIFIED_LOCAL` on macOS | Real scheduler, fixture workers, retry, exact verification, isolated result |
-| Live Gemini workers | `VERIFIED_LIVE` 2026-08-23 | Two `gemini-3.5-flash` workers finished a mission with evidence-bound receipts; approvals were operator-delegated, not human-attested; missing credentials fail closed with no silent fallback |
-| Terminal UI (`graphene ui`) | `VERIFIED_LOCAL` 2026-08-26 | Replay and a scripted-local mission on macOS, read-only, snapshot-tested; not a live model mission, not filmed |
-| The `/graphene` loop over MCP | `VERIFIED_LOCAL` 2026-08-26 | Six tools and the `goal` prompt over stdio, end to end on a clone of this repo with the map attached; the signer was a script, not a person in a chat client |
-| Docker executor · Cloud Run · benchmark · film | `NOT PROVEN` / `NOT DEPLOYED` | Nothing filmed, nothing deployed, no comparison measured |
-
-The full table, every identifier, and what each row does not prove: [`docs/PROOF.md`](docs/PROOF.md). Machine-readable truth: [`contracts/product_proof.json`](contracts/product_proof.json).
-
-## Platform and links
-
-macOS is where the live paths are proven (the scripted fixture needs `/usr/bin/sandbox-exec`). On Linux, CI proves the replay; `plan`, `why`, and capsule verification are the same pure-Python code but are not run there separately.
-
-[Command map](docs/COMMANDS.md) · [Documentation index](docs/README.md) · [Session reports](docs/reports/README.md) · [Known limitations](docs/KNOWN_LIMITATIONS.md) · [License](LICENSE)
+[Proof boundaries](docs/PROOF.md) · [Command map](docs/COMMANDS.md) · [Runbook](docs/NORTH_STAR_RUNBOOK.md) · [Known limitations](docs/KNOWN_LIMITATIONS.md) · [License](LICENSE)
