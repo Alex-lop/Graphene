@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 
 import uvicorn
 
+from ..execution.adapter import SANDBOX_CHECK_TEMPLATES
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..core_models import TruthKind
 from ..orchestration.evidence import SQLiteAttemptEvidenceStore, TrustedCheckReceipt
@@ -40,6 +41,8 @@ from ..orchestration.executor_client import (
 from ..orchestration.local_executor import run_local_executor
 from ..orchestration.adk_planner import (
     AdkPlanner,
+    LIVE_GEMINI_MODEL,
+    PlanProposal,
     PlannerError,
     PlanningExcerpt,
     PlanningRequest,
@@ -52,10 +55,12 @@ from ..orchestration.local_result import (
     verify_local_result_receipt,
 )
 from ..orchestration.mission_models import (
+    AuthorizationMode,
     AttemptResult,
     AttemptState,
     CommandTemplate,
     Dispatch,
+    FinalizationMode,
     Mission,
     PLAN_AWAITING_REVIEW_UNKNOWN,
     MissionEventType,
@@ -67,7 +72,9 @@ from ..orchestration.mission_models import (
     RetentionPolicy,
     Task,
     TaskKind,
+    plan_policy_decision,
 )
+from ..orchestration.validation import evaluate_plan_policy
 from ..orchestration.diagnostics import (
     CHECK_DIAGNOSTIC_KIND,
     CheckDiagnostic,
@@ -75,15 +82,20 @@ from ..orchestration.diagnostics import (
 )
 from ..orchestration.overlap import measure_overlap
 from ..orchestration.mission_projection import MissionProjection
+from ..orchestration.sqlite_lifecycle import serialized_connection
 from .dashboard import GEMINI_3_5_FLASH_USD_PER_TOKEN, spend_from_receipts
 from ..orchestration.worker_runtime import (
+    WORKER_PROVIDER_INTERRUPTION_KIND,
     WORKER_PROVIDER_RECEIPT_KIND,
     CheckOutcome,
     DockerCheckRunner,
     HostSandboxCheckRunner,
     PriorFailure,
     RuntimeAssignment,
+    RuntimeErrorCode,
+    RuntimeFailure,
     WorkerProviderReceipt,
+    WorkerProviderInterruption,
     WorkerRegistry,
     WorkerRuntime,
 )
@@ -467,7 +479,10 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     task_input.add_argument("--gate", required=True, dest="gate_id")
     source = task_input.add_mutually_exclusive_group(required=True)
     source.add_argument(
-        "--file", type=Path, dest="input_file", help="regular UTF-8 file, max 4096 bytes"
+        "--file",
+        type=Path,
+        dest="input_file",
+        help="regular UTF-8 file, max 4096 bytes",
     )
     source.add_argument(
         "--stdin",
@@ -698,8 +713,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         "cancel",
         summary="cancel the mission and only its strongly owned processes",
         example=(
-            "graphene mission cancel mission_123 --confirm mission_123 "
-            "--confirm-human"
+            "graphene mission cancel mission_123 --confirm mission_123 --confirm-human"
         ),
         failure="confirmation, ownership cleanup, head, or transition validation fails",
     )
@@ -1593,8 +1607,14 @@ def _projection(mission_id: str):
 
 
 def _status_value(mission_id: str) -> dict[str, object]:
-    value = _projection(mission_id).snapshot(mission_id)
-    return value.model_dump(mode="json")
+    projection = _projection(mission_id)
+    try:
+        value = projection.snapshot(mission_id)
+        return value.model_dump(mode="json")
+    finally:
+        close = getattr(projection.store, "close", None)
+        if callable(close):
+            close()
 
 
 def _watch_value(args: argparse.Namespace) -> dict[str, object]:
@@ -1668,35 +1688,51 @@ def _plan_show_value(mission_id: str) -> dict[str, object]:
     """
     _store_value, snapshot = _verified_plan_snapshot(mission_id, "show")
     plan = snapshot.plan.model_dump(mode="json")
-    view = _projection(mission_id).snapshot(mission_id)
-    states = {task.task_id: task.state for task in view.tasks}
-    blockers = {task.task_id: task.blocker_reason for task in view.tasks}
-    return {
-        "status": "shown",
-        "mission_id": mission_id,
-        "base_sha": snapshot.mission.base_sha,
-        "goal": snapshot.mission.goal,
-        "mission_status": snapshot.mission.status.value,
-        "plan_revision": snapshot.plan.revision,
-        "previous_plan_revision": snapshot.plan.previous_revision,
-        "plan_sha256": sha256_hex(canonical_json_bytes(plan)),
-        "approved_revision": _approved_revision(snapshot),
-        "critical_path": list(view.critical_path_task_ids),
-        "resource_budget": snapshot.mission.resource_budget.model_dump(mode="json"),
-        "ready_frontier": _frontier(view.tasks),
-        # Before approval nothing is `ready` yet, so the frontier shown is the
-        # one the graph implies. Say which it is rather than let the reader
-        # assume work has started.
-        "frontier_is_projected": not any(
-            task.state == "ready" for task in view.tasks
-        ),
-        "needs_you": (
-            None if view.needs_you is None else view.needs_you.model_dump(mode="json")
-        ),
-        "task_states": states,
-        "task_blockers": {key: item for key, item in blockers.items() if item},
-        "plan": plan,
-    }
+    projection = _projection(mission_id)
+    try:
+        view = projection.snapshot(mission_id)
+        states = {task.task_id: task.state for task in view.tasks}
+        blockers = {task.task_id: task.blocker_reason for task in view.tasks}
+        return {
+            "status": "shown",
+            "mission_id": mission_id,
+            "base_sha": snapshot.mission.base_sha,
+            "goal": snapshot.mission.goal,
+            "mission_status": snapshot.mission.status.value,
+            "plan_revision": snapshot.plan.revision,
+            "previous_plan_revision": snapshot.plan.previous_revision,
+            "plan_sha256": sha256_hex(canonical_json_bytes(plan)),
+            "approved_revision": _approved_revision(snapshot),
+            "requested_authorization_mode": (
+                view.mission.requested_authorization_mode.value
+            ),
+            "effective_authorization_mode": (
+                view.mission.effective_authorization_mode.value
+            ),
+            "finalization_mode": view.mission.finalization_mode.value,
+            "policy_decision_sha256": view.mission.policy_decision_sha256,
+            "critical_path": list(view.critical_path_task_ids),
+            "resource_budget": snapshot.mission.resource_budget.model_dump(mode="json"),
+            "ready_frontier": _frontier(view.tasks),
+            # Before approval nothing is `ready` yet, so the frontier shown is the
+            # one the graph implies. Say which it is rather than let the reader
+            # assume work has started.
+            "frontier_is_projected": not any(
+                task.state == "ready" for task in view.tasks
+            ),
+            "needs_you": (
+                None
+                if view.needs_you is None
+                else view.needs_you.model_dump(mode="json")
+            ),
+            "task_states": states,
+            "task_blockers": {key: item for key, item in blockers.items() if item},
+            "plan": plan,
+        }
+    finally:
+        close = getattr(projection.store, "close", None)
+        if callable(close):
+            close()
 
 
 def _frontier(tasks) -> list[str]:
@@ -1710,8 +1746,7 @@ def _frontier(tasks) -> list[str]:
     return [
         task.task_id
         for task in tasks
-        if task.task_id in open_ids
-        and not (set(task.dependency_ids) & open_ids)
+        if task.task_id in open_ids and not (set(task.dependency_ids) & open_ids)
     ]
 
 
@@ -2099,9 +2134,7 @@ def _bundle_verify_value(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-_TERMINAL_MISSION_STATES = frozenset(
-    {"completed", "rejected", "failed", "cancelled"}
-)
+_TERMINAL_MISSION_STATES = frozenset({"completed", "rejected", "failed", "cancelled"})
 
 
 def _next_legal_actions(value: dict[str, object]) -> list[str]:
@@ -2115,7 +2148,10 @@ def _next_legal_actions(value: dict[str, object]) -> list[str]:
     status = str(mission["status"])
     needs = value.get("needs_you")
     if status in _TERMINAL_MISSION_STATES:
-        return [f"graphene why {mission_id} PATH", f"graphene mission capsule export {mission_id} --output DIR"]
+        return [
+            f"graphene why {mission_id} PATH",
+            f"graphene mission capsule export {mission_id} --output DIR",
+        ]
     if status == "proposed":
         revision = mission["plan_revision"]
         return [
@@ -2192,7 +2228,10 @@ def _render_status(value: dict[str, object]) -> str:
         _frontier_line(value),
         "RUNNING " + (", ".join(by_state.get("running", ())) or "none"),
         "CRITICAL PATH "
-        + (" → ".join(str(item) for item in value.get("critical_path_task_ids", ())) or "none"),
+        + (
+            " → ".join(str(item) for item in value.get("critical_path_task_ids", ()))
+            or "none"
+        ),
     ]
     changed = sorted(
         {
@@ -2238,7 +2277,9 @@ def _render_status(value: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-_WHY_RECEIPT_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
+_WHY_RECEIPT_KINDS = frozenset(
+    {"test-receipt", "worker-provider-interruption", "worker-provider-receipt"}
+)
 _WHY_TRUST_LINE = (
     "TRUST: every line above is derived from hash-chained mission events and "
     "resolvable evidence references; unknowns are listed, never guessed."
@@ -2341,9 +2382,7 @@ def _render_plan_table(value: dict[str, object]) -> str:
         _columns(_plan_table_rows(value)),
         "",
     ]
-    path = value.get("critical_path") or [
-        task["task_id"] for task in plan["tasks"]
-    ][:1]
+    path = value.get("critical_path") or [task["task_id"] for task in plan["tasks"]][:1]
     lines.append("Critical path: " + " → ".join(path))
     frontier = value.get("ready_frontier") or []
     approval = (
@@ -2351,10 +2390,12 @@ def _render_plan_table(value: dict[str, object]) -> str:
         if approved != revision
         else f"Approved: plan v{revision}"
     )
-    label = "Frontier on approval" if value.get("frontier_is_projected") else "Ready frontier"
-    lines.append(
-        f"{label}: {', '.join(frontier) or 'none'}          {approval}"
+    label = (
+        "Frontier on approval"
+        if value.get("frontier_is_projected")
+        else "Ready frontier"
     )
+    lines.append(f"{label}: {', '.join(frontier) or 'none'}          {approval}")
     blockers = value.get("task_blockers") or {}
     lines.extend(f"Blocked: {key} — {item}" for key, item in sorted(blockers.items()))
     needs = value.get("needs_you")
@@ -2751,6 +2792,10 @@ def _open_live(mission_id: str, *, coordinate_gemini: bool = False) -> int:
     from ..orchestration.mission_control import create_mission_control_app
     from ..orchestration.mission_projection import MissionProjection
 
+    if coordinate_gemini and _supervisor_backed(_mission_runtime(mission_id)):
+        _ensure_detached_supervisor(mission_id)
+        coordinate_gemini = False
+
     read_token = secrets.token_urlsafe(32)
     command_token = secrets.token_urlsafe(32)
     port = _free_port()
@@ -2966,6 +3011,25 @@ def _start_identity(
     if args.driver == "scripted-local" and not criteria:
         criteria = load_scenario(DEFAULT_SCENARIO_PATH).success_criteria
     policy_sha256 = sha256_hex(canonical_json_bytes(policy.model_dump(mode="json")))
+    try:
+        authorization_mode = AuthorizationMode(
+            getattr(args, "authorization_mode", AuthorizationMode.REVIEW_REQUIRED)
+        )
+        finalization_mode = FinalizationMode(
+            getattr(args, "finalization_mode", FinalizationMode.REVIEW_REQUIRED)
+        )
+    except ValueError as error:
+        raise MissionCliError("mission authorization mode is invalid") from error
+    modes_are_bound = hasattr(args, "authorization_mode") or hasattr(
+        args, "finalization_mode"
+    )
+    if (
+        authorization_mode == AuthorizationMode.REVIEW_REQUIRED
+        and finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
+    ):
+        raise MissionCliError(
+            "automatic finalization requires policy pre-authorization"
+        )
     command_id = args.command_id or _command_id(
         "start",
         "mission",
@@ -2978,6 +3042,11 @@ def _start_identity(
         args.max_workers,
         bool(getattr(args, "demo_injected_check_fault", False)),
         policy_sha256,
+        *(
+            (authorization_mode.value, finalization_mode.value)
+            if modes_are_bound
+            else ()
+        ),
     )
     mission_id = "mission_start_" + sha256_hex(command_id.encode())[:24]
     binding = {
@@ -2999,6 +3068,11 @@ def _start_identity(
         "repository_path_sha256": sha256_hex(str(repository).encode()),
         "success_criteria_sha256": sha256_hex(canonical_json_bytes(criteria)),
     }
+    if modes_are_bound:
+        binding.update(
+            authorization_mode=authorization_mode.value,
+            finalization_mode=finalization_mode.value,
+        )
     return command_id, mission_id, repository, head, policy, binding
 
 
@@ -3173,9 +3247,7 @@ def _task_input_bytes(args: argparse.Namespace) -> bytes:
             before = path.lstat()
             if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
                 raise MissionCliError("task input file must be a regular non-symlink")
-            descriptor = os.open(
-                path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-            )
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             with os.fdopen(descriptor, "rb") as stream:
                 opened = os.fstat(stream.fileno())
                 if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
@@ -3273,6 +3345,7 @@ def _gemini_proposal(
     repository: Path,
     runtime: Path,
     store,
+    proposal: PlanProposal | None = None,
 ) -> dict[str, object]:
     if not args.success_criteria:
         raise MissionCliError(
@@ -3282,23 +3355,24 @@ def _gemini_proposal(
     criteria = tuple(sorted(set(args.success_criteria)))
     if len(criteria) != len(args.success_criteria):
         raise MissionCliError("success criteria must be unique")
-    manifest, excerpts = _planning_repository_context(repository, policy)
-    try:
-        proposal = asyncio.run(
-            AdkPlanner.live().propose(
-                policy,
-                PlanningRequest(
-                    mission_id=mission_id,
-                    revision=1,
-                    goal=args.goal,
-                    success_criteria=criteria,
-                    repository_manifest=manifest,
-                    repository_excerpts=excerpts,
-                ),
+    if proposal is None:
+        manifest, excerpts = _planning_repository_context(repository, policy)
+        try:
+            proposal = asyncio.run(
+                AdkPlanner.live().propose(
+                    policy,
+                    PlanningRequest(
+                        mission_id=mission_id,
+                        revision=1,
+                        goal=args.goal,
+                        success_criteria=criteria,
+                        repository_manifest=manifest,
+                        repository_excerpts=excerpts,
+                    ),
+                )
             )
-        )
-    except PlannerError as error:
-        raise MissionCliError(f"{error}; no scripted fallback was used") from error
+        except PlannerError as error:
+            raise MissionCliError(f"{error}; no scripted fallback was used") from error
     created_at = datetime.now(UTC)
     evidence = SQLiteAttemptEvidenceStore(runtime / "planner-evidence.sqlite3")
     receipt = evidence.put_artifact(
@@ -3306,6 +3380,25 @@ def _gemini_proposal(
         canonical_json_bytes(proposal.receipt.model_dump(mode="json")),
     )
     store.bind_artifact_resolver(evidence)
+    try:
+        requested_mode = AuthorizationMode(
+            getattr(args, "authorization_mode", AuthorizationMode.REVIEW_REQUIRED)
+        )
+        requested_finalization = FinalizationMode(
+            getattr(args, "finalization_mode", FinalizationMode.REVIEW_REQUIRED)
+        )
+        policy_decision = evaluate_plan_policy(
+            policy,
+            proposal.plan,
+            goal_request_id=command_id,
+            requested_mode=requested_mode,
+            requested_finalization_mode=requested_finalization,
+        )
+    except ValueError as error:
+        raise MissionCliError("mission authorization request is invalid") from error
+    review_required = (
+        policy_decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
+    )
     mission = Mission(
         mission_id=mission_id,
         policy_id=policy.policy_id,
@@ -3317,10 +3410,10 @@ def _gemini_proposal(
         plan_revision=1,
         creation_source="operator",
         resource_budget=policy.resource_budget,
-        unknowns=(PLAN_AWAITING_REVIEW_UNKNOWN,),
+        unknowns=((PLAN_AWAITING_REVIEW_UNKNOWN,) if review_required else ()),
         created_at=created_at,
     )
-    store.create_mission(
+    created_head = store.create_mission(
         policy,
         mission,
         proposal.plan,
@@ -3328,13 +3421,36 @@ def _gemini_proposal(
         plan_proposal_receipt=receipt,
         recorded_at=created_at,
     )
+    head = store.record_plan_policy_decision(
+        mission_id,
+        _command_id(
+            "record-plan-policy-decision",
+            mission_id,
+            command_id,
+            policy_decision.decision_sha256,
+        ),
+        decision=policy_decision,
+        expected_head=created_head,
+        recorded_at=created_at,
+    )
+    status = store.snapshot(mission_id).mission.status
     return {
-        "status": "proposed",
+        "status": status.value,
         "mission_id": mission_id,
         "driver": "gemini-adk",
-        "proof": "real Google ADK planner proposal; execution requires explicit approval",
+        "proof": (
+            "real Google ADK planner proposal within the exact committed project policy"
+            if not review_required
+            else "real Google ADK planner proposal; committed policy requires review"
+        ),
         "plan_revision": 1,
-        "review_required": True,
+        "plan_sha256": policy_decision.plan_sha256,
+        "requested_authorization_mode": policy_decision.requested_mode.value,
+        "effective_authorization_mode": policy_decision.effective_mode.value,
+        "finalization_mode": policy_decision.finalization_mode.value,
+        "policy_decision_sha256": policy_decision.decision_sha256,
+        "head": head.model_dump(mode="json"),
+        "review_required": review_required,
         "execution_available": True,
         "plan_proposal_receipt_id": receipt.id,
         "plan_proposal_receipt_sha256": receipt.sha256,
@@ -3351,16 +3467,91 @@ def _gemini_proposal(
     }
 
 
+def _ensure_gemini_policy_decision(
+    args: argparse.Namespace,
+    *,
+    command_id: str,
+    policy: ProjectPolicy,
+    store,
+    snapshot,
+):
+    """Close the create/authorize crash window for detached starts."""
+
+    if not hasattr(args, "authorization_mode"):
+        return snapshot
+    events = _mission_events(
+        store, snapshot.mission.mission_id, snapshot.head.event_count
+    )
+    try:
+        committed = plan_policy_decision(events, snapshot.plan.revision)
+    except ValueError as error:
+        raise MissionCliError("committed policy decision is invalid") from error
+    try:
+        decision = evaluate_plan_policy(
+            policy,
+            snapshot.plan,
+            goal_request_id=command_id,
+            requested_mode=AuthorizationMode(args.authorization_mode),
+            requested_finalization_mode=FinalizationMode(
+                getattr(args, "finalization_mode", FinalizationMode.REVIEW_REQUIRED)
+            ),
+        )
+    except ValueError as error:
+        raise MissionCliError("mission authorization request is invalid") from error
+    if committed is not None:
+        if committed != decision:
+            raise MissionCliError(
+                "committed policy decision differs from the start request"
+            )
+        return snapshot
+    store.record_plan_policy_decision(
+        snapshot.mission.mission_id,
+        _command_id(
+            "record-plan-policy-decision",
+            snapshot.mission.mission_id,
+            command_id,
+            decision.decision_sha256,
+        ),
+        decision=decision,
+        expected_head=snapshot.head,
+        recorded_at=datetime.now(UTC),
+    )
+    return store.snapshot(snapshot.mission.mission_id)
+
+
 def _existing_gemini_proposal_value(store, snapshot) -> dict[str, object]:
-    events = store.tail(snapshot.mission.mission_id, 0, 16)
+    events = _mission_events(
+        store, snapshot.mission.mission_id, snapshot.head.event_count
+    )
     proposed = next(event for event in events if event.event_type == "plan.proposed")
+    try:
+        decision = plan_policy_decision(events, snapshot.plan.revision)
+    except ValueError as error:
+        raise MissionCliError("committed policy decision is invalid") from error
+    review_required = (
+        decision is None or decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
+    )
     return {
         "status": snapshot.mission.status.value,
         "mission_id": snapshot.mission.mission_id,
         "driver": "gemini-adk",
-        "proof": "committed real Google ADK planner proposal; execution requires explicit approval",
+        "proof": (
+            "committed real Google ADK plan within the exact project policy"
+            if not review_required
+            else "committed real Google ADK planner proposal; policy requires review"
+        ),
         "plan_revision": snapshot.plan.revision,
-        "review_required": snapshot.mission.status == MissionStatus.PROPOSED,
+        "review_required": review_required,
+        **(
+            {}
+            if decision is None
+            else {
+                "requested_authorization_mode": decision.requested_mode.value,
+                "effective_authorization_mode": decision.effective_mode.value,
+                "finalization_mode": decision.finalization_mode.value,
+                "policy_decision_sha256": decision.decision_sha256,
+            }
+        ),
         "execution_available": True,
         "plan_proposal_receipt_id": proposed.payload.get("plan_proposal_receipt_id"),
         "plan_proposal_receipt_sha256": proposed.payload.get(
@@ -3438,6 +3629,7 @@ def _approve_scripted_start(
     command_id: str,
     runtime: Path,
     simulated: bool,
+    execute: bool = True,
 ) -> dict[str, object]:
     if not scripted_supported():
         raise MissionCliError(
@@ -3464,6 +3656,8 @@ def _approve_scripted_start(
         truth_kind=truth_kind,
         recorded_at=datetime.now(UTC),
     )
+    if not execute:
+        return _scripted_proposal_value(store, mission_id, replayed=True)
     run = execute_scripted_mission(
         store=store,
         runtime=runtime,
@@ -3538,7 +3732,9 @@ def _committed_blobs(repository: Path, base_sha: str) -> dict[str, tuple[str, in
         fields = header.split()
         if len(fields) != 4:
             raise MissionCliError("repository manifest could not be read")
-        mode, kind, object_id, size = (item.decode("ascii", "replace") for item in fields)
+        mode, kind, object_id, size = (
+            item.decode("ascii", "replace") for item in fields
+        )
         if kind != "blob" or mode not in {"100644", "100755"}:
             continue
         blobs[os.fsdecode(encoded)] = (object_id, int(size))
@@ -3805,7 +4001,7 @@ def _runtime_assignment(task: Task, policy: ProjectPolicy) -> RuntimeAssignment:
 
 
 def _prior_failure(store, evidence, mission_id: str, dispatch) -> PriorFailure | None:
-    """What the previous attempt at this task's check reported, or None first time.
+    """What the previous attempt learned, or None on the first attempt.
 
     Read from committed attempt evidence, not from memory: the retry is a fresh
     lease under a strictly higher fence and may be served by a different worker.
@@ -3829,6 +4025,66 @@ def _prior_failure(store, evidence, mission_id: str, dispatch) -> PriorFailure |
     )
     if prior is None or not prior.result_code:
         return None
+    if prior.result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED.value:
+        interruption_refs = tuple(
+            item
+            for item in prior.evidence_refs
+            if item.kind == WORKER_PROVIDER_INTERRUPTION_KIND
+        )
+        if len(interruption_refs) != 1:
+            return None
+        interruption_ref = interruption_refs[0]
+        raw = evidence.resolve(interruption_ref.kind, interruption_ref.id)
+        if raw is None or sha256_hex(raw) != interruption_ref.sha256:
+            return None
+        try:
+            interruption = WorkerProviderInterruption.model_validate_json(raw)
+        except ValueError:
+            return None
+        if (
+            canonical_json_bytes(interruption.model_dump(mode="json")) != raw
+            or (
+                interruption.mission_id,
+                interruption.task_id,
+                interruption.attempt_id,
+                interruption.lease_id,
+                interruption.fencing_token,
+            )
+            != (
+                prior.mission_id,
+                prior.task_id,
+                prior.attempt_id,
+                prior.lease_id,
+                prior.fencing_token,
+            )
+            or (
+                interruption.sdk_invocation_id is not None
+                and interruption.sdk_invocation_id != prior.invocation_id
+            )
+        ):
+            return None
+        return PriorFailure(
+            attempt_id=prior.attempt_id,
+            attempt_number=prior.attempt_number,
+            fencing_token=prior.fencing_token,
+            result_code=prior.result_code,
+            failure_class="provider_interrupted",
+            summary=(
+                "The prior model child was interrupted "
+                + (
+                    "after provider transport entry. "
+                    if interruption.provider_dispatch_state
+                    == "transport_acknowledged"
+                    else "before provider transport entry could be confirmed. "
+                )
+                + "Repository effect is known absent; provider and billing outcomes "
+                "remain unknown."
+            ),
+            receipt_sha256=interruption_ref.sha256,
+            failure_signature=canonical_json_sha256(
+                (prior.result_code, interruption.request_sha256)
+            ),
+        )
     diagnostic_ref = next(
         (item for item in prior.evidence_refs if item.kind == CHECK_DIAGNOSTIC_KIND),
         None,
@@ -4043,20 +4299,33 @@ def _host_sandbox_supported() -> bool:
     return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
 
 
-def _select_check_executor() -> str:
-    """Fail closed on anything but the two explicit fixture-tests executors.
+def _select_check_executor(requested: str | None = None) -> str:
+    """Fail closed on anything but the two reviewed check executors.
 
     The host-sandbox choice is also checked for platform support here, before
     any worker runs, so an unsupported host never spends a model call on an
     attempt whose check can only fail.
     """
 
-    requested = _requested_check_executor()
+    requested = _requested_check_executor() if requested is None else requested
     if requested not in _CHECK_EXECUTOR_CHOICES:
         raise MissionCliError(_CHECK_EXECUTOR_ERROR)
     if requested == "host-sandbox" and not _host_sandbox_supported():
         raise MissionCliError(_HOST_SANDBOX_UNSUPPORTED)
     return requested
+
+
+def _mission_check_executor(mission_id: str) -> str:
+    runtime = _mission_runtime(mission_id)
+    path = runtime / "start-request.json"
+    if not path.exists() and not path.is_symlink():
+        return _select_check_executor()
+    bound = _private_start_binding(runtime).get("check_executor")
+    if bound is None:  # Legacy start requests selected from their current environment.
+        return _select_check_executor()
+    if not isinstance(bound, str):
+        raise MissionCliError("mission check executor binding is invalid")
+    return _select_check_executor(bound)
 
 
 def _check_executor_status(sandbox: bool) -> dict[str, object]:
@@ -4134,6 +4403,96 @@ def _provider_receipt_references(snapshot) -> list[dict[str, object]]:
     ]
 
 
+def _provider_interruption_references(snapshot) -> list[dict[str, object]]:
+    """Evidence-bound provider interruption references of WORK attempts only."""
+
+    kinds = _work_task_kinds(snapshot)
+    return [
+        {
+            "attempt_id": attempt.attempt_id,
+            "worker_id": attempt.worker_id,
+            "kind": reference.kind,
+            "id": reference.id,
+            "sha256": reference.sha256,
+        }
+        for attempt in snapshot.attempts
+        if kinds.get(attempt.task_id) == TaskKind.WORK
+        for reference in attempt.evidence_refs
+        if reference.kind == WORKER_PROVIDER_INTERRUPTION_KIND
+    ]
+
+
+def _replayed_provider_interruptions(
+    snapshot, evidence: SQLiteAttemptEvidenceStore
+) -> tuple[list[dict[str, object]], list[str], list[str], list[str]]:
+    """Resolve interruption proof and state provider/billing unknowns explicitly."""
+
+    kinds = _work_task_kinds(snapshot)
+    interruptions: list[dict[str, object]] = []
+    resolution_unknowns: list[str] = []
+    provider_unknowns: list[str] = []
+    billing_unknowns: list[str] = []
+    for attempt in snapshot.attempts:
+        if kinds.get(attempt.task_id) != TaskKind.WORK:
+            continue
+        has_interruption = any(
+            reference.kind == WORKER_PROVIDER_INTERRUPTION_KIND
+            for reference in attempt.evidence_refs
+        )
+        if (
+            attempt.result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED.value
+            or has_interruption
+        ):
+            provider_unknowns.append(
+                f"provider outcome for interrupted attempt {attempt.attempt_id} is unknown"
+            )
+            billing_unknowns.append(
+                f"billing outcome for interrupted attempt {attempt.attempt_id} is unknown"
+            )
+        for reference in attempt.evidence_refs:
+            if reference.kind != WORKER_PROVIDER_INTERRUPTION_KIND:
+                continue
+            label = (
+                f"worker provider interruption {reference.id} for attempt "
+                f"{attempt.attempt_id}"
+            )
+            content = evidence.resolve(reference.kind, reference.id)
+            if (
+                not isinstance(content, bytes)
+                or sha256_hex(content) != reference.sha256
+            ):
+                resolution_unknowns.append(f"{label} is unresolvable")
+                continue
+            try:
+                interruption = WorkerProviderInterruption.model_validate_json(content)
+            except ValueError:
+                resolution_unknowns.append(f"{label} is invalid")
+                continue
+            if canonical_json_bytes(interruption.model_dump(mode="json")) != content:
+                resolution_unknowns.append(f"{label} is not canonical")
+                continue
+            if (
+                interruption.mission_id,
+                interruption.task_id,
+                interruption.attempt_id,
+                interruption.lease_id,
+                interruption.fencing_token,
+            ) != (
+                attempt.mission_id,
+                attempt.task_id,
+                attempt.attempt_id,
+                attempt.lease_id,
+                attempt.fencing_token,
+            ) or (
+                interruption.sdk_invocation_id is not None
+                and interruption.sdk_invocation_id != attempt.invocation_id
+            ):
+                resolution_unknowns.append(f"{label} names another dispatch")
+                continue
+            interruptions.append(interruption.model_dump(mode="json"))
+    return interruptions, resolution_unknowns, provider_unknowns, billing_unknowns
+
+
 def _replayed_provider_receipts(
     snapshot, evidence: SQLiteAttemptEvidenceStore
 ) -> tuple[
@@ -4167,7 +4526,10 @@ def _replayed_provider_receipts(
                 f"{attempt.attempt_id}"
             )
             content = evidence.resolve(reference.kind, reference.id)
-            if not isinstance(content, bytes) or sha256_hex(content) != reference.sha256:
+            if (
+                not isinstance(content, bytes)
+                or sha256_hex(content) != reference.sha256
+            ):
                 unknowns.append(f"{label} is unresolvable")
                 continue
             try:
@@ -4236,6 +4598,11 @@ def _adk_result_value(
         store.bind_artifact_resolver(evidence)
     candidate, verification = scripted_result_artifacts(store, evidence, mission_id)
     snapshot = store.snapshot(mission_id)
+    events = _mission_events(store, mission_id, snapshot.head.event_count)
+    try:
+        decision = plan_policy_decision(events, snapshot.plan.revision)
+    except ValueError as error:
+        raise MissionCliError("committed policy decision is invalid") from error
     # Provider receipts are reported only from evidence-bound references, on
     # the live path and on replay alike. An in-memory runtime receipt whose
     # evidence binding failed is not a receipt Graphene can cite, so it is
@@ -4247,6 +4614,12 @@ def _adk_result_value(
         receipt_unknowns,
         receipts_by_attempt,
     ) = _replayed_provider_receipts(snapshot, evidence)
+    (
+        provider_interruptions,
+        provider_interruption_unknowns,
+        provider_outcome_unknowns,
+        billing_outcome_unknowns,
+    ) = _replayed_provider_interruptions(snapshot, evidence)
     # Overlap carries the lifetime bases from the store clock and, from the
     # same evidence-resolved receipts, the provider-call basis a live claim
     # must cite.
@@ -4266,17 +4639,103 @@ def _adk_result_value(
         "provider_receipts": provider_receipts,
         "provider_receipt_references": _provider_receipt_references(snapshot),
         "receipt_unknowns": receipt_unknowns,
+        "provider_interruptions": provider_interruptions,
+        "provider_interruption_references": _provider_interruption_references(snapshot),
+        "provider_interruption_unknowns": provider_interruption_unknowns,
+        "provider_outcome_unknowns": provider_outcome_unknowns,
+        "billing_outcome_unknowns": billing_outcome_unknowns,
         "parallel_overlap": overlap.model_dump(mode="json"),
         "parallel_overlap_observed": overlap.observed,
         "provider_call_overlap_observed": overlap.provider_call_observed,
-        "review_required": snapshot.mission.status == MissionStatus.AWAITING_RESULT,
+        "review_required": (
+            snapshot.mission.status == MissionStatus.AWAITING_RESULT
+            and (
+                decision is None
+                or decision.finalization_mode == FinalizationMode.REVIEW_REQUIRED
+            )
+        ),
+        **(
+            {}
+            if decision is None
+            else {
+                "requested_authorization_mode": decision.requested_mode.value,
+                "effective_authorization_mode": decision.effective_mode.value,
+                "finalization_mode": decision.finalization_mode.value,
+                "policy_decision_sha256": decision.decision_sha256,
+            }
+        ),
         "checkout_mutated": False,
         **({"simulation_truth": demo_truth} if demo_truth else {}),
         **({"result_replayed": True} if replayed else {}),
     }
 
 
+@contextmanager
+def _mission_execution_lock(mission_id: str) -> Iterator[None]:
+    try:
+        import fcntl
+    except ImportError as error:
+        raise MissionCliError("mission execution locking is unavailable") from error
+
+    runtime = _mission_runtime(mission_id)
+    path = runtime / "execution.lock"
+    descriptor = os.open(
+        path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or (hasattr(os, "getuid") and metadata.st_uid != os.getuid())
+        ):
+            raise MissionCliError("mission execution lock is unsafe")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _supervisor_backed(runtime: Path) -> bool:
+    request = runtime / "supervisor-request.json"
+    if request.is_symlink():
+        raise MissionCliError("supervisor request binding is unsafe")
+    return request.is_file()
+
+
+def _ensure_detached_supervisor(mission_id: str):
+    from ..orchestration.supervisor import SupervisorError, ensure_supervisor
+
+    try:
+        return ensure_supervisor(mission_id, recover_failed=True)
+    except SupervisorError as error:
+        raise MissionCliError("detached supervisor could not be signalled") from error
+
+
 def _execute_adk_mission(
+    *,
+    store,
+    mission_id: str,
+    registry: WorkerRegistry | None = None,
+    check_runner=None,
+    resource_sampler: Callable[[str], Sequence[ResourcePoint]] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> dict[str, object]:
+    with _mission_execution_lock(mission_id):
+        return _execute_adk_mission_owned(
+            store=store,
+            mission_id=mission_id,
+            registry=registry,
+            check_runner=check_runner,
+            resource_sampler=resource_sampler,
+            should_cancel=should_cancel,
+        )
+
+
+def _execute_adk_mission_owned(
     *,
     store,
     mission_id: str,
@@ -4292,9 +4751,18 @@ def _execute_adk_mission(
         return _adk_result_value(store, mission_id, replayed=True)
     if snapshot.mission.status != MissionStatus.RUNNING:
         raise MissionCliError("Gemini mission is not approved for execution")
-    check_executor = _select_check_executor()
+    check_executor = _mission_check_executor(mission_id)
     source, policy, requested_workers = _gemini_source(mission_id, snapshot)
     runtime = _mission_runtime(mission_id)
+    if should_cancel is None:
+        def durable_cancellation_requested() -> bool:
+            return (
+                _read_cancellation_request(runtime) is not None
+                or store.snapshot(mission_id).mission.status
+                == MissionStatus.CANCELLED
+            )
+
+        should_cancel = durable_cancellation_requested
     _ensure_owned_result_repository(source, runtime, snapshot.mission.base_sha)
     runtime_root = runtime / "adk-runtime"
     runtime_root.mkdir(mode=0o700, exist_ok=True)
@@ -4360,7 +4828,11 @@ def _execute_adk_mission(
             for item in templates
         ):
             check_runner = _policy_check
-        elif len(templates) == 1 and templates[0].template_id == "fixture-tests":
+        elif templates and all(
+            item.cwd is None
+            and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
+            for item in templates
+        ):
             if check_executor == "host-sandbox":
                 # Explicit macOS host alternative; the check subprocess is
                 # registered in the same OwnedProcessRegistry that
@@ -4492,6 +4964,8 @@ def _execute_adk_mission(
             should_cancel=should_cancel,
         ).run(mission_id)
     except RunnerCancelled:
+        if _read_cancellation_request(runtime) is not None:
+            _reconcile_cancellation_request(mission_id)
         raise
     except RunnerError as error:
         raise MissionCliError(
@@ -4575,7 +5049,7 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         raise MissionCliError(
             "outbound Gemini worker configuration is unavailable"
         ) from error
-    check_executor = _select_check_executor()
+    check_executor = _mission_check_executor(args.mission_id)
     runtime = _mission_runtime(args.mission_id) / "outbound-executor"
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(runtime, 0o700)
@@ -4586,7 +5060,11 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         for item in templates
     ):
         check_runner = _policy_check
-    elif len(templates) == 1 and templates[0].template_id == "fixture-tests":
+    elif templates and all(
+        item.cwd is None
+        and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
+        for item in templates
+    ):
         # Same explicit selection as the local ADK path; no silent fallback.
         if check_executor == "host-sandbox":
             check_runner = None  # built per attempt once its runtime exists
@@ -4829,6 +5307,8 @@ def _start(args: argparse.Namespace) -> dict[str, object]:
             runtime=runtime,
             binding=binding,
         )
+    if _supervisor_backed(runtime):
+        _ensure_detached_supervisor(mission_id)
     if args.open_viewer:
         _open_live(mission_id, coordinate_gemini=args.driver == "gemini-adk")
     return result
@@ -4843,6 +5323,7 @@ def _start_bound(
     repository: Path,
     runtime: Path,
     binding: dict[str, object],
+    gemini_proposal: PlanProposal | None = None,
 ) -> dict[str, object]:
     store = _store_for_mission(mission_id)
     existing = _existing_mission_snapshot(store, mission_id)
@@ -4892,6 +5373,13 @@ def _start_bound(
                 "start command request differs from the committed mission"
             )
         if args.driver == "gemini-adk":
+            existing = _ensure_gemini_policy_decision(
+                args,
+                command_id=command_id,
+                policy=policy,
+                store=store,
+                snapshot=existing,
+            )
             existing_status = getattr(
                 existing.mission, "status", MissionStatus.PROPOSED
             )
@@ -4902,7 +5390,10 @@ def _start_bound(
             }:
                 result = _adk_result_value(store, mission_id, replayed=True)
             elif existing_status == MissionStatus.RUNNING and not args.open_viewer:
-                result = _execute_adk_mission(store=store, mission_id=mission_id)
+                if _supervisor_backed(runtime):
+                    result = _existing_gemini_proposal_value(store, existing)
+                else:
+                    result = _execute_adk_mission(store=store, mission_id=mission_id)
             else:
                 result = _existing_gemini_proposal_value(store, existing)
         elif existing.mission.status in {
@@ -4912,16 +5403,19 @@ def _start_bound(
         }:
             result = _committed_scripted_run_value(store, mission_id)
         elif existing.mission.status == MissionStatus.RUNNING:
-            run = execute_scripted_mission(
-                store=store,
-                runtime=runtime,
-                mission_id=mission_id,
-            )
-            result = _scripted_run_value(
-                store,
-                run,
-                approval_truth="committed_plan_approval",
-            )
+            if _supervisor_backed(runtime):
+                result = _scripted_proposal_value(store, mission_id, replayed=True)
+            else:
+                run = execute_scripted_mission(
+                    store=store,
+                    runtime=runtime,
+                    mission_id=mission_id,
+                )
+                result = _scripted_run_value(
+                    store,
+                    run,
+                    approval_truth="committed_plan_approval",
+                )
         elif existing.mission.status == MissionStatus.PROPOSED and args.auto_approve:
             result = _approve_scripted_start(
                 store,
@@ -4929,6 +5423,7 @@ def _start_bound(
                 command_id=command_id,
                 runtime=runtime,
                 simulated=True,
+                execute=not _supervisor_backed(runtime),
             )
         else:
             result = _scripted_proposal_value(store, mission_id, replayed=True)
@@ -4941,10 +5436,13 @@ def _start_bound(
             repository=repository,
             runtime=runtime,
             store=store,
+            proposal=gemini_proposal,
         )
     else:
         scenario = load_scenario(DEFAULT_SCENARIO_PATH)
-        if args.success_criteria:
+        if args.success_criteria and tuple(sorted(set(args.success_criteria))) != (
+            scenario.success_criteria
+        ):
             raise MissionCliError(
                 "scripted-local uses the fixed fixture success criteria"
             )
@@ -4966,6 +5464,7 @@ def _start_bound(
                 command_id=command_id,
                 runtime=runtime,
                 simulated=True,
+                execute=not _supervisor_backed(runtime),
             )
         interactive = (
             not args.auto_approve
@@ -5200,7 +5699,9 @@ def _database_status() -> dict[str, object]:
     if database.is_symlink() or not database.is_file():
         raise MissionCliError("mission database path is unsafe")
     try:
-        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        with serialized_connection(
+            lambda: sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        ) as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             tables = {
                 row[0]
@@ -5260,7 +5761,9 @@ def _database_command(args: argparse.Namespace) -> dict[str, object]:
         return {**status, "verified_missions": 0}
     try:
         store = _store()
-        with sqlite3.connect(f"file:{store.path}?mode=ro", uri=True) as connection:
+        with serialized_connection(
+            lambda: sqlite3.connect(f"file:{store.path}?mode=ro", uri=True)
+        ) as connection:
             mission_ids = tuple(
                 row[0]
                 for row in connection.execute(
@@ -5337,6 +5840,144 @@ def _result_decision(args: argparse.Namespace, *, approved: bool) -> dict[str, o
     }
 
 
+_CANCELLATION_REQUEST = "cancellation-request.json"
+
+
+def _read_cancellation_request(runtime: Path) -> dict[str, object] | None:
+    path = runtime / _CANCELLATION_REQUEST
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_size > 16_384
+    ):
+        raise ProcessControlError("cancellation request journal is unsafe")
+    try:
+        content = path.read_bytes()
+        raw = json.loads(content)
+        if set(raw) != {
+            "command_id",
+            "expected_head",
+            "mission_id",
+            "operator_label",
+            "rationale",
+            "recorded_at",
+            "schema_version",
+            "truth_kind",
+        } or canonical_json_bytes(raw) != content:
+            raise ValueError
+        if raw["schema_version"] != 1:
+            raise ValueError
+        MissionHead.model_validate(raw["expected_head"])
+        TruthKind(raw["truth_kind"])
+        when = datetime.fromisoformat(raw["recorded_at"])
+        if when.tzinfo is None:
+            raise ValueError
+        if not all(
+            isinstance(raw[key], str)
+            for key in ("command_id", "mission_id", "operator_label")
+        ) or not (
+            raw["rationale"] is None or isinstance(raw["rationale"], str)
+        ):
+            raise ValueError
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
+        raise ProcessControlError("cancellation request journal is invalid") from error
+    return raw
+
+
+def _ensure_cancellation_request(
+    runtime: Path,
+    *,
+    mission_id: str,
+    command_id: str,
+    expected_head: MissionHead,
+    operator_label: str,
+    rationale: str | None,
+    truth_kind: TruthKind,
+    recorded_at: datetime,
+) -> dict[str, object]:
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "mission_id": mission_id,
+        "command_id": command_id,
+        "expected_head": expected_head.model_dump(mode="json"),
+        "operator_label": operator_label,
+        "rationale": rationale,
+        "truth_kind": truth_kind.value,
+        "recorded_at": recorded_at.isoformat(),
+    }
+    stable_keys = set(value) - {"recorded_at"}
+    existing = _read_cancellation_request(runtime)
+    if existing is not None:
+        if any(existing[key] != value[key] for key in stable_keys):
+            raise ProcessControlError("cancellation request journal changed")
+        return existing
+    try:
+        _atomic_create(
+            runtime / _CANCELLATION_REQUEST,
+            canonical_json_bytes(value),
+        )
+    except MissionCliError as error:
+        existing = _read_cancellation_request(runtime)
+        if existing is None or any(
+            existing[key] != value[key] for key in stable_keys
+        ):
+            raise ProcessControlError(
+                "cancellation request could not be journaled"
+            ) from error
+        _durably_confirm_cancellation_request(runtime)
+        return existing
+    return value
+
+
+def _clear_cancellation_request(runtime: Path) -> None:
+    (runtime / _CANCELLATION_REQUEST).unlink(missing_ok=True)
+    descriptor = os.open(runtime, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _durably_confirm_cancellation_request(runtime: Path) -> None:
+    path = runtime / _CANCELLATION_REQUEST
+    descriptor = -1
+    directory = -1
+    try:
+        descriptor = os.open(
+            path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        )
+        opened = os.fstat(descriptor)
+        visible = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or stat.S_IMODE(opened.st_mode) & 0o077
+            or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
+        ):
+            raise OSError("cancellation request identity changed")
+        os.fsync(descriptor)
+        directory = os.open(
+            runtime,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        os.fsync(directory)
+    except OSError as error:
+        raise ProcessControlError(
+            "cancellation request durability is unconfirmed"
+        ) from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if directory >= 0:
+            os.close(directory)
+
+
 def _cancel_with_owned_cleanup(
     *,
     store,
@@ -5349,6 +5990,34 @@ def _cancel_with_owned_cleanup(
     recorded_at: datetime,
 ) -> MissionHead:
     snapshot = store.snapshot(mission_id)
+    mission_runtime = _mission_runtime(mission_id)
+    pending = _read_cancellation_request(mission_runtime)
+    if pending is None and snapshot.mission.status == MissionStatus.CANCELLED:
+        return snapshot.head
+    bound_head = (
+        MissionHead.model_validate(pending["expected_head"])
+        if pending is not None
+        else (expected_head or snapshot.head)
+    )
+    if (
+        expected_head is not None
+        and expected_head != snapshot.head
+        and pending is None
+    ):
+        from ..orchestration.sqlite_mission_store import MissionConflict
+
+        raise MissionConflict("mission head changed")
+    pending = _ensure_cancellation_request(
+        mission_runtime,
+        mission_id=mission_id,
+        command_id=command_id,
+        expected_head=bound_head,
+        operator_label=operator_label,
+        rationale=rationale,
+        truth_kind=truth_kind,
+        recorded_at=recorded_at,
+    )
+    recorded_at = datetime.fromisoformat(str(pending["recorded_at"]))
     worker_ids = tuple(
         sorted(
             {
@@ -5358,24 +6027,297 @@ def _cancel_with_owned_cleanup(
             }
         )
     )
-    active = store.recover_dispatches(mission_id, worker_ids, recorded_at=recorded_at)
-    registry = OwnedProcessRegistry(_mission_runtime(mission_id))
+    active = store.recover_dispatches(
+        mission_id, worker_ids, recorded_at=recorded_at, include_expired=True
+    )
+    registry = OwnedProcessRegistry(mission_runtime)
     prepared = registry.prepare_cancel(active)
     durable = registry.records_for_mission(mission_id)
-    targets = tuple({item.attempt_id: item for item in (*prepared, *durable)}.values())
-    for owned in targets:
-        registry.terminate_owned(owned)
-    if snapshot.mission.status == MissionStatus.CANCELLED:
-        return snapshot.head
-    return store.cancel(
-        mission_id,
-        command_id,
-        expected_head=expected_head or store.head(mission_id),
-        operator_label=operator_label,
-        rationale=rationale,
-        truth_kind=truth_kind,
-        recorded_at=recorded_at,
+    targets = tuple(
+        {
+            (item.attempt_id, item.pid): item for item in (*prepared, *durable)
+        }.values()
     )
+    terminated = {
+        (owned.attempt_id, owned.pid): registry.terminate_owned(
+            owned, retain_record=True
+        )
+        for owned in targets
+    }
+
+    docker_reconciled: set[str] = set()
+    policy_templates = getattr(snapshot.policy, "command_templates", ())
+    sandbox_template_ids = {item[0] for item in SANDBOX_CHECK_TEMPLATES}
+    docker_checks = any(
+        item.cwd is None
+        and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
+        for item in policy_templates
+    ) or any(
+        template_id in sandbox_template_ids
+        for template_id in getattr(snapshot.policy, "command_template_ids", ())
+    )
+    if docker_checks and _mission_check_executor(mission_id) == "docker":
+        docker = DockerExecutor()
+        try:
+            for dispatch in active:
+                if docker.reconcile_owned(dispatch.attempt_id):
+                    docker_reconciled.add(dispatch.attempt_id)
+        except Exception as error:
+            raise ProcessControlError(
+                "owned check container could not be reconciled"
+            ) from error
+
+    receipt_attempts = {
+        dispatch.attempt_id
+        for dispatch in active
+        if any(
+            (
+                root
+                / "worker-receipts"
+                / (sha256_hex(dispatch.attempt_id.encode()) + ".json")
+            ).is_file()
+            for root in (
+                mission_runtime / "adk-runtime",
+                mission_runtime / "outbound-executor",
+            )
+        )
+    }
+    reconciliation_attempts = {
+        *(item.attempt_id for item in targets),
+        *docker_reconciled,
+        *receipt_attempts,
+    }
+    evidence = (
+        _mission_evidence(store, mission_id) if reconciliation_attempts else None
+    )
+    attempts = {item.attempt_id: item for item in snapshot.attempts}
+    dispatches = {item.attempt_id: item for item in active}
+    runtime_roots: dict[str, Path] = {}
+    runs = {}
+    targets_by_attempt = {
+        attempt_id: tuple(
+            item for item in targets if item.attempt_id == attempt_id
+        )
+        for attempt_id in reconciliation_attempts
+    }
+    for attempt_id, owned_targets in sorted(targets_by_attempt.items()):
+        attempt = attempts.get(attempt_id)
+        if attempt is None:
+            raise ProcessControlError("owned process names no mission attempt")
+        receipt_name = sha256_hex(attempt_id.encode()) + ".json"
+        available = tuple(
+            root
+            for root in (
+                mission_runtime / "adk-runtime",
+                mission_runtime / "outbound-executor",
+            )
+            if (root / "worker-receipts").is_dir()
+        )
+        marked = tuple(
+            root
+            for root in available
+            if (
+                (root / "worker-receipts" / receipt_name).is_file()
+                or (
+                    root
+                    / "worker-workspaces"
+                    / sha256_hex(attempt_id.encode())
+                ).is_dir()
+            )
+        )
+        candidates = marked or available
+        if len(candidates) > 1:
+            raise ProcessControlError("owned worker runtime is ambiguous")
+        if not candidates:
+            continue
+        runtime_roots[attempt_id] = candidates[0]
+        dispatch = dispatches.get(attempt_id)
+        if dispatch is None and attempt.state in {
+            AttemptState.COMMITTED,
+            AttemptState.FAILED,
+            AttemptState.CANCELLED,
+        }:
+            dispatch, _ = WorkerRuntime.dispatch_from_snapshot(
+                snapshot, attempt_id
+            )
+        if dispatch is not None:
+            assert evidence is not None
+            barrier = registry.confirm_model_dispatch_barrier(dispatch)
+            model_targets = tuple(
+                item
+                for item in owned_targets
+                if item.model_request_sha256 is not None
+                or (
+                    barrier is not None
+                    and (
+                        item.pid,
+                        item.pgid,
+                        item.started_at,
+                        item.birth_token,
+                        item.executable,
+                    )
+                    == (
+                        barrier.pid,
+                        barrier.pgid,
+                        barrier.started_at,
+                        barrier.birth_token,
+                        barrier.executable,
+                    )
+                )
+            )
+            if len(model_targets) > 1:
+                raise ProcessControlError("model worker ownership is ambiguous")
+            model_owned = model_targets[0] if model_targets else None
+            runs[attempt_id] = WorkerRuntime.reconcile_cancellation(
+                dispatch,
+                runtime=candidates[0],
+                evidence=evidence,
+                interruption=(
+                    None
+                    if model_owned is None
+                    else WorkerRuntime.cancellation_interruption(
+                        dispatch,
+                        model_owned,
+                        barrier,
+                        requested_model=LIVE_GEMINI_MODEL,
+                        signal_number=terminated[
+                            (model_owned.attempt_id, model_owned.pid)
+                        ],
+                    )
+                ),
+                recorded_at=recorded_at,
+            )
+
+    worker_runtime_attempts = {
+        dispatch.attempt_id
+        for dispatch in active
+        if any(
+            (root / "worker-receipts").is_dir()
+            for root in (
+                mission_runtime / "adk-runtime",
+                mission_runtime / "outbound-executor",
+            )
+        )
+    }
+    missing = worker_runtime_attempts - set(runs)
+    if missing:
+        raise ProcessControlError(
+            "active worker cancellation has not reached a durable receipt boundary"
+        )
+
+    head = snapshot.head
+    if snapshot.mission.status != MissionStatus.CANCELLED:
+        head = store.cancel(
+            mission_id,
+            command_id,
+            expected_head=snapshot.head,
+            operator_label=operator_label,
+            rationale=rationale,
+            truth_kind=truth_kind,
+            recorded_at=recorded_at,
+            cancelled_attempt_results=tuple(
+                (attempt_id, run.result)
+                for attempt_id, run in sorted(runs.items())
+                if attempts[attempt_id].state == AttemptState.RUNNING
+            ),
+        )
+
+    committed = store.snapshot(mission_id)
+    committed_attempts = {item.attempt_id: item for item in committed.attempts}
+    for owned in targets:
+        attempt = committed_attempts.get(owned.attempt_id)
+        if (
+            committed.mission.status != MissionStatus.CANCELLED
+            or attempt is None
+            or attempt.state
+            not in {
+                AttemptState.COMMITTED,
+                AttemptState.FAILED,
+                AttemptState.CANCELLED,
+            }
+        ):
+            raise ProcessControlError("owned worker cancellation is not committed")
+        runtime_root = runtime_roots.get(owned.attempt_id)
+        if runtime_root is not None:
+            assert evidence is not None
+            receipt = WorkerRuntime.cancellation_receipt_for_attempt(
+                runtime=runtime_root,
+                evidence=evidence,
+                attempt=attempt,
+            )
+            if receipt is None or not WorkerRuntime.terminal_receipt_is_committed(
+                receipt, attempt
+            ):
+                raise ProcessControlError(
+                    "owned worker cancellation receipt is not committed"
+                )
+        registry.remove_exact(owned)
+    _clear_cancellation_request(mission_runtime)
+    return head
+
+
+def _reconcile_cancellation_request(mission_id: str) -> bool:
+    """Finish one durable operator cancellation after a CLI/runtime crash."""
+
+    runtime = _mission_runtime(mission_id)
+    request = _read_cancellation_request(runtime)
+    if request is None:
+        return False
+    store = _store_for_mission(mission_id)
+    try:
+        _cancel_with_owned_cleanup(
+            store=store,
+            mission_id=mission_id,
+            command_id=str(request["command_id"]),
+            expected_head=MissionHead.model_validate(request["expected_head"]),
+            operator_label=str(request["operator_label"]),
+            rationale=(
+                None
+                if request["rationale"] is None
+                else str(request["rationale"])
+            ),
+            truth_kind=TruthKind(str(request["truth_kind"])),
+            recorded_at=datetime.fromisoformat(str(request["recorded_at"])),
+        )
+        return True
+    finally:
+        store.close()
+
+
+def _reconcile_cancellation_requests(
+    *, on_failure: Callable[[str], object] | None = None
+) -> int:
+    """Recover bounded direct and supervised cancellation journals at startup."""
+
+    recovered = 0
+    seen = 0
+    for parent in (_state_root() / "missions", _state_root() / "scripted"):
+        if not parent.exists():
+            continue
+        for runtime in sorted(parent.iterdir()):
+            seen += 1
+            if seen > 4_096:
+                raise ProcessControlError(
+                    "cancellation request registry exceeds its safe limit"
+                )
+            mission_id: str | None = None
+            try:
+                if not (runtime / _CANCELLATION_REQUEST).exists():
+                    continue
+                request = _read_cancellation_request(runtime)
+                assert request is not None
+                mission_id = str(request["mission_id"])
+                if runtime != _mission_runtime(mission_id):
+                    raise ProcessControlError(
+                        "cancellation request journal is in the wrong runtime"
+                    )
+                recovered += int(_reconcile_cancellation_request(mission_id))
+            except Exception:
+                # One unavailable exact owner must leave its request durable,
+                # but must not prevent unrelated missions from recovering.
+                if on_failure is not None and mission_id is not None:
+                    on_failure(mission_id)
+    return recovered
 
 
 def _mutate(args: argparse.Namespace) -> dict[str, object]:
@@ -5424,7 +6366,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     truth_kind=truth_kind,
                     recorded_at=now,
                 )
-            except ProcessControlError as error:
+            except (ProcessControlError, RuntimeFailure) as error:
                 raise MissionCliError(
                     "cancellation aborted because owned worker cleanup failed"
                 ) from error
@@ -5474,6 +6416,10 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             raise MissionCliError(
                 "mission state changed but an owned worker could not be signalled"
             ) from error
+        if action == "resume" and _supervisor_backed(
+            _mission_runtime(args.mission_id)
+        ):
+            _ensure_detached_supervisor(args.mission_id)
     elif action == "retry":
         truth_kind = _truth_kind(args)
         expected_head = store.head(args.mission_id)
@@ -5553,9 +6499,15 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     recorded_at=now,
                     expected_plan_sha256=plan_sha256,
                 )
+            runtime = _mission_runtime(args.mission_id)
+            if _supervisor_backed(runtime):
+                _ensure_detached_supervisor(args.mission_id)
+                return _scripted_proposal_value(
+                    store, args.mission_id, replayed=True
+                )
             run = execute_scripted_mission(
                 store=store,
-                runtime=_mission_runtime(args.mission_id),
+                runtime=runtime,
                 mission_id=args.mission_id,
             )
             return _scripted_run_value(
@@ -5583,6 +6535,12 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     truth_kind=truth_kind,
                     recorded_at=now,
                     expected_plan_sha256=plan_sha256,
+                )
+            runtime = _mission_runtime(args.mission_id)
+            if _supervisor_backed(runtime):
+                _ensure_detached_supervisor(args.mission_id)
+                return _existing_gemini_proposal_value(
+                    store, store.snapshot(args.mission_id)
                 )
             return _execute_adk_mission(store=store, mission_id=args.mission_id)
         result = store.approve_plan(
@@ -5852,9 +6810,9 @@ def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
             ):
                 # A proposal prints the contract it just compiled, not an
                 # identifier the user then has to go look up.
-                sys.stdout.write(_render_plan_table(_plan_show_value(
-                    str(value["mission_id"])
-                )))
+                sys.stdout.write(
+                    _render_plan_table(_plan_show_value(str(value["mission_id"])))
+                )
             else:
                 fields = " ".join(
                     f"{key}={item}"

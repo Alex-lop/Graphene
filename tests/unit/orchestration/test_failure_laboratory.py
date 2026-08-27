@@ -15,10 +15,10 @@ macOS host-sandbox check runner):
   mission reaches ``awaiting_result``, the event chain verifies, and
   ``graphene why`` names the retry as the producer.
 
-Retry here is automatic: ``complete_attempt`` marks a retryable failure's
-task ``retrying`` and the scheduler's next tick claims it again, so no
-operator ``graphene mission retry`` is driven. Workers run in-process on the
-ADK path; only the check subprocess is a separate, registered process.
+This legacy choreography still kills a check subprocess and is not live-model
+proof. Separate tests below exercise the barrier-bound model-child contract.
+Retry is automatic: ``complete_attempt`` marks a retryable failure's task
+``retrying`` and the scheduler's next tick claims it again.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ import pytest
 from pydantic import PrivateAttr
 
 from graphene.cli import mission as mission_cli
+from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.orchestration.evidence import TrustedCheckReceipt
 from graphene.orchestration.mission_models import (
     AttemptResult,
@@ -56,7 +57,10 @@ from graphene.orchestration.mission_models import (
     TaskKind,
     TaskState,
 )
-from graphene.orchestration.process_control import OwnedProcessRegistry
+from graphene.orchestration.process_control import (
+    OwnedProcessRegistry,
+    ProcessControlError,
+)
 from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     WorkerProviderReceipt,
@@ -193,9 +197,8 @@ def _dispatch(mission_id: str, attempt_id: str, worker_id: str) -> Dispatch:
 
 
 @DARWIN_SANDBOX
-@pytest.mark.parametrize("mode", ["kill", "auto"])
 def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sibling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lab = _load_failure_lab()
     prepared = prepare_fake_two_worker_mission(
@@ -249,16 +252,15 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
             assert self.directory == prepared.runtime / "processes"
             # The kill target comes from the durable registry record that
             # `record` just bound to this child (pid == pgid, alive, group
-            # leader), never from a name. sandbox-exec replaces its image with
-            # the frozen command right after spawn; the registry accepts that
-            # exec-in-place for the recorded wrapper and still re-checks pid,
-            # process group, and start time before signalling.
+            # leader), never from a name. The registered /bin/sh launch barrier
+            # later replaces its image with sandbox-exec and the frozen command;
+            # identity remains the same pid/group/birth token throughout.
             owned = lab.record_for_attempt(self, dispatch.attempt_id)
             assert owned is not None
             assert owned.mission_id == mission_id
             assert owned.attempt_id == dispatch.attempt_id
             assert owned.pid == owned.pgid == process.pid
-            assert executable == "/usr/bin/sandbox-exec"
+            assert executable == "/bin/sh"
             assert process.poll() is None
             snapshot = store.snapshot(mission_id)
             accepted = [
@@ -293,32 +295,10 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
                 for item in downstream.values()
             )
             assert not any(item.task_id in downstream for item in snapshot.attempts)
-            # Through the operator script's exact path: store lookup of the
-            # live-leased dispatch, registry identity re-check, then killpg.
-            # `auto` is the unattended form: it must find exactly this
-            # attempt (running, leased, registered, sibling already accepted).
-            if mode == "auto":
-                assert lab.kill_opportunity(store, self, mission_id) == (
-                    dispatch.attempt_id,
-                    worker_a,
-                    accepted[0].publication_id,
-                )
-                out = io.StringIO()
-                assert lab.main(["auto", mission_id, "--timeout", "5"], stdout=out) == 0
-                printed = json.loads(out.getvalue())
-                assert printed["attempt_id"] == dispatch.attempt_id
-                assert printed["signal"] == "SIGKILL"
-                assert printed["sibling_worker_id"] == worker_a
-                assert (
-                    printed["sibling_accepted_publication_id"]
-                    == accepted[0].publication_id
-                )
-                assert printed["killed_at"]
-            else:
-                assert (
-                    lab.main(["kill", mission_id, "--attempt", dispatch.attempt_id])
-                    == 0
-                )
+            # This legacy fixture exercises check-stage retry directly. The
+            # operator-facing failure laboratory now targets only live Gemini
+            # children after their provider-dispatch barrier.
+            self.signal(dispatch, signal.SIGKILL)
             laboratory.update(
                 dispatch=dispatch,
                 owned=owned,
@@ -591,8 +571,15 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
     assert stderr.getvalue() == ""
     stdout, stderr = io.StringIO(), io.StringIO()
     assert (
-        lab.main(
-            ["kill", mission_id, "--attempt", retry.attempt_id],
+            lab.main(
+                [
+                    "kill",
+                    mission_id,
+                    "--attempt",
+                    retry.attempt_id,
+                    "--actor-label",
+                    "recovery-test",
+                ],
             stdout=stdout,
             stderr=stderr,
         )
@@ -642,7 +629,7 @@ def test_failure_lab_script_lists_by_mission_and_refuses_foreign_or_unleased_kil
                 "to mission mission-foreign, not mission-lab$"
             ),
         ):
-            lab.kill_attempt(
+            lab.kill_model_attempt(
                 registry,
                 "mission-lab",
                 "attempt-foreign",
@@ -654,7 +641,7 @@ def test_failure_lab_script_lists_by_mission_and_refuses_foreign_or_unleased_kil
             lab.FailureLabError,
             match="^refused: no owned-process record exists for attempt attempt-none$",
         ):
-            lab.kill_attempt(registry, "mission-foreign", "attempt-none", None)
+            lab.kill_model_attempt(registry, "mission-foreign", "attempt-none", None)
         with pytest.raises(
             lab.FailureLabError,
             match=(
@@ -662,9 +649,9 @@ def test_failure_lab_script_lists_by_mission_and_refuses_foreign_or_unleased_kil
                 "lease in mission mission-foreign$"
             ),
         ):
-            lab.kill_attempt(registry, "mission-foreign", "attempt-foreign", None)
+            lab.kill_model_attempt(registry, "mission-foreign", "attempt-foreign", None)
         with pytest.raises(lab.FailureLabError, match="not running under a live lease"):
-            lab.kill_attempt(
+            lab.kill_model_attempt(
                 registry,
                 "mission-foreign",
                 "attempt-foreign",
@@ -676,6 +663,187 @@ def test_failure_lab_script_lists_by_mission_and_refuses_foreign_or_unleased_kil
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=5)
+
+
+@PROCESS_TOOLS
+def test_failure_lab_kills_only_a_barrier_bound_model_child(tmp_path: Path) -> None:
+    lab = _load_failure_lab()
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    dispatch = _dispatch("mission-lab", "attempt-model", "worker-live")
+    process = subprocess.Popen(
+        ("/bin/sleep", "30"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        registry.record(dispatch, process, "/bin/sleep")
+        with pytest.raises(
+            lab.FailureLabError, match="has no acknowledged model dispatch"
+        ):
+            lab.kill_model_attempt(
+                registry, dispatch.mission_id, dispatch.attempt_id, dispatch
+            )
+        assert process.poll() is None
+
+        owned = registry.validate(dispatch)
+        registry.acknowledge_model_dispatch(
+            dispatch,
+            owned,
+            request_sha256="a" * 64,
+            sdk_invocation_id="invocation-model-1",
+            dispatched_at="2026-08-27T12:00:00.000Z",
+        )
+        with pytest.raises(lab.FailureLabError, match="actor label is invalid"):
+            lab.kill_model_attempt(
+                registry,
+                dispatch.mission_id,
+                dispatch.attempt_id,
+                dispatch,
+                actor_label="not valid/actor",
+            )
+        assert process.poll() is None
+        result = lab.kill_model_attempt(
+            registry,
+            dispatch.mission_id,
+            dispatch.attempt_id,
+            dispatch,
+            actor_label="recovery-test",
+        )
+        process.wait(timeout=5)
+
+        assert process.returncode == -int(signal.SIGKILL)
+        assert result["stage"] == "model"
+        assert result["pid"] == result["pgid"] == process.pid
+        assert result["request_sha256"] == "a" * 64
+        assert result["sdk_invocation_id"] == "invocation-model-1"
+        assert result["fencing_token"] == dispatch.fencing_token
+        assert result["actor_label"] == "recovery-test"
+        assert result["observed_process_state"] == "not_running"
+        assert result["record_type"] == "signal_observed"
+        record = (
+            tmp_path
+            / "runtime"
+            / "failure-injections"
+            / f"{result['injection_record_sha256']}.json"
+        )
+        assert record.read_bytes() == canonical_json_bytes(
+            {
+                key: value
+                for key, value in result.items()
+                if key != "injection_record_sha256"
+            }
+        )
+        request_record = record.with_name(
+            f"{result['signal_request_record_sha256']}.json"
+        )
+        request = json.loads(request_record.read_bytes())
+        assert request["record_type"] == "signal_requested"
+        assert request["actor_label"] == "recovery-test"
+        assert request["attempt_id"] == dispatch.attempt_id
+        assert request["pid"] == request["pgid"] == process.pid
+        assert request["signal"] == "SIGKILL"
+        assert request["requested_at"] == result["requested_at"]
+        assert sorted(
+            path.name
+            for path in (tmp_path / "runtime" / "failure-injections").iterdir()
+        ) == sorted((record.name, request_record.name))
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+        registry.remove(dispatch)
+
+
+@PROCESS_TOOLS
+@pytest.mark.parametrize("mode", ("crash_after_signal", "signal_refused"))
+def test_failure_lab_keeps_the_request_when_no_observed_outcome_is_returned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    lab = _load_failure_lab()
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    dispatch = _dispatch("mission-lab", f"attempt-{mode}", "worker-live")
+    process = subprocess.Popen(
+        ("/bin/sleep", "30"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    try:
+        registry.record(dispatch, process, "/bin/sleep")
+        owned = registry.validate(dispatch)
+        registry.acknowledge_model_dispatch(
+            dispatch,
+            owned,
+            request_sha256="b" * 64,
+            sdk_invocation_id="invocation-model-crash",
+            dispatched_at="2026-08-27T12:00:00.000Z",
+        )
+        original_signal = registry.signal_prepared
+
+        def stop_after_request(  # noqa: ANN202
+            actual_owned, actual_signal  # noqa: ANN001
+        ):
+            if mode == "signal_refused":
+                raise ProcessControlError("owned process identity changed")
+            original_signal(actual_owned, actual_signal)
+            raise SimulatedCrash
+
+        monkeypatch.setattr(registry, "signal_prepared", stop_after_request)
+        if mode == "signal_refused":
+            with pytest.raises(lab.FailureLabError, match="identity changed"):
+                lab.kill_model_attempt(
+                    registry,
+                    dispatch.mission_id,
+                    dispatch.attempt_id,
+                    dispatch,
+                    actor_label="audit-test",
+                )
+        else:
+            with pytest.raises(SimulatedCrash):
+                lab.kill_model_attempt(
+                    registry,
+                    dispatch.mission_id,
+                    dispatch.attempt_id,
+                    dispatch,
+                    actor_label="audit-test",
+                )
+            process.wait(timeout=5)
+
+        records = [
+            json.loads(path.read_bytes())
+            for path in (tmp_path / "runtime" / "failure-injections").iterdir()
+        ]
+        requests = [item for item in records if item["record_type"] == "signal_requested"]
+        assert len(requests) == 1
+        request = requests[0]
+        assert request["actor_label"] == "audit-test"
+        assert request["attempt_id"] == dispatch.attempt_id
+        assert request["pid"] == request["pgid"] == process.pid
+        assert request["signal"] == "SIGKILL"
+        if mode == "crash_after_signal":
+            assert len(records) == 1
+        else:
+            refused = next(
+                item for item in records if item["record_type"] == "signal_refused"
+            )
+            assert refused["signal_request_record_sha256"] == sha256_hex(
+                canonical_json_bytes(request)
+            )
+            assert refused["reason"] == "owned process identity changed"
+            assert refused["observed_process_state"] == "unknown"
+            assert process.poll() is None
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+        registry.remove(dispatch)
 
 
 def test_auto_reopens_the_store_after_a_transient_read_error() -> None:

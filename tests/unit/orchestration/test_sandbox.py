@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -9,6 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from graphene.execution.adapter import (
+    NORTH_STAR_CHECK_COMMAND,
+    NORTH_STAR_FINAL_CHECK_COMMAND,
+)
 from graphene.orchestration.mission_models import CommandTemplate
 from graphene.orchestration.sandbox import (
     DockerExecutor,
@@ -87,6 +91,31 @@ def test_template_is_exact_and_digest_is_stable() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("template_id", "command"),
+    [
+        ("orders-migration-check", NORTH_STAR_FINAL_CHECK_COMMAND),
+        ("orders-migration-task-check", NORTH_STAR_CHECK_COMMAND),
+    ],
+)
+def test_orders_migration_checks_are_frozen(
+    template_id: str, command: tuple[str, ...]
+) -> None:
+    template = CommandTemplate(
+        template_id=template_id,
+        argv=command,
+        timeout_seconds=60,
+    )
+    assert validate_command_template(template) == (
+        "/usr/local/bin/python",
+        *command[1:],
+    )
+    with pytest.raises(SandboxError, match="frozen"):
+        validate_command_template(
+            template.model_copy(update={"template_id": "fixture-tests"})
+        )
+
+
 def test_repository_view_is_scoped_and_drops_links_and_credentials(
     tmp_path: Path,
 ) -> None:
@@ -159,7 +188,12 @@ def test_cleanup_rechecks_owner_and_uses_only_full_container_id() -> None:
                 payload = [
                     {
                         "Id": CONTAINER_ID,
-                        "Config": {"Labels": {"graphene.owner": "attempt-1"}},
+                        "Config": {
+                            "Labels": {
+                                "graphene.owner": "attempt-1",
+                                "graphene.executor": "oci-v1",
+                            }
+                        },
                         "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
                     }
                 ]
@@ -194,6 +228,98 @@ def test_cleanup_refuses_mismatched_ownership() -> None:
         FakeExecutor().cleanup_owned(CONTAINER_ID, "attempt-1")
 
 
+@pytest.mark.parametrize("running", (True, False))
+def test_reconcile_owned_removes_running_or_exited_exact_container(
+    running: bool,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    current_running = running
+    name = "graphene-" + hashlib.sha256(b"attempt-1").hexdigest()[:24]
+
+    class FakeExecutor(DockerExecutor):
+        def _run(self, *arguments: str, timeout: float = 5):
+            nonlocal current_running
+            calls.append(arguments)
+            if arguments[0] == "inspect":
+                payload = [
+                    {
+                        "Id": CONTAINER_ID,
+                        "Name": f"/{name}",
+                        "Config": {
+                            "Labels": {
+                                "graphene.owner": "attempt-1",
+                                "graphene.executor": "oci-v1",
+                            }
+                        },
+                        "State": {"Running": current_running, "ExitCode": 0},
+                    }
+                ]
+                return subprocess.CompletedProcess(
+                    arguments, 0, json.dumps(payload).encode(), b""
+                )
+            if arguments[0] == "kill":
+                current_running = False
+            return subprocess.CompletedProcess(arguments, 0, b"", b"")
+
+    assert FakeExecutor().reconcile_owned("attempt-1") is True
+    assert calls[0] == ("inspect", name)
+    assert calls[-2:] == [("inspect", CONTAINER_ID), ("rm", CONTAINER_ID)]
+    assert (("kill", CONTAINER_ID) in calls) is running
+
+
+def test_reconcile_owned_missing_container_is_idempotent() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeExecutor(DockerExecutor):
+        def _run(self, *arguments: str, timeout: float = 5):
+            calls.append(arguments)
+            return subprocess.CompletedProcess(
+                arguments, 1, b"", b"Error: No such container"
+            )
+
+    assert FakeExecutor().reconcile_owned("attempt-1") is False
+    assert len(calls) == 1 and calls[0][0] == "inspect"
+
+
+@pytest.mark.parametrize(
+    ("actual_name", "owner", "executor"),
+    [
+        (None, "someone-else", "oci-v1"),
+        (None, "attempt-1", "other"),
+        ("/graphene-someone-else", "attempt-1", "oci-v1"),
+    ],
+)
+def test_reconcile_owned_refuses_name_or_label_mismatch(
+    actual_name: str | None, owner: str, executor: str
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    name = "graphene-" + hashlib.sha256(b"attempt-1").hexdigest()[:24]
+
+    class FakeExecutor(DockerExecutor):
+        def _run(self, *arguments: str, timeout: float = 5):
+            calls.append(arguments)
+            payload = [
+                {
+                    "Id": CONTAINER_ID,
+                    "Name": actual_name or f"/{name}",
+                    "Config": {
+                        "Labels": {
+                            "graphene.owner": owner,
+                            "graphene.executor": executor,
+                        }
+                    },
+                    "State": {"Running": True},
+                }
+            ]
+            return subprocess.CompletedProcess(
+                arguments, 0, json.dumps(payload).encode(), b""
+            )
+
+    with pytest.raises(SandboxError, match="ownership"):
+        FakeExecutor().reconcile_owned("attempt-1")
+    assert len(calls) == 1 and calls[0] == ("inspect", name)
+
+
 def test_uncertain_create_cleans_only_name_resolved_owned_container(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,7 +343,12 @@ def test_uncertain_create_cleans_only_name_resolved_owned_container(
                     {
                         "Id": CONTAINER_ID,
                         "Name": f"/{name}",
-                        "Config": {"Labels": {"graphene.owner": "attempt-1"}},
+                        "Config": {
+                            "Labels": {
+                                "graphene.owner": "attempt-1",
+                                "graphene.executor": "oci-v1",
+                            }
+                        },
                         "State": {"Running": False, "ExitCode": 0, "OOMKilled": False},
                     }
                 ]

@@ -12,7 +12,12 @@ from graphene.cli.main import build_parser, main
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
-from graphene.orchestration.mission_models import MissionSnapshot, MissionStatus
+from graphene.orchestration.mission_models import (
+    AuthorizationMode,
+    FinalizationMode,
+    MissionSnapshot,
+    MissionStatus,
+)
 from tests.unit.orchestration.test_final_bundle import _repository, _snapshot
 from tests.unit.orchestration.test_store import _plan, _policy
 
@@ -221,7 +226,14 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
         mission_cli,
         "_projection",
         lambda _mission_id: SimpleNamespace(
+            store=store,
             snapshot=lambda _identifier: SimpleNamespace(
+                mission=SimpleNamespace(
+                    requested_authorization_mode=AuthorizationMode.REVIEW_REQUIRED,
+                    effective_authorization_mode=AuthorizationMode.REVIEW_REQUIRED,
+                    finalization_mode=FinalizationMode.REVIEW_REQUIRED,
+                    policy_decision_sha256=None,
+                ),
                 tasks=tuple(
                     SimpleNamespace(
                         task_id=task.task_id,
@@ -247,6 +259,10 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
     assert shown[0] == 0
     assert shown[1]["plan"] == plan.model_dump(mode="json")
     assert shown[1]["plan_revision"] == plan.revision
+    assert shown[1]["requested_authorization_mode"] == "review_required"
+    assert shown[1]["effective_authorization_mode"] == "review_required"
+    assert shown[1]["finalization_mode"] == "review_required"
+    assert shown[1]["policy_decision_sha256"] is None
     # Nothing has been approved, and the table says so rather than implying it.
     assert shown[1]["approved_revision"] is None
     assert shown[1]["frontier_is_projected"] is True

@@ -7,6 +7,7 @@ import shutil
 import stat
 import subprocess
 import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,7 +28,7 @@ from graphene.cli.mission import (
     handle,
     initialize,
 )
-from graphene.orchestration.mission_models import ProjectPolicy
+from graphene.orchestration.mission_models import MissionHead, ProjectPolicy
 from graphene.orchestration.scripted import DEFAULT_SCENARIO_PATH, load_scenario
 
 
@@ -419,7 +420,7 @@ def test_taskmaster_fixture_is_loadable_and_forced_into_the_wheel() -> None:
 
     assert configuration["tool"]["hatch"]["build"]["targets"]["wheel"][
         "force-include"
-    ] == {"demo/taskmaster": "graphene/_taskmaster"}
+    ]["demo/taskmaster"] == "graphene/_taskmaster"
     assert configuration["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"] == [
         "/.claude",
         "/All_md_Files",
@@ -963,11 +964,16 @@ def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
                         state=mission_cli.AttemptState.RUNNING,
                     ),
                 ),
-                head=SimpleNamespace(),
+                head=MissionHead(
+                    mission_id="mission-cancel-failure",
+                    seq=1,
+                    event_sha256="a" * 64,
+                    event_count=1,
+                ),
             )
 
         def recover_dispatches(self, *_args, **_kwargs):
-            return (SimpleNamespace(attempt_id="owned-attempt"),)
+            return (SimpleNamespace(attempt_id="owned-attempt", pid=12345),)
 
         def cancel(self, *_args, **_kwargs):
             self.cancel_called = True
@@ -978,12 +984,13 @@ def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
             pass
 
         def prepare_cancel(self, _dispatches):
-            return (SimpleNamespace(attempt_id="owned-attempt"),)
+            return (SimpleNamespace(attempt_id="owned-attempt", pid=12345),)
 
         def records_for_mission(self, _mission_id: str):
             return ()
 
-        def terminate_owned(self, _owned) -> None:
+        def terminate_owned(self, _owned, *, retain_record: bool = False) -> None:
+            assert retain_record is True
             raise mission_cli.ProcessControlError("private cleanup detail")
 
     store = Store()
@@ -1004,4 +1011,51 @@ def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
         mission_cli._mutate(args)
 
     assert store.cancel_called is False
+    assert (tmp_path / "cancellation-request.json").is_file()
     assert "private cleanup detail" not in str(error.value)
+
+
+def test_cancel_intent_link_without_directory_fsync_stops_before_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    head = MissionHead(
+        mission_id="mission-cancel-fsync",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+
+    def link_then_raise(path: Path, content: bytes) -> None:
+        path.write_bytes(content)
+        path.chmod(0o600)
+        raise MissionCliError("directory fsync failed")
+
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_confirming_directory(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("directory fsync still unavailable")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(mission_cli, "_atomic_create", link_then_raise)
+    monkeypatch.setattr(os, "fsync", fail_confirming_directory)
+
+    with pytest.raises(
+        mission_cli.ProcessControlError,
+        match="cancellation request durability is unconfirmed",
+    ):
+        mission_cli._ensure_cancellation_request(
+            tmp_path,
+            mission_id=head.mission_id,
+            command_id="cancel-fsync-1",
+            expected_head=head,
+            operator_label="test-operator",
+            rationale=None,
+            truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+            recorded_at=datetime.now(UTC),
+        )
+
+    assert (tmp_path / "cancellation-request.json").is_file()

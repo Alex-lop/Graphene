@@ -39,9 +39,9 @@ class _Parser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog="graphene-mcp", allow_abbrev=False)
     # No mode flag at all serves the mission control plane (plan_goal,
-    # get_digest, approve_plan, mission_status, why, mission_summary and the
-    # `goal` prompt) over the CLI's own state root. --task/--run keep the
-    # legacy protocol tour exactly as before.
+    # get_digest, plan/result decisions, mission_status, why, mission_summary,
+    # and the `goal` prompt) over the CLI's own state root. --task/--run keep
+    # the legacy protocol tour exactly as before.
     mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument(
         "--task",
@@ -131,6 +131,17 @@ def _serve_missions() -> int:
     """`graphene-mcp` with no mode flag: the /graphene loop over stdio."""
 
     try:
+        # Reattachment is state driven: a fresh controller repairs accepted or
+        # running missions before it begins serving read-only status calls.
+        from ..orchestration.supervisor import (
+            _runtime_environment,
+            recover_supervisors,
+        )
+
+        environment = _runtime_environment()
+        os.environ.clear()
+        os.environ.update(environment)
+        recover_supervisors()
         server = create_mission_mcp_server()
     except Exception:  # noqa: BLE001 - never leak startup details
         _diagnostic(_STARTUP_ERROR)
