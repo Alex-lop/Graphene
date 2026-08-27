@@ -60,8 +60,9 @@ from .legacy_store import (
     Store,
     StoreConflict,
 )
+from .package_data import legacy_project_root
 
-ROOT = Path(__file__).parents[2]
+ROOT = legacy_project_root()
 FIXTURE_ROOT = ROOT / "demo/fixture"
 FRONTEND_ROOT = ROOT / "frontend"
 GOLDEN = GoldenContract.model_validate_json(

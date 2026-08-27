@@ -16,6 +16,7 @@ from .lineage.artifacts import SQLiteArtifactStore
 from .lineage.lineage_reducer import reduce_events
 from .lineage.service import RuntimeHandle, ScopedApplicationService
 from .lineage.sqlite_lineage_store import LineageConflict, SQLiteLineageStore
+from .package_data import legacy_project_root
 from .core_models import (
     AgentProfile,
     Event,
@@ -38,7 +39,7 @@ from .core_models import (
 )
 
 LOCAL_MODEL_ID = "graphene-local-scripted"
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_PROJECT_ROOT = legacy_project_root()
 
 
 class BootstrapError(RuntimeError):
