@@ -1,68 +1,100 @@
 # Agent runtime
 
-## Current implementation status
+## Lifecycle ownership
 
-The working tree implements a real Google ADK Runner planner seam with typed output, bounded calls, disabled content capture, and no fallback. Bounded manifests/excerpts and a small `PlanIntent` are deterministically compiled into criterion-bearing scheduler contracts. After exact plan approval, the same product path can dispatch two to five typed ADK worker adapters in Graphene-owned workspaces, commit siblings in completion order, run trusted deterministic checks, integrate accepted artifacts, and stop at `awaiting_result`.
+The current MCP path separates controller lifetime from mission lifetime.
+`start_goal` writes a private canonical supervisor request and signals a
+detached, session-leading Python process. The tool returns after durable
+acceptance; it does not await planning, workers, or finalization. A later stdio
+client reads the same state root and can poll the mission.
 
-Credential-free tests exercise that runtime with real ADK sessions and deterministic fake models against a disposable repository. They prove local contracts, concurrency, isolation, and recovery—not live Gemini behavior. Live Gemini is proven separately and is **VERIFIED_LIVE** (2026-08-23) with evidence-bound provider receipts; the credential-free tests described here neither need nor claim it.
+Supervisor files are private, canonical, digest-bound, and tied to the exact
+mission request. Process ownership is verified by pid, process group, start
+time, and executable. If the exact owner is dead while the mission is
+nonterminal, recovery may start one higher supervisor generation. Credential-
+free process tests prove prompt return, idempotent duplicate acceptance,
+controller disconnect, reattachment, and generation replacement using the
+scripted fixture. No credentialed current-tree provider run proves this path.
 
-The deterministic `scripted-local` runtime is a fixture, not an agent. Its checked-in overlays prove scheduler and evidence mechanics only.
+## Authorization
 
-## Implemented lifecycle and live-proof gap
+The requested authorization mode is input, not authority. For
+`policy_pre_authorized`, Graphene compiles a plan and recomputes
+`PlanPolicyDecisionV1` against the exact base SHA, policy revision/digest,
+scopes, command templates, concurrency, retries, budgets, network rule, and
+risk gates. Only an allowed decision atomically records policy-authoritative
+plan approval. Otherwise the mission enters `review_required` before dispatch.
 
-The target live runtime is intentionally narrow:
+The MCP `approve_plan` path remains available for review mode and requires the
+current plan digest/revision. Its truth is `server_derived` relay evidence; it
+does not establish that a human signed inside Codex, Claude Code, Gemini CLI,
+or another chat client.
 
-1. Graphene constructs a sanitized path/symbol manifest and explicitly opened small excerpts.
-2. Gemini proposes a bounded intent; Graphene canonicalizes IDs, artifacts, budgets, ordering, integration, and verification.
-3. Human approval makes the immutable validated plan dispatchable.
-4. Two distinct Gemini work executors receive different worker IDs, ADK sessions/invocations, attempts, leases, fences, and Graphene-owned workspaces.
-5. The scheduler may run disjoint ready work concurrently. A worker receives only its task, prerequisites, accepted inputs, scopes, command-template IDs, checks, and remaining budgets.
-6. Deterministic integration applies only accepted patches to a clean exact base. Deterministic verification checks the exact candidate.
-7. The mission stops at `awaiting_result`; an exact-digest human decision controls the isolated local result.
+`auto_finalize_isolated` is similarly policy-bounded. It can approve the exact
+registered final bundle and create an isolated local result ref. It cannot
+merge, push, deploy, publish, or mutate the supplied checkout.
 
-The lifecycle is implemented and locally tested. The specifically *live Gemini* claim remains unavailable until a credentialed run captures returned model/session/invocation identities, provider usage when returned, measured overlap, exact fan-in/result, and unchanged-checkout evidence.
+## Planner and workers
 
-## Tool boundary
+The live path pins `google-adk==2.5.0` and requests
+`gemini-3.5-flash` (source-checked 2026-08-27). The planner receives bounded
+Git-object manifests/excerpts and proposes typed work intent; deterministic
+code assigns identifiers, validates the graph, and controls readiness.
 
-The intended worker tools are bounded repository search/read, explicit evidence open, lease-checked write, exact allowlisted command execution, publication request, and completion request. They do not include arbitrary shell, interpreter `-c`, installers, Git hooks/configuration, ambient environment access, undeclared mounts, or automatic network access from repository code.
+Live planning runs in its own `python -I` child. A private fsynced journal binds
+the request, strong process identity, provider transport acknowledgement, and
+result. Recovery distinguishes death before dispatch from provider/billing
+uncertainty after dispatch and permits at most one bounded replacement attempt;
+the child has no repository mutation authority.
 
-Every effect binds mission, task, attempt, worker, lease, and fencing token. The durable operation journal lets an exact retry return the committed receipt without repeating a Graphene-owned effect. Graphene-owned workspaces reject symlinked administration paths and remove all Git remotes before worker execution.
+Each live model attempt crosses a private child-process boundary. The parent
+starts `python -I -m graphene.orchestration.workers.gemini_child`, sends one
+canonical size-limited frame, closes stdin, and retains all repository and
+effect authority. The child receives bounded source text and task contract but
+no repository path, tool, shell, store, Git, or credential-export API. It runs
+one ADK call with content capture disabled and returns framed intent/receipt or
+a sanitized typed error.
 
-## Recovery and errors
+The child emits a `provider_dispatched` barrier only after the ADK invocation
+identity exists and transport begins. The parent then binds the child to the
+mission/task/attempt/lease/fence and records its exact owned-process identity.
+Before that barrier, failure is a provider/runtime failure with no kill claim.
+After the barrier, an external `SIGKILL` can be represented as retryable
+`provider_interrupted`: provider outcome unknown, repository effect known
+absent. Repository mutation happens later in the owning parent worker.
 
-Recovery lookup is limited to an explicit bounded worker-owner set and verifies that each recovered attempt and lease have the same owner. Reassignment still requires revoking or expiring the old lease and increasing the fence. Public runtime outcomes preserve the implemented categories: provider timeout/unavailable/rate-limit, check failure, cancellation, stale lease, policy denial, `input_rejected`, `artifact_tampered`, sandbox unavailable, and `outcome_unknown` for an unreceipted or unknown effect. Raw exceptions stay private.
+This framing and interruption classification are locally tested with protocol
+and fake seams. No current proof kills a real Gemini child or validates the
+returned live model identity.
 
-A failed sibling must not cancel healthy work. Accepted work commits as it completes; bounded retry receives a new attempt and higher fence. Input/artifact integrity and sandbox failures fail closed when safe continuation is impossible. Runner prefetch failures terminalize every still-fenced claimed dispatch before the coordinator stops.
+## Selective recovery
 
-Provider/process effects without authoritative receipts can have unknown outcomes. Graphene must not silently repeat them or call them exactly once. Cancellation prepares and reaps only exact owned process groups while the lease/fence remains valid, then commits the mission transition; cleanup failure aborts cancellation.
+Accepted publications are durable inputs. A failed sibling does not erase
+them. A retryable interrupted attempt releases its lease, publishes nothing,
+and may be claimed again under a higher fencing token with a bounded diagnostic
+covering prior attempt, fence, result code, and receipt digest. Stale fences
+are rejected. Assembly consumes accepted publications only; verification binds
+the exact candidate and pending final bundle.
 
-## Provider receipts and check executors
+The legacy check-process failure fixture still proves check-stage selective
+retry on macOS. The new `failure_lab.py auto` path targets only a live Gemini
+model child after its provider-dispatch barrier. Its logic is tested; the live
+Orders choreography is not.
 
-Every attempt whose worker returned a provider completion binds a sanitized `worker-provider-receipt` artifact (model names, credential mode, byte and token counts, the wall-clock `call_started_at`/`call_ended_at` window the runtime stamps around the model run; never prompts, outputs, environment values, or credentials) into its terminal evidence event and `Attempt.evidence_refs`, on success and on failure alike. A failed receipt write can never produce a completed attempt. `store.verify()` and the materialized-integrity check resolve the receipt bytes by digest, so a tampered receipt fails closed, and a replayed `gemini-adk` result rebuilds `provider_receipts` from evidence rather than memory (`provider_receipt_references` cites each one; `receipt_unknowns` lists anything unresolvable instead of guessing). Worker overlap is reported as `parallel_overlap` on three bases: `attempt_timestamps` and `lease_timestamps` intersect attempt lifetimes on the mission store clock (claim to completion, which proves simultaneous leases, not concurrent execution, and which coincide for terminal attempts), while `provider_call_timestamps` intersects the call windows from the evidence-resolved receipts; a live real-agent overlap claim must cite `provider_call_observed` / `provider_call_max_window_ms`, never the lifetime bases alone.
+## Orders hero contract
 
-`fixture-tests` checks on the Gemini/ADK path (local approval and the outbound `executor connect` loop alike) are routed by `GRAPHENE_CHECK_EXECUTOR`: `docker` (default) uses the container executor; `host-sandbox` runs the frozen command on macOS under `/usr/bin/sandbox-exec`, honours the template's timeout up to the fixture policy's 60 second cap, and registers the check subprocess in the owned-process registry that `graphene mission cancel` reaps, which is what makes the failure laboratory's kill strongly identified. Any other value, and `host-sandbox` on a host without `sandbox-exec`, fails closed before a worker runs; Graphene never falls back silently between the two. `graphene doctor` reports the requested executor under `check_executor` without echoing unrecognised values. Two limits stay as they were: a cancel issued while an attempt is in its model phase has no owned process to reap and aborts rather than guessing, and a check group killed by an operator before the cancel event lands is attested by the check runner as a signal exit (`acceptance_check_failed`), not as a cancellation.
+The North Star target is now the Orders API migration under
+[`demo/north_star`](../demo/north_star). Its plan should have two disjoint work
+roots, a dependency-file integration node, deterministic assembly, and immutable
+verification. The policy permits five exact write files, denies network,
+allows two workers and one retry, and selects policy pre-authorization plus
+isolated auto-finalization. Target materialization and policy constraints are
+locally tested. A live mission has not completed it.
 
-## Proof gates
+## Proof labels
 
-Deterministic fake-ADK tests may prove routing and contracts, never Gemini behavior. A real-agent claim requires two distinct returned model/session/invocation identities, measured provider-call overlap, no fixture overlay, scoped tool receipts, accepted-only fan-in, exact verification, and unchanged user checkout evidence.
-
-The literal demo entrypoint is `graphene mission demo`. It selects only `gemini-adk`, defaults to two workers, creates a Graphene-owned Taskmaster repository, and still requires explicit plan approval. It has no fake or replay fallback. Its live outcome is **VERIFIED_LIVE** (2026-08-23): 9/10 ordinary and 3/3 controlled-failure missions completed end to end.
-
-## Failure laboratory
-
-`tests/unit/orchestration/test_failure_laboratory.py` (macOS only: it needs the `host-sandbox` check runner) is the deterministic regression for directive A2 on the `gemini-adk` path, driven with fake ADK workers on a two-task plan with deterministic assembly and verification. On the ADK path workers run in-process; the strongly identified Graphene-owned process is the attempt's check subprocess, which is registered in the owned-process registry only while `GRAPHENE_CHECK_EXECUTOR=host-sandbox` runs the frozen `fixture-tests` command. The laboratory takes its kill target from that durable registry record (pid equals pgid, bound to the spawned group leader by `record`), never from a process name.
-
-Expected observable sequence, every step causally recorded in mission events:
-
-1. Worker B's first attempt holds a live lease when its check process group is SIGKILLed. The trusted `test-receipt` minted by the check runner records `exit_code -9` with `acceptance_check_failed`, the attempt ends `failed`, its lease releases with reason `failed`, and no publication exists for it.
-2. Worker A's accepted `ArtifactEnvelopeV2` publication row is byte-for-byte unchanged before and after the kill.
-3. Assembly and verification have no attempts until B's replacement attempt has committed; their accepted inputs are A's publication and the retry's publication only, and `DEPENDENCY_SATISFIED` for B's task names the retry attempt.
-4. Bounded recovery is automatic: `complete_attempt` records `TASK_RETRIED` and marks the task `retrying`, and the scheduler's next tick re-dispatches it as `attempt_number 2` under a strictly higher `fencing_token`. `store.assert_fence` and a `complete_attempt` publication under the old dispatch are both rejected with `StaleWorker` and leave the mission head unchanged. No operator `graphene mission retry` is driven; that command exists only for tasks that ended `failed` after exhausting retryable attempts.
-5. The mission reaches `awaiting_result`, `store.verify` matches the snapshot head, and every WORK attempt, the killed one included, binds one resolvable `worker-provider-receipt`; measured overlap between A and B's first attempt is positive.
-6. `graphene why .graphene/generated/b.txt` names the retry as the producer attempt with its worker, fence, and attempt number, and the snapshot keeps both attempts in B's task history; `why` on A's path names A's single attempt.
-
-Operator script: `uv run --frozen python scripts/failure_lab.py list MISSION_ID` prints the registry's records for the mission (attempt, worker from the mission snapshot, pid, pgid, started_at, executable). `uv run --frozen python scripts/failure_lab.py kill MISSION_ID --attempt ATTEMPT_ID` sends SIGKILL through `OwnedProcessRegistry.signal`, refuses (exit 2, nothing signalled) when the registry has no record for the attempt, when the record belongs to a different mission, or when the attempt is not running under a live lease, and prints exactly what it signalled.
-
-`sandbox-exec` replaces its own image with the frozen command immediately after spawn (same pid, pgid, and start time; `ps comm` changes from `/usr/bin/sandbox-exec` to the interpreter). The registry's liveness re-check therefore binds identity to pid, process group, and start time, and accepts an executable change only for a child recorded under that one documented exec-in-place wrapper; any other recorded executable still fails closed on a `comm` change. The regression test kills through `scripts/failure_lab.py kill` itself (store lookup of the live-leased dispatch, registry identity re-check, `killpg`), so the operator path, the `graphene mission cancel` reap, and the check timeout `SIGKILL` all act on the exec'd check group. The host runner reports `cleanup_complete` only when the owned record is gone, and rejects a template whose timeout exceeds the fixture policy's 60 second cap instead of clamping it.
-
-**NOT PROVEN:** the live Gemini run of steps 1–6 with real workers; every kill above was exercised against fake ADK workers on macOS.
+- `scripted-local`: deterministic fixture, never Gemini proof.
+- Fake ADK/protocol tests: ADK wiring and recovery contracts, never model proof.
+- Historical live evidence: evidence for its historical implementation only.
+- Current live Gemini, model kill, Codex controller, and cloud behavior:
+  `NOT PROVEN` until the runbook's complete evidence set exists.

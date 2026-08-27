@@ -30,7 +30,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
-from ..core_models import Identifier
+from ..core_models import Identifier, TruthKind
 from .evidence import (
     AttemptEvidenceEvent,
     AttemptEvidenceEventType,
@@ -39,11 +39,13 @@ from .evidence import (
 )
 from .final_bundle import FinalResultBundleV2
 from .mission_models import (
+    AuthorizationMode,
     Attempt,
     Criterion,
     EvidenceReference,
     GenericEvidenceLink,
     MissionEvent,
+    MissionAuthority,
     MissionEventType,
     MissionHead,
     MissionSnapshot,
@@ -51,13 +53,17 @@ from .mission_models import (
     Plan,
     Task,
     TaskState,
+    FinalizationMode,
+    plan_policy_decision,
 )
 from .overlap import measure_overlap
 from .mission_reducer import TransitionError, transition_mission
 
 CAPSULE_SCHEMA = "graphene.mission-capsule.v1"
 CAPSULE_SUFFIX = ".graphene-capsule"
-RECEIPT_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
+RECEIPT_KINDS = frozenset(
+    {"test-receipt", "worker-provider-interruption", "worker-provider-receipt"}
+)
 FINAL_BUNDLE_KIND = "final-result-bundle"
 REDACTION_NOTE = (
     "Contains no prompts, source bytes, diffs, command output, environment values, "
@@ -287,6 +293,8 @@ def _bundle_decision(
                 "state": "approved" if approved else "rejected",
                 "event_seq": later.seq,
             }
+            if isinstance(later.payload.get("decision_mode"), str):
+                decision["mode"] = later.payload["decision_mode"]
     return decision
 
 
@@ -653,7 +661,8 @@ Every check is a recomputation over the files in this directory.
 3. `attempt_evidence_chains` - every `attempts/<attempt_id>.ndjson` chain obeys
    the same digest and linkage rules, starts with `attempt.started`, and ends at
    the head recorded in the manifest.
-4. `receipt_references` - every `test-receipt` / `worker-provider-receipt`
+4. `receipt_references` - every `test-receipt`, `worker-provider-receipt`, or
+   `worker-provider-interruption`
    reference in attempt evidence has a `receipts/<id>.json` whose SHA-256
    matches, and every receipt file is referenced by attempt evidence.
 5. `receipt_contents` - each receipt is canonical public JSON; each
@@ -1264,9 +1273,27 @@ def _check_worker_provider_receipt(identifier: str, content: bytes) -> None:
         )
 
 
+def _check_worker_provider_interruption(identifier: str, content: bytes) -> None:
+    from .worker_runtime import WorkerProviderInterruption
+
+    try:
+        interruption = WorkerProviderInterruption.model_validate_json(content)
+    except ValueError as error:
+        raise _CheckFailed(
+            f"worker provider interruption {identifier} is not a valid "
+            "WorkerProviderInterruption"
+        ) from error
+    if canonical_json_bytes(interruption.model_dump(mode="json")) != content:
+        raise _CheckFailed(
+            f"worker provider interruption {identifier} is not the canonical bytes "
+            "of its WorkerProviderInterruption"
+        )
+
+
 def _check_receipt_contents(context: _Verification) -> str:
     checks = 0
     provider_receipts = 0
+    provider_interruptions = 0
     for identifier, (kind, content) in sorted(context.receipts.items()):
         try:
             value = json.loads(content)
@@ -1279,6 +1306,10 @@ def _check_receipt_contents(context: _Verification) -> str:
         if kind == "worker-provider-receipt":
             _check_worker_provider_receipt(identifier, content)
             provider_receipts += 1
+            continue
+        if kind == "worker-provider-interruption":
+            _check_worker_provider_interruption(identifier, content)
+            provider_interruptions += 1
             continue
         if kind != "test-receipt":
             raise _CheckFailed(f"receipt {identifier} has unsupported kind {kind!r}")
@@ -1317,7 +1348,8 @@ def _check_receipt_contents(context: _Verification) -> str:
         f"{len(context.receipts)} receipts are canonical public JSON; "
         f"{checks} trusted check receipts match their check.completed payloads; "
         f"{provider_receipts} worker provider receipts are canonical "
-        "WorkerProviderReceipt bytes"
+        f"WorkerProviderReceipt bytes; {provider_interruptions} worker provider "
+        "interruptions are canonical WorkerProviderInterruption bytes"
     )
 
 
@@ -1892,6 +1924,50 @@ def _check_manifest_summary(context: _Verification) -> str:
         raise _CheckFailed(
             "manifest mission creation_source does not match the mission.created event"
         )
+    try:
+        policy_decision = plan_policy_decision(events, mission["plan_revision"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise _CheckFailed("event log policy decision is invalid") from error
+    if policy_decision is not None:
+        recorded_plans = _recorded_plan_digests(events, failure=_CheckFailed)
+        if (
+            policy_decision.policy_id != expected_policy["policy_id"]
+            or policy_decision.policy_revision != expected_policy["revision"]
+            or policy_decision.policy_sha256 != expected_policy["policy_sha256"]
+            or policy_decision.base_sha != expected_policy["base_sha"]
+            or recorded_plans.get(policy_decision.plan_revision)
+            != policy_decision.plan_sha256
+        ):
+            raise _CheckFailed("policy decision does not bind the manifest authority")
+        approvals = tuple(
+            event
+            for event in events
+            if event.event_type == MissionEventType.PLAN_APPROVED
+            and event.payload.get("plan_revision") == policy_decision.plan_revision
+        )
+        if len(approvals) > 1 or (
+            approvals
+            and (
+                approvals[0].payload.get("plan_sha256") != policy_decision.plan_sha256
+                or approvals[0].payload.get("base_sha") != policy_decision.base_sha
+                or approvals[0].payload.get("policy_decision_sha256")
+                != policy_decision.decision_sha256
+            )
+        ):
+            raise _CheckFailed("plan approval does not bind the policy decision")
+        is_policy_grant = bool(approvals) and (
+            approvals[0].truth_kind == TruthKind.POLICY_AUTHORITATIVE
+            and approvals[0].authority == MissionAuthority.POLICY_ENGINE
+        )
+        if (
+            policy_decision.effective_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
+            and not is_policy_grant
+        ) or (
+            approvals
+            and policy_decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
+            and is_policy_grant
+        ):
+            raise _CheckFailed("plan approval authority disagrees with policy decision")
     status = _replay_mission_status(events, mission["plan_revision"])
     if (
         manifest.get("mission_status") != status.value
@@ -1914,6 +1990,20 @@ def _check_manifest_summary(context: _Verification) -> str:
                 f"does not match the final_candidate events ({expected_decision})"
             )
         decision_text = f"final decision {expected_decision['state']}"
+        if expected_decision["state"] == "approved" and (
+            policy_decision is not None
+            and policy_decision.finalization_mode
+            == FinalizationMode.AUTO_FINALIZE_ISOLATED
+        ):
+            final_event = events[expected_decision["event_seq"] - 1]
+            if (
+                expected_decision.get("mode") != FinalizationMode.AUTO_FINALIZE_ISOLATED
+                or final_event.payload.get("policy_decision_sha256")
+                != policy_decision.decision_sha256
+                or final_event.truth_kind != TruthKind.POLICY_AUTHORITATIVE
+                or final_event.authority != MissionAuthority.POLICY_ENGINE
+            ):
+                raise _CheckFailed("automatic final approval authority is invalid")
 
     for entry in manifest["attempts"]:
         _check_attempt_entry(context, entry, _ATTEMPT_LEASE_FIELDS)

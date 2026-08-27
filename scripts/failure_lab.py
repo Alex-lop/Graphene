@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""Failure laboratory: list and SIGKILL strongly identified Graphene-owned processes.
+"""Failure laboratory: list and SIGKILL barrier-proven Gemini model children.
 
 Usage::
 
     uv run --frozen python scripts/failure_lab.py list MISSION_ID
-    uv run --frozen python scripts/failure_lab.py kill MISSION_ID --attempt ATTEMPT_ID
-    uv run --frozen python scripts/failure_lab.py auto MISSION_ID [--timeout SECONDS]
+    uv run --frozen python scripts/failure_lab.py kill MISSION_ID --attempt ATTEMPT_ID --actor-label LABEL
+    uv run --frozen python scripts/failure_lab.py auto MISSION_ID --actor-label LABEL [--timeout SECONDS]
 
 ``list`` prints a JSON array with one object per owned-process record the
 mission's registry holds for MISSION_ID: ``attempt_id``, ``worker_id`` (read
 from the mission snapshot), ``pid``, ``pgid``, ``started_at``, and the
 executable ``ps`` observed when the record was written.
 
-``kill`` sends SIGKILL to exactly one process group through
+``kill`` sends SIGKILL to exactly one model-child process group through
 ``OwnedProcessRegistry.signal`` -- the same identity-checked path that
 ``graphene mission cancel`` uses -- and prints a JSON object describing
 exactly what it signalled. It refuses, signalling nothing, when the registry
 holds no record for ATTEMPT_ID, when that record belongs to a different
-mission, or when the attempt is not running under a live lease. Nothing is
-ever killed by name.
+mission, when the attempt is not running under a live lease, or when the
+child has not durably acknowledged entering provider transport under that
+lease and fence. Nothing is ever killed by name.
 
-On the ``gemini-adk`` path workers run in-process; the strongly identified
-Graphene-owned process is the attempt's check subprocess, which exists only
-while ``GRAPHENE_CHECK_EXECUTOR=host-sandbox`` runs the frozen
-``fixture-tests`` command for that attempt.
+Fake adapters remain in-process and therefore have no model child or kill
+window. Live Gemini model calls alone cross this child boundary; repository
+mutation and trusted checks remain in the owning worker process.
 
 ``auto`` drives the directive's choreography unattended: it polls the mission
 store and the registry in-process (the check window is only a few seconds,
 too short for one ``uv run`` per poll) and, the first moment a work attempt
 from one worker is **already accepted** while a *different* worker's work
-attempt is running under a live lease with a registered check process, it
-performs exactly the identity-checked ``kill`` above on that attempt and
+attempt is running under a live lease with a barrier-acknowledged model child,
+it performs exactly the identity-checked ``kill`` above on that attempt and
 prints the same JSON plus the sibling's accepted publication id and the
 instant of the kill. If the mission leaves ``running`` before such a moment
 exists, it exits 3 having killed nothing; the run is then simply not a
@@ -44,6 +44,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import signal
 import sys
 import time
@@ -52,6 +54,7 @@ from datetime import UTC, datetime
 from typing import IO
 
 from graphene.cli.mission import MissionCliError, _mission_runtime, _store_for_mission
+from graphene.hashing import canonical_json_bytes, sha256_hex
 from graphene.orchestration.mission_models import (
     AttemptState,
     Dispatch,
@@ -64,15 +67,53 @@ from graphene.orchestration.process_control import (
     OwnedProcessRegistry,
     ProcessControlError,
 )
-from graphene.orchestration.sqlite_mission_store import MissionNotFound, MissionStoreError
+from graphene.orchestration.sqlite_mission_store import (
+    MissionNotFound,
+    MissionStoreError,
+)
 
 
 class FailureLabError(RuntimeError):
-    """A refusal. Nothing was signalled."""
+    """An operator-visible failure-laboratory refusal."""
+
+
+def _actor_label(value: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value) is None:
+        raise FailureLabError("refused: actor label is invalid")
+    return value
+
+
+def _injection_directory(registry: OwnedProcessRegistry):
+    directory = registry.directory.parent / "failure-injections"
+    created = not directory.exists()
+    if directory.exists() and (directory.is_symlink() or not directory.is_dir()):
+        raise FailureLabError("refused: failure-injection registry is unsafe")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    if created:
+        descriptor = os.open(directory.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    return directory
+
+
+def _record_injection(
+    registry: OwnedProcessRegistry, value: dict[str, object]
+) -> dict[str, object]:
+    directory = _injection_directory(registry)
+    content = canonical_json_bytes(value)
+    digest = sha256_hex(content)
+    try:
+        registry._atomic_create(directory, directory / f"{digest}.json", value)
+    except ProcessControlError as error:
+        raise FailureLabError("refused: failure injection could not be recorded") from error
+    return {**value, "injection_record_sha256": digest}
 
 
 def record_for_attempt(
-    registry: OwnedProcessRegistry, attempt_id: str
+    registry: OwnedProcessRegistry, attempt_id: str, *, model: bool = False
 ) -> OwnedProcess | None:
     """Read the durable record for one attempt, whichever mission owns it.
 
@@ -82,7 +123,7 @@ def record_for_attempt(
     are rejected exactly as they are everywhere else.
     """
 
-    path = registry._path(attempt_id)
+    path = registry._model_path(attempt_id) if model else registry._path(attempt_id)
     try:
         path.lstat()
     except FileNotFoundError:
@@ -98,6 +139,7 @@ def record_value(owned: OwnedProcess, worker_id: str | None) -> dict[str, object
         "pgid": owned.pgid,
         "pid": owned.pid,
         "started_at": owned.started_at,
+        "birth_token": owned.birth_token,
         "worker_id": worker_id,
     }
 
@@ -115,16 +157,20 @@ def list_records(
     return [record_value(item, worker_ids.get(item.attempt_id)) for item in records]
 
 
-def kill_attempt(
+def kill_model_attempt(
     registry: OwnedProcessRegistry,
     mission_id: str,
     attempt_id: str,
     dispatch: Dispatch | None,
+    *,
+    actor_label: str = "local-operator",
 ) -> dict[str, object]:
-    """SIGKILL one attempt's owned process group, or refuse and signal nothing."""
+    """Kill only a live child whose provider-transport barrier matches its fence."""
 
     try:
-        owned = record_for_attempt(registry, attempt_id)
+        owned = record_for_attempt(registry, attempt_id, model=True)
+        if owned is None:
+            owned = record_for_attempt(registry, attempt_id)
     except ProcessControlError as error:
         raise FailureLabError(
             f"refused: owned-process record for attempt {attempt_id} "
@@ -149,16 +195,65 @@ def kill_attempt(
             f"in mission {mission_id}"
         )
     try:
-        registry.signal(dispatch, signal.SIGKILL)
+        barrier = registry.model_dispatch_barrier(dispatch)
     except ProcessControlError as error:
         raise FailureLabError(f"refused: {error}") from error
-    return {
+    if barrier is None:
+        raise FailureLabError(
+            f"refused: attempt {attempt_id} has no acknowledged model dispatch"
+        )
+    actor = _actor_label(actor_label)
+    requested_at = datetime.now(UTC)
+    request_value = {
         **record_value(owned, dispatch.worker_id),
+        "record_type": "signal_requested",
         "action": "kill",
+        "actor_label": actor,
         "signal": "SIGKILL",
+        "requested_at": requested_at.isoformat(timespec="milliseconds"),
         "task_id": dispatch.task_id,
         "fencing_token": dispatch.fencing_token,
+        "stage": "model",
+        "request_sha256": barrier.request_sha256,
+        "sdk_invocation_id": barrier.sdk_invocation_id,
+        "provider_dispatched_at": barrier.dispatched_at,
     }
+    request = _record_injection(registry, request_value)
+    request_record_sha256 = str(request["injection_record_sha256"])
+    try:
+        if not registry.signal_prepared(owned, signal.SIGKILL):
+            raise ProcessControlError("owned process is no longer running")
+        deadline = time.monotonic() + 5
+        while registry._live_identity(owned) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        observed_state = (
+            "running" if registry._live_identity(owned) else "not_running"
+        )
+    except ProcessControlError as error:
+        _record_injection(
+            registry,
+            {
+                "record_type": "signal_refused",
+                "signal_request_record_sha256": request_record_sha256,
+                "observed_at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+                "observed_process_state": "unknown",
+                "reason": str(error),
+            },
+        )
+        raise FailureLabError(f"refused: {error}") from error
+    result = _record_injection(
+        registry,
+        {
+            **request_value,
+            "record_type": "signal_observed",
+            "signal_request_record_sha256": request_record_sha256,
+            "observed_at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            "observed_process_state": observed_state,
+        },
+    )
+    if observed_state == "running":
+        raise FailureLabError("refused: signalled process identity remained live")
+    return result
 
 
 def worker_ids(store: object, mission_id: str) -> dict[str, str]:
@@ -212,6 +307,14 @@ def kill_opportunity(
             or not registry.has_record(attempt.attempt_id)
         ):
             continue
+        dispatch = running_dispatch(store, mission_id, attempt.attempt_id)
+        if dispatch is None:
+            continue
+        try:
+            if registry.model_dispatch_barrier(dispatch) is None:
+                continue
+        except ProcessControlError:
+            continue
         for sibling_worker, publication_id in accepted:
             if sibling_worker != attempt.worker_id:
                 return attempt.attempt_id, sibling_worker, publication_id
@@ -224,6 +327,7 @@ def auto_kill(
     mission_id: str,
     *,
     timeout: float,
+    actor_label: str = "local-operator",
     poll: float = 0.05,
     reopen: Callable[[], object] | None = None,
 ) -> dict[str, object]:
@@ -252,7 +356,13 @@ def auto_kill(
             attempt_id, sibling_worker, publication_id = opportunity
             dispatch = running_dispatch(store, mission_id, attempt_id)
             killed_at = datetime.now(UTC)
-            value = kill_attempt(registry, mission_id, attempt_id, dispatch)
+            value = kill_model_attempt(
+                registry,
+                mission_id,
+                attempt_id,
+                dispatch,
+                actor_label=actor_label,
+            )
             return {
                 **value,
                 "killed_at": killed_at.isoformat(timespec="milliseconds"),
@@ -277,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="failure_lab",
         allow_abbrev=False,
         description=(
-            "List or SIGKILL strongly identified Graphene-owned check processes."
+            "List or SIGKILL acknowledged Graphene-owned Gemini model children."
         ),
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -294,6 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     kill.add_argument(
         "--attempt", required=True, dest="attempt_id", help="exact attempt ID"
     )
+    kill.add_argument("--actor-label", required=True)
     auto = commands.add_parser(
         "auto",
         allow_abbrev=False,
@@ -301,6 +412,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     auto.add_argument("mission_id", help="exact mission ID")
     auto.add_argument("--timeout", type=float, default=900.0)
+    auto.add_argument("--actor-label", required=True)
     return parser
 
 
@@ -325,11 +437,18 @@ def main(
                 registry,
                 args.mission_id,
                 timeout=args.timeout,
+                actor_label=args.actor_label,
                 reopen=lambda: _store_for_mission(args.mission_id),
             )
         else:
             dispatch = running_dispatch(store, args.mission_id, args.attempt_id)
-            value = kill_attempt(registry, args.mission_id, args.attempt_id, dispatch)
+            value = kill_model_attempt(
+                registry,
+                args.mission_id,
+                args.attempt_id,
+                dispatch,
+                actor_label=args.actor_label,
+            )
     except FailureLabError as error:
         print(str(error), file=stderr)
         return 3 if str(error).startswith("no kill opportunity") else 2

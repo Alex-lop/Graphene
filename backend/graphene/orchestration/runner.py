@@ -207,7 +207,7 @@ class MissionRunner:
 
     async def _execute(
         self, dispatch: Dispatch, timeout: float
-    ) -> tuple[Dispatch, WorkerRun | AttemptResult, RunnerError | None]:
+    ) -> tuple[Dispatch, WorkerRun | AttemptResult | None, RunnerError | None]:
         try:
             run = await asyncio.wait_for(
                 self.runtime.execute_async(dispatch), timeout=timeout
@@ -215,57 +215,87 @@ class MissionRunner:
             return dispatch, run, None
         except asyncio.CancelledError:
             try:
-                await asyncio.to_thread(self.runtime.cancel, dispatch)
-                result_code = RuntimeErrorCode.CANCELLED
+                recovered = self.runtime.recover_durable_receipt(dispatch)
+            except Exception as recovery_error:
+                error = RunnerExecutionFailed(
+                    f"durable receipt recovery failed for {dispatch.task_id}"
+                )
+                error.__cause__ = recovery_error
+                return dispatch, None, error
+            if recovered is not None:
+                return (
+                    dispatch,
+                    recovered,
+                    RunnerCancelled("mission cancellation requested"),
+                )
+            try:
+                cancelled = await asyncio.to_thread(
+                    self.runtime.cancel_and_reconcile, dispatch
+                )
                 error: RunnerError = RunnerCancelled("mission cancellation requested")
             except Exception as cleanup_error:
-                result_code = RuntimeErrorCode.OUTCOME_UNKNOWN
                 error = RunnerExecutionFailed(
                     f"worker cancellation cleanup failed for {dispatch.task_id}"
                 )
                 error.__cause__ = cleanup_error
-            return (
-                dispatch,
-                AttemptResult(
-                    succeeded=False,
-                    result_code=result_code,
-                    session_id="runner-" + dispatch.attempt_id[-16:],
-                    invocation_id=stable_operation_id(dispatch, "runner-cancelled"),
-                    # The runtime, not the runner, knows how far the attempt
-                    # got. Without this the store sees a bare `cancelled`.
-                    stage=self.runtime.cancelled_stage(dispatch.attempt_id),
-                ),
-                error,
-            )
+                return dispatch, None, error
+            return dispatch, cancelled, error
         except TimeoutError:
             try:
-                await asyncio.to_thread(self.runtime.cancel, dispatch)
+                recovered = self.runtime.recover_durable_receipt(dispatch)
+            except Exception as recovery_error:
+                error = RunnerExecutionFailed(
+                    f"durable receipt recovery failed for {dispatch.task_id}"
+                )
+                error.__cause__ = recovery_error
+                return dispatch, None, error
+            if recovered is not None:
+                return (
+                    dispatch,
+                    recovered,
+                    RunnerDeadlineExceeded("mission deadline exceeded"),
+                )
+            try:
+                cancelled = await asyncio.to_thread(
+                    self.runtime.cancel_and_reconcile,
+                    dispatch,
+                    retryable=True,
+                )
                 error = RunnerDeadlineExceeded("mission deadline exceeded")
-            except Exception:
+                return dispatch, cancelled, error
+            except Exception as cleanup_error:
                 error = RunnerDeadlineExceeded(
                     "mission deadline exceeded and cleanup failed"
                 )
+                error.__cause__ = cleanup_error
+                return dispatch, None, error
         except Exception:
             try:
-                await asyncio.to_thread(self.runtime.cancel, dispatch)
+                recovered = self.runtime.recover_durable_receipt(dispatch)
+            except Exception as recovery_error:
+                error = RunnerExecutionFailed(
+                    f"durable receipt recovery failed for {dispatch.task_id}"
+                )
+                error.__cause__ = recovery_error
+                return dispatch, None, error
+            if recovered is not None:
+                return dispatch, recovered, None
+            try:
+                cancelled = await asyncio.to_thread(
+                    self.runtime.cancel_and_reconcile,
+                    dispatch,
+                    retryable=True,
+                )
                 error = RunnerExecutionFailed(
                     f"worker execution failed for {dispatch.task_id}"
                 )
-            except Exception:
+                return dispatch, cancelled, error
+            except Exception as cleanup_error:
                 error = RunnerExecutionFailed(
                     f"worker execution and cleanup failed for {dispatch.task_id}"
                 )
-        return (
-            dispatch,
-            AttemptResult(
-                succeeded=False,
-                result_code=RuntimeErrorCode.OUTCOME_UNKNOWN,
-                session_id="runner-" + dispatch.attempt_id[-16:],
-                invocation_id=stable_operation_id(dispatch, "runner-failure"),
-                stage=self.runtime.cancelled_stage(dispatch.attempt_id),
-            ),
-            error,
-        )
+                error.__cause__ = cleanup_error
+                return dispatch, None, error
 
     async def _reject_prefetch(
         self,
@@ -306,6 +336,7 @@ class MissionRunner:
         completion_order: list[str] = []
         replayed: list[str] = []
         receipts: list[RuntimeReceipt] = []
+        reconciled_attempts: set[str] = set()
 
         while True:
             snapshot = self.scheduler.store.snapshot(mission_id)
@@ -325,7 +356,44 @@ class MissionRunner:
             remaining = self.deadline_seconds - (self.monotonic() - started)
             if remaining <= 0:
                 raise RunnerDeadlineExceeded("mission deadline exceeded")
-            dispatches = self.scheduler.tick(mission_id, self.worker_ids)
+            reconciled_results: dict[str, AttemptResult] = {}
+            for dispatch in self.scheduler.recover(
+                mission_id, self.worker_ids, include_expired=True
+            ):
+                if (
+                    dispatch.expires_at <= self.scheduler.clock.now()
+                    and dispatch.attempt_id not in reconciled_attempts
+                ):
+                    recovered = await self.runtime.reconcile_expired_async(dispatch)
+                    reconciled_attempts.add(dispatch.attempt_id)
+                    if recovered is not None:
+                        receipts.append(recovered.receipt)
+                        if recovered.replayed:
+                            try:
+                                self.scheduler.reconcile_expired_receipt(
+                                    dispatch, recovered.result
+                                )
+                            except Exception as error:
+                                raise RunnerExecutionFailed(
+                                    f"completion reconciliation failed for {dispatch.task_id}"
+                                ) from error
+                            try:
+                                self.runtime.finalize_reconciled_attempt(
+                                    dispatch, recovered.receipt
+                                )
+                            except Exception as error:
+                                raise RunnerExecutionFailed(
+                                    f"committed receipt cleanup failed for {dispatch.task_id}"
+                                ) from error
+                            completion_order.append(dispatch.task_id)
+                            replayed.append(dispatch.attempt_id)
+                        else:
+                            reconciled_results[dispatch.attempt_id] = recovered.result
+            dispatches = self.scheduler.tick(
+                mission_id,
+                self.worker_ids,
+                reconciled_results=reconciled_results,
+            )
             if not dispatches:
                 snapshot = self.scheduler.store.snapshot(mission_id)
                 if snapshot.mission.status == MissionStatus.AWAITING_RESULT:
@@ -367,6 +435,10 @@ class MissionRunner:
                 for task in completed:
                     pending.pop(task)
                     dispatch, run, error = await task
+                    if run is None:
+                        assert error is not None
+                        failures.append(error)
+                        continue
                     result = run.result if isinstance(run, WorkerRun) else run
                     try:
                         self.scheduler.complete(dispatch, result)
@@ -377,6 +449,18 @@ class MissionRunner:
                         failure.__cause__ = completion_error
                         failures.append(failure)
                         continue
+                    if isinstance(run, WorkerRun):
+                        try:
+                            self.runtime.finalize_reconciled_attempt(
+                                dispatch, run.receipt
+                            )
+                        except Exception as cleanup_error:
+                            failure = RunnerExecutionFailed(
+                                f"committed receipt cleanup failed for {dispatch.task_id}"
+                            )
+                            failure.__cause__ = cleanup_error
+                            failures.append(failure)
+                            continue
                     if error is not None:
                         if not (
                             cancellation_requested

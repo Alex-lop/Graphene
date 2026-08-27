@@ -361,7 +361,10 @@ def _inventory(root: Path) -> dict[str, bytes]:
 
 
 def fixture_policy_for(
-    workspace: Path, *, test_timeout_seconds: int = 15
+    workspace: Path,
+    *,
+    test_timeout_seconds: int = 15,
+    fixed_test_command: tuple[str, ...] = _FIXED_TEST_COMMAND,
 ) -> FixturePolicy:
     """Bind the frozen fixture-tests command to one exact workspace inventory.
 
@@ -377,7 +380,7 @@ def fixture_policy_for(
         root="fixture",
         tracked_paths=tuple(files),
         mutable_paths=tuple(files),
-        fixed_test_command=_FIXED_TEST_COMMAND,
+        fixed_test_command=fixed_test_command,
         test_timeout_seconds=test_timeout_seconds,
         max_test_output_bytes=16_384,
         max_write_bytes=262_144,

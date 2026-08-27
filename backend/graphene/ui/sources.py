@@ -20,12 +20,14 @@ from ..orchestration.causal_query import CausalWhyResult, why
 from ..orchestration.mission_models import MissionEvent, MissionEventType
 from ..orchestration.mission_projection import (
     MissionControlSnapshot,
+    MissionNotFound,
     MissionProjection,
     MissionProjectionError,
     MissionTaskDetail,
     task_detail,
 )
 from ..orchestration.mission_replay import VerifiedMissionReplay
+from ..orchestration.sqlite_mission_store import MissionStoreError
 from .read_only_store import ReadOnlyAttemptEvidenceStore, ReadOnlyMissionStore
 
 _STAGE_EVENTS = {
@@ -83,32 +85,55 @@ class LiveSource:
 
     def __init__(
         self,
-        store: ReadOnlyMissionStore,
+        store: ReadOnlyMissionStore | None,
         mission_id: str,
         *,
         evidence_path: Path | None = None,
+        store_path: Path | None = None,
     ) -> None:
         self.store = store
         self.mission_id = mission_id
         self.evidence_path = evidence_path
-        self.projection = MissionProjection(store)
+        self.store_path = store_path
+        self.projection = MissionProjection(store) if store is not None else None
         self._last: MissionControlSnapshot | None = None
         self._events: list[MissionEvent] = []
         self._notice: str | None = None
 
+    def _bind_store(self) -> bool:
+        """Attach after durable acceptance once the supervisor creates SQLite."""
+
+        if self.store is not None:
+            return True
+        if self.store_path is None or not self.store_path.is_file():
+            self._notice = "mission durably accepted; waiting for the planner to create the store"
+            return False
+        try:
+            self.store = ReadOnlyMissionStore(self.store_path)
+        except MissionStoreError:
+            self._notice = "mission durably accepted; waiting for the planner to commit the store"
+            return False
+        self.projection = MissionProjection(self.store)
+        return True
+
     def _bind_evidence(self) -> None:
         """The viewer usually attaches before the first attempt writes evidence."""
 
-        if self.store.artifact_resolver is not None or self.evidence_path is None:
+        if self.store is None or self.store.artifact_resolver is not None or self.evidence_path is None:
             return
         if self.evidence_path.is_file() and not self.evidence_path.is_symlink():
             self.store.bind_artifact_resolver(ReadOnlyAttemptEvidenceStore(self.evidence_path))
 
     def snapshot(self) -> MissionControlSnapshot | None:
+        if not self._bind_store():
+            return self._last
         self._bind_evidence()
+        assert self.projection is not None
         try:
             self._last = self.projection.snapshot(self.mission_id)
             self._notice = None
+        except MissionNotFound:
+            self._notice = "mission durably accepted; waiting for the planner to materialize its graph"
         except MissionProjectionError as error:
             # The projection quarantines a mission it saw inconsistently; a
             # viewer reopens rather than trusting a sticky refusal.
@@ -117,6 +142,8 @@ class LiveSource:
         return self._last
 
     def _refresh_events(self) -> None:
+        if self.store is None:
+            return
         while True:
             after = self._events[-1].seq if self._events else 0
             batch = self.store.tail(self.mission_id, after, 256)
@@ -146,7 +173,7 @@ class LiveSource:
 
     def lineage(self, task_id: str) -> CausalWhyResult | None:
         snapshot = self._last
-        if snapshot is None:
+        if snapshot is None or self.store is None:
             return None
         publication = next(
             (p for p in snapshot.publications if p.task_id == task_id and p.state == "accepted"),

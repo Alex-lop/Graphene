@@ -1,0 +1,2 @@
+# Compatibility baseline resolved from requirements.in.
+pydantic==2.13.4

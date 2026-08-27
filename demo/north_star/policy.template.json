@@ -1,29 +1,41 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "policy_id": "<materialized>",
   "revision": "<materialized>",
   "repo_id": "<materialized>",
   "base_ref": "<materialized>",
   "base_sha": "<materialized>",
-  "allowed_read_globs": ["README.md", "ledger_service/**", "tests/**"],
+  "allowed_read_globs": [
+    "README.md",
+    "orders_api/**",
+    "requirements.in",
+    "requirements.lock",
+    "tests/**"
+  ],
   "allowed_write_globs": [
-    "ledger_service/report_json.py",
-    "ledger_service/report_markdown.py",
-    "tests/test_report_json.py",
-    "tests/test_report_markdown.py"
+    "orders_api/api.py",
+    "orders_api/request_models.py",
+    "orders_api/response_models.py",
+    "requirements.in",
+    "requirements.lock"
   ],
   "exclusions": ["**/*.key", "**/*.pem", ".env", ".env.*", ".git/**", ".graphene/**"],
   "command_templates": [
     {
-      "template_id": "fixture-tests",
-      "argv": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+      "template_id": "orders-migration-check",
+      "argv": ["python", "-m", "orders_api.verify_migration", "--final"],
+      "timeout_seconds": 60
+    },
+    {
+      "template_id": "orders-migration-task-check",
+      "argv": ["python", "-m", "orders_api.verify_migration"],
       "timeout_seconds": 60
     }
   ],
   "network": {"mode": "deny", "allowed_hosts": []},
   "agent_roles": ["assembler", "planner", "verifier", "worker"],
   "max_concurrency": 2,
-  "retry_limit": 2,
+  "retry_limit": 1,
   "resource_budget": {
     "max_worker_seconds": 900,
     "max_attempts": 16,
@@ -32,5 +44,7 @@
     "hard_managed_rss_bytes": 805306368
   },
   "retention": {"retain_days": 7, "retain_failed_attempts": true},
-  "risk_gates": ["final-result", "network", "scope-expansion"]
+  "risk_gates": ["network", "scope-expansion"],
+  "authorization_mode": "policy_pre_authorized",
+  "finalization_mode": "auto_finalize_isolated"
 }

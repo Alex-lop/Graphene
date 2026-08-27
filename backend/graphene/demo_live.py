@@ -29,8 +29,9 @@ from typing import IO, Any
 from rich.console import Console
 
 from .hashing import sha256_hex
+from .package_data import north_star_project_root
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = north_star_project_root()
 _MATERIALIZE_SCRIPT = _REPO_ROOT / "scripts" / "materialize_north_star.py"
 _TRIGGER_TEMPLATE = _REPO_ROOT / "demo" / "north_star" / "mission.yaml"
 _PLACEHOLDER = "/ABSOLUTE/PATH/TO/north-star-target"
@@ -74,10 +75,7 @@ def _preflight() -> None:
 
 def _materialize(dest: Path, stdout: IO[str]) -> Any:
     if not _MATERIALIZE_SCRIPT.is_file() or not _TRIGGER_TEMPLATE.is_file():
-        raise _DemoError(
-            "graphene demo --live needs a repository clone; the North Star "
-            "target scripts are not installed with the wheel."
-        )
+        raise _DemoError("The installed North Star resource bundle is incomplete.")
     spec = importlib.util.spec_from_file_location("graphene_north_star", _MATERIALIZE_SCRIPT)
     if spec is None or spec.loader is None:
         raise _DemoError("The North Star materialization script could not load.")

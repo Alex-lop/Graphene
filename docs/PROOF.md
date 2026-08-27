@@ -1,34 +1,32 @@
-# Proof — what is proven, what is not
+# Proof — current implementation boundary
 
-Every public claim Graphene makes maps to a row here and to a label in
-[`contracts/product_proof.json`](../contracts/product_proof.json), the
-machine-readable truth. Labels only change in the same commit as a check that
-can fail. Where a session report and this page disagree, the contract wins.
+This page distinguishes code and credential-free checks from external proof.
+The machine-readable twin is
+[`contracts/product_proof.json`](../contracts/product_proof.json). A historical
+run against an earlier implementation does not prove the current recovery
+runtime.
 
-## The table
+## Current table
 
-| Path | Status | What it establishes |
+| Path | Status | What is established |
 |---|---|---|
-| `graphene mission replay taskmaster` | `VERIFIED_LOCAL` | Hash-checked fixture projection, replay, and UI semantics; not live execution |
-| `scripted-local` mission | `VERIFIED_LOCAL` on macOS | Durable scheduler, overlapping fixture workers, retry, V2 publication fan-in, exact verification, bundle-bound decision, isolated result |
-| Credential-free core | `VERIFIED_LOCAL` | SQLite authority/tamper checks, ownership/fencing, workspace audit, fake-ADK runtime, Mission Control commands, bounded 50-task/five-worker soak |
-| Official Firestore emulator | `VERIFIED_LOCAL` | Production create/approve/readiness/claim/heartbeat/completion and sharded materialization/reconcile path |
-| Live Gemini | `VERIFIED_LIVE` (2026-08-23) | Two `gemini-3.5-flash` workers on Vertex AI (`global`) completed the North Star mission `mission_start_5291caad50a8ee7a222a9221`: evidence-bound provider receipts, overlap on the store clock, the runtime call window, and the provider's own clock, exact verification, bundle-bound approval, isolated local result. Approval was operator-delegated (`server_derived`), not human-attested. [Evidence](../evidence/north_star/2026-08-23-north-star-live.md) |
-| Planning source binding | `VERIFIED_LOCAL` | Planning reads the manifest and excerpt bytes out of `base_sha` via `git ls-tree`/`cat-file`, never off disk, so the planner sees exactly what the workers clone; tracked or staged drift is rejected by name and the intermediate-symlink escape is gone by construction |
-| Final bundle authority | `VERIFIED_LOCAL` | The store refuses to register a final result bundle unless a repository-aware recompute is bound and agrees, and issues its own verification receipt that approval, rejection and cold verification all require |
-| Failure-aware retry | `VERIFIED_LIVE` (2026-08-23) | A failed trusted check leaves a redacted structured diagnostic; the retry's prompt carries the prior attempt id, fence, result code, failed check names and receipt digest with an unchanged repair scope; a repeated identical failure signature terminalizes instead of taking a blind third attempt — both directions observed live |
-| Docker executor | `NOT PROVEN` | Requires a responsive-daemon smoke |
-| Cloud Run + real Firestore | `NOT DEPLOYED — NOT PROVEN` | Packaging/emulator proof is not authenticated deployment proof. Nothing was enabled or created: the required APIs are disabled on the configured project, and the project is a Gemini-API auto-created one rather than the dedicated sandbox the setup guide requires, so the owner chooses the project first |
-| Firestore single-executor vertical | `VERIFIED_LOCAL` on the official emulator | Seed → register → claim → heartbeat → **successful** completion with a real check receipt, the event chain recomputed from seq 1, and the sharded materialization invariants intact. Abandon is disabled (501) and a second concurrent executor is refused (409); cloud parallelism is not claimed anywhere |
-| Cloud check authority | `EXECUTOR_ATTESTED` | The coordinator recomputes a receipt's bindings, not its test results, so an authenticated remote executor is inside the trusted computing base. Every successful cloud completion records `check_authority: executor_attested` in the hash chain. A cloud smoke never inherits the local `trusted_check` claim |
-| Graph economics benchmark | `NOT PROVEN` | The harness has a credential-free unit test and a written deferral ([`benchmarks/DEFERRAL.md`](../benchmarks/DEFERRAL.md)). No repeated run, token/cost/latency result, median or P95 is claimed |
-| Product media and submission video | `NOT PROVEN — CAPTURE PENDING` | `docs/assets/demo-capture.json` records the verified replay source and checkpoint; the required hero screenshot and replay GIF do not exist, and nothing has been filmed. The live sequence those media would show is separately rehearsed — see below |
-| Terminal UI (`graphene ui`) | `VERIFIED_LOCAL` (2026-08-26) | The verified replay renders as a top-to-bottom DAG with box-drawing edges, per-node state, and a banner carrying mission id, plan revision, digest, and signed/unsigned state; the viewer attaches read-only (SQLite `mode=ro`, `query_only=ON`) and node states change on screen while a scripted-local mission runs ([evidence](../evidence/ui/2026-08-26/README.md)); drill-in and summary panes are built from the store and snapshot-tested (`tests/unit/ui`). Not a live model mission, not filmed; on Linux the replay path is proven in the pinned image (CI's Linux job runs `tests/unit/ui` and the replay render; the live-attach test needs macOS) |
-| The `/graphene` loop over MCP | `VERIFIED_LOCAL` (2026-08-26) | `graphene-mcp` over stdio, driven by the official MCP client: six tools and the `goal` prompt, `approve_plan` refusing a forged digest and honouring the shown one, execution inside the signed map on the scripted fixture, summary and lineage from the store, `graphene ui` attached in a second process — end to end on a fresh clone of this repository ([evidence](../evidence/integration/2026-08-26/transcript.md), 14/14 beats). Codex and Gemini CLI blocks are documented against their current docs, not driven; no person has signed in a chat client; no live model mission ran under MCP |
-| Mission capsule | `VERIFIED_LIVE_COLD` (2026-08-23) | Capsules of the completed live mission and the live failure-lab mission verify from a fresh clone with no mission store (11 checks each); not producer authenticity, same laptop |
-| North Star | `VERIFIED_LIVE` (2026-08-23) | Two real workers, survives one failing *and completes*, and `why` chains — all live. Completion gate: **9/10 ordinary** and **3/3 controlled-failure** missions finished end to end, $2.30 of receipt-derived spend across 14 missions. The controlled failure is `--inject-check-fault`, an owned check process failed on purpose with a `simulated_fixture` receipt — not a real infrastructure failure. [Evidence](../evidence/convergence/2026-08-23-completion-gate/README.md) |
+| `graphene mission replay taskmaster` | `VERIFIED_LOCAL` | A SHA-256-checked generated fixture reconstructs the read-only projection and UI. It runs no agent or test |
+| `scripted-local` | `VERIFIED_LOCAL` where the configured sandbox is supported | Scheduler, detached supervisor, controller disconnect, higher-generation supervisor replacement, policy authorization, retry, exact candidate verification, and isolated auto-finalization on the fixed fixture |
+| SQLite authority | `VERIFIED_LOCAL` | Typed events, idempotency, plan revision/digest binding, leases, fencing, stale-result refusal, accepted-publication fan-in, and final-bundle checks |
+| Policy pre-authorization | `VERIFIED_LOCAL` | The store records a recomputed `PlanPolicyDecisionV1` and policy-authoritative approval atomically. A requested mode alone grants nothing |
+| MCP stdio | `VERIFIED_LOCAL` | The official Python MCP client initializes the seven-tool server. Fixture tests show `start_goal` returns promptly and a fresh stdio process can reattach after the initiating controller exits |
+| Gemini child boundary | `VERIFIED_LOCAL` protocol/fake tests | Canonical bounded frames, no repository API in the child, provider-dispatch barrier, exact owned process identity, retryable interruption, and known-absent repository effect |
+| Model-child failure laboratory | `VERIFIED_LOCAL` mechanics only | Fake/protocol tests cover identity-checked signalling and higher-fence recovery mechanics. No real Gemini process has been killed in the current implementation |
+| Orders target | `VERIFIED_LOCAL` target tests | Materialization, immutable acceptance suite, exact five-file write policy, network deny, two-worker cap, and Pydantic v2 migration contract |
+| Installed wheel and sdist | `VERIFIER IMPLEMENTED` | The verifier builds and separately installs the sdist-derived wheel and sdist outside the source tree, then checks entry points, replay, UI, MCP, packaged resources, Orders materialization, and reattachment |
+| Current live Gemini Orders mission | `NOT PROVEN` | No credentialed current-tree run reached `completed` with provider receipts and an isolated result |
+| Current live Gemini model kill and recovery | `NOT PROVEN` | No captured run killed a barrier-acknowledged real model child, preserved its accepted sibling, retried under a higher fence, and completed |
+| Codex MCP hero flow | `NOT PROVEN` | Configuration is documented; Codex has not started, disconnected from, reattached to, and observed a current mission through completion |
+| Clean exact-SHA artifact proof | `EXTERNAL SHA MANIFEST REQUIRED` | The proof driver requires an expected clean SHA and matching canonical remote ref, then writes its SHA-named result outside the checkout; the external manifest or CI result establishes a particular run |
+| Cloud Run and real Firestore | `NOT DEPLOYED — NOT PROVEN` | Emulator and protocol checks are not authenticated deployment proof |
+| Docker, benchmark, screenshot/GIF, and film | `NOT PROVEN` | No responsive-daemon smoke, repeated equal-gate measurement, or current hero capture exists |
 
-## The verified replay (the quickstart)
+## Credential-free replay
 
 ```bash
 uv sync --frozen
@@ -37,125 +35,74 @@ uv run --frozen graphene mission replay taskmaster
 
 > **VERIFIED MISSION REPLAY — GENERATED SCRIPTED FIXTURE; NO LIVE AGENT, HUMAN ATTESTATION, NEW TEST EXECUTION, GEMINI, OR CLOUD**
 
-The checked-in replay is SHA-256 verified, opens at checkpoint zero, and pauses
-at the fixture's pending final-candidate checkpoint. **Continue with recorded
-simulated approval** depicts a fixture branch with `human_attestation=false`;
-it runs nothing new and is not V2 bundle proof. See
-[`demo-capture.json`](assets/demo-capture.json).
+The replay is useful for inspecting the UI and event projection. Its recorded
+continuation remains simulated and must not be described as a fresh result.
+The one-shot equivalent is
+`uv run --frozen graphene ui --replay taskmaster --once`.
 
-Cold verification of the README quickstart, 2026-08-26, in a fresh
-`python:3.13-slim` container with nothing but `git` and `uv` installed: the
-three commands were run verbatim; the timing and exit status are recorded in
-the [goal-run report](reports/2026-08-26-goal-run.md). A container has no
-browser, so the replay served Mission Control and was stopped by a timeout
-rather than by a person closing it.
-
-## Live Gemini — proven on one mission, labelled exactly
+## Scripted fixture
 
 ```bash
-uv run --frozen graphene mission demo
+uv run --frozen graphene init --repo /absolute/path/to/disposable-repo
+uv run --frozen graphene mission start --repo /absolute/path/to/disposable-repo \
+  --goal "Add redacted JSON and Markdown status reports." \
+  --driver scripted-local
+uv run --frozen graphene mission approve-plan MISSION_ID --revision 1
 
-uv run --frozen graphene mission start \
-  --repo PATH \
-  --goal GOAL \
-  --success-criterion CRITERION \
-  --driver gemini-adk
+# Explicit credential-free automation is still simulated fixture truth:
+uv run --frozen graphene mission start --repo /absolute/path/to/disposable-repo \
+  --goal "Add redacted JSON and Markdown status reports." \
+  --driver scripted-local --auto-approve
 ```
-
-The credential-gated path requests `gemini-3.5-flash`, proposes a typed DAG,
-and runs two to five bounded ADK workers after exact plan approval.
-Credential-free tests exercise the same orchestration with deterministic fake
-models, isolated workspaces, concurrent siblings, trusted checks, accepted-only
-fan-in, exact verification, and an unchanged source checkout.
-
-On 2026-08-23 the North Star mission ran live against the `demo/north_star`
-target through Vertex AI (location `global`; `us-central1` does not serve this
-model for the project): two workers, three work attempts, assembly, exact
-verification, a registered `FinalResultBundleV2`, a bundle-bound approval, and
-an isolated local result commit — with every worker call bound into evidence as
-a sanitized provider receipt and the two renderer calls overlapping for 25–28 s
-on three independent bases. **What that run does not prove:** approvals were
-operator-delegated (`truth_kind: server_derived`) under a recorded standing
-instruction, not TTY-attested; the live failure laboratory and the cold capsule
-verification are separate claims. Every identifier, digest, and count is in
-[`evidence/north_star/2026-08-23-north-star-live.md`](../evidence/north_star/2026-08-23-north-star-live.md);
-missing credentials still fail closed with no silent fallback. See
-[`NORTH_STAR_RUNBOOK.md`](NORTH_STAR_RUNBOOK.md) for the live-contact fixes
-this run required.
-
-`graphene demo --live` runs that whole path as one continuous sequence —
-trigger, bounded plan, a node's full contract, an edit that compiles revision
-2, lint, diff, approval of the exact digest, two live workers, an injected
-check fault and its fenced retry, the isolated result, and `why`. It has run
-end to end and then three consecutive clean rehearsals, all exit 0
-([evidence](../evidence/contract/2026-08-24-rehearsals/README.md)), and one
-run was timed end to end at **77 seconds** with the edit applied by a script.
-The script is [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) and the beat-by-beat shot
-list is [`SHOT_LIST.md`](SHOT_LIST.md).
-
-**What the rehearsals cover, and what they cannot:** the four runs of
-2026-08-24 applied the plan edit with `--plan-edit FILE`; on 2026-08-25 three
-consecutive runs took the interactive pause instead — the prompt a person types
-into — with a scripted operator editing the export and pressing Enter
-([evidence](../evidence/contract/2026-08-25-rehearsals/README.md)), all exit 0,
-69–90 s each. What no rehearsal can cover is the person: the time a human takes
-to type the edit is unmeasured. The submission video remains `NOT PROVEN` —
-nothing has been recorded.
-
-## Scripted fixture and final result
-
-The executable fixture requires macOS, Python 3.13, Git, `uv`, and
-`/usr/bin/sandbox-exec`.
 
 > **SCRIPTED LOCAL MISSION FIXTURE — NOT GEMINI, ARBITRARY-REPOSITORY, OR CLOUD PROOF**
 
+The supervisor/MCP process test uses this fixture because it is deterministic
+and credential-free. It proves mission lifetime can outlive the initiating
+stdio controller; it does not prove provider availability or model behavior.
+
+## Installed artifacts
+
 ```bash
-uv run --frozen graphene init --repo /path/to/disposable-repo
-uv run --frozen graphene mission start --repo /path/to/disposable-repo \
-  --goal "Add redacted JSON and Markdown status reports." --driver scripted-local
-uv run --frozen graphene mission approve-plan MISSION_ID --revision 1
+python scripts/verify_installed_artifacts.py
 ```
 
-The default scripted start commits a validated proposal. An interactive TTY may
-attest approval; `--auto-approve` is always `simulated_fixture`. Execution stops
-at `awaiting_result` after registering a canonical pending
-`FinalResultBundleV2`. The result and capsule commands are in the
-[command map](COMMANDS.md).
+The script builds the sdist, builds a wheel from that sdist, installs both
+separately, changes to a directory outside the checkout, removes
+`PYTHONPATH`/`PYTHONHOME`/`VIRTUAL_ENV`, and uses private HOME/state/runtime
+directories. It checks:
 
-## Watching for a change
+- `graphene` and `graphene-mcp` entry points;
+- verified demo replay, mission replay, and one-shot terminal UI;
+- bare mission MCP and legacy MCP initialization/tool listing;
+- the supported legacy CLI bootstrap resources;
+- installed North Star materialization and supported legacy resources; and
+- absence of pytest from package runtime requirements.
 
-> **WATCHER — VERIFIED_LOCAL ON FIXTURES; LIVE GITHUB POLLING NOT PROVEN**
+For commit-bound proof, run `scripts/reliability/exact_sha_proof.py` with an
+expected SHA, its canonical remote ref, and `--require-clean`. It writes the
+SHA-named manifest outside the checkout by design, avoiding a self-referential
+proof commit.
 
-A `*.yaml` dropped in the inbox (`goal`, `repo`, `driver`, optional
-`success_criteria`, `max_workers`, `policy`; `yaml.safe_load`, 64 KiB, unknown
-keys rejected) or an open issue carrying the label creates one proposed mission
-through the same `mission start` path and commits a `mission.triggered`
-annotation (`source_kind`, `source_ref`, `source_url`, `source_sha256`,
-`observed_at`, `watcher_id`) that `graphene why` lists as the first stage.
-Rejections become `rejected/<name>.result.json` sidecars or state-file entries,
-never missions; identical content and already-seen issue ids trigger exactly
-once. GitHub polling is read-only `urllib` with `ETag`/`If-None-Match`,
-exponential backoff on rate limits, an optional
-`GITHUB_TOKEN`/`GRAPHENE_GITHUB_TOKEN` that is never printed or stored, and it
-refuses the network unless `GRAPHENE_WATCH_GITHUB_LIVE=1`. Fixture tests cover
-both paths; no live GitHub poll has been run. Live on 2026-08-23: a dropped
-`mission.yaml` created `mission_start_a44dcefd7cd8e79e25690611` through the
-watcher, the (delegated) approval ran two live Gemini workers, and
-`graphene why` on a file they produced starts at `STAGE trigger` — see
-[`evidence/north_star/2026-08-23-trigger-demo/`](../evidence/north_star/2026-08-23-trigger-demo/);
-that mission later failed on the model's own output, so no verified result
-followed the trigger yet.
+## Live proof gate
 
-## Platform
+The runtime pins `google-adk==2.5.0` and requests
+`gemini-3.5-flash`. These identifiers were source-checked on 2026-08-27. Before
+changing either live status, re-check current hackathon eligibility, requested
+and returned model identity, ADK version, access mode, and endpoint.
 
-macOS is where every live path above was proven; the scripted fixture needs
-`/usr/bin/sandbox-exec`. On Linux, CI proves the verified replay, the
-fail-closed executor boundary, and owned-process control inside the pinned
-`python:3.13-slim` image (`scripts/linux_parity_check.sh`). `plan`, `why`, and
-capsule verification are the same pure-Python code on both, but no Linux run of
-them is recorded, so they are not labelled proven there.
+A complete current live proof must use the Orders target and capture all of:
 
-The credential-free unit, integration, process, and adversarial suites, the
-locked `ruff`, and both parity checks gate every push. CI lives in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml); the change/proof
-ledger is the [implementation report](IMPLEMENTATION_REPORT.md).
+1. an exact committed Graphene SHA and a clean artifact build;
+2. a real MCP controller returning promptly after durable acceptance;
+3. controller disconnect followed by reattachment;
+4. two real Gemini child processes with evidence-bound identities;
+5. an identity-checked kill after the provider-dispatch barrier;
+6. unchanged accepted sibling publication and a higher-fence retry only for the
+   interrupted task;
+7. exact assembly, verification, automatic isolated finalization, `completed`,
+   `mission_summary`, and `why`; and
+8. no push, merge, deploy, or mutation of the target checkout.
+
+Earlier evidence under `evidence/` remains historical evidence for the code it
+ran. It is not promoted to current recovery-runtime proof.

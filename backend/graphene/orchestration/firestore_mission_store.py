@@ -345,6 +345,7 @@ def _snapshot_from_bundle(bundle: _StateBundle) -> MissionSnapshot:
 
 def _policy_summary(policy: ProjectPolicy) -> ProjectPolicySummary:
     return ProjectPolicySummary(
+        schema_version=policy.schema_version,
         policy_id=policy.policy_id,
         revision=policy.revision,
         repo_id=policy.repo_id,
@@ -357,6 +358,8 @@ def _policy_summary(policy: ProjectPolicy) -> ProjectPolicySummary:
         retry_limit=policy.retry_limit,
         network_mode=policy.network.mode,
         policy_sha256=canonical_json_sha256(policy.model_dump(mode="json")),
+        authorization_mode=policy.authorization_mode,
+        finalization_mode=policy.finalization_mode,
     )
 
 

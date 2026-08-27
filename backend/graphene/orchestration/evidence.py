@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
-from contextlib import closing
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -32,6 +30,7 @@ from .mission_models import (
     artifact_input_reference_key,
     _safe_public_value,
 )
+from .sqlite_lifecycle import serialized_connection
 
 _UTC_TIME = TypeAdapter(UtcDateTime)
 
@@ -155,13 +154,9 @@ class TrustedCheckReceipt(FrozenModel):
     template_sha256: Sha256
     accepted_input_references: tuple[ArtifactInputReference, ...] = Field(max_length=64)
     candidate_references: tuple[
-        PublishedArtifactReferenceV2
-        | ArtifactEnvelopeReferenceV2
-        | EvidenceReference,
+        PublishedArtifactReferenceV2 | ArtifactEnvelopeReferenceV2 | EvidenceReference,
         ...,
-    ] = Field(
-        min_length=1, max_length=64
-    )
+    ] = Field(min_length=1, max_length=64)
     candidate_tree_hash_version: Literal["graphene.tree.v2"]
     candidate_tree_sha256: Sha256
     result_code: Identifier
@@ -278,6 +273,7 @@ BEFORE DELETE ON artifact_envelopes_v2 BEGIN
     SELECT RAISE(ABORT, 'artifact envelopes are immutable');
 END;
 """
+_SCHEMA_VERSION = 1
 
 
 class SQLiteAttemptEvidenceStore:
@@ -287,14 +283,25 @@ class SQLiteAttemptEvidenceStore:
         if str(path) == ":memory:":
             raise ValueError("attempt evidence requires a durable SQLite path")
         self.path = str(path)
-        # ponytail: process-local serialization avoids SQLite WAL open/close races;
-        # shard evidence stores if write throughput becomes a measured bottleneck.
-        self._lock = threading.RLock()
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()[0]
             if str(mode).lower() != "wal":
                 raise AttemptEvidenceStoreError("SQLite WAL mode is required")
-            connection.executescript(_SCHEMA)
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version not in {0, _SCHEMA_VERSION}:
+                raise AttemptEvidenceStoreError(
+                    f"unsupported attempt evidence schema version {version}"
+                )
+            if version == 0:
+                connection.executescript(_SCHEMA)
+                connection.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+            if (
+                connection.execute("PRAGMA user_version").fetchone()[0]
+                != _SCHEMA_VERSION
+            ):
+                raise AttemptEvidenceStoreError(
+                    "attempt evidence schema version was not set"
+                )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, isolation_level=None, timeout=5)
@@ -429,7 +436,7 @@ class SQLiteAttemptEvidenceStore:
         request_sha = self._request_sha256(
             evidence_id, expected_head, idempotency_key, draft
         )
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing = connection.execute(
@@ -541,7 +548,7 @@ class SQLiteAttemptEvidenceStore:
                 raise
 
     def head(self, evidence_id: str) -> AttemptEvidenceHead:
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             row = connection.execute(
                 "SELECT seq, event_sha256, event_count FROM attempt_evidence_heads "
                 "WHERE evidence_id = ?",
@@ -565,7 +572,7 @@ class SQLiteAttemptEvidenceStore:
             raise ValueError("after_seq must be non-negative")
         if type(limit) is not int or not 1 <= limit <= 256:
             raise ValueError("limit must be between 1 and 256")
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             rows = connection.execute(
                 "SELECT event_bytes FROM attempt_evidence_events "
                 "WHERE evidence_id = ? AND seq > ? ORDER BY seq LIMIT ?",
@@ -751,7 +758,7 @@ class SQLiteAttemptEvidenceStore:
             byte_count=len(content),
             visibility=visibility,
         )
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -798,7 +805,7 @@ class SQLiteAttemptEvidenceStore:
             raise ValueError("attempt artifact must be bounded bytes")
         artifact_id = f"artifact_{verified.content_sha256[:32]}"
         envelope_bytes = canonical_json_bytes(verified.model_dump(mode="json"))
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -844,7 +851,8 @@ class SQLiteAttemptEvidenceStore:
                     (verified.artifact_envelope_sha256,),
                 ).fetchone()
                 if envelope_row is None or (
-                    envelope_row["artifact_id"], envelope_row["envelope_bytes"]
+                    envelope_row["artifact_id"],
+                    envelope_row["envelope_bytes"],
                 ) != (artifact_id, envelope_bytes):
                     raise AttemptEvidenceConflict("artifact envelope collision")
                 connection.commit()
@@ -876,7 +884,7 @@ class SQLiteAttemptEvidenceStore:
     ) -> tuple[bytes, ArtifactEnvelopeV2] | None:
         if not isinstance(reference, ArtifactEnvelopeReferenceV2):
             return None
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             row = connection.execute(
                 "SELECT e.artifact_id, e.envelope_bytes, a.kind, a.sha256, "
                 "a.byte_count, a.artifact_bytes FROM artifact_envelopes_v2 e "
@@ -923,9 +931,7 @@ class SQLiteAttemptEvidenceStore:
             else None
         )
 
-    def resolve_enveloped(
-        self, reference: ArtifactEnvelopeReferenceV2
-    ) -> bytes | None:
+    def resolve_enveloped(self, reference: ArtifactEnvelopeReferenceV2) -> bytes | None:
         """Resolve only when the stored content, envelope, and caller binding agree."""
 
         loaded = self._load_enveloped(reference)
@@ -949,7 +955,7 @@ class SQLiteAttemptEvidenceStore:
     ) -> ArtifactEnvelopeReferenceV2 | None:
         """Recover one authoritative envelope without guessing from content alone."""
 
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             rows = connection.execute(
                 "SELECT envelope_bytes FROM artifact_envelopes_v2 "
                 "WHERE artifact_id = ? ORDER BY artifact_envelope_sha256",
@@ -977,7 +983,7 @@ class SQLiteAttemptEvidenceStore:
         return matches[0] if len(matches) == 1 else None
 
     def resolve(self, kind: str, artifact_id: str) -> bytes | None:
-        with self._lock, closing(self._connect()) as connection:
+        with serialized_connection(self._connect) as connection:
             row = connection.execute(
                 "SELECT kind, sha256, byte_count, artifact_bytes FROM attempt_artifacts "
                 "WHERE artifact_id = ?",

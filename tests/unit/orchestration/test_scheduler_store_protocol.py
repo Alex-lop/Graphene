@@ -87,6 +87,7 @@ class FakeSchedulerStore:
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        reconciled_results: dict[str, AttemptResult] | None = None,
     ) -> tuple[str, ...]:
         self.calls.append("expire_leases")
         return ()
@@ -164,6 +165,7 @@ class FakeSchedulerStore:
         *,
         recorded_at: datetime,
         retry_backoff_seconds: int,
+        expired_receipt: bool = False,
     ) -> MissionHead:
         raise NotImplementedError
 

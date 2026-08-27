@@ -9,7 +9,9 @@ from pydantic import ValidationError
 from graphene.hashing import canonical_json_bytes, canonical_json_sha256
 from graphene.core_models import TruthKind
 from graphene.orchestration.mission_models import (
+    AuthorizationMode,
     EvidenceReference,
+    FinalizationMode,
     Gate,
     GateDecision,
     MissionSnapshot as DomainMissionSnapshot,
@@ -48,6 +50,30 @@ def test_snapshots_and_deltas_are_deterministic_exact_and_idempotent():
         public = rebuilt.model_dump(mode="json", exclude={"cursor", "snapshot_sha256"})
         assert canonical_json_sha256(public) == rebuilt.snapshot_sha256
         current = rebuilt
+
+
+def test_legacy_projection_is_review_required_without_changing_its_bytes():
+    mission = stages()[0].mission
+
+    assert mission.requested_authorization_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert mission.effective_authorization_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert mission.finalization_mode == FinalizationMode.REVIEW_REQUIRED
+    serialized = mission.model_dump(mode="json")
+    assert "requested_authorization_mode" not in serialized
+    assert "effective_authorization_mode" not in serialized
+    assert "finalization_mode" not in serialized
+    assert "policy_decision_sha256" not in serialized
+
+    authorized = mission.model_copy(
+        update={
+            "requested_authorization_mode": AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            "effective_authorization_mode": AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            "finalization_mode": FinalizationMode.AUTO_FINALIZE_ISOLATED,
+            "policy_decision_sha256": "a" * 64,
+        }
+    ).model_dump(mode="json")
+    assert authorized["effective_authorization_mode"] == "policy_pre_authorized"
+    assert authorized["finalization_mode"] == "auto_finalize_isolated"
 
 
 def test_cursor_is_bound_to_mission_head_and_rejects_tampering():

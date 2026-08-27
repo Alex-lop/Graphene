@@ -8,11 +8,12 @@ import time
 from pathlib import Path
 
 from ..orchestration.mission_replay import DEFAULT_REPLAY_PATH, load_verified_mission_replay
+from ..orchestration.sqlite_mission_store import MissionStoreError
 from .frames import compose_frame
 from .read_only_store import ReadOnlyMissionStore
 from .sources import LiveSource, ReplaySource, UiSource
 
-_STOP_STATES = {"completed", "failed", "cancelled", "rejected", "awaiting_result"}
+_STOP_STATES = {"completed", "failed", "cancelled", "rejected"}
 
 
 class UiError(Exception):
@@ -23,7 +24,7 @@ def register(commands: argparse._SubParsersAction) -> None:  # type: ignore[type
     ui = commands.add_parser(
         "ui",
         allow_abbrev=False,
-        help="draw the signed map in the terminal and follow the mission, read-only",
+        help="draw the authorized mission map and follow it read-only",
     )
     ui.add_argument("--replay", metavar="SOURCE", help="render the verified replay: 'taskmaster' or a replay file")
     ui.add_argument("--mission", dest="mission_id", help="attach to this mission instead of the most recent active one")
@@ -45,16 +46,41 @@ def build_source(args: argparse.Namespace) -> UiSource:
     from ..hashing import sha256_hex
 
     root = Path(args.state_dir) if getattr(args, "state_dir", None) else _state_root()
-    store = ReadOnlyMissionStore(root / "missions.sqlite3")
+    store_path = root / "missions.sqlite3"
+    try:
+        store = ReadOnlyMissionStore(store_path)
+    except MissionStoreError as error:
+        if args.mission_id is None:
+            raise UiError("no active mission; pass --mission MISSION_ID or --replay taskmaster") from error
+        try:
+            from ..orchestration.supervisor import supervisor_status
+
+            supervisor_status(args.mission_id)
+        except Exception as supervisor_error:
+            raise UiError(f"unknown mission {args.mission_id}") from supervisor_error
+        evidence = root / "missions" / sha256_hex(args.mission_id.encode())[:32] / "attempt-evidence.sqlite3"
+        return LiveSource(
+            None,
+            args.mission_id,
+            evidence_path=evidence,
+            store_path=store_path,
+        )
     mission_id = args.mission_id or store.most_recent_active_mission()
     if mission_id is None:
         raise UiError("no active mission; pass --mission MISSION_ID or --replay taskmaster")
     if mission_id not in store.mission_ids():
-        raise UiError(f"unknown mission {mission_id}")
+        if args.mission_id is None:
+            raise UiError(f"unknown mission {mission_id}")
+        try:
+            from ..orchestration.supervisor import supervisor_status
+
+            supervisor_status(mission_id)
+        except Exception as error:
+            raise UiError(f"unknown mission {mission_id}") from error
     # Same layout the CLI derives for the mission's private runtime; the
     # evidence store is what lets the projection validate publications.
     evidence = root / "missions" / sha256_hex(mission_id.encode())[:32] / "attempt-evidence.sqlite3"
-    return LiveSource(store, mission_id, evidence_path=evidence)
+    return LiveSource(store, mission_id, evidence_path=evidence, store_path=store_path)
 
 
 def dump_frames(source: UiSource, directory: Path, *, poll_seconds: float, max_seconds: float) -> int:

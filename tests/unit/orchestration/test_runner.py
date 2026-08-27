@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import stat
 import subprocess
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -43,6 +47,7 @@ from graphene.orchestration.runner import (
     RunnerExecutionFailed,
     RunnerStalled,
 )
+from graphene.orchestration.process_control import OwnedProcessRegistry
 from graphene.orchestration.worker_runtime import (
     CheckOutcome,
     CompletionOutcome,
@@ -56,6 +61,7 @@ from graphene.orchestration.worker_runtime import (
 )
 from graphene.orchestration.scheduler import MissionScheduler, SystemClock
 from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
+from graphene.orchestration.workers.gemini import GeminiWorkerAdapter
 
 
 CHECK = CommandTemplate(
@@ -534,6 +540,421 @@ def test_runner_commits_in_completion_order_recovers_receipt_and_preserves_check
     assert store.verify("runner-mission") == store.head("runner-mission")
 
 
+@pytest.mark.parametrize("failure_point", ["terminal_evidence", "record_clear"])
+def test_durable_receipt_survives_post_save_housekeeping_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    (
+        repository,
+        base_sha,
+        runtime_root,
+        evidence,
+        store,
+        assignments,
+        adapter_a,
+        adapter_z,
+    ) = _setup(tmp_path, delay=0)
+    scheduler = MissionScheduler(
+        store, clock=SystemClock(), lease_ttl_seconds=30, retry_backoff_seconds=0
+    )
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+    )
+    dispatch = scheduler.tick("runner-mission", ("worker-a",))[0]
+
+    if failure_point == "terminal_evidence":
+        original = runtime._ensure_terminal_evidence
+
+        def fail_terminal_evidence(current, result):
+            if current.attempt_id == dispatch.attempt_id:
+                raise RuntimeError("injected terminal evidence outage")
+            return original(current, result)
+
+        monkeypatch.setattr(runtime, "_ensure_terminal_evidence", fail_terminal_evidence)
+    else:
+        original = runtime._clear_recovered_provider_process
+
+        def fail_record_clear(current, completion):
+            if current.attempt_id == dispatch.attempt_id:
+                raise RuntimeError("injected process registry outage")
+            return original(current, completion)
+
+        monkeypatch.setattr(
+            runtime, "_clear_recovered_provider_process", fail_record_clear
+        )
+
+    with pytest.raises(RunnerExecutionFailed):
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=runtime,
+            worker_ids=("worker-a", "worker-z"),
+            accepted_artifacts=cache,
+            deadline_seconds=5,
+            poll_seconds=0,
+        ).run("runner-mission")
+
+    receipt = runtime._load_receipt(dispatch)
+    assert receipt is not None and receipt.result.succeeded
+    before_restart = next(
+        item
+        for item in store.snapshot("runner-mission").attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert before_restart.state == (
+        AttemptState.RUNNING
+        if failure_point == "terminal_evidence"
+        else AttemptState.COMMITTED
+    )
+    assert before_restart.result_code in {None, receipt.result.result_code}
+
+    restarted = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+    )
+    run = MissionRunner(
+        scheduler=scheduler,
+        runtime=restarted,
+        worker_ids=("worker-a", "worker-z"),
+        accepted_artifacts=cache,
+        deadline_seconds=5,
+        poll_seconds=0,
+    ).run("runner-mission")
+
+    committed = next(
+        item
+        for item in run.snapshot.attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert committed.state == AttemptState.COMMITTED
+    assert committed.result_code == receipt.result.result_code
+    assert committed.session_id == receipt.result.session_id
+    assert committed.invocation_id == receipt.result.invocation_id
+    assert committed.evidence_link == receipt.result.evidence_link
+    assert committed.evidence_refs == receipt.result.evidence_refs
+    assert all(
+        item.result_code != RuntimeErrorCode.OUTCOME_UNKNOWN
+        for item in run.snapshot.attempts
+    )
+    assert adapter_a.calls == 1
+    assert store.verify("runner-mission") == store.head("runner-mission")
+
+
+def test_linked_receipt_is_not_committed_until_parent_directory_fsync_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (
+        repository,
+        base_sha,
+        runtime_root,
+        evidence,
+        store,
+        assignments,
+        adapter_a,
+        adapter_z,
+    ) = _setup(tmp_path, delay=0)
+    scheduler = MissionScheduler(store, clock=SystemClock(), lease_ttl_seconds=30)
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+    )
+    dispatch = scheduler.tick("runner-mission", ("worker-a",))[0]
+    receipt_path = runtime._receipt_path(dispatch)
+    original_link = os.link
+    original_fsync = os.fsync
+    linked = [False]
+    directory_failures = [2]
+
+    def observe_link(source, target, *args, **kwargs):
+        result = original_link(source, target, *args, **kwargs)
+        if Path(target) == receipt_path:
+            linked[0] = True
+        return result
+
+    def fail_receipt_parent_sync(descriptor):
+        if (
+            linked[0]
+            and directory_failures[0]
+            and stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        ):
+            directory_failures[0] -= 1
+            raise OSError("injected receipt directory fsync outage")
+        return original_fsync(descriptor)
+
+    monkeypatch.setattr(os, "link", observe_link)
+    monkeypatch.setattr(os, "fsync", fail_receipt_parent_sync)
+    with pytest.raises(RunnerExecutionFailed):
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=runtime,
+            worker_ids=("worker-a",),
+            accepted_artifacts=cache,
+            deadline_seconds=5,
+            poll_seconds=0,
+        ).run("runner-mission")
+
+    receipt = runtime._read_receipt(receipt_path)
+    attempt = next(
+        item
+        for item in store.snapshot("runner-mission").attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert linked == [True]
+    assert directory_failures == [0]
+    assert receipt is not None
+    assert attempt.state == AttemptState.RUNNING
+    assert attempt.result_code is None
+
+    monkeypatch.setattr(os, "link", original_link)
+    monkeypatch.setattr(os, "fsync", original_fsync)
+    restarted = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+    )
+    run = MissionRunner(
+        scheduler=scheduler,
+        runtime=restarted,
+        worker_ids=("worker-a", "worker-z"),
+        accepted_artifacts=cache,
+        deadline_seconds=5,
+        poll_seconds=0,
+    ).run("runner-mission")
+
+    committed = next(
+        item
+        for item in run.snapshot.attempts
+        if item.attempt_id == dispatch.attempt_id
+    )
+    assert committed.state == AttemptState.COMMITTED
+    assert committed.result_code == receipt.result.result_code
+    assert committed.session_id == receipt.result.session_id
+    assert committed.invocation_id == receipt.result.invocation_id
+    assert committed.evidence_link == receipt.result.evidence_link
+    assert committed.evidence_refs == receipt.result.evidence_refs
+    assert adapter_a.calls == 1
+
+
+@pytest.mark.parametrize("failure_kind", ["cancelled", "timeout", "exception"])
+def test_runner_does_not_commit_when_exact_failure_reconciliation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    (
+        repository,
+        base_sha,
+        runtime_root,
+        evidence,
+        store,
+        assignments,
+        adapter_a,
+        adapter_z,
+    ) = _setup(tmp_path, delay=0)
+    scheduler = MissionScheduler(store, clock=SystemClock(), lease_ttl_seconds=30)
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+    )
+    dispatch = scheduler.tick("runner-mission", ("worker-a",))[0]
+    registry = OwnedProcessRegistry(runtime_root.parent)
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    owned = registry.record_pid(
+        dispatch,
+        process.pid,
+        "/bin/sleep",
+        model_request_sha256="a" * 64,
+        model_input_bytes=128,
+    )
+
+    async def fail_execution(_dispatch):
+        if failure_kind == "cancelled":
+            raise asyncio.CancelledError()
+        if failure_kind == "timeout":
+            raise TimeoutError()
+        raise RuntimeError("injected worker failure")
+
+    def fail_reconciliation(*_args, **_kwargs):
+        raise RuntimeError("injected exact reconciliation failure")
+
+    completed = []
+
+    def forbidden_complete(*args, **kwargs):
+        completed.append((args, kwargs))
+        raise AssertionError("unbound result reached scheduler.complete")
+
+    monkeypatch.setattr(runtime, "execute_async", fail_execution)
+    monkeypatch.setattr(runtime, "cancel_and_reconcile", fail_reconciliation)
+    monkeypatch.setattr(scheduler, "complete", forbidden_complete)
+    try:
+        with pytest.raises(RunnerError):
+            MissionRunner(
+                scheduler=scheduler,
+                runtime=runtime,
+                worker_ids=("worker-a",),
+                accepted_artifacts=cache,
+                deadline_seconds=5,
+                poll_seconds=0,
+            ).run("runner-mission")
+
+        attempt = next(
+            item
+            for item in store.snapshot("runner-mission").attempts
+            if item.attempt_id == dispatch.attempt_id
+        )
+        assert completed == []
+        assert attempt.state == AttemptState.RUNNING
+        assert attempt.result_code is None
+        assert process.poll() is None
+        assert registry.owned_process(
+            dispatch, require_live=False, model=True
+        ) == owned
+    finally:
+        registry.terminate_owned(owned)
+        process.wait(timeout=2)
+
+
+@pytest.mark.parametrize("known_failure", [False, True])
+def test_restart_after_ttl_commits_durable_known_receipt_before_expiry_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    known_failure: bool,
+) -> None:
+    (
+        repository,
+        base_sha,
+        runtime_root,
+        evidence,
+        store,
+        assignments,
+        adapter_a,
+        adapter_z,
+    ) = _setup(tmp_path, retry_work_a=known_failure, attempt_limit=2)
+    current = [store.snapshot("runner-mission").mission.created_at]
+    scheduler = MissionScheduler(
+        store,
+        clock=SimpleNamespace(now=lambda: current[0]),
+        lease_ttl_seconds=1,
+        retry_backoff_seconds=0,
+    )
+    dispatch = scheduler.tick("runner-mission", ("worker-a",))[0]
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+        check_runner=_OneShotCheckRunner() if known_failure else None,
+    )
+    receipt = asyncio.run(runtime.execute_async(dispatch)).receipt
+    assert receipt.result.succeeded is not known_failure
+    assert next(
+        item
+        for item in store.snapshot("runner-mission").attempts
+        if item.attempt_id == dispatch.attempt_id
+    ).state == AttemptState.RUNNING
+    current[0] = dispatch.expires_at + timedelta(microseconds=1)
+
+    restarted = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(adapter_a, adapter_z),
+        cache=cache,
+        check_runner=_OneShotCheckRunner() if known_failure else None,
+    )
+
+    class Reconciled(Exception):
+        def __init__(self, dispatches):
+            self.dispatches = dispatches
+
+    original_tick = scheduler.tick
+
+    def tick_after_reconciliation(mission_id, worker_ids, **kwargs):
+        prior = next(
+            item
+            for item in store.snapshot(mission_id).attempts
+            if item.attempt_id == dispatch.attempt_id
+        )
+        assert prior.state == (
+            AttemptState.FAILED if known_failure else AttemptState.COMMITTED
+        )
+        raise Reconciled(original_tick(mission_id, worker_ids, **kwargs))
+
+    monkeypatch.setattr(scheduler, "tick", tick_after_reconciliation)
+    with pytest.raises(Reconciled) as observed:
+        MissionRunner(
+            scheduler=scheduler,
+            runtime=restarted,
+            worker_ids=("worker-a",),
+            accepted_artifacts=cache,
+            deadline_seconds=5,
+            poll_seconds=0,
+        ).run("runner-mission")
+
+    snapshot = store.snapshot("runner-mission")
+    prior = next(
+        item for item in snapshot.attempts if item.attempt_id == dispatch.attempt_id
+    )
+    assert prior.state == (
+        AttemptState.FAILED if known_failure else AttemptState.COMMITTED
+    )
+    assert prior.result_code == receipt.result.result_code
+    assert prior.session_id == receipt.result.session_id
+    assert prior.invocation_id == receipt.result.invocation_id
+    assert prior.evidence_link == receipt.result.evidence_link
+    assert prior.evidence_refs == receipt.result.evidence_refs
+    if known_failure:
+        retry = next(
+            item for item in observed.value.dispatches if item.task_id == "work-a"
+        )
+        assert retry.fencing_token == dispatch.fencing_token + 1
+    else:
+        assert all(item.task_id != "work-a" for item in observed.value.dispatches)
+    assert store.verify("runner-mission") == store.head("runner-mission")
+
+
 def test_runner_retries_one_truth_labeled_check_failure_without_delaying_sibling(
     tmp_path: Path,
 ) -> None:
@@ -732,7 +1153,7 @@ def test_runner_deadline_cleans_private_workspaces_without_touching_source(
     assert _git(repository, "status", "--porcelain=v1") == ""
     snapshot = store.snapshot("runner-mission")
     assert {item.state for item in snapshot.attempts} == {AttemptState.FAILED}
-    assert {item.result_code for item in snapshot.attempts} == {"outcome_unknown"}
+    assert {item.result_code for item in snapshot.attempts} == {"runtime_unavailable"}
     assert all(item.released_at is not None for item in snapshot.leases)
 
 
@@ -814,8 +1235,124 @@ def test_unexpected_runner_failure_is_committed_and_releases_leases(
 
     snapshot = store.snapshot("runner-mission")
     assert {item.state for item in snapshot.attempts} == {AttemptState.FAILED}
-    assert {item.result_code for item in snapshot.attempts} == {"outcome_unknown"}
+    assert {item.result_code for item in snapshot.attempts} == {
+        "runtime_unavailable"
+    }
     assert all(item.released_at is not None for item in snapshot.leases)
+
+
+@pytest.mark.parametrize("model_intent", [True, False])
+def test_restart_reconciles_expired_owned_model_before_higher_fence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model_intent: bool
+) -> None:
+    repository, base_sha, runtime_root, evidence, store, assignments, _, adapter_z = (
+        _setup(tmp_path, delay=0, retry_work_a=True, attempt_limit=2)
+    )
+    current = [store.snapshot("runner-mission").mission.created_at]
+    scheduler = MissionScheduler(
+        store,
+        clock=SimpleNamespace(now=lambda: current[0]),
+        lease_ttl_seconds=1,
+        retry_backoff_seconds=0,
+    )
+    first = scheduler.tick("runner-mission", ("worker-a",))[0]
+    live = GeminiWorkerAdapter.live(
+        worker_id="worker-a", environ={"GOOGLE_API_KEY": "not-recorded"}
+    )
+    cache = AcceptedArtifactCache()
+    runtime = _runtime(
+        repository=repository,
+        base_sha=base_sha,
+        runtime_root=runtime_root,
+        evidence=evidence,
+        scheduler=scheduler,
+        assignments=assignments,
+        adapters=(live, adapter_z),
+        cache=cache,
+    )
+    registry = OwnedProcessRegistry(runtime_root.parent)
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    owned = registry.record_pid(
+        first,
+        process.pid,
+        "/bin/sleep",
+        model_request_sha256="a" * 64,
+        model_input_bytes=128,
+    )
+    registry.acknowledge_model_dispatch(
+        first,
+        owned,
+        request_sha256="a" * 64,
+        sdk_invocation_id="invocation-before-restart",
+        dispatched_at="2026-08-27T12:00:00.000Z",
+    )
+    if not model_intent:
+        process_path = registry._path(first.attempt_id, model=True)
+        legacy_path = registry._path(first.attempt_id)
+        record = json.loads(process_path.read_text(encoding="utf-8"))
+        record.pop("model_input_bytes")
+        record.pop("model_request_sha256")
+        record["schema_version"] = 2
+        process_path.write_text(json.dumps(record), encoding="utf-8")
+        process_path.replace(legacy_path)
+    current[0] = first.expires_at + timedelta(microseconds=1)
+
+    class RetryObserved(Exception):
+        def __init__(self, dispatch):
+            self.dispatch = dispatch
+
+    original_tick = scheduler.tick
+
+    def tick_after_recovery(mission_id, worker_ids, **kwargs):
+        assert process.poll() is not None
+        raise RetryObserved(original_tick(mission_id, worker_ids, **kwargs)[0])
+
+    monkeypatch.setattr(scheduler, "tick", tick_after_recovery)
+    runner = MissionRunner(
+        scheduler=scheduler,
+        runtime=runtime,
+        worker_ids=("worker-a",),
+        accepted_artifacts=cache,
+        deadline_seconds=5,
+        poll_seconds=0,
+    )
+    try:
+        with pytest.raises(RetryObserved) as observed:
+            asyncio.run(runner.run_async("runner-mission"))
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+
+    second = observed.value.dispatch
+    assert second.attempt_id != first.attempt_id
+    assert second.fencing_token == first.fencing_token + 1
+    snapshot = store.snapshot("runner-mission")
+    attempts = sorted(snapshot.attempts, key=lambda item: item.attempt_number)
+    assert attempts[0].state == AttemptState.ABANDONED
+    assert attempts[0].result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED
+    assert attempts[1].state == AttemptState.RUNNING
+    receipt = runtime._load_receipt(first)
+    assert receipt is not None
+    assert receipt.result.result_code == RuntimeErrorCode.PROVIDER_INTERRUPTED
+    assert receipt.completion.provider_interruption is not None
+    assert receipt.completion.provider_interruption.provider_outcome == "unknown"
+    assert receipt.completion.provider_interruption.input_bytes == (
+        128 if model_intent else None
+    )
+    assert attempts[0].session_id == receipt.result.session_id
+    assert attempts[0].invocation_id == receipt.result.invocation_id
+    assert attempts[0].evidence_link == receipt.result.evidence_link
+    assert attempts[0].evidence_refs == receipt.result.evidence_refs
+    assert attempts[0].evidence_refs[0].kind == "worker-provider-interruption"
+    events = evidence.tail(
+        receipt.result.evidence_link.evidence_id,
+        0,
+        evidence.head(receipt.result.evidence_link.evidence_id).seq,
+    )
+    assert events[-1].event_type == AttemptEvidenceEventType.ATTEMPT_FAILED
+    assert not registry.has_record(first.attempt_id)
+    assert registry.model_dispatch_barrier(first, require_live=False) is None
 
 
 def test_scheduler_cancel_cleans_real_runtime_before_revoking_fences(tmp_path) -> None:

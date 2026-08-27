@@ -53,6 +53,7 @@ EXPECTED_CHECKS = [
     "manifest_summary",
 ]
 PROVIDER_RECEIPT_ID = "artifact_provider_receipt_0001"
+PROVIDER_INTERRUPTION_ID = "artifact_provider_interruption_0001"
 
 requires_scripted = pytest.mark.skipif(
     not scripted_supported(),
@@ -212,16 +213,16 @@ def _provider_receipt() -> dict:
     ).model_dump(mode="json")
 
 
-def _inject_provider_receipt(capsule_dir: Path, content: bytes) -> str:
-    """Bind a worker-provider-receipt file to the first attempt chain and re-forge."""
-
+def _inject_receipt(
+    capsule_dir: Path, content: bytes, *, kind: str, identifier: str
+) -> str:
     manifest = _manifest(capsule_dir)
     entry = manifest["attempts"][0]
-    name = f"receipts/{PROVIDER_RECEIPT_ID}.json"
+    name = f"receipts/{identifier}.json"
     (capsule_dir / name).write_bytes(content)
     reference = {
-        "kind": "worker-provider-receipt",
-        "id": PROVIDER_RECEIPT_ID,
+        "kind": kind,
+        "id": identifier,
         "sha256": sha256_hex(content),
     }
 
@@ -231,8 +232,8 @@ def _inject_provider_receipt(capsule_dir: Path, content: bytes) -> str:
     _rewrite_line(capsule_dir / entry["file"], entry["event_count"], attach)
     manifest["receipts"].append(
         {
-            "id": PROVIDER_RECEIPT_ID,
-            "kind": "worker-provider-receipt",
+            "id": identifier,
+            "kind": kind,
             "sha256": reference["sha256"],
             "bytes": len(content),
             "attempt_ids": [entry["attempt_id"]],
@@ -242,6 +243,50 @@ def _inject_provider_receipt(capsule_dir: Path, content: bytes) -> str:
     manifest["counts"]["receipts"] += 1
     _reforge(capsule_dir, manifest)
     return entry["attempt_id"]
+
+
+def _inject_provider_receipt(capsule_dir: Path, content: bytes) -> str:
+    return _inject_receipt(
+        capsule_dir,
+        content,
+        kind="worker-provider-receipt",
+        identifier=PROVIDER_RECEIPT_ID,
+    )
+
+
+def _provider_interruption() -> dict:
+    from graphene.orchestration.worker_runtime import WorkerProviderInterruption
+
+    return WorkerProviderInterruption(
+        requested_model="gemini-3.5-flash",
+        mission_id="mission-capsule-001",
+        task_id="work-a",
+        attempt_id="attempt-interrupted",
+        lease_id="lease-interrupted",
+        fencing_token=2,
+        request_sha256="a" * 64,
+        input_bytes=128,
+        sdk_invocation_id="invocation-interrupted",
+        dispatched_at="2026-08-27T12:00:00.000Z",
+        pid=123,
+        pgid=123,
+        process_started_at="Thu Aug 27 12:00:00 2026",
+        process_birth_token="test:birth:123",
+        executable="/usr/bin/python3",
+        exit_code=-9,
+        signal_name="sigkill",
+        stderr_sha256="b" * 64,
+        stderr_truncated=False,
+    ).model_dump(mode="json")
+
+
+def _inject_provider_interruption(capsule_dir: Path, content: bytes) -> str:
+    return _inject_receipt(
+        capsule_dir,
+        content,
+        kind="worker-provider-interruption",
+        identifier=PROVIDER_INTERRUPTION_ID,
+    )
 
 
 @requires_scripted
@@ -982,6 +1027,43 @@ def test_worker_provider_receipt_is_schema_validated(
         failure = _failure(verify_mission_capsule(copied))
         assert failure["name"] == "receipt_contents", (label, failure)
         assert PROVIDER_RECEIPT_ID in failure["detail"], (label, failure)
+        assert message in failure["detail"], (label, failure)
+
+
+@requires_scripted
+def test_worker_provider_interruption_is_public_and_schema_validated(
+    completed: SimpleNamespace, tmp_path: Path
+):
+    valid = _provider_interruption()
+    genuine = _copy(completed.capsule_dir, tmp_path / "interruption-genuine")
+    _inject_provider_interruption(genuine, canonical_json_bytes(valid))
+    result = verify_mission_capsule(genuine)
+    assert result["verified"] is True
+    contents = next(
+        item for item in result["checks"] if item["name"] == "receipt_contents"
+    )
+    assert "1 worker provider interruptions" in contents["detail"]
+
+    cases = {
+        "interruption-extra": (
+            canonical_json_bytes({**valid, "note": "x"}),
+            "not a valid WorkerProviderInterruption",
+        ),
+        "interruption-stderr": (
+            canonical_json_bytes({**valid, "stderr": "secret"}),
+            "non-public key",
+        ),
+        "interruption-effect": (
+            canonical_json_bytes({**valid, "repository_effect": "unknown"}),
+            "not a valid WorkerProviderInterruption",
+        ),
+    }
+    for label, (content, message) in cases.items():
+        copied = _copy(completed.capsule_dir, tmp_path / label)
+        _inject_provider_interruption(copied, content)
+        failure = _failure(verify_mission_capsule(copied))
+        assert failure["name"] == "receipt_contents", (label, failure)
+        assert PROVIDER_INTERRUPTION_ID in failure["detail"], (label, failure)
         assert message in failure["detail"], (label, failure)
 
 

@@ -13,13 +13,27 @@ import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from ..execution.adapter import NORTH_STAR_CHECK_COMMAND, NORTH_STAR_FINAL_CHECK_COMMAND
 from .mission_models import CommandTemplate
 
 
 _FIXTURE_ARGV = ("python", "-m", "pytest", "-q", "-p", "no:cacheprovider")
-_CONTAINER_ARGV = ("/usr/local/bin/python", *_FIXTURE_ARGV[1:])
+_NORTH_STAR_TEMPLATE_ID = "orders-migration-check"
+_CONTAINER_COMMANDS = {
+    ("fixture-tests", _FIXTURE_ARGV): ("/usr/local/bin/python", *_FIXTURE_ARGV[1:]),
+    (_NORTH_STAR_TEMPLATE_ID, NORTH_STAR_FINAL_CHECK_COMMAND): (
+        "/usr/local/bin/python",
+        *NORTH_STAR_FINAL_CHECK_COMMAND[1:],
+    ),
+    ("orders-migration-task-check", NORTH_STAR_CHECK_COMMAND): (
+        "/usr/local/bin/python",
+        *NORTH_STAR_CHECK_COMMAND[1:],
+    ),
+}
 _OWNER_LABEL = "graphene.owner"
-_EXECUTOR_LABEL = "graphene.executor=oci-v1"
+_EXECUTOR_LABEL_NAME = "graphene.executor"
+_EXECUTOR_LABEL_VALUE = "oci-v1"
+_EXECUTOR_LABEL = f"{_EXECUTOR_LABEL_NAME}={_EXECUTOR_LABEL_VALUE}"
 _ID = re.compile(r"[a-z0-9][a-z0-9_.-]{0,127}\Z")
 _CONTAINER_ID = re.compile(r"[0-9a-f]{64}\Z")
 _SECRET_NAMES = frozenset(
@@ -91,11 +105,13 @@ def command_template_sha256(template: CommandTemplate) -> str:
 def validate_command_template(template: CommandTemplate) -> tuple[str, ...]:
     """Resolve the one reviewed demo template; arbitrary commands fail closed."""
 
-    if template.template_id != "fixture-tests" or tuple(template.argv) != _FIXTURE_ARGV:
+    try:
+        command = _CONTAINER_COMMANDS[(template.template_id, tuple(template.argv))]
+    except KeyError:
         raise SandboxError("command is not the frozen server-owned template")
     if template.cwd is not None:
         _relative_path(str(template.cwd))
-    return _CONTAINER_ARGV
+    return command
 
 
 def _relative_path(value: str) -> PurePosixPath:
@@ -123,6 +139,11 @@ def _validate_container_id(container_id: str) -> None:
         raise SandboxError("Docker returned an invalid container ID")
 
 
+def _container_name(owner_id: str) -> str:
+    _validate_owner(owner_id)
+    return "graphene-" + hashlib.sha256(owner_id.encode()).hexdigest()[:24]
+
+
 def build_docker_create_argv(
     *,
     docker_bin: Path,
@@ -147,7 +168,7 @@ def build_docker_create_argv(
     if any(character in source for character in ",\0\n\r"):
         raise SandboxError("workspace path cannot be represented safely as a mount")
     workdir = "/workspace" if cwd is None else f"/workspace/{_relative_path(cwd)}"
-    if command != _CONTAINER_ARGV:
+    if command not in _CONTAINER_COMMANDS.values():
         raise SandboxError("container command is not the resolved template")
 
     return (
@@ -477,9 +498,21 @@ class DockerExecutor:
             actual_name != f"/{name}"
             or not isinstance(labels, dict)
             or labels.get(_OWNER_LABEL) != owner_id
+            or labels.get(_EXECUTOR_LABEL_NAME) != _EXECUTOR_LABEL_VALUE
         ):
             raise SandboxError("container ownership binding does not match")
         return container_id
+
+    def reconcile_owned(self, owner_id: str) -> bool:
+        """Remove the exact deterministic container retained for one owner."""
+
+        container_id = self._owned_id_for_name(
+            _container_name(owner_id), owner_id, missing_ok=True
+        )
+        if container_id is None:
+            return False
+        self.cleanup_owned(container_id, owner_id)
+        return True
 
     def cleanup_owned(self, container_id: str, owner_id: str) -> None:
         state = self._inspect(container_id, owner_id)
@@ -574,7 +607,7 @@ class DockerExecutor:
                 exclusions=exclusions,
                 limits=self.limits,
             )
-            name = "graphene-" + hashlib.sha256(owner_id.encode()).hexdigest()[:24]
+            name = _container_name(owner_id)
             create_argv = build_docker_create_argv(
                 docker_bin=self._docker(),
                 image_id=image_id,

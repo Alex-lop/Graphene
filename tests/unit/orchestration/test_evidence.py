@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from graphene.orchestration import evidence as evidence_module
 from graphene.hashing import canonical_json_bytes
 from graphene.core_models import TruthKind
 from graphene.orchestration.evidence import (
@@ -21,6 +22,23 @@ from graphene.orchestration.mission_models import ArtifactVisibility, EvidenceRe
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_evidence_schema_is_initialized_once_and_version_checked(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "evidence.sqlite"
+    SQLiteAttemptEvidenceStore(path)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+
+    monkeypatch.setattr(evidence_module, "_SCHEMA", "invalid SQL")
+    SQLiteAttemptEvidenceStore(path)
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA user_version=2")
+    with pytest.raises(AttemptEvidenceStoreError, match="unsupported.*version 2"):
+        SQLiteAttemptEvidenceStore(path)
 
 
 def _draft(

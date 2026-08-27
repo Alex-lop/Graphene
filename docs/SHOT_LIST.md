@@ -35,7 +35,7 @@ U+2026), not three periods — match that if you retype anything.
 **The one thing that must stay on screen.** The twelve characters
 `b43792bf3f72` appear in eight places between the edit and `why`. That repetition
 *is* the film's argument — the workers obeyed the graph you approved, and you can
-see the same digest on the plan you signed and on the provenance at the end. A
+see the same digest on the approved plan and on the provenance at the end. A
 cut that loses those frames loses the claim.
 
 ---
@@ -85,15 +85,16 @@ where the client was the official MCP client and the signer was a script:
 
 1. The agent calls `plan_goal` and prints the map: mission id, `base_sha`,
    **the digest**, six nodes with dependencies. Right pane: the DAG appears,
-   banner `UNSIGNED — nothing runs until you sign`.
-2. The agent **stops and asks you to sign.** This is the beat. Nothing is
-   running; the right pane is still and unsigned.
+   banner `NOT AUTHORIZED — plan approval required`.
+2. The agent **stops and asks you to approve.** This historical review-mode
+   beat is not the current pre-authorized hero path. Nothing is running; the
+   right pane is still and not authorized.
 3. You type the digest. The agent calls `approve_plan` with what you typed.
    (If you mistype one character the store refuses — `plan approval digest
    does not match the committed revision` — and the agent asks again. On the
    fixture that refusal was rehearsed deliberately; it is a good frame if you
    want one.)
-4. Right pane: banner flips to `SIGNED — revision 1 approved`, nodes go
+4. Right pane: banner flips to `AUTHORIZED — revision 1 approved`, nodes go
    `queued → ready → running → done`, `render_markdown` shows `↻ retrying`
    once — the injected check fault — then `done`; `verify_candidate` shows
    `? verifying` then `done`; the status line reaches `awaiting_result`.
@@ -102,8 +103,8 @@ where the client was the official MCP client and the signer was a script:
    touched, result state, one receipts line. Press `s` in the right pane and
    the same summary is on screen, from the same store.
 
-Not proven and say so if asked: a person has not yet signed inside Claude
-Code on this machine (the E2E signer is a script, `claude mcp list` proves
+Not proven and say so if asked: a person has not yet approved inside Claude
+Code on this machine (the E2E approver is a script, `claude mcp list` proves
 discovery of the server and nothing more); this loop has not run under live
 Gemini with the map attached — the credentials were not present in the
 session that built it. Live it would be the same beats with a 47 s mission
@@ -119,7 +120,7 @@ agent *why* one of the touched files looks the way it does; it calls `why`
 and relays `matched_by=path` with the stages, `prior_attempts` naming the
 failed attempt and its fence. Then `q`: the terminal comes back clean.
 
-The digest that appears on the plan you signed, in the banner the whole time,
+The digest that appears on the approved plan, in the banner the whole time,
 and in `why` at the end is the film's argument, exactly as beat 15 says below.
 
 ---

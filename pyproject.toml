@@ -14,7 +14,7 @@ dependencies = [
   "google-auth>=2.56,<3",
   "google-cloud-firestore==2.28.0",
   "mcp==2.0.0",
-  "pydantic>=2.11,<3",
+  "pydantic==2.13.4",
   "rich>=14,<15",
   "textual>=8.2.8,<9",
   "uvicorn>=0.35,<1",
@@ -34,6 +34,11 @@ packages = ["backend/graphene"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "demo/taskmaster" = "graphene/_taskmaster"
+"contracts/golden_path.json" = "graphene/_legacy/contracts/golden_path.json"
+"contracts/graph_mvp.json" = "graphene/_legacy/contracts/graph_mvp.json"
+"demo/fixture" = "graphene/_legacy/demo/fixture"
+"demo/north_star" = "graphene/_north_star/demo/north_star"
+"scripts/materialize_north_star.py" = "graphene/_north_star/scripts/materialize_north_star.py"
 
 [tool.hatch.build.targets.sdist]
 exclude = ["/.claude", "/All_md_Files"]
@@ -41,19 +46,13 @@ exclude = ["/.claude", "/All_md_Files"]
 [tool.pytest.ini_options]
 # faulthandler dumps every thread's stack at 180s so a hang leaves a diagnostic,
 # and pytest-timeout hard-kills at 600s with `thread` rather than the default
-# `signal`: this suite's hangs park worker threads in SQLite C calls, a signal
-# reaches only the main thread, and ThreadPoolExecutor shutdown then joins
-# those threads with no timeout — so os._exit is what actually ends the run.
-# Captured stacks show those threads in __psynch_mutexwait inside libsqlite3's
-# unix VFS (unixOpen/findReusableFd on open, sqlite3WalClose/unixLock on
-# close). No SQLite timeout setting bounds that: connect(timeout=) and
-# busy_timeout configure the busy handler, which is a layer above it. See the
-# "Full-matrix hang under load" row in docs/KNOWN_LIMITATIONS.md.
+# `signal`. Historical concurrent SQLite connection churn wedged below the busy
+# handler during interpreter shutdown; the stores now serialize their complete
+# connection lifecycle, while these bounds remain as regression diagnostics.
 #
-# What `timeout` below does NOT cover: pytest-timeout arms per test item and
-# disarms on the way out, so a wedge that lands after the last item has
-# finished is unguarded. It bounds a test that hangs, not a shutdown that
-# hangs.
+# `timeout` bounds a test item, not an after-suite interpreter-shutdown wedge;
+# the exact-SHA campaign therefore runs each lifecycle stress in its own
+# bounded interpreter and records clean shutdown separately.
 addopts = "-ra"
 faulthandler_timeout = 180
 timeout = 600

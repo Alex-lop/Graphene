@@ -1,26 +1,4 @@
-"""North Star demo target: the repository a live two-worker Gemini mission edits.
-
-Proven here, credential-free:
-
-* the target's own suite passes in a temporary copy under the adapter's
-  sanitized environment, writing no bytecode or cache into the tree;
-* ``scripts/materialize_north_star.py`` yields a repository whose
-  ``.graphene/project.json`` loads through
-  ``graphene.cli.mission._load_project_policy`` and binds the frozen fixed
-  test command, and it refuses (exit 1, nothing deleted) when the destination
-  exists or the target suite fails;
-* the renderer modules are absent at base: ``report --format json|markdown``
-  exits 1 with a clean ``error:`` line (no traceback), the golden contract
-  test in ``tests/test_report_contract.py`` skips, and the CLI already
-  dispatches both formats — the mission's work is exactly the two renderer
-  modules plus their tests, the only paths the policy lets it write;
-* ``goal.json`` and ``GOAL.md`` agree, and ``policy.template.json`` matches
-  the documented policy;
-* size and hygiene bounds hold: source line count, every tracked file inside
-  the planner's 4096-byte excerpt cap, stdlib-only imports, no secrets.
-
-Not proven here: that a live Gemini mission completes on this target.
-"""
+"""Checks for the materialized Orders API Pydantic migration target."""
 
 from __future__ import annotations
 
@@ -39,9 +17,18 @@ from types import ModuleType
 import pytest
 
 from graphene.cli.mission import _load_project_policy
-from graphene.execution.adapter import _FIXED_TEST_COMMAND, _sanitized_environment
+from graphene.execution.adapter import (
+    NORTH_STAR_CHECK_COMMAND,
+    NORTH_STAR_FINAL_CHECK_COMMAND,
+    _FIXED_TEST_COMMAND,
+    _sanitized_environment,
+)
 from graphene.hashing import canonical_json_bytes
-from graphene.orchestration.mission_models import CommandTemplate, NetworkMode, ProjectPolicy
+from graphene.orchestration.mission_models import (
+    CommandTemplate,
+    NetworkMode,
+    ProjectPolicy,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 NORTH_STAR = ROOT / "demo" / "north_star"
@@ -52,49 +39,36 @@ TEMPLATE = NORTH_STAR / "policy.template.json"
 SCRIPT = ROOT / "scripts" / "materialize_north_star.py"
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".DS_Store")
 IGNORED_NAMES = {"__pycache__", ".pytest_cache", ".DS_Store"}
-# graphene.cli.mission._planning_repository_context skips any file larger than
-# 4096 bytes, keeps at most 16 excerpts, and stops after 32768 bytes in total.
+EXPECTED_WRITES = (
+    "orders_api/api.py",
+    "orders_api/request_models.py",
+    "orders_api/response_models.py",
+    "requirements.in",
+    "requirements.lock",
+)
 PLANNER_EXCERPT_BYTES = 4_096
 PLANNER_EXCERPT_COUNT = 16
 PLANNER_BUDGET_BYTES = 32_768
-SECRET_MARKERS = ("api_key", "token=", "password")
-SECRET_ALLOWED = {
-    "ledger_service/redact.py",
-    "tests/test_redact.py",
-    "tests/test_report_contract.py",
-}
-SAMPLE_LEDGER = {
-    "items": [{"sku": "BOLT-M8", "name": "M8 bolt"}],
-    "movements": [
-        {
-            "movement_id": "m1",
-            "sku": "BOLT-M8",
-            "kind": "receipt",
-            "quantity": 3,
-            "recorded_at": "2024-05-01T09:00:00+00:00",
-            "note": "ask ops@example.com",
-        }
-    ],
-}
 
 
 def _tracked_files() -> tuple[Path, ...]:
-    files = []
-    for path in sorted(REPOSITORY.rglob("*")):
-        if path.is_file() and not (set(path.relative_to(REPOSITORY).parts) & IGNORED_NAMES):
-            files.append(path)
-    return tuple(files)
+    return tuple(
+        path
+        for path in sorted(REPOSITORY.rglob("*"))
+        if path.is_file()
+        and not set(path.relative_to(REPOSITORY).parts).intersection(IGNORED_NAMES)
+    )
 
 
-def _copy_target(tmp_path: Path) -> Path:
-    target = tmp_path / "target"
+def _copy_target(tmp_path: Path, name: str = "target") -> Path:
+    target = tmp_path / name
     shutil.copytree(REPOSITORY, target, ignore=IGNORE)
     return target
 
 
-def _run_in_target(target: Path, *argv: str) -> subprocess.CompletedProcess[str]:
+def _run_in_target(target: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        (sys.executable, *argv),
+        (sys.executable, *_FIXED_TEST_COMMAND[1:]),
         cwd=target,
         env=_sanitized_environment(),
         stdin=subprocess.DEVNULL,
@@ -114,7 +88,7 @@ def _load_materializer() -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module  # slots dataclasses resolve their module via sys.modules
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -132,272 +106,298 @@ def _git(repository: Path, *args: str) -> str:
     ).stdout
 
 
-def test_target_suite_passes_in_sanitized_environment(tmp_path: Path) -> None:
-    target = _copy_target(tmp_path)
-    result = _run_in_target(target, *_FIXED_TEST_COMMAND[1:])
-    summary = result.stdout.strip().splitlines()[-1]
+def _replace(path: Path, *changes: tuple[str, str]) -> None:
+    text = path.read_text(encoding="utf-8")
+    for old, new in changes:
+        assert old in text
+        text = text.replace(old, new)
+    path.write_text(text, encoding="utf-8")
+
+
+def _migrate_request_side(target: Path) -> None:
+    _replace(
+        target / "orders_api" / "request_models.py",
+        (
+            "from pydantic.v1 import BaseModel, Field, validator",
+            "from pydantic import BaseModel, ConfigDict, Field, field_validator",
+        ),
+        ("regex=", "pattern="),
+        (
+            '@validator("sku", pre=True)\n    def normalize_sku',
+            '@field_validator("sku", mode="before")\n'
+            "    @classmethod\n"
+            "    def normalize_sku",
+        ),
+        (
+            "items: list[OrderItem] = Field(min_items=1)",
+            "items: list[OrderItem] = Field(min_length=1)",
+        ),
+        (
+            '    class Config:\n        extra = "forbid"',
+            '    model_config = ConfigDict(extra="forbid")',
+        ),
+    )
+    _replace(
+        target / "orders_api" / "api.py",
+        ("CreateOrder.parse_obj(payload)", "CreateOrder.model_validate(payload)"),
+    )
+
+
+def _migrate_response_side(target: Path) -> None:
+    _replace(
+        target / "orders_api" / "response_models.py",
+        (
+            "from pydantic.v1 import BaseModel",
+            "from pydantic import BaseModel, ConfigDict",
+        ),
+        (
+            "    class Config:\n        allow_mutation = False",
+            "    model_config = ConfigDict(frozen=True)",
+        ),
+        ("response.dict()", 'response.model_dump(mode="json")'),
+    )
+
+
+def _assert_suite_passes(target: Path) -> None:
+    result = _run_in_target(target)
     assert result.returncode == 0, result.stdout
-    # Exactly the two golden-contract tests skip while the renderers are absent.
-    assert re.fullmatch(r"\d+ passed, 2 skipped in [\d.]+s", summary), summary
-    leftovers = [p for p in target.rglob("*") if p.name in IGNORED_NAMES or p.suffix == ".pyc"]
-    assert leftovers == [], "the sanitized run must not write bytecode or caches"
+    assert re.fullmatch(r"5 passed in [\d.]+s", result.stdout.strip().splitlines()[-1])
+    checked = subprocess.run(
+        (sys.executable, *NORTH_STAR_CHECK_COMMAND[1:]),
+        cwd=target,
+        env=_sanitized_environment(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stdout
+    assert checked.stdout == "orders migration verified\n"
 
 
-def test_target_tests_run_under_the_locked_interpreter(
+def _run_final_check(target: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        (sys.executable, *NORTH_STAR_FINAL_CHECK_COMMAND[1:]),
+        cwd=target,
+        env=_sanitized_environment(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def test_target_suite_passes_without_writing_cache(tmp_path: Path) -> None:
+    target = _copy_target(tmp_path)
+    _assert_suite_passes(target)
+    leftovers = [
+        path
+        for path in target.rglob("*")
+        if path.name in IGNORED_NAMES or path.suffix == ".pyc"
+    ]
+    assert leftovers == []
+
+
+def test_untouched_baseline_fails_the_final_gate(tmp_path: Path) -> None:
+    checked = _run_final_check(_copy_target(tmp_path))
+    assert checked.returncode != 0
+
+
+@pytest.mark.parametrize("migration", [_migrate_request_side, _migrate_response_side])
+def test_two_disjoint_source_roots_each_pass_the_full_suite(
+    tmp_path: Path, migration
+) -> None:  # type: ignore[no-untyped-def]
+    target = _copy_target(tmp_path)
+    migration(target)
+    _assert_suite_passes(target)
+
+
+def test_completed_migration_activates_the_no_legacy_contract(tmp_path: Path) -> None:
+    target = _copy_target(tmp_path)
+    _migrate_request_side(target)
+    _migrate_response_side(target)
+    (target / "requirements.in").write_text("pydantic==2.13.4\n", encoding="utf-8")
+    (target / "requirements.lock").write_text(
+        "# Native Pydantic v2 runtime resolved from requirements.in.\n"
+        "pydantic==2.13.4\n",
+        encoding="utf-8",
+    )
+    _assert_suite_passes(target)
+    checked = _run_final_check(target)
+    assert checked.returncode == 0, checked.stdout
+    assert checked.stdout == "orders migration verified\n"
+
+
+def test_target_tests_use_the_locked_interpreter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The frozen test command must name *this* interpreter, never ask PATH.
-
-    argv[0] of the frozen command is the literal "python" that the executor
-    substitutes for the running interpreter (``_sandboxed_test_command`` and
-    ``_run_in_target`` both do exactly that). Handing the choice to PATH makes
-    the result depend on the developer's machine three different ways, because
-    ``.venv/bin/python`` is a symlink and resolving it escapes the locked
-    environment:
-
-    * base bin has ``python`` and an ambient pytest (Anaconda) -> green;
-    * base bin has no file named ``python`` (Homebrew) -> PATH falls through
-      to ``.venv/bin`` -> green;
-    * base bin has ``python`` and no pytest (the macOS CI runner) -> red with
-      "No module named pytest".
-
-    Two lucky greens and one red is not a test. Asserting the absolute path
-    removes PATH from the decision, so this fails at baseline on every machine.
-    """
     module = _load_materializer()
     captured: dict[str, object] = {}
 
     def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
         captured["argv"] = tuple(argv)
-        return subprocess.CompletedProcess(list(argv), 0, "1 passed in 0.01s", None)
+        return subprocess.CompletedProcess(
+            list(argv), 0, "orders migration verified\n", None
+        )
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
     module.run_target_tests(tmp_path)
-    monkeypatch.undo()  # the patch is global; the probe below must be real
-
-    argv = captured["argv"]
-    assert argv[1:] == _FIXED_TEST_COMMAND[1:], argv
-    assert argv[0] == sys.executable, (
-        f"the frozen test command starts with {argv[0]!r}, so PATH picks the "
-        f"interpreter; it must name the locked one ({sys.executable})"
-    )
-    prefix = subprocess.run(
-        (argv[0], "-c", "import sys; print(sys.prefix)"),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        text=True,
-        timeout=60,
-        check=True,
-    ).stdout.strip()
-    assert prefix == sys.prefix, (
-        f"the target suite would run under {argv[0]} (sys.prefix {prefix}), "
-        f"not the locked interpreter (sys.prefix {sys.prefix})"
-    )
+    assert captured["argv"] == (sys.executable, *NORTH_STAR_CHECK_COMMAND[1:])
 
 
-def test_materializer_produces_policy_that_mission_start_loads(tmp_path: Path) -> None:
+def test_materializer_produces_loadable_exact_policy(tmp_path: Path) -> None:
     module = _load_materializer()
-    dest = tmp_path / "north-star"
+    dest = tmp_path / "orders-api"
     out, err = io.StringIO(), io.StringIO()
     assert module.main([str(dest)], out, err) == 0, err.getvalue()
     assert err.getvalue() == ""
     assert stat.S_IMODE(dest.stat().st_mode) == 0o700
 
     root, head, policy = _load_project_policy(dest)
-    assert root == dest.resolve()
-    assert head == policy.base_sha
-    expected_template = CommandTemplate(
-        template_id="fixture-tests", argv=_FIXED_TEST_COMMAND, timeout_seconds=60
+    assert root == dest.resolve() and head == policy.base_sha
+    assert policy.command_templates == (
+        CommandTemplate(
+            template_id="orders-migration-check",
+            argv=NORTH_STAR_FINAL_CHECK_COMMAND,
+            timeout_seconds=60,
+        ),
+        CommandTemplate(
+            template_id="orders-migration-task-check",
+            argv=NORTH_STAR_CHECK_COMMAND,
+            timeout_seconds=60,
+        ),
     )
-    assert policy.command_templates == (expected_template,)
-    assert policy.allowed_read_globs == ("README.md", "ledger_service/**", "tests/**")
-    assert policy.allowed_write_globs == (
-        "ledger_service/report_json.py",
-        "ledger_service/report_markdown.py",
-        "tests/test_report_json.py",
-        "tests/test_report_markdown.py",
+    assert policy.allowed_read_globs == (
+        "README.md",
+        "orders_api/**",
+        "requirements.in",
+        "requirements.lock",
+        "tests/**",
     )
-    assert ".graphene/**" in policy.exclusions and ".git/**" in policy.exclusions
-    assert policy.network.mode is NetworkMode.DENY and policy.network.allowed_hosts == ()
-    assert (policy.max_concurrency, policy.retry_limit, policy.revision) == (2, 2, 1)
-    assert policy.risk_gates == ("final-result", "network", "scope-expansion")
+    assert policy.allowed_write_globs == EXPECTED_WRITES
+    assert (
+        policy.network.mode is NetworkMode.DENY and policy.network.allowed_hosts == ()
+    )
+    assert (policy.max_concurrency, policy.retry_limit, policy.revision) == (2, 1, 1)
+    assert policy.schema_version == 2
+    assert policy.authorization_mode == "policy_pre_authorized"
+    assert policy.finalization_mode == "auto_finalize_isolated"
+    assert policy.risk_gates == ("network", "scope-expansion")
 
     policy_path = dest / ".graphene" / "project.json"
     assert stat.S_IMODE(policy_path.stat().st_mode) == 0o600
-    assert policy_path.read_bytes() == canonical_json_bytes(policy.model_dump(mode="json")) + b"\n"
-    assert ProjectPolicy.model_validate_json(policy_path.read_text(encoding="utf-8")) == policy
-
-    assert _git(dest, "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
+    assert (
+        policy_path.read_bytes()
+        == canonical_json_bytes(policy.model_dump(mode="json")) + b"\n"
+    )
+    assert (
+        ProjectPolicy.model_validate_json(policy_path.read_text(encoding="utf-8"))
+        == policy
+    )
     assert _git(dest, "log", "--format=%an <%ae> %s").strip() == (
-        "Graphene North Star <north-star@graphene.invalid> North Star demo target base"
+        "Graphene Orders Demo <orders-demo@graphene.invalid> "
+        "Orders API migration target base"
     )
     assert _git(dest, "status", "--porcelain").splitlines() == ["?? .graphene/"]
-    assert _git(dest, "remote").strip() == ""
-
-    goal = json.loads(GOAL_JSON.read_text(encoding="utf-8"))
-    printed = out.getvalue()
-    assert f"uv run --frozen graphene doctor --repo {dest.resolve()}" in printed
-    start = next(line for line in printed.splitlines() if "graphene mission start" in line)
-    assert start.strip().startswith("uv run --frozen graphene mission start --repo ")
-    assert start.endswith("--driver gemini-adk --max-workers 2")
-    assert start.count("--success-criterion") == len(goal["success_criteria"])
-    assert goal["goal"] in start
-    for criterion in goal["success_criteria"]:
-        assert criterion in start
-    assert "graphene mission approve-plan MISSION_ID --revision 1 --confirm-human" in printed
+    assert "Orders API target materialized" in out.getvalue()
+    assert "MCP start_goal" in out.getvalue()
+    assert '"authorization_mode": "policy_pre_authorized"' in out.getvalue()
+    assert "approve-plan" not in out.getvalue()
 
 
-def test_materializer_refuses_existing_destination(tmp_path: Path) -> None:
+def test_materialized_base_commit_is_reproducible(tmp_path: Path) -> None:
     module = _load_materializer()
-    dest = tmp_path / "occupied"
-    dest.mkdir()
-    (dest / "keep.txt").write_text("untouched\n", encoding="utf-8")
-    err = io.StringIO()
-    assert module.main([str(dest)], io.StringIO(), err) == 1
-    assert "already exists" in err.getvalue()
-    assert sorted(p.name for p in dest.iterdir()) == ["keep.txt"]
+    first = _copy_target(tmp_path, "first")
+    second = _copy_target(tmp_path, "second")
+    module.commit_base(first)
+    module.commit_base(second)
+
+    assert _git(first, "rev-parse", "HEAD") == _git(second, "rev-parse", "HEAD")
 
 
-def test_materializer_refuses_when_target_suite_fails(
+def test_materializer_refuses_existing_or_broken_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _load_materializer()
-    broken = _copy_target(tmp_path)
-    (broken / "tests" / "test_models.py").open("a", encoding="utf-8").write(
-        "\n\ndef test_injected_failure() -> None:\n    assert False\n"
-    )
+    occupied = tmp_path / "occupied"
+    occupied.mkdir()
+    (occupied / "keep.txt").write_text("untouched\n", encoding="utf-8")
+    err = io.StringIO()
+    assert module.main([str(occupied)], io.StringIO(), err) == 1
+    assert "already exists" in err.getvalue()
+    assert sorted(path.name for path in occupied.iterdir()) == ["keep.txt"]
+
+    broken = _copy_target(tmp_path, "broken-source")
+    (broken / "requirements.in").write_text("pydantic>=1\n", encoding="utf-8")
     monkeypatch.setattr(module, "SOURCE", broken)
-    dest = tmp_path / "north-star"
+    dest = tmp_path / "broken-dest"
     err = io.StringIO()
     assert module.main([str(dest)], io.StringIO(), err) == 1
     assert "target test suite failed" in err.getvalue()
-    assert (dest / ".git").is_dir(), "nothing is deleted on failure"
-    assert (dest / ".graphene" / "project.json").is_file()
+    assert (dest / ".git").is_dir() and (dest / ".graphene/project.json").is_file()
 
 
-@pytest.mark.parametrize("fmt", ["json", "markdown"])
-def test_report_renderers_are_absent_and_cli_fails_cleanly(tmp_path: Path, fmt: str) -> None:
-    target = _copy_target(tmp_path)
-    ledger = tmp_path / "ledger.json"
-    ledger.write_text(json.dumps(SAMPLE_LEDGER), encoding="utf-8")
-    result = _run_in_target(
-        target, "-m", "ledger_service", "--ledger", str(ledger), "report", "--format", fmt
-    )
-    assert result.returncode == 1
-    assert f"error: no {fmt} report renderer (ledger_service.report_{fmt} is missing)" in result.stdout
-    assert "Traceback" not in result.stdout
-    balances = _run_in_target(target, "-m", "ledger_service", "--ledger", str(ledger), "balances")
-    assert (balances.returncode, balances.stdout) == (0, "BOLT-M8\t3\teach\n")
-
-
-def test_no_report_tests_or_renderers_exist_yet() -> None:
-    names = [p.relative_to(REPOSITORY).as_posix() for p in _tracked_files()]
-    report_tests = [n for n in names if n.startswith("tests/") and "report" in n]
-    assert report_tests == ["tests/test_report_base.py", "tests/test_report_contract.py"]
-    assert not [n for n in names if "json" in n or "markdown" in n]
-    assert "ledger_service/report_base.py" in names
-    for path in _tracked_files():
-        if path.suffix == ".py":
-            assert "def render_json" not in path.read_text(encoding="utf-8")
-            assert "def render_markdown" not in path.read_text(encoding="utf-8")
-
-
-def test_goal_json_and_goal_md_agree() -> None:
+def test_goal_policy_and_plan_shape_agree() -> None:
     goal_text = GOAL_JSON.read_text(encoding="utf-8")
     goal = json.loads(goal_text)
     markdown = GOAL_MD.read_text(encoding="utf-8")
     blocks = re.findall(r"```json\n(.*?)\n```", markdown, flags=re.DOTALL)
-    assert len(blocks) == 1
-    assert blocks[0].strip() == goal_text.strip()
-    assert json.loads(blocks[0]) == goal
-    prose = markdown.split("```json", 1)[0]
-    assert f"> {goal['goal']}\n" in prose
-    for index, criterion in enumerate(goal["success_criteria"], 1):
-        assert f"{index}. {criterion}\n" in prose
-    assert "an expectation, not a fixture" in prose
-    assert goal["schema_version"] == 1
-    assert 3 <= len(goal["success_criteria"]) <= 4
-    assert len(set(goal["success_criteria"])) == len(goal["success_criteria"])
-    assert all(1 <= len(text) <= 1024 for text in (goal["goal"], *goal["success_criteria"]))
-    module = _load_materializer()
-    assert module.load_goal() == (goal["goal"], tuple(goal["success_criteria"]))
+    assert blocks == [goal_text.strip()]
+    assert _load_materializer().load_goal() == (
+        goal["goal"],
+        tuple(goal["success_criteria"]),
+    )
+    assert "Work task A (parallel)" in markdown
+    assert "Work task B (parallel)" in markdown
+    assert "Integration task C depends on A and B" in markdown
+    assert "an expectation, not a fixture" in markdown
 
-
-def test_policy_template_matches_documented_policy() -> None:
     template = json.loads(TEMPLATE.read_text(encoding="utf-8"))
-    placeholders = {key for key, value in template.items() if value == "<materialized>"}
-    assert placeholders == {"policy_id", "repo_id", "base_ref", "base_sha", "revision"}
-    assert template["schema_version"] == 1
-    assert template["allowed_read_globs"] == ["README.md", "ledger_service/**", "tests/**"]
-    assert template["allowed_write_globs"] == [
-        "ledger_service/report_json.py",
-        "ledger_service/report_markdown.py",
-        "tests/test_report_json.py",
-        "tests/test_report_markdown.py",
-    ]
-    assert template["exclusions"] == [
-        "**/*.key", "**/*.pem", ".env", ".env.*", ".git/**", ".graphene/**"
-    ]
+    assert template["allowed_write_globs"] == list(EXPECTED_WRITES)
     assert template["command_templates"] == [
         {
-            "template_id": "fixture-tests",
-            "argv": list(_FIXED_TEST_COMMAND),
+            "template_id": "orders-migration-check",
+            "argv": list(NORTH_STAR_FINAL_CHECK_COMMAND),
+            "timeout_seconds": 60,
+        },
+        {
+            "template_id": "orders-migration-task-check",
+            "argv": list(NORTH_STAR_CHECK_COMMAND),
             "timeout_seconds": 60,
         }
     ]
     assert template["network"] == {"mode": "deny", "allowed_hosts": []}
-    assert template["agent_roles"] == ["assembler", "planner", "verifier", "worker"]
-    # retry_limit 2, not 1: --inject-check-fault deliberately burns a task's
-    # first attempt, and a demo that leaves the model no real attempt at all
-    # measures the fault, not the product. A repeat of the same failure
-    # signature still terminalizes, so a third attempt is never blind.
-    assert (template["max_concurrency"], template["retry_limit"]) == (2, 2)
-    assert template["resource_budget"] == {
-        "max_worker_seconds": 900,
-        "max_attempts": 16,
-        "max_artifact_bytes": 10_485_760,
-        "soft_managed_rss_bytes": 536_870_912,
-        "hard_managed_rss_bytes": 805_306_368,
-    }
-    assert template["retention"] == {"retain_days": 7, "retain_failed_attempts": True}
-    assert template["risk_gates"] == ["final-result", "network", "scope-expansion"]
+    assert (template["max_concurrency"], template["retry_limit"]) == (2, 1)
     assert _load_materializer().load_template() == template
 
 
-def test_target_size_and_hygiene_bounds() -> None:
+def test_target_is_small_visible_and_has_no_embedded_secrets() -> None:
     files = _tracked_files()
-    names = [p.relative_to(REPOSITORY).as_posix() for p in files]
-    source_lines = sum(
-        len(p.read_text(encoding="utf-8").splitlines())
-        for p in (REPOSITORY / "ledger_service").glob("*.py")
-    )
-    test_lines = sum(
-        len(p.read_text(encoding="utf-8").splitlines())
-        for p in (REPOSITORY / "tests").glob("*.py")
-    )
-    assert 350 <= source_lines <= 700, source_lines
-    assert 120 <= test_lines <= 400, test_lines
+    names = [path.relative_to(REPOSITORY).as_posix() for path in files]
+    assert names == [
+        "README.md",
+        "orders_api/__init__.py",
+        "orders_api/api.py",
+        "orders_api/request_models.py",
+        "orders_api/response_models.py",
+        "orders_api/verify_migration.py",
+        "requirements.in",
+        "requirements.lock",
+        "tests/__init__.py",
+        "tests/test_api.py",
+        "tests/test_migration_contract.py",
+        "tests/test_models.py",
+    ]
     assert not (REPOSITORY / ".graphene").exists()
     assert not (REPOSITORY / ".git").exists()
-    assert not (REPOSITORY / "pyproject.toml").exists()
-    assert "README.md" in names and "ledger_service/__init__.py" in names
     assert len(files) <= PLANNER_EXCERPT_COUNT
-    oversized = {n: p.stat().st_size for n, p in zip(names, files) if p.stat().st_size > PLANNER_EXCERPT_BYTES}
-    assert oversized == {}, f"planner excerpts skip files over 4096 bytes: {oversized}"
-    assert sum(p.stat().st_size for p in files) <= PLANNER_BUDGET_BYTES
-    for name, path in zip(names, files):
-        text = path.read_text(encoding="utf-8")
-        if name not in SECRET_ALLOWED:
-            hits = [marker for marker in SECRET_MARKERS if marker in text.lower()]
-            assert hits == [], f"{name} mentions {hits}"
-        if path.suffix == ".py":
-            pattern = r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))"
-            for match in re.finditer(pattern, text, re.M):
-                imported = match.group(1) or match.group(2)
-                if imported.startswith("."):
-                    continue
-                module = imported.split(".")[0]
-                assert module in sys.stdlib_module_names | {"ledger_service", "pytest"}, (
-                    f"{name} imports non-stdlib module {module}"
-                )
+    assert all(path.stat().st_size <= PLANNER_EXCERPT_BYTES for path in files)
+    assert sum(path.stat().st_size for path in files) <= PLANNER_BUDGET_BYTES
+    for path in files:
+        text = path.read_text(encoding="utf-8").lower()
+        assert not any(marker in text for marker in ("api_key", "token=", "password"))
     assert os.access(SCRIPT, os.R_OK)

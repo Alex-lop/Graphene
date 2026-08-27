@@ -50,22 +50,22 @@
   "delivery_gates": {
     "credential_free_core": {
       "status": "verified_local",
-      "truth": "On source commit 581d6bf4e1c2ba4810f16d93b295637c7203a7b5, the credential-free Python matrix passed 808 tests with four explicit opt-in skips; MCP passed 6 and frontend passed 39. Deterministic replay, the macOS scripted fixture, V2 evidence/final decisions, bounded worker runtime, SQLite authority, and the recorded official Firestore emulator production vertical are locally verified."
+      "truth": "Credential-free tests cover detached supervisor ownership and reconnect, policy authorization, isolated finalization, framed Gemini children, owned-process barriers, selective retry mechanics, the Orders target, replay/UI, and installed resources. A run-specific aggregate claim is permitted only by the clean external exact-SHA manifest or CI result for that revision."
     },
     "live_cloud": {
       "status": "not_deployed",
       "truth": "Cloud Run/real Firestore requires an explicitly authorized project and captured authenticated smoke; packaging, unit tests, and the verified official emulator are not deployment proof."
     },
     "live_gemini": {
-      "evidence": "evidence/north_star/2026-08-23-north-star-live.md",
-      "status": "verified_live",
-      "truth": "On 2026-08-23 mission mission_start_5291caad50a8ee7a222a9221 ran two gemini-3.5-flash workers through Vertex AI (location global) with evidence-bound provider receipts, overlap measured on the store clock (28491 ms), the runtime-stamped provider call window (26463 ms), and the provider's own clock (25364 ms), exact fan-in and verification, a bundle-bound operator-delegated approval, and an isolated local result commit; evidence: evidence/north_star/2026-08-23-north-star-live.md. Human attestation and the live failure laboratory are not part of this claim. On 2026-08-23 the completion gate was met against the narrowed North Star: 9/10 ordinary and 3/3 controlled-failure missions completed end to end, $2.30 of receipt-derived spend across 14 missions; evidence: evidence/convergence/2026-08-23-completion-gate."
+      "historical_evidence": "evidence/north_star/2026-08-23-north-star-live.md",
+      "status": "not_proven",
+      "truth": "No credentialed current-implementation Orders mission has reached completed with returned Gemini identity and evidence-bound receipts. Historical 2026-08-23 evidence belongs to an earlier runtime and does not prove the detached supervisor/model-child recovery path."
     }
   },
   "failure_aware_retry": {
-    "evidence": "evidence/convergence/2026-08-23-completion-gate",
-    "status": "verified_live",
-    "truth": "A failed trusted check leaves a redacted CheckDiagnostic bound to the attempt; the retry's worker payload carries the prior attempt id, its fence, the result code, the failed check names, the receipt digest and the summary, with an unchanged repair scope. A repeat of the same failure signature is terminal. Observed live in both directions on 2026-08-23: 3/3 injected faults repaired on the retry, and mission_start_b6be7f35ba803c6dc34597b1 terminalized on a repeated signature instead of taking a third attempt."
+    "historical_evidence": "evidence/convergence/2026-08-23-completion-gate",
+    "status": "verified_local",
+    "truth": "Local tests cover bounded prior-failure diagnostics, higher fencing tokens, stale-result refusal, accepted-sibling preservation, and repeated-failure terminalization. The current live Gemini model-child kill and completed retry choreography is not proven."
   },
   "final_bundle_authority": {
     "limit": "The recompute rebuilds trees, patches and mutation manifests from the repository. It still trusts the TrustedCheckReceipt's claim that the checks passed; it does not re-run tests.",
@@ -113,13 +113,13 @@
       "provider-side identity or host clock accuracy",
       "verification on a second machine (the clean checkout was a fresh clone on the same laptop)"
     ],
-    "evidence": [
+    "historical_evidence": [
       "evidence/north_star/2026-08-23-mission1/cold_verify.json",
       "evidence/north_star/2026-08-23-mission4-failure-lab/cold_verify.json"
     ],
-    "proves": "From the capsule bytes alone, in a fresh clone with no mission store: the mission event chain, every attempt evidence chain, receipt digests and schemas, the final bundle's head binding and candidate tree identity against the verification receipt, envelope digests, plan revision digests, attempt coverage, and the manifest summary; verified on 2026-08-23 for the completed live mission mission_start_5291caad50a8ee7a222a9221 (manifest sha256 ef4917194fbdc9f2c98628af83743d60750abee44f81b833a492f6fd7e2404b8) and the failed laboratory mission mission_start_38129f17add65609de1c3388 (manifest sha256 1d1ac81f27e6bf2ec4f72972b642326d09c706b684d7be1fe3a6598470df62ef); exported from scripted-local and fake-ADK missions in tests.",
-    "status": "verified_live_cold",
-    "truth_label": "MISSION CAPSULE \u2014 COLD-VERIFIED FROM A CLEAN CHECKOUT ON LIVE GEMINI MISSIONS; INTERNAL CONSISTENCY, NOT PRODUCER AUTHENTICITY",
+    "proves": "Credential-free tests recompute mission and attempt chains, receipt digests and schemas, envelope and plan digests, attempt coverage, and manifest summary from capsule bytes without the mission store. Historical live capsules remain historical evidence only.",
+    "status": "verified_local",
+    "truth_label": "MISSION CAPSULE \u2014 VERIFIED_LOCAL INTERNAL CONSISTENCY; NOT PRODUCER AUTHENTICITY OR CURRENT LIVE GEMINI PROOF",
     "verify_command": "uv run --frozen python -m graphene.orchestration.capsule verify CAPSULE_DIR"
   },
   "mission_capture_boundary": {
@@ -189,28 +189,23 @@
     },
     "gemini-adk-planner": {
       "command": "GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py",
-      "demo_command": "uv run --frozen graphene mission demo",
+      "adk_version": "2.5.0",
+      "hero_entrypoint": "MCP start_goal",
       "does_not_prove": [
-        "human-attested (TTY) approval on a live mission",
-        "the live failure laboratory (see north_star)",
+        "current live Gemini behavior",
+        "a real model-child kill and completed recovery",
+        "Codex controller behavior",
         "Docker execution",
         "cloud deployment"
       ],
-      "evidence": "evidence/north_star/2026-08-23-north-star-live.md",
+      "historical_evidence": "evidence/north_star/2026-08-23-north-star-live.md",
       "fallback": "none",
-      "head_event_sha256": "33c1599cedc578263c9705fa7817b671aa2835000a337afe74e7a5322f290f55",
-      "location": "global",
-      "mission_id": "mission_start_5291caad50a8ee7a222a9221",
       "model": "gemini-3.5-flash",
-      "product_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --success-criterion CRITERION --driver gemini-adk",
-      "receipt_sha256": [
-        "eabc601ecb4bb9f39d3f9a1dd523f1874f5b6f097ead44189834d6c1b2634950",
-        "dfe9ac14ac68427b6ea5485156735dce8afe1faa9ce74ed9beda63fbb0ba7a70",
-        "f7e0b0ded5ae36424375491f5f9bbec637952d3f68ad0a8eacf1c0645785a651"
-      ],
-      "scope": "On 2026-08-23 the planner proposed a validated five-task DAG for the demo/north_star target and two bounded workers executed it live (three work attempts, assembly, exact verification) with provider receipts bound into evidence; approval was operator-delegated under the night directive, so human attestation on a live mission stays unproven.",
-      "status": "verified_live",
-      "truth_label": "VERIFIED LIVE \u2014 gemini-3.5-flash ON VERTEX AI (global); TWO WORKERS WITH EVIDENCE-BOUND RECEIPTS AND DUAL-CLOCK OVERLAP; OPERATOR-DELEGATED (server_derived) APPROVAL, NOT HUMAN-ATTESTED"
+      "product_command": "Call MCP start_goal with driver=gemini-adk, explicit success criteria, policy_pre_authorized, and auto_finalize_isolated",
+      "scope": "The current tree implements the ADK planner, framed model-child workers, detached supervisor, policy authorization, selective retry, and isolated auto-finalization. It has no credentialed current-tree evidence.",
+      "source_checked_at": "2026-08-27",
+      "status": "not_proven",
+      "truth_label": "NOT PROVEN \u2014 CURRENT LIVE GEMINI ORDERS MISSION, RETURNED MODEL IDENTITY, AND REAL MODEL-CHILD RECOVERY REQUIRED"
     },
     "scripted-local": {
       "automation_command": "uv run --frozen graphene mission start --repo PATH --goal GOAL --driver scripted-local --auto-approve",
@@ -247,38 +242,36 @@
   },
   "north_star": {
     "blockers": [
-      "an authenticated Cloud Run + real Firestore single-executor vertical (APIs are disabled on the configured project and the project is a Gemini-API auto-created one, not the dedicated sandbox docs/ALEX_CLOUD_SETUP.md requires \u2014 the owner must choose the project before anything is enabled)",
-      "human-attested (TTY) approval on a live mission",
-      "a responsive Docker daemon with the executor image, for the Docker alternative",
-      "one continuous filmed run of graphene demo --live"
+      "exact-SHA installed-artifact manifest bound to a canonical remote ref",
+      "actual Codex MCP start, disconnect, and fresh-client reattachment",
+      "credentialed eligible Gemini identity and two live child workers",
+      "barrier-acknowledged real model-child SIGKILL with selective higher-fence recovery",
+      "completed Orders result, summary, causal why, and current evidence capture"
     ],
     "completion_gate": {
-      "evidence": "evidence/convergence/2026-08-23-completion-gate",
-      "note": "The one ordinary mission that failed (mission_start_b6be7f35ba803c6dc34597b1) failed honestly: its retry produced the same failure signature as the attempt before it, so Graphene terminalized instead of taking a blind third attempt.",
-      "observed": "9/10 ordinary, 3/3 controlled-failure, 2026-08-23",
-      "required": "at least 8/10 ordinary and 3/3 controlled-failure missions complete end to end with receipts",
-      "status": "verified_live"
+      "observed": "none on the current implementation",
+      "required": "one exact-SHA Orders mission started through Codex MCP, surviving controller disconnect and one real model-child kill, then reaching completed with an isolated result and causal proof",
+      "status": "not_proven"
     },
     "credential_free_groundwork": [
-      "worker provider receipts bound to attempt evidence and resolved by digest in store.verify",
-      "overlap measured on attempt-lifetime, lease, and provider-call bases from evidence receipts",
-      "macOS host-sandbox check executor with owned-process registration (GRAPHENE_CHECK_EXECUTOR=host-sandbox)",
-      "deterministic failure laboratory: SIGKILL of worker B's registered check group, sibling publication untouched, retry under a higher fence, stale fence rejected",
-      "graphene why --json with worker identity, fences, retries, and receipt nodes",
-      "mission capsule export and cold verification",
-      "North Star demo target repository and materializer",
-      "provider-side receipt stamps (response id, server create_time, HTTP Date) and the provider_reported_timestamps overlap basis"
+      "detached digest-bound supervisor and controller-independent status polling",
+      "recomputed project-policy authorization and isolated automatic finalization",
+      "private length-framed Gemini child with provider-dispatch barrier and no repository API",
+      "exact owned-process identity and retryable provider interruption evidence",
+      "accepted-sibling preservation, higher fences, stale-result refusal, assembly, verification, summary, and why mechanics",
+      "Orders API target, immutable tests, narrow no-network policy, and materializer",
+      "wheel/sdist outside-tree verifier with a clean-tree CI gate"
     ],
-    "evidence": "evidence/north_star/2026-08-23-north-star-live.md",
-    "failure_lab_evidence": "evidence/north_star/2026-08-23-mission4-failure-lab",
+    "historical_evidence": "evidence/north_star/2026-08-23-north-star-live.md",
     "legs": {
-      "coordinates_two_real_gemini_workers": "verified_live",
-      "proves_exactly_why": "verified_live \u2014 graphene why chains target -> producer attempt -> assembly -> verification -> committed final approval on mission_start_b0b61fac3a6b1b3279329462, whose result was approved bundle-bound and isolated to commit 64e8aecc9ff7c35d2bfe6a365fdbb5128deda032; evidence: evidence/convergence/2026-08-23-completion-gate/why.txt",
-      "survives_one_of_them_failing": "verified_live \u2014 3/3 controlled-failure missions completed after recovery on 2026-08-23. Each was started with `graphene mission start --inject-check-fault`, which fails the first trusted check exactly once (exit 97, receipt labelled simulated_fixture / demo_injected_deterministic_check_failure). In every one the failed attempt sat at fence 1, the retry ran at fence 2 carrying the redacted diagnostic, the retry was committed, the sibling work task was untouched, and the mission reached awaiting_result. Missions mission_start_b0b61fac3a6b1b3279329462, mission_start_745d7e42e83b2aa4783fb723, mission_start_952c3e4433cc2c52f8029925; evidence: evidence/convergence/2026-08-23-completion-gate. The night's SIGKILL laboratory remains the real-process variant and is unchanged; this leg is about completion after recovery, and the injected fault is Graphene's own check runner, not an infrastructure failure."
+      "coordinates_two_real_gemini_workers": "not_proven",
+      "proves_exactly_why": "not_proven \u2014 local causal-query tests exist; current live Orders evidence does not",
+      "survives_one_of_them_failing": "not_proven \u2014 child-kill and selective-retry mechanics are locally tested, but a real Gemini child has not been killed and recovered through completed"
     },
     "runbook": "docs/NORTH_STAR_RUNBOOK.md",
-    "sentence": "Graphene coordinates two real Gemini coding workers, survives one of them failing, and proves exactly why the final repository result should be trusted.",
-    "status": "verified_live"
+    "sentence": "Agents stop. The mission doesn't.",
+    "status": "not_proven",
+    "target": "Orders API native Pydantic v2 migration with exact dependency declarations"
   },
   "planning_source_binding": {
     "regressions": [
@@ -293,7 +286,7 @@
   "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
   "product_media": {
     "blocker": "docs/assets/demo-capture.json records the verified replay source/checkpoint, but no reproducible screenshot, GIF, or four-minute submission video has completed. No product media or video proof is claimed.",
-    "demo_live": "verified_live \u2014 `graphene demo --live` ran the whole sequence end to end and then three CONSECUTIVE rehearsals, all exit 0, each hitting every beat with zero tracebacks and zero raw JSON lines; evidence: evidence/convergence/2026-08-23-demo-live/. On 2026-08-25 three further consecutive runs took the interactive edit prompt \u2014 the branch a person uses, driven by a scripted operator \u2014 all exit 0 with every beat present; evidence: evidence/contract/2026-08-25-rehearsals/. A person's typing time remains unmeasured. The video itself is still NOT PROVEN \u2014 nothing has been filmed.",
+    "demo_live": "legacy source-only watcher/edit/review demo; not the autonomous detached MCP hero and not current live proof",
     "logo": "docs/assets/Graphene_main_img.png",
     "required": [
       "docs/assets/mission-control-hero.png",
@@ -302,14 +295,14 @@
     ],
     "status": "not_proven_capture_pending"
   },
-  "product_thesis": "Graphene is a terminal-native workflow control plane for coding agents: a coordination-and-provenance layer, not an agent and not a harness. You give it a goal. It compiles the goal into a small typed graph of broad nodes, each with its own scope, checks, and budget. You read the map, reshape it if you want, and sign one exact revision; nothing runs until you do. Your connected agent then works only inside that map, and you watch it move node by node in your terminal. When it finishes you get a what-was-done summary, and `graphene why` answers what happened to any file with the lineage that produced it. The map is the contract, and your signature is what makes it binding.",
-  "result": "An exact verified candidate decision and optional isolated local commit with V2 publication evidence, a registered immutable pre-decision bundle, explicit resource semantics, and unresolved unknowns. Bounded ADK workers, collision-safe tree hashing, cold integrity verification, revision/invalidation, and a partial authoritative Firestore/outbound-executor vertical are credential-free tested; external proof remains separate.",
+  "product_thesis": "Graphene is a terminal-native recovery runtime for bounded coding missions. A goal becomes a typed graph with scopes, checks, budgets, leases, and fences. Graphene preserves accepted sibling work when an attempt fails, retries only the failed work under a higher fence, assembles an exact candidate, and records causal evidence for `graphene why`. The intended low-risk path is authorized by an explicit checked-in policy and can finalize only to an isolated local result ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.",
+  "result": "The current tree implements detached mission supervision, policy-bound authorization, private model children, selective higher-fence recovery mechanics, exact candidate/final-bundle authority, isolated local finalization, and an external exact-SHA artifact proof gate. Credential-free tests cover those contracts; current live Gemini, Codex, and cloud behavior remain separate and not proven.",
   "schema_version": 2,
   "status": "canonical",
   "terminal_surface": {
     "bundle_create": "graphene bundle create MISSION_ID --output NEW-BUNDLE.json",
     "bundle_verify": "graphene bundle verify BUNDLE.json-or-final_result_ID",
-    "demo_live": "graphene demo --live",
+    "demo_live": "graphene demo --live  (legacy source-only watcher/edit/review demo; not the autonomous MCP hero)",
     "follow": "graphene mission watch MISSION_ID --follow",
     "inject_fault": "graphene mission start ... --inject-check-fault  (fails the first trusted check once, deterministically, labelled simulated_fixture; it can only make a check fail, never pass)",
     "limit": "The pending bundle is prepared before the decision; display, approval, rejection, recovery, create-only export, and verification bind its exact ID.",
@@ -329,11 +322,11 @@
     "github_command": "GRAPHENE_WATCH_GITHUB_LIVE=1 uv run --frozen graphene watch github --repo OWNER/NAME --label graphene-mission --target-repo PATH --driver DRIVER --once",
     "inbox_command": "uv run --frozen graphene watch inbox --dir PATH --once",
     "live_gate_env": "GRAPHENE_WATCH_GITHUB_LIVE",
-    "live_inbox_smoke": {
+    "historical_live_inbox_smoke": {
       "date": "2026-08-23",
       "evidence": "evidence/north_star/2026-08-23-trigger-demo",
       "mission_id": "mission_start_a44dcefd7cd8e79e25690611",
-      "proves": "a dropped mission.yaml created a live gemini-adk proposal through the watcher (creation only), the operator-delegated approval ran two live workers, and graphene why on a file that worker produced begins with STAGE trigger; the mission itself later failed on the model's own output, so no verified result followed the trigger.",
+      "proves": "historical source only: a dropped mission.yaml created a proposal and trigger lineage; this is not the detached MCP hero and not current live proof.",
       "source_sha256": "e6734971d25a103d113929579a31d4137c5db1a2adb317e0f9b29eb41329d828",
       "trigger_event": "mission_event_2a585f9f34f71a7ded227a0653f89e16"
     },
@@ -342,12 +335,19 @@
     "test_command": "uv run --frozen pytest -q tests/unit/cli/test_watch.py tests/unit/orchestration/test_mission_trigger.py",
     "truth_label": "WATCHER \u2014 VERIFIED_LOCAL ON FIXTURES; LIVE GITHUB POLLING NOT PROVEN"
   },
+  "installed_artifacts": {
+    "command": "python scripts/verify_installed_artifacts.py",
+    "exact_sha_command": "python scripts/reliability/exact_sha_proof.py --expected-sha SHA --remote-ref origin/BRANCH --require-clean --output-root OUTSIDE_CHECKOUT",
+    "proves": "The verifier builds an sdist, builds a wheel from it, installs wheel and sdist separately, then runs entry points, replay, UI, packaged resources, Orders materialization, and no-key mission MCP start/disconnect/fresh-process reattachment outside the checkout with Python source-path overrides removed. The exact-SHA driver additionally binds a clean expected revision to a canonical remote ref and writes its SHA-named manifest outside the checkout.",
+    "status": "external_sha_manifest_required_per_run",
+    "truth_label": "INSTALLED-ARTIFACT VERIFIER AND EXACT-SHA GATE IMPLEMENTED; USE THE EXTERNAL SHA MANIFEST FOR RUN-SPECIFIC PROOF"
+  },
   "working_tree_integrity": {
     "component_limits": "Successful publications require ArtifactEnvelopeV2, and the exact pending FinalResultBundleV2 is registered before Mission Control display and bundle-ID-bound approval/rejection. Causal query and sampled resource control have targeted local tests; transitive artifact subsumption and live operator proof remain open.",
     "hard_budgets": "Attempt, worker-time, and artifact exhaustion commit blocked_budget, pause dispatch, and name replan_or_cancel; ordinary resume does not clear the task blocker.",
     "recovery": "Recovered dispatches are selected from a bounded explicit worker-owner set and attempt/lease ownership must agree.",
     "sqlite": "The v2 store persists immutable canonical record bytes and verifies a schema-ledger digest before use.",
-    "status": "credential_free_release_matrix_verified",
+    "status": "verified_local_contracts_external_sha_manifest_required",
     "task_input": "A gate-scoped needs_input task resumes only after 1\u20134096 private UTF-8 bytes are stored and their exact artifact reference is committed through graphene task input. The browser seam is tested but hidden in one-command live mode because staged-input cleanup is not wired.",
     "tree_hash": "graphene.tree.v2 length-prefixes count, path, mode/type, and content; the exact former NUL encoding collision and an independent reference encoder are covered locally.",
     "trusted_checks": "Only check.completed from the check-runner authority can bind deterministic success to the exact attempt/fence, plan/policy, inputs, template, candidate tree, and result.",
@@ -360,9 +360,9 @@
     "once_command": "uv run --frozen graphene ui --replay taskmaster --once",
     "live_command": "uv run --frozen graphene ui",
     "test_command": "uv run --frozen pytest -q tests/unit/ui -p no:cacheprovider",
-    "proves": "The verified replay renders as a top-to-bottom DAG with box-drawing edges, per-node state, and a banner carrying mission id, plan revision, digest, and signed/unsigned state; the viewer attaches read-only (SQLite mode=ro, query_only=ON) and node states change on screen while a scripted-local mission runs; selecting a node shows its attempts, checks, receipts, and lineage; a finished mission shows the what-was-done summary from the store.",
+    "proves": "The verified replay renders as a top-to-bottom DAG with box-drawing edges, per-node state, and a banner carrying mission id, plan revision, digest, and authorized/not-authorized state; the viewer attaches read-only (SQLite mode=ro, query_only=ON) and node states change on screen while a scripted-local mission runs; selecting a node shows its attempts, checks, receipts, and lineage; a finished mission shows the what-was-done summary from the store.",
     "does_not_prove": [
-      "a live Gemini mission watched by a person (the live proof is the credential-free scripted fixture on macOS)",
+      "a live Gemini mission watched by a person",
       "the film \u2014 nothing has been recorded",
       "Linux live attach: the scripted fixture needs /usr/bin/sandbox-exec, so only the replay path is proven there"
     ],
@@ -373,10 +373,11 @@
   },
   "mcp_goal_loop": {
     "status": "verified_local",
-    "truth_label": "MCP GOAL LOOP \u2014 VERIFIED_LOCAL: SIX TOOLS AND THE goal PROMPT OVER STDIO, SIGNATURE-GATED APPROVAL, END TO END ON A CLONE OF THIS REPOSITORY WITH THE SCRIPTED FIXTURE; NO PERSON SIGNED IN A CHAT CLIENT; CODEX AND GEMINI CLI DOCUMENTED, NOT DRIVEN",
+    "truth_label": "MCP RECOVERY LOOP \u2014 VERIFIED_LOCAL ON SCRIPTED FIXTURE: SEVEN TOOLS, PROMPT ACCEPTANCE, DETACHED SUPERVISOR, CONTROLLER DISCONNECT, AND FRESH-CLIENT REATTACH; NOT CODEX OR LIVE GEMINI PROOF",
     "server_command": "uv run --frozen graphene-mcp",
     "config": ".mcp.json",
     "tools": [
+      "start_goal",
       "plan_goal",
       "get_digest",
       "approve_plan",
@@ -387,14 +388,15 @@
     "prompt": "goal",
     "claude_code_prompt": "/mcp__graphene__goal",
     "test_command": "uv run --frozen pytest -q tests/unit/integrations/test_mission_mcp.py tests/process/test_mission_mcp_stdio.py -p no:cacheprovider",
-    "e2e_command": "uv run --frozen python scripts/e2e_mcp_loop.py evidence/integration/2026-08-26",
-    "proves": "initialize, tools/list, prompts/list, prompts/get and tool calls over real stdio with the official client; approve_plan refuses a digest that is not the committed revision's and honours the one shown; approval runs the scripted fixture inside the signed map; mission_status, mission_summary and why come from the store; graphene ui followed the run from a second read-only process.",
+    "disconnect_test": "uv run --frozen pytest -q tests/process/test_mission_mcp_stdio.py",
+    "proves": "The official Python MCP client initializes the seven-tool stdio server; start_goal durably accepts an idempotent scripted request promptly; the initiating stdio controller can exit; a fresh client reattaches; the detached supervisor continues through isolated completion; exact-digest review remains available and is server-derived relay truth.",
     "does_not_prove": [
-      "a person signing inside Claude Code, Codex, or Gemini CLI (the signer in the evidence is the script)",
+      "Codex, Claude Code, or Gemini CLI driving the current flow",
       "a live model mission driven over MCP",
-      "Codex CLI or Gemini CLI connecting to this server (their blocks are documented against current docs only)"
+      "human attestation",
+      "a real model-child kill"
     ],
-    "evidence": "evidence/integration/2026-08-26/transcript.md",
-    "recorded_at": "2026-08-26"
+    "historical_evidence": "evidence/integration/2026-08-26/transcript.md",
+    "updated_at": "2026-08-27"
   }
 }

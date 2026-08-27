@@ -18,7 +18,7 @@ from graphene.orchestration.adk_planner import (
     criterion_id,
     planning_context_sha256,
 )
-from graphene.orchestration.mission_models import TaskKind
+from graphene.orchestration.mission_models import CommandTemplate, TaskKind
 from pydantic import PrivateAttr
 
 from .test_adk import _contracts
@@ -171,6 +171,52 @@ def test_compiler_rejects_uncovered_or_unknown_criterion_ids() -> None:
 
     with pytest.raises(PlannerOutputError, match="coverage is incomplete"):
         compile_plan_intent(policy, request, invalid)
+
+
+def test_compiler_reserves_first_template_for_final_candidate() -> None:
+    policy, _ = _contracts()
+    policy = policy.model_copy(
+        update={
+            "command_templates": (
+                CommandTemplate(
+                    template_id="final-check",
+                    argv=("python", "-m", "verify", "--final"),
+                    timeout_seconds=60,
+                ),
+                CommandTemplate(
+                    template_id="unit-check",
+                    argv=("python", "-m", "verify"),
+                    timeout_seconds=60,
+                ),
+            )
+        }
+    )
+    request = PlanningRequest(
+        mission_id="mission-001",
+        revision=1,
+        goal="Implement the bounded outcome.",
+        success_criteria=("The bound test passes.",),
+    )
+
+    plan = compile_plan_intent(policy, request, _intent())
+
+    assert {
+        task.task_id: task.acceptance_checks for task in plan.tasks
+    } == {
+        "assemble": ("final-check",),
+        "code": ("unit-check",),
+        "tests": ("unit-check",),
+        "verify": ("final-check",),
+    }
+    first = _intent().tasks[0].model_copy(
+        update={"command_template_id": "final-check"}
+    )
+    with pytest.raises(PlannerOutputError, match="work intent command"):
+        compile_plan_intent(
+            policy,
+            request,
+            _intent().model_copy(update={"tasks": (first, _intent().tasks[1])}),
+        )
 
 
 def test_sanitized_validation_detail_names_locations_and_types_only() -> None:

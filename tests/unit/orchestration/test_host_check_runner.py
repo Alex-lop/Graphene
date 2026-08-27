@@ -111,11 +111,11 @@ def test_host_sandbox_runner_completes_fake_mission_with_owned_check_processes(
         TaskKind.ASSEMBLY,
         TaskKind.VERIFICATION,
     }
-    # Every committed attempt's check ran as a registered Graphene-owned
-    # process-group leader under sandbox-exec, and no record outlives it.
+    # Every check waited in Graphene's registered launch barrier before it
+    # exec'd sandbox-exec, and no ownership record outlives the attempt.
     assert {item[1] for item in recorded} == {item.attempt_id for item in committed}
     assert {item[0] for item in recorded} == {prepared.mission_id}
-    assert {item[3] for item in recorded} == {"/usr/bin/sandbox-exec"}
+    assert {item[3] for item in recorded} == {"/bin/sh"}
     assert len({item[2] for item in recorded}) == len(recorded)
     registry = OwnedProcessRegistry(prepared.runtime)
     assert registry.records_for_mission(prepared.mission_id) == ()

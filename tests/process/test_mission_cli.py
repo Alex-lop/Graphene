@@ -480,12 +480,15 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     deadline = time.monotonic() + 2
     while True:
         try:
-            owned = registry.prepare_cancel((dispatch,))[0]
-            break
+            prepared = registry.prepare_cancel((dispatch,))
         except ProcessControlError:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(0.01)
+            prepared = ()
+        if prepared:
+            owned = prepared[0]
+            break
+        if time.monotonic() >= deadline:
+            raise AssertionError("controlled process was not registered before deadline")
+        time.sleep(0.01)
 
     paused = _cli(
         environment,

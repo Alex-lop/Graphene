@@ -16,14 +16,17 @@ from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..core_models import FrozenModel, GitSha, Identifier, RepoPath, Sha256, TruthKind
 from .evidence import SQLiteAttemptEvidenceStore, TrustedCheckReceipt
 from .mission_models import (
+    AuthorizationMode,
     AttemptState,
     EvidenceReference,
     MissionEvent,
     MissionEventType,
     MissionHead,
     MissionStatus,
+    FinalizationMode,
     PublicationState,
     TaskKind,
+    plan_policy_decision,
 )
 
 if TYPE_CHECKING:
@@ -32,6 +35,8 @@ if TYPE_CHECKING:
 
 _OPERATOR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$")
 _COMMIT_MESSAGE = "Graphene approved isolated mission result"
+POLICY_FINALIZER_LABEL = "graphene-policy"
+POLICY_FINALIZER_RATIONALE = None
 
 
 class LocalResultError(RuntimeError):
@@ -232,7 +237,11 @@ def _rationale_digest(rationale: str | None) -> str | None:
     return sha256_hex(rationale.encode())
 
 
-def _require_decision_truth(truth_kind: TruthKind) -> None:
+def _require_decision_truth(
+    truth_kind: TruthKind, *, allow_policy_authorized: bool = False
+) -> None:
+    if allow_policy_authorized and truth_kind == TruthKind.POLICY_AUTHORITATIVE:
+        return
     if truth_kind not in {
         TruthKind.HUMAN_ATTESTED,
         TruthKind.SERVER_DERIVED,
@@ -425,6 +434,7 @@ def approve_result(
     rationale: str | None,
     truth_kind: TruthKind,
     allow_simulated_fixture: bool = False,
+    allow_policy_authorized: bool = False,
     expected_template_id: str = "fixture-tests",
 ) -> LocalResultReceipt:
     try:
@@ -439,7 +449,9 @@ def approve_result(
         raise LocalResultError("approval does not bind the exact candidate")
     if truth_kind == TruthKind.SIMULATED_FIXTURE and not allow_simulated_fixture:
         raise LocalResultError("simulated approval was not explicitly enabled")
-    _require_decision_truth(truth_kind)
+    _require_decision_truth(
+        truth_kind, allow_policy_authorized=allow_policy_authorized
+    )
     common = _common(
         mission_id=mission_id,
         base_sha=base_sha,
@@ -746,6 +758,19 @@ def _prepare_bundle_command_id(mission_id: str, bundle_id: str) -> str:
     )
 
 
+def _policy_finalize_command_id(
+    mission_id: str, bundle_id: str, decision_sha256: str
+) -> str:
+    return (
+        "command_"
+        + sha256_hex(
+            canonical_json_bytes(
+                ["auto-finalize-isolated", mission_id, bundle_id, decision_sha256]
+            )
+        )[:32]
+    )
+
+
 def _registered_final_result_bundle(
     *,
     store: Any,
@@ -924,6 +949,7 @@ def finalize_local_result_decision(
     recorded_at: datetime,
     approved: bool,
     allow_simulated_fixture: bool = False,
+    allow_policy_authorized: bool = False,
 ) -> tuple[MissionHead, LocalResultReceipt]:
     """Commit a final decision and finish or resume its isolated local result.
 
@@ -1109,6 +1135,7 @@ def finalize_local_result_decision(
             **common,
             approved_candidate_sha256=candidate.sha256,
             allow_simulated_fixture=allow_simulated_fixture,
+            allow_policy_authorized=allow_policy_authorized,
         )
         receipt_reference = evidence.put_artifact(
             "local-result-receipt",
@@ -1130,11 +1157,84 @@ def finalize_local_result_decision(
     return head, receipt
 
 
+def auto_finalize_local_result(
+    *,
+    store: Any,
+    mission_id: str,
+    expected_head: MissionHead,
+    expected_bundle_id: str,
+    recorded_at: datetime,
+) -> tuple[MissionHead, LocalResultReceipt]:
+    """Finish the exact current bundle under a persisted policy grant.
+
+    Absence of a policy-decision event is deliberately review-required. The store
+    owns the atomic authorization event; this helper only resumes the existing
+    isolated-result transaction after that authority is durable.
+    """
+
+    snapshot = store.snapshot(mission_id)
+    events = _mission_events(store, mission_id, snapshot.head)
+    try:
+        decision = plan_policy_decision(events, snapshot.plan.revision)
+    except ValueError as error:
+        raise LocalResultError("mission policy decision is invalid") from error
+    if (
+        decision is None
+        or decision.effective_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
+        or decision.finalization_mode
+        != FinalizationMode.AUTO_FINALIZE_ISOLATED
+        or decision.policy_id != snapshot.policy.policy_id
+        or decision.policy_revision != snapshot.policy.revision
+        or decision.policy_sha256 != snapshot.policy.policy_sha256
+        or decision.base_sha != snapshot.mission.base_sha
+        or decision.plan_sha256
+        != canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+    ):
+        raise LocalResultError("mission is not authorized for automatic finalization")
+    command_id = _policy_finalize_command_id(
+        mission_id, expected_bundle_id, decision.decision_sha256
+    )
+    if snapshot.mission.final_outcome is None:
+        try:
+            store.approve_final_result_by_policy(
+                mission_id,
+                command_id,
+                expected_head=expected_head,
+                expected_bundle_id=expected_bundle_id,
+                recorded_at=recorded_at,
+            )
+        except Exception as error:
+            current = store.snapshot(mission_id)
+            if current.mission.final_outcome not in {
+                "approved_pending_commit",
+                "approved",
+            }:
+                raise LocalResultError(
+                    "policy-authorized final approval failed"
+                ) from error
+    return finalize_local_result_decision(
+        store=store,
+        mission_id=mission_id,
+        command_id=command_id,
+        expected_head=expected_head,
+        expected_bundle_id=expected_bundle_id,
+        operator_label=POLICY_FINALIZER_LABEL,
+        rationale=POLICY_FINALIZER_RATIONALE,
+        truth_kind=TruthKind.POLICY_AUTHORITATIVE,
+        recorded_at=recorded_at,
+        approved=True,
+        allow_policy_authorized=True,
+    )
+
+
 __all__ = [
     "LocalResultError",
     "LocalResultRecoveryRequired",
     "LocalResultReceipt",
+    "POLICY_FINALIZER_LABEL",
+    "POLICY_FINALIZER_RATIONALE",
     "approve_result",
+    "auto_finalize_local_result",
     "finalize_local_result_decision",
     "prepare_local_final_result_bundle",
     "reject_result",

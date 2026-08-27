@@ -86,23 +86,17 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert scripted["execute_command"] in proof and "--auto-approve" in proof
     assert replay["status"] == scripted["status"] == "verified_local"
     gemini = product["mission_paths"]["gemini-adk-planner"]
-    assert gemini["status"] == "verified_live"
-    # A live label must cite evidence that is in the tree and names the mission.
-    evidence = (ROOT / gemini["evidence"]).read_text()
-    assert gemini["mission_id"] in evidence and gemini["mission_id"] in proof
-    assert all(digest in evidence for digest in gemini["receipt_sha256"])
-    assert gemini["head_event_sha256"] in evidence
-    assert "VERIFIED_LIVE" in readme and "VERIFIED_LIVE" in proof
-    assert "NOT HUMAN-ATTESTED" in gemini["truth_label"]
-    assert (
-        product["mission_paths"]["gemini-adk-planner"]["product_command"]
-        in " ".join(proof.replace("\\\n", "").split())
-    )
+    assert gemini["status"] == "not_proven"
+    assert (ROOT / gemini["historical_evidence"]).is_file()
+    assert "NOT PROVEN" in gemini["truth_label"]
+    assert "NOT PROVEN" in readme and "NOT PROVEN" in proof
+    assert "start_goal" in proof
     assert product["mission_paths"]["cloud-run-firestore"]["status"] == "not_deployed"
     watcher = product["watch"]
     assert watcher["status"] == "verified_local"
-    assert watcher["truth_label"] in proof and "NOT PROVEN" in watcher["truth_label"]
-    assert watcher["live_gate_env"] in proof and watcher["live_gate_env"] in watcher["github_command"]
+    assert "NOT PROVEN" in watcher["truth_label"]
+    assert "graphene watch github" in commands_doc
+    assert watcher["live_gate_env"] in watcher["github_command"]
 
     assert product["product_thesis"] in readme
     assert package["description"] == (

@@ -89,16 +89,54 @@ for both paths is in [PROOF.md](PROOF.md).
 
 `graphene-mcp` with no arguments serves the mission control plane over stdio
 (the committed [`.mcp.json`](../.mcp.json) launches it as
-`uv run --frozen graphene-mcp`): tools `plan_goal`, `get_digest`,
-`approve_plan`, `mission_status`, `why`, `mission_summary`, and the prompt
-`goal`, which instructs the calling agent to compile, show the digest, **stop
-and ask the human to sign**, run inside the map, and relay the summary.
-`approve_plan` requires the digest string and the store refuses any other.
-Every argument is a string; forged or extra keys are rejected before dispatch.
+`uv run --frozen graphene-mcp`): tools `start_goal`, deprecated compatibility
+alias `plan_goal`, `get_digest`, `approve_plan`, `mission_status`, `why`, and
+`mission_summary`, plus the prompt `goal`.
+
+`start_goal` requires an absolute repository, goal, and stable `request_id`.
+The live `gemini-adk` default also requires explicit success criteria. Optional
+string arguments select `max_workers`, `authorization_mode`, and
+`finalization_mode`. The call durably records the request, starts or reuses the
+exact detached supervisor, and returns without waiting for planning or model
+work. Poll `mission_status`; reconnecting through a fresh stdio process does not
+restart the goal. All arguments are strings, and missing, forged, non-string,
+or extra keys are rejected before dispatch.
+
+`policy_pre_authorized` is only a request. Dispatch begins automatically only
+after Graphene compiles and validates the exact plan inside the committed
+project policy and records a policy-authoritative decision. An out-of-policy
+plan becomes `review_required`. `approve_plan` remains the exact-digest review
+path; MCP records `server_derived` relay truth, not human attestation.
+`auto_finalize_isolated` may create only an isolated local result ref under the
+committed policy. It never pushes, merges, deploys, or mutates the supplied
+checkout.
+
 The state root is the CLI's (`GRAPHENE_STATE_DIR` or `~/.graphene/state`), so
-`graphene ui` sees the same missions. `graphene-mcp --task … --profile …` and
-`--run RUN` remain the compatibility-only lineage tour
+`graphene ui` and later MCP processes see the same missions.
+`graphene-mcp --task … --profile …` and `--run RUN` remain the
+compatibility-only lineage tour
 ([`mcp_client_config.example.json`](mcp_client_config.example.json)).
+
+The seven-tool protocol, prompt return, and scripted controller-disconnect
+path are locally tested. Codex, Claude Code, and Gemini CLI have not driven the
+current recovery flow, and no credentialed current-tree Gemini mission has run.
+
+## Installed-artifact proof command
+
+```bash
+python scripts/verify_installed_artifacts.py
+python scripts/verify_installed_artifacts.py --require-clean  # clean local build gate
+python scripts/reliability/exact_sha_proof.py \
+  --expected-sha SHA --remote-ref origin/BRANCH --require-clean \
+  --output-root /absolute/path/outside/the/checkout
+```
+
+The first form is diagnostic and reports whether the source tree is clean. The
+second refuses any tracked or untracked source difference before building an
+sdist, building a wheel from it, installing each separately, and running from
+outside the checkout with source-path overrides removed. The final form also
+binds the expected revision to the canonical remote branch, runs the bounded
+SQLite/runtime matrix, and writes a SHA-named manifest outside the checkout.
 
 ## Compatibility-only commands
 
@@ -106,8 +144,9 @@ The compatibility-only Auth tour commands remain: `graphene inspect`,
 `graphene replay`, `graphene review`, `graphene feedback`, `graphene answer`,
 `graphene memory`, `graphene handoff`, `graphene promote`, and
 `graphene demo --driver verified-replay|scripted-local|adk-fake`.
-`graphene demo --live` is not one of them: it is the live mission sequence
-described in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+`graphene demo --live` is a separate legacy watcher/edit/review sequence whose
+resources are packaged. It is not the detached, policy-pre-authorized MCP
+hero described in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
 
 Automatic expiry and purge are not implemented. Current mission-plan validation
 rejects `legacy_auth_v2`. Cloud streaming uses per-client polling; there is no

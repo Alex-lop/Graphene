@@ -41,6 +41,7 @@ from .lineage.explain import explain_path, inspect_run_item
 from .lineage.service import ToolCallIdentity
 from .lineage.sqlite_lineage_store import SQLiteLineageStore
 from .lineage.artifacts import SQLiteArtifactStore
+from .package_data import legacy_project_root
 from .core_models import (
     GoldenContract,
     LineageEventType,
@@ -48,7 +49,7 @@ from .core_models import (
     VerifiedHead,
 )
 
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT = legacy_project_root()
 _GOLDEN = GoldenContract.model_validate_json(
     (_ROOT / "contracts/golden_path.json").read_text()
 )

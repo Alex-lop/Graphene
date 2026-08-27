@@ -36,7 +36,7 @@ def test_replay_renders_dag_banner_and_signed_state_then_q_quits(replay_source: 
         async with app.run_test(size=(120, 45)) as pilot:
             banner = _plain(app, "banner")
             assert "mission_status_reports" in banner and "PLAN v1" in banner
-            assert "digest 9b9f15f52186" in banner and "SIGNED — revision 1 approved" in banner
+            assert "digest 9b9f15f52186" in banner and "AUTHORIZED — revision 1 approved" in banner
             dag = _plain(app, "dag")
             for task_id in ("redact_notes", "render_json", "render_markdown", "wire_cli", "assemble", "verify"):
                 assert task_id in dag
@@ -120,7 +120,7 @@ def test_summary_view_is_built_from_the_snapshot(replay_source: ReplaySource) ->
 def test_frame_dump_and_once_are_plain_text_from_the_same_renderer(replay_source: ReplaySource, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     frame = compose_frame(replay_source, pane="summary")
     assert "\x1b[" not in frame and "->" not in frame
-    assert "what was done" in frame and "SIGNED" in frame
+    assert "what was done" in frame and "AUTHORIZED" in frame
     args = build_parser().parse_args(["ui", "--replay", "taskmaster", "--once"])
     assert handle(args) == 0
     out = capsys.readouterr().out
@@ -143,7 +143,7 @@ def test_live_source_attaches_read_only_to_the_most_recent_active_mission(tmp_pa
     assert isinstance(source, LiveSource) and source.mission_id == "mission-ui-live"
     assert isinstance(source.store, ReadOnlyMissionStore)
     frame = compose_frame(source)
-    assert "mission-ui-live" in frame and "UNSIGNED — nothing runs until you sign" in frame
+    assert "mission-ui-live" in frame and "NOT AUTHORIZED — plan approval required" in frame
     assert "->" not in frame
     # The projection the TUI polls is the same read-only handle.
     assert isinstance(source.projection, MissionProjection)

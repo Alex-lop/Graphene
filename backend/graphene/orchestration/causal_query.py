@@ -8,17 +8,28 @@ from typing import Literal
 from pydantic import Field
 
 from ..hashing import canonical_json_sha256
-from ..core_models import BoundedText, FrozenModel, Identifier, RepoPath, Sha256
+from ..core_models import (
+    BoundedText,
+    FrozenModel,
+    Identifier,
+    RepoPath,
+    Sha256,
+    TruthKind,
+)
 from .mission_models import (
+    AuthorizationMode,
     ArtifactPublication,
     Attempt,
     EvidenceReference,
+    FinalizationMode,
     MissionEvent,
+    MissionAuthority,
     PLAN_AWAITING_REVIEW_UNKNOWN,
     MissionEventType,
     MissionSnapshot,
     PublicationState,
     TaskKind,
+    plan_policy_decision,
 )
 
 
@@ -27,9 +38,11 @@ class CausalQueryError(ValueError):
 
 
 #: Evidence reference kinds that are receipts minted by trusted authorities
-#: (the check runner's ``test-receipt`` and the sanitized worker provider
-#: receipt). Kept local so this read-only module never imports the runtime.
-RECEIPT_REFERENCE_KINDS = frozenset({"test-receipt", "worker-provider-receipt"})
+#: (the check runner's ``test-receipt`` and sanitized worker provider call or
+#: interruption receipts). Kept local so this module never imports the runtime.
+RECEIPT_REFERENCE_KINDS = frozenset(
+    {"test-receipt", "worker-provider-interruption", "worker-provider-receipt"}
+)
 
 
 class CausalNode(FrozenModel):
@@ -58,6 +71,7 @@ class CausalNode(FrozenModel):
 class CausalLink(FrozenModel):
     stage: Literal[
         "trigger",
+        "policy_authorization",
         "target",
         "producer_attempt",
         "prior_attempts",
@@ -85,6 +99,10 @@ class CausalWhyResult(FrozenModel):
     plan_revision: int = Field(ge=1)
     plan_sha256: Sha256
     approved_plan_revision: int | None = Field(default=None, ge=1)
+    requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
+    policy_decision_sha256: Sha256 | None = None
     links: tuple[CausalLink, ...]
     unknowns: tuple[BoundedText, ...]
 
@@ -106,7 +124,9 @@ def _validated_events(
 ) -> tuple[MissionEvent, ...]:
     ordered = tuple(sorted(events, key=lambda event: event.seq))
     if len(ordered) != snapshot.head.event_count:
-        raise CausalQueryError("committed event stream does not match the verified head")
+        raise CausalQueryError(
+            "committed event stream does not match the verified head"
+        )
     previous = None
     for sequence, event in enumerate(ordered, 1):
         if (
@@ -117,7 +137,9 @@ def _validated_events(
             raise CausalQueryError("committed event stream is incomplete or foreign")
         previous = event.event_sha256
     if previous != snapshot.head.event_sha256:
-        raise CausalQueryError("committed event stream head does not match the snapshot")
+        raise CausalQueryError(
+            "committed event stream head does not match the snapshot"
+        )
     return ordered
 
 
@@ -200,9 +222,13 @@ def _reference_node(
         )
         resolvable = None
     if resolvable is not None and type(resolvable) is not bool:
-        raise CausalQueryError("reference resolver must return bool or None, never bytes")
+        raise CausalQueryError(
+            "reference resolver must return bool or None, never bytes"
+        )
     if resolvable is not True:
-        unknowns.append(f"Reference availability is unknown: {reference.kind}:{reference.id}.")
+        unknowns.append(
+            f"Reference availability is unknown: {reference.kind}:{reference.id}."
+        )
     return CausalNode(
         node_type="reference",
         node_id=reference.id,
@@ -295,6 +321,61 @@ def _trigger_links(events: Sequence[MissionEvent]) -> tuple[CausalLink, ...]:
     )
 
 
+def _policy_authorization_links(
+    events: Sequence[MissionEvent], plan_revision: int
+) -> tuple[CausalLink, ...]:
+    try:
+        decision = plan_policy_decision(tuple(events), plan_revision)
+    except ValueError as error:
+        raise CausalQueryError("committed policy decision is invalid") from error
+    if decision is None:
+        return ()
+    matches = tuple(
+        event
+        for event in events
+        if event.event_type == MissionEventType.PLAN_POLICY_DECIDED
+        and isinstance(event.payload.get("policy_decision"), dict)
+        and event.payload["policy_decision"].get("decision_sha256")
+        == decision.decision_sha256
+    )
+    if len(matches) != 1:
+        raise CausalQueryError("committed policy decision is ambiguous")
+    event = matches[0]
+    if decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED:
+        note = (
+            f"Policy {decision.policy_id} revision {decision.policy_revision} "
+            "requires review before exact plan dispatch."
+        )
+    elif decision.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED:
+        note = (
+            f"Policy {decision.policy_id} revision {decision.policy_revision} authorized "
+            f"exact plan revision {decision.plan_revision}; its exact verified bundle "
+            "may be finalized only to a Graphene-owned isolated result ref."
+        )
+    else:
+        note = (
+            f"Policy {decision.policy_id} revision {decision.policy_revision} authorized "
+            f"exact plan revision {decision.plan_revision}; its final result still "
+            "requires review."
+        )
+    return (
+        CausalLink(
+            stage="policy_authorization",
+            status="established",
+            nodes=(
+                CausalNode(
+                    node_type="event",
+                    node_id=event.event_id,
+                    kind=decision.effective_mode,
+                    sha256=decision.decision_sha256,
+                ),
+            ),
+            event_ids=(event.event_id,),
+            note=note[:1024],
+        ),
+    )
+
+
 def why(
     snapshot: MissionSnapshot,
     events: Sequence[MissionEvent],
@@ -346,21 +427,46 @@ def why(
 
     stages = _attempt_stages(committed)
     trigger_links = _trigger_links(committed)
+    authorization_links = _policy_authorization_links(committed, snapshot.plan.revision)
+    decision = plan_policy_decision(committed, snapshot.plan.revision)
+    if decision is not None and (
+        decision.policy_id != snapshot.policy.policy_id
+        or decision.policy_revision != snapshot.policy.revision
+        or decision.policy_sha256 != snapshot.policy.policy_sha256
+        or decision.base_sha != snapshot.mission.base_sha
+        or decision.plan_sha256
+        != canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+    ):
+        raise CausalQueryError("committed policy decision bindings are invalid")
+    decision_fields = (
+        {}
+        if decision is None
+        else {
+            "requested_authorization_mode": decision.requested_mode,
+            "effective_authorization_mode": decision.effective_mode,
+            "finalization_mode": decision.finalization_mode,
+            "policy_decision_sha256": decision.decision_sha256,
+        }
+    )
     if not targets:
         unknowns.append(f"No committed publication or artifact matches {query}.")
-        links = trigger_links + tuple(
-            CausalLink(
-                stage=stage,
-                status="unknown",
-                note=f"No evidence establishes {stage.replace('_', ' ')} for this query.",
-            )
-            for stage in (
-                "target",
-                "producer_attempt",
-                "accepted_inputs",
-                "assembly_candidate",
-                "verification",
-                "approval",
+        links = (
+            trigger_links
+            + authorization_links
+            + tuple(
+                CausalLink(
+                    stage=stage,
+                    status="unknown",
+                    note=f"No evidence establishes {stage.replace('_', ' ')} for this query.",
+                )
+                for stage in (
+                    "target",
+                    "producer_attempt",
+                    "accepted_inputs",
+                    "assembly_candidate",
+                    "verification",
+                    "approval",
+                )
             )
         )
         return CausalWhyResult(
@@ -372,6 +478,7 @@ def why(
             plan_revision=snapshot.plan.revision,
             plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
             approved_plan_revision=_approved_revision(committed),
+            **decision_fields,
             links=links,
             unknowns=tuple(sorted(set(unknowns))),
         )
@@ -379,12 +486,17 @@ def why(
     target_ids = {item.publication_id for item in targets}
     target_attempts = tuple(
         sorted(
-            (attempts[item.attempt_id] for item in targets if item.attempt_id in attempts),
+            (
+                attempts[item.attempt_id]
+                for item in targets
+                if item.attempt_id in attempts
+            ),
             key=lambda item: item.attempt_id,
         )
     )
     links = [
         *trigger_links,
+        *authorization_links,
         CausalLink(
             stage="target",
             status="established",
@@ -398,7 +510,7 @@ def why(
                 publication_ids=target_ids,
             ),
             note="Committed publication metadata matches the query.",
-        )
+        ),
     ]
     missing_attempts = target_ids - {
         publication.publication_id
@@ -406,7 +518,9 @@ def why(
         if publication.attempt_id in attempts
     }
     if missing_attempts:
-        unknowns.append("One or more target producer attempts are missing from the snapshot.")
+        unknowns.append(
+            "One or more target producer attempts are missing from the snapshot."
+        )
     links.append(
         CausalLink(
             stage="producer_attempt",
@@ -421,7 +535,10 @@ def why(
             ),
             event_ids=_event_ids(
                 committed,
-                event_types={MissionEventType.TASK_STARTED, MissionEventType.TASK_COMPLETED},
+                event_types={
+                    MissionEventType.TASK_STARTED,
+                    MissionEventType.TASK_COMPLETED,
+                },
                 attempt_ids={item.attempt_id for item in target_attempts},
             ),
             note=(
@@ -479,7 +596,11 @@ def why(
     )
     input_references = tuple(
         sorted(
-            {reference for attempt in target_attempts for reference in attempt.input_publications},
+            {
+                reference
+                for attempt in target_attempts
+                for reference in attempt.input_publications
+            },
             key=lambda item: (item.kind, item.id, item.sha256),
         )
     )
@@ -608,6 +729,14 @@ def why(
         if event.event_type == MissionEventType.FINAL_CANDIDATE_REJECTED
     )
     decision_events = approved or rejected
+    policy_approved = any(
+        event.payload.get("decision_mode") == FinalizationMode.AUTO_FINALIZE_ISOLATED
+        and decision is not None
+        and event.payload.get("policy_decision_sha256") == decision.decision_sha256
+        and event.truth_kind == TruthKind.POLICY_AUTHORITATIVE
+        and event.authority == MissionAuthority.POLICY_ENGINE
+        for event in approved
+    )
     links.append(
         CausalLink(
             stage="approval",
@@ -618,7 +747,10 @@ def why(
             ),
             event_ids=tuple(event.event_id for event in decision_events),
             note=(
-                "A committed final approval references the assembly candidate."
+                "A committed policy-authorized final approval references the exact "
+                "assembly candidate and isolated-result bundle."
+                if policy_approved
+                else "A committed final approval references the assembly candidate."
                 if approved
                 else "A committed final rejection references the assembly candidate."
                 if rejected
@@ -638,6 +770,7 @@ def why(
         plan_revision=snapshot.plan.revision,
         plan_sha256=canonical_json_sha256(snapshot.plan.model_dump(mode="json")),
         approved_plan_revision=_approved_revision(committed),
+        **decision_fields,
         links=tuple(links),
         unknowns=tuple(sorted(set(unknowns))),
     )

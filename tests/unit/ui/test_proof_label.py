@@ -32,7 +32,7 @@ def test_terminal_ui_label_is_backed_by_a_credential_free_render_and_its_evidenc
     assert completed.returncode == 0, completed.stderr
     first, second = completed.stdout.splitlines()[:2]
     assert first.startswith("GRAPHENE mission_status_reports")
-    assert "PLAN v1" in second and "digest 9b9f15f52186" in second and "SIGNED" in second
+    assert "PLAN v1" in second and "digest 9b9f15f52186" in second and "AUTHORIZED" in second
     assert "->" not in completed.stdout
     for path in ("README.md", "docs/PROOF.md"):
         assert "graphene ui" in (ROOT / path).read_text(encoding="utf-8")

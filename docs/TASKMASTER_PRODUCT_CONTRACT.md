@@ -1,149 +1,186 @@
-# Taskmaster product contract
+# Taskmaster recovery product contract
 
-Status: accepted architecture decision, 2026-08-18
+## Promise
 
-## Decision
+> **Agents stop. The mission doesn't.**
 
-Graphene is a local-first mission control for bounded multi-agent coding work. A developer supplies one engineering outcome and an explicit repository policy; Graphene validates a task DAG, dispatches only ready non-conflicting work, records fenced attempts and evidence, assembles accepted outputs, verifies the candidate, and creates an isolated local commit only after explicit approval.
+For one bounded repository goal, Graphene preserves accepted work when a
+controller or worker stops, replaces only failed work under a higher fence, and
+finishes an exact verified candidate with causal evidence.
 
-The submission category is **The Taskmaster**. Collaborative Partner describes the decision-gate interaction. Fortified Enterprise Fleet describes the policy, isolation, lease, budget, and evidence substrate. They are not separate product modes.
+The graph is execution authority, not decoration. It governs readiness,
+dependency and write-scope conflict, accepted inputs, leases, fences, retry,
+assembly, verification, and finalization.
 
-## Authority boundaries
+## Actors and authority
 
-- `graphene.orchestration` owns project, mission, plan, task, attempt, lease, gate, publication, resource, scheduling, and Mission Control contracts.
-- Immutable initial mission contracts, the append-only v1 mission stream, and every content-addressed canonical record bound by those events form execution authority. The deterministic scheduler consumes that authority; model output is a proposal.
-- Generic mission attempts use a separate v1 evidence stream. A typed legacy-v2 link is reserved for a future trusted Auth bridge; current mission-plan validation rejects it.
-- `graphene.lineage` and `graphene.viewer` remain the frozen Auth protocol tour. Their v2 event types, six operations, and `GraphSnapshot(view_version=1)` are not mission contracts.
-- Mission Control data is a read-only projection, never execution authority.
-  The CLI/store path remains the established operator path. An optional private
-  browser command adapter is present in the current working tree, delegates to
-  that store behind separate authentication/CSRF/current-head checks, and
-  has backend/frontend contract coverage; a live end-to-end operator capture
-  remains pending.
-- A Git worktree provides edit isolation; it is not a security sandbox. Untrusted code runs only in a separately proven execution boundary or fails closed.
-- Workers have no arbitrary shell, installer, ambient credential, user-checkout mount, or autonomous push/PR/merge/deploy path. `graphene init` writes a narrow policy template; every scope and exact argv-form command in it is the operator's to review.
-- Public state excludes raw prompts, source, diffs, command arguments/output, environment variables, secrets, and chain-of-thought.
-- Skills are not resource-isolation units. Stateless MCP is sessionless, not processless.
-- Cancellation targets only strongly identified Graphene-owned processes; unreceipted external effects become `outcome_unknown`, never silently repeated. A cancelled attempt records the stages it completed in its evidence chain, so a check that had already passed is not lost in the word "cancelled".
-- Two tasks may not write the same file, and that rule holds even when one depends on the other: an ordered ownership transfer is safe in principle but is still refused (see [Known limitations](KNOWN_LIMITATIONS.md)).
-- Product-created commits stay on a Graphene-owned result ref. Graphene never pushes, opens a pull request, deploys, or mutates the user's branch.
+- The MCP client is a controller. It can submit a goal and read results; its
+  process lifetime does not own the mission.
+- The detached supervisor owns progression for one durable request. Recovery
+  can replace only a dead exact owner and increments supervisor generation.
+- Gemini/ADK proposes a plan and bounded file intent. Model output has no
+  authority until deterministic validation and store transitions accept it.
+- The project policy defines the maximum low-risk envelope. A requested
+  authorization mode grants nothing.
+- Workers hold task/attempt/lease/fence-scoped capabilities. They do not hold
+  mission-store, Git remote, deployment, or final-decision authority.
+- The trusted check runner, assembler, verifier, and store bind exact evidence.
+- Mission Control is a read-only projection. It is never scheduling authority.
 
-## Durable semantics
+## Durable goal acceptance
 
-- Every command has a stable idempotency ID and canonical request digest.
-- Mission events are canonical, hash-chained, append-only, and committed atomically with indexed task, lease, attempt, gate, and publication views.
-- Lease claims are transactional. Fencing tokens increase monotonically; heartbeats and results from expired or stale workers are rejected.
-- Dispatch is at least once. Committed Graphene state and Graphene-owned filesystem effects are idempotent where durable receipts prove it. A provider/process effect separated from its receipt may be `outcome_unknown` and must not be silently repeated or called exactly once. Recoverable claimed attempts form the local crash-safe outbox.
-- Dependencies and accepted artifact contracts determine readiness. Exact write scopes prevent conflicting active leases.
-- Assembly starts only after accepted prerequisites. Verification binds to the assembled candidate. Ambiguity, invalid evidence, expired leases, and policy violations fail closed.
-- A trusted check runner—not a worker—authors `check.completed` and binds the exact plan/policy, attempt/fence, command template, inputs, candidate tree, result, and bounded output receipt.
-- Every successful publication carries a verified `ArtifactEnvelopeV2`; consumers receive only its accepted content-addressed reference. After exact verification, Graphene registers one immutable pending `FinalResultBundleV2`, and both terminal decisions bind that bundle ID.
-- Structural tree identity uses the explicit collision-resistant encoding domain `graphene.tree.v2`; it proves content integrity under the trusted verifier/store, not authorship or execution.
-- A task-scoped `needs_input` gate resumes only after a private artifact is stored and its exact digest-bound reference is committed for that task. Public state never contains the input bytes.
-- Attempt, worker-time, and artifact exhaustion commit `blocked_budget`, pause dispatch, and name `replan_or_cancel`; an ordinary resume cannot silently clear the task blocker.
+`start_goal` requires an absolute initialized repository, bounded goal,
+explicit success criteria for live Gemini, and a caller-supplied stable request
+id. The accepted request binds:
 
-The executable contracts are the strict Pydantic models in
-`graphene.orchestration.mission_models`; their `schema_version=1` fields and
-`model_json_schema()` output are the mission and event JSON Schemas. Unknown
-fields are rejected. `TASK_TRANSITIONS` and `MISSION_TRANSITIONS` are the
-authoritative transition tables:
+- repository and clean base SHA;
+- goal and sorted unique criteria;
+- driver and worker limit;
+- policy id/revision/digest;
+- requested authorization and finalization modes; and
+- a canonical request digest.
 
-| State machine | Allowed progressions |
-|---|---|
-| Mission | proposed -> running; running <-> paused; running -> awaiting_result; awaiting_result -> completed/rejected; active states -> failed/cancelled; failed -> running only for a bounded retry |
-| Task | queued -> ready; ready -> running/verifying/blocked; active -> done/retrying/blocked/needs_input/failed; retrying/needs_input/blocked -> ready where declared; non-terminal work -> cancelled |
+Acceptance is durable and idempotent before planning. The MCP call returns
+promptly and directs the controller to poll. Duplicate identical requests
+reuse the mission; a conflicting binding is refused.
 
-The plan validator rejects cycles, missing dependencies, untestable or
-unallowlisted checks, paths outside policy, missing artifact contracts,
-cross-task write overlap, uncovered or self-verified criteria, incomplete
-artifact frontiers, policy budget excess, and unsupported assembly/verification
-shapes. The scheduler consumes only a validated, immutable approved revision.
+## Authorization modes
 
-## Threat and capture boundary
+### Policy pre-authorized
 
-- Trusted: the local operator, checked-in project policy, canonical reducers,
-  and Graphene-owned SQLite/Firestore control state after verification.
-- Untrusted: model output, repository contents, task patches, tool output,
-  browser input, replay files before digest verification, and remote telemetry.
-- Private-only: prompts, reasoning, environment variables, credentials, raw
-  command arguments, unrestricted paths, and full tool payloads. Public mission
-  events contain bounded labels, template IDs, content-addressed receipt and
-  artifact hashes, and explicit unknowns instead.
-- Edit worktrees are isolation, not sandboxes. Execution requires the proven
-  bounded platform/container path; otherwise Graphene stops before running
-  code. Only strongly identified Graphene-owned process groups may be managed.
-- Managed-runtime samples, context estimates, and provider/MCP telemetry stay
-  distinct. Remote/shared CPU and RAM are advisory or unavailable and cannot
-  trigger an automatic kill.
+Graphene compiles the proposed plan, validates it deterministically, evaluates
+it against the exact committed policy, and records a content-addressed policy
+decision. Only an allowed decision atomically records a policy-authoritative
+plan approval. The plan must remain inside read/write globs, exclusions,
+commands, network mode, concurrency, retries, budgets, and risk gates.
 
-## Proof modes
+### Review required
 
-| Mode | Establishes | Does not establish |
-|---|---|---|
-| Verified mission replay | Deterministic mission projection and decision UI from a hash-checked generated scripted fixture | Live workers, new checks, human attestation, Gemini, or cloud |
-| Scripted local mission after plan approval | Scheduler, isolated fixture workspaces, real bounded checks, retry, assembly, verification, and optional isolated result | Independent model quality, arbitrary repositories, or cloud |
-| ADK fake | Real ADK Runner planner and worker plumbing, concurrent isolated work, and deterministic runtime contracts with fake models | Gemini or independent-agent behavior |
-| Gemini ADK | Implemented planner/worker path; only a separately credentialed run with returned model receipts proves live behavior | Any silent fallback or cloud deployment |
-| Cloud Run + Firestore | Only a captured authenticated deployment and durability smoke | Local repository execution inside Cloud Run |
+An ambiguous or out-of-policy plan does not dispatch. A reviewer may approve
+only the exact current revision and digest. MCP approval is
+`server_derived` relay truth, not authenticated human attestation.
 
-The default scripted start commits a validated proposal. Explicit
-`approve-plan` executes it; an interactive prompt may record human approval,
-while `--auto-approve` is always a simulated fixture decision. A replan command records
-the request and pauses dispatch: it generates no linked replacement revision,
-and nothing in Graphene asks a model to produce one. The lower-level store can validate, link, diff, and
-invalidate a supplied revision N+1. Retention policy metadata is durable, but
-automatic expiry and purge are not implemented. Cloud streaming is per-client Firestore polling at a
-two-second interval; no shared listener or fan-out is implemented.
+Editing creates immutable revision N+1 and invalidates prior approval. No
+attempt may claim an unapproved revision.
 
-The checked-in default suite is credential-free. Missing credentials or an
-unproven sandbox is `NOT PROVEN`, never a passing substitute. The literal
-`graphene mission demo` command selects the live Gemini planner/worker path and
-requires exact plan approval, but no live Gemini call or model-worker mission
-was proven on this host. The official Firestore emulator production vertical is
-verified locally; this does not prove deployment. Docker, a deployed cloud
-service, graph-economics results, and the submission video remain **NOT PROVEN**.
+## Mission lifetime
 
-The terminal-native Taskmaster surface is `graphene plan`, `graphene plan
-lint/show/diff`, `graphene run`, `graphene status`, mission-shaped `graphene
-watch`, `graphene why --mission`, `graphene bundle create/verify`, `graphene
-cancel`, `graphene retry`, `graphene request-replan`, and `graphene task input`.
-These are aliases/read surfaces over the same mission authority. Plan lint
-reports criterion coverage, topological order, and deterministic issues; show
-and diff verify the mission before reading its plan authority. Bundle creation
-prepares and registers the immutable pending review bundle, persists canonical
-bytes by bundle ID, and writes only a new private-mode output; verification
-accepts that file or ID. Final approval and rejection bind that exact bundle ID.
+The supervisor runs in a new session with no stdin and private request/state/
+process files. Liveness binds pid, process group, start time, and executable.
+A later MCP or CLI process can observe the same mission. If the owner is dead
+and the mission is nonterminal, exact-request recovery may start a higher
+generation. Two supervisors must not progress one request concurrently.
 
-`graphene task input` accepts 1–4096 private UTF-8 bytes from a regular file or
-stdin and commits only the digest-bound evidence reference. A separately
-authenticated browser seam delegates to that store operation in contract tests,
-but one-command live mode does not inject it until safe staged-input cleanup
-exists. No terminal command generates a replacement plan revision.
+The credential-free scripted process test proves this topology. Current live
+Gemini/Codex proof remains pending.
 
-Mission Capsule: `graphene mission capsule export MISSION_ID --output DIR`
-writes a private `MISSION_ID.graphene-capsule` directory from verified
-mission authority: the hash-chained public mission events, every attempt's
-evidence chain, trusted `test-receipt` and sanitized
-`worker-provider-receipt` bytes, publication envelope digests, plan
-revisions, the registered `FinalResultBundleV2`, the derived overlap and
-unknown views, and a manifest that digests every file. It contains no
-prompts, source bytes, diffs, command output, environment values, or
-credentials; artifact bytes of every other kind stay in the private evidence
-spool and only their digests travel. `graphene mission capsule verify
-CAPSULE_DIR` recomputes every digest and chain link from the capsule files
-alone, never opens the mission store, and lists what it did not check:
-candidate tree identity against artifact bytes, Gemini provider-side
-identity, host clock accuracy, and producer authenticity. The verifier also
-cross-checks the manifest's summary claims (mission status, final decision,
-per-attempt state and worker, counts) against the event log and attempt
-chains, and requires every leased attempt to carry a chain or an explicit
-`attempts_without_evidence` entry. A capsule carries no signature or
-external anchor: verification proves internal consistency with its hash
-chains and digests, not who produced them, so producer authenticity comes
-from the exporting mission store (`graphene mission db verify`) or from
-comparing the manifest head digest against the operator's recorded mission
-head. A capsule proves what the store recorded, not live Gemini execution.
+## Model child boundary
 
-## Explicit cuts
+Each live Gemini worker call runs in a private isolated Python child. The child
+receives one canonical, length-bounded request containing task contract,
+bounded sources, accepted inputs, scopes, identity, timeout, and requested
+model. It receives no repository path, effect tools, shell, Git authority,
+store, or general environment API.
 
-No general shell, repository crawler, graph database, visual workflow editor, writable evidence graph, per-skill CPU/RAM attribution, generic process manager, autonomous push/PR/deploy, or additional agent framework belongs in this slice.
+The child may call Google ADK once with content capture disabled. It emits a
+provider-dispatch frame only after the SDK invocation exists and provider
+transport begins. The parent binds that barrier to the live lease/fence and an
+owned-process identity.
+
+If the child dies after the barrier, provider outcome is unknown. Repository
+effect is known absent because mutation occurs only later in the parent. The
+attempt can therefore end retryable as `provider_interrupted` without claiming
+the provider did or did not compute a response.
+
+The runtime pins `google-adk==2.5.0` and requests
+`gemini-3.5-flash`, source-checked 2026-08-27. A live proof must also validate
+current eligibility and returned identity.
+
+## Selective recovery invariants
+
+1. Accepted publications are immutable inputs and survive sibling failure.
+2. A failed attempt cannot publish.
+3. Retry revokes/releases the old lease and uses a strictly higher fence.
+4. Old fences cannot write, publish, heartbeat, or complete.
+5. Retry diagnostics are bounded and cite the prior attempt/fence/result and
+   evidence digest; they cannot widen scope or weaken checks.
+6. Repeating an identical bounded failure may terminalize rather than spend a
+   blind retry.
+7. Assembly consumes accepted publications only.
+8. Verification binds the exact assembled candidate and registered final
+   bundle.
+9. A failed sibling does not cancel accepted healthy work.
+
+## Finalization
+
+`auto_finalize_isolated` is effective only when the committed policy and
+policy decision allow it. It binds the exact pending bundle and may create an
+isolated Graphene result commit/ref. It must not mutate the target checkout or
+its current branch/index, merge, push, open a PR, publish, deploy, or obtain
+remote credentials.
+
+Review mode retains exact bundle-id approval/rejection. A mission is not the
+autonomous hero success at `awaiting_result`; it must reach `completed` with a
+verified isolated result.
+
+## Orders hero
+
+The North Star is the materialized Orders API migration:
+
+- two disjoint work roots migrate request/API and response models;
+- integration owns only `requirements.in` and `requirements.lock`;
+- immutable tests preserve public behavior and forbid v1 compatibility APIs;
+- network is denied;
+- concurrency is two and retry budget is one; and
+- only five exact files are writable.
+
+The target and policy are locally tested. No current credentialed run has
+completed it, and `graphene demo --live` is not this path; the hero begins at
+MCP `start_goal`.
+
+## Evidence and queries
+
+Authority includes immutable initial contracts, append-only hash-chained
+events, content-addressed canonical records, verified materialized state,
+attempt evidence, accepted publication envelopes, trusted receipts, the exact
+final bundle, and the isolated-result receipt.
+
+`mission_summary` reports bounded outcomes and receipts. `graphene why` traces
+a file through accepted producer attempts, retries, fences, checks, assembly,
+and final decision.
+
+## Mission Capsule
+
+Capsules cold-check internal digests and chains but do not prove producer
+authenticity, provider truth, or host-clock accuracy.
+`graphene mission capsule verify CAPSULE_DIR` never opens the mission store.
+
+## Explicit non-claims
+
+Until captured on the current committed implementation, Graphene does not
+claim:
+
+- live Gemini Orders completion;
+- a real model-child kill and completed selective recovery;
+- Codex start/disconnect/reattach behavior;
+- authenticated human approval;
+- exact-SHA installed artifact proof;
+- Cloud Run, real Firestore, Docker, or general repository support;
+- benchmark improvements; or
+- submission media.
+
+The replay and scripted/fake paths remain plainly labelled fixtures.
+
+## Isolation and compatibility boundaries
+
+A Git worktree provides edit isolation; it is not a security sandbox.
+Skills are not resource-isolation units.
+Stateless MCP is sessionless, not processless.
+No public evidence contains prompts, raw model output, hidden reasoning, or chain-of-thought.
+
+The default scripted start commits a validated proposal. `--auto-approve` is
+always `simulated_fixture`. A replan request creates no replacement; there is
+no linked replacement revision. Only the explicit export/edit/revise path
+creates one. Automatic expiry and purge are not implemented.
+Current mission-plan validation rejects the reserved legacy Auth link.
+The cloud viewer uses polling with no shared listener or fan-out.

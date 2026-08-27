@@ -6,10 +6,11 @@ from collections.abc import Iterable, Mapping
 from threading import RLock
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from ..hashing import canonical_json_bytes, canonical_json_sha256
 from .mission_models import (
+    AuthorizationMode,
     ArtifactPublication,
     Attempt,
     AttemptState,
@@ -18,9 +19,11 @@ from .mission_models import (
     MissionEvent,
     MissionEventType,
     MissionStatus,
+    FinalizationMode,
     MissionSnapshot as DomainMissionSnapshot,
     TaskKind,
     TaskState,
+    plan_policy_decision,
 )
 from .mission_reducer import TransitionError, reduce_events
 from .sqlite_mission_store import MissionNotFound as StoreMissionNotFound
@@ -85,6 +88,23 @@ class MissionView(ViewModel):
     approved_plan_revision: int | None = Field(default=None, ge=1)
     outcome: str | None = Field(default=None, max_length=512)
     creation_source: str = Field(min_length=1, max_length=64)
+    requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
+    policy_decision_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_view_bytes(self, handler: Any) -> dict[str, Any]:
+        value = handler(self)
+        optional = {
+            "requested_authorization_mode",
+            "effective_authorization_mode",
+            "finalization_mode",
+            "policy_decision_sha256",
+        }
+        for name in optional - self.model_fields_set:
+            value.pop(name, None)
+        return value
 
 
 class EvidenceRefView(ViewModel):
@@ -1084,6 +1104,21 @@ def project_snapshot(
         or verified_events[-1].event_sha256 != snapshot.head.event_sha256
     ):
         raise MissionProjectionError("mission events do not reach the snapshot head")
+    try:
+        policy_decision = plan_policy_decision(
+            verified_events, snapshot.plan.revision
+        )
+    except ValueError as error:
+        raise MissionProjectionError("mission policy decision is invalid") from error
+    if policy_decision is not None and (
+        policy_decision.policy_id != snapshot.policy.policy_id
+        or policy_decision.policy_revision != snapshot.policy.revision
+        or policy_decision.policy_sha256 != snapshot.policy.policy_sha256
+        or policy_decision.base_sha != snapshot.mission.base_sha
+        or policy_decision.plan_sha256
+        != canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+    ):
+        raise MissionProjectionError("mission policy decision bindings are invalid")
     tasks = _tasks(snapshot)
     attempts = _attempts(snapshot, legacy_viewer_base)
     workers = _workers(snapshot)
@@ -1228,9 +1263,31 @@ def project_snapshot(
         evidence_refs=result_references,
     )
     pending = tuple(item for item in gates if item.status == "pending")
+    automatic_finalization = (
+        policy_decision is not None
+        and policy_decision.effective_mode
+        == AuthorizationMode.POLICY_PRE_AUTHORIZED
+        and policy_decision.finalization_mode
+        == FinalizationMode.AUTO_FINALIZE_ISOLATED
+    )
+    if (
+        automatic_finalization
+        and final_event is not None
+        and final_event.event_type == MissionEventType.FINAL_RESULT_BUNDLE_READY
+    ):
+        result = result.model_copy(
+            update={
+                "state": "auto_finalizing",
+                "summary": (
+                    "The exact verified bundle is awaiting policy-authorized isolated "
+                    "result recording; no human decision is required."
+                ),
+            }
+        )
     if (
         str(snapshot.mission.status) == "awaiting_result"
         and not pending
+        and not automatic_finalization
         and final_event is not None
         and final_event.event_type == MissionEventType.FINAL_RESULT_BUNDLE_READY
     ):
@@ -1291,6 +1348,16 @@ def project_snapshot(
         if snapshot.mission.final_outcome
         else None,
         creation_source=str(snapshot.mission.creation_source),
+        **(
+            {}
+            if policy_decision is None
+            else {
+                "requested_authorization_mode": policy_decision.requested_mode,
+                "effective_authorization_mode": policy_decision.effective_mode,
+                "finalization_mode": policy_decision.finalization_mode,
+                "policy_decision_sha256": policy_decision.decision_sha256,
+            }
+        ),
     )
     head = MissionHeadView(
         mission_id=mission.mission_id,
