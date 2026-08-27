@@ -1,7 +1,7 @@
-# ledger_service
+# Orders API migration target
 
-A small stock ledger: items, signed movements, deterministic replay, an audit
-trail, note redaction, and a CLI. Standard library only; no network.
+A small Orders API pinned to Pydantic 2.13.4 but still using its temporary
+`pydantic.v1` compatibility namespace and v1 validation/serialization calls.
 
 This is the **Graphene North Star demo target**: a live Graphene mission
 edits a copy materialized by `scripts/materialize_north_star.py`.
@@ -10,29 +10,27 @@ edits a copy materialized by `scripts/materialize_north_star.py`.
 
 | Path | Role |
 | --- | --- |
-| `ledger_service/models.py` | validated `Item`, `Movement`, `Snapshot` |
-| `ledger_service/ledger.py` | `Ledger`: balances, audit trail, error types |
-| `ledger_service/redact.py` | `redact_text` + `RedactionPolicy` for notes |
-| `ledger_service/report_base.py` | `Report` aggregation shared by renderers |
-| `ledger_service/cli.py` | `balances`, `audit`, `report --format ...` |
-
-## Usage
-
-```
-python -m ledger_service --ledger ledger.json balances|audit|report --format json
-```
+| `orders_api/request_models.py` | request validation and SKU normalization |
+| `orders_api/api.py` | request validation and response assembly |
+| `orders_api/response_models.py` | immutable response and stable JSON encoding |
+| `requirements.in` | direct dependency declaration |
+| `requirements.lock` | exact prepared-runtime dependency version |
 
 ## Not there yet
 
-`cli.render_report` already builds the `Report` once and dispatches
-`--format json|markdown` to `ledger_service.report_json.render_json` /
-`ledger_service.report_markdown.render_markdown`. Those two modules do not
-exist yet, so the CLI exits 1 with `error: no ... report renderer`.
-`tests/test_report_contract.py` is the exact contract for both renderers: it
-skips while a module is absent and binds the moment it appears.
+Migrate request handling and response handling independently to native
+Pydantic v2. Each source branch must preserve the full immutable suite by
+itself. After both land, make the exact dependency declaration/lock update;
+that final state activates the test forbidding compatibility APIs.
 
-## Tests
+## Runtime policy check
 
 ```
-PYTHONPATH=. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p no:cacheprovider
+python -m orders_api.verify_migration          # task-local, partial-safe
+python -m orders_api.verify_migration --final  # assembled final gate
 ```
+
+Both fixed checks use the standard library plus the target's Pydantic runtime;
+they do not require Pytest. The final gate rejects the untouched compatibility
+baseline. Development can additionally run
+`python -m pytest -q -p no:cacheprovider`.

@@ -45,6 +45,26 @@ _FIXED_TEST_COMMAND = (
     "-p",
     "no:cacheprovider",
 )
+NORTH_STAR_CHECK_COMMAND = ("python", "-m", "orders_api.verify_migration")
+NORTH_STAR_FINAL_CHECK_COMMAND = (*NORTH_STAR_CHECK_COMMAND, "--final")
+NORTH_STAR_CHECK_PATHS = (
+    "orders_api/api.py",
+    "orders_api/request_models.py",
+    "orders_api/response_models.py",
+    "orders_api/verify_migration.py",
+    "requirements.in",
+    "requirements.lock",
+)
+SANDBOX_CHECK_COMMANDS = frozenset(
+    {_FIXED_TEST_COMMAND, NORTH_STAR_CHECK_COMMAND, NORTH_STAR_FINAL_CHECK_COMMAND}
+)
+SANDBOX_CHECK_TEMPLATES = frozenset(
+    {
+        ("fixture-tests", _FIXED_TEST_COMMAND),
+        ("orders-migration-check", NORTH_STAR_FINAL_CHECK_COMMAND),
+        ("orders-migration-task-check", NORTH_STAR_CHECK_COMMAND),
+    }
+)
 _DURATION = re.compile(r"\bin \d+(?:\.\d+)?s\b")
 _OPEN_SUPPORTS_DIR_FD = os.open in os.supports_dir_fd
 
@@ -321,7 +341,11 @@ def _sandbox_quote(path: Path) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _sandboxed_test_command(root: Path, temporary: Path) -> tuple[str, ...]:
+def _sandboxed_test_command(
+    root: Path, temporary: Path, command: tuple[str, ...] = _FIXED_TEST_COMMAND
+) -> tuple[str, ...]:
+    if command not in SANDBOX_CHECK_COMMANDS:
+        raise ExecutionError("fixture test command is not frozen")
     if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
         raise ExecutionError("fixed tests require an available OS sandbox")
     readable = (
@@ -355,17 +379,16 @@ def _sandboxed_test_command(root: Path, temporary: Path) -> tuple[str, ...]:
             "(deny network*)",
         )
     )
-    return (
+    argv = (
         "/usr/bin/sandbox-exec",
         "-p",
         profile,
         sys.executable,
-        *_FIXED_TEST_COMMAND[1:],
-        "--rootdir",
-        ".",
-        "-c",
-        str(root / ".graphene-pytest.ini"),
+        *command[1:],
     )
+    if command == _FIXED_TEST_COMMAND:
+        argv += ("--rootdir", ".", "-c", str(root / ".graphene-pytest.ini"))
+    return argv
 
 
 def _read_test_view_file(root_fd: int, relative: PurePosixPath, limit: int) -> bytes:
@@ -442,7 +465,7 @@ def run_fixture_tests(
     *,
     process_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> TestRun:
-    if policy.fixed_test_command != _FIXED_TEST_COMMAND:
+    if policy.fixed_test_command not in SANDBOX_CHECK_COMMANDS:
         raise ExecutionError("fixture test command is not the frozen command")
     if root.is_symlink():
         raise ExecutionError("fixture test root cannot be a symlink")
@@ -459,13 +482,17 @@ def run_fixture_tests(
         scratch = temporary / "tmp"
         _materialize_test_view(root, test_root, policy)
         scratch.mkdir()
-        config = test_root / ".graphene-pytest.ini"
-        config.write_text("[pytest]\n", encoding="utf-8")
+        if policy.fixed_test_command == _FIXED_TEST_COMMAND:
+            (test_root / ".graphene-pytest.ini").write_text(
+                "[pytest]\n", encoding="utf-8"
+            )
         environment = _sanitized_environment()
         environment["TMPDIR"] = str(scratch)
         try:
             result = (process_runner or subprocess.run)(
-                _sandboxed_test_command(test_root, scratch),
+                _sandboxed_test_command(
+                    test_root, scratch, policy.fixed_test_command
+                ),
                 cwd=test_root,
                 env=environment,
                 stdin=subprocess.DEVNULL,

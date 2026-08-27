@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize the North Star demo target for a live Graphene mission.
+"""Materialize the Orders API migration target for a live Graphene mission.
 
 Usage::
 
@@ -11,15 +11,15 @@ and never deletes anything it created:
 1. copy ``demo/north_star/repository`` to ``DEST`` (which must not exist;
    it is created with mode 0700);
 2. ``git init -b main`` there, set a repository-local identity, and commit
-   "North Star demo target base";
+   "Orders API migration target base";
 3. write ``DEST/.graphene/project.json`` (mode 0600, canonical JSON) by
    taking ``graphene.cli.mission._default_policy`` for that repository and
    overlaying the scope, command, budget, and gate fields from
    ``demo/north_star/policy.template.json``;
 4. prove the policy loads through ``graphene.cli.mission._load_project_policy``
-   exactly as ``graphene mission start`` would load it, and that its only
-   command template is the frozen fixed test command;
-5. run the target's own test suite once, inside ``DEST``, with the adapter's
+   exactly as ``graphene mission start`` would load it, with frozen task-local
+   and final command templates;
+5. run the target's stdlib acceptance check once, inside ``DEST``, with the adapter's
    sanitized environment;
 6. print the exact next commands.
 
@@ -45,7 +45,11 @@ from graphene.cli.mission import (
     _git_root,
     _load_project_policy,
 )
-from graphene.execution.adapter import _FIXED_TEST_COMMAND, _sanitized_environment
+from graphene.execution.adapter import (
+    NORTH_STAR_CHECK_COMMAND,
+    NORTH_STAR_FINAL_CHECK_COMMAND,
+    _sanitized_environment,
+)
 from graphene.hashing import canonical_json_bytes
 from graphene.orchestration.mission_models import ProjectPolicy
 
@@ -58,9 +62,9 @@ PLACEHOLDER = "<materialized>"
 MATERIALIZED_FIELDS = frozenset(
     {"policy_id", "repo_id", "base_ref", "base_sha", "revision"}
 )
-GIT_USER_NAME = "Graphene North Star"
-GIT_USER_EMAIL = "north-star@graphene.invalid"
-BASE_COMMIT_MESSAGE = "North Star demo target base"
+GIT_USER_NAME = "Graphene Orders Demo"
+GIT_USER_EMAIL = "orders-demo@graphene.invalid"
+BASE_COMMIT_MESSAGE = "Orders API migration target base"
 COPY_IGNORE = shutil.ignore_patterns(
     "__pycache__", "*.pyc", ".pytest_cache", ".DS_Store"
 )
@@ -85,16 +89,24 @@ class MaterializedTarget:
     @property
     def commands(self) -> tuple[str, str, str]:
         repo = str(self.repository)
-        start = ["uv", "run", "--frozen", "graphene", "mission", "start"]
-        start += ["--repo", repo, "--goal", self.goal]
-        for criterion in self.success_criteria:
-            start += ["--success-criterion", criterion]
-        start += ["--driver", "gemini-adk", "--max-workers", "2"]
+        request = {
+            "repo": repo,
+            "goal": self.goal,
+            "request_id": f"north_star_{self.base_sha[:16]}",
+            "success_criteria_json": json.dumps(
+                self.success_criteria, separators=(",", ":")
+            ),
+            "driver": "gemini-adk",
+            "max_workers": "2",
+            "authorization_mode": "policy_pre_authorized",
+            "finalization_mode": "auto_finalize_isolated",
+        }
         return (
-            shlex.join(["uv", "run", "--frozen", "graphene", "doctor", "--repo", repo]),
-            shlex.join(start),
-            "uv run --frozen graphene mission approve-plan MISSION_ID "
-            "--revision 1 --confirm-human",
+            shlex.join(
+                ["uv", "run", "--frozen", "graphene", "doctor", "--repo", repo]
+            ),
+            "MCP start_goal " + json.dumps(request, sort_keys=True),
+            'MCP mission_status {"mission_id":"MISSION_ID"}',
         )
 
 
@@ -130,8 +142,8 @@ def load_template(path: Path = TEMPLATE_PATH) -> dict[str, object]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise MaterializeError(f"cannot read {path}: {error}") from error
-    if not isinstance(document, dict) or document.get("schema_version") != 1:
-        raise MaterializeError(f"{path} must be a schema_version 1 object")
+    if not isinstance(document, dict) or document.get("schema_version") != 2:
+        raise MaterializeError(f"{path} must be a schema_version 2 object")
     placeholders = {key for key, value in document.items() if value == PLACEHOLDER}
     if placeholders != MATERIALIZED_FIELDS:
         raise MaterializeError(
@@ -149,6 +161,8 @@ def _git_environment() -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        "GIT_AUTHOR_DATE": "2000-01-01T00:00:00Z",
+        "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z",
     }
 
 
@@ -221,7 +235,9 @@ def write_policy(dest: Path) -> tuple[Path, Path, ProjectPolicy, str]:
     try:
         root, base_sha = _git_root(dest)
     except MissionCliError as error:
-        raise MaterializeError(f"destination is not a usable repository: {error}") from error
+        raise MaterializeError(
+            f"destination is not a usable repository: {error}"
+        ) from error
     policy = build_policy(root, base_sha)
     directory = root / ".graphene"
     path = directory / "project.json"
@@ -235,7 +251,9 @@ def write_policy(dest: Path) -> tuple[Path, Path, ProjectPolicy, str]:
             os.fsync(stream.fileno())
         reloaded = ProjectPolicy.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise MaterializeError(f"project policy could not be written: {error}") from error
+        raise MaterializeError(
+            f"project policy could not be written: {error}"
+        ) from error
     if reloaded != policy or path.read_bytes() != payload:
         raise MaterializeError("project policy did not round-trip")
     return root, path, policy, base_sha
@@ -250,23 +268,24 @@ def check_policy_loads(root: Path, policy: ProjectPolicy, base_sha: str) -> None
     if loaded_root != root or head != base_sha or loaded != policy:
         raise MaterializeError("loaded policy does not match the written policy")
     templates = loaded.command_templates
-    if len(templates) != 1 or templates[0].argv != _FIXED_TEST_COMMAND:
-        raise MaterializeError("fixture-tests must be the frozen fixed test command")
+    if tuple((item.template_id, item.argv) for item in templates) != (
+        ("orders-migration-check", NORTH_STAR_FINAL_CHECK_COMMAND),
+        ("orders-migration-task-check", NORTH_STAR_CHECK_COMMAND),
+    ):
+        raise MaterializeError("policy must bind the frozen Orders migration check")
 
 
 def run_target_tests(root: Path) -> str:
-    """Run the frozen test command once in the sanitized environment.
+    """Run the frozen acceptance command once in the sanitized environment.
 
     argv[0] is the literal "python" the executor substitutes for the running
     interpreter (``adapter._sandboxed_test_command`` does the same). Leaving it
     to PATH would not do that: ``.venv/bin/python`` is a symlink to the base
-    interpreter, so resolving it escapes the locked environment and runs the
-    target suite under whatever pytest that base happens to have -- green on a
-    developer box, "No module named pytest" on a clean runner.
+    interpreter, so resolving it escapes the locked environment.
     """
     try:
         result = subprocess.run(
-            (sys.executable, *_FIXED_TEST_COMMAND[1:]),
+            (sys.executable, *NORTH_STAR_CHECK_COMMAND[1:]),
             cwd=root,
             env=_sanitized_environment(),
             stdin=subprocess.DEVNULL,
@@ -280,7 +299,7 @@ def run_target_tests(root: Path) -> str:
         raise MaterializeError(f"target test suite could not run: {error}") from error
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     summary = lines[-1] if lines else "(no output)"
-    if result.returncode or " passed" not in summary:
+    if result.returncode or summary != "orders migration verified":
         raise MaterializeError(
             f"target test suite failed (exit {result.returncode}):\n{result.stdout}"
         )
@@ -305,11 +324,11 @@ def materialize(dest: Path, stdout: IO[str] | None = None) -> MaterializedTarget
         success_criteria=criteria,
         test_summary=summary,
     )
-    print(f"North Star target materialized at {root}", file=out)
+    print(f"Orders API target materialized at {root}", file=out)
     print(f"  base commit: {base_sha}", file=out)
     print(f"  policy: {policy_path} ({policy.policy_id})", file=out)
     print(f"  target tests: {summary}", file=out)
-    print("Next commands (run from the Graphene repository):", file=out)
+    print("Next actions (from a Codex session connected to Graphene MCP):", file=out)
     for command in target.commands:
         print(f"  {command}", file=out)
     return target
@@ -330,7 +349,9 @@ def main(
     try:
         materialize(args.dest, stdout)
     except MaterializeError as error:
-        print(f"materialize: {error}", file=stderr if stderr is not None else sys.stderr)
+        print(
+            f"materialize: {error}", file=stderr if stderr is not None else sys.stderr
+        )
         return 1
     return 0
 
