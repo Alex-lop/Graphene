@@ -1039,7 +1039,7 @@ class OwnedProcessRegistry:
         self,
         owned: OwnedProcess,
         *,
-        timeout: float = 2,
+        timeout: float = 5,
         retain_record: bool = False,
     ) -> int | None:
         """Terminate a prevalidated group and confirm its exact identity is absent."""
@@ -1203,7 +1203,7 @@ class OwnedProcessRegistry:
         )
 
     def recover_model_dispatch(
-        self, dispatch: Dispatch, *, timeout: float = 2
+        self, dispatch: Dispatch
     ) -> tuple[ModelDispatchBarrier, int | None] | None:
         """Stop an exact barrier-acknowledged orphan, retaining its crash proof."""
 
@@ -1211,7 +1211,7 @@ class OwnedProcessRegistry:
         if barrier is None:
             return None
         owned = self._read(self._model_path(dispatch.attempt_id))
-        sent = self.terminate_owned(owned, timeout=timeout, retain_record=True)
+        sent = self.terminate_owned(owned, retain_record=True)
         return barrier, sent
 
 

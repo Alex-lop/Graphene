@@ -283,6 +283,36 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(
 
 
 @pytest.mark.skipif(
+    sys.platform != "darwin", reason="macOS zombies temporarily lose libproc identity"
+)
+def test_default_termination_window_allows_delayed_owner_reap(tmp_path: Path) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
+    owned = registry.record_pid(dispatch, process.pid, "/bin/sleep")
+
+    def delayed_reap() -> None:
+        time.sleep(2.25)
+        process.wait(timeout=2)
+
+    reaper = threading.Thread(target=delayed_reap)
+    reaper.start()
+    try:
+        assert registry.terminate_owned(owned, retain_record=True) == signal.SIGTERM
+        reaper.join(timeout=3)
+        assert not reaper.is_alive()
+        registry.remove_exact(owned)
+    finally:
+        reaper.join(timeout=3)
+        if reaper.is_alive():
+            registry.signal_prepared(owned, signal.SIGKILL)
+            reaper.join(timeout=5)
+        assert not reaper.is_alive()
+        if registry.has_record(dispatch.attempt_id):
+            registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
 def test_durable_cancel_retains_runner_record_until_exact_clear(

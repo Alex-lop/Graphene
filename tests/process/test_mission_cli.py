@@ -463,7 +463,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     def execute() -> None:
         try:
             runner(
-                ("/bin/sleep", "10"),
+                ("/bin/sleep", "60"),
                 cwd=Path("/"),
                 env={"PATH": os.defpath},
                 stdin=subprocess.DEVNULL,

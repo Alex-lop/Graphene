@@ -875,9 +875,7 @@ class GeminiWorkerAdapter:
                 )
                 if owned is None:
                     return None
-                sent = registry.terminate_owned(
-                    owned, timeout=2, retain_record=True
-                )
+                sent = registry.terminate_owned(owned, retain_record=True)
                 request_sha256 = request.request_sha256()
                 input_bytes = len(child_frame_bytes(request)) - 4
                 if (
@@ -1003,7 +1001,7 @@ class GeminiWorkerAdapter:
                 or owned.model_input_bytes is None
             ):
                 raise ProcessControlError("model process intent is unavailable")
-            sent = registry.terminate_owned(owned, timeout=2, retain_record=True)
+            sent = registry.terminate_owned(owned, retain_record=True)
             return self._unconfirmed_interruption(
                 dispatch,
                 owned,
