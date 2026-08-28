@@ -670,7 +670,6 @@ class FirestoreMissionStore:
                 "mission": mission_contract.model_dump(mode="json"),
                 "plan": plan.model_dump(mode="json"),
                 "policy": policy.model_dump(mode="json"),
-                "recorded_at": recorded_at.isoformat(),
             }
         )
         mission = self._mission(mission_id)
@@ -963,7 +962,6 @@ class FirestoreMissionStore:
             {
                 "action": "tasks.refresh_ready",
                 "mission_id": mission_id,
-                "recorded_at": recorded_at.isoformat(),
             }
         )
         mission = self._mission(mission_id)

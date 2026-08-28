@@ -8,6 +8,8 @@ from time import sleep as _sleep
 from typing import Protocol
 from urllib.parse import urlparse
 
+import google.auth
+from google.auth import exceptions, impersonated_credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token
 from pydantic import BaseModel
@@ -52,7 +54,20 @@ class GoogleAdcAudienceTokenProvider:
             or parsed.path not in {"", "/"}
         ):
             raise ValueError("audience must be an HTTPS service origin")
-        token = self._fetch_token(GoogleAuthRequest(), audience)
+        request = GoogleAuthRequest()
+        try:
+            token = self._fetch_token(request, audience)
+        except exceptions.DefaultCredentialsError:
+            source, _project = google.auth.default()
+            if not isinstance(source, impersonated_credentials.Credentials):
+                raise
+            credentials = impersonated_credentials.IDTokenCredentials(
+                source,
+                target_audience=audience,
+                include_email=True,
+            )
+            credentials.refresh(request)
+            token = credentials.token
         if not isinstance(token, str) or not token or len(token) > 8_192:
             raise RuntimeError("Google ADC did not return a bounded identity token")
         return token
@@ -117,6 +132,7 @@ class CoordinatorClient:
         transport: Transport = _urllib_transport,
     ) -> None:
         parsed = urlparse(coordinator_url)
+        audience_url = urlparse(audience)
         if (
             parsed.scheme != "https"
             or not parsed.netloc
@@ -124,10 +140,19 @@ class CoordinatorClient:
             or parsed.password is not None
             or parsed.query
             or parsed.fragment
+            or len(audience) > 512
+            or audience_url.scheme != "https"
+            or not audience_url.netloc
+            or audience_url.username is not None
+            or audience_url.password is not None
+            or audience_url.path not in {"", "/"}
+            or audience_url.query
+            or audience_url.fragment
+            or parsed.netloc != audience_url.netloc
         ):
-            raise ValueError("coordinator_url must be an HTTPS origin or path")
-        if not audience or len(audience) > 512:
-            raise ValueError("audience must be nonempty and bounded")
+            raise ValueError(
+                "coordinator_url and audience must share one exact HTTPS origin"
+            )
         if not 0 < timeout_seconds <= 60:
             raise ValueError("timeout_seconds must be between zero and 60")
         self._base = coordinator_url.rstrip("/")

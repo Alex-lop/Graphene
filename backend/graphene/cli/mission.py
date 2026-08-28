@@ -27,18 +27,26 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 import uvicorn
+from google.cloud import firestore
 
 from ..execution.adapter import SANDBOX_CHECK_TEMPLATES
 from ..hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from ..core_models import TruthKind
 from ..orchestration.evidence import SQLiteAttemptEvidenceStore, TrustedCheckReceipt
 from ..orchestration.cloud_protocol import ExecutorArtifactObservation
+from ..orchestration.cloud_seed import (
+    CloudSeedReceipt,
+    cloud_execution_contract_sha256,
+    projected_cloud_contracts,
+    seed_verified_projection,
+)
 from ..orchestration.executor_client import (
     CoordinatorClient,
     ExecutorCompletion,
     GoogleAdcAudienceTokenProvider,
 )
 from ..orchestration.local_executor import run_local_executor
+from ..orchestration.firestore_mission_store import FirestoreMissionStore
 from ..orchestration.adk_planner import (
     AdkPlanner,
     LIVE_GEMINI_MODEL,
@@ -72,6 +80,7 @@ from ..orchestration.mission_models import (
     RetentionPolicy,
     Task,
     TaskKind,
+    TaskState,
     plan_policy_decision,
 )
 from ..orchestration.validation import evaluate_plan_policy
@@ -218,18 +227,27 @@ def _gemini_worker_count(value: str) -> int:
     return number
 
 
-def _outbound_worker_count(value: str) -> int:
-    number = _worker_count(value)
-    if number < 2:
-        raise argparse.ArgumentTypeError("workers must be an integer from 2 to 5")
-    return number
-
-
 def _sha256(value: str) -> str:
     if len(value) != 64 or any(
         character not in "0123456789abcdef" for character in value
     ):
         raise argparse.ArgumentTypeError("candidate-sha must be lowercase SHA-256")
+    return value
+
+
+def _https_origin(value: str) -> str:
+    parsed = urlparse(value)
+    if (
+        len(value) > 512
+        or parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise argparse.ArgumentTypeError("value must be an exact HTTPS origin")
     return value
 
 
@@ -1115,15 +1133,73 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         actions,
         "executor",
         summary="run an authenticated outbound local executor",
-        example="graphene mission executor connect --repo . --mission mission_123 --coordinator-url https://service.example --audience https://service.example --workers 2",
+        example="graphene mission executor connect --repo . --mission mission_123 --seed-receipt seed.json --coordinator-url https://service.example --audience https://service.example --workers 1",
         failure="local preflight, authentication, exact-head, reconnect, or shutdown fails",
     )
     executor_actions = executor.add_subparsers(dest="executor_action", required=True)
+    seed = _mission_parser(
+        executor_actions,
+        "seed",
+        summary="seed one verified local plan into the Firestore proof vertical",
+        example="graphene mission executor seed --repo . --mission mission_123 --plan-sha256 HASH --audience https://service.example --output seed.json",
+        failure="local bindings, explicit approval, Firestore write, or readback fails",
+    )
+    seed.add_argument(
+        "--repo",
+        required=True,
+        type=Path,
+        help=_option_help(
+            "local Git repository holding the proposed mission",
+            "--repo .",
+            "policy, HEAD, or workspace checks fail",
+        ),
+    )
+    seed.add_argument(
+        "--mission",
+        required=True,
+        dest="mission_id",
+        help=_option_help(
+            "exact proposed mission ID",
+            "--mission mission_123",
+            "the mission is missing or already dispatched",
+        ),
+    )
+    seed.add_argument(
+        "--plan-sha256",
+        required=True,
+        type=_sha256,
+        help=_option_help(
+            "exact reviewed plan digest",
+            f"--plan-sha256 {'a' * 64}",
+            "the local plan has another digest",
+        ),
+    )
+    seed.add_argument(
+        "--audience",
+        required=True,
+        type=_https_origin,
+        help=_option_help(
+            "exact HTTPS Cloud Run audience",
+            "--audience https://service.example",
+            "the audience is not an exact credential-free HTTPS origin",
+        ),
+    )
+    seed.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help=_option_help(
+            "new private canonical seed receipt",
+            "--output seed.json",
+            "the path exists or cannot be created safely",
+        ),
+    )
+    _operator(seed)
     connect = _mission_parser(
         executor_actions,
         "connect",
-        summary="connect bounded local Gemini workers to a private coordinator",
-        example="graphene mission executor connect --repo . --mission mission_123 --coordinator-url https://service.example --audience https://service.example --workers 2",
+        summary="connect one bounded local Gemini worker to a private coordinator",
+        example="graphene mission executor connect --repo . --mission mission_123 --seed-receipt seed.json --coordinator-url https://service.example --audience https://service.example --workers 1",
         failure="identity, coordinator, runtime, exact-head, or bounded shutdown fails",
     )
     connect.add_argument(
@@ -1147,6 +1223,16 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         ),
     )
     connect.add_argument(
+        "--seed-receipt",
+        required=True,
+        type=Path,
+        help=_option_help(
+            "canonical receipt from mission executor seed",
+            "--seed-receipt seed.json",
+            "the receipt or current local contract binding is invalid",
+        ),
+    )
+    connect.add_argument(
         "--coordinator-url",
         required=True,
         help=_option_help(
@@ -1158,6 +1244,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     connect.add_argument(
         "--audience",
         required=True,
+        type=_https_origin,
         help=_option_help(
             "exact HTTPS Cloud Run audience for fresh ADC ID tokens",
             "--audience https://service.example",
@@ -1166,30 +1253,13 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     )
     connect.add_argument(
         "--workers",
-        type=_outbound_worker_count,
-        default=2,
+        type=int,
+        choices=(1,),
+        default=1,
         help=_option_help(
-            "WORK-only Gemini executor sessions, 2-5",
-            "--workers 2",
-            "the count is outside 2-5",
-        ),
-    )
-    connect.add_argument(
-        "--expected-seq",
-        type=_nonnegative,
-        help=_option_help(
-            "exact committed mission sequence; omit with SHA for local discovery",
-            "--expected-seq 7",
-            "the value is negative or differs from the committed head",
-        ),
-    )
-    connect.add_argument(
-        "--expected-event-sha256",
-        type=_sha256,
-        help=_option_help(
-            "exact event digest for expected-seq; omit both for verified local head",
-            f"--expected-event-sha256 {'a' * 64}",
-            "the digest is malformed or does not bind the expected sequence",
+            "one WORK-only Gemini executor session",
+            "--workers 1",
+            "the count is not exactly one",
         ),
     )
 
@@ -5067,24 +5137,15 @@ def _execute_adk_mission_owned(
     )
 
 
-def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
+def _executor_source(args: argparse.Namespace):
     repository, head, policy = _load_project_policy(args.repo)
-    if not doctor(repository)["gemini_preflight"]["configuration_ready"]:
-        raise MissionCliError(
-            "outbound executor preflight requires Git, Google ADK, one valid "
-            "Gemini credential mode, and a usable project policy"
-        )
     store = _store_for_mission(args.mission_id)
     snapshot = store.snapshot(args.mission_id)
     if snapshot.mission.creation_source != "operator":
-        raise MissionCliError(
-            "outbound executor requires an operator-created mission"
-        )
+        raise MissionCliError("cloud execution requires an operator-created mission")
     verified_head = store.verify(args.mission_id)
     if verified_head != snapshot.head:
-        raise MissionCliError("local mission verification changed during preflight")
-    if snapshot.mission.status != MissionStatus.RUNNING:
-        raise MissionCliError("outbound executor requires an approved running mission")
+        raise MissionCliError("local mission verification changed during cloud preflight")
     if (
         snapshot.mission.base_sha != head
         or snapshot.policy.base_sha != policy.base_sha
@@ -5092,30 +5153,194 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         != sha256_hex(canonical_json_bytes(policy.model_dump(mode="json")))
     ):
         raise MissionCliError("local executor repository or policy binding differs")
-    supplied = args.expected_seq is not None or args.expected_event_sha256 is not None
-    if supplied:
-        if args.expected_seq is None or (
-            (args.expected_seq == 0) != (args.expected_event_sha256 is None)
-        ):
-            raise MissionCliError(
-                "expected head requires a positive seq with SHA, or seq zero without SHA"
-            )
-        expected_head = MissionHead(
-            mission_id=args.mission_id,
-            seq=args.expected_seq,
-            event_count=args.expected_seq,
-            event_sha256=args.expected_event_sha256,
+    decision = plan_policy_decision(
+        _mission_events(store, args.mission_id, snapshot.head.event_count),
+        snapshot.plan.revision,
+    )
+    if (
+        snapshot.mission.schema_version != 2
+        or snapshot.mission.status != MissionStatus.PROPOSED
+        or snapshot.plan.revision != 1
+        or decision is None
+        or decision.effective_mode != AuthorizationMode.REVIEW_REQUIRED
+        or snapshot.attempts
+        or snapshot.leases
+        or snapshot.publications
+        or snapshot.gates
+        or any(
+            task.state != TaskState.QUEUED or task.attempt_count
+            for task in snapshot.tasks
         )
-        if expected_head != verified_head:
-            raise MissionCliError(
-                "expected head differs from the verified local mission"
-            )
-    else:
-        expected_head = verified_head
+    ):
+        raise MissionCliError(
+            "cloud execution requires a review-required, pre-dispatch schema-2 plan"
+        )
+    return repository, policy, store, snapshot, verified_head
+
+
+def _firestore_target() -> tuple[str, str, str]:
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    database_id = os.environ.get("GRAPHENE_FIRESTORE_DATABASE", "")
+    namespace = os.environ.get("GRAPHENE_FIRESTORE_NAMESPACE", "")
+    if (
+        os.environ.get("FIRESTORE_EMULATOR_HOST")
+        or re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", project_id) is None
+        or not database_id
+        or len(database_id) > 128
+        or "/" in database_id
+        or any(character.isspace() for character in database_id)
+        or re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", namespace) is None
+    ):
+        raise MissionCliError("real Firestore target configuration is unavailable")
+    return project_id, database_id, namespace
+
+
+def _read_cloud_seed_receipt(path: Path) -> CloudSeedReceipt:
+    requested = path.expanduser()
+    requested = requested if requested.is_absolute() else Path.cwd() / requested
+    try:
+        visible = requested.lstat()
+        if (
+            stat.S_ISLNK(visible.st_mode)
+            or not stat.S_ISREG(visible.st_mode)
+            or stat.S_IMODE(visible.st_mode) & 0o077
+            or (hasattr(os, "getuid") and visible.st_uid != os.getuid())
+            or visible.st_size > 16_384
+        ):
+            raise ValueError
+        descriptor = os.open(
+            requested, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino):
+                raise ValueError
+            content = stream.read(16_385)
+        receipt = CloudSeedReceipt.model_validate_json(content)
+        if canonical_json_bytes(receipt.model_dump(mode="json")) != content:
+            raise ValueError
+        return receipt
+    except (OSError, TypeError, ValueError) as error:
+        raise MissionCliError("cloud seed receipt is invalid") from error
+
+
+def _validated_cloud_receipt(
+    args: argparse.Namespace,
+    policy: ProjectPolicy,
+    snapshot,
+    verified_head: MissionHead,
+) -> tuple[CloudSeedReceipt, ProjectPolicy]:
+    receipt = _read_cloud_seed_receipt(args.seed_receipt)
+    project_id, database_id, namespace = _firestore_target()
+    cloud_policy, cloud_mission = projected_cloud_contracts(
+        policy, snapshot.mission
+    )
+    source_policy_sha256 = canonical_json_sha256(policy.model_dump(mode="json"))
+    cloud_policy_sha256 = canonical_json_sha256(
+        cloud_policy.model_dump(mode="json")
+    )
+    plan_sha256 = canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+    if (
+        receipt.mission_id != args.mission_id
+        or receipt.repo_id != snapshot.mission.repo_id
+        or receipt.base_sha != snapshot.mission.base_sha
+        or receipt.source_policy_id != policy.policy_id
+        or receipt.cloud_policy_id != cloud_policy.policy_id
+        or receipt.source_head != verified_head
+        or receipt.source_policy_sha256 != source_policy_sha256
+        or receipt.cloud_policy_sha256 != cloud_policy_sha256
+        or receipt.plan_sha256 != plan_sha256
+        or receipt.execution_contract_sha256
+        != cloud_execution_contract_sha256(
+            cloud_policy, cloud_mission, snapshot.plan
+        )
+        or (receipt.project_id, receipt.database_id, receipt.namespace)
+        != (project_id, database_id, namespace)
+        or receipt.coordinator_audience != args.audience
+    ):
+        raise MissionCliError("cloud seed receipt differs from current bindings")
+    return receipt, cloud_policy
+
+
+def _executor_seed(args: argparse.Namespace) -> dict[str, object]:
+    output = _new_file_path(args.output)
+    _repository, policy, _store_value, snapshot, verified_head = _executor_source(args)
+    plan_sha256 = canonical_json_sha256(snapshot.plan.model_dump(mode="json"))
+    if args.plan_sha256 != plan_sha256:
+        raise MissionCliError("cloud seed plan digest differs from the local plan")
+    project_id, database_id, namespace = _firestore_target()
+    truth_kind = _truth_kind(args)
+    recorded_at = datetime.now(UTC)
+    command_prefix = "cloudseed_" + canonical_json_sha256(
+        (
+            args.mission_id,
+            verified_head.model_dump(mode="json"),
+            project_id,
+            database_id,
+            namespace,
+            args.audience,
+            args.operator_label,
+            args.rationale,
+            truth_kind.value,
+            args.command_id,
+        )
+    )[:32]
+    try:
+        receipt = seed_verified_projection(
+            FirestoreMissionStore(
+                firestore.Client(project=project_id, database=database_id),
+                namespace=namespace,
+            ),
+            source_policy=policy,
+            source_mission=snapshot.mission,
+            source_head=verified_head,
+            plan=snapshot.plan,
+            command_prefix=command_prefix,
+            recorded_at=recorded_at,
+            operator_label=args.operator_label,
+            rationale=args.rationale,
+            truth_kind=truth_kind,
+            project_id=project_id,
+            database_id=database_id,
+            namespace=namespace,
+            coordinator_audience=args.audience,
+        )
+    except Exception as error:
+        raise MissionCliError("real Firestore seed failed closed") from error
+    try:
+        _atomic_create(output, canonical_json_bytes(receipt.model_dump(mode="json")))
+    except MissionCliError as error:
+        raise MissionCliError("cloud seed receipt could not be created") from error
+    return {
+        "status": "firestore_seeded",
+        "mission_id": args.mission_id,
+        "source_head": receipt.source_head.model_dump(mode="json"),
+        "firestore_head": receipt.firestore_head.model_dump(mode="json"),
+        "execution_contract_sha256": receipt.execution_contract_sha256,
+        "receipt_sha256": receipt.receipt_sha256,
+        "receipt": str(output),
+        "approval_truth": receipt.truth_kind.value,
+        "scope": "single_executor_cloud_run_firestore_vertical",
+        "cloud_scheduling_parity_claimed": False,
+    }
+
+
+def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
+    repository, policy, store, snapshot, verified_head = _executor_source(args)
+    if not doctor(repository)["gemini_preflight"]["configuration_ready"]:
+        raise MissionCliError(
+            "outbound executor preflight requires Git, Google ADK, one valid "
+            "Gemini credential mode, and a usable project policy"
+        )
+    seed_receipt, cloud_policy = _validated_cloud_receipt(
+        args, policy, snapshot, verified_head
+    )
+    expected_head = seed_receipt.firestore_head
 
     tasks = {item.task_id: item for item in snapshot.plan.tasks}
     assignments = {
-        task_id: _runtime_assignment(task, policy) for task_id, task in tasks.items()
+        task_id: _runtime_assignment(task, cloud_policy)
+        for task_id, task in tasks.items()
     }
     worker_ids = tuple(f"outbound-work-{index + 1}" for index in range(args.workers))
     try:
@@ -5134,7 +5359,7 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(runtime, 0o700)
     evidence = _mission_evidence(store, args.mission_id)
-    templates = tuple(policy.command_templates)
+    templates = tuple(cloud_policy.command_templates)
     if all(
         item.argv == ("git", "diff", "--check", "--") and item.cwd is None
         for item in templates
@@ -5156,7 +5381,13 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
     stop = threading.Event()
     summaries = []
     failures: list[BaseException] = []
+    attempt_failures: list[str] = []
     result_lock = threading.Lock()
+
+    def failed_completion(result: AttemptResult) -> ExecutorCompletion:
+        attempt_failures.append(result.result_code)
+        stop.set()
+        return ExecutorCompletion(result=result)
 
     def run_attempt(context) -> ExecutorCompletion:
         outbox = context.dispatch
@@ -5166,8 +5397,8 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             or task.kind != TaskKind.WORK
             or outbox.task_kind != TaskKind.WORK
         ):
-            return ExecutorCompletion(
-                result=AttemptResult(
+            return failed_completion(
+                AttemptResult(
                     succeeded=False,
                     result_code="policy_rejected",
                     session_id=outbox.session_id,
@@ -5225,7 +5456,11 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             attempt_check_runner = HostSandboxCheckRunner(
                 OwnedProcessRegistry(_mission_runtime(args.mission_id)),
                 dispatch_for=late_runtime.dispatch_for,
-                status=lambda: store.snapshot(args.mission_id).mission.status,
+                status=lambda: (
+                    MissionStatus.CANCELLED
+                    if stop.is_set()
+                    else MissionStatus.RUNNING
+                ),
                 heartbeat=None,
             )
         worker = WorkerRuntime(
@@ -5237,7 +5472,7 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             assignment=lambda current: assignments[current.task_id],
             accepted_artifact=accepted,
             check_runner=attempt_check_runner,
-            policy_sha256=snapshot.policy.policy_sha256,
+            policy_sha256=seed_receipt.cloud_policy_sha256,
             fence=fence,
             heartbeat=heartbeat,
         )
@@ -5252,8 +5487,8 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
                 invocation_id="outbound-unknown-" + outbox.attempt_id[-16:],
             )
         if not result.succeeded:
-            return ExecutorCompletion(
-                result=AttemptResult(
+            return failed_completion(
+                AttemptResult(
                     succeeded=False,
                     retryable=result.retryable,
                     result_code=result.result_code,
@@ -5278,6 +5513,7 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
                 receipt = TrustedCheckReceipt.model_validate_json(content)
         if receipt is None:
             raise MissionCliError("executor check receipt is unavailable")
+        stop.set()
         return ExecutorCompletion(
             result=bound_result,
             artifacts=tuple(artifacts),
@@ -5338,27 +5574,33 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
             signal.signal(requested_signal, previous)
     if any(thread.is_alive() for thread in threads):
         raise MissionCliError("outbound executor shutdown did not complete")
-    if failures:
+    if failures or attempt_failures:
         raise MissionCliError("outbound executor failed closed")
     summaries.sort(key=lambda item: item.session_id)
-    authenticated = len(summaries) == len(worker_ids)
+    claimed = sum(item.claimed for item in summaries)
+    completed = sum(item.completed for item in summaries)
+    if (
+        len(summaries) != 1
+        or completed < 1
+        or claimed != completed
+    ):
+        raise MissionCliError(
+            "outbound executor stopped without completing every claimed WORK attempt"
+        )
     return {
         "status": "executor_stopped",
         "mission_id": args.mission_id,
-        "truth": (
-            "authenticated coordinator round trip proven for every WORK session"
-            if authenticated
-            else "local configuration preflight only"
-        ),
+        "truth": "authenticated single-executor WORK claim/completion round trip completed",
         "configuration_preflight": "local_only",
-        "authenticated_coordinator_round_trip": authenticated,
+        "authenticated_coordinator_round_trip": True,
         "scope": "work_only_first_cloud_vertical",
         "mission_completion_claimed": False,
+        "cloud_scheduling_parity_claimed": False,
         "worker_count": len(worker_ids),
         "worker_ids": list(worker_ids),
         "capabilities": [TaskKind.WORK.value],
-        "claimed": sum(item.claimed for item in summaries),
-        "completed_work_attempts": sum(item.completed for item in summaries),
+        "claimed": claimed,
+        "completed_work_attempts": completed,
         "final_heads": [item.head.model_dump(mode="json") for item in summaries],
     }
 
@@ -6854,6 +7096,8 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
     if args.mission_action == "demo":
         return 0, _demo(args)
     if args.mission_action == "executor":
+        if args.executor_action == "seed":
+            return 0, _executor_seed(args)
         if args.executor_action == "connect":
             return 0, _executor_connect(args)
         raise MissionCliError("executor action is not available")
