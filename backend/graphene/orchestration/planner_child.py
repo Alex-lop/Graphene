@@ -320,7 +320,7 @@ async def _run(request: PlannerChildRequest, directory: Path) -> int:
         ),
     )
     _wait_for_go(directory, child_request_sha256)
-    credential_mode = _credential_preflight(os.environ)
+    credential_mode = _credential_preflight(os.environ, adc_probe=None)
     model = StampedGemini(model=LIVE_GEMINI_MODEL)
 
     def dispatched(invocation_id: str) -> None:

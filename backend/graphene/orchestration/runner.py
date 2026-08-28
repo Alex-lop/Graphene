@@ -13,6 +13,7 @@ from .mission_models import (
     Dispatch,
     MissionSnapshot,
     MissionStatus,
+    PublicationState,
     PublishedArtifactReferenceV2,
 )
 from .worker_runtime import (
@@ -90,6 +91,7 @@ class AcceptedArtifactCache:
                     publication = publications.get(reference.publication_id)
                     if (
                         publication is None
+                        or publication.state != PublicationState.ACCEPTED
                         or publication.kind != reference.kind
                         or publication.sha256 != reference.content_sha256
                         or dispatch.task_id not in publication.consumers

@@ -720,6 +720,8 @@ def _spawn(
         if pgid != process.pid:
             os.kill(process.pid, signal.SIGKILL)
             raise SupervisorError("supervisor did not establish an owned process group")
+        if observed.startswith("(") and observed.endswith(")"):
+            observed = executable
         record = SupervisorProcess(
             mission_id=request.mission_id,
             request_sha256=request.request_sha256,
@@ -728,7 +730,7 @@ def _spawn(
             pgid=pgid,
             started_at=started_at,
             birth_token=birth_token,
-            executable=observed or executable,
+            executable=observed,
         )
         _write(runtime / _PROCESS, record)
         return record

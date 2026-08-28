@@ -34,6 +34,7 @@ from graphene.orchestration.mission_models import (
     MissionStatus,
     Plan,
     ProjectPolicy,
+    PublicationState,
     ResourceBudget,
     RetentionPolicy,
     Task,
@@ -522,6 +523,21 @@ def test_runner_commits_in_completion_order_recovers_receipt_and_preserves_check
 
     logical_cache.prefetch((logical_dispatch,), _ArtifactSource(), run.snapshot)
     assert logical_cache(logical_dispatch, logical_reference) == candidate
+
+    unaccepted = run.snapshot.model_copy(
+        update={
+            "publications": tuple(
+                item.model_copy(update={"state": PublicationState.REJECTED})
+                if item.publication_id == candidate_publication.publication_id
+                else item
+                for item in run.snapshot.publications
+            )
+        }
+    )
+    with pytest.raises(RunnerExecutionFailed, match="binding is invalid"):
+        AcceptedArtifactCache().prefetch(
+            (logical_dispatch,), _ArtifactSource(), unaccepted
+        )
 
     class _TamperedSource:
         @staticmethod
