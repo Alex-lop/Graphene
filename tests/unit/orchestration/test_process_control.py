@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from graphene.orchestration.mission_models import MissionStatus
 from graphene.orchestration.process_control import (
     ControlledProcessRunner,
     OwnedProcessRegistry,
+    ProcessCancelled,
     ProcessControlError,
 )
 from graphene.orchestration.scheduler import MissionScheduler
@@ -305,11 +307,216 @@ def test_default_termination_window_allows_delayed_owner_reap(tmp_path: Path) ->
     finally:
         reaper.join(timeout=3)
         if reaper.is_alive():
-            registry.signal_prepared(owned, signal.SIGKILL)
+            process.kill()
             reaper.join(timeout=5)
+        if process.returncode is None:
+            process.kill()
+            process.wait(timeout=5)
         assert not reaper.is_alive()
         if registry.has_record(dispatch.attempt_id):
             registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_post_signal_wait_requires_exact_zombie_to_be_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from graphene.orchestration import process_control
+
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    owned = registry.record_pid(dispatch, process.pid, "/bin/sleep")
+    identities = iter(
+        (
+            (
+                owned.pgid,
+                owned.started_at,
+                "Z",
+                owned.executable,
+                owned.birth_token,
+            ),
+            (
+                owned.pgid,
+                owned.started_at,
+                "S",
+                owned.executable,
+                "reused-birth-token",
+            ),
+        )
+    )
+    observations: list[int] = []
+
+    def identity(pid: int):
+        observations.append(pid)
+        return next(identities)
+
+    monkeypatch.setattr(process_control, "_owned_process_identity", identity)
+    monkeypatch.setattr(
+        os,
+        "waitpid",
+        lambda *_args: pytest.fail("post-signal observation must not reap"),
+    )
+    try:
+        assert registry._wait_for_exit_after_signal(
+            owned, timeout=0.1, poll_seconds=0
+        )
+        assert observations == [owned.pid, owned.pid]
+    finally:
+        monkeypatch.undo()
+        process.kill()
+        process.wait(timeout=2)
+        registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_termination_waits_when_leader_is_already_a_zombie(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    owned = registry.record_pid(dispatch, process.pid, "/bin/sleep")
+    waited: list[object] = []
+    monkeypatch.setattr(registry, "signal_prepared", lambda *_args: False)
+    monkeypatch.setattr(
+        registry,
+        "_wait_for_exit_after_signal",
+        lambda current, **_kwargs: waited.append(current) or True,
+    )
+    monkeypatch.setattr(registry, "terminate_descendants", lambda *_a, **_k: None)
+    try:
+        assert registry.terminate_owned(owned, retain_record=True) is None
+        assert waited == [owned]
+    finally:
+        monkeypatch.undo()
+        process.kill()
+        process.wait(timeout=2)
+        registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_conflicted_cancellation_removes_dead_process_records(tmp_path: Path) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    registry = OwnedProcessRegistry(tmp_path / "runtime")
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    registry.record_pid(dispatch, process.pid, "/bin/sleep")
+    process.kill()
+    process.wait(timeout=2)
+
+    registry.remove_dead_records_for_mission(dispatch.mission_id)
+
+    assert not registry.has_record(dispatch.attempt_id)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+@pytest.mark.parametrize(
+    "marker", ("cancellation-request.json", "cancellation-complete.json")
+)
+def test_cancellation_marker_refuses_worker_registration(
+    tmp_path: Path, marker: str
+) -> None:
+    _, dispatch = _dispatch(tmp_path)
+    runtime = tmp_path / "runtime"
+    registry = OwnedProcessRegistry(runtime)
+    cancellation = runtime / marker
+    cancellation.write_text("{}", encoding="utf-8")
+    runner = ControlledProcessRunner(
+        registry,
+        dispatch,
+        lambda: MissionStatus.RUNNING,
+        heartbeat=lambda: pytest.fail("cancelling worker must not heartbeat"),
+        heartbeat_seconds=-1,
+    )
+
+    try:
+        with pytest.raises(ProcessCancelled, match="prevents process registration"):
+            _invoke(runner, 0.05)
+        assert not registry.has_record(dispatch.attempt_id)
+    finally:
+        cancellation.unlink(missing_ok=True)
+        owned = registry.owned_process(dispatch, require_live=False)
+        if owned is not None:
+            registry.remove_exact(owned)
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+def test_cancellation_journal_waits_for_inflight_process_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from graphene.cli import mission as mission_cli
+
+    store, dispatch = _dispatch(tmp_path)
+    runtime = tmp_path / "runtime"
+    registry = OwnedProcessRegistry(runtime)
+    process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+    published = threading.Event()
+    release = threading.Event()
+    original_create = registry._atomic_create
+
+    def pause_after_publish(directory, target, value) -> None:
+        original_create(directory, target, value)
+        published.set()
+        assert release.wait(timeout=2)
+
+    monkeypatch.setattr(registry, "_atomic_create", pause_after_publish)
+    registered: list[object] = []
+    registration = threading.Thread(
+        target=lambda: registered.append(
+            registry.record_pid(dispatch, process.pid, "/bin/sleep")
+        )
+    )
+    journaled: list[object] = []
+    journal = threading.Thread(
+        target=lambda: journaled.append(
+            mission_cli._ensure_cancellation_request(
+                runtime,
+                mission_id=dispatch.mission_id,
+                command_id="command-cancel-registration-race",
+                expected_head=store.head(dispatch.mission_id),
+                operator_label="test-operator",
+                rationale=None,
+                truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+                recorded_at=datetime.now(UTC),
+            )
+        )
+    )
+    try:
+        registration.start()
+        assert published.wait(timeout=2)
+        journal.start()
+        journal.join(timeout=0.1)
+        assert journal.is_alive()
+        assert not (runtime / "cancellation-request.json").exists()
+        release.set()
+        registration.join(timeout=2)
+        journal.join(timeout=2)
+        assert len(registered) == len(journaled) == 1
+        assert registry.has_record(dispatch.attempt_id)
+        assert (runtime / "cancellation-request.json").is_file()
+    finally:
+        release.set()
+        registration.join(timeout=2)
+        if journal.ident is not None:
+            journal.join(timeout=2)
+        monkeypatch.undo()
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2)
+        owned = registry.owned_process(dispatch, require_live=False)
+        if owned is not None:
+            registry.remove_exact(owned)
+        (runtime / "cancellation-request.json").unlink(missing_ok=True)
 
 
 @pytest.mark.skipif(
@@ -780,8 +987,9 @@ def test_exit_during_sigkill_revalidation_is_not_a_termination_failure(
         return len(requested) == 1
 
     monkeypatch.setattr(registry, "signal_prepared", signal_prepared)
+    waits = iter((False, True))
     monkeypatch.setattr(
-        registry, "_wait_for_exit_after_signal", lambda *_a, **_k: False
+        registry, "_wait_for_exit_after_signal", lambda *_a, **_k: next(waits)
     )
     monkeypatch.setattr(registry, "terminate_descendants", lambda *_a, **_k: None)
 
@@ -1044,6 +1252,8 @@ def test_legacy_weak_record_is_read_but_never_signalled(tmp_path: Path) -> None:
 
     with pytest.raises(ProcessControlError, match="cannot be safely signalled"):
         registry.signal(dispatch, 15)
+    registry.remove_dead_records_for_mission(dispatch.mission_id)
+    assert registry.has_record(dispatch.attempt_id)
     assert process.poll() is None
 
     process.kill()

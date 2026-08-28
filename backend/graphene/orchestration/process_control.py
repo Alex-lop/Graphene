@@ -11,9 +11,10 @@ import stat
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Iterator, Sequence
 
 from ..hashing import canonical_json_bytes, sha256_hex
 from ..core_models import MAX_TEST_OUTPUT_BYTES
@@ -220,6 +221,37 @@ fi
 exit 125
 """
 
+
+@contextmanager
+def process_registration_lock(runtime: Path) -> Iterator[None]:
+    """Serialize cancellation intent with durable child registration."""
+
+    try:
+        import fcntl
+    except ImportError as error:
+        raise ProcessControlError("process registration locking is unavailable") from error
+    path = runtime / "process-registration.lock"
+    descriptor = os.open(
+        path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or (hasattr(os, "getuid") and metadata.st_uid != os.getuid())
+        ):
+            raise ProcessControlError("process registration lock is unsafe")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
 # python.org's macOS framework build ships ``bin/python3.x`` as a launcher that
 # execs ``Resources/Python.app/Contents/MacOS/Python`` in place, so a child
 # started through that interpreter -- or a venv symlink to it -- is reported
@@ -399,23 +431,39 @@ class OwnedProcessRegistry:
             model_input_bytes,
             3 if model_process else 2,
         )
-        self._atomic_create(
-            self.directory,
-            self._path(dispatch.attempt_id, model=model_process),
-            {
-                "attempt_id": owned.attempt_id,
-                "executable": owned.executable,
-                "mission_id": owned.mission_id,
-                "model_input_bytes": owned.model_input_bytes,
-                "model_request_sha256": owned.model_request_sha256,
-                "pgid": owned.pgid,
-                "pid": owned.pid,
-                "started_at": owned.started_at,
-                "birth_token": owned.birth_token,
-                "schema_version": owned.schema_version,
-            },
-        )
+        with process_registration_lock(self.directory.parent):
+            self.ensure_registration_allowed()
+            self._atomic_create(
+                self.directory,
+                self._path(dispatch.attempt_id, model=model_process),
+                {
+                    "attempt_id": owned.attempt_id,
+                    "executable": owned.executable,
+                    "mission_id": owned.mission_id,
+                    "model_input_bytes": owned.model_input_bytes,
+                    "model_request_sha256": owned.model_request_sha256,
+                    "pgid": owned.pgid,
+                    "pid": owned.pid,
+                    "started_at": owned.started_at,
+                    "birth_token": owned.birth_token,
+                    "schema_version": owned.schema_version,
+                },
+            )
         return owned
+
+    def cancellation_started(self) -> bool:
+        runtime = self.directory.parent
+        return any(
+            path.exists() or path.is_symlink()
+            for path in (
+                runtime / "cancellation-request.json",
+                runtime / "cancellation-complete.json",
+            )
+        )
+
+    def ensure_registration_allowed(self) -> None:
+        if self.cancellation_started():
+            raise ProcessCancelled("mission cancellation prevents process registration")
 
     def record(
         self,
@@ -436,13 +484,21 @@ class OwnedProcessRegistry:
             raise ProcessControlError("owned process executable is unavailable")
         if process.poll() is not None:
             raise ProcessControlError("owned process is no longer running")
-        self.record_pid(dispatch, process.pid, executable)
+        owned = self.record_pid(dispatch, process.pid, executable)
+        try:
+            self.ensure_registration_allowed()
+        except Exception:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2)
+            self.remove_exact(owned)
+            raise
         if process.poll() is not None:
             self.remove(dispatch)
             raise ProcessControlError("owned process is no longer running")
 
     def remove(self, dispatch: Dispatch) -> None:
-        if (self.directory.parent / "cancellation-request.json").exists():
+        if self.cancellation_started():
             return
         path = self._path(dispatch.attempt_id)
         try:
@@ -895,6 +951,43 @@ class OwnedProcessRegistry:
             raise ProcessControlError("owned process identity changed")
         return True
 
+    @staticmethod
+    def _identity_absent_or_reused(owned: OwnedProcess) -> bool:
+        """True only after the exact recorded PID can no longer be reaped."""
+
+        if owned.birth_token is None:
+            try:
+                pgid, started_at, _state, _executable = _process_identity(owned.pid)
+            except ProcessControlError:
+                try:
+                    os.kill(owned.pid, 0)
+                except ProcessLookupError:
+                    return True
+                raise
+            if (pgid, started_at) != (owned.pgid, owned.started_at):
+                raise ProcessControlError("owned process identity changed")
+            return False
+        try:
+            pgid, started_at, state, executable, birth_token = (
+                _owned_process_identity(owned.pid)
+            )
+        except ProcessControlError:
+            try:
+                os.kill(owned.pid, 0)
+            except ProcessLookupError:
+                return True
+            raise
+        if not birth_token:
+            raise ProcessControlError("owned process birth token is unavailable")
+        if birth_token != owned.birth_token:
+            return True
+        if (pgid, started_at) != (owned.pgid, owned.started_at) or (
+            not state.startswith("Z")
+            and not _matches_live_image(owned.pid, owned.executable, executable)
+        ):
+            raise ProcessControlError("owned process identity changed")
+        return False
+
     def _wait_for_exit_after_signal(
         self, owned: OwnedProcess, *, timeout: float, poll_seconds: float = 0.05
     ) -> bool:
@@ -904,7 +997,7 @@ class OwnedProcessRegistry:
         while True:
             unavailable = None
             try:
-                if not self._live_identity(owned):
+                if self._identity_absent_or_reused(owned):
                     return True
             except ProcessControlError as error:
                 if str(error) != "owned process birth token is unavailable":
@@ -968,7 +1061,7 @@ class OwnedProcessRegistry:
             raise ProcessControlError("owned process is no longer running")
         return owned
 
-    def records_for_mission(self, mission_id: str) -> tuple[OwnedProcess, ...]:
+    def _records_for_mission(self, mission_id: str) -> tuple[OwnedProcess, ...]:
         records: list[OwnedProcess] = []
         for index, path in enumerate(sorted(self.directory.iterdir())):
             if index >= 4_096:
@@ -984,9 +1077,32 @@ class OwnedProcessRegistry:
                 continue
             owned = self._read(path)
             if owned.mission_id == mission_id:
-                self._live_identity(owned)  # exact live identity or confirmed gone
                 records.append(owned)
         return tuple(records)
+
+    def records_for_mission(self, mission_id: str) -> tuple[OwnedProcess, ...]:
+        records = self._records_for_mission(mission_id)
+        for owned in records:
+            self._live_identity(owned)  # exact live identity or confirmed gone
+        return records
+
+    def remove_dead_records_for_mission(self, mission_id: str) -> None:
+        for owned in self._records_for_mission(mission_id):
+            try:
+                live = self._live_identity(owned)
+            except ProcessControlError:
+                continue
+            if live:
+                continue
+            try:
+                self.remove_exact(owned)
+            except ProcessControlError:
+                try:
+                    if self._live_identity(owned):
+                        continue
+                except ProcessControlError:
+                    continue
+                raise
 
     def prepare_cancel(
         self, dispatches: Sequence[Dispatch]
@@ -1061,15 +1177,11 @@ class OwnedProcessRegistry:
             raise
         signalled = self.signal_prepared(owned, signal.SIGTERM)
         sent = signal.SIGTERM if signalled else None
-        exited = not signalled or self._wait_for_exit_after_signal(
-            owned, timeout=timeout
-        )
+        exited = self._wait_for_exit_after_signal(owned, timeout=timeout)
         if not exited:
             if self.signal_prepared(owned, signal.SIGKILL):
                 sent = signal.SIGKILL
-                exited = self._wait_for_exit_after_signal(owned, timeout=timeout)
-            else:
-                exited = True
+            exited = self._wait_for_exit_after_signal(owned, timeout=timeout)
         if not exited:
             raise ProcessControlError("owned process could not be terminated")
         descendant_signal = self.terminate_descendants(owned, timeout=timeout)
@@ -1358,6 +1470,9 @@ class ControlledProcessRunner:
                 last = now
                 if (
                     self.heartbeat is not None
+                    and not (
+                        self.registry.directory.parent / "cancellation-request.json"
+                    ).exists()
                     and now - last_heartbeat >= self.heartbeat_seconds
                 ):
                     self.heartbeat()
@@ -1476,4 +1591,5 @@ __all__ = [
     "OwnedProcessRegistry",
     "ProcessCancelled",
     "ProcessControlError",
+    "process_registration_lock",
 ]

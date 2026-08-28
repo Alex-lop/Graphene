@@ -120,6 +120,7 @@ from ..orchestration.scheduler import MissionScheduler, SystemClock
 from ..orchestration.process_control import (
     OwnedProcessRegistry,
     ProcessControlError,
+    process_registration_lock,
 )
 from ..orchestration.scripted import (
     DEFAULT_SCENARIO_PATH,
@@ -5921,6 +5922,12 @@ def _result_decision(args: argparse.Namespace, *, approved: bool) -> dict[str, o
 
 
 _CANCELLATION_REQUEST = "cancellation-request.json"
+_CANCELLATION_COMPLETE = "cancellation-complete.json"
+_CANCELLATION_CONFLICT = "cancellation-conflict.json"
+
+
+class _CancellationAuthorityConflict(ProcessControlError):
+    pass
 
 
 def _read_cancellation_request(runtime: Path) -> dict[str, object] | None:
@@ -5993,34 +6000,47 @@ def _ensure_cancellation_request(
         "recorded_at": recorded_at.isoformat(),
     }
     stable_keys = set(value) - {"recorded_at"}
-    existing = _read_cancellation_request(runtime)
-    if existing is not None:
-        if any(existing[key] != value[key] for key in stable_keys):
-            raise ProcessControlError("cancellation request journal changed")
-        return existing
-    try:
-        _atomic_create(
-            runtime / _CANCELLATION_REQUEST,
-            canonical_json_bytes(value),
-        )
-    except MissionCliError as error:
+    with process_registration_lock(runtime):
         existing = _read_cancellation_request(runtime)
-        if existing is None or any(existing[key] != value[key] for key in stable_keys):
-            raise ProcessControlError(
-                "cancellation request could not be journaled"
-            ) from error
-        _durably_confirm_cancellation_request(runtime)
-        return existing
+        if existing is not None:
+            if any(existing[key] != value[key] for key in stable_keys):
+                raise ProcessControlError("cancellation request journal changed")
+            return existing
+        try:
+            _atomic_create(
+                runtime / _CANCELLATION_REQUEST,
+                canonical_json_bytes(value),
+            )
+        except MissionCliError as error:
+            existing = _read_cancellation_request(runtime)
+            if existing is None or any(
+                existing[key] != value[key] for key in stable_keys
+            ):
+                raise ProcessControlError(
+                    "cancellation request could not be journaled"
+                ) from error
+            _durably_confirm_cancellation_request(runtime)
+            return existing
     return value
 
 
-def _clear_cancellation_request(runtime: Path) -> None:
-    (runtime / _CANCELLATION_REQUEST).unlink(missing_ok=True)
+def _move_cancellation_request(runtime: Path, target: str) -> None:
+    request = runtime / _CANCELLATION_REQUEST
+    if request.exists() or request.is_symlink():
+        os.replace(request, runtime / target)
     descriptor = os.open(runtime, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _complete_cancellation_request(runtime: Path) -> None:
+    _move_cancellation_request(runtime, _CANCELLATION_COMPLETE)
+
+
+def _conflict_cancellation_request(runtime: Path) -> None:
+    _move_cancellation_request(runtime, _CANCELLATION_CONFLICT)
 
 
 def _durably_confirm_cancellation_request(runtime: Path) -> None:
@@ -6054,6 +6074,83 @@ def _durably_confirm_cancellation_request(runtime: Path) -> None:
             os.close(directory)
 
 
+def _validate_cancellation_head_advance(
+    store,
+    *,
+    previous: MissionHead,
+    snapshot,
+    command_id: str,
+) -> None:
+    current = snapshot.head
+    if current == previous:
+        return
+    count = current.seq - previous.seq
+    if (
+        current.mission_id != previous.mission_id
+        or not 1 <= count <= 4_096
+        or current.event_count - previous.event_count != count
+    ):
+        raise ProcessControlError("cancellation authority advance is invalid")
+    attempts = {item.attempt_id: item for item in snapshot.attempts}
+    after = previous.seq
+    prior_sha256 = previous.event_sha256
+    cancel_transaction = False
+    while after < current.seq:
+        events = store.tail(current.mission_id, after, min(256, current.seq - after))
+        if not events:
+            raise ProcessControlError("cancellation authority history is incomplete")
+        for event in events:
+            if (
+                event.mission_id != current.mission_id
+                or event.seq != after + 1
+                or event.previous_event_sha256 != prior_sha256
+            ):
+                raise ProcessControlError(
+                    "cancellation authority history is inconsistent"
+                )
+            attempt = attempts.get(event.payload.get("attempt_id"))
+            heartbeat = not cancel_transaction and event.event_type == (
+                MissionEventType.TASK_HEARTBEAT
+            ) and (
+                attempt is not None
+                and (
+                    event.payload.get("task_id"),
+                    event.payload.get("worker_id"),
+                    event.payload.get("lease_id"),
+                    event.payload.get("fencing_token"),
+                )
+                == (
+                    attempt.task_id,
+                    attempt.worker_id,
+                    attempt.lease_id,
+                    attempt.fencing_token,
+                )
+            )
+            committed_cancel = (
+                not cancel_transaction
+                and snapshot.mission.status == MissionStatus.CANCELLED
+                and event.event_type == MissionEventType.OPERATOR_CANCELLED
+                and event.command_id == command_id
+            )
+            cancelled_task = (
+                cancel_transaction
+                and event.event_type == MissionEventType.TASK_CANCELLED
+                and event.command_id == command_id
+            )
+            if not heartbeat and not committed_cancel and not cancelled_task:
+                raise _CancellationAuthorityConflict(
+                    "mission authority changed after cancellation was requested"
+                )
+            cancel_transaction = cancel_transaction or committed_cancel
+            after = event.seq
+            prior_sha256 = event.event_sha256
+    if prior_sha256 != current.event_sha256 or (
+        snapshot.mission.status == MissionStatus.CANCELLED
+        and not cancel_transaction
+    ):
+        raise ProcessControlError("cancellation authority head is inconsistent")
+
+
 def _cancel_with_owned_cleanup(
     *,
     store,
@@ -6064,6 +6161,7 @@ def _cancel_with_owned_cleanup(
     rationale: str | None,
     truth_kind: TruthKind,
     recorded_at: datetime,
+    _retry_cleanup_race: bool = True,
 ) -> MissionHead:
     snapshot = store.snapshot(mission_id)
     mission_runtime = _mission_runtime(mission_id)
@@ -6103,6 +6201,17 @@ def _cancel_with_owned_cleanup(
         mission_id, worker_ids, recorded_at=recorded_at, include_expired=True
     )
     registry = OwnedProcessRegistry(mission_runtime)
+    try:
+        _validate_cancellation_head_advance(
+            store,
+            previous=bound_head,
+            snapshot=snapshot,
+            command_id=command_id,
+        )
+    except _CancellationAuthorityConflict:
+        registry.remove_dead_records_for_mission(mission_id)
+        _conflict_cancellation_request(mission_runtime)
+        raise
     prepared = registry.prepare_cancel(active)
     durable = registry.records_for_mission(mission_id)
     targets = tuple(
@@ -6267,12 +6376,42 @@ def _cancel_with_owned_cleanup(
             "active worker cancellation has not reached a durable receipt boundary"
         )
 
-    head = snapshot.head
-    if snapshot.mission.status != MissionStatus.CANCELLED:
+    commit_snapshot = store.snapshot(mission_id)
+    try:
+        _validate_cancellation_head_advance(
+            store,
+            previous=snapshot.head,
+            snapshot=commit_snapshot,
+            command_id=command_id,
+        )
+    except _CancellationAuthorityConflict:
+        registry.remove_dead_records_for_mission(mission_id)
+        _conflict_cancellation_request(mission_runtime)
+        raise
+    commit_records = frozenset(registry.records_for_mission(mission_id))
+    if commit_snapshot.head != snapshot.head or commit_records != frozenset(targets):
+        if not _retry_cleanup_race:
+            raise ProcessControlError(
+                "mission runtime continued changing during cancellation"
+            )
+        return _cancel_with_owned_cleanup(
+            store=store,
+            mission_id=mission_id,
+            command_id=command_id,
+            expected_head=bound_head,
+            operator_label=operator_label,
+            rationale=rationale,
+            truth_kind=truth_kind,
+            recorded_at=recorded_at,
+            _retry_cleanup_race=False,
+        )
+    commit_attempts = {item.attempt_id: item for item in commit_snapshot.attempts}
+    head = commit_snapshot.head
+    if commit_snapshot.mission.status != MissionStatus.CANCELLED:
         head = store.cancel(
             mission_id,
             command_id,
-            expected_head=snapshot.head,
+            expected_head=commit_snapshot.head,
             operator_label=operator_label,
             rationale=rationale,
             truth_kind=truth_kind,
@@ -6280,7 +6419,7 @@ def _cancel_with_owned_cleanup(
             cancelled_attempt_results=tuple(
                 (attempt_id, run.result)
                 for attempt_id, run in sorted(runs.items())
-                if attempts[attempt_id].state == AttemptState.RUNNING
+                if commit_attempts[attempt_id].state == AttemptState.RUNNING
             ),
         )
 
@@ -6314,7 +6453,7 @@ def _cancel_with_owned_cleanup(
                     "owned worker cancellation receipt is not committed"
                 )
         registry.remove_exact(owned)
-    _clear_cancellation_request(mission_runtime)
+    _complete_cancellation_request(mission_runtime)
     return head
 
 
