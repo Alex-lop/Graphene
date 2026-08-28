@@ -305,6 +305,11 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
 
     def review_need(value: dict[str, Any]) -> dict[str, Any] | None:
         mission = value["mission"]
+        if (
+            mission["status"] == "proposed"
+            and mission.get("effective_authorization_mode", "review_required") is None
+        ):
+            return None
         pending = value.get("needs_you")
         if isinstance(pending, dict):
             gate_id = str(pending.get("gate_id") or "")
@@ -313,7 +318,11 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
                 "decision_kind": (
                     "result_review" if gate_id.startswith("final_result_") else "gate"
                 ),
-                **({"bundle_id": gate_id} if gate_id.startswith("final_result_") else {}),
+                **(
+                    {"bundle_id": gate_id}
+                    if gate_id.startswith("final_result_")
+                    else {}
+                ),
             }
         if (
             mission["status"] == "proposed"
@@ -522,9 +531,7 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
                             reason,
                         ]
                     )
-                    value = (
-                        result if isinstance(result, dict) else {"result": result}
-                    )
+                    value = result if isinstance(result, dict) else {"result": result}
                 else:
                     store.approve_plan(
                         mission_id,
@@ -537,9 +544,7 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
                         recorded_at=datetime.now(UTC),
                         expected_plan_sha256=digest,
                     )
-                    supervisor = ensure_supervisor(
-                        mission_id, recover_failed=True
-                    )
+                    supervisor = ensure_supervisor(mission_id, recover_failed=True)
                     value = {
                         "status": supervisor.phase,
                         "supervisor_generation": supervisor.generation,
@@ -567,7 +572,9 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
         if current_bundle is None:
             raise RuntimeError("final result bundle is not available")
         if bundle_id != current_bundle:
-            raise RuntimeError("result decision bundle does not match the current bundle")
+            raise RuntimeError(
+                "result decision bundle does not match the current bundle"
+            )
         label = f"{operator_label}-result-relay"
         with lock:
             value = dispatch(
@@ -603,9 +610,7 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
         mission_id: str, bundle_id: str, rationale: str
     ) -> dict[str, Any]:
         """Approve the exact current verified bundle as an isolated local result."""
-        return decide_result(
-            mission_id, bundle_id, rationale, approved=True
-        )
+        return decide_result(mission_id, bundle_id, rationale, approved=True)
 
     @server.tool(
         structured_output=True,
@@ -620,9 +625,7 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
         mission_id: str, bundle_id: str, rationale: str
     ) -> dict[str, Any]:
         """Reject the exact current verified bundle without creating a commit."""
-        return decide_result(
-            mission_id, bundle_id, rationale, approved=False
-        )
+        return decide_result(mission_id, bundle_id, rationale, approved=False)
 
     @server.tool(
         structured_output=True,
@@ -791,8 +794,10 @@ def create_mission_mcp_server(*, operator_label: str = "mcp-agent") -> MCPServer
                 "requested_authorization_mode": str(
                     snapshot.mission.requested_authorization_mode
                 ),
-                "effective_authorization_mode": str(
-                    snapshot.mission.effective_authorization_mode
+                "effective_authorization_mode": (
+                    None
+                    if snapshot.mission.effective_authorization_mode is None
+                    else str(snapshot.mission.effective_authorization_mode)
                 ),
                 "finalization_mode": str(snapshot.mission.finalization_mode),
                 "policy_decision_sha256": snapshot.mission.policy_decision_sha256,

@@ -108,7 +108,9 @@ def _record_injection(
     try:
         registry._atomic_create(directory, directory / f"{digest}.json", value)
     except ProcessControlError as error:
-        raise FailureLabError("refused: failure injection could not be recorded") from error
+        raise FailureLabError(
+            "refused: failure injection could not be recorded"
+        ) from error
     return {**value, "injection_record_sha256": digest}
 
 
@@ -223,11 +225,10 @@ def kill_model_attempt(
     try:
         if not registry.signal_prepared(owned, signal.SIGKILL):
             raise ProcessControlError("owned process is no longer running")
-        deadline = time.monotonic() + 5
-        while registry._live_identity(owned) and time.monotonic() < deadline:
-            time.sleep(0.01)
         observed_state = (
-            "running" if registry._live_identity(owned) else "not_running"
+            "not_running"
+            if registry._wait_for_exit_after_signal(owned, timeout=5, poll_seconds=0.01)
+            else "running"
         )
     except ProcessControlError as error:
         _record_injection(

@@ -8,11 +8,14 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from google.adk.models import LlmRequest, LlmResponse
+from pydantic import PrivateAttr
 
 from graphene.cli import mission as mission_cli
 from graphene.execution.adapter import _FIXED_TEST_COMMAND, _sanitized_environment
@@ -36,12 +39,14 @@ from graphene.orchestration.mission_models import (
     ProjectPolicy,
     TaskKind,
     TaskState,
+    plan_policy_decision,
 )
 from graphene.orchestration.final_bundle import FinalResultBundleV2
 from graphene.orchestration.evidence import SQLiteAttemptEvidenceStore
 from graphene.orchestration.resources import ResourcePoint
 from graphene.orchestration.process_control import OwnedProcessRegistry
 from graphene.orchestration.scheduler import MissionScheduler, SystemClock
+from graphene.orchestration.sqlite_mission_store import SQLiteMissionStore
 from graphene.orchestration.validation import evaluate_plan_policy
 from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_INTERRUPTION_KIND,
@@ -69,6 +74,8 @@ from graphene.orchestration.workers.gemini import (
 )
 from scripts.materialize_north_star import load_goal, materialize
 
+from .test_store import NOW, _command, _mission, _plan, _policy
+
 
 def _git(repository: Path, *arguments: str) -> str:
     result = subprocess.run(
@@ -82,6 +89,98 @@ def _git(repository: Path, *arguments: str) -> str:
     )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
+
+
+def test_owned_result_repository_ignores_ambient_git_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init", "-q")
+    _git(source, "config", "user.name", "Source Test")
+    _git(source, "config", "user.email", "source@example.invalid")
+    (source / "README.md").write_text("# Source\n", encoding="utf-8")
+    _git(source, "add", "README.md")
+    _git(source, "commit", "-q", "-m", "base")
+    base_sha = _git(source, "rev-parse", "HEAD")
+
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _git(caller, "init", "-q")
+    _git(caller, "remote", "add", "sentinel", str(source))
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    monkeypatch.setenv("GIT_DIR", str(caller / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(caller))
+
+    repository = mission_cli._ensure_owned_result_repository(source, runtime, base_sha)
+
+    assert _git(caller, "remote") == "sentinel"
+    assert mission_cli._git_read(repository, "remote") == b""
+    assert mission_cli._git_read(repository, "rev-parse", "HEAD").strip() == (
+        base_sha.encode()
+    )
+
+
+def test_legacy_gemini_mission_recovers_as_review_only_under_v2_policy(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteMissionStore(tmp_path / "legacy-policy-recovery.sqlite")
+    policy = ProjectPolicy.model_validate(
+        {
+            **_policy().model_dump(mode="json"),
+            "schema_version": 2,
+            "authorization_mode": AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            "finalization_mode": FinalizationMode.AUTO_FINALIZE_ISOLATED,
+        }
+    )
+    mission = _mission()
+    plan = _plan()
+    store.create_mission(
+        policy,
+        mission,
+        plan,
+        _command("create-legacy-policy-v2"),
+        recorded_at=NOW,
+    )
+    snapshot = store.snapshot(mission.mission_id)
+
+    recovered = mission_cli._ensure_gemini_policy_decision(
+        argparse.Namespace(
+            authorization_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            finalization_mode=FinalizationMode.AUTO_FINALIZE_ISOLATED,
+        ),
+        command_id="command_legacy_policy_recovery_0001",
+        policy=policy,
+        store=store,
+        snapshot=snapshot,
+    )
+    decision = plan_policy_decision(
+        store.tail(mission.mission_id, 0, recovered.head.event_count),
+        plan.revision,
+    )
+
+    assert decision is not None
+    assert decision.requested_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
+    assert decision.finalization_mode == FinalizationMode.REVIEW_REQUIRED
+    assert recovered.mission.status == MissionStatus.PROPOSED
+    assert store.verify(mission.mission_id) == recovered.head
+
+    legacy_snapshot = SimpleNamespace(
+        mission=SimpleNamespace(schema_version=1),
+        policy=SimpleNamespace(schema_version=1),
+    )
+    assert (
+        mission_cli._ensure_gemini_policy_decision(
+            argparse.Namespace(),
+            command_id="command_mocked_legacy_review_0001",
+            policy=legacy_snapshot.policy,
+            store=object(),
+            snapshot=legacy_snapshot,
+        )
+        is legacy_snapshot
+    )
 
 
 def test_taskmaster_demo_command_selects_live_opt_in_driver() -> None:
@@ -467,15 +566,15 @@ def test_open_live_cancels_running_mission_when_coordinator_setup_fails(
                 (),
                 {
                     "mission": type("Mission", (), {"status": self.status})(),
-                        "head": mission_cli.MissionHead(
+                    "head": mission_cli.MissionHead(
                         mission_id=mission_id,
                         seq=4,
                         event_sha256="a" * 64,
                         event_count=4,
-                        ),
-                        "attempts": (),
-                        "policy": SimpleNamespace(command_templates=()),
-                    },
+                    ),
+                    "attempts": (),
+                    "policy": SimpleNamespace(command_templates=()),
+                },
             )()
 
         def recover_dispatches(self, *_args, **_kwargs):
@@ -541,12 +640,12 @@ def test_open_live_waits_for_active_runner_cleanup_before_cancel_authority(
         status = MissionStatus.RUNNING
 
         def snapshot(self, _mission_id: str):
-                return SimpleNamespace(
-                    mission=SimpleNamespace(status=self.status),
-                    head=head,
-                    attempts=(),
-                    policy=SimpleNamespace(command_templates=()),
-                )
+            return SimpleNamespace(
+                mission=SimpleNamespace(status=self.status),
+                head=head,
+                attempts=(),
+                policy=SimpleNamespace(command_templates=()),
+            )
 
         def recover_dispatches(self, *_args, **_kwargs):
             return ()
@@ -619,6 +718,51 @@ def quiet_resource_sampler(mission_id: str) -> tuple[ResourcePoint, ...]:
             semantics="sampled-current-rss",
         ),
     )
+
+
+class _AssignmentAwareWorkerModel(DeterministicWorkerModel):
+    _assignment_mutations: dict[str, tuple[FileMutation, ...]] = PrivateAttr(
+        default_factory=dict
+    )
+    _route_assignments: bool = PrivateAttr(default=False)
+
+    def bind(
+        self,
+        mutations: tuple[FileMutation, ...],
+        *,
+        arrived: asyncio.Event | None = None,
+        release: asyncio.Event | None = None,
+    ) -> None:
+        self._route_assignments = False
+        super().bind(mutations, arrived=arrived, release=release)
+
+    def bind_assignments(
+        self,
+        assignments: dict[str, tuple[FileMutation, ...]],
+        default: tuple[FileMutation, ...],
+    ) -> None:
+        self._assignment_mutations = assignments
+        DeterministicWorkerModel.bind(self, default)
+        self._route_assignments = True
+
+    async def generate_content_async(
+        self, llm_request: LlmRequest, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse, None]:
+        if self._route_assignments:
+            prompt = "".join(
+                part.text or ""
+                for content in llm_request.contents
+                for part in content.parts or ()
+            )
+            matches = [
+                mutations
+                for path, mutations in self._assignment_mutations.items()
+                if path in prompt
+            ]
+            assert len(matches) == 1, prompt
+            DeterministicWorkerModel.bind(self, matches[0])
+        async for response in super().generate_content_async(llm_request, stream):
+            yield response
 
 
 def prepare_fake_two_worker_mission(
@@ -749,28 +893,26 @@ def prepare_fake_two_worker_mission(
         truth_kind=TruthKind.SERVER_DERIVED,
         recorded_at=datetime.now(UTC),
     )
-    model_a = DeterministicWorkerModel(model="fixture-worker-a")
-    model_a.bind(
-        (
-            FileMutation(
-                operation="create",
-                path=".graphene/generated/a.txt",
-                text="alpha\n",
-                mode="100644",
-            ),
-        )
+    mutation_a = FileMutation(
+        operation="create",
+        path=".graphene/generated/a.txt",
+        text="alpha\n",
+        mode="100644",
     )
-    model_b = DeterministicWorkerModel(model="fixture-worker-b")
-    model_b.bind(
-        (
-            FileMutation(
-                operation="create",
-                path=".graphene/generated/b.txt",
-                text="beta\n",
-                mode="100644",
-            ),
-        )
+    mutation_b = FileMutation(
+        operation="create",
+        path=".graphene/generated/b.txt",
+        text="beta\n",
+        mode="100644",
     )
+    assignments = {
+        mutation_a.path: (mutation_a,),
+        mutation_b.path: (mutation_b,),
+    }
+    model_a = _AssignmentAwareWorkerModel(model="fixture-worker-a")
+    model_a.bind_assignments(assignments, (mutation_a,))
+    model_b = _AssignmentAwareWorkerModel(model="fixture-worker-b")
+    model_b.bind_assignments(assignments, (mutation_b,))
     registry = WorkerRegistry(
         (
             GeminiWorkerAdapter.fake(worker_id="fake-a", model=model_a),
@@ -854,7 +996,9 @@ def test_restart_reaps_barrier_child_records_interruption_and_retries_higher_fen
         worker_capabilities=(TaskKind.WORK,),
     )
     dispatch = scheduler.tick(mission_id, ("recovery-worker-1",))[0]
-    task = next(item for item in prepared.plan.tasks if item.task_id == dispatch.task_id)
+    task = next(
+        item for item in prepared.plan.tasks if item.task_id == dispatch.task_id
+    )
     assignment = mission_cli._runtime_assignment(task, prepared.policy)
     source_text = (prepared.repository / "README.md").read_text(encoding="utf-8")
     request = GeminiChildRequest(
@@ -868,9 +1012,7 @@ def test_restart_reaps_barrier_child_records_interruption_and_retries_higher_fen
         lease_id=dispatch.lease_id,
         fencing_token=dispatch.fencing_token,
         base_sha=prepared.policy.base_sha,
-        policy_sha256=canonical_json_sha256(
-            prepared.policy.model_dump(mode="json")
-        ),
+        policy_sha256=canonical_json_sha256(prepared.policy.model_dump(mode="json")),
         accepted_input_sha256=(),
         title=assignment.title,
         contract=assignment.contract,
@@ -895,6 +1037,8 @@ def test_restart_reaps_barrier_child_records_interruption_and_retries_higher_fen
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    reaper = threading.Thread(target=child.wait)
+    reaper.start()
     process_registry = OwnedProcessRegistry(prepared.runtime)
     try:
         owned = process_registry.record_pid(
@@ -945,7 +1089,11 @@ def test_restart_reaps_barrier_child_records_interruption_and_retries_higher_fen
         snapshot = store.snapshot(mission_id)
         attempts = tuple(
             sorted(
-                (item for item in snapshot.attempts if item.task_id == dispatch.task_id),
+                (
+                    item
+                    for item in snapshot.attempts
+                    if item.task_id == dispatch.task_id
+                ),
                 key=lambda item: item.attempt_number,
             )
         )
@@ -984,7 +1132,8 @@ def test_restart_reaps_barrier_child_records_interruption_and_retries_higher_fen
     finally:
         if child.poll() is None:
             child.kill()
-            child.wait(timeout=2)
+        reaper.join(timeout=2)
+        assert not reaper.is_alive()
 
 
 def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
@@ -1041,7 +1190,6 @@ def test_approved_gemini_plan_runs_two_fake_adk_workers_without_touching_source(
             MissionEventType.RESOURCE_SUMMARY_RECORDED,
         }
     ]
-
 
     assert resource_actions[:2] == [
         "reduce-new-dispatch",
@@ -1464,6 +1612,9 @@ def test_orders_migration_survives_a_root_failure_without_credentials(
     store.create_mission(
         policy,
         Mission(
+            schema_version=2,
+            requested_authorization_mode=AuthorizationMode.POLICY_PRE_AUTHORIZED,
+            requested_finalization_mode=FinalizationMode.AUTO_FINALIZE_ISOLATED,
             mission_id=mission_id,
             policy_id=policy.policy_id,
             policy_revision=policy.revision,

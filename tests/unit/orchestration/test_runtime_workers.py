@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import signal
 import sqlite3
 import stat
 import subprocess
+import threading
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -956,10 +958,20 @@ def test_fresh_restart_reconciles_started_host_check_before_model_replay(
     process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
     registry = OwnedProcessRegistry(runtime.runtime.parent)
     registry.record(dispatch, process, "/bin/sleep")
+    owned = registry.validate(dispatch)
+    reaper = threading.Thread(target=process.wait)
+    reaper.start()
 
-    run = asyncio.run(runtime.execute_async(dispatch))
+    try:
+        run = asyncio.run(runtime.execute_async(dispatch))
+    finally:
+        reaper.join(timeout=0.1)
+        if reaper.is_alive():
+            registry.signal_prepared(owned, signal.SIGKILL)
+        reaper.join(timeout=5)
 
-    process.wait(timeout=2)
+    assert not reaper.is_alive()
+    assert process.returncode == -signal.SIGTERM
     assert run.result.retryable is True
     assert run.result.result_code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
     assert adapter.calls == 0
@@ -1050,10 +1062,20 @@ def test_expired_orphan_receipt_removes_exact_workspace(tmp_path: Path) -> None:
     process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
     registry = OwnedProcessRegistry(runtime.runtime.parent)
     registry.record(dispatch, process, "/bin/sleep")
+    owned = registry.validate(dispatch)
+    reaper = threading.Thread(target=process.wait)
+    reaper.start()
 
-    run = asyncio.run(runtime.reconcile_expired_async(dispatch))
+    try:
+        run = asyncio.run(runtime.reconcile_expired_async(dispatch))
+    finally:
+        reaper.join(timeout=0.1)
+        if reaper.is_alive():
+            registry.signal_prepared(owned, signal.SIGKILL)
+        reaper.join(timeout=5)
 
-    process.wait(timeout=2)
+    assert not reaper.is_alive()
+    assert process.returncode == -signal.SIGTERM
     assert run is not None
     assert run.result.result_code == RuntimeErrorCode.RUNTIME_UNAVAILABLE
     assert not workspace.exists()

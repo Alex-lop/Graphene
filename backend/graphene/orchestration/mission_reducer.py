@@ -42,7 +42,7 @@ class ReducedMission:
     task_states: dict[str, TaskState]
     attempt_counts: dict[str, int]
     requested_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
-    effective_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_mode: AuthorizationMode | None = None
     finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
     policy_decision_sha256: str | None = None
 
@@ -63,6 +63,7 @@ def reduce_events(
     events: tuple[MissionEvent, ...],
     *,
     plan_revision: int | None = None,
+    policy_schema_version: int = 1,
 ) -> ReducedMission:
     """Purely replay committed events against immutable initial contracts."""
 
@@ -128,6 +129,27 @@ def reduce_events(
                 or decision.policy_revision != mission.policy_revision
                 or decision.base_sha != mission.base_sha
                 or decision.plan_sha256 != plan_digests.get(active_revision)
+                or (
+                    mission.schema_version == 1
+                    and (
+                        decision.requested_mode != AuthorizationMode.REVIEW_REQUIRED
+                        or decision.effective_mode != AuthorizationMode.REVIEW_REQUIRED
+                        or decision.finalization_mode
+                        != FinalizationMode.REVIEW_REQUIRED
+                    )
+                )
+                or (
+                    mission.schema_version == 2
+                    and (
+                        decision.requested_mode != mission.requested_authorization_mode
+                        or (
+                            decision.finalization_mode
+                            == FinalizationMode.AUTO_FINALIZE_ISOLATED
+                            and mission.requested_finalization_mode
+                            != FinalizationMode.AUTO_FINALIZE_ISOLATED
+                        )
+                    )
+                )
             ):
                 raise TransitionError("plan policy decision bindings are invalid")
             if decision.plan_revision in policy_decisions:
@@ -135,6 +157,10 @@ def reduce_events(
             policy_decisions[decision.plan_revision] = decision
         elif event.event_type == MissionEventType.PLAN_APPROVED:
             decision = policy_decisions.get(active_revision)
+            if (
+                mission.schema_version == 2 or policy_schema_version >= 2
+            ) and decision is None:
+                raise TransitionError("plan approval lacks its policy decision")
             if decision is not None:
                 if (
                     event.payload.get("plan_revision") != decision.plan_revision
@@ -143,16 +169,19 @@ def reduce_events(
                     or event.payload.get("policy_decision_sha256")
                     != decision.decision_sha256
                 ):
-                    raise TransitionError("plan approval does not bind its policy decision")
+                    raise TransitionError(
+                        "plan approval does not bind its policy decision"
+                    )
                 policy_grant = (
                     event.truth_kind == TruthKind.POLICY_AUTHORITATIVE
                     and event.authority == MissionAuthority.POLICY_ENGINE
                 )
                 if policy_grant != (
-                    decision.effective_mode
-                    == AuthorizationMode.POLICY_PRE_AUTHORIZED
+                    decision.effective_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
                 ):
-                    raise TransitionError("plan approval authority disagrees with policy")
+                    raise TransitionError(
+                        "plan approval authority disagrees with policy"
+                    )
             status = transition_mission(status, MissionStatus.RUNNING)
         elif event.event_type == MissionEventType.PLAN_REJECTED:
             status = transition_mission(status, MissionStatus.REJECTED)
@@ -178,8 +207,7 @@ def reduce_events(
             )
             if claims_automatic and (
                 decision is None
-                or decision.finalization_mode
-                != FinalizationMode.AUTO_FINALIZE_ISOLATED
+                or decision.finalization_mode != FinalizationMode.AUTO_FINALIZE_ISOLATED
                 or event.payload.get("policy_decision_sha256")
                 != decision.decision_sha256
                 or event.truth_kind != TruthKind.POLICY_AUTHORITATIVE
@@ -237,21 +265,21 @@ def reduce_events(
         task_states=states,
         attempt_counts=attempts,
         requested_mode=(
-            AuthorizationMode.REVIEW_REQUIRED
+            mission.requested_authorization_mode
             if decision is None
             else decision.requested_mode
         ),
         effective_mode=(
             AuthorizationMode.REVIEW_REQUIRED
+            if decision is None and mission.schema_version == policy_schema_version == 1
+            else None
             if decision is None
             else decision.effective_mode
         ),
         finalization_mode=(
-            FinalizationMode.REVIEW_REQUIRED
+            mission.requested_finalization_mode
             if decision is None
             else decision.finalization_mode
         ),
-        policy_decision_sha256=(
-            None if decision is None else decision.decision_sha256
-        ),
+        policy_decision_sha256=(None if decision is None else decision.decision_sha256),
     )

@@ -163,6 +163,10 @@ class MissionCliError(RuntimeError):
     pass
 
 
+class _PersistedBundleMissing(MissionCliError):
+    pass
+
+
 def _positive(value: str) -> float:
     try:
         number = float(value)
@@ -1196,14 +1200,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _git_root(value: Path) -> tuple[Path, str]:
-    executable = shutil.which("git")
+def _git_environment() -> dict[str, str]:
+    return {
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LC_ALL": "C",
+        "PATH": os.defpath,
+    }
+
+
+def _git_executable() -> str:
+    executable = shutil.which("git", path=os.defpath)
     if executable is None:
         raise MissionCliError("Git is unavailable")
+    return executable
+
+
+def _git_root(value: Path) -> tuple[Path, str]:
+    executable = _git_executable()
     try:
         root = subprocess.run(
             (executable, "rev-parse", "--show-toplevel"),
             cwd=value.resolve(strict=True),
+            env=_git_environment(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1217,6 +1237,7 @@ def _git_root(value: Path) -> tuple[Path, str]:
         head = subprocess.run(
             (executable, "rev-parse", "--verify", "HEAD"),
             cwd=repository,
+            env=_git_environment(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1330,12 +1351,12 @@ def _load_project_policy(repo: Path) -> tuple[Path, str, ProjectPolicy]:
     ):
         raise MissionCliError("project policy belongs to another repository")
     if head != policy.base_sha:
-        executable = shutil.which("git")
-        assert executable is not None
+        executable = _git_executable()
         try:
             ancestor = subprocess.run(
                 (executable, "merge-base", "--is-ancestor", policy.base_sha, head),
                 cwd=root,
+                env=_git_environment(),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -1353,6 +1374,7 @@ def _load_project_policy(repo: Path) -> tuple[Path, str, ProjectPolicy]:
                     "--",
                 ),
                 cwd=root,
+                env=_git_environment(),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -1707,7 +1729,9 @@ def _plan_show_value(mission_id: str) -> dict[str, object]:
                 view.mission.requested_authorization_mode.value
             ),
             "effective_authorization_mode": (
-                view.mission.effective_authorization_mode.value
+                None
+                if view.mission.effective_authorization_mode is None
+                else view.mission.effective_authorization_mode.value
             ),
             "finalization_mode": view.mission.finalization_mode.value,
             "policy_decision_sha256": view.mission.policy_decision_sha256,
@@ -2012,8 +2036,10 @@ def _persisted_bundle_path(bundle_id: str) -> Path:
             candidate = _bundle_directory(runtime, create=False) / f"{bundle_id}.json"
             if candidate.exists() or candidate.is_symlink():
                 matches.append(candidate)
+    if not matches:
+        raise _PersistedBundleMissing("locally persisted bundle ID is missing")
     if len(matches) != 1:
-        raise MissionCliError("locally persisted bundle ID is missing or ambiguous")
+        raise MissionCliError("locally persisted bundle ID is ambiguous")
     return matches[0]
 
 
@@ -2077,12 +2103,31 @@ def _prepare_pending_bundle(mission_id: str):
         raise MissionCliError("prepared final result bundle is unavailable")
     directory = _bundle_directory(runtime, create=True)
     persisted = directory / f"{bundle.bundle_id}.json"
-    if persisted.exists() or persisted.is_symlink():
-        existing, existing_bundle = _read_bundle(persisted)
-        if existing != raw or existing_bundle.bundle_id != bundle.bundle_id:
-            raise MissionCliError("persisted bundle ID has different canonical bytes")
-    else:
-        _atomic_create(persisted, raw)
+    if not persisted.exists() and not persisted.is_symlink():
+        try:
+            _atomic_create(persisted, raw)
+        except MissionCliError:
+            if not persisted.exists() and not persisted.is_symlink():
+                raise
+    existing, existing_bundle = _read_bundle(persisted)
+    if existing != raw or existing_bundle.bundle_id != bundle.bundle_id:
+        raise MissionCliError("persisted bundle ID has different canonical bytes")
+    try:
+        descriptor = os.open(persisted, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        directory_descriptor = os.open(
+            directory,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    except OSError as error:
+        raise MissionCliError("persisted bundle could not be made durable") from error
     return raw, bundle, runtime
 
 
@@ -2153,6 +2198,11 @@ def _next_legal_actions(value: dict[str, object]) -> list[str]:
             f"graphene mission capsule export {mission_id} --output DIR",
         ]
     if status == "proposed":
+        if mission.get("effective_authorization_mode", "review_required") is None:
+            return [
+                f"graphene mission status {mission_id}",
+                f"graphene mission watch {mission_id} --follow",
+            ]
         revision = mission["plan_revision"]
         return [
             f"graphene plan show {mission_id} --detail",
@@ -2261,7 +2311,12 @@ def _render_status(value: dict[str, object]) -> str:
     ]
     lines.extend(f"BLOCKED {item}" for item in blockers or ["none"])
     needs = value.get("needs_you")
-    if isinstance(needs, dict):
+    if (
+        mission["status"] == "proposed"
+        and mission.get("effective_authorization_mode", "review_required") is None
+    ):
+        decision = "nothing — policy evaluation pending"
+    elif isinstance(needs, dict):
         decision = needs.get("reason")
     elif approved != mission["plan_revision"]:
         # A mission waiting on plan approval is waiting on a person, whatever
@@ -2386,7 +2441,9 @@ def _render_plan_table(value: dict[str, object]) -> str:
     lines.append("Critical path: " + " → ".join(path))
     frontier = value.get("ready_frontier") or []
     approval = (
-        f"Needs approval: plan v{revision}"
+        "Policy evaluation pending"
+        if value.get("effective_authorization_mode") is None
+        else f"Needs approval: plan v{revision}"
         if approved != revision
         else f"Approved: plan v{revision}"
     )
@@ -2478,7 +2535,9 @@ def _render_plan_detail(value: dict[str, object]) -> str:
         lines.append(_render_node_contract(task, value))
         lines.append("")
     lines.append(
-        f"Human gate: this plan cannot dispatch until revision {value['plan_revision']} "
+        "Policy evaluation pending: no operator decision is legal yet."
+        if value.get("effective_authorization_mode") is None
+        else f"Human gate: this plan cannot dispatch until revision {value['plan_revision']} "
         f"is approved on {_short(value['plan_sha256'])}."
         if value.get("approved_revision") != value["plan_revision"]
         else f"Approved: revision {value['plan_revision']} on "
@@ -3400,6 +3459,9 @@ def _gemini_proposal(
         policy_decision.effective_mode == AuthorizationMode.REVIEW_REQUIRED
     )
     mission = Mission(
+        schema_version=2,
+        requested_authorization_mode=requested_mode,
+        requested_finalization_mode=requested_finalization,
         mission_id=mission_id,
         policy_id=policy.policy_id,
         policy_revision=policy.revision,
@@ -3477,8 +3539,11 @@ def _ensure_gemini_policy_decision(
 ):
     """Close the create/authorize crash window for detached starts."""
 
-    if not hasattr(args, "authorization_mode"):
+    mission_schema_version = getattr(snapshot.mission, "schema_version", 1)
+    policy_schema_version = getattr(policy, "schema_version", 1)
+    if mission_schema_version == policy_schema_version == 1:
         return snapshot
+    del args
     events = _mission_events(
         store, snapshot.mission.mission_id, snapshot.head.event_count
     )
@@ -3487,14 +3552,22 @@ def _ensure_gemini_policy_decision(
     except ValueError as error:
         raise MissionCliError("committed policy decision is invalid") from error
     try:
+        requested_mode = (
+            snapshot.mission.requested_authorization_mode
+            if mission_schema_version == 2
+            else AuthorizationMode.REVIEW_REQUIRED
+        )
+        requested_finalization = (
+            snapshot.mission.requested_finalization_mode
+            if mission_schema_version == 2
+            else FinalizationMode.REVIEW_REQUIRED
+        )
         decision = evaluate_plan_policy(
             policy,
             snapshot.plan,
             goal_request_id=command_id,
-            requested_mode=AuthorizationMode(args.authorization_mode),
-            requested_finalization_mode=FinalizationMode(
-                getattr(args, "finalization_mode", FinalizationMode.REVIEW_REQUIRED)
-            ),
+            requested_mode=requested_mode,
+            requested_finalization_mode=requested_finalization,
         )
     except ValueError as error:
         raise MissionCliError("mission authorization request is invalid") from error
@@ -3543,7 +3616,22 @@ def _existing_gemini_proposal_value(store, snapshot) -> dict[str, object]:
         "plan_revision": snapshot.plan.revision,
         "review_required": review_required,
         **(
-            {}
+            (
+                {}
+                if getattr(snapshot.mission, "schema_version", 1)
+                == getattr(snapshot.policy, "schema_version", 1)
+                == 1
+                else {
+                    "requested_authorization_mode": (
+                        snapshot.mission.requested_authorization_mode.value
+                    ),
+                    "effective_authorization_mode": None,
+                    "finalization_mode": (
+                        snapshot.mission.requested_finalization_mode.value
+                    ),
+                    "policy_decision_sha256": None,
+                }
+            )
             if decision is None
             else {
                 "requested_authorization_mode": decision.requested_mode.value,
@@ -3674,12 +3762,11 @@ def _approve_scripted_start(
 
 def _git_read(repository: Path, *arguments: str) -> bytes:
     """Run one read-only Git command in ``repository`` and return its stdout."""
-    executable = shutil.which("git")
-    if executable is None:
-        raise MissionCliError("Git is unavailable")
+    executable = _git_executable()
     try:
         result = subprocess.run(
             (executable, "-C", str(repository), *arguments),
+            env=_git_environment(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -3856,6 +3943,8 @@ def _gemini_source(mission_id: str, snapshot) -> tuple[Path, ProjectPolicy, int]
 def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) -> Path:
     repository = runtime / "repository"
     staging = runtime / ".repository.graphene-adk-staging"
+    executable = _git_executable()
+    environment = _git_environment()
     if staging.exists() or staging.is_symlink():
         metadata = staging.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
@@ -3864,7 +3953,7 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
     if not repository.exists():
         result = subprocess.run(
             (
-                "git",
+                executable,
                 "clone",
                 "--no-local",
                 "--no-checkout",
@@ -3872,13 +3961,7 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
                 str(source),
                 str(staging),
             ),
-            env={
-                "GIT_CONFIG_GLOBAL": os.devnull,
-                "GIT_CONFIG_NOSYSTEM": "1",
-                "GIT_TERMINAL_PROMPT": "0",
-                "LC_ALL": "C",
-                "PATH": os.defpath,
-            },
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -3889,15 +3972,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
             shutil.rmtree(staging, ignore_errors=True)
             raise MissionCliError("Graphene-owned Gemini result clone failed")
         checkout = subprocess.run(
-            ("git", "checkout", "--detach", "--quiet", base_sha),
+            (executable, "checkout", "--detach", "--quiet", base_sha),
             cwd=staging,
-            env={
-                "GIT_CONFIG_GLOBAL": os.devnull,
-                "GIT_CONFIG_NOSYSTEM": "1",
-                "GIT_TERMINAL_PROMPT": "0",
-                "LC_ALL": "C",
-                "PATH": os.defpath,
-            },
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -3908,8 +3985,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
             shutil.rmtree(staging, ignore_errors=True)
             raise MissionCliError("Gemini result base is unavailable")
         remotes = subprocess.run(
-            ("git", "remote"),
+            (executable, "remote"),
             cwd=staging,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -3922,8 +4000,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
             raise MissionCliError("Gemini result repository remote audit failed")
         for remote in remotes.stdout.splitlines():
             removed = subprocess.run(
-                ("git", "remote", "remove", remote),
+                (executable, "remote", "remove", remote),
                 cwd=staging,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -3934,8 +4013,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
                 shutil.rmtree(staging, ignore_errors=True)
                 raise MissionCliError("Gemini result repository remote removal failed")
         audit = subprocess.run(
-            ("git", "remote"),
+            (executable, "remote"),
             cwd=staging,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -3949,8 +4029,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
     if repository.is_symlink() or not repository.is_dir():
         raise MissionCliError("Graphene-owned Gemini result repository is unsafe")
     remote_audit = subprocess.run(
-        ("git", "remote"),
+        (executable, "remote"),
         cwd=repository,
+        env=environment,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -3962,8 +4043,9 @@ def _ensure_owned_result_repository(source: Path, runtime: Path, base_sha: str) 
         raise MissionCliError("Graphene-owned Gemini result repository has a remote")
     try:
         actual = subprocess.run(
-            ("git", "rev-parse", "--verify", "HEAD"),
+            (executable, "rev-parse", "--verify", "HEAD"),
             cwd=repository,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -4073,8 +4155,7 @@ def _prior_failure(store, evidence, mission_id: str, dispatch) -> PriorFailure |
                 "The prior model child was interrupted "
                 + (
                     "after provider transport entry. "
-                    if interruption.provider_dispatch_state
-                    == "transport_acknowledged"
+                    if interruption.provider_dispatch_state == "transport_acknowledged"
                     else "before provider transport entry could be confirmed. "
                 )
                 + "Repository effect is known absent; provider and billing outcomes "
@@ -4142,15 +4223,9 @@ async def _policy_check(
     def run() -> CheckOutcome:
         try:
             result = subprocess.run(
-                template.argv,
+                (_git_executable(), *template.argv[1:]),
                 cwd=workspace,
-                env={
-                    "GIT_CONFIG_GLOBAL": os.devnull,
-                    "GIT_CONFIG_NOSYSTEM": "1",
-                    "GIT_TERMINAL_PROMPT": "0",
-                    "LC_ALL": "C",
-                    "PATH": os.defpath,
-                },
+                env=_git_environment(),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -4755,11 +4830,11 @@ def _execute_adk_mission_owned(
     source, policy, requested_workers = _gemini_source(mission_id, snapshot)
     runtime = _mission_runtime(mission_id)
     if should_cancel is None:
+
         def durable_cancellation_requested() -> bool:
             return (
                 _read_cancellation_request(runtime) is not None
-                or store.snapshot(mission_id).mission.status
-                == MissionStatus.CANCELLED
+                or store.snapshot(mission_id).mission.status == MissionStatus.CANCELLED
             )
 
         should_cancel = durable_cancellation_requested
@@ -5780,6 +5855,12 @@ def _database_command(args: argparse.Namespace) -> dict[str, object]:
 def _result_decision(args: argparse.Namespace, *, approved: bool) -> dict[str, object]:
     action = "approve-result" if approved else "reject-result"
     truth_kind = _truth_kind(args)
+    try:
+        raw, bundle = _read_bundle(_persisted_bundle_path(args.bundle_id))
+    except _PersistedBundleMissing:
+        raw, bundle, _runtime = _prepare_pending_bundle(args.mission_id)
+    if bundle.bundle_id != args.bundle_id:
+        raise MissionCliError("bundle decision does not match the current bundle")
     (
         store,
         snapshot,
@@ -5789,7 +5870,6 @@ def _result_decision(args: argparse.Namespace, *, approved: bool) -> dict[str, o
         candidate,
         _verification,
     ) = _scripted_bindings(args.mission_id)
-    raw, bundle = _read_bundle(_persisted_bundle_path(args.bundle_id))
     if bundle.mission_id != args.mission_id:
         raise MissionCliError("bundle belongs to another mission")
     if bundle.candidate_reference.content_sha256 != candidate.sha256:
@@ -5859,16 +5939,20 @@ def _read_cancellation_request(runtime: Path) -> dict[str, object] | None:
     try:
         content = path.read_bytes()
         raw = json.loads(content)
-        if set(raw) != {
-            "command_id",
-            "expected_head",
-            "mission_id",
-            "operator_label",
-            "rationale",
-            "recorded_at",
-            "schema_version",
-            "truth_kind",
-        } or canonical_json_bytes(raw) != content:
+        if (
+            set(raw)
+            != {
+                "command_id",
+                "expected_head",
+                "mission_id",
+                "operator_label",
+                "rationale",
+                "recorded_at",
+                "schema_version",
+                "truth_kind",
+            }
+            or canonical_json_bytes(raw) != content
+        ):
             raise ValueError
         if raw["schema_version"] != 1:
             raise ValueError
@@ -5880,9 +5964,7 @@ def _read_cancellation_request(runtime: Path) -> dict[str, object] | None:
         if not all(
             isinstance(raw[key], str)
             for key in ("command_id", "mission_id", "operator_label")
-        ) or not (
-            raw["rationale"] is None or isinstance(raw["rationale"], str)
-        ):
+        ) or not (raw["rationale"] is None or isinstance(raw["rationale"], str)):
             raise ValueError
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
         raise ProcessControlError("cancellation request journal is invalid") from error
@@ -5923,9 +6005,7 @@ def _ensure_cancellation_request(
         )
     except MissionCliError as error:
         existing = _read_cancellation_request(runtime)
-        if existing is None or any(
-            existing[key] != value[key] for key in stable_keys
-        ):
+        if existing is None or any(existing[key] != value[key] for key in stable_keys):
             raise ProcessControlError(
                 "cancellation request could not be journaled"
             ) from error
@@ -5948,9 +6028,7 @@ def _durably_confirm_cancellation_request(runtime: Path) -> None:
     descriptor = -1
     directory = -1
     try:
-        descriptor = os.open(
-            path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        )
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         opened = os.fstat(descriptor)
         visible = path.lstat()
         if (
@@ -5962,9 +6040,7 @@ def _durably_confirm_cancellation_request(runtime: Path) -> None:
         os.fsync(descriptor)
         directory = os.open(
             runtime,
-            os.O_RDONLY
-            | getattr(os, "O_DIRECTORY", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
         )
         os.fsync(directory)
     except OSError as error:
@@ -5999,11 +6075,7 @@ def _cancel_with_owned_cleanup(
         if pending is not None
         else (expected_head or snapshot.head)
     )
-    if (
-        expected_head is not None
-        and expected_head != snapshot.head
-        and pending is None
-    ):
+    if expected_head is not None and expected_head != snapshot.head and pending is None:
         from ..orchestration.sqlite_mission_store import MissionConflict
 
         raise MissionConflict("mission head changed")
@@ -6034,9 +6106,7 @@ def _cancel_with_owned_cleanup(
     prepared = registry.prepare_cancel(active)
     durable = registry.records_for_mission(mission_id)
     targets = tuple(
-        {
-            (item.attempt_id, item.pid): item for item in (*prepared, *durable)
-        }.values()
+        {(item.attempt_id, item.pid): item for item in (*prepared, *durable)}.values()
     )
     terminated = {
         (owned.attempt_id, owned.pid): registry.terminate_owned(
@@ -6087,17 +6157,13 @@ def _cancel_with_owned_cleanup(
         *docker_reconciled,
         *receipt_attempts,
     }
-    evidence = (
-        _mission_evidence(store, mission_id) if reconciliation_attempts else None
-    )
+    evidence = _mission_evidence(store, mission_id) if reconciliation_attempts else None
     attempts = {item.attempt_id: item for item in snapshot.attempts}
     dispatches = {item.attempt_id: item for item in active}
     runtime_roots: dict[str, Path] = {}
     runs = {}
     targets_by_attempt = {
-        attempt_id: tuple(
-            item for item in targets if item.attempt_id == attempt_id
-        )
+        attempt_id: tuple(item for item in targets if item.attempt_id == attempt_id)
         for attempt_id in reconciliation_attempts
     }
     for attempt_id, owned_targets in sorted(targets_by_attempt.items()):
@@ -6119,9 +6185,7 @@ def _cancel_with_owned_cleanup(
             if (
                 (root / "worker-receipts" / receipt_name).is_file()
                 or (
-                    root
-                    / "worker-workspaces"
-                    / sha256_hex(attempt_id.encode())
+                    root / "worker-workspaces" / sha256_hex(attempt_id.encode())
                 ).is_dir()
             )
         )
@@ -6137,9 +6201,7 @@ def _cancel_with_owned_cleanup(
             AttemptState.FAILED,
             AttemptState.CANCELLED,
         }:
-            dispatch, _ = WorkerRuntime.dispatch_from_snapshot(
-                snapshot, attempt_id
-            )
+            dispatch, _ = WorkerRuntime.dispatch_from_snapshot(snapshot, attempt_id)
         if dispatch is not None:
             assert evidence is not None
             barrier = registry.confirm_model_dispatch_barrier(dispatch)
@@ -6272,9 +6334,7 @@ def _reconcile_cancellation_request(mission_id: str) -> bool:
             expected_head=MissionHead.model_validate(request["expected_head"]),
             operator_label=str(request["operator_label"]),
             rationale=(
-                None
-                if request["rationale"] is None
-                else str(request["rationale"])
+                None if request["rationale"] is None else str(request["rationale"])
             ),
             truth_kind=TruthKind(str(request["truth_kind"])),
             recorded_at=datetime.fromisoformat(str(request["recorded_at"])),
@@ -6416,9 +6476,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             raise MissionCliError(
                 "mission state changed but an owned worker could not be signalled"
             ) from error
-        if action == "resume" and _supervisor_backed(
-            _mission_runtime(args.mission_id)
-        ):
+        if action == "resume" and _supervisor_backed(_mission_runtime(args.mission_id)):
             _ensure_detached_supervisor(args.mission_id)
     elif action == "retry":
         truth_kind = _truth_kind(args)
@@ -6502,9 +6560,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
             runtime = _mission_runtime(args.mission_id)
             if _supervisor_backed(runtime):
                 _ensure_detached_supervisor(args.mission_id)
-                return _scripted_proposal_value(
-                    store, args.mission_id, replayed=True
-                )
+                return _scripted_proposal_value(store, args.mission_id, replayed=True)
             run = execute_scripted_mission(
                 store=store,
                 runtime=runtime,

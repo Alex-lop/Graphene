@@ -244,9 +244,7 @@ def test_reviewed_final_bundle_decision_round_trips_over_stdio(
         "finalization_mode": "review_required",
     }
 
-    async def poll(
-        session: ClientSession, mission_id: str, expected: set[str]
-    ) -> dict:
+    async def poll(session: ClientSession, mission_id: str, expected: set[str]) -> dict:
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             result = await session.call_tool(
@@ -317,6 +315,13 @@ def test_reviewed_final_bundle_decision_round_trips_over_stdio(
                 )
                 assert refused.is_error is True
                 assert "does not match the current bundle" in refused.content[0].text
+
+                mirrors = tuple(
+                    (state / "missions").glob(f"*/final-bundles/{bundle_id}.json")
+                )
+                assert len(mirrors) <= 1
+                for mirror in mirrors:
+                    mirror.unlink()
 
                 result = await session.call_tool(
                     tool_name,

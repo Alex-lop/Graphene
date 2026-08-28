@@ -263,6 +263,59 @@ def test_one_shot_status_projection_closes_its_store(
     assert closed == [True]
 
 
+def test_undecided_schema_v2_policy_exposes_no_operator_approval(
+    private_state: Path,
+) -> None:
+    from graphene.cli import mission as mission_cli
+    from graphene.orchestration.mission_models import (
+        AuthorizationMode,
+        FinalizationMode,
+        Mission,
+    )
+    from tests.unit.orchestration.test_store import NOW, _mission, _plan, _policy
+
+    store = mission_cli._store()
+    mission = Mission.model_validate(
+        {
+            **_mission().model_dump(mode="json"),
+            "schema_version": 2,
+            "requested_authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+            "requested_finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+        }
+    )
+    store.create_mission(
+        _policy(),
+        mission,
+        _plan(),
+        "command-mcp-undecided-policy",
+        recorded_at=NOW,
+    )
+    store.close()
+
+    async def scenario() -> None:
+        async with Client(create_mission_mcp_server()) as client:
+            result = await client.call_tool(
+                "mission_status", {"mission_id": mission.mission_id}
+            )
+            assert result.is_error is False, result.content
+            status = result.structured_content
+            assert status["effective_authorization_mode"] is None
+            assert status["needs_you"] is None
+            assert status["next_actions"] == [
+                f"graphene mission status {mission.mission_id}",
+                f"graphene mission watch {mission.mission_id} --follow",
+            ]
+
+            refused = await client.call_tool(
+                "approve_plan",
+                {"mission_id": mission.mission_id, "digest": status["digest"]},
+            )
+            assert refused.is_error is True
+            assert "MissionConflict" in refused.content[0].text
+
+    asyncio.run(scenario())
+
+
 def test_fresh_session_reports_durable_preplan_request_truth(
     private_state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -297,9 +350,7 @@ def test_fresh_session_reports_durable_preplan_request_truth(
             assert accepted["finalization_mode"] == "review_required"
 
         async with Client(create_mission_mcp_server()) as fresh:
-            status = await fresh.call_tool(
-                "mission_status", {"mission_id": mission_id}
-            )
+            status = await fresh.call_tool("mission_status", {"mission_id": mission_id})
             assert status.is_error is False, status.content
             value = status.structured_content
             assert value["goal"] == request["goal"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import stat
 import subprocess
 import threading
@@ -844,8 +845,17 @@ def test_runner_does_not_commit_when_exact_failure_reconciliation_fails(
             dispatch, require_live=False, model=True
         ) == owned
     finally:
-        registry.terminate_owned(owned)
-        process.wait(timeout=2)
+        reaper = threading.Thread(target=process.wait)
+        reaper.start()
+        try:
+            sent = registry.terminate_owned(owned)
+        finally:
+            reaper.join(timeout=0.1)
+            if reaper.is_alive():
+                registry.signal_prepared(owned, signal.SIGKILL)
+            reaper.join(timeout=5)
+        assert not reaper.is_alive()
+        assert sent == signal.SIGTERM
 
 
 @pytest.mark.parametrize("known_failure", [False, True])
@@ -1153,7 +1163,9 @@ def test_runner_deadline_cleans_private_workspaces_without_touching_source(
     assert _git(repository, "status", "--porcelain=v1") == ""
     snapshot = store.snapshot("runner-mission")
     assert {item.state for item in snapshot.attempts} == {AttemptState.FAILED}
-    assert {item.result_code for item in snapshot.attempts} == {"runtime_unavailable"}
+    assert {item.result_code for item in snapshot.attempts} == {
+        "runtime_unavailable"
+    }
     assert all(item.released_at is not None for item in snapshot.leases)
 
 
@@ -1235,9 +1247,7 @@ def test_unexpected_runner_failure_is_committed_and_releases_leases(
 
     snapshot = store.snapshot("runner-mission")
     assert {item.state for item in snapshot.attempts} == {AttemptState.FAILED}
-    assert {item.result_code for item in snapshot.attempts} == {
-        "runtime_unavailable"
-    }
+    assert {item.result_code for item in snapshot.attempts} == {"runtime_unavailable"}
     assert all(item.released_at is not None for item in snapshot.leases)
 
 
@@ -1296,6 +1306,14 @@ def test_restart_reconciles_expired_owned_model_before_higher_fence(
         process_path.write_text(json.dumps(record), encoding="utf-8")
         process_path.replace(legacy_path)
     current[0] = first.expires_at + timedelta(microseconds=1)
+    reaped = threading.Event()
+
+    def reap() -> None:
+        process.wait()
+        reaped.set()
+
+    reaper = threading.Thread(target=reap)
+    reaper.start()
 
     class RetryObserved(Exception):
         def __init__(self, dispatch):
@@ -1304,7 +1322,7 @@ def test_restart_reconciles_expired_owned_model_before_higher_fence(
     original_tick = scheduler.tick
 
     def tick_after_recovery(mission_id, worker_ids, **kwargs):
-        assert process.poll() is not None
+        assert reaped.wait(timeout=2)
         raise RetryObserved(original_tick(mission_id, worker_ids, **kwargs)[0])
 
     monkeypatch.setattr(scheduler, "tick", tick_after_recovery)
@@ -1320,9 +1338,12 @@ def test_restart_reconciles_expired_owned_model_before_higher_fence(
         with pytest.raises(RetryObserved) as observed:
             asyncio.run(runner.run_async("runner-mission"))
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
+        reaper.join(timeout=0.1)
+        if reaper.is_alive():
+            registry.signal_prepared(owned, signal.SIGKILL)
+        reaper.join(timeout=5)
+    assert not reaper.is_alive()
+    assert process.returncode == -signal.SIGTERM
 
     second = observed.value.dispatch
     assert second.attempt_id != first.attempt_id

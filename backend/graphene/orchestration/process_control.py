@@ -66,7 +66,9 @@ def _process_birth_token(pid: int) -> str:
             boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
             stat_fields = Path(f"/proc/{pid}/stat").read_text().rstrip()
         except OSError as error:
-            raise ProcessControlError("owned process birth token is unavailable") from error
+            raise ProcessControlError(
+                "owned process birth token is unavailable"
+            ) from error
         end = stat_fields.rfind(")")
         fields = stat_fields[end + 2 :].split() if end >= 0 else []
         start_ticks = fields[19] if len(fields) > 19 else ""
@@ -77,6 +79,7 @@ def _process_birth_token(pid: int) -> str:
             raise ProcessControlError("owned process birth token is invalid")
         return f"linux:{boot_id.lower()}:{start_ticks}"
     if sys.platform == "darwin":
+
         class ProcBSDInfo(ctypes.Structure):
             _fields_ = [
                 ("pbi_flags", ctypes.c_uint32),
@@ -115,11 +118,11 @@ def _process_birth_token(pid: int) -> str:
             )
             proc_pidinfo.restype = ctypes.c_int
             info = ProcBSDInfo()
-            size = proc_pidinfo(
-                pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info)
-            )
+            size = proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
         except (AttributeError, OSError) as error:
-            raise ProcessControlError("owned process birth token is unavailable") from error
+            raise ProcessControlError(
+                "owned process birth token is unavailable"
+            ) from error
         if (
             size != ctypes.sizeof(info)
             or info.pbi_pid != pid
@@ -134,38 +137,56 @@ def _process_birth_token(pid: int) -> str:
 def _process_identity(pid: int) -> tuple[int, str, str, str]:
     if pid <= 1 or not Path("/bin/ps").is_file():
         raise ProcessControlError("owned process identity is unavailable")
-    try:
-        result = subprocess.run(
-            (
-                "/bin/ps",
-                "-o",
-                "pgid=",
-                "-o",
-                "lstart=",
-                "-o",
-                "state=",
-                "-o",
-                "comm=",
-                "-p",
-                str(pid),
-            ),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ProcessControlError("owned process identity is unavailable") from error
-    fields = result.stdout.strip().split(None, 7)
-    if result.returncode or len(fields) != 8:
-        raise ProcessControlError("owned process is no longer running")
-    try:
-        pgid = int(fields[0])
-    except ValueError as error:
-        raise ProcessControlError("owned process identity is invalid") from error
-    return pgid, " ".join(fields[1:6]), fields[6], fields[7]
+
+    def read_ps() -> tuple[int, str, str, str]:
+        try:
+            result = subprocess.run(
+                (
+                    "/bin/ps",
+                    "-o",
+                    "pgid=",
+                    "-o",
+                    "lstart=",
+                    "-o",
+                    "state=",
+                    "-o",
+                    "comm=",
+                    "-p",
+                    str(pid),
+                ),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ProcessControlError(
+                "owned process identity is unavailable"
+            ) from error
+        fields = result.stdout.strip().split(None, 7)
+        if result.returncode or len(fields) != 8:
+            raise ProcessControlError("owned process is no longer running")
+        try:
+            pgid = int(fields[0])
+        except ValueError as error:
+            raise ProcessControlError("owned process identity is invalid") from error
+        return pgid, " ".join(fields[1:6]), fields[6], fields[7]
+
+    pgid, started_at, state, executable = read_ps()
+    if sys.platform.startswith("linux"):
+        try:
+            executable = os.readlink(f"/proc/{pid}/exe")
+        except OSError as error:
+            if not state.startswith("Z"):
+                current = read_ps()
+                if current[:2] != (pgid, started_at) or not current[2].startswith("Z"):
+                    raise ProcessControlError(
+                        "owned process identity is unavailable"
+                    ) from error
+                pgid, started_at, state, executable = current
+    return pgid, started_at, state, executable
 
 
 def _owned_process_identity(pid: int) -> tuple[int, str, str, str, str]:
@@ -177,8 +198,6 @@ def _owned_process_identity(pid: int) -> tuple[int, str, str, str, str]:
             return (*identity, "")
         raise
     identity = _process_identity(pid)
-    if identity[2].startswith("Z"):
-        return (*identity, birth_before)
     birth_after = _process_birth_token(pid)
     if birth_before != birth_after:
         raise ProcessControlError("owned process identity changed while reading")
@@ -232,6 +251,19 @@ def _expected_images(executable: str) -> frozenset[str] | None:
 def _matches_expected_image(executable: str, observed: str) -> bool:
     images = _expected_images(executable)
     return images is None or observed in images or os.path.realpath(observed) in images
+
+
+def _matches_live_image(pid: int, executable: str, observed: str) -> bool:
+    if _matches_expected_image(executable, observed):
+        return True
+    if not sys.platform.startswith("linux") or "/" in executable:
+        return False
+    if executable == "sh":
+        return True
+    try:
+        return Path(f"/proc/{pid}/comm").read_text().strip() == executable
+    except OSError as error:
+        raise ProcessControlError("owned process identity is unavailable") from error
 
 
 class OwnedProcessRegistry:
@@ -343,7 +375,11 @@ class OwnedProcessRegistry:
             or any(character in observed_executable for character in "\0\n\r")
         ):
             raise ProcessControlError("owned process identity is invalid")
-        if observed_executable.startswith("(") and observed_executable.endswith(")"):
+        if (
+            _expected_images(executable) is None
+            or observed_executable.startswith("(")
+            and observed_executable.endswith(")")
+        ):
             observed_executable = executable
         if not _matches_expected_image(executable, observed_executable):
             raise ProcessControlError("owned process executable does not match child")
@@ -406,6 +442,8 @@ class OwnedProcessRegistry:
             raise ProcessControlError("owned process is no longer running")
 
     def remove(self, dispatch: Dispatch) -> None:
+        if (self.directory.parent / "cancellation-request.json").exists():
+            return
         path = self._path(dispatch.attempt_id)
         try:
             owned = self._read(path)
@@ -611,11 +649,13 @@ class OwnedProcessRegistry:
             or not barrier.executable
         ):
             raise ProcessControlError("model dispatch barrier is invalid")
-        if (
-            (barrier.mission_id, barrier.task_id, barrier.attempt_id)
-            != (dispatch.mission_id, dispatch.task_id, dispatch.attempt_id)
-            or (barrier.lease_id, barrier.fencing_token)
-            != (dispatch.lease_id, dispatch.fencing_token)
+        if (barrier.mission_id, barrier.task_id, barrier.attempt_id) != (
+            dispatch.mission_id,
+            dispatch.task_id,
+            dispatch.attempt_id,
+        ) or (barrier.lease_id, barrier.fencing_token) != (
+            dispatch.lease_id,
+            dispatch.fencing_token,
         ):
             raise ProcessControlError("model dispatch barrier identity changed")
         return barrier
@@ -688,16 +728,13 @@ class OwnedProcessRegistry:
         descriptor = -1
         directory = -1
         try:
-            descriptor = os.open(
-                path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-            )
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             opened = os.fstat(descriptor)
             visible = path.lstat()
             if (
                 not stat.S_ISREG(opened.st_mode)
                 or stat.S_IMODE(opened.st_mode) & 0o077
-                or (opened.st_dev, opened.st_ino)
-                != (visible.st_dev, visible.st_ino)
+                or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
             ):
                 raise OSError("model dispatch barrier identity changed")
             os.fsync(descriptor)
@@ -846,15 +883,38 @@ class OwnedProcessRegistry:
                 return False
             raise
         pgid, started_at, state, executable, birth_token = current
+        if not birth_token:
+            raise ProcessControlError("owned process birth token is unavailable")
         if state.startswith("Z"):
             return False
         if birth_token != owned.birth_token:
             return False
         if (pgid, started_at) != (owned.pgid, owned.started_at):
             raise ProcessControlError("owned process identity changed")
-        if not _matches_expected_image(owned.executable, executable):
+        if not _matches_live_image(owned.pid, owned.executable, executable):
             raise ProcessControlError("owned process identity changed")
         return True
+
+    def _wait_for_exit_after_signal(
+        self, owned: OwnedProcess, *, timeout: float, poll_seconds: float = 0.05
+    ) -> bool:
+        """Wait for a previously signalled identity to become verifiably absent."""
+
+        deadline = time.monotonic() + timeout
+        while True:
+            unavailable = None
+            try:
+                if not self._live_identity(owned):
+                    return True
+            except ProcessControlError as error:
+                if str(error) != "owned process birth token is unavailable":
+                    raise
+                unavailable = error
+            if time.monotonic() >= deadline:
+                if unavailable is not None:
+                    raise unavailable
+                return False
+            time.sleep(poll_seconds)
 
     def has_record(self, attempt_id: str, *, model: bool | None = None) -> bool:
         """True while a durable record for ``attempt_id`` exists on disk."""
@@ -862,8 +922,7 @@ class OwnedProcessRegistry:
         if model is not None:
             return self._path(attempt_id, model=model).exists()
         return any(
-            self._path(attempt_id, model=model).exists()
-            for model in (False, True)
+            self._path(attempt_id, model=model).exists() for model in (False, True)
         )
 
     def live_legacy_record_blocks_model_spawn(self, dispatch: Dispatch) -> bool:
@@ -935,9 +994,7 @@ class OwnedProcessRegistry:
         prepared = []
         for dispatch in dispatches:
             for model in (False, True):
-                owned = self.owned_process(
-                    dispatch, require_live=False, model=model
-                )
+                owned = self.owned_process(dispatch, require_live=False, model=model)
                 if owned is not None:
                     prepared.append(owned)
         return tuple(prepared)
@@ -1002,17 +1059,18 @@ class OwnedProcessRegistry:
                 if not self._live_identity(owned):
                     return None
             raise
-        sent = signal.SIGTERM if self.signal_prepared(owned, signal.SIGTERM) else None
-        deadline = time.monotonic() + timeout
-        while self._live_identity(owned) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if self._live_identity(owned):
+        signalled = self.signal_prepared(owned, signal.SIGTERM)
+        sent = signal.SIGTERM if signalled else None
+        exited = not signalled or self._wait_for_exit_after_signal(
+            owned, timeout=timeout
+        )
+        if not exited:
             if self.signal_prepared(owned, signal.SIGKILL):
                 sent = signal.SIGKILL
-            deadline = time.monotonic() + timeout
-            while self._live_identity(owned) and time.monotonic() < deadline:
-                time.sleep(0.05)
-        if self._live_identity(owned):
+                exited = self._wait_for_exit_after_signal(owned, timeout=timeout)
+            else:
+                exited = True
+        if not exited:
             raise ProcessControlError("owned process could not be terminated")
         descendant_signal = self.terminate_descendants(owned, timeout=timeout)
         if descendant_signal is not None:
@@ -1042,10 +1100,12 @@ class OwnedProcessRegistry:
     def terminate_descendants(
         self, owned: OwnedProcess, *, timeout: float = 2
     ) -> int | None:
-        """Empty an owned group after its exact recorded leader was reaped."""
+        """Verify an owned group is empty without signalling an unanchored PGID."""
 
         if timeout <= 0 or self._read(self._owned_path(owned)) != owned:
-            raise ProcessControlError("owned process record changed before group cleanup")
+            raise ProcessControlError(
+                "owned process record changed before group cleanup"
+            )
         if self._live_identity(owned):
             raise ProcessControlError("owned process leader is still running")
         try:
@@ -1061,8 +1121,13 @@ class OwnedProcessRegistry:
                 ) from None
         if current is not None:
             pgid, started_at, state, _executable, birth_token = current
+            if owned.birth_token is not None and not birth_token:
+                raise ProcessControlError(
+                    "owned process leader birth token is unavailable"
+                )
             weak_exact_zombie = (
-                not birth_token
+                owned.birth_token is None
+                and not birth_token
                 and state.startswith("Z")
                 and (pgid, started_at) == (owned.pgid, owned.started_at)
             )
@@ -1070,9 +1135,9 @@ class OwnedProcessRegistry:
                 # The numeric PID was reused after this leader exited. Its
                 # birth mismatch proves the old process group was empty.
                 return None
-            if (
-                not state.startswith("Z")
-                or (pgid, started_at) != (owned.pgid, owned.started_at)
+            if not state.startswith("Z") or (pgid, started_at) != (
+                owned.pgid,
+                owned.started_at,
             ):
                 raise ProcessControlError("owned process leader identity changed")
 
@@ -1125,24 +1190,17 @@ class OwnedProcessRegistry:
 
         if not group_exists():
             return None
+        if current is None:
+            raise ProcessControlError(
+                "owned process leader cannot anchor descendant cleanup"
+            )
         if owned.birth_token is None:
             raise ProcessControlError(
                 "legacy descendant group cannot be safely signalled"
             )
-        self._kill_group(owned, signal.SIGTERM)
-        sent = signal.SIGTERM
-        deadline = time.monotonic() + timeout
-        while group_exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if group_exists():
-            self._kill_group(owned, signal.SIGKILL)
-            sent = signal.SIGKILL
-            deadline = time.monotonic() + timeout
-            while group_exists() and time.monotonic() < deadline:
-                time.sleep(0.05)
-        if group_exists():
-            raise ProcessControlError("owned descendant group could not be terminated")
-        return sent
+        raise ProcessControlError(
+            "owned descendant group cannot be safely signalled after leader exit"
+        )
 
     def recover_model_dispatch(
         self, dispatch: Dispatch, *, timeout: float = 2
@@ -1254,9 +1312,7 @@ class ControlledProcessRunner:
             try:
                 self.registry.terminate_descendants(owned)
             except ProcessControlError:
-                if self.registry.has_record(
-                    self.dispatch.attempt_id, model=False
-                ):
+                if self.registry.has_record(self.dispatch.attempt_id, model=False):
                     raise
             descendants_reconciled = True
 
@@ -1268,9 +1324,7 @@ class ControlledProcessRunner:
                     "/bin/sh",
                 )
                 registered = True
-                owned = self.registry.owned_process(
-                    self.dispatch, require_live=False
-                )
+                owned = self.registry.owned_process(self.dispatch, require_live=False)
                 if owned is None:
                     raise ProcessControlError(
                         "owned process record is unavailable after launch"
@@ -1319,11 +1373,7 @@ class ControlledProcessRunner:
                 ):
                     self.registry.signal(self.dispatch, signal.SIGSTOP)
                     stopped = True
-                elif (
-                    termination is None
-                    and state == MissionStatus.RUNNING
-                    and stopped
-                ):
+                elif termination is None and state == MissionStatus.RUNNING and stopped:
                     self.registry.signal(self.dispatch, signal.SIGCONT)
                     stopped = False
                 if termination is None and elapsed >= timeout:
@@ -1357,10 +1407,7 @@ class ControlledProcessRunner:
                         kept = chunk[:remaining]
                         captured[stream].extend(kept)
                         captured_bytes += len(kept)
-                    if (
-                        captured_bytes > self.max_output_bytes
-                        and termination is None
-                    ):
+                    if captured_bytes > self.max_output_bytes and termination is None:
                         self.registry.signal(self.dispatch, signal.SIGKILL)
                         termination = "output_limit"
                         drain_deadline = time.monotonic() + 2
@@ -1370,10 +1417,7 @@ class ControlledProcessRunner:
                         reconcile_descendants()
                     if drain_deadline is None:
                         drain_deadline = time.monotonic() + 2
-                if (
-                    drain_deadline is not None
-                    and time.monotonic() >= drain_deadline
-                ):
+                if drain_deadline is not None and time.monotonic() >= drain_deadline:
                     for key in tuple(selector.get_map().values()):
                         selector.unregister(key.fileobj)
                         key.fileobj.close()
@@ -1389,9 +1433,7 @@ class ControlledProcessRunner:
                 if termination == "cancelled":
                     raise ProcessCancelled("scripted attempt was cancelled")
                 if termination == "timeout":
-                    raise subprocess.TimeoutExpired(
-                        arguments, timeout, stdout, stderr
-                    )
+                    raise subprocess.TimeoutExpired(arguments, timeout, stdout, stderr)
                 if self.status() == MissionStatus.CANCELLED:
                     raise ProcessCancelled("scripted attempt was cancelled")
                 return subprocess.CompletedProcess(

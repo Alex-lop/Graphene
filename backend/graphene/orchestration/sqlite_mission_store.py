@@ -55,7 +55,12 @@ from .mission_models import (
     plan_policy_decision,
     stage_payload,
 )
-from .mission_reducer import TransitionError, reduce_events, transition_mission, transition_task
+from .mission_reducer import (
+    TransitionError,
+    reduce_events,
+    transition_mission,
+    transition_task,
+)
 from .sqlite_lifecycle import serialized_connection, serialized_sqlite
 from .validation import evaluate_plan_policy, require_valid_plan
 
@@ -1198,6 +1203,13 @@ class SQLiteMissionStore:
             != mission.success_criteria
         ):
             raise MissionConflict("mission, plan, and policy bindings do not match")
+        if (
+            max(mission.schema_version, policy.schema_version) >= 2
+            and mission.creation_source == "replay"
+        ):
+            raise MissionConflict(
+                "schema-2 replay cannot approve without a persisted policy decision"
+            )
         plan_sha = canonical_json_sha256(plan.model_dump(mode="json"))
         request = {
             "mission": mission.model_dump(mode="json"),
@@ -1448,7 +1460,7 @@ class SQLiteMissionStore:
             revision,
             mission.base_sha,
             canonical_json_sha256(plan.model_dump(mode="json")),
-            policy.schema_version,
+            max(policy.schema_version, mission.schema_version),
             decision,
         )
 
@@ -1464,13 +1476,12 @@ class SQLiteMissionStore:
             )
         )
         try:
-            decision = plan_policy_decision(
-                events, int(mission_row["plan_revision"])
-            )
+            decision = plan_policy_decision(events, int(mission_row["plan_revision"]))
         except ValueError as error:
             raise MissionStoreError("committed policy decision is invalid") from error
         if decision is None:
             return None
+        mission = self._initial_mission(connection, mission_row)
         policy, _policy_sha256 = self._policy(
             connection,
             mission_row["policy_id"],
@@ -1482,8 +1493,16 @@ class SQLiteMissionStore:
             policy,
             plan,
             goal_request_id=decision.goal_request_id,
-            requested_mode=decision.requested_mode,
-            requested_finalization_mode=decision.finalization_mode,
+            requested_mode=(
+                mission.requested_authorization_mode
+                if mission.schema_version == 2
+                else AuthorizationMode.REVIEW_REQUIRED
+            ),
+            requested_finalization_mode=(
+                mission.requested_finalization_mode
+                if mission.schema_version == 2
+                else FinalizationMode.REVIEW_REQUIRED
+            ),
         )
         if decision != expected:
             raise MissionStoreError("committed policy decision bindings are invalid")
@@ -1531,15 +1550,22 @@ class SQLiteMissionStore:
                     mission_row["policy_revision"],
                     mission_id=mission_id,
                 )
-                plan = self._plan(
-                    connection, mission_id, mission_row["plan_revision"]
-                )
+                plan = self._plan(connection, mission_id, mission_row["plan_revision"])
+                mission = self._initial_mission(connection, mission_row)
                 expected = evaluate_plan_policy(
                     policy,
                     plan,
                     goal_request_id=decision.goal_request_id,
-                    requested_mode=decision.requested_mode,
-                    requested_finalization_mode=decision.finalization_mode,
+                    requested_mode=(
+                        mission.requested_authorization_mode
+                        if mission.schema_version == 2
+                        else AuthorizationMode.REVIEW_REQUIRED
+                    ),
+                    requested_finalization_mode=(
+                        mission.requested_finalization_mode
+                        if mission.schema_version == 2
+                        else FinalizationMode.REVIEW_REQUIRED
+                    ),
                 )
                 if decision != expected:
                     raise MissionConflict("policy decision does not match current plan")
@@ -1605,14 +1631,14 @@ class SQLiteMissionStore:
             revision,
             base_sha,
             plan_sha256,
-            policy_schema_version,
+            authority_schema_version,
             decision,
         ) = self._approval_binding(mission_id)
         if revision != expected_revision:
             raise MissionConflict("plan revision changed")
         if expected_plan_sha256 is not None and expected_plan_sha256 != plan_sha256:
             raise MissionConflict("plan digest does not match the revision approved")
-        if policy_schema_version >= 2 and decision is None:
+        if authority_schema_version >= 2 and decision is None:
             raise MissionConflict("plan policy decision is not committed")
         if decision is not None and (
             decision.effective_mode != AuthorizationMode.REVIEW_REQUIRED
@@ -1938,6 +1964,12 @@ class SQLiteMissionStore:
         mission_row = self._mission_row(connection, mission_id)
         self._verify_state_record(connection, mission_id)
         initial_mission = self._initial_mission(connection, mission_row)
+        policy, _policy_sha256 = self._policy(
+            connection,
+            mission_row["policy_id"],
+            mission_row["policy_revision"],
+            mission_id=mission_id,
+        )
         revision = mission_row["plan_revision"]
         plan = self._plan(connection, mission_id, revision)
         task_rows = connection.execute(
@@ -1968,7 +2000,11 @@ class SQLiteMissionStore:
         )
         try:
             reduced = reduce_events(
-                initial_mission, plan.tasks, events, plan_revision=revision
+                initial_mission,
+                plan.tasks,
+                events,
+                plan_revision=revision,
+                policy_schema_version=policy.schema_version,
             )
         except TransitionError as error:
             raise MissionStoreError(
@@ -2116,9 +2152,7 @@ class SQLiteMissionStore:
         self, connection: sqlite3.Connection, mission_id: str, revision: int
     ) -> None:
         if self._approved_plan_sha256(connection, mission_id, revision) is None:
-            raise MissionConflict(
-                f"plan revision {revision} has not been approved"
-            )
+            raise MissionConflict(f"plan revision {revision} has not been approved")
 
     @staticmethod
     def _has_unresolved_mission_gate(
@@ -4179,15 +4213,17 @@ class SQLiteMissionStore:
                     )
                     task = self._task_from_row(connection, task_row)
                     if reconciled is not None:
-                        if isinstance(
-                            reconciled.evidence_link, LegacyEvidenceLink
-                        ) and task.evidence_adapter != "legacy_auth_v2":
+                        if (
+                            isinstance(reconciled.evidence_link, LegacyEvidenceLink)
+                            and task.evidence_adapter != "legacy_auth_v2"
+                        ):
                             raise MissionConflict(
                                 "legacy v2 evidence is not valid for this task"
                             )
-                        if isinstance(
-                            reconciled.evidence_link, GenericEvidenceLink
-                        ) and task.evidence_adapter != "generic_v1":
+                        if (
+                            isinstance(reconciled.evidence_link, GenericEvidenceLink)
+                            and task.evidence_adapter != "generic_v1"
+                        ):
                             raise MissionConflict(
                                 "generic evidence is not valid for this task"
                             )
@@ -4641,10 +4677,13 @@ class SQLiteMissionStore:
                 pre_dispatch = status == MissionStatus.PROPOSED
                 if not pre_dispatch and status != MissionStatus.PAUSED:
                     raise MissionConflict("mission must be paused before plan revision")
-                if not allow_after_dispatch and connection.execute(
-                    "SELECT 1 FROM mission_attempts WHERE mission_id = ? LIMIT 1",
-                    (mission_id,),
-                ).fetchone():
+                if (
+                    not allow_after_dispatch
+                    and connection.execute(
+                        "SELECT 1 FROM mission_attempts WHERE mission_id = ? LIMIT 1",
+                        (mission_id,),
+                    ).fetchone()
+                ):
                     raise MissionConflict("plan cannot be revised after dispatch")
                 if (
                     plan.mission_id != mission_id
@@ -5119,15 +5158,12 @@ class SQLiteMissionStore:
         recorded_at = self._time(recorded_at)
         self._validate_operator_truth(truth_kind, operator_label, rationale)
         attempt_ids = tuple(item[0] for item in cancelled_attempt_results)
-        if (
-            attempt_ids != tuple(sorted(set(attempt_ids)))
-            or any(
-                not isinstance(item, AttemptResult)
-                or item.succeeded
-                or item.publications
-                or item.artifact_envelopes
-                for _, item in cancelled_attempt_results
-            )
+        if attempt_ids != tuple(sorted(set(attempt_ids))) or any(
+            not isinstance(item, AttemptResult)
+            or item.succeeded
+            or item.publications
+            or item.artifact_envelopes
+            for _, item in cancelled_attempt_results
         ):
             raise ValueError("cancelled attempt results are invalid")
         request = {
@@ -7000,7 +7036,11 @@ class SQLiteMissionStore:
                 )
             )
         reduced = reduce_events(
-            initial_mission, plan.tasks, events, plan_revision=revision
+            initial_mission,
+            plan.tasks,
+            events,
+            plan_revision=revision,
+            policy_schema_version=policy.schema_version,
         )
         projects = tuple(
             event

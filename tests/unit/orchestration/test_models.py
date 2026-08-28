@@ -108,6 +108,32 @@ def test_models_are_strict_frozen_and_canonical() -> None:
         task.state = TaskState.DONE
 
 
+def test_mission_execution_modes_are_schema_two_only_and_legacy_bytes_stay_stable() -> (
+    None
+):
+    legacy = _mission()
+    legacy_value = legacy.model_dump(mode="json")
+    explicit_legacy = Mission.model_validate(
+        {
+            **legacy_value,
+            "requested_authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+            "requested_finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+        }
+    )
+
+    assert explicit_legacy.model_dump(mode="json") == legacy_value
+    assert "requested_authorization_mode" not in legacy_value
+    assert "requested_finalization_mode" not in legacy_value
+    with pytest.raises(ValidationError, match="must declare its requested modes"):
+        _mission(schema_version=2)
+    with pytest.raises(ValidationError, match="requested pre-authorization"):
+        _mission(
+            schema_version=2,
+            requested_authorization_mode=AuthorizationMode.REVIEW_REQUIRED,
+            requested_finalization_mode=FinalizationMode.AUTO_FINALIZE_ISOLATED,
+        )
+
+
 def test_resource_budget_defaults_and_orders_managed_rss_thresholds() -> None:
     budget = ResourceBudget(
         max_worker_seconds=60,

@@ -32,6 +32,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -571,15 +572,15 @@ def test_sigkilled_second_worker_retries_under_higher_fence_without_touching_sib
     assert stderr.getvalue() == ""
     stdout, stderr = io.StringIO(), io.StringIO()
     assert (
-            lab.main(
-                [
-                    "kill",
-                    mission_id,
-                    "--attempt",
-                    retry.attempt_id,
-                    "--actor-label",
-                    "recovery-test",
-                ],
+        lab.main(
+            [
+                "kill",
+                mission_id,
+                "--attempt",
+                retry.attempt_id,
+                "--actor-label",
+                "recovery-test",
+            ],
             stdout=stdout,
             stderr=stderr,
         )
@@ -677,6 +678,7 @@ def test_failure_lab_kills_only_a_barrier_bound_model_child(tmp_path: Path) -> N
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    reaper: threading.Thread | None = None
     try:
         registry.record(dispatch, process, "/bin/sleep")
         with pytest.raises(
@@ -704,6 +706,8 @@ def test_failure_lab_kills_only_a_barrier_bound_model_child(tmp_path: Path) -> N
                 actor_label="not valid/actor",
             )
         assert process.poll() is None
+        reaper = threading.Thread(target=process.wait)
+        reaper.start()
         result = lab.kill_model_attempt(
             registry,
             dispatch.mission_id,
@@ -711,7 +715,8 @@ def test_failure_lab_kills_only_a_barrier_bound_model_child(tmp_path: Path) -> N
             dispatch,
             actor_label="recovery-test",
         )
-        process.wait(timeout=5)
+        reaper.join(timeout=5)
+        assert not reaper.is_alive()
 
         assert process.returncode == -int(signal.SIGKILL)
         assert result["stage"] == "model"
@@ -752,7 +757,10 @@ def test_failure_lab_kills_only_a_barrier_bound_model_child(tmp_path: Path) -> N
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
+        if reaper is None:
             process.wait(timeout=5)
+        else:
+            reaper.join(timeout=5)
         registry.remove(dispatch)
 
 
@@ -788,7 +796,8 @@ def test_failure_lab_keeps_the_request_when_no_observed_outcome_is_returned(
         original_signal = registry.signal_prepared
 
         def stop_after_request(  # noqa: ANN202
-            actual_owned, actual_signal  # noqa: ANN001
+            actual_owned,
+            actual_signal,  # noqa: ANN001
         ):
             if mode == "signal_refused":
                 raise ProcessControlError("owned process identity changed")
@@ -820,7 +829,9 @@ def test_failure_lab_keeps_the_request_when_no_observed_outcome_is_returned(
             json.loads(path.read_bytes())
             for path in (tmp_path / "runtime" / "failure-injections").iterdir()
         ]
-        requests = [item for item in records if item["record_type"] == "signal_requested"]
+        requests = [
+            item for item in records if item["record_type"] == "signal_requested"
+        ]
         assert len(requests) == 1
         request = requests[0]
         assert request["actor_label"] == "audit-test"

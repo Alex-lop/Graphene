@@ -659,6 +659,10 @@ class FirestoreMissionStore:
             != mission_contract.success_criteria
         ):
             raise MissionConflict("mission, plan, and policy bindings do not match")
+        if max(mission_contract.schema_version, policy.schema_version) >= 2:
+            raise DomainTransitionUnavailable(
+                "cloud schema-2 policy decision persistence is unavailable"
+            )
         mission_id = mission_contract.mission_id
         request_sha256 = canonical_json_sha256(
             {
@@ -881,6 +885,12 @@ class FirestoreMissionStore:
             snapshot = self._load_state_root(
                 mission, pointer.root_sha256, current, transaction=transaction
             )
+            if max(
+                snapshot.mission.schema_version, snapshot.policy.schema_version
+            ) >= 2:
+                raise DomainTransitionUnavailable(
+                    "cloud schema-2 policy decision persistence is unavailable"
+                )
             if (
                 snapshot.mission.status
                 != (
