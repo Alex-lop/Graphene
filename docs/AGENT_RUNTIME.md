@@ -69,10 +69,11 @@ returned live model identity.
 
 ## Selective recovery
 
-Accepted publications are durable inputs. A failed sibling does not erase
-them. A retryable interrupted attempt releases its lease, publishes nothing,
-and may be claimed again under a higher fencing token with a bounded diagnostic
-covering prior attempt, fence, result code, and receipt digest. Stale fences
+Within one fixed plan revision, accepted publications are durable inputs. A
+failed sibling does not erase them. An explicit new plan revision invalidates
+old-plan publications. A retryable interrupted attempt releases its lease,
+publishes nothing, and may be claimed again under a higher fencing token with a
+bounded diagnostic covering prior attempt, fence, result code, and receipt digest. Stale fences
 are rejected. Assembly consumes accepted publications only; verification binds
 the exact candidate and pending final bundle.
 

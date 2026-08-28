@@ -25,7 +25,7 @@ watcher/edit/review demo; its resources are packaged, but it is not the hero.
 
 | Area | Implemented | Current proof boundary |
 |---|---|---|
-| MCP | Seven tools with `start_goal` first; stable request id; explicit criteria; live `gemini-adk` default; deprecated `plan_goal`; status/summary/why reads | Official Python MCP client, fixtures, and source checkout. Codex not driven |
+| MCP | Nine tools with `start_goal` first; stable request id; explicit criteria; live `gemini-adk` default; deprecated `plan_goal`; plan/result decisions and status/summary/why reads | Official Python MCP client, fixtures, and source checkout. Codex not driven |
 | Durable supervisor | Private digest-bound request/state/process records; detached session leader; prompt acceptance; exact-owner liveness; higher-generation restart; stdio-independent recovery; isolated two-attempt planner journal | Credential-free scripted and planner-crash process tests. No current live provider mission |
 | Authorization | Project policy schema v2; requested `policy_pre_authorized`; recomputed plan-policy decision; atomic policy-authoritative approval; `review_required` fallback | Store/validation tests. No live Orders decision capture |
 | Finalization | Policy-bound `auto_finalize_isolated`; exact pending bundle; isolated result ref; `completed` supervisor state | Fixture/store paths. No credentialed current-tree completion |

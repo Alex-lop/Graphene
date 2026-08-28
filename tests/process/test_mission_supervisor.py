@@ -28,6 +28,7 @@ from graphene.hashing import canonical_json_bytes
 from graphene.hashing import canonical_json_sha256
 from graphene.orchestration.adk_planner import (
     LIVE_GEMINI_MODEL,
+    PlanningRequest,
     PlanProposal,
     PlanProposalReceipt,
     ProviderUsage,
@@ -37,8 +38,11 @@ from graphene.orchestration.mission_models import Plan
 from graphene.orchestration.planner_child import (
     PlannerAttemptOutcome,
     PlannerChildFrame,
+    PlannerChildRequest,
     PlannerChildProcess,
+    PlannerGo,
     planner_frame_bytes,
+    read_planner_frames,
 )
 from graphene.orchestration.scripted import load_scenario, scripted_supported
 from graphene.orchestration.supervisor import (
@@ -270,14 +274,40 @@ def test_spawn_releases_child_only_after_durable_process_record(
     monkeypatch.setattr(
         process_control,
         "_owned_process_identity",
-        lambda _pid: (424242, "started", "S", sys.executable, "birth-token"),
+        lambda _pid: (424242, "started", "S", "(python3.13)", "birth-token"),
     )
 
     record = supervisor_module._spawn(runtime, request, 1)
 
     assert record.pid == 424242
+    assert record.executable == os.path.abspath(sys.executable)
     assert process_recorded is True
     assert pipe.closed is True
+
+
+def test_supervisor_stays_live_after_framework_launcher_exec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    framework = tmp_path / "Python.framework/Versions/3.13"
+    launcher = str(framework / "bin/python3.13")
+    app_binary = str(framework / "Resources/Python.app/Contents/MacOS/Python")
+    record = SupervisorProcess(
+        mission_id="mission-framework-exec",
+        request_sha256="a" * 64,
+        generation=1,
+        pid=424242,
+        pgid=424242,
+        started_at="started",
+        birth_token="birth-token",
+        executable=launcher,
+    )
+    monkeypatch.setattr(
+        process_control,
+        "_owned_process_identity",
+        lambda _pid: (424242, "started", "S", app_binary, "birth-token"),
+    )
+
+    assert _live(record)
 
 
 def test_supervisor_waits_for_parent_eof_before_reading_process_record(
@@ -702,6 +732,121 @@ def test_planner_failure_gets_one_durable_bounded_replacement(
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=2)
+
+
+def test_isolated_planner_child_reaches_provider_dispatch_and_result(
+    isolated_runtime,
+) -> None:
+    state_root, repository = isolated_runtime
+    from graphene.cli.mission import _load_project_policy
+
+    _root, _head, policy = _load_project_policy(repository)
+    scenario = load_scenario()
+    mission_id = "mission-planner-process-regression"
+    plan = Plan(
+        mission_id=mission_id,
+        revision=1,
+        criteria=scenario.criteria,
+        tasks=scenario.tasks,
+        max_concurrency=2,
+    )
+    invocation_id = "planner-process-invocation"
+    proposal = PlanProposal(
+        plan=plan,
+        receipt=PlanProposalReceipt(
+            driver="gemini_live",
+            client_version="1.0",
+            mission_id=mission_id,
+            revision=1,
+            plan_sha256=canonical_json_sha256(plan.model_dump(mode="json")),
+            planning_input_sha256="c" * 64,
+            planning_context_sha256="d" * 64,
+            requested_model=LIVE_GEMINI_MODEL,
+            returned_model=LIVE_GEMINI_MODEL,
+            session_id="planner-process-session",
+            invocation_id=invocation_id,
+            credential_mode="gemini_api",
+            input_bytes=1,
+            output_bytes=1,
+            provider_usage=ProviderUsage(source="unavailable"),
+        ),
+    )
+    child_request = PlannerChildRequest(
+        mission_id=mission_id,
+        supervisor_request_sha256="a" * 64,
+        attempt_number=1,
+        policy=policy,
+        planning=PlanningRequest(
+            mission_id=mission_id,
+            revision=1,
+            goal=scenario.goal,
+            success_criteria=scenario.success_criteria,
+            repository_manifest=("README.md",),
+        ),
+    )
+    directory = state_root.parent / "isolated-planner-child"
+    directory.mkdir(mode=0o700)
+    go_path = directory / "planner-go.json"
+    go_path.write_bytes(
+        canonical_json_bytes(
+            PlannerGo(
+                child_request_sha256=child_request.request_sha256()
+            ).model_dump(mode="json")
+        )
+        + b"\n"
+    )
+    go_path.chmod(0o600)
+
+    harness = f"""
+import graphene.orchestration.planner_child as planner_child
+from graphene.orchestration.adk_planner import PlanProposal
+
+proposal = PlanProposal.model_validate_json({proposal.model_dump_json()!r})
+
+def fake_preflight(_environ, *, adc_probe):
+    assert adc_probe is None
+    return "gemini_api"
+
+class FakePlanner:
+    def __init__(self, *, dispatch_callback, **_values):
+        self.dispatch_callback = dispatch_callback
+
+    async def propose(self, _policy, _planning):
+        self.dispatch_callback({invocation_id!r})
+        return proposal
+
+planner_child._credential_preflight = fake_preflight
+planner_child.StampedGemini = lambda **_values: object()
+planner_child.AdkPlanner = FakePlanner
+raise SystemExit(planner_child.main())
+"""
+    process = subprocess.Popen(
+        (sys.executable, "-I", "-c", harness),
+        cwd=directory,
+        env={"PYTHONUNBUFFERED": "1"},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        _stdout, stderr = process.communicate(
+            input=planner_frame_bytes(child_request), timeout=10
+        )
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=2)
+        pytest.fail("isolated planner child did not exit")
+
+    assert process.returncode == 0, stderr.decode(errors="replace")
+    frames = read_planner_frames(directory / "planner.frames")
+    assert tuple(frame.type for frame in frames) == (
+        "ready",
+        "provider_dispatched",
+        "result",
+    )
+    assert frames[1].sdk_invocation_id == invocation_id
+    assert frames[2].proposal == proposal
 
 
 def test_dead_planner_child_rereads_a_durable_terminal_frame(
