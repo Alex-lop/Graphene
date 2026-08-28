@@ -518,6 +518,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     assert resumed["mission_id"] == mission_id
     assert store.snapshot(mission_id).mission.status == MissionStatus.RUNNING
     assert tuple(registry.directory.iterdir())
+    assert thread.is_alive(), errors
     cancelled = _cli(
         environment,
         "mission",
@@ -529,6 +530,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
         "command_cancel_active_control",
     )
     thread.join(timeout=3)
+    assert not thread.is_alive(), errors
     cancelled_again = _cli(
         environment,
         "mission",

@@ -1418,6 +1418,12 @@ class ControlledProcessRunner:
             except OSError:
                 pass
 
+        def signal_owned_group(requested: int) -> None:
+            try:
+                os.killpg(process.pid, requested)
+            except ProcessLookupError:
+                pass
+
         def reconcile_descendants() -> None:
             nonlocal descendants_reconciled
             assert owned is not None
@@ -1443,11 +1449,6 @@ class ControlledProcessRunner:
                     )
             except Exception:
                 close_stdin()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=2)
                 raise
             try:
                 process.stdin.write(b"graphene-go\n")
@@ -1559,20 +1560,28 @@ class ControlledProcessRunner:
             cleanup_error: Exception | None = None
             try:
                 if process.poll() is None:
-                    if stopped:
-                        self.registry.signal(self.dispatch, signal.SIGCONT)
-                    self.registry.signal(self.dispatch, signal.SIGTERM)
                     try:
-                        process.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        self.registry.signal(self.dispatch, signal.SIGKILL)
-                        process.wait(timeout=2)
+                        if stopped:
+                            signal_owned_group(signal.SIGCONT)
+                        signal_owned_group(signal.SIGTERM)
+                    finally:
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            try:
+                                signal_owned_group(signal.SIGKILL)
+                            finally:
+                                process.wait(timeout=2)
+            except Exception as error:
+                cleanup_error = error
+            try:
                 if registered and not descendants_reconciled:
                     reconcile_descendants()
                 if registered:
                     self.registry.remove(self.dispatch)
             except Exception as error:
-                cleanup_error = error
+                if cleanup_error is None:
+                    cleanup_error = error
             selector.close()
             if process.stdout is not None:
                 process.stdout.close()

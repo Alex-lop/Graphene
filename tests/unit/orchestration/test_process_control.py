@@ -1461,7 +1461,7 @@ def test_registry_retry_confirms_gone_and_rejects_public_records(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
 def test_status_failure_terminates_reaps_and_removes_owned_process(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
@@ -1473,6 +1473,11 @@ def test_status_failure_terminates_reaps_and_removes_owned_process(
         )
         observed_pid.append(record["pid"])
         raise RuntimeError("status unavailable")
+
+    def failed_registry_signal(*_args, **_kwargs) -> bool:
+        raise ProcessControlError("owned process birth token is unavailable")
+
+    monkeypatch.setattr(registry, "signal", failed_registry_signal)
 
     runner = ControlledProcessRunner(registry, dispatch, failed_status)
     with pytest.raises(RuntimeError, match="status unavailable"):
