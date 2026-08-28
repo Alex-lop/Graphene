@@ -287,32 +287,35 @@ def test_cancel_terminates_only_registered_group_and_cleans_record(
 @pytest.mark.skipif(
     sys.platform != "darwin", reason="macOS zombies temporarily lose libproc identity"
 )
-def test_default_termination_window_allows_delayed_owner_reap(tmp_path: Path) -> None:
+def test_external_termination_accepts_exact_zombie_before_owner_reap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _, dispatch = _dispatch(tmp_path)
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
     owned = registry.record_pid(dispatch, process.pid, "/bin/sleep")
+    original_waitpid = os.waitpid
 
-    def delayed_reap() -> None:
-        time.sleep(2.25)
-        process.wait(timeout=2)
+    def waitpid(pid: int, options: int):
+        if pid == owned.pid:
+            pytest.fail("only the Popen owner may reap the terminated child")
+        return original_waitpid(pid, options)
 
-    reaper = threading.Thread(target=delayed_reap)
-    reaper.start()
+    monkeypatch.setattr(os, "waitpid", waitpid)
     try:
-        assert registry.terminate_owned(owned, retain_record=True) == signal.SIGTERM
-        reaper.join(timeout=3)
-        assert not reaper.is_alive()
+        assert (
+            registry.terminate_owned(owned, timeout=1, retain_record=True)
+            == signal.SIGTERM
+        )
+        assert process.returncode is None
+        monkeypatch.undo()
+        process.wait(timeout=2)
         registry.remove_exact(owned)
     finally:
-        reaper.join(timeout=3)
-        if reaper.is_alive():
-            process.kill()
-            reaper.join(timeout=5)
+        monkeypatch.undo()
         if process.returncode is None:
             process.kill()
-            process.wait(timeout=5)
-        assert not reaper.is_alive()
+            process.wait(timeout=2)
         if registry.has_record(dispatch.attempt_id):
             registry.remove_exact(owned)
 
@@ -320,7 +323,7 @@ def test_default_termination_window_allows_delayed_owner_reap(tmp_path: Path) ->
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
-def test_post_signal_wait_requires_exact_zombie_to_be_reaped(
+def test_post_signal_wait_accepts_exact_zombie_without_reaping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from graphene.orchestration import process_control
@@ -329,31 +332,22 @@ def test_post_signal_wait_requires_exact_zombie_to_be_reaped(
     registry = OwnedProcessRegistry(tmp_path / "runtime")
     process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
     owned = registry.record_pid(dispatch, process.pid, "/bin/sleep")
-    identities = iter(
-        (
-            (
-                owned.pgid,
-                owned.started_at,
-                "Z",
-                owned.executable,
-                owned.birth_token,
-            ),
-            (
-                owned.pgid,
-                owned.started_at,
-                "S",
-                owned.executable,
-                "reused-birth-token",
-            ),
-        )
+    exact_zombie = (
+        owned.pgid,
+        owned.started_at,
+        "Z",
+        owned.executable,
+        owned.birth_token,
     )
     observations: list[int] = []
 
-    def identity(pid: int):
+    def observe_identity(pid: int):
         observations.append(pid)
-        return next(identities)
+        return exact_zombie
 
-    monkeypatch.setattr(process_control, "_owned_process_identity", identity)
+    monkeypatch.setattr(
+        process_control, "_owned_process_identity", observe_identity
+    )
     monkeypatch.setattr(
         os,
         "waitpid",
@@ -363,7 +357,7 @@ def test_post_signal_wait_requires_exact_zombie_to_be_reaped(
         assert registry._wait_for_exit_after_signal(
             owned, timeout=0.1, poll_seconds=0
         )
-        assert observations == [owned.pid, owned.pid]
+        assert observations == [owned.pid]
     finally:
         monkeypatch.undo()
         process.kill()
@@ -726,11 +720,7 @@ def test_recovery_refuses_descendants_after_owned_leader_exit(
     expected = (
         "cannot anchor descendant cleanup"
         if reap_leader
-        else (
-            "birth token is unavailable"
-            if sys.platform == "darwin"
-            else "owned process could not be terminated"
-        )
+        else "cannot be safely signalled after leader exit"
     )
     with pytest.raises(ProcessControlError, match=expected):
         registry.terminate_owned(owned, retain_record=True)
@@ -851,29 +841,40 @@ def test_identity_read_refuses_birth_token_change(
         process_control._owned_process_identity(123)
 
 
-def test_zombie_identity_refuses_birth_token_change(
+def test_zombie_identity_keeps_birth_token_captured_before_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from graphene.orchestration import process_control
 
-    tokens = iter(("birth-before", "birth-reused"))
-    monkeypatch.setattr(
-        process_control, "_process_birth_token", lambda _pid: next(tokens)
-    )
+    birth_reads: list[int] = []
+
+    def birth_token(pid: int) -> str:
+        birth_reads.append(pid)
+        if len(birth_reads) > 1:
+            pytest.fail("zombie identity must not require a second birth-token read")
+        return "birth-before"
+
+    monkeypatch.setattr(process_control, "_process_birth_token", birth_token)
     monkeypatch.setattr(
         process_control,
         "_process_identity",
         lambda _pid: (123, "Thu Aug 27 12:00:00 2026", "Z", "python3"),
     )
 
-    with pytest.raises(ProcessControlError, match="changed while reading"):
-        process_control._owned_process_identity(123)
+    assert process_control._owned_process_identity(123) == (
+        123,
+        "Thu Aug 27 12:00:00 2026",
+        "Z",
+        "python3",
+        "birth-before",
+    )
+    assert birth_reads == [123]
 
 
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
-def test_strong_zombie_without_birth_token_fails_closed(
+def test_strong_zombie_without_birth_token_uses_read_only_group_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from graphene.orchestration import process_control
@@ -895,19 +896,21 @@ def test_strong_zombie_without_birth_token_fails_closed(
             "",
         ),
     )
-    monkeypatch.setattr(
-        os,
-        "waitpid",
-        lambda *_args: pytest.fail("unverified PID must not be reaped"),
-    )
+    original_waitpid = os.waitpid
+
+    def waitpid(pid: int, options: int):
+        if pid == owned.pid:
+            pytest.fail("terminated PID must not be reaped by the canceller")
+        return original_waitpid(pid, options)
+
+    monkeypatch.setattr(os, "waitpid", waitpid)
     monkeypatch.setattr(
         os,
         "killpg",
-        lambda *_args: pytest.fail("unverified PGID must not be signalled"),
+        lambda *_args: pytest.fail("terminated PGID must not be signalled"),
     )
 
-    with pytest.raises(ProcessControlError, match="birth token is unavailable"):
-        registry.terminate_descendants(owned)
+    assert registry.terminate_descendants(owned) is None
     assert registry.has_record(dispatch.attempt_id)
 
     monkeypatch.undo()
@@ -917,7 +920,7 @@ def test_strong_zombie_without_birth_token_fails_closed(
 @pytest.mark.skipif(
     not Path("/bin/ps").is_file(), reason="POSIX process identity required"
 )
-def test_exact_signal_still_refuses_tokenless_zombie_descendant_cleanup(
+def test_exact_signal_accepts_tokenless_zombie_without_resignalling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from graphene.orchestration import process_control
@@ -949,8 +952,10 @@ def test_exact_signal_still_refuses_tokenless_zombie_descendant_cleanup(
     monkeypatch.setattr(
         process_control.subprocess,
         "run",
-        lambda *_args, **_kwargs: pytest.fail(
-            "unverified descendant group must not be inspected"
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=("/bin/ps",),
+            returncode=0,
+            stdout=f"{owned.pid} {owned.pgid} Z\n",
         ),
     )
     monkeypatch.setattr(
@@ -959,8 +964,10 @@ def test_exact_signal_still_refuses_tokenless_zombie_descendant_cleanup(
         lambda *_args: pytest.fail("signalled zombie must not be reaped"),
     )
 
-    with pytest.raises(ProcessControlError, match="birth token is unavailable"):
+    assert (
         registry.terminate_owned(owned, timeout=0.01, retain_record=True)
+        == signal.SIGTERM
+    )
     assert signals == [signal.SIGTERM]
     assert registry.has_record(dispatch.attempt_id)
 
@@ -1220,6 +1227,7 @@ def test_reused_pid_is_not_signalled_and_stale_record_is_removed(
         "graphene.orchestration.process_control._process_birth_token",
         lambda _pid: owned.birth_token + "-reused",
     )
+
     monkeypatch.setattr(
         os, "killpg", lambda pgid, requested: signalled.append((pgid, requested))
     )

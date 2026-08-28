@@ -199,10 +199,23 @@ def _owned_process_identity(pid: int) -> tuple[int, str, str, str, str]:
             return (*identity, "")
         raise
     identity = _process_identity(pid)
+    if identity[2].startswith("Z"):
+        return (*identity, birth_before)
     birth_after = _process_birth_token(pid)
     if birth_before != birth_after:
         raise ProcessControlError("owned process identity changed while reading")
     return (*identity, birth_after)
+
+
+def _is_exact_zombie(
+    owned: OwnedProcess, current: tuple[int, str, str, str, str]
+) -> bool:
+    pgid, started_at, state, _executable, birth_token = current
+    return (
+        state.startswith("Z")
+        and (pgid, started_at) == (owned.pgid, owned.started_at)
+        and (not birth_token or birth_token == owned.birth_token)
+    )
 
 
 # Wrappers that replace their own image with the wrapped command (``exec`` in
@@ -939,10 +952,10 @@ class OwnedProcessRegistry:
                 return False
             raise
         pgid, started_at, state, executable, birth_token = current
+        if _is_exact_zombie(owned, current):
+            return False
         if not birth_token:
             raise ProcessControlError("owned process birth token is unavailable")
-        if state.startswith("Z"):
-            return False
         if birth_token != owned.birth_token:
             return False
         if (pgid, started_at) != (owned.pgid, owned.started_at):
@@ -953,7 +966,7 @@ class OwnedProcessRegistry:
 
     @staticmethod
     def _identity_absent_or_reused(owned: OwnedProcess) -> bool:
-        """True only after the exact recorded PID can no longer be reaped."""
+        """True after the exact process exited or its recorded PID was reused."""
 
         if owned.birth_token is None:
             try:
@@ -968,15 +981,16 @@ class OwnedProcessRegistry:
                 raise ProcessControlError("owned process identity changed")
             return False
         try:
-            pgid, started_at, state, executable, birth_token = (
-                _owned_process_identity(owned.pid)
-            )
+            current = _owned_process_identity(owned.pid)
         except ProcessControlError:
             try:
                 os.kill(owned.pid, 0)
             except ProcessLookupError:
                 return True
             raise
+        pgid, started_at, state, executable, birth_token = current
+        if _is_exact_zombie(owned, current):
+            return True
         if not birth_token:
             raise ProcessControlError("owned process birth token is unavailable")
         if birth_token != owned.birth_token:
@@ -1231,29 +1245,20 @@ class OwnedProcessRegistry:
                 raise ProcessControlError(
                     "owned process leader identity is unavailable"
                 ) from None
+        exact_zombie = False
         if current is not None:
             pgid, started_at, state, _executable, birth_token = current
-            if owned.birth_token is not None and not birth_token:
+            exact_zombie = _is_exact_zombie(owned, current)
+            if not exact_zombie and owned.birth_token is not None and not birth_token:
                 raise ProcessControlError(
                     "owned process leader birth token is unavailable"
                 )
-            weak_exact_zombie = (
-                owned.birth_token is None
-                and not birth_token
-                and state.startswith("Z")
-                and (pgid, started_at) == (owned.pgid, owned.started_at)
-            )
-            if birth_token != owned.birth_token and not weak_exact_zombie:
-                # The numeric PID was reused after this leader exited. Its
-                # birth mismatch proves the old process group was empty.
+            if not exact_zombie and birth_token != owned.birth_token:
+                # A PID cannot be reused while its numeric process group still
+                # exists, so the birth mismatch proves the old group is empty.
                 return None
-            if not state.startswith("Z") or (pgid, started_at) != (
-                owned.pgid,
-                owned.started_at,
-            ):
+            if not exact_zombie:
                 raise ProcessControlError("owned process leader identity changed")
-
-        exact_zombie = current is not None
 
         def group_exists() -> bool:
             if exact_zombie:
