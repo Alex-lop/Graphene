@@ -6235,7 +6235,11 @@ def _cancel_with_owned_cleanup(
         template_id in sandbox_template_ids
         for template_id in getattr(snapshot.policy, "command_template_ids", ())
     )
-    if docker_checks and _mission_check_executor(mission_id) == "docker":
+    if (
+        docker_checks
+        and snapshot.mission.creation_source == "operator"
+        and _mission_check_executor(mission_id) == "docker"
+    ):
         docker = DockerExecutor()
         try:
             for dispatch in active:

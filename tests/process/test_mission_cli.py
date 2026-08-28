@@ -100,35 +100,6 @@ def _cli(environment: dict[str, str], *arguments: str) -> dict[str, object]:
     return json.loads(result.stdout)
 
 
-def _cli_with_traceback(
-    environment: dict[str, str], *arguments: str
-) -> dict[str, object]:
-    program = """\
-import json
-import sys
-from graphene.cli.main import build_parser
-from graphene.cli.mission import _dispatch
-
-args = build_parser().parse_args(["--json", *sys.argv[1:]])
-code, value = _dispatch(args)
-print(json.dumps(value))
-raise SystemExit(code)
-"""
-    result = subprocess.run(
-        (sys.executable, "-c", program, *arguments),
-        cwd=ROOT,
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=90,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
-
-
 def _start(
     environment: dict[str, str],
     repository: Path,
@@ -453,6 +424,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     environment = {
         **os.environ,
         "GRAPHENE_STATE_DIR": str(state),
+        "PATH": os.defpath,
         "PYTHONPATH": str(ROOT / "backend"),
     }
     mission_id = "mission-active-control"
@@ -550,8 +522,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     assert store.snapshot(mission_id).mission.status == MissionStatus.RUNNING
     assert tuple(registry.directory.iterdir())
     assert thread.is_alive(), errors
-    # Keep the chained cleanup error visible if this macOS race regresses.
-    cancelled = _cli_with_traceback(
+    cancelled = _cli(
         environment,
         "mission",
         "cancel",
