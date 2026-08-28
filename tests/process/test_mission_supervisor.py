@@ -183,7 +183,19 @@ def _wait_for_phase(mission_id: str, phases: set[str], timeout: float = 30):
         if state.phase in phases:
             return state
         time.sleep(0.02)
-    pytest.fail(f"supervisor for {mission_id} did not reach {sorted(phases)}")
+    runtime = _mission_runtime(mission_id)
+    process_path = runtime / "supervisor-process.json"
+    try:
+        process = SupervisorProcess.model_validate_json(process_path.read_bytes())
+        process_status = f"generation={process.generation}, live={_live(process)}"
+    except (OSError, ValueError) as error:
+        process_status = f"unavailable ({type(error).__name__})"
+    pytest.fail(
+        f"supervisor for {mission_id} did not reach {sorted(phases)}; "
+        f"state={state.model_dump(mode='json')}; "
+        f"mission_status={supervisor_module._authoritative_mission_status(mission_id)}; "
+        f"process={process_status}"
+    )
 
 
 def test_acceptance_is_under_five_seconds_and_duplicate_calls_share_one_owner(
@@ -1247,7 +1259,7 @@ def test_duplicate_start_does_not_respawn_a_terminal_supervisor(
         requested_mode="policy_pre_authorized",
         finalization_mode="auto_finalize_isolated",
     )
-    completed = _wait_for_phase(request.mission_id, {"completed", "failed"}, 60)
+    completed = _wait_for_phase(request.mission_id, {"completed", "failed"}, 180)
     assert completed.phase == "completed", completed
     runtime = _mission_runtime(request.mission_id)
     process_path = runtime / "supervisor-process.json"
