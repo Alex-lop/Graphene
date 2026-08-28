@@ -28,6 +28,11 @@ from graphene.orchestration.adk_planner import (
     compile_plan_intent,
     criterion_id,
 )
+from graphene.orchestration.cloud_seed import (
+    CloudSeedReceipt,
+    cloud_execution_contract_sha256,
+    projected_cloud_contracts,
+)
 from graphene.orchestration.mission_models import (
     AttemptState,
     AuthorizationMode,
@@ -35,6 +40,7 @@ from graphene.orchestration.mission_models import (
     FinalizationMode,
     Mission,
     MissionEventType,
+    MissionHead,
     MissionStatus,
     ProjectPolicy,
     TaskKind,
@@ -198,7 +204,24 @@ def test_taskmaster_demo_command_selects_live_opt_in_driver() -> None:
         )
 
 
-def test_outbound_executor_connect_parser_requires_two_to_five_workers() -> None:
+def test_outbound_executor_connect_parser_requires_one_worker_and_seed_receipt() -> None:
+    seed = mission_cli.build_parser().parse_args(
+        [
+            "mission",
+            "executor",
+            "seed",
+            "--repo",
+            ".",
+            "--mission",
+            "mission-outbound",
+            "--plan-sha256",
+            "a" * 64,
+            "--audience",
+            "https://coordinator.example",
+            "--output",
+            "seed.json",
+        ]
+    )
     args = mission_cli.build_parser().parse_args(
         [
             "mission",
@@ -208,23 +231,23 @@ def test_outbound_executor_connect_parser_requires_two_to_five_workers() -> None
             ".",
             "--mission",
             "mission-outbound",
+            "--seed-receipt",
+            "seed.json",
             "--coordinator-url",
             "https://coordinator.example/v1",
             "--audience",
             "https://coordinator.example",
             "--workers",
-            "2",
-            "--expected-seq",
-            "7",
-            "--expected-event-sha256",
-            "a" * 64,
+            "1",
         ]
     )
 
+    assert seed.executor_action == "seed"
+    assert seed.plan_sha256 == "a" * 64
     assert args.mission_action == "executor"
     assert args.executor_action == "connect"
-    assert args.workers == 2
-    assert args.expected_seq == 7
+    assert args.workers == 1
+    assert args.seed_receipt == Path("seed.json")
     with pytest.raises(SystemExit):
         mission_cli.build_parser().parse_args(
             [
@@ -235,12 +258,47 @@ def test_outbound_executor_connect_parser_requires_two_to_five_workers() -> None
                 ".",
                 "--mission",
                 "mission-outbound",
+                "--seed-receipt",
+                "seed.json",
                 "--coordinator-url",
                 "https://coordinator.example",
                 "--audience",
                 "https://coordinator.example",
                 "--workers",
-                "1",
+                "2",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "audience",
+    (
+        "http://coordinator.example",
+        "https://user@coordinator.example",
+        "https://coordinator.example/path",
+        "https://coordinator.example?query=1",
+        "https://coordinator.example#fragment",
+    ),
+)
+def test_outbound_executor_seed_parser_requires_an_exact_https_origin(
+    audience: str,
+) -> None:
+    with pytest.raises(SystemExit):
+        mission_cli.build_parser().parse_args(
+            [
+                "mission",
+                "executor",
+                "seed",
+                "--repo",
+                ".",
+                "--mission",
+                "mission-outbound",
+                "--plan-sha256",
+                "a" * 64,
+                "--audience",
+                audience,
+                "--output",
+                "seed.json",
             ]
         )
 
@@ -295,6 +353,8 @@ def test_outbound_executor_preflight_runs_before_client_creation(
             str(tmp_path),
             "--mission",
             "mission-outbound",
+            "--seed-receipt",
+            str(tmp_path / "seed.json"),
             "--coordinator-url",
             "https://coordinator.example",
             "--audience",
@@ -303,8 +363,8 @@ def test_outbound_executor_preflight_runs_before_client_creation(
     )
     monkeypatch.setattr(
         mission_cli,
-        "_load_project_policy",
-        lambda _repo: (tmp_path, "a" * 40, object()),
+        "_executor_source",
+        lambda _args: (tmp_path, object(), object(), object(), object()),
     )
     monkeypatch.setattr(
         mission_cli,
@@ -350,12 +410,179 @@ def test_outbound_executor_rejects_non_operator_mission(
         mission_cli._executor_connect(args)
 
 
-def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
+@pytest.mark.parametrize("source_state", ("valid", "missing-decision", "running"))
+def test_outbound_executor_source_requires_reviewed_pre_dispatch_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_state: str
+) -> None:
+    mission_id = "mission-cloud-source"
+    base_policy = _policy()
+    policy = base_policy.model_validate(
+        {
+            **base_policy.model_dump(mode="json"),
+            "schema_version": 2,
+            "authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+            "finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+        }
+    )
+    mission = Mission.model_validate(
+        {
+            **_mission(mission_id).model_dump(mode="json"),
+            "schema_version": 2,
+            "requested_authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+            "requested_finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+        }
+    )
+    plan = _plan(mission_id)
+    store = SQLiteMissionStore(tmp_path / "cloud-source.sqlite")
+    store.create_mission(
+        policy,
+        mission,
+        plan,
+        "command_create_cloud_source_01",
+        recorded_at=NOW,
+    )
+    if source_state != "missing-decision":
+        store.record_plan_policy_decision(
+            mission_id,
+            "command_decide_cloud_source_01",
+            evaluate_plan_policy(
+                policy,
+                plan,
+                goal_request_id="command_goal_cloud_source_01",
+                requested_mode=AuthorizationMode.REVIEW_REQUIRED,
+                requested_finalization_mode=FinalizationMode.REVIEW_REQUIRED,
+            ),
+            expected_head=store.head(mission_id),
+            recorded_at=NOW,
+        )
+    if source_state == "running":
+        store.approve_plan(
+            mission_id,
+            "command_approve_cloud_source_01",
+            expected_revision=1,
+            expected_head=store.head(mission_id),
+            operator_label="cloud-test",
+            rationale=None,
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=NOW,
+        )
+    monkeypatch.setattr(
+        mission_cli,
+        "_load_project_policy",
+        lambda _repo: (tmp_path, policy.base_sha, policy),
+    )
+    monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _id: store)
+
+    args = SimpleNamespace(repo=tmp_path, mission_id=mission_id)
+    if source_state != "valid":
+        with pytest.raises(mission_cli.MissionCliError, match="pre-dispatch"):
+            mission_cli._executor_source(args)
+        return
+
+    _repository, observed_policy, _store, snapshot, head = mission_cli._executor_source(
+        args
+    )
+
+    assert observed_policy == policy
+    assert snapshot.mission.status == MissionStatus.PROPOSED
+    assert all(task.state == TaskState.QUEUED for task in snapshot.tasks)
+    assert head == store.verify(mission_id)
+
+
+def test_cloud_seed_receipt_requires_canonical_private_current_bindings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy = _policy()
+    mission = _mission("mission-cloud-receipt")
+    plan = _plan(mission.mission_id)
+    source_head = MissionHead(
+        mission_id=mission.mission_id,
+        seq=4,
+        event_count=4,
+        event_sha256="a" * 64,
+    )
+    firestore_head = MissionHead(
+        mission_id=mission.mission_id,
+        seq=8,
+        event_count=8,
+        event_sha256="b" * 64,
+    )
+    cloud_policy, cloud_mission = projected_cloud_contracts(policy, mission)
+    values = {
+        "schema_version": 1,
+        "mission_id": mission.mission_id,
+        "repo_id": mission.repo_id,
+        "base_sha": mission.base_sha,
+        "source_policy_id": policy.policy_id,
+        "cloud_policy_id": cloud_policy.policy_id,
+        "source_head": source_head.model_dump(mode="json"),
+        "firestore_head": firestore_head.model_dump(mode="json"),
+        "source_policy_sha256": canonical_json_sha256(
+            policy.model_dump(mode="json")
+        ),
+        "cloud_policy_sha256": canonical_json_sha256(
+            cloud_policy.model_dump(mode="json")
+        ),
+        "plan_sha256": canonical_json_sha256(plan.model_dump(mode="json")),
+        "execution_contract_sha256": cloud_execution_contract_sha256(
+            cloud_policy, cloud_mission, plan
+        ),
+        "firestore_snapshot_sha256": "c" * 64,
+        "project_id": "graphene-proof-1",
+        "database_id": "graphene",
+        "namespace": "graphene",
+        "coordinator_audience": "https://coordinator.example.run.app",
+        "command_prefix": "cloudseed_receipt_01",
+        "truth_kind": TruthKind.SERVER_DERIVED.value,
+        "recorded_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
+    receipt = CloudSeedReceipt.model_validate(
+        {**values, "receipt_sha256": canonical_json_sha256(values)}
+    )
+    path = tmp_path / "seed.json"
+    path.write_bytes(canonical_json_bytes(receipt.model_dump(mode="json")))
+    path.chmod(0o600)
+    for name, value in {
+        "GOOGLE_CLOUD_PROJECT": receipt.project_id,
+        "GRAPHENE_FIRESTORE_DATABASE": receipt.database_id,
+        "GRAPHENE_FIRESTORE_NAMESPACE": receipt.namespace,
+    }.items():
+        monkeypatch.setenv(name, value)
+    args = SimpleNamespace(
+        seed_receipt=path,
+        mission_id=mission.mission_id,
+        audience=receipt.coordinator_audience,
+    )
+    snapshot = SimpleNamespace(mission=mission, plan=plan)
+
+    assert mission_cli._validated_cloud_receipt(
+        args, policy, snapshot, source_head
+    ) == (receipt, cloud_policy)
+    args.audience = "https://other.example.run.app"
+    with pytest.raises(mission_cli.MissionCliError, match="current bindings"):
+        mission_cli._validated_cloud_receipt(args, policy, snapshot, source_head)
+    path.chmod(0o644)
+    with pytest.raises(mission_cli.MissionCliError, match="receipt is invalid"):
+        mission_cli._read_cloud_seed_receipt(path)
+
+
+@pytest.mark.parametrize(
+    ("claimed", "completed", "attempt_failed"),
+    ((1, 1, False), (0, 0, False), (1, 0, False), (1, 1, True)),
+)
+def test_outbound_executor_requires_one_completed_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    claimed: int,
+    completed: int,
+    attempt_failed: bool,
 ) -> None:
     mission_id = "mission-outbound"
     head = mission_cli.MissionHead(
         mission_id=mission_id, seq=7, event_count=7, event_sha256="a" * 64
+    )
+    cloud_head = mission_cli.MissionHead(
+        mission_id=mission_id, seq=8, event_count=8, event_sha256="c" * 64
     )
 
     class Policy:
@@ -368,42 +595,33 @@ def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
             return {"base_sha": "b" * 40}
 
     policy = Policy()
-    policy_sha = mission_cli.sha256_hex(
-        mission_cli.canonical_json_bytes(policy.model_dump(mode="json"))
-    )
     snapshot = SimpleNamespace(
         head=head,
-        mission=SimpleNamespace(
-            base_sha=policy.base_sha,
-            creation_source="operator",
-            plan_revision=1,
-            status=MissionStatus.RUNNING,
-        ),
-        policy=SimpleNamespace(base_sha=policy.base_sha, policy_sha256=policy_sha),
+        mission=SimpleNamespace(base_sha=policy.base_sha),
         plan=SimpleNamespace(revision=1, tasks=()),
     )
-
-    class Store:
-        def snapshot(self, actual: str):
-            assert actual == mission_id
-            return snapshot
-
-        def verify(self, actual: str):
-            assert actual == mission_id
-            return head
 
     calls = []
     monkeypatch.setattr(
         mission_cli,
-        "_load_project_policy",
-        lambda _repo: (tmp_path, policy.base_sha, policy),
+        "_executor_source",
+        lambda _args: (tmp_path, policy, object(), snapshot, head),
     )
     monkeypatch.setattr(
         mission_cli,
         "doctor",
         lambda _repo: {"gemini_preflight": {"configuration_ready": True}},
     )
-    monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _id: Store())
+    monkeypatch.setattr(
+        mission_cli,
+        "_validated_cloud_receipt",
+        lambda *_args: (
+            SimpleNamespace(
+                firestore_head=cloud_head, cloud_policy_sha256="d" * 64
+            ),
+            policy,
+        ),
+    )
     monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _id: tmp_path)
     monkeypatch.setattr(mission_cli, "_mission_evidence", lambda *_args: object())
     monkeypatch.setattr(
@@ -415,8 +633,24 @@ def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
 
     def connect(_client, **kwargs):
         calls.append(kwargs)
+        if attempt_failed:
+            completion = kwargs["run_attempt"](
+                SimpleNamespace(
+                    dispatch=SimpleNamespace(
+                        task_id="missing-work-task",
+                        task_kind=TaskKind.WORK,
+                        session_id=kwargs["session_id"],
+                        attempt_id="attempt_failed_work_01",
+                    )
+                )
+            )
+            assert completion.result.succeeded is False
+            assert kwargs["should_stop"]() is True
         return SimpleNamespace(
-            session_id=kwargs["session_id"], claimed=0, completed=0, head=head
+            session_id=kwargs["session_id"],
+            claimed=claimed,
+            completed=completed,
+            head=cloud_head,
         )
 
     monkeypatch.setattr(mission_cli, "run_local_executor", connect)
@@ -429,30 +663,37 @@ def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
             str(tmp_path),
             "--mission",
             mission_id,
+            "--seed-receipt",
+            str(tmp_path / "seed.json"),
             "--coordinator-url",
             "https://coordinator.example",
             "--audience",
             "https://coordinator.example",
             "--workers",
-            "2",
+            "1",
         ]
     )
+
+    if attempt_failed or (claimed, completed) != (1, 1):
+        message = "failed closed" if attempt_failed else "every claimed"
+        with pytest.raises(mission_cli.MissionCliError, match=message):
+            mission_cli._executor_connect(args)
+        return
 
     result = mission_cli._executor_connect(args)
 
     assert result["status"] == "executor_stopped"
-    assert result["worker_count"] == 2
+    assert result["worker_count"] == 1
     assert result["capabilities"] == ["work"]
     assert result["authenticated_coordinator_round_trip"] is True
     assert result["scope"] == "work_only_first_cloud_vertical"
     assert result["mission_completion_claimed"] is False
-    assert len(calls) == 2
-    assert {call["worker_id"] for call in calls} == {
-        "outbound-work-1",
-        "outbound-work-2",
-    }
+    assert result["cloud_scheduling_parity_claimed"] is False
+    assert result["claimed"] == result["completed_work_attempts"] == 1
+    assert len(calls) == 1
+    assert {call["worker_id"] for call in calls} == {"outbound-work-1"}
     assert all(call["capabilities"] == (mission_cli.TaskKind.WORK,) for call in calls)
-    assert all(call["expected_head"] == head for call in calls)
+    assert all(call["expected_head"] == cloud_head for call in calls)
     assert "coordinator.example" not in str(result)
 
 

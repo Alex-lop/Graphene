@@ -17,9 +17,8 @@ from graphene.viewer.viewer_replay import REPLAY_TRUTH_LABEL
 ROOT = Path(__file__).parents[2]
 LANGGRAPH_SECTION = """## Why not just LangGraph?
 
-LangGraph is excellent for durable agent workflows. It checkpoints graph
-state, retries failed nodes, and preserves successful parallel-node writes.
-Its deployment stack can scale those runs.
+LangGraph checkpoints workflow state, retries nodes, and preserves successful
+parallel writes.
 
 Graphene governs a different boundary: repository publication.
 
@@ -29,12 +28,14 @@ cannot publish them. Graphene admits eligible artifacts, refuses superseded
 attempts, assembles accepted artifacts only, verifies the exact candidate
 tree, and publishes that same tree to an isolated Git ref.
 
-You could implement these rules around LangGraph. Graphene makes them the
-default repository contract — and a LangGraph agent can still control
+Graphene does not replace LangGraph. A LangGraph controller may invoke
 Graphene.
 
 Use LangGraph to decide what runs next. Use Graphene to decide which bytes
-may ship."""
+may ship.
+
+Here, “ship” means admission into Graphene's verified isolated result ref. It
+does not mean pushing, merging, or deploying a user repository."""
 
 
 def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
@@ -90,16 +91,21 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert "**Repository publication control for parallel coding agents.**" in readme
     assert LANGGRAPH_SECTION in readme
     assert (
-        readme.index("## Quickstart: verified replay, no credentials")
+        readme.index(
+            "## After a coding worker fails, which repository changes are safe to keep?"
+        )
         < readme.index(LANGGRAPH_SECTION)
+        < readme.index("## Quickstart: verified replay, no credentials")
         < readme.index("## Connect an MCP controller")
     )
     assert (
-        "`uv run --frozen graphene ui --replay taskmaster --once`.\n\n"
+        "Graphene never pushes, merges, deploys, or mutates the supplied checkout.\n\n"
         + LANGGRAPH_SECTION
         in readme
     )
     assert "Within one fixed plan revision" in readme
+    assert "monotonically increasing fences" in readme
+    assert "Live Codex and Gemini MCP proof remains `NOT PROVEN`" in readme
     assert "compose it with `graphene mission result show`" in readme
 
     assert set(driver_action.choices) == set(legacy)
@@ -140,7 +146,6 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert mcp_goal_loop["tools"] == list(TOOL_ARGUMENTS)
     assert "NINE TOOLS" in mcp_goal_loop["truth_label"]
     assert "nine-tool" in mcp_goal_loop["proves"]
-    assert all(f"`{tool}`" in readme for tool in TOOL_ARGUMENTS)
     assert all(f"`{tool}`" in commands_doc for tool in TOOL_ARGUMENTS)
     assert "nine-tool server" in proof
     assert package["description"] == (

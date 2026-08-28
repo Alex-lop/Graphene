@@ -33,6 +33,7 @@ from graphene.orchestration.executor_client import (
     GoogleAdcAudienceTokenProvider,
     connect_executor,
 )
+from graphene.orchestration import executor_client
 from graphene.orchestration.firestore_mission_store import (
     DomainTransitionUnavailable,
     FirestoreMissionStore,
@@ -102,6 +103,66 @@ def test_google_adc_provider_mints_a_fresh_audience_token_per_call():
 
     with pytest.raises(ValueError, match="HTTPS service origin"):
         provider("http://coordinator.invalid")
+
+
+def test_google_adc_provider_uses_impersonated_adc_for_id_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class Source:
+        pass
+
+    class IdentityToken:
+        def __init__(self, source, *, target_audience, include_email):
+            assert isinstance(source, Source)
+            assert target_audience == "https://coordinator.example.run.app"
+            assert include_email is True
+            self.token = None
+
+        def refresh(self, _request):
+            self.token = "impersonated-token"
+
+    def unavailable(_request, _audience):
+        raise executor_client.exceptions.DefaultCredentialsError("no direct token")
+
+    monkeypatch.setattr(executor_client.impersonated_credentials, "Credentials", Source)
+    monkeypatch.setattr(
+        executor_client.impersonated_credentials,
+        "IDTokenCredentials",
+        IdentityToken,
+    )
+    monkeypatch.setattr(executor_client.google.auth, "default", lambda: (Source(), None))
+
+    assert (
+        GoogleAdcAudienceTokenProvider(fetch_token=unavailable)(
+            "https://coordinator.example.run.app"
+        )
+        == "impersonated-token"
+    )
+
+
+def test_google_adc_provider_refuses_non_impersonated_adc(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def unavailable(_request, _audience):
+        raise executor_client.exceptions.DefaultCredentialsError("no direct token")
+
+    monkeypatch.setattr(
+        executor_client.google.auth, "default", lambda: (object(), None)
+    )
+
+    with pytest.raises(executor_client.exceptions.DefaultCredentialsError):
+        GoogleAdcAudienceTokenProvider(fetch_token=unavailable)(
+            "https://coordinator.example.run.app"
+        )
+
+
+def test_coordinator_client_refuses_audience_from_another_origin():
+    with pytest.raises(ValueError, match="share one exact HTTPS origin"):
+        CoordinatorClient(
+            "https://coordinator.example.run.app/v1",
+            "https://attacker.example",
+            lambda _audience: "token",
+        )
 
 
 def delivered_dispatch(*, accepted_inputs=()) -> DispatchOutboxRecord:
@@ -285,6 +346,42 @@ def test_coordinator_binds_server_identity_and_exposes_all_transport_actions():
     assert all(
         call[2]["executor_id"] == IDENTITY.executor_id for call in store.calls
     )
+
+
+def test_coordinator_refuses_multiple_workers_in_the_narrow_session():
+    store = RecorderStore()
+    response = TestClient(create_coordinator_app(store, verifier)).post(
+        f"/v1/missions/{MISSION_ID}/executor-sessions",
+        headers={"Authorization": "Bearer oidc-test-token"},
+        json={
+            "command_id": "command_register_multiple_01",
+            "expected_head": HEAD.model_dump(mode="json"),
+            "session_id": "session_cloud_api_1",
+            "worker_ids": ["worker_cloud_api_1", "worker_cloud_api_2"],
+            "capabilities": ["work"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert store.calls == []
+
+
+def test_coordinator_refuses_non_work_capability_in_the_narrow_session():
+    store = RecorderStore()
+    response = TestClient(create_coordinator_app(store, verifier)).post(
+        f"/v1/missions/{MISSION_ID}/executor-sessions",
+        headers={"Authorization": "Bearer oidc-test-token"},
+        json={
+            "command_id": "command_register_assembly_01",
+            "expected_head": HEAD.model_dump(mode="json"),
+            "session_id": "session_cloud_api_1",
+            "worker_ids": ["worker_cloud_api_1"],
+            "capabilities": ["assembly"],
+        },
+    )
+
+    assert response.status_code == 422
+    assert store.calls == []
 
 
 def test_success_completion_accepts_executor_attested_receipt_and_binds_identity_server_side():

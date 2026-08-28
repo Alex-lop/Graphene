@@ -16,9 +16,11 @@ export FIRESTORE_LOCATION='us-central1'
 export DATABASE_ID='graphene-taskmaster'
 export AR_REPOSITORY='graphene'
 export SERVICE='graphene-control'
+export COORDINATOR_SERVICE='graphene-coordinator'
 export VIEWER_SA='graphene-viewer'
 export COORDINATOR_SA='graphene-coordinator'
 export EXECUTOR_SA='graphene-executor'
+export DEPLOYER_PRINCIPAL='user:YOUR_DEPLOYER_EMAIL'
 export READ_TOKEN_SECRET='graphene-control-read-token'
 ```
 
@@ -85,22 +87,49 @@ for service_account in "$VIEWER_SA" "$COORDINATOR_SA" "$EXECUTOR_SA"; do
 done
 ```
 
-Purpose and grants:
+Purpose and minimum grants:
 
-- Viewer: read-only Mission Control. Grant `roles/datastore.viewer` conditioned to the selected database.
-- Coordinator: the sharded command/materialization/outbox vertical and separate private image pass credential-free tests plus the official emulator production round trip. It still lacks full local `SchedulerStore` parity and live proof; review its exact least-privilege Firestore write role before granting anything.
-- Executor: the typed protocol, audience-token HTTPS client, artifact fetch, and outbound local loop pass credential-free tests. The live authenticated loop is **NOT PROVEN**. Grant only `roles/run.invoker` on the exact coordinator service after deployment review, never project-wide Firestore access.
+| Identity | Grant | Scope |
+|---|---|---|
+| Viewer | `roles/datastore.viewer` | Project binding conditioned to the exact database |
+| Coordinator | `roles/datastore.user` | Project binding conditioned to the exact database |
+| Executor | `roles/run.servicesInvoker` | Exact coordinator Cloud Run service only; no Firestore role |
+| Executor, Vertex mode only | `roles/aiplatform.user` | Selected proof project; omit for API-key mode |
+| Deployer | `roles/cloudbuild.builds.editor` and `roles/serviceusage.serviceUsageConsumer` | Selected project; Cloud Build cannot be scoped to a repository |
+| Deployer | `roles/run.developer` | Exact existing viewer/coordinator services |
+| Deployer | `roles/artifactregistry.reader` | Exact image repository |
+| Deployer | `roles/iam.serviceAccountUser` | Exact viewer and coordinator runtime service accounts |
+| Deployer | `roles/iam.serviceAccountTokenCreator` | Exact coordinator and executor accounts used for local impersonation |
+| Cloud Build execution account | `roles/artifactregistry.writer` | Exact image repository |
+
+An IAM administrator must create the Cloud Run services or temporarily grant
+project-level create authority and remove it immediately; an exact-service
+`roles/run.developer` binding cannot create a service that does not exist. The
+same administrator, not the deployer, sets service IAM because
+`roles/run.developer` does not include `setIamPolicy`.
 
 ```bash
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$VIEWER_SA@$PROJECT_ID.iam.gserviceaccount.com" \
   --role='roles/datastore.viewer' \
   --condition="expression=resource.name==\"projects/$PROJECT_ID/databases/$DATABASE_ID\",title=graphene_database_only,description=Read_only_selected_Graphene_database"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$COORDINATOR_SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role='roles/datastore.user' \
+  --condition="expression=resource.name==\"projects/$PROJECT_ID/databases/$DATABASE_ID\",title=graphene_database_only,description=Read_write_selected_Graphene_database"
+
+# The documented example selects Vertex AI. Omit this grant for API-key mode.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$EXECUTOR_SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role='roles/aiplatform.user'
 ```
 
-Database-scoped IAM conditions are documented in [Firestore database access](https://cloud.google.com/firestore/docs/manage-databases#configure_per-database_access_permissions). Service-account creation is documented by [IAM](https://cloud.google.com/iam/docs/service-accounts-create).
+Database-scoped IAM conditions are documented in [Firestore database access](https://cloud.google.com/firestore/docs/manage-databases#configure_per-database_access_permissions). The role contents and deployment split are documented in [Firestore IAM](https://docs.cloud.google.com/iam/docs/roles-permissions/firestore), [Cloud Run IAM](https://docs.cloud.google.com/run/docs/reference/iam/roles), [Artifact Registry IAM](https://docs.cloud.google.com/artifact-registry/docs/access-control), and [Cloud Build IAM](https://docs.cloud.google.com/build/docs/securing-builds/configure-access-to-resources).
 
-The deployer also needs `roles/iam.serviceAccountUser` (`actAs`) on the exact runtime identity, not broad project Editor/Owner. Have an IAM administrator grant that role only to the deployer on `$VIEWER_SA@$PROJECT_ID.iam.gserviceaccount.com`.
+Before deployment, have an IAM administrator apply the table to the exact
+resources and inspect each resulting policy. Do not substitute Editor, Owner,
+`roles/run.admin`, or a project-wide Firestore role.
 
 ## 6. Create and scope the read token
 
@@ -136,7 +165,15 @@ export GRAPHENE_FIRESTORE_NAMESPACE='graphene'
 export GRAPHENE_MISSION_ID='YOUR_CAPTURED_MISSION_ID'
 export GRAPHENE_COORDINATOR_URL='https://YOUR_PRIVATE_COORDINATOR_URL'
 export GRAPHENE_COORDINATOR_AUDIENCE="$GRAPHENE_COORDINATOR_URL"
+export PLAN_SHA256='YOUR_REVIEWED_PLAN_SHA256'
+export SEED_RECEIPT="$PWD/graphene-cloud-seed.json"
 ```
+
+This example chooses Vertex AI, so the executor needs the conditional
+`roles/aiplatform.user` grant above. If the separately approved mode is a
+Gemini API key, omit that grant, leave `GOOGLE_GENAI_USE_VERTEXAI` unset, and
+set exactly one of `GEMINI_API_KEY` or `GOOGLE_API_KEY` in the private shell.
+Never configure both modes.
 
 The reviewed CLI has no `graphene doctor --cloud`; use these read-only checks:
 
@@ -182,11 +219,34 @@ GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_l
 GRAPHENE_RUN_LIVE_FIRESTORE=1 GRAPHENE_RUN_CLOUD_SMOKE=1 \
   uv run --frozen pytest -q tests/integration/test_firestore_live.py
 
+export COORDINATOR_SA_EMAIL="$COORDINATOR_SA@$PROJECT_ID.iam.gserviceaccount.com"
+export EXECUTOR_SA_EMAIL="$EXECUTOR_SA@$PROJECT_ID.iam.gserviceaccount.com"
+
+# Seed with the only identity that may write the selected Firestore database.
+gcloud auth application-default login \
+  --impersonate-service-account="$COORDINATOR_SA_EMAIL"
+uv run --frozen graphene mission executor seed \
+  --repo PATH --mission "$GRAPHENE_MISSION_ID" \
+  --plan-sha256 "$PLAN_SHA256" \
+  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" \
+  --output "$SEED_RECEIPT" --confirm-human
+
+# Then switch to the invocation-only identity; it has no Firestore access.
+gcloud auth application-default login \
+  --impersonate-service-account="$EXECUTOR_SA_EMAIL"
 uv run --frozen graphene mission executor connect \
-  --repo PATH --mission MISSION_ID \
+  --repo PATH --mission "$GRAPHENE_MISSION_ID" \
+  --seed-receipt "$SEED_RECEIPT" \
   --coordinator-url "$GRAPHENE_COORDINATOR_URL" \
-  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" --workers 2
+  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" --workers 1
 ```
+
+The local mission must be an operator-created, review-required schema-2 plan at
+revision 1 with no dispatch history. Read `PLAN_SHA256` from `graphene --json
+plan show "$GRAPHENE_MISSION_ID" --detail`; do not approve or run that local
+mission. `executor seed` records a separate approved schema-1 Firestore
+execution mission and writes a private create-new receipt. Local SQLite remains
+the North Star authority, and the two event heads are deliberately distinct.
 
 - Cloud Run service URL and revision, without access tokens.
 - Firestore database/namespace and mission head digest, without private artifacts.

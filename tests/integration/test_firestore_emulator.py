@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from google.cloud import firestore
@@ -15,7 +15,7 @@ from graphene.orchestration.cloud_protocol import (
     DispatchOutboxState,
     ExecutorArtifactObservation,
 )
-from graphene.orchestration.cloud_seed import seed_mission
+from graphene.orchestration.cloud_seed import seed_verified_projection
 from graphene.orchestration.evidence import TrustedCheckReceipt
 from graphene.orchestration.firestore_mission_store import (
     FirestoreMissionStore,
@@ -26,10 +26,15 @@ from graphene.orchestration.mission_models import (
     ArtifactEnvelopeReferenceV2,
     AttemptResult,
     AttemptState,
+    AuthorizationMode,
     EvidenceReference,
+    FinalizationMode,
     GenericEvidenceLink,
+    Mission,
     MissionEventType,
+    MissionHead,
     MissionStatus,
+    ProjectPolicy,
     PublicationDraft,
     PublicationState,
     TaskKind,
@@ -333,9 +338,9 @@ def test_official_firestore_client_dispatch_round_trip():
 def test_official_emulator_success_round_trip_is_seeded_and_executor_attested():
     """Seed via cloud_seed, run one executor to a successful completion.
 
-    Proves against the official emulator client: seed_mission idempotency, the
-    second-session refusal (multi-executor unsupported), the succeeded=True
-    completion path with a real TrustedCheckReceipt, the recorded
+    Proves against the official emulator client: schema-2 local-contract
+    projection and receipt idempotency, second-session refusal, the
+    succeeded=True completion path with a real TrustedCheckReceipt, the recorded
     ``check_authority: executor_attested`` in the committed task.completed
     payload, a fully recomputed event hash chain, and the sharded
     materialization invariants.
@@ -353,26 +358,60 @@ def test_official_emulator_success_round_trip_is_seeded_and_executor_attested():
     store = FirestoreMissionStore(client, namespace=namespace)
     try:
         issued_at = datetime.now(UTC)
-        policy, mission, plan = load_scenario().contracts(
+        base_policy, base_mission, plan = load_scenario().contracts(
             mission_id=mission_id,
             repo_id=f"repo-{suffix}",
             base_sha="a" * 40,
             created_at=issued_at,
         )
+        policy = ProjectPolicy.model_validate(
+            {
+                **base_policy.model_dump(mode="json"),
+                "schema_version": 2,
+                "authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+                "finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+            }
+        )
+        mission = Mission.model_validate(
+            {
+                **base_mission.model_dump(mode="json"),
+                "schema_version": 2,
+                "creation_source": "operator",
+                "requested_authorization_mode": AuthorizationMode.REVIEW_REQUIRED,
+                "requested_finalization_mode": FinalizationMode.REVIEW_REQUIRED,
+            }
+        )
+        source_head = MissionHead(
+            mission_id=mission_id,
+            seq=5,
+            event_count=5,
+            event_sha256="b" * 64,
+        )
         seed_values = {
-            "policy": policy,
-            "mission": mission,
+            "source_policy": policy,
+            "source_mission": mission,
+            "source_head": source_head,
             "plan": plan,
             "command_prefix": f"emuseed_{suffix}",
-            "recorded_at": issued_at,
             "operator_label": "emulator-fixture",
             "rationale": "official emulator success-path proof",
-            "truth_kind": TruthKind.SIMULATED_FIXTURE,
+            "truth_kind": TruthKind.SERVER_DERIVED,
+            "project_id": _EMULATOR_PROJECT,
+            "database_id": "(default)",
+            "namespace": namespace,
+            "coordinator_audience": "https://coordinator.example.run.app",
         }
-        seeded = seed_mission(store, **seed_values)
+        receipt = seed_verified_projection(
+            store, recorded_at=issued_at, **seed_values
+        )
+        seeded = receipt.firestore_head
         assert seeded.seq > 0
         # Retrying the seed replays the same idempotent commands.
-        assert seed_mission(store, **seed_values) == seeded
+        assert seed_verified_projection(
+            store,
+            recorded_at=issued_at + timedelta(seconds=1),
+            **seed_values,
+        ) == receipt
 
         executor_id = f"executor_{suffix}"
         session_id = f"session_{suffix}"

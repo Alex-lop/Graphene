@@ -2,7 +2,7 @@
 
 ## Current truth
 
-The official Firestore Emulator production-path command completed **3 passed**. The real Google client exercised namespace schema initialization, mission creation, exact plan approval, readiness, executor session registration, atomic claim/outbox delivery, heartbeat, failed completion, five-shard materialization, reconciliation, and incompatible-schema rejection. Two additional tests prove cleanup is exact and bounded.
+The official Firestore Emulator production-path command completed **4 passed**. The real Google client exercised namespace schema initialization, schema-2-to-schema-1 seed projection and receipt replay, mission creation, exact plan approval, readiness, one-worker executor session registration, atomic claim/outbox delivery, heartbeat, successful and failed completion, five-shard materialization, reconciliation, incompatible-schema rejection, and exact bounded cleanup.
 
 This is credential-free local proof, not a Google Cloud deployment. No project was authorized, no service was deployed, and no authenticated cloud-to-local run was captured. Cloud Run and real Firestore remain **NOT DEPLOYED — NOT PROVEN**.
 
@@ -13,13 +13,22 @@ Firestore stores an immutable content-addressed state root plus five bounded sha
 The authoritative transition path supports:
 
 - mission creation, exact plan approval, and readiness materialization;
-- executor session/capability registration;
+- one active executor session containing one WORK worker;
 - atomic ready-task claim with attempt, lease/fence, event, head-bound state, and durable outbox;
-- exact-owner heartbeat, V2 publication completion, failure completion, and abandon;
+- exact-owner heartbeat, V2 publication completion, and failure completion;
 - executor-local artifact ownership, one-use fetch capabilities, reconnect/idempotent completion, and materialization repair;
 - a private multi-mission coordinator API plus an outbound local executor. Cloud Run never clones or mounts the repository.
 
 The adapter is not yet a drop-in implementation of the local `SchedulerStore`. These exact mutations remain unsupported through that protocol: `register_worker`, `revoke_worker`, `expire_leases`, `enter_awaiting_result`, generic `claim_task`, generic `heartbeat`, generic `complete_attempt`, `pause`, `resume`, and `cancel`. The cloud-specific session/dispatch methods cover only the vertical above. Final gate/input/retry/replan parity and the full shared SQLite state-machine corpus are also pending.
+
+`graphene mission executor seed` is the operator-facing bridge. It leaves the
+local SQLite proposal unchanged, creates a separate schema-1 Firestore
+execution mission, verifies its event chain and materialized state, and emits a
+private receipt binding the distinct local and Firestore heads. This is a
+one-shot seed, not a release-bound authority projector: there is no projection
+outbox, restart/catch-up loop, or claim of cloud scheduling parity. The
+coordinator's abandon route returns `501 ABANDON_UNSUPPORTED`; shutdown after a
+claim leaves the lease for TTL expiry.
 
 ## Identity and protocol boundary
 

@@ -13,10 +13,11 @@ responsibility of a separately authenticated outbound executor. A distinct
 neither image proves a deployment.
 
 The package includes Firestore command/event/sharded-materialization/outbox
-transactions plus a private register/claim/fetch/heartbeat/completion/abandon
+transactions plus a private one-worker register/claim/fetch/heartbeat/completion
 coordinator, audience-bound OIDC HTTPS client, one-use artifact capabilities,
-and outbound local executor. The official emulator production path completed
-**3 passed**. The separate coordinator image starts only the private
+and outbound local executor. Abandon is disabled and returns 501; interrupted
+claims wait for lease TTL expiry. The official emulator production path completed
+**4 passed**. The separate coordinator image starts only the private
 multi-mission coordinator factory. A live authenticated cloud recovery smoke
 remains pending, so deployment remains **NOT PROVEN**.
 
@@ -45,19 +46,38 @@ This command is an operator template only. Use an existing least-privilege
 coordinator identity and authorized values; no service or IAM resource was
 created or verified by this repository.
 
+After an IAM administrator verifies the private service, grant the executor
+identity only service invocation:
+
+```sh
+gcloud run services add-iam-policy-binding "$COORDINATOR_SERVICE" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --member="serviceAccount:$EXECUTOR_SA_EMAIL" \
+  --role='roles/run.servicesInvoker'
+```
+
+Cloud Run coordinates Firestore transitions only. Gemini, repository work, and
+checks run in the separately authenticated local executor.
+
 ## Required existing resources
 
 - an explicitly authorized Google Cloud project and region;
 - an existing Artifact Registry Docker repository;
 - an existing Firestore Native-mode database;
-- a dedicated Cloud Run service account with read-only Firestore access (for
-  example, `roles/datastore.viewer`, narrowed to the selected database when the
-  project policy supports that condition);
+- a coordinator runtime account with `roles/datastore.user` conditioned to the
+  exact Firestore database;
+- a viewer runtime account with `roles/datastore.viewer` under the same exact
+  database condition;
+- an executor account with `roles/run.servicesInvoker` on the exact coordinator
+  service and no Firestore role;
+- deployer and Cloud Build grants scoped exactly as listed in
+  [`docs/ALEX_CLOUD_SETUP.md`](../../docs/ALEX_CLOUD_SETUP.md#5-create-three-service-identities);
 - an existing enabled Secret Manager secret version containing only a random
   16-256-character URL-safe Mission Control read token (no trailing newline),
   with the service account granted
   `roles/secretmanager.secretAccessor` on that secret only;
-- an existing materialized mission snapshot and its event stream.
+- a private create-new seed receipt from `graphene mission executor seed` for
+  the separately materialized Firestore execution mission.
 
 Set the values deliberately. Do not copy placeholder values into a real deploy.
 
@@ -66,8 +86,8 @@ export PROJECT_ID='authorized-sandbox-project'
 export REGION='us-central1'
 export AR_REPOSITORY='graphene'
 export SERVICE='graphene-control'
-export SERVICE_ACCOUNT='graphene-control@authorized-sandbox-project.iam.gserviceaccount.com'
-export DATABASE_ID='(default)'
+export SERVICE_ACCOUNT='graphene-viewer@authorized-sandbox-project.iam.gserviceaccount.com'
+export DATABASE_ID='graphene-taskmaster'
 export FIRESTORE_NAMESPACE='graphene'
 export MISSION_ID='mission_example'
 export READ_TOKEN_SECRET='graphene-control-read-token'

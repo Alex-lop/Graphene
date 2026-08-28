@@ -8,9 +8,31 @@
 
 [![CI](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml)
 
-## What Graphene does
+## After a coding worker fails, which repository changes are safe to keep?
 
-Graphene controls which repository state survives parallel coding agents. Within one fixed plan revision, a goal becomes a fenced graph that preserves accepted sibling work, retries failed work, admits accepted artifacts only, and verifies the exact candidate. Policy may authorize an isolated result ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.
+Within one fixed plan revision, Graphene keeps only artifacts admitted under declared scopes and monotonically increasing fences. Accepted sibling artifacts remain immutable; failed or stale attempts cannot publish. Assembly consumes accepted artifacts only, verification binds the exact candidate, policy-authorized finalization creates an isolated Git ref, and `why` reconstructs causality. Graphene never pushes, merges, deploys, or mutates the supplied checkout.
+
+## Why not just LangGraph?
+
+LangGraph checkpoints workflow state, retries nodes, and preserves successful
+parallel writes.
+
+Graphene governs a different boundary: repository publication.
+
+Each coding attempt is bound to a base SHA, declared write scope, attempt
+identity, and current fencing token. Workers may propose patches, but they
+cannot publish them. Graphene admits eligible artifacts, refuses superseded
+attempts, assembles accepted artifacts only, verifies the exact candidate
+tree, and publishes that same tree to an isolated Git ref.
+
+Graphene does not replace LangGraph. A LangGraph controller may invoke
+Graphene.
+
+Use LangGraph to decide what runs next. Use Graphene to decide which bytes
+may ship.
+
+Here, “ship” means admission into Graphene's verified isolated result ref. It
+does not mean pushing, merging, or deploying a user repository.
 
 ## Quickstart: verified replay, no credentials
 
@@ -26,40 +48,18 @@ The replay is SHA-256 checked and read-only. It demonstrates Mission Control,
 not a new agent run. Render the same fixture once with
 `uv run --frozen graphene ui --replay taskmaster --once`.
 
-## Why not just LangGraph?
-
-LangGraph is excellent for durable agent workflows. It checkpoints graph
-state, retries failed nodes, and preserves successful parallel-node writes.
-Its deployment stack can scale those runs.
-
-Graphene governs a different boundary: repository publication.
-
-Each coding attempt is bound to a base SHA, declared write scope, attempt
-identity, and current fencing token. Workers may propose patches, but they
-cannot publish them. Graphene admits eligible artifacts, refuses superseded
-attempts, assembles accepted artifacts only, verifies the exact candidate
-tree, and publishes that same tree to an isolated Git ref.
-
-You could implement these rules around LangGraph. Graphene makes them the
-default repository contract — and a LangGraph agent can still control
-Graphene.
-
-Use LangGraph to decide what runs next. Use Graphene to decide which bytes
-may ship.
-
 ## Connect an MCP controller
 
-`graphene-mcp` serves nine tools over stdio: `start_goal`, the deprecated
-`plan_goal` alias, `get_digest`, `approve_plan`, `approve_result`,
-`reject_result`, `mission_status`, `why`, and `mission_summary`. `start_goal`
-returns after durable acceptance. A detached supervisor owns the mission, so a
-later MCP process can reattach and poll it. `why` reconstructs through candidate
-approval; compose it with `graphene mission result show` to bind the isolated
-result receipt and ref.
+`graphene-mcp` serves the durable goal, decision, status, summary, and `why`
+surface over stdio; the full nine-tool schema is in the [command map](docs/COMMANDS.md).
+`start_goal` returns after durable acceptance, and a detached supervisor lets a
+later MCP process reattach. `why` reconstructs through candidate approval;
+compose it with `graphene mission result show` to bind the isolated result
+receipt and ref.
 
 The committed [`.mcp.json`](.mcp.json) launches the source; an installed artifact
 launches `graphene-mcp`. Python fixtures test protocol and disconnect behavior.
-Codex and Gemini CLI proof is pending.
+Live Codex and Gemini MCP proof remains `NOT PROVEN`.
 
 ```toml
 # Example Codex configuration — documented, not exercised as proof.

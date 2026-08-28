@@ -1461,7 +1461,7 @@ def cloud_store():
         principal="principal@example.invalid",
         executor_id="executor_1",
         session_id="session_cloud_1",
-        worker_ids=(active.owner, "worker_other"),
+        worker_ids=(active.owner,),
         capabilities=(TaskKind.WORK,),
     )
     return client, clock, store, head(event), active
@@ -1478,7 +1478,7 @@ def test_dispatch_outbox_lifecycle_is_owner_bound_idempotent_and_durable():
         principal="principal@example.invalid",
         executor_id="executor_1",
         session_id="session_cloud_1",
-        worker_ids=(active.owner, "worker_other"),
+        worker_ids=(active.owner,),
         capabilities=(TaskKind.WORK,),
     )
     assert reconnected.session_id == "session_cloud_1"
@@ -1498,7 +1498,7 @@ def test_dispatch_outbox_lifecycle_is_owner_bound_idempotent_and_durable():
     )
     assert client.documents == committed
 
-    assert (
+    with pytest.raises(ExecutorSessionRejected):
         store.claim_dispatch(
             MISSION_ID,
             committed_head,
@@ -1507,8 +1507,6 @@ def test_dispatch_outbox_lifecycle_is_owner_bound_idempotent_and_durable():
             session_id="session_cloud_1",
             worker_id="worker_other",
         )
-        is None
-    )
 
     with pytest.raises(ExecutorSessionRejected, match="unavailable"):
         store.claim_dispatch(
@@ -1896,7 +1894,7 @@ def test_success_completion_commits_publication_and_executor_locality_atomically
         plan_revision=1,
         task_id="wire_cli",
         attempt_id="attempt_cloud_downstream_1",
-        owner="worker_other",
+        owner=active.owner,
         write_paths=("status_report/cli.py", "tests/test_cli.py"),
         fencing_token=1,
         issued_at=clock.value,
@@ -1934,7 +1932,7 @@ def test_success_completion_commits_publication_and_executor_locality_atomically
         "command_cloud_downstream_claim",
         executor_id="executor_1",
         session_id="session_cloud_1",
-        worker_id="worker_other",
+        worker_id=active.owner,
     ) == downstream.model_copy(
         update={
             "delivery_count": 1,

@@ -131,8 +131,8 @@ class ExecutorSession(FrozenModel):
     session_id: Identifier
     executor_id: Identifier
     principal: PrincipalSubject
-    worker_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=5)
-    capabilities: tuple[TaskKind, ...] = Field(min_length=1, max_length=3)
+    worker_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=1)
+    capabilities: tuple[TaskKind, ...] = Field(min_length=1, max_length=1)
     state: ExecutorSessionState = ExecutorSessionState.ACTIVE
     created_at: UtcDateTime
     last_seen_at: UtcDateTime
@@ -142,8 +142,8 @@ class ExecutorSession(FrozenModel):
     def values_are_canonical(self) -> ExecutorSession:
         if self.worker_ids != tuple(sorted(set(self.worker_ids))):
             raise ValueError("worker_ids must be sorted and unique")
-        if self.capabilities != tuple(sorted(set(self.capabilities))):
-            raise ValueError("capabilities must be sorted and unique")
+        if self.capabilities != (TaskKind.WORK,):
+            raise ValueError("the narrow cloud executor supports WORK only")
         if len(self.queued_attempt_ids) != len(set(self.queued_attempt_ids)):
             raise ValueError("queued_attempt_ids must be unique")
         if self.last_seen_at < self.created_at:
@@ -342,15 +342,15 @@ class RegisterExecutorRequest(FrozenModel):
     command_id: IdempotencyKey
     expected_head: MissionHead
     session_id: Identifier
-    worker_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=5)
-    capabilities: tuple[TaskKind, ...] = Field(min_length=1, max_length=3)
+    worker_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=1)
+    capabilities: tuple[TaskKind, ...] = Field(min_length=1, max_length=1)
 
     @model_validator(mode="after")
     def values_are_canonical(self) -> RegisterExecutorRequest:
         if self.worker_ids != tuple(sorted(set(self.worker_ids))):
             raise ValueError("worker_ids must be sorted and unique")
-        if self.capabilities != tuple(sorted(set(self.capabilities))):
-            raise ValueError("capabilities must be sorted and unique")
+        if self.capabilities != (TaskKind.WORK,):
+            raise ValueError("the narrow cloud executor supports WORK only")
         return self
 
 
