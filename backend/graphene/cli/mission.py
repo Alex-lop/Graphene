@@ -5076,6 +5076,10 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         )
     store = _store_for_mission(args.mission_id)
     snapshot = store.snapshot(args.mission_id)
+    if snapshot.mission.creation_source != "operator":
+        raise MissionCliError(
+            "outbound executor requires an operator-created mission"
+        )
     verified_head = store.verify(args.mission_id)
     if verified_head != snapshot.head:
         raise MissionCliError("local mission verification changed during preflight")

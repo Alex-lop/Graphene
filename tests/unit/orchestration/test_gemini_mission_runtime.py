@@ -323,6 +323,33 @@ def test_outbound_executor_preflight_runs_before_client_creation(
         mission_cli._executor_connect(args)
 
 
+def test_outbound_executor_rejects_non_operator_mission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    args = SimpleNamespace(repo=tmp_path, mission_id="mission-scripted")
+    monkeypatch.setattr(
+        mission_cli, "_load_project_policy", lambda _repo: (tmp_path, "a" * 40, object())
+    )
+    monkeypatch.setattr(
+        mission_cli,
+        "doctor",
+        lambda _repo: {"gemini_preflight": {"configuration_ready": True}},
+    )
+    monkeypatch.setattr(
+        mission_cli,
+        "_store_for_mission",
+        lambda _id: SimpleNamespace(
+            snapshot=lambda _mission_id: SimpleNamespace(
+                mission=SimpleNamespace(creation_source="scripted_fixture")
+            ),
+            verify=lambda _mission_id: pytest.fail("verified non-operator mission"),
+        ),
+    )
+
+    with pytest.raises(mission_cli.MissionCliError, match="operator-created"):
+        mission_cli._executor_connect(args)
+
+
 def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -348,6 +375,7 @@ def test_outbound_executor_registers_two_narrow_workers_and_sanitizes_result(
         head=head,
         mission=SimpleNamespace(
             base_sha=policy.base_sha,
+            creation_source="operator",
             plan_revision=1,
             status=MissionStatus.RUNNING,
         ),
