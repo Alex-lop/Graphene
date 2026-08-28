@@ -724,12 +724,12 @@ def test_recovery_refuses_descendants_after_owned_leader_exit(
             pytest.fail("owned group leader did not become a zombie")
 
     expected = (
-        "birth token is unavailable"
-        if sys.platform == "darwin" and not reap_leader
+        "cannot anchor descendant cleanup"
+        if reap_leader
         else (
-            "cannot anchor descendant cleanup"
-            if reap_leader
-            else "cannot be safely signalled after leader exit"
+            "birth token is unavailable"
+            if sys.platform == "darwin"
+            else "owned process could not be terminated"
         )
     )
     with pytest.raises(ProcessControlError, match=expected):
