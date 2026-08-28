@@ -65,7 +65,7 @@
   "failure_aware_retry": {
     "historical_evidence": "evidence/convergence/2026-08-23-completion-gate",
     "status": "verified_local",
-    "truth": "Local tests cover bounded prior-failure diagnostics, higher fencing tokens, stale-result refusal, accepted-sibling preservation, and repeated-failure terminalization. The current live Gemini model-child kill and completed retry choreography is not proven."
+    "truth": "Within one fixed plan revision, local tests cover bounded prior-failure diagnostics, higher fencing tokens, stale-result refusal, accepted-sibling preservation, and repeated-failure terminalization. An explicit new plan revision invalidates old-plan publications. The current live Gemini model-child kill and completed retry choreography is not proven."
   },
   "final_bundle_authority": {
     "limit": "The recompute rebuilds trees, patches and mutation manifests from the repository. It still trusts the TrustedCheckReceipt's claim that the checks passed; it does not re-run tests.",
@@ -295,7 +295,7 @@
     ],
     "status": "not_proven_capture_pending"
   },
-  "product_thesis": "Graphene is a terminal-native recovery runtime for bounded coding missions. A goal becomes a typed graph with scopes, checks, budgets, leases, and fences. Graphene preserves accepted sibling work when an attempt fails, retries only the failed work under a higher fence, assembles an exact candidate, and records causal evidence for `graphene why`. The intended low-risk path is authorized by an explicit checked-in policy and can finalize only to an isolated local result ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.",
+  "product_thesis": "Graphene controls which repository state survives parallel coding agents. Within one fixed plan revision, a goal becomes a fenced graph that preserves accepted sibling work, retries failed work, admits accepted artifacts only, and verifies the exact candidate. Policy may authorize an isolated result ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.",
   "result": "The current tree implements detached mission supervision, policy-bound authorization, private model children, selective higher-fence recovery mechanics, exact candidate/final-bundle authority, isolated local finalization, and an external exact-SHA artifact proof gate. Credential-free tests cover those contracts; current live Gemini, Codex, and cloud behavior remain separate and not proven.",
   "schema_version": 2,
   "status": "canonical",
@@ -373,7 +373,7 @@
   },
   "mcp_goal_loop": {
     "status": "verified_local",
-    "truth_label": "MCP RECOVERY LOOP \u2014 VERIFIED_LOCAL ON SCRIPTED FIXTURE: SEVEN TOOLS, PROMPT ACCEPTANCE, DETACHED SUPERVISOR, CONTROLLER DISCONNECT, AND FRESH-CLIENT REATTACH; NOT CODEX OR LIVE GEMINI PROOF",
+    "truth_label": "MCP RECOVERY LOOP \u2014 VERIFIED_LOCAL ON SCRIPTED FIXTURE: NINE TOOLS, PROMPT ACCEPTANCE, DETACHED SUPERVISOR, CONTROLLER DISCONNECT, AND FRESH-CLIENT REATTACH; NOT CODEX OR LIVE GEMINI PROOF",
     "server_command": "uv run --frozen graphene-mcp",
     "config": ".mcp.json",
     "tools": [
@@ -381,6 +381,8 @@
       "plan_goal",
       "get_digest",
       "approve_plan",
+      "approve_result",
+      "reject_result",
       "mission_status",
       "why",
       "mission_summary"
@@ -389,7 +391,7 @@
     "claude_code_prompt": "/mcp__graphene__goal",
     "test_command": "uv run --frozen pytest -q tests/unit/integrations/test_mission_mcp.py tests/process/test_mission_mcp_stdio.py -p no:cacheprovider",
     "disconnect_test": "uv run --frozen pytest -q tests/process/test_mission_mcp_stdio.py",
-    "proves": "The official Python MCP client initializes the seven-tool stdio server; start_goal durably accepts an idempotent scripted request promptly; the initiating stdio controller can exit; a fresh client reattaches; the detached supervisor continues through isolated completion; exact-digest review remains available and is server-derived relay truth.",
+    "proves": "The official Python MCP client initializes the nine-tool stdio server; start_goal durably accepts an idempotent scripted request promptly; the initiating stdio controller can exit; a fresh client reattaches; the detached supervisor continues through isolated completion; exact-digest plan review and exact-bundle result decisions remain available and are server-derived relay truth.",
     "does_not_prove": [
       "Codex, Claude Code, or Gemini CLI driving the current flow",
       "a live model mission driven over MCP",

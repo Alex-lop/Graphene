@@ -18,7 +18,7 @@ Only strongly identified Graphene-owned process groups may be signaled. CLI, sch
 
 ## Lease and effect boundary
 
-Every claim, heartbeat, write, command, publication, completion, cancellation, and recovery effect must bind `mission_id + task_id + attempt_id + worker_id + lease_id + fencing_token`. Stale workers cannot act.
+Every claim, heartbeat, write, command, publication, completion, cancellation, and recovery effect must bind `mission_id + task_id + attempt_id + worker_id + lease_id + fencing_token`. Graphene's authorities refuse effects from stale workers.
 
 Dispatch is at least once. Durable idempotency can establish exactly-once committed Graphene state and receipted Graphene-owned effects. It cannot establish exactly-once provider calls or external process effects across a crash when no authoritative receipt exists.
 

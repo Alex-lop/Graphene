@@ -8,20 +8,40 @@ from graphene.cli.main import build_parser as cli_parser
 from graphene.cli.mission import _MISSION_COMMANDS
 from graphene.demo import _SCRIPTED_LABEL
 from graphene.demo_adk import ADK_FAKE_PROOF_LABEL
+from graphene.integrations.mission_mcp import TOOL_ARGUMENTS
 from graphene.integrations.stdio import build_parser as mcp_parser
 from graphene.orchestration.mission_replay import MISSION_REPLAY_TRUTH_LABEL
 from graphene.legacy_store import InMemoryStore
 from graphene.viewer.viewer_replay import REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).parents[2]
+LANGGRAPH_SECTION = """## Why not just LangGraph?
+
+LangGraph is excellent for durable agent workflows. It checkpoints graph
+state, retries failed nodes, and preserves successful parallel-node writes.
+Its deployment stack can scale those runs.
+
+Graphene governs a different boundary: repository publication.
+
+Each coding attempt is bound to a base SHA, declared write scope, attempt
+identity, and current fencing token. Workers may propose patches, but they
+cannot publish them. Graphene admits eligible artifacts, refuses superseded
+attempts, assembles accepted artifacts only, verifies the exact candidate
+tree, and publishes that same tree to an isolated Git ref.
+
+You could implement these rules around LangGraph. Graphene makes them the
+default repository contract — and a LangGraph agent can still control
+Graphene.
+
+Use LangGraph to decide what runs next. Use Graphene to decide which bytes
+may ship."""
 
 
 def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     readme = (ROOT / "README.md").read_text()
     simple = (ROOT / "simplreadme.md").read_text()
-    # The README is the newcomer's door (<=120 lines); the proof table and the
-    # command map moved to these two documents on 2026-08-26 and the contract
-    # follows the content: each assertion names the document that owns it.
+    # The README is the newcomer's door (roughly <=160 lines); the proof table
+    # and command map live in these documents, and each assertion names its owner.
     proof = (ROOT / "docs/PROOF.md").read_text()
     commands_doc = (ROOT / "docs/COMMANDS.md").read_text()
     product = json.loads((ROOT / "contracts/product_proof.json").read_text())
@@ -63,7 +83,24 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert set(mission) == set(_MISSION_COMMANDS)
     assert all(f"`graphene {command}" in commands_doc for command in commands)
     assert all(f"`graphene mission {command}" in commands_doc for command in mission)
-    assert len(readme.splitlines()) <= 120
+    assert len(readme.splitlines()) <= 160
+    assert readme.startswith(
+        '<p align="center">\n'
+    ) and "# Agents write. Graphene decides what survives." in readme
+    assert "**Repository publication control for parallel coding agents.**" in readme
+    assert LANGGRAPH_SECTION in readme
+    assert (
+        readme.index("## Quickstart: verified replay, no credentials")
+        < readme.index(LANGGRAPH_SECTION)
+        < readme.index("## Connect an MCP controller")
+    )
+    assert (
+        "`uv run --frozen graphene ui --replay taskmaster --once`.\n\n"
+        + LANGGRAPH_SECTION
+        in readme
+    )
+    assert "Within one fixed plan revision" in readme
+    assert "compose it with `graphene mission result show`" in readme
 
     assert set(driver_action.choices) == set(legacy)
     assert all(driver in demo.format_help() for driver in legacy)
@@ -99,6 +136,13 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert watcher["live_gate_env"] in watcher["github_command"]
 
     assert product["product_thesis"] in readme
+    mcp_goal_loop = product["mcp_goal_loop"]
+    assert mcp_goal_loop["tools"] == list(TOOL_ARGUMENTS)
+    assert "NINE TOOLS" in mcp_goal_loop["truth_label"]
+    assert "nine-tool" in mcp_goal_loop["proves"]
+    assert all(f"`{tool}`" in readme for tool in TOOL_ARGUMENTS)
+    assert all(f"`{tool}`" in commands_doc for tool in TOOL_ARGUMENTS)
+    assert "nine-tool server" in proof
     assert package["description"] == (
         "Local-first mission control for bounded multi-agent coding work"
     )

@@ -4,9 +4,10 @@
 
 > **Agents stop. The mission doesn't.**
 
-For one bounded repository goal, Graphene preserves accepted work when a
-controller or worker stops, replaces only failed work under a higher fence, and
-finishes an exact verified candidate with causal evidence.
+For one bounded repository goal and fixed plan revision, Graphene preserves
+accepted work when a controller or worker stops, replaces only failed work
+under a higher fence, and finishes an exact verified candidate with causal
+evidence.
 
 The graph is execution authority, not decoration. It governs readiness,
 dependency and write-scope conflict, accepted inputs, leases, fences, retry,
@@ -98,6 +99,9 @@ current eligibility and returned identity.
 
 ## Selective recovery invariants
 
+These invariants apply within one fixed plan revision. An explicit new revision
+deliberately invalidates publications from the old plan.
+
 1. Accepted publications are immutable inputs and survive sibling failure.
 2. A failed attempt cannot publish.
 3. Retry revokes/releases the old lease and uses a strictly higher fence.
@@ -147,7 +151,8 @@ final bundle, and the isolated-result receipt.
 
 `mission_summary` reports bounded outcomes and receipts. `graphene why` traces
 a file through accepted producer attempts, retries, fences, checks, assembly,
-and final decision.
+and final decision. Compose that trace with `graphene mission result show` to
+bind the isolated result receipt and ref; `why` alone does not claim that hop.
 
 ## Mission Capsule
 

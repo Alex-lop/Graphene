@@ -90,8 +90,9 @@ for both paths is in [PROOF.md](PROOF.md).
 `graphene-mcp` with no arguments serves the mission control plane over stdio
 (the committed [`.mcp.json`](../.mcp.json) launches it as
 `uv run --frozen graphene-mcp`): tools `start_goal`, deprecated compatibility
-alias `plan_goal`, `get_digest`, `approve_plan`, `mission_status`, `why`, and
-`mission_summary`, plus the prompt `goal`.
+alias `plan_goal`, `get_digest`, `approve_plan`, `approve_result`,
+`reject_result`, `mission_status`, `why`, and `mission_summary`, plus the prompt
+`goal`.
 
 `start_goal` requires an absolute repository, goal, and stable `request_id`.
 The live `gemini-adk` default also requires explicit success criteria. Optional
@@ -113,11 +114,13 @@ checkout.
 
 The state root is the CLI's (`GRAPHENE_STATE_DIR` or `~/.graphene/state`), so
 `graphene ui` and later MCP processes see the same missions.
+`why` reconstructs through exact-candidate approval; compose it with
+`graphene mission result show` for the isolated result receipt and ref.
 `graphene-mcp --task … --profile …` and `--run RUN` remain the
 compatibility-only lineage tour
 ([`mcp_client_config.example.json`](mcp_client_config.example.json)).
 
-The seven-tool protocol, prompt return, and scripted controller-disconnect
+The nine-tool protocol, prompt return, and scripted controller-disconnect
 path are locally tested. Codex, Claude Code, and Gemini CLI have not driven the
 current recovery flow, and no credentialed current-tree Gemini mission has run.
 
