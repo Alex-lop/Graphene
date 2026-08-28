@@ -100,7 +100,9 @@ class CausalWhyResult(FrozenModel):
     plan_sha256: Sha256
     approved_plan_revision: int | None = Field(default=None, ge=1)
     requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
-    effective_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_authorization_mode: AuthorizationMode | None = (
+        AuthorizationMode.REVIEW_REQUIRED
+    )
     finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
     policy_decision_sha256: Sha256 | None = None
     links: tuple[CausalLink, ...]
@@ -439,7 +441,18 @@ def why(
     ):
         raise CausalQueryError("committed policy decision bindings are invalid")
     decision_fields = (
-        {}
+        (
+            {}
+            if snapshot.mission.schema_version == snapshot.policy.schema_version == 1
+            else {
+                "requested_authorization_mode": (
+                    snapshot.mission.requested_authorization_mode
+                ),
+                "effective_authorization_mode": None,
+                "finalization_mode": snapshot.mission.requested_finalization_mode,
+                "policy_decision_sha256": None,
+            }
+        )
         if decision is None
         else {
             "requested_authorization_mode": decision.requested_mode,

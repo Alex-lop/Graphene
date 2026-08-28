@@ -1015,6 +1015,309 @@ def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
     assert "private cleanup detail" not in str(error.value)
 
 
+def test_cancel_reruns_owned_cleanup_before_committing_at_latest_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    initial = MissionHead(
+        mission_id="mission-cancel-heartbeat",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+    heartbeat = MissionHead(
+        mission_id=initial.mission_id,
+        seq=2,
+        event_sha256="b" * 64,
+        event_count=2,
+    )
+    cancelled = MissionHead(
+        mission_id=initial.mission_id,
+        seq=3,
+        event_sha256="c" * 64,
+        event_count=3,
+    )
+
+    attempt = SimpleNamespace(
+        attempt_id="attempt-heartbeat",
+        task_id="task-heartbeat",
+        worker_id="worker-heartbeat",
+        lease_id="lease-heartbeat",
+        fencing_token=1,
+        state=mission_cli.AttemptState.RUNNING,
+    )
+
+    def snapshot(status, head, attempts=(attempt,)):
+        return SimpleNamespace(
+            mission=SimpleNamespace(status=status),
+            attempts=attempts,
+            head=head,
+            policy=SimpleNamespace(command_templates=(), command_template_ids=()),
+        )
+
+    event = SimpleNamespace(
+        mission_id=initial.mission_id,
+        seq=2,
+        previous_event_sha256=initial.event_sha256,
+        event_sha256=heartbeat.event_sha256,
+        event_type=mission_cli.MissionEventType.TASK_HEARTBEAT,
+        command_id="command-heartbeat",
+        payload={
+            "attempt_id": attempt.attempt_id,
+            "task_id": attempt.task_id,
+            "worker_id": attempt.worker_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": attempt.fencing_token,
+        },
+    )
+
+    snapshots = iter(
+        (
+            snapshot(mission_cli.MissionStatus.RUNNING, initial),
+            snapshot(mission_cli.MissionStatus.RUNNING, heartbeat),
+            snapshot(mission_cli.MissionStatus.RUNNING, heartbeat),
+            snapshot(mission_cli.MissionStatus.RUNNING, heartbeat),
+            snapshot(mission_cli.MissionStatus.CANCELLED, cancelled, ()),
+        )
+    )
+
+    class Store:
+        recoveries = 0
+
+        def snapshot(self, _mission_id: str):
+            return next(snapshots)
+
+        def recover_dispatches(self, *_args, **_kwargs):
+            self.recoveries += 1
+            return ()
+
+        def tail(self, _mission_id: str, _after: int, _limit: int):
+            return (event,)
+
+        def cancel(self, _mission_id: str, _command_id: str, **kwargs):
+            assert kwargs["expected_head"] == heartbeat
+            return cancelled
+
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+
+    store = Store()
+    result = mission_cli._cancel_with_owned_cleanup(
+        store=store,
+        mission_id=initial.mission_id,
+        command_id="command-cancel-heartbeat",
+        expected_head=None,
+        operator_label="test-operator",
+        rationale=None,
+        truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+        recorded_at=datetime.now(UTC),
+    )
+
+    assert result == cancelled
+    assert store.recoveries == 2
+    assert not (tmp_path / "cancellation-request.json").exists()
+    assert (tmp_path / "cancellation-complete.json").is_file()
+
+
+def test_cancel_rejects_nonheartbeat_authority_advance() -> None:
+    previous = MissionHead(
+        mission_id="mission-cancel-conflict",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+    current = MissionHead(
+        mission_id=previous.mission_id,
+        seq=2,
+        event_sha256="b" * 64,
+        event_count=2,
+    )
+    event = SimpleNamespace(
+        mission_id=previous.mission_id,
+        seq=2,
+        previous_event_sha256=previous.event_sha256,
+        event_sha256=current.event_sha256,
+        event_type=mission_cli.MissionEventType.OPERATOR_PAUSED,
+        command_id="command-pause",
+        payload={},
+    )
+    store = SimpleNamespace(tail=lambda *_args: (event,))
+    snapshot = SimpleNamespace(
+        mission=SimpleNamespace(status=mission_cli.MissionStatus.PAUSED),
+        attempts=(),
+        head=current,
+    )
+
+    with pytest.raises(
+        mission_cli.ProcessControlError,
+        match="authority changed after cancellation",
+    ):
+        mission_cli._validate_cancellation_head_advance(
+            store,
+            previous=previous,
+            snapshot=snapshot,
+            command_id="command-cancel",
+        )
+
+
+@pytest.mark.skipif(
+    not Path("/bin/ps").is_file(), reason="POSIX process identity required"
+)
+@pytest.mark.parametrize("recovery_with_live_legacy", (False, True))
+def test_cancel_conflict_retires_its_blocking_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recovery_with_live_legacy: bool,
+) -> None:
+    previous = MissionHead(
+        mission_id="mission-cancel-conflict-retired",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+    current = MissionHead(
+        mission_id=previous.mission_id,
+        seq=2,
+        event_sha256="b" * 64,
+        event_count=2,
+    )
+    event = SimpleNamespace(
+        mission_id=previous.mission_id,
+        seq=2,
+        previous_event_sha256=previous.event_sha256,
+        event_sha256=current.event_sha256,
+        event_type=mission_cli.MissionEventType.OPERATOR_PAUSED,
+        command_id="command-pause",
+        payload={},
+    )
+    running = SimpleNamespace(
+        mission=SimpleNamespace(status=mission_cli.MissionStatus.RUNNING),
+        attempts=(),
+        head=previous,
+        policy=SimpleNamespace(command_templates=(), command_template_ids=()),
+    )
+    paused = SimpleNamespace(
+        mission=SimpleNamespace(status=mission_cli.MissionStatus.PAUSED),
+        attempts=(),
+        head=current,
+    )
+    snapshots = iter((paused,) if recovery_with_live_legacy else (running, paused))
+    store = SimpleNamespace(
+        snapshot=lambda _mission_id: next(snapshots),
+        recover_dispatches=lambda *_args, **_kwargs: (),
+        tail=lambda *_args: (event,),
+    )
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+    registry = mission_cli.OwnedProcessRegistry(tmp_path)
+    process = None
+    if recovery_with_live_legacy:
+        process = subprocess.Popen(("/bin/sleep", "10"), start_new_session=True)
+        registry.record_pid(
+            SimpleNamespace(mission_id=previous.mission_id, attempt_id="attempt-v1"),
+            process.pid,
+            "/bin/sleep",
+        )
+        record_path = next(registry.directory.iterdir())
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        for key in (
+            "birth_token",
+            "model_input_bytes",
+            "model_request_sha256",
+            "schema_version",
+        ):
+            record.pop(key)
+        record_path.write_bytes(canonical_json_bytes(record))
+        mission_cli._ensure_cancellation_request(
+            tmp_path,
+            mission_id=previous.mission_id,
+            command_id="command-cancel-conflict-retired",
+            expected_head=previous,
+            operator_label="test-operator",
+            rationale=None,
+            truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+            recorded_at=datetime.now(UTC),
+        )
+
+    try:
+        with pytest.raises(
+            mission_cli.ProcessControlError,
+            match="authority changed after cancellation",
+        ):
+            mission_cli._cancel_with_owned_cleanup(
+                store=store,
+                mission_id=previous.mission_id,
+                command_id="command-cancel-conflict-retired",
+                expected_head=None,
+                operator_label="test-operator",
+                rationale=None,
+                truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+                recorded_at=datetime.now(UTC),
+            )
+
+        assert not (tmp_path / "cancellation-request.json").exists()
+        assert (tmp_path / "cancellation-conflict.json").is_file()
+        if process is not None:
+            assert process.poll() is None
+            assert registry.has_record("attempt-v1")
+    finally:
+        if process is not None:
+            process.kill()
+            process.wait(timeout=2)
+            owned = registry.owned_process(
+                SimpleNamespace(
+                    mission_id=previous.mission_id, attempt_id="attempt-v1"
+                ),
+                require_live=False,
+            )
+            assert owned is not None
+            registry.remove_exact(owned)
+
+
+def test_cancel_recovery_accepts_its_complete_event_batch() -> None:
+    previous = MissionHead(
+        mission_id="mission-cancel-recovery",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+    current = MissionHead(
+        mission_id=previous.mission_id,
+        seq=3,
+        event_sha256="c" * 64,
+        event_count=3,
+    )
+    command_id = "command-cancel-recovery"
+    events = (
+        SimpleNamespace(
+            mission_id=previous.mission_id,
+            seq=2,
+            previous_event_sha256=previous.event_sha256,
+            event_sha256="b" * 64,
+            event_type=mission_cli.MissionEventType.OPERATOR_CANCELLED,
+            command_id=command_id,
+            payload={},
+        ),
+        SimpleNamespace(
+            mission_id=previous.mission_id,
+            seq=3,
+            previous_event_sha256="b" * 64,
+            event_sha256=current.event_sha256,
+            event_type=mission_cli.MissionEventType.TASK_CANCELLED,
+            command_id=command_id,
+            payload={"task_id": "task-cancelled"},
+        ),
+    )
+
+    mission_cli._validate_cancellation_head_advance(
+        SimpleNamespace(tail=lambda *_args: events),
+        previous=previous,
+        snapshot=SimpleNamespace(
+            mission=SimpleNamespace(status=mission_cli.MissionStatus.CANCELLED),
+            attempts=(),
+            head=current,
+        ),
+        command_id=command_id,
+    )
+
+
 def test_cancel_intent_link_without_directory_fsync_stops_before_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

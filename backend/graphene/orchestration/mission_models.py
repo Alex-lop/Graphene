@@ -297,10 +297,14 @@ class ProjectPolicy(FrozenModel):
             or self.finalization_mode != FinalizationMode.REVIEW_REQUIRED
         ):
             raise ValueError("schema-1 policy supports review-required mode only")
-        if self.schema_version == 2 and not {
-            "authorization_mode",
-            "finalization_mode",
-        } <= self.model_fields_set:
+        if (
+            self.schema_version == 2
+            and not {
+                "authorization_mode",
+                "finalization_mode",
+            }
+            <= self.model_fields_set
+        ):
             raise ValueError("schema-2 policy must declare its execution modes")
         if self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED and (
             self.authorization_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
@@ -341,11 +345,17 @@ class ProjectPolicySummary(FrozenModel):
             self.authorization_mode != AuthorizationMode.REVIEW_REQUIRED
             or self.finalization_mode != FinalizationMode.REVIEW_REQUIRED
         ):
-            raise ValueError("schema-1 policy summary supports review-required mode only")
-        if self.schema_version == 2 and not {
-            "authorization_mode",
-            "finalization_mode",
-        } <= self.model_fields_set:
+            raise ValueError(
+                "schema-1 policy summary supports review-required mode only"
+            )
+        if (
+            self.schema_version == 2
+            and not {
+                "authorization_mode",
+                "finalization_mode",
+            }
+            <= self.model_fields_set
+        ):
             raise ValueError("schema-2 policy summary must declare its execution modes")
         if self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED and (
             self.authorization_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
@@ -385,7 +395,9 @@ class PlanPolicyDecisionV1(FrozenModel):
             self.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
             and self.effective_mode != AuthorizationMode.POLICY_PRE_AUTHORIZED
         ):
-            raise ValueError("automatic finalization requires effective pre-authorization")
+            raise ValueError(
+                "automatic finalization requires effective pre-authorization"
+            )
         expected = canonical_json_sha256(
             self.model_dump(mode="json", exclude={"decision_sha256"})
         )
@@ -538,7 +550,9 @@ class Plan(FrozenModel):
 
 
 class Mission(FrozenModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
+    requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    requested_finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
     mission_id: Identifier
     policy_id: Identifier
     policy_revision: int = Field(ge=1)
@@ -569,7 +583,37 @@ class Mission(FrozenModel):
             raise ValueError("success criteria must be sorted and unique")
         if self.unknowns != tuple(sorted(set(self.unknowns))):
             raise ValueError("unknowns must be sorted and unique")
+        if self.schema_version == 1 and (
+            self.requested_authorization_mode != AuthorizationMode.REVIEW_REQUIRED
+            or self.requested_finalization_mode != FinalizationMode.REVIEW_REQUIRED
+        ):
+            raise ValueError("schema-1 mission supports review-required mode only")
+        if (
+            self.schema_version == 2
+            and not {
+                "requested_authorization_mode",
+                "requested_finalization_mode",
+            }
+            <= self.model_fields_set
+        ):
+            raise ValueError("schema-2 mission must declare its requested modes")
+        if (
+            self.requested_finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
+            and self.requested_authorization_mode
+            != AuthorizationMode.POLICY_PRE_AUTHORIZED
+        ):
+            raise ValueError(
+                "automatic finalization requires requested pre-authorization"
+            )
         return self
+
+    @model_serializer(mode="wrap")
+    def preserve_schema_one_bytes(self, handler: Any) -> dict[str, Any]:
+        value = handler(self)
+        if self.schema_version == 1:
+            value.pop("requested_authorization_mode", None)
+            value.pop("requested_finalization_mode", None)
+        return value
 
 
 class MissionTrigger(FrozenModel):
@@ -1097,9 +1141,7 @@ def plan_policy_decision(
             or set(event.payload) != {"policy_decision"}
         ):
             raise ValueError("plan policy decision authority is invalid")
-        decision = PlanPolicyDecisionV1.model_validate(
-            event.payload["policy_decision"]
-        )
+        decision = PlanPolicyDecisionV1.model_validate(event.payload["policy_decision"])
         if decision.plan_revision in decisions:
             raise ValueError("plan policy decision is ambiguous")
         decisions[decision.plan_revision] = decision

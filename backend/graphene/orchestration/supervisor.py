@@ -579,7 +579,9 @@ def _await_planner_attempt(directory: Path, child_request):
         process = frames[0].process if frames else None
         if process is not None and _planner_child_live(process):
             _authorize_planner_child(directory, child_request)
-        elif process is not None or time.monotonic() >= startup_deadline:
+        elif process is not None:
+            if _planner_frames(directory, child_request) != frames:
+                continue
             _record_planner_outcome(
                 directory,
                 child_request,
@@ -591,9 +593,22 @@ def _await_planner_attempt(directory: Path, child_request):
                 dispatch,
             )
             return None
+        elif time.monotonic() >= startup_deadline:
+            _record_planner_outcome(
+                directory,
+                child_request,
+                "pre_dispatch_interrupted",
+                dispatch,
+            )
+            return None
         if time.monotonic() >= deadline:
             if process is not None and _planner_child_live(process):
                 _stop_planner_child(process)
+                continue
+            if (
+                process is not None
+                and _planner_frames(directory, child_request) != frames
+            ):
                 continue
             _record_planner_outcome(
                 directory,
@@ -680,41 +695,45 @@ def _spawn(
         ),
         cwd=runtime,
         env=_runtime_environment(),
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         close_fds=True,
         start_new_session=True,
     )
-    from .process_control import ProcessControlError, _owned_process_identity
+    assert process.stdin is not None
+    try:
+        from .process_control import ProcessControlError, _owned_process_identity
 
-    deadline = time.monotonic() + 1
-    while True:
-        try:
-            pgid, started_at, process_state, observed, birth_token = (
-                _owned_process_identity(process.pid)
-            )
-            if not process_state.startswith("Z"):
-                break
-        except ProcessControlError:
-            if process.poll() is not None or time.monotonic() >= deadline:
-                raise SupervisorError("supervisor process did not start") from None
-        time.sleep(0.01)
-    if pgid != process.pid:
-        os.kill(process.pid, signal.SIGKILL)
-        raise SupervisorError("supervisor did not establish an owned process group")
-    record = SupervisorProcess(
-        mission_id=request.mission_id,
-        request_sha256=request.request_sha256,
-        generation=generation,
-        pid=process.pid,
-        pgid=pgid,
-        started_at=started_at,
-        birth_token=birth_token,
-        executable=observed or executable,
-    )
-    _write(runtime / _PROCESS, record)
-    return record
+        deadline = time.monotonic() + 1
+        while True:
+            try:
+                pgid, started_at, process_state, observed, birth_token = (
+                    _owned_process_identity(process.pid)
+                )
+                if not process_state.startswith("Z"):
+                    break
+            except ProcessControlError:
+                if process.poll() is not None or time.monotonic() >= deadline:
+                    raise SupervisorError("supervisor process did not start") from None
+            time.sleep(0.01)
+        if pgid != process.pid:
+            os.kill(process.pid, signal.SIGKILL)
+            raise SupervisorError("supervisor did not establish an owned process group")
+        record = SupervisorProcess(
+            mission_id=request.mission_id,
+            request_sha256=request.request_sha256,
+            generation=generation,
+            pid=process.pid,
+            pgid=pgid,
+            started_at=started_at,
+            birth_token=birth_token,
+            executable=observed or executable,
+        )
+        _write(runtime / _PROCESS, record)
+        return record
+    finally:
+        process.stdin.close()
 
 
 def _request_path(runtime: Path) -> Path:
@@ -1320,24 +1339,21 @@ def run_supervisor(mission_id: str, request_sha256: str, generation: int) -> int
     request = _read(_request_path(runtime), SupervisorRequest)
     if request.mission_id != mission_id or request.request_sha256 != request_sha256:
         return 2
-    deadline = time.monotonic() + 2
-    while True:
-        try:
-            process = _read_process(runtime / _PROCESS, request)
-        except SupervisorError:
-            process = None
-        if (
-            isinstance(process, SupervisorProcess)
-            and process.mission_id == mission_id
-            and process.request_sha256 == request_sha256
-            and process.generation == generation
-            and process.pid == os.getpid()
-            and _live(process)
-        ):
-            break
-        if time.monotonic() >= deadline:
+    try:
+        if sys.stdin.buffer.read(1) != b"":
             return 2
-        time.sleep(0.01)
+        process = _read_process(runtime / _PROCESS, request)
+    except (AttributeError, OSError, SupervisorError):
+        return 2
+    if not (
+        isinstance(process, SupervisorProcess)
+        and process.mission_id == mission_id
+        and process.request_sha256 == request_sha256
+        and process.generation == generation
+        and process.pid == os.getpid()
+        and _live(process)
+    ):
+        return 2
     try:
         _run(request, generation)
     except BaseException as error:  # child boundary: persist only a bounded class label

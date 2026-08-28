@@ -216,9 +216,7 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
         verify=lambda _mission_id: head,
         tail=lambda *_args: (),
         plan_diff=lambda mission_id, previous, current: (
-            diff
-            if (mission_id, previous, current) == ("mission_1", 1, 2)
-            else None
+            diff if (mission_id, previous, current) == ("mission_1", 1, 2) else None
         ),
     )
     monkeypatch.setattr(mission_cli, "_store_for_mission", lambda _mission_id: store)
@@ -245,7 +243,7 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
                 ),
                 critical_path_task_ids=("work-a", "assemble", "verify"),
                 needs_you=None,
-            )
+            ),
         ),
     )
 
@@ -271,6 +269,30 @@ def test_plan_show_and_diff_reuse_verified_store_plan_authority(
     assert "Needs approval: plan v1" in rendered
     assert "Frontier on approval: work-a, work-b" in rendered
     assert "{" not in rendered and "[" not in rendered
+    pending = {**shown[1], "effective_authorization_mode": None}
+    assert "Policy evaluation pending" in mission_cli._render_plan_table(pending)
+    assert "Policy evaluation pending" in mission_cli._render_plan_detail(pending)
+    pending_status = {
+        "mission": {
+            "mission_id": "mission_1",
+            "status": "proposed",
+            "goal": mission.goal,
+            "plan_revision": 1,
+            "plan_sha256": shown[1]["plan_sha256"],
+            "approved_plan_revision": None,
+            "effective_authorization_mode": None,
+        },
+        "tasks": [],
+        "needs_you": {"reason": "approve this plan"},
+    }
+    actions = mission_cli._next_legal_actions(pending_status)
+    assert actions == [
+        "graphene mission status mission_1",
+        "graphene mission watch mission_1 --follow",
+    ]
+    status_text = mission_cli._render_status(pending_status)
+    assert "NEEDS YOU nothing — policy evaluation pending" in status_text
+    assert "approve" not in status_text
     assert compared == (0, diff)
 
     with pytest.raises(mission_cli.MissionCliError, match="two revisions"):
@@ -334,9 +356,7 @@ def test_plan_lint_returns_deterministic_criterion_matrix(
         {"valid": False, "issues": [{"code": "invalid"}]},
     )
 
-    ambiguous = build_parser().parse_args(
-        ["plan", "lint", "mission_1", "--repo", "."]
-    )
+    ambiguous = build_parser().parse_args(["plan", "lint", "mission_1", "--repo", "."])
     with pytest.raises(mission_cli.MissionCliError, match="does not accept"):
         mission_cli._dispatch(ambiguous)
     with pytest.raises(mission_cli.MissionCliError, match="requires a mission ID"):
@@ -362,9 +382,7 @@ def test_why_alias_uses_verified_mission_causal_query(
         assert events == (event,)
         assert query == "app/a.py"
         assert reference_exists(
-            SimpleNamespace(
-                kind="patch", id="artifact_1", sha256=sha256_hex(b"proof")
-            )
+            SimpleNamespace(kind="patch", id="artifact_1", sha256=sha256_hex(b"proof"))
         )
         return SimpleNamespace(
             model_dump=lambda **_options: {
@@ -377,9 +395,7 @@ def test_why_alias_uses_verified_mission_causal_query(
         )
 
     monkeypatch.setattr(causal_query, "why", fake_why)
-    args = build_parser().parse_args(
-        ["why", "app/a.py", "--mission", "mission_1"]
-    )
+    args = build_parser().parse_args(["why", "app/a.py", "--mission", "mission_1"])
 
     assert mission_cli._why_value(args)["matched_by"] == "path"
 
@@ -395,9 +411,7 @@ def test_bundle_create_is_canonical_create_only_and_verifiable_by_id(
     runtime.mkdir(mode=0o700)
     repository = runtime / "repository"
     base, result_commit = _repository(repository, b"base one\n")
-    snapshot, artifacts, policy_sha256 = _snapshot(
-        repository, base, result_commit
-    )
+    snapshot, artifacts, policy_sha256 = _snapshot(repository, base, result_commit)
     values = snapshot.model_dump(mode="json", exclude={"snapshot_sha256"})
     values["mission"] = {
         **values["mission"],
@@ -680,12 +694,8 @@ def test_confirm_human_binds_authoritative_local_principal(
         "getpwuid",
         lambda uid: looked_up.append(uid) or SimpleNamespace(pw_name="os-user"),
     )
-    monkeypatch.setattr(
-        mission_cli.sys, "stdin", SimpleNamespace(isatty=lambda: True)
-    )
-    monkeypatch.setattr(
-        mission_cli.sys, "stdout", SimpleNamespace(isatty=lambda: True)
-    )
+    monkeypatch.setattr(mission_cli.sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(mission_cli.sys, "stdout", SimpleNamespace(isatty=lambda: True))
     args = SimpleNamespace(confirm_human=True, operator_label="reviewer")
 
     assert mission_cli._truth_kind(args) == TruthKind.HUMAN_ATTESTED

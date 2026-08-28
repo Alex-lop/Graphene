@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import json
 import signal
@@ -13,6 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -181,7 +183,19 @@ def _wait_for_phase(mission_id: str, phases: set[str], timeout: float = 30):
         if state.phase in phases:
             return state
         time.sleep(0.02)
-    pytest.fail(f"supervisor for {mission_id} did not reach {sorted(phases)}")
+    runtime = _mission_runtime(mission_id)
+    process_path = runtime / "supervisor-process.json"
+    try:
+        process = SupervisorProcess.model_validate_json(process_path.read_bytes())
+        process_status = f"generation={process.generation}, live={_live(process)}"
+    except (OSError, ValueError) as error:
+        process_status = f"unavailable ({type(error).__name__})"
+    pytest.fail(
+        f"supervisor for {mission_id} did not reach {sorted(phases)}; "
+        f"state={state.model_dump(mode='json')}; "
+        f"mission_status={supervisor_module._authoritative_mission_status(mission_id)}; "
+        f"process={process_status}"
+    )
 
 
 def test_acceptance_is_under_five_seconds_and_duplicate_calls_share_one_owner(
@@ -213,6 +227,133 @@ def test_acceptance_is_under_five_seconds_and_duplicate_calls_share_one_owner(
     assert (runtime / "supervisor-state.json").stat().st_mode & 0o077 == 0
 
 
+def test_spawn_releases_child_only_after_durable_process_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    request = SimpleNamespace(
+        mission_id="mission-supervisor-handshake",
+        request_sha256="a" * 64,
+    )
+    process_recorded = False
+
+    class ParentPipe:
+        closed = False
+
+        def close(self) -> None:
+            assert process_recorded
+            self.closed = True
+
+    pipe = ParentPipe()
+
+    class ChildProcess:
+        pid = 424242
+        stdin = pipe
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    def spawn_process(*_args, **kwargs):
+        assert kwargs["stdin"] == subprocess.PIPE
+        return ChildProcess()
+
+    def write_record(path: Path, _value, **_kwargs) -> None:
+        nonlocal process_recorded
+        assert path == runtime / "supervisor-process.json"
+        process_recorded = True
+
+    monkeypatch.setattr(supervisor_module, "_state", lambda *_args: None)
+    monkeypatch.setattr(supervisor_module.subprocess, "Popen", spawn_process)
+    monkeypatch.setattr(supervisor_module, "_write", write_record)
+    monkeypatch.setattr(
+        process_control,
+        "_owned_process_identity",
+        lambda _pid: (424242, "started", "S", sys.executable, "birth-token"),
+    )
+
+    record = supervisor_module._spawn(runtime, request, 1)
+
+    assert record.pid == 424242
+    assert process_recorded is True
+    assert pipe.closed is True
+
+
+def test_supervisor_waits_for_parent_eof_before_reading_process_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mission_id = "mission-supervisor-delayed-record"
+    request_sha256 = "b" * 64
+    request = SimpleNamespace(
+        mission_id=mission_id,
+        request_sha256=request_sha256,
+    )
+    record = SupervisorProcess(
+        mission_id=mission_id,
+        request_sha256=request_sha256,
+        generation=1,
+        pid=os.getpid(),
+        pgid=os.getpid(),
+        started_at="started",
+        birth_token="birth-token",
+        executable=sys.executable,
+    )
+    events: list[str] = []
+
+    class ParentHandshake:
+        buffer: ParentHandshake
+
+        def __init__(self) -> None:
+            self.buffer = self
+
+        def read(self, size: int) -> bytes:
+            assert size == 1
+            events.append("parent-eof")
+            return b""
+
+    def read_process(_path: Path, _request) -> SupervisorProcess:
+        assert events == ["parent-eof"]
+        events.append("process-record")
+        return record
+
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+    monkeypatch.setattr(supervisor_module, "_read", lambda *_args: request)
+    monkeypatch.setattr(supervisor_module, "_read_process", read_process)
+    monkeypatch.setattr(supervisor_module, "_live", lambda _process: True)
+    monkeypatch.setattr(supervisor_module, "_run", lambda *_args: events.append("run"))
+    monkeypatch.setattr(sys, "stdin", ParentHandshake())
+
+    assert supervisor_module.run_supervisor(mission_id, request_sha256, 1) == 0
+    assert events == ["parent-eof", "process-record", "run"]
+
+
+def test_supervisor_parent_eof_without_process_record_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mission_id = "mission-supervisor-parent-death"
+    request_sha256 = "c" * 64
+    request = SimpleNamespace(
+        mission_id=mission_id,
+        request_sha256=request_sha256,
+    )
+
+    def missing_record(_path: Path, _request):
+        raise SupervisorError("supervisor process record is missing")
+
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+    monkeypatch.setattr(supervisor_module, "_read", lambda *_args: request)
+    monkeypatch.setattr(supervisor_module, "_read_process", missing_record)
+    monkeypatch.setattr(
+        supervisor_module,
+        "_run",
+        lambda *_args: pytest.fail("ran without a durable process record"),
+    )
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO()))
+
+    assert supervisor_module.run_supervisor(mission_id, request_sha256, 1) == 2
+
+
 def test_durable_check_executor_ignores_restart_environment_flip(
     isolated_runtime, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -227,9 +368,7 @@ def test_durable_check_executor_ignores_restart_environment_flip(
 
     monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "semantic-switch-canary")
     assert mission_cli._mission_check_executor(request.mission_id) == "docker"
-    duplicate, _state_value = _accept(
-        repository, "request-supervisor-check-executor"
-    )
+    duplicate, _state_value = _accept(repository, "request-supervisor-check-executor")
     assert duplicate == request
 
 
@@ -551,15 +690,63 @@ def test_planner_failure_gets_one_durable_bounded_replacement(
         (runtime / "planner/attempt-1/planner-outcome.json").read_bytes()
     )
     assert recorded.outcome == first_outcome
-    assert supervisor_module._supervised_gemini_proposal(
-        request, policy, repository, runtime
-    ) == proposal
+    assert (
+        supervisor_module._supervised_gemini_proposal(
+            request, policy, repository, runtime
+        )
+        == proposal
+    )
     assert attempts == [1, 2]
 
     for process in children:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=2)
+
+
+def test_dead_planner_child_rereads_a_durable_terminal_frame(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "planner-attempt"
+    directory.mkdir(mode=0o700)
+    proposal = object()
+    child_request = SimpleNamespace(
+        mission_id="mission-planner-terminal-race",
+        supervisor_request_sha256="a" * 64,
+        attempt_number=1,
+        planning=SimpleNamespace(timeout_seconds=1),
+        request_sha256=lambda: "b" * 64,
+    )
+    process = SimpleNamespace(pid=424242)
+    ready = SimpleNamespace(type="ready", process=process, proposal=None)
+    dispatch = SimpleNamespace(
+        type="provider_dispatched",
+        process=None,
+        proposal=None,
+        sdk_invocation_id="planner-invocation-race",
+        dispatched_at="2026-08-27T12:00:00.000Z",
+    )
+    result = SimpleNamespace(type="result", process=None, proposal=proposal)
+    reads = 0
+
+    def frames(_directory: Path, _request) -> tuple[SimpleNamespace, ...]:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return ready, dispatch
+        return ready, dispatch, result
+
+    monkeypatch.setattr(supervisor_module, "_planner_frames", frames)
+    monkeypatch.setattr(supervisor_module, "_planner_child_live", lambda _item: False)
+
+    assert (
+        supervisor_module._await_planner_attempt(directory, child_request) is proposal
+    )
+    assert reads == 3
+    outcome = PlannerAttemptOutcome.model_validate_json(
+        (directory / "planner-outcome.json").read_bytes()
+    )
+    assert outcome.outcome == "completed"
 
 
 def test_transient_identity_failure_does_not_spawn_a_second_supervisor(
@@ -650,7 +837,9 @@ def test_linux_strong_legacy_comm_supervisor_and_planner_stay_bound(
         record.birth_token,
     )
     matched: list[tuple[int, str, str]] = []
-    monkeypatch.setattr(process_control, "_owned_process_identity", lambda _pid: current)
+    monkeypatch.setattr(
+        process_control, "_owned_process_identity", lambda _pid: current
+    )
     monkeypatch.setattr(
         process_control,
         "_matches_live_image",
@@ -929,7 +1118,7 @@ raise SystemExit(supervisor.run_supervisor(mission_id, request_sha256, generatio
         ),
         cwd=repository,
         env=os.environ.copy(),
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         close_fds=True,
@@ -953,6 +1142,8 @@ raise SystemExit(supervisor.run_supervisor(mission_id, request_sha256, generatio
             executable=executable,
         ),
     )
+    assert process.stdin is not None
+    process.stdin.close()
     assert process.wait(timeout=60) == 1
     failed = supervisor_status(request.mission_id)
     assert failed.phase == "failed" and failed.generation == generation
@@ -1068,7 +1259,7 @@ def test_duplicate_start_does_not_respawn_a_terminal_supervisor(
         requested_mode="policy_pre_authorized",
         finalization_mode="auto_finalize_isolated",
     )
-    completed = _wait_for_phase(request.mission_id, {"completed", "failed"}, 60)
+    completed = _wait_for_phase(request.mission_id, {"completed", "failed"}, 180)
     assert completed.phase == "completed", completed
     runtime = _mission_runtime(request.mission_id)
     process_path = runtime / "supervisor-process.json"

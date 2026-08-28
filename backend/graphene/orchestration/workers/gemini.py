@@ -585,6 +585,7 @@ class GeminiWorkerAdapter:
         assert process.stderr is not None
         request_sha256 = request.request_sha256()
         input_frame = child_frame_bytes(request)
+        owned: OwnedProcess | None = None
         try:
             owned = registry.record_pid(
                 context.dispatch,
@@ -593,10 +594,14 @@ class GeminiWorkerAdapter:
                 model_request_sha256=request_sha256,
                 model_input_bytes=len(input_frame) - 4,
             )
+            registry.ensure_registration_allowed()
         except Exception:
             process.kill()
             await process.wait()
+            if owned is not None:
+                registry.remove_exact(owned)
             raise
+        assert owned is not None
         stderr_task = asyncio.create_task(self._read_child_stderr(process.stderr))
         done = asyncio.Event()
         heartbeat = asyncio.create_task(self._heartbeat(context, done))
@@ -875,9 +880,7 @@ class GeminiWorkerAdapter:
                 )
                 if owned is None:
                     return None
-                sent = registry.terminate_owned(
-                    owned, timeout=2, retain_record=True
-                )
+                sent = registry.terminate_owned(owned, retain_record=True)
                 request_sha256 = request.request_sha256()
                 input_bytes = len(child_frame_bytes(request)) - 4
                 if (
@@ -1003,7 +1006,7 @@ class GeminiWorkerAdapter:
                 or owned.model_input_bytes is None
             ):
                 raise ProcessControlError("model process intent is unavailable")
-            sent = registry.terminate_owned(owned, timeout=2, retain_record=True)
+            sent = registry.terminate_owned(owned, retain_record=True)
             return self._unconfirmed_interruption(
                 dispatch,
                 owned,

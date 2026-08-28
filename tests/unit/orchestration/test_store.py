@@ -23,6 +23,7 @@ from graphene.orchestration.evidence import (
     SQLiteAttemptEvidenceStore,
 )
 from graphene.orchestration.mission_models import (
+    AuthorizationMode,
     ArtifactContract,
     ArtifactEnvelopeReferenceV2,
     ArtifactRequirement,
@@ -32,6 +33,7 @@ from graphene.orchestration.mission_models import (
     Criterion,
     CriterionVerificationKind,
     EvidenceReference,
+    FinalizationMode,
     Gate,
     GateDecision,
     GenericEvidenceLink,
@@ -152,9 +154,7 @@ class MemoryArtifacts:
             artifact_envelope_sha256=envelope.artifact_envelope_sha256,
         )
 
-    def resolve_enveloped(
-        self, reference: ArtifactEnvelopeReferenceV2
-    ) -> bytes | None:
+    def resolve_enveloped(self, reference: ArtifactEnvelopeReferenceV2) -> bytes | None:
         content = self.resolve(reference.kind, reference.artifact_id)
         envelope = self.envelopes.get(reference.artifact_envelope_sha256)
         if content is None or envelope is None:
@@ -458,6 +458,9 @@ def _create(
     creation_source: str = "operator",
     approve: bool = True,
     policy: ProjectPolicy | None = None,
+    mission_schema_version: int = 1,
+    requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED,
+    requested_finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED,
 ) -> None:
     policy = policy or _policy()
     if store.artifact_resolver is None:
@@ -469,6 +472,9 @@ def _create(
             **_mission(mission_id, creation_source=creation_source).model_dump(
                 mode="json"
             ),
+            "schema_version": mission_schema_version,
+            "requested_authorization_mode": requested_authorization_mode,
+            "requested_finalization_mode": requested_finalization_mode,
             "resource_budget": policy.resource_budget.model_dump(mode="json"),
         }
     )
@@ -1779,9 +1785,7 @@ def test_attempt_budget_exhaustion_after_replan_commits_a_budget_block(
         recorded_at=NOW + timedelta(seconds=tick + 1),
     )
     still_blocked = next(
-        task
-        for task in store.snapshot("mission-1").tasks
-        if task.task_id == "work-b"
+        task for task in store.snapshot("mission-1").tasks if task.task_id == "work-b"
     )
     assert (still_blocked.state, still_blocked.blocker) == (
         TaskState.BLOCKED,

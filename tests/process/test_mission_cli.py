@@ -424,6 +424,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     environment = {
         **os.environ,
         "GRAPHENE_STATE_DIR": str(state),
+        "PATH": os.defpath,
         "PYTHONPATH": str(ROOT / "backend"),
     }
     mission_id = "mission-active-control"
@@ -463,7 +464,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     def execute() -> None:
         try:
             runner(
-                ("/bin/sleep", "10"),
+                ("/bin/sleep", "60"),
                 cwd=Path("/"),
                 env={"PATH": os.defpath},
                 stdin=subprocess.DEVNULL,
@@ -487,7 +488,9 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
             owned = prepared[0]
             break
         if time.monotonic() >= deadline:
-            raise AssertionError("controlled process was not registered before deadline")
+            raise AssertionError(
+                "controlled process was not registered before deadline"
+            )
         time.sleep(0.01)
 
     paused = _cli(
@@ -518,6 +521,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
     assert resumed["mission_id"] == mission_id
     assert store.snapshot(mission_id).mission.status == MissionStatus.RUNNING
     assert tuple(registry.directory.iterdir())
+    assert thread.is_alive(), errors
     cancelled = _cli(
         environment,
         "mission",
@@ -529,6 +533,7 @@ def test_cli_pauses_resumes_and_cancels_only_bound_active_process(
         "command_cancel_active_control",
     )
     thread.join(timeout=3)
+    assert not thread.is_alive(), errors
     cancelled_again = _cli(
         environment,
         "mission",

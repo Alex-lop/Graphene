@@ -382,6 +382,106 @@ def test_production_create_approve_ready_and_claim_are_authoritative_transaction
     assert approved.seq < ready_head.seq < claimed.head.seq
 
 
+@pytest.mark.parametrize(
+    ("mission_schema_version", "policy_schema_version"), ((2, 1), (1, 2))
+)
+def test_schema_v2_requires_unavailable_cloud_policy_decision_persistence(
+    mission_schema_version, policy_schema_version
+):
+    client = Client()
+    store = FirestoreMissionStore(
+        client,
+        namespace=f"v2-policy-{mission_schema_version}-{policy_schema_version}",
+        clock=lambda: START,
+        allow_test_bootstrap=True,
+    )
+    store.initialize_namespace_schema()
+    policy, mission, plan = load_scenario().contracts(
+        mission_id=MISSION_ID,
+        repo_id="repo-firestore-v2-policy",
+        base_sha="a" * 40,
+        created_at=START,
+    )
+    if mission_schema_version == 2:
+        mission = type(mission).model_validate(
+            {
+                **mission.model_dump(mode="json"),
+                "schema_version": 2,
+                "requested_authorization_mode": "review_required",
+                "requested_finalization_mode": "review_required",
+            }
+        )
+    if policy_schema_version == 2:
+        policy = type(policy).model_validate(
+            {
+                **policy.model_dump(mode="json"),
+                "schema_version": 2,
+                "authorization_mode": "review_required",
+                "finalization_mode": "review_required",
+            }
+        )
+
+    with pytest.raises(DomainTransitionUnavailable, match="persistence is unavailable"):
+        store.create_mission(
+            policy,
+            mission,
+            plan,
+            "command_domain_create_v2",
+            recorded_at=START,
+        )
+
+    event = store.append(
+        MISSION_ID,
+        empty_head(),
+        "command_domain_existing_v2",
+        draft("created"),
+    )
+    current = head(event)
+    base = domain_snapshot(current)
+    stored_mission = base.mission
+    if mission_schema_version == 2:
+        stored_mission = type(stored_mission).model_validate(
+            {
+                **stored_mission.model_dump(mode="json"),
+                "schema_version": 2,
+                "requested_authorization_mode": "review_required",
+                "requested_finalization_mode": "review_required",
+            }
+        )
+    stored_policy = base.policy
+    if policy_schema_version == 2:
+        stored_policy = type(stored_policy).model_validate(
+            {
+                **stored_policy.model_dump(mode="json"),
+                "schema_version": 2,
+                "authorization_mode": "review_required",
+                "finalization_mode": "review_required",
+            }
+        )
+    values = {
+        **base.model_dump(mode="json", exclude={"snapshot_sha256"}),
+        "mission": stored_mission.model_dump(mode="json"),
+        "policy": stored_policy.model_dump(mode="json"),
+    }
+    store.save_snapshot(
+        MissionSnapshot.model_validate(
+            {**values, "snapshot_sha256": canonical_json_sha256(values)}
+        )
+    )
+
+    with pytest.raises(DomainTransitionUnavailable, match="persistence is unavailable"):
+        store.approve_plan(
+            MISSION_ID,
+            "command_domain_approve_v2",
+            expected_revision=1,
+            expected_head=current,
+            operator_label="reviewer",
+            rationale="Must not bypass policy evaluation.",
+            truth_kind=TruthKind.SERVER_DERIVED,
+            recorded_at=START,
+        )
+
+
 def test_sqlite_and_firestore_share_the_authoritative_failure_contract(tmp_path):
     policy, mission, plan = load_scenario().contracts(
         mission_id=MISSION_ID,

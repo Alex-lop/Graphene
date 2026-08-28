@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import struct
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -589,7 +591,7 @@ def test_recovery_refuses_to_bind_prebarrier_child_to_a_different_request(
     worker_runtime.mkdir(parents=True)
     registry = OwnedProcessRegistry(private)
     process = subprocess.Popen(("/bin/sleep", "30"), start_new_session=True)
-    registry.record_pid(
+    owned = registry.record_pid(
         dispatch,  # type: ignore[arg-type]
         process.pid,
         "/bin/sleep",
@@ -602,16 +604,22 @@ def test_recovery_refuses_to_bind_prebarrier_child_to_a_different_request(
     adapter = GeminiWorkerAdapter.live(
         worker_id=request.worker_id, environ={"GOOGLE_API_KEY": "not-recorded"}
     )
+    reaper = threading.Thread(target=process.wait)
+    reaper.start()
     try:
         with pytest.raises(RuntimeFailure) as rejected:
             adapter._recover_interrupted_child(  # type: ignore[arg-type]
                 context, request
             )
         assert rejected.value.code == RuntimeErrorCode.ADAPTER_REJECTED
-        assert process.poll() is not None
+        reaper.join(timeout=5)
+        assert not reaper.is_alive()
+        assert process.returncode == -signal.SIGTERM
         assert registry.has_record(request.attempt_id)
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
+        reaper.join(timeout=0.1)
+        if reaper.is_alive():
+            registry.signal_prepared(owned, signal.SIGKILL)
+        reaper.join(timeout=5)
+        assert not reaper.is_alive()
         registry.remove(dispatch)  # type: ignore[arg-type]

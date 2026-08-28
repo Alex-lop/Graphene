@@ -89,7 +89,9 @@ class MissionView(ViewModel):
     outcome: str | None = Field(default=None, max_length=512)
     creation_source: str = Field(min_length=1, max_length=64)
     requested_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
-    effective_authorization_mode: AuthorizationMode = AuthorizationMode.REVIEW_REQUIRED
+    effective_authorization_mode: AuthorizationMode | None = (
+        AuthorizationMode.REVIEW_REQUIRED
+    )
     finalization_mode: FinalizationMode = FinalizationMode.REVIEW_REQUIRED
     policy_decision_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
 
@@ -1105,9 +1107,7 @@ def project_snapshot(
     ):
         raise MissionProjectionError("mission events do not reach the snapshot head")
     try:
-        policy_decision = plan_policy_decision(
-            verified_events, snapshot.plan.revision
-        )
+        policy_decision = plan_policy_decision(verified_events, snapshot.plan.revision)
     except ValueError as error:
         raise MissionProjectionError("mission policy decision is invalid") from error
     if policy_decision is not None and (
@@ -1265,10 +1265,8 @@ def project_snapshot(
     pending = tuple(item for item in gates if item.status == "pending")
     automatic_finalization = (
         policy_decision is not None
-        and policy_decision.effective_mode
-        == AuthorizationMode.POLICY_PRE_AUTHORIZED
-        and policy_decision.finalization_mode
-        == FinalizationMode.AUTO_FINALIZE_ISOLATED
+        and policy_decision.effective_mode == AuthorizationMode.POLICY_PRE_AUTHORIZED
+        and policy_decision.finalization_mode == FinalizationMode.AUTO_FINALIZE_ISOLATED
     )
     if (
         automatic_finalization
@@ -1349,7 +1347,20 @@ def project_snapshot(
         else None,
         creation_source=str(snapshot.mission.creation_source),
         **(
-            {}
+            (
+                {}
+                if snapshot.mission.schema_version
+                == snapshot.policy.schema_version
+                == 1
+                else {
+                    "requested_authorization_mode": (
+                        snapshot.mission.requested_authorization_mode
+                    ),
+                    "effective_authorization_mode": None,
+                    "finalization_mode": snapshot.mission.requested_finalization_mode,
+                    "policy_decision_sha256": None,
+                }
+            )
             if policy_decision is None
             else {
                 "requested_authorization_mode": policy_decision.requested_mode,
@@ -1704,6 +1715,7 @@ class MissionProjection:
                     domain.plan.tasks,
                     tuple(events),
                     plan_revision=domain.plan.revision,
+                    policy_schema_version=domain.policy.schema_version,
                 )
             except TransitionError as error:
                 raise MissionProjectionError(
