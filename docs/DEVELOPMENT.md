@@ -69,7 +69,7 @@ GRAPHENE_RUN_FIRESTORE_EMULATOR=1 \
   "uv run --frozen pytest -q tests/integration/test_firestore_emulator.py"
 ```
 
-The recorded production-path run completed **3 passed**. It does not prove real Google Cloud behavior.
+The recorded production-path run completed **4 passed**. It does not prove real Google Cloud behavior.
 
 ## Opt-in proof
 

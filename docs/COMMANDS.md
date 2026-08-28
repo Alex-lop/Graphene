@@ -68,9 +68,13 @@ with no prompts, source bytes, diffs, or command output.
 `graphene mission capsule verify CAPSULE_DIR` recomputes every digest and chain
 link from those files alone without opening the mission store.
 
-The outbound surface is `graphene mission executor connect --repo PATH
---mission MISSION_ID --coordinator-url URL --audience AUDIENCE --workers 2`. It
-touches local workspaces; Cloud Run does not.
+The outbound surface is two explicit steps: `graphene mission executor seed
+--repo PATH --mission MISSION_ID --plan-sha256 SHA256 --audience AUDIENCE
+--output NEW-SEED.json`, then `graphene mission executor connect --repo PATH
+--mission MISSION_ID --seed-receipt NEW-SEED.json --coordinator-url URL
+--audience AUDIENCE --workers 1`. Seeding writes only the separately scoped
+Firestore execution mission; connecting touches local workspaces. Cloud Run
+does neither.
 
 ## Watching for a change
 

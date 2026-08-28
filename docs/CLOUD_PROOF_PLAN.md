@@ -22,12 +22,12 @@ an honestly scoped one. So:
   Cloud Run against a real Firestore database and executes the implemented
   production vertical — mission create / exact plan approval / readiness,
   executor-session registration, atomic claim with lease and fence, heartbeat,
-  completion, abandon, durable outbox, five-shard materialization and
-  reconciliation — driven from this machine by
-  `graphene mission executor connect --repo PATH --mission MISSION_ID
-  --coordinator-url URL --audience AUDIENCE --workers 2` with Google OIDC.
-  Cloud Run never clones or mounts the repository; the two WORK-only Gemini
-  executor sessions run here.
+  completion, durable outbox, five-shard materialization and reconciliation —
+  driven from this machine by `graphene mission executor seed` followed by
+  `graphene mission executor connect ... --workers 1` with Google OIDC. Cloud
+  Run never clones or mounts the repository; one WORK-only Gemini executor
+  session runs here. Abandon is disabled; interrupted claimed work waits for
+  lease TTL expiry.
 - **Failure laboratory and the North Star mission:** run entirely on the
   fully implemented **SQLite authority locally**, per the
   [North Star runbook](NORTH_STAR_RUNBOOK.md).
@@ -36,7 +36,7 @@ an honestly scoped one. So:
 
 ### The authority split, README-ready (one sentence)
 
-> The North Star mission, the failure laboratory, and the capsule ran under the local SQLite mission store as the sole execution authority, while the Cloud Run coordinator backed by real Firestore held authority only for the separately recorded `executor connect` vertical (executor registration, claim, heartbeat, completion, and outbox), and neither plane held authority for the other's demo.
+> In a completed proof, the North Star mission, failure laboratory, and capsule remain under the local SQLite mission store as sole execution authority, while the separately seeded Firestore mission holds authority only for its single-executor registration, claim, heartbeat, completion, and outbox vertical; neither plane holds authority for the other's demo.
 
 The capsule manifest's `authority_note` ("SQLite mission store was the
 execution authority for this mission.") is the machine-readable half of that
@@ -65,13 +65,15 @@ sandbox. Exact variable names only:
    --database="$DATABASE_ID" --location="$FIRESTORE_LOCATION" --type=firestore-native
    --delete-protection`; `gcloud artifacts repositories create "$AR_REPOSITORY"
    --location="$REGION" --repository-format=docker`.
-5. **Three service accounts.** Create `$VIEWER_SA`, `$COORDINATOR_SA`,
-   `$EXECUTOR_SA`. Viewer: `roles/datastore.viewer` conditioned to
-   `projects/$PROJECT_ID/databases/$DATABASE_ID`. Coordinator: the reviewed
-   least-privilege Firestore write role on that database only (review before
-   granting). Executor: `roles/run.invoker` on the exact coordinator service
-   after it exists — never project-wide Firestore access. Deployer:
-   `roles/iam.serviceAccountUser` on the exact runtime identities only.
+5. **Three runtime service accounts.** Create `$VIEWER_SA`, `$COORDINATOR_SA`,
+   `$EXECUTOR_SA`. Viewer: `roles/datastore.viewer` conditioned to the exact
+   database. Coordinator: `roles/datastore.user` under the same condition.
+   Executor: `roles/run.servicesInvoker` on the exact coordinator service and
+   no Firestore role; when Vertex is the approved Gemini mode, also
+   `roles/aiplatform.user` on the selected proof project. Deployer and build identities use the exact-resource
+   matrix in [Alex cloud setup](ALEX_CLOUD_SETUP.md#5-create-three-service-identities),
+   including `actAs` only on runtime identities and token creation only on the
+   coordinator/executor identities used for local impersonation.
 6. **Read token secret** (viewer only): `gcloud secrets create
    "$READ_TOKEN_SECRET"`, add one random version from `openssl rand -hex 32`
    via `--data-file=-`, grant `roles/secretmanager.secretAccessor` to
@@ -81,7 +83,8 @@ sandbox. Exact variable names only:
    `GRAPHENE_FIRESTORE_DATABASE="$DATABASE_ID"`,
    `GRAPHENE_FIRESTORE_NAMESPACE='graphene'`, `GRAPHENE_MISSION_ID`,
    `GRAPHENE_COORDINATOR_URL`, `GRAPHENE_COORDINATOR_AUDIENCE`
-   (equal to the URL). Gemini credentials for the executor: either
+   (equal to the URL), `PLAN_SHA256`, and a new private `SEED_RECEIPT` path.
+   Gemini credentials for the executor: either
    `GOOGLE_GENAI_USE_VERTEXAI=true` with project/location and valid ADC, or
    exactly one of `GEMINI_API_KEY` / `GOOGLE_API_KEY` with Vertex mode unset —
    one mode, never both. Read-only preflight: `gcloud firestore databases
@@ -142,8 +145,10 @@ export EXECUTOR_BINDINGS='{"<sub printed above>":"executor-alex-local"}'
 
 Treat the subject as configuration rather than a secret, but keep it out of
 public docs and screenshots anyway. The deployer needs
-`roles/iam.serviceAccountTokenCreator` on `$EXECUTOR_SA_EMAIL` for the
-impersonated token mint; grant it to the deployer only.
+`roles/iam.serviceAccountTokenCreator` on the exact executor identity for this
+mint and on the exact coordinator identity for Firestore seeding; grant neither
+role project-wide. The client first uses Google's direct ADC identity-token
+path and falls back only when the ADC source is explicitly impersonated.
 
 ## 4. Deploy the coordinator (operator template from `deploy/cloudrun/README.md`)
 
@@ -189,7 +194,7 @@ malformed. After deploy:
 gcloud run services describe "$COORDINATOR_SERVICE" --project="$PROJECT_ID" --region="$REGION" \
   --format='value(status.url,status.latestReadyRevisionName)'
 gcloud run services add-iam-policy-binding "$COORDINATOR_SERVICE" --project="$PROJECT_ID" --region="$REGION" \
-  --member="serviceAccount:$EXECUTOR_SA_EMAIL" --role='roles/run.invoker'
+  --member="serviceAccount:$EXECUTOR_SA_EMAIL" --role='roles/run.servicesInvoker'
 export GRAPHENE_COORDINATOR_URL="$COORDINATOR_AUDIENCE"
 export GRAPHENE_COORDINATOR_AUDIENCE="$COORDINATOR_AUDIENCE"
 ```
@@ -203,34 +208,50 @@ keeps saying `NOT PROVEN`.
 ## 5. Running the vertical for a real mission
 
 ```bash
+export COORDINATOR_SA_EMAIL="$COORDINATOR_SA@$PROJECT_ID.iam.gserviceaccount.com"
+export EXECUTOR_SA_EMAIL="$EXECUTOR_SA@$PROJECT_ID.iam.gserviceaccount.com"
+export SEED_RECEIPT="$PWD/graphene-cloud-seed.json"
+
+# PLAN_SHA256 comes from the reviewed, still-proposed local plan.
+gcloud auth application-default login \
+  --impersonate-service-account="$COORDINATOR_SA_EMAIL"
+uv run --frozen graphene mission executor seed \
+  --repo "$DEST" --mission "$GRAPHENE_MISSION_ID" \
+  --plan-sha256 "$PLAN_SHA256" \
+  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" \
+  --output "$SEED_RECEIPT" --confirm-human
+
+gcloud auth application-default login \
+  --impersonate-service-account="$EXECUTOR_SA_EMAIL"
 uv run --frozen graphene mission executor connect \
   --repo "$DEST" --mission "$GRAPHENE_MISSION_ID" \
+  --seed-receipt "$SEED_RECEIPT" \
   --coordinator-url "$GRAPHENE_COORDINATOR_URL" \
-  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" --workers 2
+  --audience "$GRAPHENE_COORDINATOR_AUDIENCE" --workers 1
 ```
 
-`connect` runs the local preflight (Git, Google ADK, one Gemini credential
-mode, usable policy), requires the mission to exist **locally** in `running`
-state with a verified head and a policy/base binding identical to `--repo`,
-then registers two WORK-only sessions (`outbound-work-1`, `outbound-work-2`)
-with the coordinator, sending that verified local head as `expected_head`.
-The coordinator's Firestore store enforces `expected_head` against the
-mission it holds, so the mission must already exist in Firestore —
-created, approved, and readiness-refreshed — with the **same** head.
+The local source must be an operator-created, review-required schema-2 plan at
+revision 1, still `proposed`, with no attempts, leases, publications, or gates.
+`seed` projects only the reviewed execution contract to a separate schema-1,
+review-required Firestore policy/mission, approves and readies it, verifies the
+full remote event chain and materialized snapshot, then writes a canonical
+mode-`0600` receipt. The receipt binds repo/base, source and cloud policy
+identities/digests, local and Firestore heads, plan, execution contract,
+snapshot, project/database/namespace, audience, approval truth, and its own
+digest.
 
-Two honest gaps must be closed or worked around before this runs; both are
-open work, not labels:
+SQLite and Firestore event IDs differ by construction, so their heads are
+deliberately distinct; the receipt binds both instead of claiming equality.
+`connect` revalidates that receipt against current local contracts and the real
+Firestore target, then registers exactly one WORK-only session and starts from
+the receipt's Firestore head. The local mission remains unchanged and is not
+cloud authority.
 
-- **Seeding.** No CLI seeds a mission into Firestore. The only implemented
-  path is the Python API the emulator test uses
-  (`FirestoreMissionStore.initialize_namespace_schema` → `create_mission` →
-  `approve_plan` → `refresh_ready`, see
-  [`tests/integration/test_firestore_emulator.py`](../tests/integration/test_firestore_emulator.py)),
-  and nothing yet demonstrates that a mission created that way and the same
-  mission in the local SQLite store produce identical event digests and
-  therefore an identical head. Until a seeding command exists and is tested
-  against the emulator, the vertical is driven the way the emulator test
-  drives it, and the authority sentence must say so.
+This is a one-shot seeded cloud execution vertical, not a release-bound state
+projector: it has no local-authority projection outbox, restart/catch-up loop,
+or cloud scheduling-parity claim. It does not perform assembly, verification,
+or finalization. The remaining check boundary is unchanged:
+
 - **Checks.** The outbound executor reads `GRAPHENE_CHECK_EXECUTOR` through
   the same selection as the local ADK path and fails closed on an
   unsupported value before registering a worker: `docker` needs the executor
@@ -246,7 +267,10 @@ The result JSON is sanitized by construction: `status: executor_stopped`,
 `authenticated_coordinator_round_trip`, `scope:
 work_only_first_cloud_vertical`, `mission_completion_claimed: false`,
 `worker_ids`, `capabilities: ["work"]`, `claimed`,
-`completed_work_attempts`, and `final_heads`.
+`completed_work_attempts`, `final_heads`, and
+`cloud_scheduling_parity_claimed: false`. Success requires one session,
+`claimed >= 1`, `completed_work_attempts >= 1`, and equality between claimed
+and completed attempts; it still reports `mission_completion_claimed: false`.
 
 The separately gated live Firestore smoke is independent of the coordinator
 and runs first:
@@ -274,9 +298,11 @@ cleans up exactly what it wrote.
   export of `<namespace>_missions/<mission_id>` and its state-root/shard
   documents. Those documents contain labels, ids, and digests only; still crop
   anything that is not Graphene's.
-- Executor: the `connect` result JSON above; `claimed >= 2`,
-  `completed_work_attempts >= 2`, `authenticated_coordinator_round_trip: true`,
-  `final_heads` matching the Firestore head.
+- Executor: the `connect` result JSON above; one worker, `claimed >= 1`,
+  `completed_work_attempts >= 1`, claimed equal to completed,
+  `authenticated_coordinator_round_trip: true`,
+  `cloud_scheduling_parity_claimed: false`, and `final_heads` matching the
+  Firestore head.
 - Provider: returned model, session and invocation ids, and usage source from
   the local worker-provider receipts (digests cited as in the runbook).
 - The pytest summary line of the live Firestore smoke.

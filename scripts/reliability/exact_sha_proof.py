@@ -109,7 +109,7 @@ _RUNTIME_CLAIMS = (
         "stable-cloud-read-handoff-contract",
         "unit",
         (RUNTIME_NO_KEY_NODEIDS[6],),
-        "the configured cloud handoff surface stayed read-only and labeled deployment proof absent",
+        "the configured cloud viewer read surface stayed read-only and labeled deployment proof absent",
     ),
 )
 
