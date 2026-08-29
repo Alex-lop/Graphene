@@ -15,33 +15,12 @@ from graphene.legacy_store import InMemoryStore
 from graphene.viewer.viewer_replay import REPLAY_TRUTH_LABEL
 
 ROOT = Path(__file__).parents[2]
-LANGGRAPH_SECTION = """## Why not just LangGraph?
-
-LangGraph checkpoints workflow state, retries nodes, and preserves successful
-parallel writes.
-
-Graphene governs a different boundary: repository publication.
-
-Each coding attempt is bound to a base SHA, declared write scope, attempt
-identity, and current fencing token. Workers may propose patches, but they
-cannot publish them. Graphene admits eligible artifacts, refuses superseded
-attempts, assembles accepted artifacts only, verifies the exact candidate
-tree, and publishes that same tree to an isolated Git ref.
-
-Graphene does not replace LangGraph. A LangGraph controller may invoke
-Graphene.
-
-Use LangGraph to decide what runs next. Use Graphene to decide which bytes
-may ship.
-
-Here, “ship” means admission into Graphene's verified isolated result ref. It
-does not mean pushing, merging, or deploying a user repository."""
 
 
 def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     readme = (ROOT / "README.md").read_text()
     simple = (ROOT / "simplreadme.md").read_text()
-    # The README is the newcomer's door (roughly <=160 lines); the proof table
+    # The README is the newcomer's door (roughly <=100 lines); the proof table
     # and command map live in these documents, and each assertion names its owner.
     proof = (ROOT / "docs/PROOF.md").read_text()
     commands_doc = (ROOT / "docs/COMMANDS.md").read_text()
@@ -84,29 +63,56 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert set(mission) == set(_MISSION_COMMANDS)
     assert all(f"`graphene {command}" in commands_doc for command in commands)
     assert all(f"`graphene mission {command}" in commands_doc for command in mission)
-    assert len(readme.splitlines()) <= 160
+    assert len(readme.splitlines()) <= 100
     assert readme.startswith(
         '<p align="center">\n'
     ) and "# Agents write. Graphene decides what survives." in readme
-    assert "**Repository publication control for parallel coding agents.**" in readme
-    assert LANGGRAPH_SECTION in readme
     assert (
-        readme.index(
-            "## After a coding worker fails, which repository changes are safe to keep?"
+        "**Repository publication control for parallel coding agents: bounded writes, "
+        "exact candidates, traceable history.**"
+    ) in readme
+    assert product["product_thesis"] in readme
+    assert (
+        readme.index("## Run the verified path")
+        < readme.index("docs/assets/ui-terminal.png")
+        < readme.index("## Where Graphene fits")
+        < readme.index("## Connect a controller")
+        < readme.index("## Proven / waiting")
+    )
+    assert all(
+        project in readme
+        for project in (
+            "[Graft](https://github.com/trailhq/Graft)",
+            "[LangGraph](https://github.com/langchain-ai/langgraph)",
+            "[Microsoft Agent Framework](https://github.com/microsoft/agent-framework)",
         )
-        < readme.index(LANGGRAPH_SECTION)
-        < readme.index("## Quickstart: verified replay, no credentials")
-        < readme.index("## Connect an MCP controller")
     )
+    assert (ROOT / "docs/assets/ui-terminal.png").is_file()
     assert (
-        "Graphene never pushes, merges, deploys, or mutates the supplied checkout.\n\n"
-        + LANGGRAPH_SECTION
-        in readme
+        ROOT / "docs/reports/2026-08-28-readme-comparison-research.md"
+    ).is_file()
+    assert "Approved plan → scoped attempts → accepted artifacts" in readme
+    assert "These are complementary layers" in readme
+    assert "no token-efficiency claim, and no speed or cost comparison" in readme
+    assert "SHA-256" in readme and "exact candidate" in readme
+    assert "Graphene never pushes, merges, deploys, or mutates" in readme
+    assert "`server_derived` relay evidence, not human attestation" in readme
+    assert "no Codex, Claude Code, or Gemini CLI run" in readme
+    assert (
+        "Current credentialed Gemini Orders mission, real model kill/recovery, "
+        "and Codex controller"
+    ) in readme
+    assert all(
+        command in readme
+        for command in (
+            "`start_goal`",
+            "`get_digest`",
+            "`approve_plan`",
+            "`mission_status`",
+            "`why`",
+            "`graphene mission result show`",
+        )
     )
-    assert "Within one fixed plan revision" in readme
-    assert "monotonically increasing fences" in readme
-    assert "Live Codex and Gemini MCP proof remains `NOT PROVEN`" in readme
-    assert "compose it with `graphene mission result show`" in readme
 
     assert set(driver_action.choices) == set(legacy)
     assert all(driver in demo.format_help() for driver in legacy)
@@ -141,7 +147,6 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert "graphene watch github" in commands_doc
     assert watcher["live_gate_env"] in watcher["github_command"]
 
-    assert product["product_thesis"] in readme
     mcp_goal_loop = product["mcp_goal_loop"]
     assert mcp_goal_loop["tools"] == list(TOOL_ARGUMENTS)
     assert "NINE TOOLS" in mcp_goal_loop["truth_label"]

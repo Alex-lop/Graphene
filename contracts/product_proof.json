@@ -295,7 +295,7 @@
     ],
     "status": "not_proven_capture_pending"
   },
-  "product_thesis": "Within one fixed plan revision, Graphene keeps only artifacts admitted under declared scopes and monotonically increasing fences. Accepted sibling artifacts remain immutable; failed or stale attempts cannot publish. Assembly consumes accepted artifacts only, verification binds the exact candidate, policy-authorized finalization creates an isolated Git ref, and `why` reconstructs causality. Graphene never pushes, merges, deploys, or mutates the supplied checkout.",
+  "product_thesis": "Graphene binds one approved plan revision to its base SHA and SHA-256 digest. Parallel workers may propose changes, but only scoped artifacts carrying the current fence can enter the exact candidate Graphene verifies; stale attempts cannot publish. `why` preserves traceable history, and policy-authorized finalization creates an isolated Git ref. Graphene never pushes, merges, deploys, or mutates the supplied checkout.",
   "result": "The current tree implements detached mission supervision, policy-bound authorization, private model children, selective higher-fence recovery mechanics, exact candidate/final-bundle authority, isolated local finalization, and an external exact-SHA artifact proof gate. Credential-free tests cover those contracts; current live Gemini, Codex, and cloud behavior remain separate and not proven.",
   "schema_version": 2,
   "status": "canonical",
