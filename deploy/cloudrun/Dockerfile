@@ -20,6 +20,12 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
 COPY demo/taskmaster ./demo/taskmaster
+# pyproject.toml's [tool.hatch.build.targets.wheel.force-include] reads these
+# at wheel-build time, so `uv sync --no-editable` below fails without them.
+COPY contracts/golden_path.json contracts/graph_mvp.json ./contracts/
+COPY demo/fixture ./demo/fixture
+COPY demo/north_star ./demo/north_star
+COPY scripts/materialize_north_star.py ./scripts/
 
 RUN uv sync --frozen --no-dev --no-editable \
     && groupadd --gid 10001 graphene \

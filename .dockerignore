@@ -28,3 +28,17 @@
 !deploy/cloudrun/cloudbuild.yaml
 !deploy/cloudrun/coordinator.Dockerfile
 !deploy/cloudrun/coordinator-cloudbuild.yaml
+
+# The deployment images COPY these, and pyproject.toml's
+# [tool.hatch.build.targets.wheel.force-include] requires them at wheel-build
+# time. Without them in the build context neither image builds.
+!contracts/
+!contracts/**
+!demo/fixture/
+!demo/fixture/**
+!demo/north_star/
+!demo/north_star/**
+!frontend/
+!frontend/**
+!scripts/
+!scripts/materialize_north_star.py

@@ -17,7 +17,10 @@ COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
 COPY contracts ./contracts
 COPY demo/fixture ./demo/fixture
+COPY demo/north_star ./demo/north_star
+COPY demo/taskmaster ./demo/taskmaster
 COPY frontend ./frontend
+COPY scripts/materialize_north_star.py ./scripts/
 
 RUN uv sync --frozen --no-dev \
     && useradd --create-home --uid 10001 graphene \
