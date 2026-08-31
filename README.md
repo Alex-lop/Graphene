@@ -46,7 +46,7 @@ The replay is SHA-256 checked, read-only, and credential-free. Drop both flags t
 | Export a redacted mission capsule and cold-verify every hash chain in it without the mission store | `graphene mission capsule export` | [`tests/unit/orchestration/test_capsule.py`](tests/unit/orchestration/test_capsule.py) |
 | Drive the whole loop from your own controller over MCP stdio | `graphene-mcp` | [`tests/unit/integrations/test_mission_mcp.py`](tests/unit/integrations/test_mission_mcp.py) |
 
-<!-- RELEASE-LINK: agent-plan-lint -->
+The first row ships on its own: [`agent-plan-lint`](https://github.com/Alex-lop/agent-plan-lint) is that plan gate, extracted from Graphene as a standalone package with its issue codes and its tests (source release `v0.1.0`).
 
 ## Where Graphene fits
 
