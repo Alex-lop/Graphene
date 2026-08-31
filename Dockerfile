@@ -7,7 +7,7 @@ FROM python:3.13-slim
 LABEL org.opencontainers.image.description="Graphene legacy HTTP compatibility demo; not authoritative v2 execution"
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends git \
+    && apt-get install --yes --no-install-recommends git procps \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /uvx /bin/
