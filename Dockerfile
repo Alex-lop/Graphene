@@ -7,7 +7,7 @@ FROM python:3.13-slim
 LABEL org.opencontainers.image.description="Graphene legacy HTTP compatibility demo; not authoritative v2 execution"
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends git \
+    && apt-get install --yes --no-install-recommends git procps \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /uvx /bin/
@@ -17,7 +17,10 @@ COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
 COPY contracts ./contracts
 COPY demo/fixture ./demo/fixture
+COPY demo/north_star ./demo/north_star
+COPY demo/taskmaster ./demo/taskmaster
 COPY frontend ./frontend
+COPY scripts/materialize_north_star.py ./scripts/
 
 RUN uv sync --frozen --no-dev \
     && useradd --create-home --uid 10001 graphene \

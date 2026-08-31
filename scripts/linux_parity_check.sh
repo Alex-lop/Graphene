@@ -61,7 +61,10 @@ docker run --rm -v "$scratch":/work -w /work -e UV_PROJECT_ENVIRONMENT=/tmp/venv
 set -uo pipefail
 # `git` is absent from the slim image. Tests that shell out to it are not part
 # of this job and are deselected rather than left to fail confusingly.
-apt-get -qq update >/dev/null 2>&1 && apt-get -qq install -y --no-install-recommends git >/dev/null 2>&1
+# `procps` is absent too, and `/bin/ps` is what process_control reads process
+# identity from; the deployment Dockerfiles install it, so this container must
+# install it as well or the job measures an image the product does not ship.
+apt-get -qq update >/dev/null 2>&1 && apt-get -qq install -y --no-install-recommends git procps >/dev/null 2>&1
 pip install -q uv >/dev/null 2>&1
 uv sync --frozen -q || { echo "FAIL locked environment"; exit 1; }
 python -c "import sqlite3; print(\"  sqlite\", sqlite3.sqlite_version)"
