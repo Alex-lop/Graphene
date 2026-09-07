@@ -38,8 +38,9 @@ merge, push, deploy, publish, or mutate the supplied checkout.
 
 The live path pins `google-adk==2.5.0` and requests
 `gemini-3.5-flash` (source-checked 2026-08-27). The planner receives bounded
-Git-object manifests/excerpts and proposes typed work intent; deterministic
-code assigns identifiers, validates the graph, and controls readiness.
+Git-object manifests/excerpts, preferring goal-named and test files, and
+proposes typed work intent; deterministic code assigns identifiers, validates
+the graph, and controls readiness.
 
 Live planning runs in its own `python -I` child. A private fsynced journal binds
 the request, strong process identity, provider transport acknowledgement, and

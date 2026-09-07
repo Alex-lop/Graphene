@@ -278,10 +278,12 @@
       "tests/unit/cli/test_mission.py::test_planning_rejects_dirty_worktree_bytes_the_workers_will_never_see",
       "tests/unit/cli/test_mission.py::test_planning_rejects_staged_but_uncommitted_content",
       "tests/unit/cli/test_mission.py::test_planning_rejects_a_file_deleted_from_the_worktree",
-      "tests/unit/cli/test_mission.py::test_planning_cannot_be_redirected_by_an_intermediate_directory_symlink"
+      "tests/unit/cli/test_mission.py::test_planning_cannot_be_redirected_by_an_intermediate_directory_symlink",
+      "tests/unit/cli/test_mission.py::test_planning_excerpts_prefer_goal_named_and_test_files",
+      "tests/unit/cli/test_mission.py::test_planning_context_holds_its_caps_on_a_repository_larger_than_the_fixture"
     ],
     "status": "verified_local",
-    "truth": "Planning reads the manifest from `git ls-tree -r -l -z --full-tree <base_sha>` and excerpt bytes from `git cat-file blob`, so the planner sees exactly the commit the workers clone and detach to. Tracked or staged drift from that commit is rejected by name before any byte is selected. No path under the repository is opened during planning, which removes the intermediate-directory-symlink escape by construction rather than by a stronger open()."
+    "truth": "Planning reads the manifest from `git ls-tree -r -l -z --full-tree <base_sha>` and excerpt bytes from `git cat-file blob`, so the planner sees exactly the commit the workers clone and detach to. Tracked or staged drift from that commit is rejected by name before any byte is selected. No path under the repository is opened during planning, which removes the intermediate-directory-symlink escape by construction rather than by a stronger open(). Within the policy read globs the 512 manifest paths and 16 excerpts are chosen by rank — files the goal names, then test files, then the rest — so a repository larger than the caps still shows the planner the paths the goal is about."
   },
   "primary_user": "A solo developer or small technical lead supervising two to five coding agents against one repository.",
   "product_media": {

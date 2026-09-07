@@ -31,6 +31,7 @@ from graphene.cli.mission import (
     initialize,
 )
 from graphene.execution.adapter import SANDBOX_CHECK_TEMPLATES
+from graphene.orchestration.adk_planner import PlanningRequest
 from graphene.orchestration.mission_models import MissionHead, ProjectPolicy
 from graphene.orchestration.sandbox import validate_command_template
 from graphene.orchestration.scripted import DEFAULT_SCENARIO_PATH, load_scenario
@@ -390,6 +391,77 @@ def test_planning_context_is_bounded_to_policy_and_the_bound_commit(
     assert manifest == ("README.md",)
     assert tuple(item.path for item in excerpts) == ("README.md",)
     assert excerpts[0].text == "# Fixture\n"
+
+
+def test_planning_excerpts_prefer_goal_named_and_test_files(tmp_path: Path) -> None:
+    """Alphabetical order would spend all 16 excerpts before reaching the goal."""
+    repository = _repository(
+        tmp_path,
+        {
+            **SRC_LAYOUT,
+            **{
+                f"src/fixture/aaa_{index:02d}.py": f"VALUE = {index}\n"
+                for index in range(20)
+            },
+            "src/fixture/zzz_target.py": "def rounding() -> int:\n    return 1\n",
+            "tests/test_zzz_target.py": "def test_rounding() -> None:\n    assert True\n",
+        },
+    )
+    _, policy = initialize(repository)
+
+    manifest, excerpts = _planning_repository_context(
+        repository, policy, goal="Fix the rounding bug in src/fixture/zzz_target.py"
+    )
+
+    paths = tuple(item.path for item in excerpts)
+    assert "src/fixture/zzz_target.py" in paths
+    assert "tests/test_zzz_target.py" in paths
+    assert len(excerpts) == 16
+    assert paths == tuple(sorted(paths))
+    assert set(paths) <= set(manifest)
+
+
+def test_planning_context_holds_its_caps_on_a_repository_larger_than_the_fixture(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(
+        tmp_path,
+        {
+            **SRC_LAYOUT,
+            **{
+                f"src/fixture/mod_{index:03d}.py": f"VALUE = {index}\n"
+                for index in range(600)
+            },
+            "src/fixture/zzz_big.py": "# padding\n" * 900,
+        },
+    )
+    _, policy = initialize(repository)
+
+    manifest, excerpts = _planning_repository_context(
+        repository, policy, goal="Split src/fixture/zzz_big.py into modules"
+    )
+
+    assert len(manifest) == 512
+    assert manifest == tuple(sorted(set(manifest)))
+    assert len(excerpts) == 16
+    assert {item.path for item in excerpts} <= set(manifest)
+    # Both sort past mod_511, so an alphabetical [:512] drops them: the manifest
+    # itself is chosen by rank, not only the excerpts.
+    assert "src/fixture/zzz_big.py" in manifest
+    assert "tests/test_fixture.py" in manifest
+    # Ranked first by the goal, still refused: 8 KB exceeds the per-excerpt cap.
+    assert "src/fixture/zzz_big.py" not in {item.path for item in excerpts}
+    assert all(len(item.text.encode("utf-8")) <= 4_096 for item in excerpts)
+    assert sum(len(item.text.encode("utf-8")) for item in excerpts) <= 32_768
+    # The production validator re-checks sorted/unique/subset/total-bytes.
+    assert PlanningRequest(
+        mission_id="mission-001",
+        revision=1,
+        goal="Split src/fixture/zzz_big.py into modules",
+        success_criteria=("the suite stays green",),
+        repository_manifest=manifest,
+        repository_excerpts=excerpts,
+    ).repository_manifest == manifest
 
 
 def test_planning_rejects_dirty_worktree_bytes_the_workers_will_never_see(

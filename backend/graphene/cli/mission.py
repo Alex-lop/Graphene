@@ -55,6 +55,8 @@ from ..orchestration.adk_planner import (
     PlannerError,
     PlanningExcerpt,
     PlanningRequest,
+    _MAX_EXCERPT_BYTES,
+    _MAX_EXCERPTS_BYTES,
 )
 from ..orchestration.local_result import (
     LocalResultReceipt,
@@ -3642,7 +3644,9 @@ def _gemini_proposal(
     if len(criteria) != len(args.success_criteria):
         raise MissionCliError("success criteria must be unique")
     if proposal is None:
-        manifest, excerpts = _planning_repository_context(repository, policy)
+        manifest, excerpts = _planning_repository_context(
+            repository, policy, goal=args.goal
+        )
         try:
             proposal = asyncio.run(
                 AdkPlanner.live().propose(
@@ -4055,8 +4059,37 @@ def _committed_blobs(repository: Path, base_sha: str) -> dict[str, tuple[str, in
     return blobs
 
 
+_EXCERPT_SUFFIXES = frozenset({".json", ".md", ".py", ".toml", ".yaml", ".yml"})
+
+
+def _planning_rank(path: str, goal_text: str) -> tuple[int, str]:
+    """Sort key: files the goal names, then tests, then everything else.
+
+    Alphabetical order is only adequate on a fixture that fits inside the caps.
+    On a stranger's repository the first 512 paths and 16 excerpts have to be
+    the ones the goal is about, or the planner proposes a DAG for files it
+    never saw.
+
+    ``goal_text`` is already lowercased by the caller.
+    """
+    # ponytail: substring match on the goal text; upgrade to token matching if
+    # it misfires.
+    name = PurePosixPath(path).name
+    if path.lower() in goal_text or name.lower() in goal_text:
+        tier = 0
+    elif (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or "tests" in PurePosixPath(path).parts
+    ):
+        tier = 1
+    else:
+        tier = 2
+    return (tier, path)
+
+
 def _planning_repository_context(
-    repository: Path, policy: ProjectPolicy
+    repository: Path, policy: ProjectPolicy, *, goal: str = ""
 ) -> tuple[tuple[str, ...], tuple[PlanningExcerpt, ...]]:
     """Manifest and excerpts read out of ``policy.base_sha``, never off the disk.
 
@@ -4075,9 +4108,9 @@ def _planning_repository_context(
             f"{policy.base_sha[:12]}; commit or stash them before planning"
         )
     blobs = _committed_blobs(repository, policy.base_sha)
-    allowed = tuple(
+    candidates = [
         path
-        for path in sorted(blobs)
+        for path in blobs
         if any(
             PurePosixPath(path).full_match(pattern)
             for pattern in policy.allowed_read_globs
@@ -4085,21 +4118,21 @@ def _planning_repository_context(
         and not any(
             PurePosixPath(path).full_match(pattern) for pattern in policy.exclusions
         )
-    )[:512]
+    ]
+    goal_text = goal.lower()
+    ranked = sorted(candidates, key=lambda path: _planning_rank(path, goal_text))
+    # 512 and 16 are PlanningRequest's max_length; rank to choose, then sort,
+    # because that model also requires both tuples sorted and unique.
+    allowed = tuple(sorted(ranked[:512]))
     excerpts: list[PlanningExcerpt] = []
-    remaining = 32_768
-    for relative in allowed:
-        if len(excerpts) == 16 or PurePosixPath(relative).suffix.lower() not in {
-            ".json",
-            ".md",
-            ".py",
-            ".toml",
-            ".yaml",
-            ".yml",
-        }:
+    remaining = _MAX_EXCERPTS_BYTES
+    for relative in sorted(allowed, key=lambda path: _planning_rank(path, goal_text)):
+        if len(excerpts) == 16:
+            break
+        if PurePosixPath(relative).suffix.lower() not in _EXCERPT_SUFFIXES:
             continue
         object_id, size = blobs[relative]
-        if size > min(4_096, remaining):
+        if size > min(_MAX_EXCERPT_BYTES, remaining):
             continue
         content = _git_read(repository, "cat-file", "blob", object_id)
         if len(content) != size or b"\0" in content:
@@ -4114,7 +4147,7 @@ def _planning_repository_context(
         remaining -= len(content)
         if remaining <= 0:
             break
-    return allowed, tuple(excerpts)
+    return allowed, tuple(sorted(excerpts, key=lambda item: item.path))
 
 
 def _private_start_binding(runtime: Path) -> dict[str, object]:
