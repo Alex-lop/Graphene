@@ -17,7 +17,9 @@ import graphene.cli.mission as mission_cli
 from graphene.hashing import canonical_json_bytes
 from graphene.cli.mission import (
     MissionCliError,
+    PROJECT_PYTEST_TEMPLATE,
     _bind_start_request,
+    _load_project_policy,
     _mission_runtime,
     _planning_repository_context,
     _private_url_handoff,
@@ -28,14 +30,20 @@ from graphene.cli.mission import (
     handle,
     initialize,
 )
+from graphene.execution.adapter import SANDBOX_CHECK_TEMPLATES
 from graphene.orchestration.mission_models import MissionHead, ProjectPolicy
+from graphene.orchestration.sandbox import validate_command_template
 from graphene.orchestration.scripted import DEFAULT_SCENARIO_PATH, load_scenario
 
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _repository(tmp_path: Path) -> Path:
+def _repository(
+    tmp_path: Path,
+    files: dict[str, str] | None = None,
+    links: dict[str, str] | None = None,
+) -> Path:
     repository = tmp_path / "repo"
     repository.mkdir()
     environment = {
@@ -51,6 +59,12 @@ def _repository(tmp_path: Path) -> Path:
     }
     subprocess.run(("git", "init", "-q", "-b", "main"), cwd=repository, check=True)
     (repository / "README.md").write_text("# Fixture\n")
+    for name, text in (files or {}).items():
+        target = repository / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+    for name, destination in (links or {}).items():
+        (repository / name).symlink_to(destination, target_is_directory=True)
     subprocess.run(("git", "add", "--all", "--"), cwd=repository, check=True)
     subprocess.run(
         ("git", "commit", "-q", "-m", "base"),
@@ -178,6 +192,7 @@ def test_result_export_help_requires_explicit_git_verification_and_apply() -> No
 
 
 def test_init_writes_one_atomic_valid_deny_by_default_policy(tmp_path: Path) -> None:
+    """A repository without a pyproject.toml keeps exactly today's policy."""
     repository = _repository(tmp_path)
 
     path, policy = initialize(repository)
@@ -192,11 +207,175 @@ def test_init_writes_one_atomic_valid_deny_by_default_policy(tmp_path: Path) -> 
     assert "**" not in policy.allowed_read_globs
     assert policy.allowed_write_globs == (".graphene/generated/**",)
     assert [item.template_id for item in policy.command_templates] == ["git-diff-check"]
+    assert policy.exclusions == ("**/*.key", "**/*.pem", ".env", ".env.*", ".git/**")
 
     with pytest.raises(MissionCliError, match="already exists"):
         initialize(repository)
     assert path.read_bytes() == original
     assert not tuple(path.parent.glob(".project.json-*.tmp"))
+
+
+SRC_LAYOUT = {
+    "pyproject.toml": '[project]\nname = "fixture"\nversion = "0.1.0"\n',
+    "src/fixture/__init__.py": "",
+    "tests/test_fixture.py": "def test_fixture() -> None:\n    assert True\n",
+}
+FLAT_LAYOUT = {
+    "pyproject.toml": (
+        '[project]\nname = "fixture"\nversion = "0.1.0"\n\n'
+        '[tool.pytest.ini_options]\ntestpaths = ["suite"]\n'
+    ),
+    "fixture/__init__.py": "",
+    "suite/test_fixture.py": "def test_fixture() -> None:\n    assert True\n",
+}
+
+
+@pytest.mark.parametrize(
+    ("files", "reads", "writes"),
+    [
+        (
+            SRC_LAYOUT,
+            ("README.md", "pyproject.toml", "src/**", "tests/**"),
+            ("src/**", "tests/**"),
+        ),
+        (
+            FLAT_LAYOUT,
+            ("README.md", "fixture/**", "pyproject.toml", "suite/**"),
+            ("fixture/**", "suite/**"),
+        ),
+    ],
+    ids=["src-layout", "flat-layout-with-testpaths"],
+)
+def test_init_detects_the_source_and_test_directories_of_a_pytest_repository(
+    tmp_path: Path,
+    files: dict[str, str],
+    reads: tuple[str, ...],
+    writes: tuple[str, ...],
+) -> None:
+    repository = _repository(tmp_path, files)
+
+    path, policy = initialize(repository)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert policy.allowed_read_globs == reads
+    assert policy.allowed_write_globs == writes
+    assert policy.command_templates == (PROJECT_PYTEST_TEMPLATE,)
+    assert PROJECT_PYTEST_TEMPLATE.argv == ("python", "-m", "pytest", "-q")
+    assert policy.network.mode == "deny"
+    assert ProjectPolicy.model_validate_json(path.read_bytes()) == policy
+
+
+def test_init_never_widens_a_detected_scope_to_the_repository_root(
+    tmp_path: Path,
+) -> None:
+    """Every hostile testpath a repository can declare is dropped, not honoured."""
+    (tmp_path / "outside" / "secrets").mkdir(parents=True)
+    repository = _repository(
+        tmp_path,
+        {
+            **SRC_LAYOUT,
+            "pyproject.toml": (
+                '[project]\nname = "fixture"\nversion = "0.1.0"\n\n'
+                "[tool.pytest.ini_options]\ntestpaths = [\n"
+                '  ".", "..", "../outside", "/etc", "sr*", "tests/",\n'
+                '  ".github/workflows", "escape/secrets",\n]\n'
+            ),
+            ".github/workflows/ci.yml": "on: push\n",
+            # An absolute testpath is rejected, never reread as this directory.
+            "etc/notes.txt": "",
+        },
+        links={"escape": "../outside"},
+    )
+
+    _, policy = initialize(repository)
+
+    assert policy.allowed_read_globs == (
+        "README.md",
+        "pyproject.toml",
+        "src/**",
+        "tests/**",
+    )
+    assert policy.allowed_write_globs == ("src/**", "tests/**")
+    globs = (*policy.allowed_read_globs, *policy.allowed_write_globs)
+    assert not any(glob.startswith(".") for glob in globs)
+    assert not any(
+        glob in {"**", "*", "."} or glob.startswith(("../", "/", ".graphene/"))
+        for glob in globs
+    )
+    assert set(policy.exclusions) >= {
+        "**/*.key",
+        "**/*.pem",
+        ".env",
+        ".env.*",
+        ".git/**",
+        ".graphene/**",
+    }
+
+
+@pytest.mark.parametrize(
+    ("files", "missing"),
+    [
+        (
+            {"pyproject.toml": '[project]\nname = "fixture"\nversion = "0.1.0"\n'},
+            "no source package and no test directory",
+        ),
+        (
+            {
+                "pyproject.toml": '[project]\nname = "fixture"\nversion = "0.1.0"\n',
+                "src/fixture/__init__.py": "",
+            },
+            "no test directory",
+        ),
+        (
+            {
+                "pyproject.toml": (
+                    '[project]\nname = "fixture"\nversion = "0.1.0"\n\n'
+                    '[tool.pytest.ini_options]\ntestpaths = ["."]\n'
+                ),
+                "src/fixture/__init__.py": "",
+            },
+            "no test directory",
+        ),
+    ],
+    ids=["nothing-detected", "no-tests", "testpaths-is-the-repository-root"],
+)
+def test_init_refuses_an_ambiguous_pyproject_without_writing_a_policy(
+    tmp_path: Path, files: dict[str, str], missing: str
+) -> None:
+    repository = _repository(tmp_path, files)
+
+    with pytest.raises(MissionCliError, match=missing):
+        initialize(repository)
+    assert not (repository / ".graphene").exists()
+
+
+def test_detected_check_template_resolves_only_for_the_docker_executor(
+    tmp_path: Path,
+) -> None:
+    """The Docker executor runs it; the macOS host boundary stays fixture-only."""
+    repository = _repository(tmp_path, SRC_LAYOUT)
+
+    _, policy = initialize(repository)
+    template = policy.command_templates[0]
+
+    assert validate_command_template(template, policy.command_templates) == (
+        "/usr/local/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+    )
+    assert (template.template_id, tuple(template.argv)) not in SANDBOX_CHECK_TEMPLATES
+
+
+def test_detected_policy_loads_back_through_the_policy_loader(tmp_path: Path) -> None:
+    repository = _repository(tmp_path, SRC_LAYOUT)
+
+    _, policy = initialize(repository)
+    root, head, loaded = _load_project_policy(repository)
+
+    assert root == repository
+    assert head == policy.base_sha
+    assert loaded == policy
 
 
 def test_planning_context_is_bounded_to_policy_and_the_bound_commit(
