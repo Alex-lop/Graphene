@@ -170,7 +170,7 @@ claim:
 - Codex start/disconnect/reattach behavior;
 - authenticated human approval;
 - exact-SHA installed artifact proof;
-- Cloud Run, real Firestore, Docker, or general repository support;
+- Cloud Run, real Firestore, Docker mission execution, or general repository support;
 - benchmark improvements; or
 - submission media.
 

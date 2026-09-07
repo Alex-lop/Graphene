@@ -55,7 +55,8 @@ The live `gemini-adk` path requires explicit success criteria and credentials; t
 | `VERIFIED_LOCAL` — scheduler, policy, recovery, and exact candidate | Scripted/fake local coverage, including isolated auto-finalization |
 | `VERIFIED_LOCAL` — MCP and reconnect | Official Python MCP client plus scripted controller flow; approval is `server_derived` relay evidence, not human attestation; no Codex, Claude Code, or Gemini CLI run |
 | `NOT PROVEN` — live execution | Current credentialed Gemini Orders mission, real model kill/recovery, and Codex controller |
-| `NOT PROVEN` — external proof | Exact-SHA proof needs a SHA-named external manifest or CI result; cloud is not deployed; Docker, benchmark, and film remain unproven |
+| `VERIFIED_CI` — Docker check executor | One scoped fixture check ran in the built immutable image on ubuntu-24.04 (evidence/docker/2026-09-07); not a live mission |
+| `NOT PROVEN` — external proof | Exact-SHA proof needs a SHA-named external manifest or CI result; cloud is not deployed; benchmark and film remain unproven |
 
 The benchmark remains deferred: there is no token-efficiency claim, and no speed or cost comparison. See [Proof boundaries](docs/PROOF.md) for the full evidence ledger.
 

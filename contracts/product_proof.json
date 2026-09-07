@@ -129,7 +129,7 @@
       "activity outside Graphene-owned workers and explicit evidence adapters",
       "arbitrary user processes or remote CPU and RAM",
       "push, pull request, deployment, or user-branch mutation",
-      "live Gemini, Docker, Cloud Run, or real Firestore behavior without captured smoke evidence"
+      "live Gemini, Cloud Run, or real Firestore behavior without captured smoke evidence, and any Docker behavior beyond the captured CI fixture smoke"
     ],
     "private_or_excluded": [
       "raw prompts, context, hidden reasoning, and chain of thought",
@@ -183,9 +183,10 @@
     },
     "docker-executor": {
       "command": "docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest . && GRAPHENE_RUN_DOCKER_SMOKE=1 uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py",
-      "proof_pass": "not run",
-      "status": "not_proven",
-      "truth_label": "NOT PROVEN \u2014 RESPONSIVE DAEMON AND BUILT IMMUTABLE IMAGE REQUIRED"
+      "evidence": "evidence/docker/2026-09-07/README.md",
+      "proof_pass": "GitHub Actions run 34159157244 on 2026-09-07",
+      "status": "verified_ci",
+      "truth_label": "DOCKER EXECUTOR \u2014 VERIFIED IN CI: ONE SCOPED FIXTURE CHECK RAN IN THE BUILT IMMUTABLE IMAGE ON UBUNTU-24.04; NOT A LIVE MISSION, NOT A MULTI-TEMPLATE PROOF"
     },
     "gemini-adk-planner": {
       "command": "GRAPHENE_RUN_LIVE_GEMINI=1 uv run --frozen pytest -q tests/process/test_gemini_live.py",

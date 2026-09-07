@@ -141,6 +141,11 @@ def test_canonical_docs_match_cli_product_and_compatibility_contracts() -> None:
     assert "NOT PROVEN" in readme and "NOT PROVEN" in proof
     assert "start_goal" in proof
     assert product["mission_paths"]["cloud-run-firestore"]["status"] == "not_deployed"
+    docker = product["mission_paths"]["docker-executor"]
+    # A CI-verified label must point at a committed evidence file, the way
+    # terminal_ui.evidence does; a dangling path would let the label outlive it.
+    assert docker["status"] == "verified_ci"
+    assert (ROOT / docker["evidence"]).is_file()
     watcher = product["watch"]
     assert watcher["status"] == "verified_local"
     assert "NOT PROVEN" in watcher["truth_label"]

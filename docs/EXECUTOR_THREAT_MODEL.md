@@ -15,7 +15,7 @@ Host assumptions and limits:
 - Graphene and SQLite run under an honest, dedicated host account. This is not malicious-admin resistance.
 - Every contract-listed tracked file is intentionally readable to tests and must be sanitized public fixture data.
 - The sandbox protects host paths outside the temporary view, but macOS `sandbox-exec` is deprecated platform machinery, not a general multi-tenant isolation guarantee.
-- Linux and the shipped Docker image currently fail closed because no equivalent executor is implemented. The full v2 workflow is therefore unsupported there even though the legacy HTTP service can start.
+- On Linux the fixed-test workflow fails closed because no equivalent host executor is implemented, so the full v2 workflow is unsupported there even though the legacy HTTP service can start. The generic Docker check executor is separately CI-verified for one scoped fixture check ([evidence](../evidence/docker/2026-09-07/README.md)); it is not the fixed-test executor.
 - A crash may leave an operating-system temporary directory until normal OS cleanup; no durable evidence points to its private bytes.
 
 The regression for the repo-internal read channel is `test_fixed_tests_cannot_read_ambient_checkout_files`. Host filesystem, stdin, parent environment/argv, network, fork, symlink, timeout, and output behavior remain covered in `tests/unit/execution/test_adapter.py`.
