@@ -631,7 +631,9 @@ def _supervised_gemini_proposal(
     from .adk_planner import PlanningRequest
     from .planner_child import PlannerChildRequest
 
-    manifest, excerpts = _planning_repository_context(repository, policy)
+    manifest, excerpts = _planning_repository_context(
+        repository, policy, goal=request.goal
+    )
     for attempt_number in (1, 2):
         child_request = PlannerChildRequest(
             mission_id=request.mission_id,
