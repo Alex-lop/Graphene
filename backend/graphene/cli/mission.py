@@ -124,7 +124,7 @@ from ..orchestration.resources import (
     read_process_identity,
     sample_owned_process_tree,
 )
-from ..orchestration.sandbox import DockerExecutor
+from ..orchestration.sandbox import DockerExecutor, SandboxLimits
 from ..orchestration.scheduler import MissionScheduler, SystemClock
 from ..orchestration.process_control import (
     OwnedProcessRegistry,
@@ -4445,6 +4445,39 @@ def _host_sandbox_supported() -> bool:
     return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
 
 
+def _host_sandbox_templates(templates: tuple[CommandTemplate, ...]) -> bool:
+    """The macOS host boundary still runs only its own reviewed fixture argvs."""
+
+    return bool(templates) and all(
+        item.cwd is None
+        and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
+        for item in templates
+    )
+
+
+def _docker_templates(templates: tuple[CommandTemplate, ...]) -> bool:
+    """Any approved policy template the executor image can actually run."""
+
+    return bool(templates) and all(
+        item.cwd is None and item.argv[0] == "python" for item in templates
+    )
+
+
+def _docker_executor(templates: tuple[CommandTemplate, ...]) -> DockerExecutor:
+    """Bind the approved templates and their declared timeout to the container.
+
+    The default 30s sandbox budget is below the timeout real policies declare,
+    so the ceiling comes from the policy the reviewer approved.
+    """
+
+    return DockerExecutor(
+        templates=templates,
+        limits=SandboxLimits(
+            timeout_seconds=max(item.timeout_seconds for item in templates)
+        ),
+    )
+
+
 def _select_check_executor(requested: str | None = None) -> str:
     """Fail closed on anything but the two reviewed check executors.
 
@@ -4472,6 +4505,16 @@ def _mission_check_executor(mission_id: str) -> str:
     if not isinstance(bound, str):
         raise MissionCliError("mission check executor binding is invalid")
     return _select_check_executor(bound)
+
+
+def _mission_binds_docker_checks(mission_id: str) -> bool:
+    """False only when this mission's durable binding rules a container out."""
+
+    try:
+        return _mission_check_executor(mission_id) == "docker"
+    except MissionCliError:
+        # An unusable binding proves nothing about what already ran; reconcile.
+        return True
 
 
 def _check_executor_status(sandbox: bool) -> dict[str, object]:
@@ -4974,23 +5017,18 @@ def _execute_adk_mission_owned(
             for item in templates
         ):
             check_runner = _policy_check
-        elif templates and all(
-            item.cwd is None
-            and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
-            for item in templates
-        ):
-            if check_executor == "host-sandbox":
-                # Explicit macOS host alternative; the check subprocess is
-                # registered in the same OwnedProcessRegistry that
-                # `graphene mission cancel` reaps. No silent fallback to Docker.
-                check_runner = HostSandboxCheckRunner(
-                    OwnedProcessRegistry(runtime),
-                    dispatch_for=late_runtime.dispatch_for,
-                    status=lambda: store.snapshot(mission_id).mission.status,
-                    heartbeat=late_runtime.heartbeat,
-                )
-            else:
-                check_runner = DockerCheckRunner(DockerExecutor())
+        elif check_executor == "host-sandbox" and _host_sandbox_templates(templates):
+            # Explicit macOS host alternative; the check subprocess is
+            # registered in the same OwnedProcessRegistry that
+            # `graphene mission cancel` reaps. No silent fallback to Docker.
+            check_runner = HostSandboxCheckRunner(
+                OwnedProcessRegistry(runtime),
+                dispatch_for=late_runtime.dispatch_for,
+                status=lambda: store.snapshot(mission_id).mission.status,
+                heartbeat=late_runtime.heartbeat,
+            )
+        elif check_executor != "host-sandbox" and _docker_templates(templates):
+            check_runner = DockerCheckRunner(_docker_executor(templates))
         else:
             raise MissionCliError(
                 "Gemini mission has no supported deterministic check runner"
@@ -5365,16 +5403,11 @@ def _executor_connect(args: argparse.Namespace) -> dict[str, object]:
         for item in templates
     ):
         check_runner = _policy_check
-    elif templates and all(
-        item.cwd is None
-        and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
-        for item in templates
-    ):
-        # Same explicit selection as the local ADK path; no silent fallback.
-        if check_executor == "host-sandbox":
-            check_runner = None  # built per attempt once its runtime exists
-        else:
-            check_runner = DockerCheckRunner(DockerExecutor())
+    # Same explicit selection as the local ADK path; no silent fallback.
+    elif check_executor == "host-sandbox" and _host_sandbox_templates(templates):
+        check_runner = None  # built per attempt once its runtime exists
+    elif check_executor != "host-sandbox" and _docker_templates(templates):
+        check_runner = DockerCheckRunner(_docker_executor(templates))
     else:
         raise MissionCliError("outbound executor has no supported check runner")
 
@@ -6471,20 +6504,18 @@ def _cancel_with_owned_cleanup(
     }
 
     docker_reconciled: set[str] = set()
-    policy_templates = getattr(snapshot.policy, "command_templates", ())
-    sandbox_template_ids = {item[0] for item in SANDBOX_CHECK_TEMPLATES}
-    docker_checks = any(
-        item.cwd is None
-        and (item.template_id, tuple(item.argv)) in SANDBOX_CHECK_TEMPLATES
-        for item in policy_templates
-    ) or any(
-        template_id in sandbox_template_ids
-        for template_id in getattr(snapshot.policy, "command_template_ids", ())
-    )
+    # Any approved template can run in a container now, and the cancel-time
+    # snapshot is a policy summary carrying only template ids, so the gate is
+    # the mission's own durable check executor. Skipping is only safe where a
+    # container provably cannot exist: the mission is not bound to Docker, or
+    # this host has no docker binary. A daemon that does not answer proves
+    # nothing, so it stays a cleanup failure and aborts the cancellation.
+    docker_checks = bool(getattr(snapshot.policy, "command_template_ids", ()))
     if (
         docker_checks
         and snapshot.mission.creation_source == "operator"
-        and _mission_check_executor(mission_id) == "docker"
+        and _mission_binds_docker_checks(mission_id)
+        and shutil.which("docker") is not None
     ):
         docker = DockerExecutor()
         try:
