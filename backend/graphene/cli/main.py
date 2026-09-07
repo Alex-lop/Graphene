@@ -1530,8 +1530,8 @@ def _claim_interrupt() -> None:
 def main(argv: list[str] | None = None) -> int:
     _claim_interrupt()
     args = build_parser().parse_args(argv)
-    if args.command == "why" and getattr(args, "json_mode_local", False):
-        # `graphene why ... --json` means the same as the global `--json` flag.
+    if getattr(args, "json_mode_local", False):
+        # A subcommand's own `--json` means the same as the global `--json` flag.
         args.json_mode = True
     if args.command == "ui":
         from ..ui.run import handle as handle_ui

@@ -11,6 +11,7 @@ this page is the reference `tests/unit/test_readme_contract.py` holds the CLI to
 and `graphene ui` (the terminal view; see the README).
 
 ```bash
+graphene doctor [--repo PATH] [--no-probe] [--json]  # one free count_tokens model probe
 graphene plan GOAL --repo PATH --success-criterion CRITERION
 graphene plan show MISSION_ID [--detail]         # the full contract of every node
 graphene plan export MISSION_ID [--output FILE]  # canonical YAML — edit it

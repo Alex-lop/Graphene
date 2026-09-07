@@ -339,8 +339,11 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     doctor = commands.add_parser(
         "doctor",
         allow_abbrev=False,
-        help="run a read-only local/cloud preflight without testing credentials",
-        description="Reports configuration hints only; it performs no provider call or cloud write.",
+        help="run a read-only preflight and one free model-availability probe",
+        description=(
+            "Reports configuration hints and makes no cloud write; the only "
+            "provider call is one free count_tokens probe, skipped by --no-probe."
+        ),
     )
     doctor.add_argument(
         "--repo",
@@ -348,6 +351,12 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
         default=Path.cwd(),
         help="repository whose policy to inspect",
     )
+    doctor.add_argument(
+        "--no-probe",
+        action="store_true",
+        help="skip the free count_tokens model-availability probe",
+    )
+    doctor.add_argument("--json", action="store_true", dest="json_mode_local")
 
     plan = commands.add_parser(
         "plan",
@@ -1464,7 +1473,106 @@ def _load_project_policy(repo: Path) -> tuple[Path, str, ProjectPolicy]:
     return root, head, policy
 
 
-def doctor(repo: Path) -> dict[str, object]:
+# One line per probe status, each true for every branch that reaches it: the
+# unavailable arm also covers the branches where no request left the process.
+_PROBE_PROOF = {
+    "not_checked": "local configuration only; no provider request was made",
+    "available": (
+        "one free count_tokens request succeeded; "
+        "model identity and output are not proven"
+    ),
+    "unavailable": (
+        "the provider answered the count_tokens request with an error; "
+        "model availability is not proven"
+    ),
+    "unknown": (
+        "a count_tokens request was attempted but no provider answer arrived; "
+        "model availability is not proven"
+    ),
+}
+
+
+def _count_tokens(model: str) -> None:
+    """Make the one free provider request the probe is allowed to make.
+
+    Module level so tests replace this seam and never reach the network.
+    """
+    from google import genai
+
+    # HttpOptions.timeout is milliseconds; without it httpx waits forever and
+    # doctor would hang on a black-holed network instead of reporting.
+    client = genai.Client(http_options={"timeout": 10_000})
+    client.models.count_tokens(model=model, contents="graphene doctor probe")
+
+
+def _probe_model_available(
+    *,
+    mode: str,
+    configured: bool,
+    probe: bool,
+    model: str = LIVE_GEMINI_MODEL,
+) -> dict[str, object]:
+    """Report model availability from at most one free count_tokens request.
+
+    Never raises, and never echoes provider text, a project id, or a key: every
+    reason below is a fixed string. The location is configuration, not a
+    credential, so it is reported to make a region mismatch actionable.
+    """
+    report: dict[str, object] = {
+        "status": "not_checked",
+        "model": model,
+        # Only Vertex routes by location; in API-key mode the variable is inert.
+        "location": (
+            (os.environ.get("GOOGLE_CLOUD_LOCATION") or None)
+            if mode == "vertex_ai"
+            else None
+        ),
+        "reason": "no provider request was made",
+    }
+    if not probe or not configured or mode == "invalid":
+        return report
+    try:
+        from google.genai.errors import APIError
+    except ImportError:  # google-genai only arrives with google-adk.
+        report["status"] = "unknown"
+        report["reason"] = "provider request failed before a response"
+        return report
+
+    try:
+        _count_tokens(model)
+    except APIError as error:
+        report["status"] = "unavailable"
+        code = error.code
+        if code == 404 and mode == "vertex_ai":
+            report["reason"] = (
+                "model is not served in the configured GOOGLE_CLOUD_LOCATION"
+            )
+            report["hint"] = (
+                "set GOOGLE_CLOUD_LOCATION=global; on 2026-08-23 gemini-3.5-flash "
+                "returned 404 in us-central1 and was served from global"
+            )
+        elif code == 429:
+            report["reason"] = "provider rate limited"
+        elif code in {401, 403}:
+            report["reason"] = "credentials rejected by the provider"
+        elif isinstance(code, int) and code >= 500:
+            report["reason"] = "provider unavailable"
+        else:
+            report["reason"] = "provider rejected the request"
+        return report
+    except Exception:  # noqa: BLE001 - doctor reports, it never fails.
+        # No provider verdict exists (timeout, local auth failure, socket
+        # error), so this is not a claim about the model.
+        report["status"] = "unknown"
+        report["reason"] = "provider request failed before a response"
+        return report
+
+    report["status"] = "available"
+    report["reason"] = "one free count_tokens request succeeded"
+    return report
+
+
+def doctor(repo: Path, *, probe: bool = False) -> dict[str, object]:
     policy, policy_detail = _policy_status(repo)
     sandbox = scripted_supported()
     adk = importlib.util.find_spec("google.adk") is not None
@@ -1531,13 +1639,22 @@ def doctor(repo: Path) -> dict[str, object]:
         and gemini_configured
         and policy == "usable"
     )
+    model_available = _probe_model_available(
+        mode=gemini_mode, configured=gemini_configured, probe=probe
+    )
+    connectivity = (
+        "connectivity not probed"
+        if model_available["status"] == "not_checked"
+        else "connectivity probed once, see gemini_preflight.model_available"
+    )
     return {
         "status": "ok",
         "gemini_preflight": {
             "configuration_ready": gemini_ready,
-            "connectivity_proven": False,
+            "connectivity_proven": model_available["status"] == "available",
             "live_provider_proven": False,
-            "proof": "local configuration only; no provider request was made",
+            "model_available": model_available,
+            "proof": _PROBE_PROOF[str(model_available["status"])],
         },
         "executables": {
             "git": shutil.which("git") is not None,
@@ -1574,9 +1691,9 @@ def doctor(repo: Path) -> dict[str, object]:
                 "configured": gemini_configured,
                 "credential_mode": gemini_mode,
                 "proof": (
-                    "bounded local runtime configured; connectivity not probed"
+                    f"bounded local runtime configured; {connectivity}"
                     if gemini_ready
-                    else "bounded local runtime configuration incomplete; connectivity not probed"
+                    else f"bounded local runtime configuration incomplete; {connectivity}"
                 ),
             },
             "firestore-cloud": {
@@ -7041,7 +7158,7 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
             "write_scope": list(policy.allowed_write_globs),
         }
     if args.command == "doctor":
-        return 0, doctor(args.repo)
+        return 0, doctor(args.repo, probe=not args.no_probe)
     if args.command == "plan":
         if args.goal in _PLAN_ACTIONS:
             return _plan_action(args)
@@ -7200,10 +7317,8 @@ def _follow_mission(mission_id: str) -> int:
 
 def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
     json_mode = getattr(args, "json_mode", False) if json_mode is None else json_mode
-    if getattr(args, "command", None) == "why" and getattr(
-        args, "json_mode_local", False
-    ):
-        # `graphene why ... --json` is honoured even when handle() is called
+    if getattr(args, "json_mode_local", False):
+        # A subcommand's own `--json` is honoured even when handle() is called
         # directly with the parsed namespace rather than through main().
         json_mode = True
     try:
@@ -7249,6 +7364,18 @@ def handle(args: argparse.Namespace, *, json_mode: bool | None = None) -> int:
                 )
             elif args.command == "why":
                 sys.stdout.write(_render_why(value))
+            elif args.command == "doctor":
+                # The probe is the point of the command, so the default text
+                # mode shows its verdict instead of only `status=ok`.
+                probe = value["gemini_preflight"]["model_available"]
+                fields = [str(probe["model"]), str(probe["status"])] + [
+                    f"{key}={probe[key]}"
+                    for key in ("location", "reason", "hint")
+                    if probe.get(key)
+                ]
+                sys.stdout.write(
+                    f"GRAPHENE status={value['status']}\nMODEL {' '.join(fields)}\n"
+                )
             elif (
                 args.command == "plan"
                 and args.goal not in _PLAN_ACTIONS
