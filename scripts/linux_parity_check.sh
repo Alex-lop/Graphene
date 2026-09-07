@@ -61,7 +61,11 @@ docker run --rm -v "$scratch":/work -w /work -e UV_PROJECT_ENVIRONMENT=/tmp/venv
 set -uo pipefail
 # `git` is absent from the slim image. Tests that shell out to it are not part
 # of this job and are deselected rather than left to fail confusingly.
-apt-get -qq update >/dev/null 2>&1 && apt-get -qq install -y --no-install-recommends git >/dev/null 2>&1
+# `procps` is absent too, and process_control.py refuses owned-process identity
+# outright when /bin/ps is missing. The ubuntu-24.04 CI runner has it, so two
+# Linux identity tests that mock `ps` output pass in CI and failed only here,
+# for a reason CI cannot reproduce — the opposite of what this script is for.
+apt-get -qq update >/dev/null 2>&1 && apt-get -qq install -y --no-install-recommends git procps >/dev/null 2>&1
 pip install -q uv >/dev/null 2>&1
 uv sync --frozen -q || { echo "FAIL locked environment"; exit 1; }
 python -c "import sqlite3; print(\"  sqlite\", sqlite3.sqlite_version)"
