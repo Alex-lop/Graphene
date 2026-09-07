@@ -117,6 +117,35 @@ jobs:
           uv run --frozen pytest -q tests/unit/ui
           uv run --frozen graphene ui --replay taskmaster --once >/dev/null
 
+  docker-executor-smoke:
+    name: Python 3.13 / Linux Docker executor smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install the pinned uv
+        # The explicit lock-drift check and sync steps the other jobs run are
+        # deliberately absent here: `uv run --frozen` installs from the
+        # existing lock without updating it. It does not verify the lock
+        # against pyproject.toml — the other three jobs already do that on the
+        # same commit. Their occurrence counts are pinned in
+        # tests/unit/test_ci_contract.py.
+        run: python -m pip install --disable-pip-version-check uv==0.11.29
+      - name: Build the executor image
+        # DockerExecutor preflights this exact tag and creates containers with
+        # `--pull never`, so the smoke can only run the image built right here.
+        # The second command puts that image's digest in the job log.
+        run: |
+          docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest .
+          docker image inspect --format '{{.Id}}' graphene-executor:py313-pytest
+      - name: Container smoke against the built image
+        env:
+          GRAPHENE_RUN_DOCKER_SMOKE: "1"
+        run: uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py
+
   firestore-emulator:
     name: Firestore official client / isolated emulator
     runs-on: ubuntu-24.04

@@ -29,6 +29,7 @@ systems as interchangeable:
 | --- | --- | --- |
 | Python 3.13 on `macos-15` | Complete `tests/unit`, `tests/integration`, `tests/process`, and `tests/adversarial` suites; MCP STDIO process tests; installed CLI help and canonical NDJSON smoke | The frozen fixture's fixed tests use the checked macOS `sandbox-exec` profile |
 | Python 3.13 on `ubuntu-24.04` | The two fixed-test boundary regressions plus the verified-replay process test and CLI smoke | Linux reaches the explicit `fixed tests require an available OS sandbox` failure and does not execute hostile fixture tests; the checked-in replay remains read-only and portable |
+| Python 3.13 on `ubuntu-24.04` (Docker) | `docker build -f docker/executor.Dockerfile`, then `tests/unit/orchestration/test_sandbox.py` with `GRAPHENE_RUN_DOCKER_SMOKE=1` against the image that build produced | The generic Docker executor starts a real container on the runner's rootful daemon and runs only the scoped file; this is not the fixed-test executor and makes no claim about the frozen fixture on Linux |
 | Node 22 on `ubuntu-24.04` | Dependency-free frontend tests and JavaScript syntax checks | Browser-side deterministic logic only; no Python executor claim |
 
 The macOS job is the only job that runs the full v2 human workflow because that
