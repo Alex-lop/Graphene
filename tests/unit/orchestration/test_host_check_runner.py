@@ -19,6 +19,10 @@ from graphene.orchestration.mission_models import (
     TaskKind,
 )
 from graphene.orchestration.process_control import OwnedProcessRegistry
+from graphene.orchestration.scripted import (
+    ScriptedUnavailable,
+    execute_scripted_mission,
+)
 from graphene.orchestration.worker_runtime import (
     WORKER_PROVIDER_RECEIPT_KIND,
     HostSandboxCheckRunner,
@@ -418,3 +422,97 @@ def test_host_sandbox_selection_fails_before_any_worker_runs_off_macos(
         "supported": False,
         "reason": "host-sandbox requires macOS /usr/bin/sandbox-exec",
     }
+
+
+def test_scripted_support_follows_the_selected_check_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "bin"
+    executable.mkdir()
+    (executable / "docker").write_text("#!/bin/sh\nexit 1\n")
+    (executable / "docker").chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(executable))
+    assert mission_cli.scripted_supported("docker") is True
+    assert mission_cli.scripted_supported("host-sandbox") is (
+        sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
+    )
+    # An unreviewed executor is never supported, so a typo fails closed rather
+    # than falling through to whichever branch happens to be last.
+    assert mission_cli.scripted_supported("semantic-switch-canary") is False
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert mission_cli.scripted_supported("docker") is False
+
+
+def test_scripted_local_selects_docker_from_the_durable_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "mission-runtime"
+    runtime.mkdir(mode=0o700)
+    binding = runtime / "start-request.json"
+    binding.write_bytes(json.dumps({"check_executor": "docker"}).encode())
+    binding.chmod(0o600)
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: runtime)
+
+    # A binding that only holds while the variable is set is not a binding: the
+    # mission was accepted on docker, so an unset variable and a flipped one
+    # both leave it there.
+    monkeypatch.delenv("GRAPHENE_CHECK_EXECUTOR", raising=False)
+    assert mission_cli._scripted_check_executor("mission-scripted-docker") == "docker"
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "host-sandbox")
+    assert mission_cli._scripted_check_executor("mission-scripted-docker") == "docker"
+
+
+def test_unbound_scripted_mission_follows_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A CLI-started mission records no executor, so it reads the environment."""
+
+    runtime = tmp_path / "mission-runtime"
+    runtime.mkdir(mode=0o700)
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: runtime)
+
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "docker")
+    assert mission_cli._scripted_check_executor("mission-scripted-cli") == "docker"
+
+    # An unset variable is nobody's choice: it is the gemini-adk path's docker
+    # default, and scripted-local's captured proof is the host sandbox, so the
+    # fixture stays there instead of silently moving into a container.
+    monkeypatch.delenv("GRAPHENE_CHECK_EXECUTOR", raising=False)
+    assert mission_cli._scripted_check_executor("mission-scripted-cli") == "host-sandbox"
+
+    # A typo must not resolve to a supported-looking executor: returning it raw
+    # skipped every scripted process test and blamed the wrong requirement.
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "semantic-switch-canary")
+    with pytest.raises(
+        ScriptedUnavailable,
+        match="^GRAPHENE_CHECK_EXECUTOR must be docker or host-sandbox$",
+    ):
+        mission_cli._scripted_check_executor("mission-scripted-cli")
+
+
+def test_scripted_refusal_names_the_executor_that_was_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each executor's refusal has to name its own missing requirement."""
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "docker")
+    with pytest.raises(
+        ScriptedUnavailable,
+        match="^scripted-local requires the docker client on PATH$",
+    ):
+        execute_scripted_mission(
+            store=None, runtime=tmp_path, mission_id="mission-scripted-refusal"
+        )
+
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "host-sandbox")
+    monkeypatch.setattr(sys, "platform", "linux")
+    with pytest.raises(
+        ScriptedUnavailable,
+        match="^scripted-local requires macOS with executable /usr/bin/sandbox-exec$",
+    ):
+        execute_scripted_mission(
+            store=None, runtime=tmp_path, mission_id="mission-scripted-refusal"
+        )

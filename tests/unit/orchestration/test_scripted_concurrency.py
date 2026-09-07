@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import fcntl
 import os
+import shutil
 import threading
 import time
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,19 +15,37 @@ from graphene.orchestration.evidence import (
     AttemptEvidenceEventType,
     SQLiteAttemptEvidenceStore,
 )
-from graphene.orchestration.mission_models import AttemptResult, Dispatch, GenericEvidenceLink
+from graphene.orchestration.mission_models import (
+    AttemptResult,
+    Dispatch,
+    GenericEvidenceLink,
+    MissionStatus,
+)
 from graphene.orchestration.process_control import (
     OwnedProcessRegistry,
     ProcessCancelled,
 )
 from graphene.hashing import sha256_hex
+from graphene.orchestration.scheduler import MissionScheduler
+import graphene.orchestration.scripted as scripted
+from graphene.orchestration.sandbox import SandboxResult
 from graphene.orchestration.scripted import (
     ScriptedError,
     ScriptedWorker,
     _execute_scripted_batch,
     _git,
+    load_scenario,
+    run_scripted_mission,
 )
-from graphene.orchestration.sqlite_mission_store import LeaseConflict, MissionConflict, StaleWorker
+from graphene.orchestration.sqlite_mission_store import (
+    LeaseConflict,
+    MissionConflict,
+    SQLiteMissionStore,
+    StaleWorker,
+)
+
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _dispatch(task_id: str) -> Dispatch:
@@ -329,3 +349,72 @@ def test_a_contended_attempt_lock_is_refused_once_its_lease_expires(
     finally:
         release.set()
         owner.join(timeout=10)
+
+
+def test_docker_mission_runs_every_attempt_in_its_own_owned_container(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Pin the scripted worker's container wiring without a Docker daemon.
+
+    One container per attempt, owned by that attempt's id, sourced from that
+    attempt's worktree, and a candidate tree the check runner never wrote to —
+    the mission only reaches AWAITING_RESULT if the invariant held on every
+    attempt. The responsive-daemon half of the proof is the Linux CI job.
+    """
+
+    executable = tmp_path / "bin"
+    executable.mkdir()
+    (executable / "docker").write_text("#!/bin/sh\nexit 1\n")
+    (executable / "docker").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{executable}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "docker")
+    owners: list[str] = []
+    sources: list[Path] = []
+
+    class FakeDockerExecutor:
+        def execute(self, *, source, scopes, exclusions, template, owner_id):
+            owners.append(owner_id)
+            sources.append(source)
+            assert scopes and template.template_id == "fixture-tests"
+            return SandboxResult(
+                container_id="c" * 64,
+                image_id="sha256:" + "a" * 64,
+                template_id=template.template_id,
+                template_sha256="0" * 64,
+                exit_code=0,
+                timed_out=False,
+                oom_killed=False,
+                output=b"3 passed",
+                output_truncated=False,
+                cleanup_complete=True,
+            )
+
+    monkeypatch.setattr(scripted, "DockerExecutor", FakeDockerExecutor)
+    beats: list[str] = []
+    renew = MissionScheduler.heartbeat
+
+    def spy(self, dispatch: Dispatch):
+        beats.append(dispatch.attempt_id)
+        return renew(self, dispatch)
+
+    monkeypatch.setattr(MissionScheduler, "heartbeat", spy)
+    fixture = tmp_path / "taskmaster"
+    shutil.copytree(ROOT / "demo/taskmaster", fixture)
+    store = SQLiteMissionStore(tmp_path / "missions.sqlite")
+    runtime = tmp_path / "runtime"
+
+    run = run_scripted_mission(
+        scenario=load_scenario(fixture / "scenario.json"),
+        store=store,
+        runtime=runtime,
+        mission_id="mission-docker-adapter",
+    )
+
+    snapshot = store.snapshot(run.mission_id)
+    assert snapshot.mission.status == MissionStatus.AWAITING_RESULT
+    assert sorted(owners) == sorted(item.attempt_id for item in snapshot.attempts)
+    assert all(item.parent == runtime.resolve() / "worktrees" for item in sources)
+    # `executor.execute` blocks with nothing else renewing the attempt lease, so
+    # the docker branch brackets it with the heartbeat the host branch gets from
+    # ControlledProcessRunner, and beats on that same cadence while it waits.
+    assert Counter(beats) == Counter({owner: 2 for owner in owners})
