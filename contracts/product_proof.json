@@ -368,6 +368,8 @@
     ],
     "evidence": "evidence/ui/2026-08-26/README.md",
     "screenshot": "docs/assets/ui-terminal.png",
+    "screenshot_svg": "docs/assets/tui_replay.svg",
+    "screenshot_generator": "scripts/generate_tui_screenshot.py --check",
     "arrow_art": "forbidden: tests/unit/ui/test_dag_render.py fails if the renderer emits '->'",
     "recorded_at": "2026-08-26"
   },

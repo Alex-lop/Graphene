@@ -31,6 +31,7 @@ node --check backend/graphene/viewer/static/reducer.mjs backend/graphene/viewer/
 node --check backend/graphene/orchestration/static/mission_reducer.mjs backend/graphene/orchestration/static/mission_control.mjs
 uv run --frozen graphene mission replay taskmaster --no-open --exit-after-replay
 uv run --frozen python scripts/generate_mission_replay.py --check
+uv run --frozen python scripts/generate_tui_screenshot.py --check
 uv run --frozen ruff check backend tests scripts benchmarks
 git diff --check
 ```

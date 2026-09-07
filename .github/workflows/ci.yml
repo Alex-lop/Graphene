@@ -116,6 +116,7 @@ jobs:
         run: |
           uv run --frozen pytest -q tests/unit/ui
           uv run --frozen graphene ui --replay taskmaster --once >/dev/null
+          uv run --frozen python scripts/generate_tui_screenshot.py --check
 
   firestore-emulator:
     name: Firestore official client / isolated emulator
