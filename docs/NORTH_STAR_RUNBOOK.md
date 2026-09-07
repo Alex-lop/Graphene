@@ -87,8 +87,11 @@ export GRAPHENE_CHECK_EXECUTOR=host-sandbox  # supported macOS path
 uv run --frozen graphene doctor --repo "$runtime/orders-api" --json
 ```
 
-Doctor proves local configuration only. It does not contact the provider and
-does not establish model eligibility, connectivity, or returned identity.
+Doctor proves local configuration plus one free `count_tokens` request per run
+(pass `--no-probe` to make none), reported as
+`gemini_preflight.model_available`. That probe establishes only whether the
+model answers in the configured `GOOGLE_CLOUD_LOCATION`; it does not establish
+model identity or returned output.
 Missing or conflicting credentials must fail closed; there is no fixture
 fallback for `gemini-adk`.
 

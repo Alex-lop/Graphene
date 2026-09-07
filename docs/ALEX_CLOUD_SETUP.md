@@ -12,6 +12,7 @@ Choose the billing account, project, Cloud Run/Artifact Registry region, and Fir
 export PROJECT_ID='YOUR_DEDICATED_PROJECT_ID'
 export BILLING_ACCOUNT='YOUR_BILLING_ACCOUNT_ID'
 export REGION='us-central1'
+export VERTEX_LOCATION='global'
 export FIRESTORE_LOCATION='us-central1'
 export DATABASE_ID='graphene-taskmaster'
 export AR_REPOSITORY='graphene'
@@ -25,6 +26,10 @@ export READ_TOKEN_SECRET='graphene-control-read-token'
 ```
 
 These placeholders are examples, not an authorized project selection.
+
+`VERTEX_LOCATION` is the model location and is deliberately separate from
+`REGION`: on 2026-08-23 `gemini-3.5-flash` returned 404 in `us-central1` and was
+served from `global`, while Cloud Run and Artifact Registry stay in `$REGION`.
 
 ## 2. Authenticate and verify identity
 
@@ -158,7 +163,7 @@ Set values in an owner-private shell or secret-aware launcher, never in a commit
 
 ```bash
 export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
-export GOOGLE_CLOUD_LOCATION="$REGION"
+export GOOGLE_CLOUD_LOCATION="$VERTEX_LOCATION"
 export GOOGLE_GENAI_USE_VERTEXAI=true
 export GRAPHENE_FIRESTORE_DATABASE="$DATABASE_ID"
 export GRAPHENE_FIRESTORE_NAMESPACE='graphene'
@@ -175,7 +180,10 @@ Gemini API key, omit that grant, leave `GOOGLE_GENAI_USE_VERTEXAI` unset, and
 set exactly one of `GEMINI_API_KEY` or `GOOGLE_API_KEY` in the private shell.
 Never configure both modes.
 
-The reviewed CLI has no `graphene doctor --cloud`; use these read-only checks:
+The reviewed CLI has no `graphene doctor --cloud`, but `graphene doctor --json`
+reports `gemini_preflight.model_available` from one free `count_tokens` request
+against `GOOGLE_CLOUD_LOCATION`; a 404 there names `global` in its hint. For the
+cloud resources use these read-only checks:
 
 ```bash
 gcloud firestore databases describe --project="$PROJECT_ID" --database="$DATABASE_ID"
