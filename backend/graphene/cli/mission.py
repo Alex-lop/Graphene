@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import webbrowser
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -1358,14 +1359,169 @@ def _default_policy(repository: Path, base_sha: str) -> ProjectPolicy:
     )
 
 
+PROJECT_PYTEST_TEMPLATE = CommandTemplate(
+    template_id="project-pytest",
+    argv=("python", "-m", "pytest", "-q"),
+    timeout_seconds=600,
+)
+CHECK_EXECUTOR_NOTE = (
+    "detected policies run their pytest check under the Docker executor; "
+    "host-sandbox stays fixture-only"
+)
+
+
+def _table(data: object, *keys: str) -> dict[str, object]:
+    """One TOML table, or an empty one for any missing or wrong-typed step."""
+
+    for key in keys:
+        if not isinstance(data, dict):
+            return {}
+        data = data.get(key)
+    return data if isinstance(data, dict) else {}
+
+
+def _strings(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def _repo_dirs(repository: Path, values: Sequence[str]) -> tuple[str, ...]:
+    """Keep only the values that name a real plain directory inside the repo."""
+
+    root = repository.resolve()
+    found: set[str] = set()
+    for raw in values:
+        value = raw.strip().rstrip("/")
+        candidate = PurePosixPath(value)
+        if (
+            value in {"", "."}
+            or "\\" in value
+            or any(character in value for character in "*?[]")
+            or candidate.is_absolute()
+            # Drops "..", and every dot directory: .github and .circleci hold
+            # CI credentials, so neither the read nor the write scope may name one.
+            or any(part.startswith(".") for part in candidate.parts)
+            or candidate.as_posix() != value
+        ):
+            continue
+        target = repository / candidate
+        # is_dir() follows symlinks and is_symlink() only inspects the last
+        # component, so containment is what rejects a symlinked parent.
+        if (
+            target.is_dir()
+            and not target.is_symlink()
+            and target.resolve().is_relative_to(root)
+        ):
+            found.add(value)
+    return tuple(sorted(found))
+
+
+def _detect_layout(repository: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Infer the source and test directories a pytest project declares.
+
+    Only what a packaging or pytest table already states, plus the two layouts
+    that state nothing: ``src/`` holding a package, or top-level packages.
+    """
+
+    try:
+        data = tomllib.loads(
+            (repository / "pyproject.toml").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as error:
+        raise MissionCliError("pyproject.toml could not be read") from error
+
+    tests = _repo_dirs(
+        repository,
+        _strings(_table(data, "tool", "pytest", "ini_options").get("testpaths")),
+    ) or _repo_dirs(repository, ("tests", "test"))
+
+    setuptools = _table(data, "tool", "setuptools")
+    sources = (
+        _repo_dirs(
+            repository,
+            _strings(
+                _table(data, "tool", "hatch", "build", "targets", "wheel").get(
+                    "packages"
+                )
+            ),
+        )
+        or _repo_dirs(
+            repository, _strings(_table(setuptools, "packages", "find").get("where"))
+        )
+        or _repo_dirs(
+            repository,
+            [name.replace(".", "/") for name in _strings(setuptools.get("packages"))],
+        )
+    )
+    source_root = repository / "src"
+    if not sources and source_root.is_dir() and not source_root.is_symlink():
+        if any((child / "__init__.py").is_file() for child in source_root.iterdir()):
+            sources = ("src",)
+    if not sources:
+        sources = tuple(
+            name
+            for name in _repo_dirs(
+                repository, [child.name for child in repository.iterdir()]
+            )
+            if name not in tests and (repository / name / "__init__.py").is_file()
+        )
+
+    missing = tuple(
+        label
+        for label, found in (("source package", sources), ("test directory", tests))
+        if not found
+    )
+    if missing:
+        raise MissionCliError(
+            "pyproject.toml detection found no " + " and no ".join(missing)
+        )
+    return sources, tests
+
+
+def _detected_policy(repository: Path, base_sha: str) -> ProjectPolicy:
+    """The default policy narrowed to the detected source and test directories.
+
+    Overlays only non-identity fields, the pattern proven by
+    ``scripts/materialize_north_star.py``; nothing here widens a default.
+    """
+
+    sources, tests = _detect_layout(repository)
+    default = _default_policy(repository, base_sha)
+    data = default.model_dump(mode="json")
+    scopes = {f"{name}/**" for name in (*sources, *tests)}
+    reads = scopes | {"pyproject.toml"}
+    if (repository / "README.md").is_file():
+        reads.add("README.md")
+    data["allowed_read_globs"] = sorted(reads)
+    data["allowed_write_globs"] = sorted(scopes)
+    data["exclusions"] = sorted({*data["exclusions"], ".graphene/**"})
+    data["command_templates"] = [PROJECT_PYTEST_TEMPLATE.model_dump(mode="json")]
+    try:
+        policy = ProjectPolicy.model_validate(data)
+    except ValueError as error:
+        raise MissionCliError("detected project layout is not a valid policy") from error
+    for key in ("policy_id", "repo_id", "base_ref", "base_sha", "revision"):
+        if getattr(policy, key) != getattr(default, key):
+            raise MissionCliError(f"detected policy {key} drifted from the default")
+    return policy
+
+
 def initialize(repo: Path) -> tuple[Path, ProjectPolicy]:
     repository, base_sha = _git_root(repo)
+    # Detection is what a pyproject.toml triggers; a repository without one keeps
+    # today's deny-by-default policy. An ambiguous pyproject refuses before any
+    # directory or file is created.
+    policy = (
+        _detected_policy(repository, base_sha)
+        if (repository / "pyproject.toml").is_file()
+        else _default_policy(repository, base_sha)
+    )
     directory = repository / ".graphene"
     if directory.exists() and (directory.is_symlink() or not directory.is_dir()):
         raise MissionCliError(".graphene is not a safe directory")
     directory.mkdir(mode=0o755, exist_ok=True)
     path = directory / "project.json"
-    policy = _default_policy(repository, base_sha)
     temporary = directory / f".project.json-{secrets.token_hex(12)}.tmp"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -7069,7 +7225,10 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, object | None]:
             "policy_id": policy.policy_id,
             "policy_path": str(path),
             "scope_notice": "review and edit bounded scopes before real repository work",
+            "detected": PROJECT_PYTEST_TEMPLATE in policy.command_templates,
+            "read_scope": list(policy.allowed_read_globs),
             "write_scope": list(policy.allowed_write_globs),
+            "check_executor_note": CHECK_EXECUTOR_NOTE,
         }
     if args.command == "doctor":
         return 0, doctor(args.repo)

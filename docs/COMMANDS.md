@@ -10,6 +10,14 @@ this page is the reference `tests/unit/test_readme_contract.py` holds the CLI to
 `graphene retry`, `graphene run`, `graphene task`, `graphene watch`, `graphene why`,
 and `graphene ui` (the terminal view; see the README).
 
+`graphene init --repo PATH` reads a `pyproject.toml` when the repository has one
+and writes read/write globs limited to the detected source and test directories
+plus one `python -m pytest -q` template, which only the Docker check executor
+runs (the macOS host sandbox stays fixture-only); a repository with no
+`pyproject.toml` keeps the unchanged deny-by-default policy, and a
+`pyproject.toml` with no discoverable package or test directory is refused by
+name instead of widened.
+
 ```bash
 graphene plan GOAL --repo PATH --success-criterion CRITERION
 graphene plan show MISSION_ID [--detail]         # the full contract of every node
