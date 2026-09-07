@@ -24,7 +24,8 @@ runtime.
 | Codex MCP hero flow | `NOT PROVEN` | Configuration is documented; Codex has not started, disconnected from, reattached to, and observed a current mission through completion |
 | Clean exact-SHA artifact proof | `EXTERNAL SHA MANIFEST REQUIRED` | The proof driver requires an expected clean SHA and matching canonical remote ref, then writes its SHA-named result outside the checkout; the external manifest or CI result establishes a particular run |
 | Cloud Run and real Firestore | `NOT DEPLOYED — NOT PROVEN` | Emulator and protocol checks are not authenticated deployment proof |
-| Docker, benchmark, screenshot/GIF, and film | `NOT PROVEN` | No responsive-daemon smoke, repeated equal-gate measurement, or current hero capture exists |
+| Docker check executor | `VERIFIED_CI` | CI built the immutable image on `ubuntu-24.04` and ran one scoped fixture check inside it; see `evidence/docker/2026-09-07/README.md`. Not a live mission, not a multi-template proof |
+| Benchmark, screenshot/GIF, and film | `NOT PROVEN` | No repeated equal-gate measurement or current hero capture exists |
 
 ## Credential-free replay
 

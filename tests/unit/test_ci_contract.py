@@ -11,6 +11,11 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
 
     assert (ROOT / ".python-version").read_text().strip() == "3.13"
     assert "uv==0.11.29" in workflow
+    # Three of the six jobs run the explicit lock-drift check and sync; the
+    # Docker executor smoke deliberately does not, because `uv run --frozen`
+    # installs from the existing lock without updating it, and the drift
+    # between the lock and pyproject.toml is already checked on this same
+    # commit by those three jobs.
     assert workflow.count("uv lock --check") == 3
     assert workflow.count("uv sync --frozen") == 3
     assert "runs-on: macos-15" in workflow
@@ -35,6 +40,23 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "test_fixed_tests_cannot_read_ambient_checkout_files" in workflow
     assert "test_fixed_tests_cannot_read_or_write_host_files_or_use_network" in workflow
     assert "pytest -q tests/unit/orchestration/test_process_control.py" in workflow
+
+    # The Docker executor smoke is only a proof if the job builds the image it
+    # runs: `--pull never` means a stale or absent tag fails the preflight
+    # instead of silently testing someone else's bytes. The build command is
+    # the byte-identical prefix of the docker-executor command frozen in
+    # contracts/product_proof.json, and the smoke stays skipped without the
+    # opt-in variable, so both strings are part of the claim.
+    assert (
+        "docker build -f docker/executor.Dockerfile -t graphene-executor:py313-pytest ."
+        in workflow
+    )
+    assert "GRAPHENE_RUN_DOCKER_SMOKE: \"1\"" in workflow
+    assert "uv run --frozen pytest -q tests/unit/orchestration/test_sandbox.py" in workflow
+    # The proof-label flip for the Docker executor row is keyed to this job by
+    # name, so the name is part of the contract.
+    assert "name: Python 3.13 / Linux Docker executor smoke" in workflow
+
     assert "firebase emulators:exec --only firestore" in workflow
     assert "GRAPHENE_RUN_FIRESTORE_EMULATOR: \"1\"" in workflow
     assert "tests/integration/test_firestore_emulator.py" in workflow

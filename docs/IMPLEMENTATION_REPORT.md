@@ -98,5 +98,6 @@ The proof is incomplete until one clean committed implementation:
   paths; and
 - captures sanitized current-SHA evidence.
 
-Docker, Cloud Run/real Firestore, benchmark results, current screenshot/GIF,
-and film remain separate and `NOT PROVEN`.
+Cloud Run/real Firestore, benchmark results, current screenshot/GIF, and film
+remain separate and `NOT PROVEN`; the Docker check executor is `VERIFIED_CI` for
+one scoped fixture smoke only (`evidence/docker/2026-09-07`).
