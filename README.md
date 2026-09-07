@@ -28,6 +28,10 @@ uv run --frozen graphene ui --replay taskmaster --once
 
 ![Graphene terminal UI showing a signed plan, retry evidence, and lineage](docs/assets/ui-terminal.png)
 
+![graphene ui rendering the checked-in replay at checkpoint 4 of 11, one node running and one retrying](docs/assets/tui_replay.svg)
+
+> **TERMINAL UI SCREENSHOT — TEXTUAL'S OWN SVG EXPORT OF THE SHA-256-CHECKED REPLAY AT CHECKPOINT 4 OF 11, REGENERATED AND DIFFED IN CI; NOT A LIVE MODEL MISSION, NOT FILMED**
+
 ## Where Graphene fits
 
 Use the agent runtime you already trust. Graphene governs the repository handoff after agents propose changes.

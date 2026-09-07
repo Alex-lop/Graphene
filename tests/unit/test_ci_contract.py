@@ -32,6 +32,7 @@ def test_ci_keeps_supported_and_fail_closed_platform_gates_separate() -> None:
     assert "tests/process/test_verified_replay.py" in workflow
     assert "graphene demo --driver verified-replay" in workflow
     assert "graphene mission replay taskmaster" in workflow
+    assert "scripts/generate_tui_screenshot.py --check" in workflow
     assert "test_fixed_tests_cannot_read_ambient_checkout_files" in workflow
     assert "test_fixed_tests_cannot_read_or_write_host_files_or_use_network" in workflow
     assert "pytest -q tests/unit/orchestration/test_process_control.py" in workflow

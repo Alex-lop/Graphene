@@ -1,0 +1,3 @@
+# rich's SVG export template emits one indentation-only line; the file is
+# byte-checked against its generator, so the whitespace cannot be stripped.
+docs/assets/tui_replay.svg -whitespace
