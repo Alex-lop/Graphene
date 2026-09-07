@@ -142,6 +142,7 @@ from ..orchestration.scripted import (
     scripted_plan_validation,
     scripted_result_artifacts,
     scripted_supported,
+    selected_check_executor,
 )
 from ..orchestration.workers import GeminiWorkerAdapter
 
@@ -1467,6 +1468,13 @@ def _load_project_policy(repo: Path) -> tuple[Path, str, ProjectPolicy]:
 def doctor(repo: Path) -> dict[str, object]:
     policy, policy_detail = _policy_status(repo)
     sandbox = scripted_supported()
+    # scripted-local runs under the executor the environment selects (host
+    # sandbox when unset), so its usability is not the sandbox-exec flag alone.
+    try:
+        scripted_executor = selected_check_executor()
+    except ScriptedError:
+        scripted_executor = ""
+    scripted_usable = bool(scripted_executor) and scripted_supported(scripted_executor)
     adk = importlib.util.find_spec("google.adk") is not None
     vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower()
     api_key_count = sum(
@@ -1547,21 +1555,23 @@ def doctor(repo: Path) -> dict[str, object]:
         "check_executor": _check_executor_status(sandbox),
         "policy": {"status": policy, "detail": policy_detail},
         "platform_isolation": {
-            "status": "usable" if sandbox else "unavailable",
+            "status": "usable" if scripted_usable else "unavailable",
             "detail": (
-                "macOS sandbox-exec fixture boundary"
-                if sandbox
-                else "scripted code execution fails closed on this host"
+                "scripted code execution fails closed on this host"
+                if not scripted_usable
+                else "macOS sandbox-exec fixture boundary"
+                if scripted_executor == "host-sandbox"
+                else "Docker executor container boundary; image not probed"
             ),
         },
         "process_telemetry": {
-            "status": "partial" if sandbox else "unavailable",
+            "status": "partial" if scripted_usable else "unavailable",
             "detail": "fixture wall time only; CPU and process-tree memory not captured",
         },
         "modes": {
             "mission-replay": {"usable": True, "proof": "checked-in replay only"},
             "scripted-local": {
-                "usable": sandbox and policy == "usable",
+                "usable": scripted_usable and policy == "usable",
                 "proof": "checked-in fixture only",
             },
             "adk-fake": {
@@ -3767,7 +3777,9 @@ def _scripted_proposal_value(
         "proof": "scripted fixture proposal; no Gemini or cloud execution",
         "plan_revision": snapshot.plan.revision,
         "review_required": True,
-        "execution_available": scripted_supported(),
+        "execution_available": scripted_supported(
+            _scripted_check_executor(mission_id)
+        ),
         "validation": validation.model_dump(mode="json"),
         "task_graph": [
             {
@@ -3790,7 +3802,8 @@ def _approve_scripted_start(
     simulated: bool,
     execute: bool = True,
 ) -> dict[str, object]:
-    if not scripted_supported():
+    check_executor = _scripted_check_executor(mission_id)
+    if not scripted_supported(check_executor):
         raise MissionCliError(
             "scripted-local execution is unavailable because the fixture sandbox is not proven on this host"
         )
@@ -3821,6 +3834,7 @@ def _approve_scripted_start(
         store=store,
         runtime=runtime,
         mission_id=mission_id,
+        check_executor=check_executor,
     )
     return _scripted_run_value(
         store,
@@ -4461,17 +4475,58 @@ def _select_check_executor(requested: str | None = None) -> str:
     return requested
 
 
-def _mission_check_executor(mission_id: str) -> str:
+def _bound_check_executor(mission_id: str) -> str | None:
+    """The mission's durable executor binding, or None when it carries none."""
+
     runtime = _mission_runtime(mission_id)
     path = runtime / "start-request.json"
     if not path.exists() and not path.is_symlink():
-        return _select_check_executor()
+        return None
     bound = _private_start_binding(runtime).get("check_executor")
     if bound is None:  # Legacy start requests selected from their current environment.
-        return _select_check_executor()
+        return None
     if not isinstance(bound, str):
         raise MissionCliError("mission check executor binding is invalid")
-    return _select_check_executor(bound)
+    return bound
+
+
+def _mission_check_executor(mission_id: str) -> str:
+    bound = _bound_check_executor(mission_id)
+    return _select_check_executor() if bound is None else _select_check_executor(bound)
+
+
+def _accepted_check_executor(driver: str) -> str:
+    """The executor a mission is durably bound to when it is accepted.
+
+    scripted-local's captured proof is the macOS host sandbox, so an unset
+    `GRAPHENE_CHECK_EXECUTOR` binds it there rather than to the gemini-adk
+    path's docker default. A host that cannot honour that then refuses at
+    acceptance instead of at the first attempt.
+    """
+
+    if driver == "scripted-local" and not os.environ.get(
+        _CHECK_EXECUTOR_ENV, ""
+    ).strip():
+        return _select_check_executor("host-sandbox")
+    return _select_check_executor()
+
+
+def _scripted_check_executor(mission_id: str) -> str:
+    """Pick scripted-local's check executor: its durable binding, or the host.
+
+    The binding is consulted first and wins whatever the ambient variable says
+    — that is what makes it a binding. Only a mission that carries none (the
+    plain CLI start path records no executor) reads the environment, where an
+    unset variable keeps the fixture on the host sandbox rather than on the
+    gemini-adk path's docker default.
+    """
+
+    bound = _bound_check_executor(mission_id)
+    if bound is None:
+        return selected_check_executor()
+    if bound not in _CHECK_EXECUTOR_CHOICES:
+        raise MissionCliError(_CHECK_EXECUTOR_ERROR)
+    return bound
 
 
 def _check_executor_status(sandbox: bool) -> dict[str, object]:
@@ -5732,6 +5787,7 @@ def _start_bound(
                     store=store,
                     runtime=runtime,
                     mission_id=mission_id,
+                    check_executor=_scripted_check_executor(mission_id),
                 )
                 result = _scripted_run_value(
                     store,
@@ -5790,7 +5846,7 @@ def _start_bound(
             )
         interactive = (
             not args.auto_approve
-            and scripted_supported()
+            and scripted_supported(_scripted_check_executor(mission_id))
             and not getattr(args, "json_mode", False)
             and sys.stdin.isatty()
             and sys.stdout.isatty()
@@ -6922,7 +6978,8 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                     "edited plan; propose the mission with --driver gemini-adk to run "
                     "a revised plan"
                 )
-            if not scripted_supported():
+            check_executor = _scripted_check_executor(args.mission_id)
+            if not scripted_supported(check_executor):
                 raise MissionCliError(
                     "scripted-local execution is unavailable because the fixture sandbox is not proven on this host"
                 )
@@ -6954,6 +7011,7 @@ def _mutate(args: argparse.Namespace) -> dict[str, object]:
                 store=store,
                 runtime=runtime,
                 mission_id=args.mission_id,
+                check_executor=check_executor,
             )
             return _scripted_run_value(
                 store,

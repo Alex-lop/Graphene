@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,6 +29,7 @@ from ..hashing import (
     sha256_hex,
 )
 from ..core_models import (
+    MAX_TEST_OUTPUT_BYTES,
     BoundedText,
     FixturePolicy,
     FrozenModel,
@@ -75,6 +76,7 @@ from .process_control import (
     ProcessCancelled,
     ProcessControlError,
 )
+from .sandbox import DockerExecutor, SandboxError
 from .scheduler import MissionScheduler, SystemClock
 from .sqlite_mission_store import LeaseConflict, MissionConflict, SQLiteMissionStore, StaleWorker
 from .validation import PlanValidationResult, require_valid_plan, validate_plan
@@ -91,6 +93,10 @@ DEFAULT_SCENARIO_PATH = (
     else _PACKAGED_SCENARIO_PATH
 )
 _CHECK_TEMPLATE = "fixture-tests"
+_CHECK_EXECUTOR_ENV = "GRAPHENE_CHECK_EXECUTOR"
+# ControlledProcessRunner's own heartbeat cadence, so both check branches renew
+# the attempt lease at the same rate.
+_CHECK_HEARTBEAT_SECONDS = 10
 _FIXED_TEST_COMMAND = ("python", "-m", "pytest", "-q", "-p", "no:cacheprovider")
 _MAX_FIXTURE_FILES = 128
 _MAX_FIXTURE_BYTES = 1_048_576
@@ -261,8 +267,47 @@ def load_scenario(path: str | Path = DEFAULT_SCENARIO_PATH) -> ScriptedScenario:
         raise ScriptedError("scripted scenario is invalid") from error
 
 
-def scripted_supported() -> bool:
+def scripted_supported(check_executor: str = "host-sandbox") -> bool:
+    """Can this host run the scripted fixture check under ``check_executor``?
+
+    Fails closed on any value but the two reviewed executors. For docker this
+    only means the client is installed; ``DockerExecutor.preflight`` proves the
+    daemon and image per attempt.
+    """
+
+    if check_executor == "docker":
+        return shutil.which("docker") is not None
+    if check_executor != "host-sandbox":
+        return False
     return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
+
+
+def selected_check_executor() -> str:
+    """The check executor a scripted mission runs under when nothing bound it.
+
+    Unset means the macOS host sandbox (scripted-local's captured proof); only an
+    explicit value moves the fixture into a container. Anything else fails closed
+    on the CLI's message rather than becoming a silent skip.
+    """
+
+    # Imported here because backend.graphene.cli.mission imports this module.
+    from ..cli.mission import _CHECK_EXECUTOR_CHOICES, _CHECK_EXECUTOR_ERROR
+
+    requested = os.environ.get(_CHECK_EXECUTOR_ENV, "").strip() or "host-sandbox"
+    if requested not in _CHECK_EXECUTOR_CHOICES:
+        # Never echo the value; it is whatever the operator typed.
+        raise ScriptedUnavailable(_CHECK_EXECUTOR_ERROR)
+    return requested
+
+
+def _require_scripted_support(check_executor: str) -> None:
+    if scripted_supported(check_executor):
+        return
+    raise ScriptedUnavailable(
+        "scripted-local requires the docker client on PATH"
+        if check_executor == "docker"
+        else "scripted-local requires macOS with executable /usr/bin/sandbox-exec"
+    )
 
 
 def _git_environment() -> dict[str, str]:
@@ -389,6 +434,57 @@ def fixture_policy_for(
         tree_hash_version="graphene.tree.v2",
         tree_hash_algorithm="sha256(graphene.tree.v2 length-prefixed manifest)",
     )
+
+
+class DockerFixtureCheckRunner:
+    """Adapt ``DockerExecutor`` to the worker's sync ``(workspace, policy) -> TestRun``.
+
+    One instance runs one attempt: ``owner_id`` is the attempt id the container
+    is labelled and named with.
+    """
+
+    def __init__(self, executor: DockerExecutor, *, owner_id: str) -> None:
+        self.executor = executor
+        self.owner_id = owner_id
+
+    def __call__(self, workspace: Path, policy: FixturePolicy) -> TestRun:
+        template = CommandTemplate(
+            template_id=_CHECK_TEMPLATE,
+            argv=policy.fixed_test_command,
+            timeout_seconds=policy.test_timeout_seconds,
+        )
+        started = time.monotonic()
+        try:
+            result = self.executor.execute(
+                source=workspace,
+                scopes=policy.tracked_paths,
+                exclusions=(),
+                template=template,
+                owner_id=self.owner_id,
+            )
+        except SandboxError as error:
+            # Same shape as the host sandbox's ExecutionError remap at the
+            # dispatch call site: an executor that refused is unavailable, not
+            # a check that failed.
+            raise ScriptedUnavailable(
+                "scripted fixture container rejected execution"
+            ) from error
+        # SandboxLimits caps output at 64 KiB; the receipt's byte budget is
+        # 16 KiB, so re-cap here or `passed` silently changes meaning. Cap the
+        # encoded text, not the raw bytes: replacing an invalid byte grows it.
+        cap = min(policy.max_test_output_bytes, MAX_TEST_OUTPUT_BYTES)
+        raw = result.output.decode(errors="replace").encode()
+        exit_code = result.exit_code
+        if result.oom_killed and exit_code == 0:
+            # A container the kernel killed never reports a passing check.
+            exit_code = 137
+        return TestRun(
+            exit_code,
+            result.timed_out,
+            raw[:cap].decode(errors="ignore"),
+            result.output_truncated or len(raw) > cap,
+            _wall_duration_bucket(time.monotonic() - started),
+        )
 
 
 def _scenario_inventory(scenario: ScriptedScenario) -> dict[str, bytes]:
@@ -683,13 +779,12 @@ class ScriptedWorker:
         evidence: SQLiteAttemptEvidenceStore,
         store: SQLiteMissionStore | None = None,
         check_runner: Callable[[Path, FixturePolicy], TestRun] = run_fixture_tests,
+        check_executor: str = "host-sandbox",
         heartbeat: Callable[[Dispatch], object] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        if not scripted_supported():
-            raise ScriptedUnavailable(
-                "scripted-local requires macOS with executable /usr/bin/sandbox-exec"
-            )
+        _require_scripted_support(check_executor)
+        self.check_executor = check_executor
         self.scenario = scenario
         self.repository = repository.resolve(strict=True)
         self.runtime = runtime.resolve(strict=True)
@@ -1352,6 +1447,34 @@ class ScriptedWorker:
             return "policy_denied", False
         return "worker_exception", True
 
+    def _docker_check(self, dispatch: Dispatch, workspace: Path) -> TestRun:
+        """Run one container check while this thread renews the attempt's lease.
+
+        ``DockerExecutor.execute`` blocks and renews nothing, so it runs in a
+        worker thread and this one beats on the host branch's cadence, refusing
+        to extend a mission whose cancellation is already on disk. Nothing here
+        registers with OwnedProcessRegistry, so cancel cannot reap the container.
+        """
+
+        runner = DockerFixtureCheckRunner(
+            DockerExecutor(), owner_id=dispatch.attempt_id
+        )
+        policy = self._fixture_policy(workspace)
+        cancellation = self.runtime / "cancellation-request.json"
+
+        def beat() -> None:
+            if self.heartbeat is not None and not cancellation.exists():
+                self.heartbeat(dispatch)
+
+        beat()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(runner, workspace, policy)
+            while not wait((pending,), timeout=_CHECK_HEARTBEAT_SECONDS).done:
+                beat()
+            check = pending.result()
+        beat()
+        return check
+
     def run(
         self,
         dispatch: Dispatch,
@@ -1414,7 +1537,12 @@ class ScriptedWorker:
                     tree_sha256=candidate_tree,
                     mutation_manifest_sha256=manifest_reference.sha256,
                 )
-            if self.check_runner is run_fixture_tests:
+            if (
+                self.check_runner is run_fixture_tests
+                and self.check_executor == "docker"
+            ):
+                check = self._docker_check(dispatch, workspace)
+            elif self.check_runner is run_fixture_tests:
                 if self.store is None:
                     raise ScriptedError("scripted worker is not bound to mission state")
                 check = run_fixture_tests(
@@ -1903,11 +2031,10 @@ def execute_scripted_mission(
     store: SQLiteMissionStore,
     runtime: Path,
     mission_id: str,
+    check_executor: str | None = None,
 ) -> ScriptedMissionRun:
-    if not scripted_supported():
-        raise ScriptedUnavailable(
-            "scripted-local requires macOS with executable /usr/bin/sandbox-exec"
-        )
+    check_executor = check_executor or selected_check_executor()
+    _require_scripted_support(check_executor)
     scenario = _persisted_scenario(runtime)
     repository, base_sha = initialize_fixture_repository(scenario, runtime)
     evidence_path = (runtime / "attempt-evidence.sqlite3").resolve()
@@ -1953,6 +2080,7 @@ def execute_scripted_mission(
         base_sha=base_sha,
         evidence=evidence,
         store=store,
+        check_executor=check_executor,
         heartbeat=scheduler.heartbeat,
     )
     worker_ids = tuple(
@@ -2048,6 +2176,7 @@ def run_scripted_mission(
 
 __all__ = [
     "DEFAULT_SCENARIO_PATH",
+    "DockerFixtureCheckRunner",
     "ScriptedError",
     "ScriptedMissionProposal",
     "ScriptedMissionRun",
@@ -2064,4 +2193,5 @@ __all__ = [
     "scripted_plan_validation",
     "scripted_result_artifacts",
     "scripted_supported",
+    "selected_check_executor",
 ]

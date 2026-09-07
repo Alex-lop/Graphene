@@ -325,6 +325,26 @@ def test_doctor_reports_modes_without_echoing_credentials(
     }
 
 
+def test_doctor_scripted_usability_follows_the_selected_check_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repository(tmp_path)
+    initialize(repository)
+    monkeypatch.setenv("GRAPHENE_CHECK_EXECUTOR", "docker")
+    # A Linux-shaped host: no sandbox-exec, but a docker client on PATH.
+    supported = lambda executor="host-sandbox": executor == "docker"  # noqa: E731
+    monkeypatch.setattr(mission_cli, "scripted_supported", supported)
+
+    report = doctor(repository)
+
+    assert report["executables"]["sandbox-exec"] is False
+    assert report["platform_isolation"] == {
+        "status": "usable",
+        "detail": "Docker executor container boundary; image not probed",
+    }
+    assert report["modes"]["scripted-local"]["usable"] is True
+
+
 def test_database_commands_are_read_only_when_state_is_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

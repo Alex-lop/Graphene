@@ -832,9 +832,9 @@ def accept_goal(
     from argparse import Namespace
 
     from ..cli.mission import (
+        _accepted_check_executor,
         _bind_start_request,
         _mission_runtime,
-        _select_check_executor,
         _start_identity,
         _start_lock,
     )
@@ -908,7 +908,7 @@ def accept_goal(
         else:
             request = SupervisorRequest.create(
                 **request_values,
-                check_executor=_select_check_executor(),
+                check_executor=_accepted_check_executor(driver),
                 accepted_at=datetime.now(UTC),
             )
             _write(request_path, request, create_only=True)
@@ -1193,6 +1193,7 @@ def _run(request: SupervisorRequest, generation: int) -> None:
         _execute_adk_mission,
         _mission_runtime,
         _reconcile_cancellation_request,
+        _scripted_check_executor,
         _start_bound,
         _start_identity,
         _store_for_mission,
@@ -1267,6 +1268,7 @@ def _run(request: SupervisorRequest, generation: int) -> None:
                 store=store,
                 runtime=runtime,
                 mission_id=mission_id,
+                check_executor=_scripted_check_executor(mission_id),
             )
         snapshot = store.snapshot(mission_id)
     if snapshot.mission.status == MissionStatus.AWAITING_RESULT:

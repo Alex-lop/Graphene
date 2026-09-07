@@ -218,6 +218,8 @@
         "arbitrary-repository execution",
         "Gemini execution",
         "Docker execution",
+        "Docker check container reconciliation on cancel",
+    "pause/resume signalling to a running Docker check container",
         "cloud deployment"
       ],
       "execute_command": "uv run --frozen graphene mission approve-plan MISSION_ID --revision 1",

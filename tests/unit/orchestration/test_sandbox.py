@@ -14,11 +14,17 @@ from graphene.execution.adapter import (
     NORTH_STAR_FINAL_CHECK_COMMAND,
 )
 from graphene.orchestration.mission_models import CommandTemplate
+from graphene.orchestration.scripted import (
+    DockerFixtureCheckRunner,
+    ScriptedUnavailable,
+    fixture_policy_for,
+)
 from graphene.orchestration.sandbox import (
     DockerExecutor,
     DockerUnavailable,
     SandboxError,
     SandboxLimits,
+    SandboxResult,
     build_docker_create_argv,
     command_template_sha256,
     materialize_repository_view,
@@ -476,3 +482,96 @@ def test_real_docker_executes_only_the_scoped_fixture(tmp_path: Path) -> None:
     assert result.oom_killed is False
     assert result.output_truncated is False
     assert result.cleanup_complete is True
+
+
+def _sandbox_result(**overrides: object) -> SandboxResult:
+    return SandboxResult(
+        **{
+            "container_id": CONTAINER_ID,
+            "image_id": IMAGE_ID,
+            "template_id": "fixture-tests",
+            "template_sha256": command_template_sha256(TEMPLATE),
+            "exit_code": 0,
+            "timed_out": False,
+            "oom_killed": False,
+            "output": b"1 passed",
+            "output_truncated": False,
+            "cleanup_complete": True,
+            **overrides,
+        }
+    )
+
+
+class _ResultExecutor(DockerExecutor):
+    """A DockerExecutor that answers one canned result and records its call."""
+
+    def __init__(self, result: SandboxResult) -> None:
+        super().__init__()
+        self.result = result
+        self.calls: list[dict[str, object]] = []
+
+    def execute(self, **arguments: object) -> SandboxResult:
+        self.calls.append(arguments)
+        return self.result
+
+
+def test_docker_fixture_check_runner_recaps_output_and_fails_a_killed_check(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_pass.py").write_text("def test_pass():\n    assert True\n")
+    policy = fixture_policy_for(workspace)
+    executor = _ResultExecutor(
+        _sandbox_result(oom_killed=True, output=b"\xff" + b"x" * 20_000)
+    )
+
+    run = DockerFixtureCheckRunner(executor, owner_id="attempt-1")(workspace, policy)
+
+    assert executor.calls[0]["owner_id"] == "attempt-1"
+    assert executor.calls[0]["scopes"] == policy.tracked_paths == ("test_pass.py",)
+    assert executor.calls[0]["template"].timeout_seconds == 15
+    # SandboxLimits allows 64 KiB of container output; the receipt budget is
+    # 16 KiB, so the re-cap has to raise the flag the scripted worker reads as
+    # "this check did not pass", and the undecodable byte must not smuggle the
+    # capped text back over the budget.
+    assert run.output_truncated is True
+    assert len(run.output.encode()) == policy.max_test_output_bytes == 16_384
+    assert run.output.startswith("�")
+    # `docker inspect` reports exit code 0 for a container the kernel killed.
+    assert run.exit_code == 137
+
+
+def test_docker_fixture_check_runner_passes_a_bounded_result_through(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_pass.py").write_text("def test_pass():\n    assert True\n")
+    executor = _ResultExecutor(_sandbox_result(exit_code=1, output=b"1 failed"))
+
+    run = DockerFixtureCheckRunner(executor, owner_id="attempt-2")(
+        workspace, fixture_policy_for(workspace)
+    )
+
+    assert (run.exit_code, run.output, run.output_truncated) == (1, "1 failed", False)
+    assert run.timed_out is False
+
+
+def test_docker_fixture_check_runner_reports_a_refusing_executor_as_unavailable(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_pass.py").write_text("def test_pass():\n    assert True\n")
+
+    class RefusingExecutor(DockerExecutor):
+        def execute(self, **arguments: object) -> SandboxResult:
+            raise DockerUnavailable("Docker daemon is unavailable")
+
+    # ScriptedUnavailable is what the scripted worker remaps an unusable host
+    # sandbox to; a missing daemon must arrive as the same kind of answer.
+    with pytest.raises(ScriptedUnavailable, match="container rejected execution"):
+        DockerFixtureCheckRunner(RefusingExecutor(), owner_id="attempt-3")(
+            workspace, fixture_policy_for(workspace)
+        )
