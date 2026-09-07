@@ -13,6 +13,13 @@ from graphene.orchestration.sandbox import (
 )
 
 
+FROZEN_TEMPLATE = CommandTemplate(
+    template_id="fixture-tests",
+    argv=("python", "-m", "pytest", "-q", "-p", "no:cacheprovider"),
+    timeout_seconds=15,
+)
+
+
 @pytest.mark.parametrize(
     "argv",
     (
@@ -36,22 +43,18 @@ def test_shell_interpreter_installer_path_and_extra_argv_are_rejected(
     except ValueError:
         return
     with pytest.raises(SandboxError, match="frozen"):
-        validate_command_template(template)
+        validate_command_template(template, (FROZEN_TEMPLATE,))
 
 
 def test_host_mount_and_mutable_root_cannot_be_requested(tmp_path: Path) -> None:
-    template = CommandTemplate(
-        template_id="fixture-tests",
-        argv=("python", "-m", "pytest", "-q", "-p", "no:cacheprovider"),
-        timeout_seconds=15,
-    )
+    template = FROZEN_TEMPLATE
     argv = build_docker_create_argv(
         docker_bin=Path("/usr/bin/docker"),
         image_id="sha256:" + "a" * 64,
         workspace=tmp_path.resolve(),
         owner_id="attempt-1",
         container_name="graphene-attempt-1",
-        command=validate_command_template(template),
+        command=validate_command_template(template, (template,)),
         cwd=None,
         limits=SandboxLimits(),
     )

@@ -13,23 +13,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from ..execution.adapter import NORTH_STAR_CHECK_COMMAND, NORTH_STAR_FINAL_CHECK_COMMAND
 from .mission_models import CommandTemplate
 
 
-_FIXTURE_ARGV = ("python", "-m", "pytest", "-q", "-p", "no:cacheprovider")
-_NORTH_STAR_TEMPLATE_ID = "orders-migration-check"
-_CONTAINER_COMMANDS = {
-    ("fixture-tests", _FIXTURE_ARGV): ("/usr/local/bin/python", *_FIXTURE_ARGV[1:]),
-    (_NORTH_STAR_TEMPLATE_ID, NORTH_STAR_FINAL_CHECK_COMMAND): (
-        "/usr/local/bin/python",
-        *NORTH_STAR_FINAL_CHECK_COMMAND[1:],
-    ),
-    ("orders-migration-task-check", NORTH_STAR_CHECK_COMMAND): (
-        "/usr/local/bin/python",
-        *NORTH_STAR_CHECK_COMMAND[1:],
-    ),
-}
+# The executor resolves a template only into the image's CPython, so a template
+# can be resolved at all only when argv[0] is that interpreter.
+_INTERPRETER = "/usr/local/bin/python"
 _OWNER_LABEL = "graphene.owner"
 _EXECUTOR_LABEL_NAME = "graphene.executor"
 _EXECUTOR_LABEL_VALUE = "oci-v1"
@@ -102,16 +91,22 @@ def command_template_sha256(template: CommandTemplate) -> str:
     ).hexdigest()
 
 
-def validate_command_template(template: CommandTemplate) -> tuple[str, ...]:
-    """Resolve the one reviewed demo template; arbitrary commands fail closed."""
+def validate_command_template(
+    template: CommandTemplate, allowed: tuple[CommandTemplate, ...] = ()
+) -> tuple[str, ...]:
+    """Resolve one approved policy template; anything else fails closed.
 
-    try:
-        command = _CONTAINER_COMMANDS[(template.template_id, tuple(template.argv))]
-    except KeyError:
+    ``allowed`` is the approved ``ProjectPolicy.command_templates``. Membership
+    is exact structural equality over every field of the frozen model, so a
+    mismatched id, argv, cwd or timeout is rejected. The default empty tuple
+    fails closed for an executor built without a policy.
+    """
+
+    if template not in allowed or template.argv[0] != "python":
         raise SandboxError("command is not the frozen server-owned template")
     if template.cwd is not None:
         _relative_path(str(template.cwd))
-    return command
+    return (_INTERPRETER, *template.argv[1:])
 
 
 def _relative_path(value: str) -> PurePosixPath:
@@ -168,7 +163,7 @@ def build_docker_create_argv(
     if any(character in source for character in ",\0\n\r"):
         raise SandboxError("workspace path cannot be represented safely as a mount")
     workdir = "/workspace" if cwd is None else f"/workspace/{_relative_path(cwd)}"
-    if command not in _CONTAINER_COMMANDS.values():
+    if len(command) < 2 or command[0] != _INTERPRETER:
         raise SandboxError("container command is not the resolved template")
 
     return (
@@ -381,10 +376,12 @@ class DockerExecutor:
         image: str = "graphene-executor:py313-pytest",
         docker_bin: str | Path | None = None,
         limits: SandboxLimits = SandboxLimits(),
+        templates: tuple[CommandTemplate, ...] = (),
     ) -> None:
         self.image = image
         self._docker_bin = Path(docker_bin) if docker_bin is not None else None
         self.limits = limits
+        self.templates = templates
 
     def _docker(self) -> Path:
         candidate = self._docker_bin or (
@@ -590,7 +587,7 @@ class DockerExecutor:
         owner_id: str,
     ) -> SandboxResult:
         _validate_owner(owner_id)
-        command = validate_command_template(template)
+        command = validate_command_template(template, self.templates)
         if template.timeout_seconds > self.limits.timeout_seconds:
             raise SandboxError("command timeout exceeds the sandbox budget")
 

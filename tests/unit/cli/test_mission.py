@@ -1015,6 +1015,249 @@ def test_cancel_cleanup_failure_does_not_commit_cancelled_authority(
     assert "private cleanup detail" not in str(error.value)
 
 
+CANCEL_CONTAINER_ID = "9" * 64
+
+
+def _answering_docker(calls: list[tuple[str, ...]]):
+    """A daemon holding one running container owned by `attempt-docker`."""
+
+    def run(argv, **_kwargs):
+        calls.append(tuple(argv[1:]))
+        if argv[1] != "inspect":
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+        payload = [
+            {
+                "Id": CANCEL_CONTAINER_ID,
+                "Name": f"/{argv[2]}",
+                "Config": {
+                    "Labels": {
+                        "graphene.owner": "attempt-docker",
+                        "graphene.executor": "oci-v1",
+                    }
+                },
+                "State": {"Running": True, "ExitCode": 0},
+            }
+        ]
+        return subprocess.CompletedProcess(argv, 0, json.dumps(payload).encode(), b"")
+
+    return run
+
+
+def _unanswering_docker(calls: list[tuple[str, ...]]):
+    """A daemon that is alive but too slow to answer inside the probe budget."""
+
+    def run(argv, **kwargs):
+        calls.append(tuple(argv[1:]))
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    return run
+
+
+def _docker_cancel_scenario(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    docker_on_path: bool,
+    check_executor: str = "docker",
+    docker_run=None,
+):
+    """A RUNNING dispatch to cancel, with `docker` controlled on PATH.
+
+    The real DockerExecutor runs; only the binary on PATH and the subprocess
+    calls it would make are faked, so the reconciliation gate under test is the
+    real one.
+    """
+
+    running = MissionHead(
+        mission_id="mission-cancel-docker",
+        seq=1,
+        event_sha256="a" * 64,
+        event_count=1,
+    )
+    cancelled = MissionHead(
+        mission_id=running.mission_id,
+        seq=2,
+        event_sha256="b" * 64,
+        event_count=2,
+    )
+    attempt = SimpleNamespace(
+        attempt_id="attempt-docker",
+        task_id="task-docker",
+        worker_id="worker-docker",
+        lease_id="lease-docker",
+        fencing_token=1,
+        state=mission_cli.AttemptState.RUNNING,
+    )
+    dispatch = SimpleNamespace(attempt_id=attempt.attempt_id)
+
+    class Store:
+        committed = False
+
+        def snapshot(self, _mission_id: str):
+            return SimpleNamespace(
+                mission=SimpleNamespace(
+                    status=mission_cli.MissionStatus.RUNNING,
+                    creation_source="operator",
+                ),
+                attempts=(attempt,),
+                head=running,
+                policy=SimpleNamespace(command_template_ids=("orders-schema-lint",)),
+            )
+
+        def recover_dispatches(self, *_args, **_kwargs):
+            return (dispatch,)
+
+        def bind_artifact_resolver(self, _evidence) -> None:
+            """A reconciled container reaches the mission evidence store."""
+
+        def cancel(self, _mission_id: str, _command_id: str, **_kwargs):
+            self.committed = True
+            return cancelled
+
+    class Registry:
+        def __init__(self, _runtime: Path) -> None:
+            pass
+
+        def prepare_cancel(self, _active):
+            return ()
+
+        def records_for_mission(self, _mission_id: str):
+            return ()
+
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    if docker_on_path:
+        binary = binaries / "docker"
+        binary.write_text("#!/bin/sh\nexit 1\n")
+        binary.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binaries))
+    monkeypatch.setattr(mission_cli, "_mission_runtime", lambda _mission_id: tmp_path)
+    monkeypatch.setattr(mission_cli, "OwnedProcessRegistry", Registry)
+    monkeypatch.setattr(
+        mission_cli, "_mission_check_executor", lambda _id: check_executor
+    )
+    if docker_run is not None:
+        monkeypatch.setattr("graphene.orchestration.sandbox.subprocess.run", docker_run)
+
+    store = Store()
+
+    def cancel():
+        return mission_cli._cancel_with_owned_cleanup(
+            store=store,
+            mission_id=running.mission_id,
+            command_id="command-cancel-docker",
+            expected_head=None,
+            operator_label="test-operator",
+            rationale=None,
+            truth_kind=mission_cli.TruthKind.HUMAN_ATTESTED,
+            recorded_at=datetime.now(UTC),
+        )
+
+    return SimpleNamespace(cancel=cancel, store=store, cancelled=cancelled)
+
+
+def test_cancel_skips_docker_reconciliation_without_the_docker_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No docker binary on this host: no container can exist, so nothing to do."""
+
+    calls: list[tuple[str, ...]] = []
+    scenario = _docker_cancel_scenario(
+        tmp_path,
+        monkeypatch,
+        docker_on_path=False,
+        docker_run=_answering_docker(calls),
+    )
+
+    assert scenario.cancel() == scenario.cancelled
+    assert calls == []
+    assert (tmp_path / "cancellation-complete.json").is_file()
+
+
+def test_cancel_skips_docker_reconciliation_for_a_host_sandbox_mission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The durable binding is host-sandbox, so the checks never used Docker."""
+
+    calls: list[tuple[str, ...]] = []
+    scenario = _docker_cancel_scenario(
+        tmp_path,
+        monkeypatch,
+        docker_on_path=True,
+        check_executor="host-sandbox",
+        docker_run=_answering_docker(calls),
+    )
+
+    assert scenario.cancel() == scenario.cancelled
+    assert calls == []
+
+
+def test_cancel_aborts_when_the_docker_daemon_does_not_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A daemon that cannot be probed proves nothing; it must never fail open."""
+
+    calls: list[tuple[str, ...]] = []
+    scenario = _docker_cancel_scenario(
+        tmp_path,
+        monkeypatch,
+        docker_on_path=True,
+        docker_run=_unanswering_docker(calls),
+    )
+
+    with pytest.raises(
+        mission_cli.ProcessControlError, match="could not be reconciled"
+    ):
+        scenario.cancel()
+
+    assert [item[0] for item in calls] == ["inspect"]
+    assert scenario.store.committed is False
+    assert not (tmp_path / "cancellation-complete.json").exists()
+
+
+def test_cancel_reconciles_the_owned_container_when_docker_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Any approved template can now create a container, so the gate is the
+    mission's own check executor rather than a fixture allow-list."""
+
+    calls: list[tuple[str, ...]] = []
+    scenario = _docker_cancel_scenario(
+        tmp_path,
+        monkeypatch,
+        docker_on_path=True,
+        docker_run=_answering_docker(calls),
+    )
+
+    assert scenario.cancel() == scenario.cancelled
+    assert calls[0][0] == "inspect" and calls[0][1].startswith("graphene-")
+    assert ("kill", CANCEL_CONTAINER_ID) in calls
+    assert calls[-1] == ("rm", CANCEL_CONTAINER_ID)
+    assert (tmp_path / "cancellation-complete.json").is_file()
+
+
+def test_cancel_reconciles_when_the_check_executor_binding_is_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unusable binding proves nothing about what ran; reconcile, never skip."""
+
+    calls: list[tuple[str, ...]] = []
+    scenario = _docker_cancel_scenario(
+        tmp_path,
+        monkeypatch,
+        docker_on_path=True,
+        docker_run=_answering_docker(calls),
+    )
+
+    def unusable(_mission_id: str) -> str:
+        raise MissionCliError("mission check executor binding is invalid")
+
+    monkeypatch.setattr(mission_cli, "_mission_check_executor", unusable)
+
+    assert scenario.cancel() == scenario.cancelled
+    assert calls[-1] == ("rm", CANCEL_CONTAINER_ID)
+
+
 def test_cancel_reruns_owned_cleanup_before_committing_at_latest_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

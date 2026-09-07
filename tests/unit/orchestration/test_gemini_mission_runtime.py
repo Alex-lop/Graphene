@@ -1611,6 +1611,88 @@ def test_default_runtime_accepts_multiple_known_sandbox_templates(
     assert result["status"] == MissionStatus.AWAITING_RESULT
 
 
+def test_default_runtime_accepts_a_policy_template_outside_the_fixture_map(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared = prepare_fake_two_worker_mission(
+        tmp_path,
+        monkeypatch,
+        command_templates=(
+            mission_cli.CommandTemplate(
+                template_id="project-pytest",
+                argv=("python", "-m", "pytest", "-q"),
+                timeout_seconds=600,
+            ),
+        ),
+    )
+    executors: list[object] = []
+
+    async def passed_check(
+        _workspace: Path, assignment: RuntimeAssignment, _attempt_id: str
+    ) -> CheckOutcome:
+        template = assignment.command_template
+        return CheckOutcome(
+            template_id=template.template_id,
+            template_sha256=canonical_json_sha256(template.model_dump(mode="json")),
+            exit_code=0,
+            timed_out=False,
+            output_sha256="0" * 64,
+            output_truncated=False,
+            cleanup_complete=True,
+        )
+
+    def record(executor: object):
+        executors.append(executor)
+        return passed_check
+
+    monkeypatch.setattr(mission_cli, "DockerCheckRunner", record)
+
+    result = mission_cli._execute_adk_mission(
+        store=prepared.store,
+        mission_id=prepared.mission_id,
+        registry=prepared.registry,
+        resource_sampler=quiet_resource_sampler,
+    )
+
+    assert result["status"] == MissionStatus.AWAITING_RESULT
+    # The approved template is bound to the executor, and its declared timeout
+    # is the container budget instead of the 30s default.
+    assert executors and executors[0].templates == (
+        mission_cli.CommandTemplate(
+            template_id="project-pytest",
+            argv=("python", "-m", "pytest", "-q"),
+            timeout_seconds=600,
+        ),
+    )
+    assert executors[0].limits.timeout_seconds == 600
+
+
+def test_default_runtime_refuses_a_template_the_executor_image_cannot_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared = prepare_fake_two_worker_mission(
+        tmp_path,
+        monkeypatch,
+        command_templates=(
+            mission_cli.CommandTemplate(
+                template_id="git-status-check",
+                argv=("git", "status", "--porcelain=v1"),
+                timeout_seconds=15,
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        mission_cli.MissionCliError, match="no supported deterministic check runner"
+    ):
+        mission_cli._execute_adk_mission(
+            store=prepared.store,
+            mission_id=prepared.mission_id,
+            registry=prepared.registry,
+            resource_sampler=quiet_resource_sampler,
+        )
+
+
 def test_result_replays_bound_provider_interruption_and_explicit_unknowns(
     tmp_path: Path,
 ) -> None:

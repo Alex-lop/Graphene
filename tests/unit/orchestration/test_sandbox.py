@@ -31,6 +31,12 @@ TEMPLATE = CommandTemplate(
     argv=("python", "-m", "pytest", "-q", "-p", "no:cacheprovider"),
     timeout_seconds=15,
 )
+# A template the deleted fixture map never contained.
+POLICY_TEMPLATE = CommandTemplate(
+    template_id="orders-schema-lint",
+    argv=("python", "-m", "orders_api.lint", "--strict"),
+    timeout_seconds=20,
+)
 IMAGE_ID = "sha256:" + "a" * 64
 CONTAINER_ID = "b" * 64
 
@@ -42,7 +48,7 @@ def test_create_argv_is_the_complete_frozen_boundary(tmp_path: Path) -> None:
         workspace=tmp_path.resolve(),
         owner_id="attempt-1",
         container_name="graphene-attempt-1",
-        command=validate_command_template(TEMPLATE),
+        command=validate_command_template(TEMPLATE, (TEMPLATE,)),
         cwd=None,
         limits=SandboxLimits(),
     )
@@ -83,11 +89,14 @@ def test_create_argv_is_the_complete_frozen_boundary(tmp_path: Path) -> None:
 
 
 def test_template_is_exact_and_digest_is_stable() -> None:
-    assert validate_command_template(TEMPLATE)[0] == "/usr/local/bin/python"
+    assert (
+        validate_command_template(TEMPLATE, (TEMPLATE,))[0] == "/usr/local/bin/python"
+    )
     assert command_template_sha256(TEMPLATE) == command_template_sha256(TEMPLATE)
     with pytest.raises(SandboxError, match="frozen"):
         validate_command_template(
-            TEMPLATE.model_copy(update={"argv": (*TEMPLATE.argv, "tests")})
+            TEMPLATE.model_copy(update={"argv": (*TEMPLATE.argv, "tests")}),
+            (TEMPLATE,),
         )
 
 
@@ -106,13 +115,89 @@ def test_orders_migration_checks_are_frozen(
         argv=command,
         timeout_seconds=60,
     )
-    assert validate_command_template(template) == (
+    assert validate_command_template(template, (template,)) == (
         "/usr/local/bin/python",
         *command[1:],
     )
     with pytest.raises(SandboxError, match="frozen"):
         validate_command_template(
-            template.model_copy(update={"template_id": "fixture-tests"})
+            template.model_copy(update={"template_id": "fixture-tests"}),
+            (template,),
+        )
+
+
+def test_any_approved_policy_template_resolves() -> None:
+    assert validate_command_template(POLICY_TEMPLATE, (TEMPLATE, POLICY_TEMPLATE)) == (
+        "/usr/local/bin/python",
+        "-m",
+        "orders_api.lint",
+        "--strict",
+    )
+
+
+def test_template_absent_from_the_policy_fails_closed() -> None:
+    with pytest.raises(SandboxError, match="frozen"):
+        validate_command_template(POLICY_TEMPLATE, (TEMPLATE,))
+    # Membership is equality over every field, not just id and argv.
+    with pytest.raises(SandboxError, match="frozen"):
+        validate_command_template(
+            POLICY_TEMPLATE.model_copy(update={"timeout_seconds": 21}),
+            (POLICY_TEMPLATE,),
+        )
+
+
+def test_non_python_argv_zero_fails_closed_even_when_approved() -> None:
+    template = CommandTemplate(
+        template_id="git-diff-check",
+        argv=("git", "diff", "--check", "--"),
+        timeout_seconds=15,
+    )
+    with pytest.raises(SandboxError, match="frozen"):
+        validate_command_template(template, (template,))
+
+
+def test_create_argv_binds_the_template_cwd_to_the_workspace_workdir(
+    tmp_path: Path,
+) -> None:
+    template = POLICY_TEMPLATE.model_copy(update={"cwd": "orders_api"})
+    argv = build_docker_create_argv(
+        docker_bin=Path("/usr/bin/docker"),
+        image_id=IMAGE_ID,
+        workspace=tmp_path.resolve(),
+        owner_id="attempt-1",
+        container_name="graphene-attempt-1",
+        command=validate_command_template(template, (template,)),
+        cwd="orders_api",
+        limits=SandboxLimits(),
+    )
+
+    assert argv[argv.index("--workdir") + 1] == "/workspace/orders_api"
+    assert argv[-5:] == (
+        IMAGE_ID,
+        "/usr/local/bin/python",
+        "-m",
+        "orders_api.lint",
+        "--strict",
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [("/bin/sh", "-c", "echo"), ("/usr/local/bin/python",), ()],
+)
+def test_create_argv_rejects_a_command_the_resolver_did_not_produce(
+    tmp_path: Path, command: tuple[str, ...]
+) -> None:
+    with pytest.raises(SandboxError, match="resolved template"):
+        build_docker_create_argv(
+            docker_bin=Path("/usr/bin/docker"),
+            image_id=IMAGE_ID,
+            workspace=tmp_path.resolve(),
+            owner_id="attempt-1",
+            container_name="graphene-attempt-1",
+            command=command,
+            cwd=None,
+            limits=SandboxLimits(),
         )
 
 
@@ -364,7 +449,7 @@ def test_uncertain_create_cleans_only_name_resolved_owned_container(
         ),
     )
     with pytest.raises(SandboxError, match="verified owned container removed"):
-        FakeExecutor().execute(
+        FakeExecutor(templates=(TEMPLATE,)).execute(
             source=source,
             scopes=("code.py",),
             exclusions=(),
@@ -386,7 +471,7 @@ def test_uncertain_create_cleans_only_name_resolved_owned_container(
 
     monkeypatch.setattr("graphene.orchestration.sandbox.subprocess.run", timed_out)
     with pytest.raises(subprocess.TimeoutExpired):
-        FakeExecutor().execute(
+        FakeExecutor(templates=(TEMPLATE,)).execute(
             source=source,
             scopes=("code.py",),
             exclusions=(),
@@ -417,7 +502,9 @@ def test_unavailable_docker_fails_before_repository_materialization(
     monkeypatch.setattr(
         "graphene.orchestration.sandbox.materialize_repository_view", forbidden
     )
-    executor = DockerExecutor(docker_bin=tmp_path / "missing-docker")
+    executor = DockerExecutor(
+        docker_bin=tmp_path / "missing-docker", templates=(TEMPLATE,)
+    )
     with pytest.raises(DockerUnavailable, match="NOT PROVEN"):
         executor.execute(
             source=source,
@@ -463,7 +550,7 @@ def test_real_docker_executes_only_the_scoped_fixture(tmp_path: Path) -> None:
     source.mkdir()
     (source / "test_pass.py").write_text("def test_pass():\n    assert True\n")
 
-    result = DockerExecutor().execute(
+    result = DockerExecutor(templates=(TEMPLATE,)).execute(
         source=source,
         scopes=("test_pass.py",),
         exclusions=(),

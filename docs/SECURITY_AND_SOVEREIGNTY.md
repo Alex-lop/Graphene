@@ -12,7 +12,7 @@ Current Gemini worker intent can write bounded text files only. It does not expr
 
 A Git worktree provides edit isolation. It is not a security sandbox. Model-written code may run only through an independently proven OS/container boundary with exact command templates, bounded input/output, no network by default, non-root execution, process/resource limits, and owner-checked cleanup.
 
-The verified scripted fixture uses macOS `/usr/bin/sandbox-exec` around a frozen sanitized test view. The generic Docker executor has hardened argument and ownership tests but no captured live daemon smoke; it remains **NOT PROVEN**. Unsupported hosts stop before executing repository code.
+The verified scripted fixture uses macOS `/usr/bin/sandbox-exec` around a frozen sanitized test view and still accepts only its own reviewed fixture commands. The generic Docker executor resolves the exact command templates of the approved `ProjectPolicy` and nothing else — membership is whole-template equality and `argv[0]` must be `python`, the only interpreter a template may resolve into — but it has no captured live daemon smoke; it remains **NOT PROVEN**. Unsupported hosts stop before executing repository code.
 
 Only strongly identified Graphene-owned process groups may be signaled. CLI, scheduler, and live-browser cancellation prepare/reap exact owned children before the terminal state mutation; cleanup failure aborts cancellation. Unrelated processes are never targets.
 
