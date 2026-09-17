@@ -155,18 +155,31 @@ in scope under one prompt and flagged under the next.
 - **Reverted files**: the file's content at the end of the session equals its content at the
   start (payload strategy), or the git diff against the session-start HEAD is empty (git
   strategy), and at least one call changed it in between.
-- **Failed calls**: any tool call whose result was an error, with the first line of the error
-  (and the first output line after an `Exit code N` line).
+- **Failed calls**: every tool call whose result was an error is recorded, but a failed call is
+  not abandoned work, so the default view shows only one line with their count by tool and how
+  many were refused before running (the permission system, the auto mode classifier, or the
+  user). `graphene debrief --full` lists real failures one by one and groups refusals by reason;
+  `--json` carries every one.
 - **Checks that failed and were rerun**: a shell segment whose command word is a test or lint
   runner (`pytest`, `npm test`, `cargo test`, `go test`, `make`, `ruff`, `mypy`, `tsc`, `jest`,
   `vitest`, `eslint`, ...) that failed and whose check segment (`uv run pytest -q`, say) was run
   again later, whatever surrounded it in the command, reporting the last rerun's outcome.
 
+## 5a. What you see
+
+`graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
+their span, wall time and prompt count; files changed with added and removed lines; the commits
+made during the sessions; a net list of files (created, modified, deleted or reverted over the
+whole span, biggest change first, capped at 30 rows); and then only the sections that have
+something in them: files outside a named scope (§4), abandoned work (§5), a one-line failure
+count, files written outside the repo. `graphene debrief --full` is the whole reconstruction,
+prompt by prompt, with a sentence per file. `--json` is the structure behind both.
+
 ## 6. Explanations
 
-Each file line in a debrief ends with one sentence. By default it is a template built from the
-diff: "Edited 2 definitions in auth.py: login and refresh_token (+12/−4)." With `--explain claude`
-(the default when `claude` is on PATH), Graphene makes one `claude -p` call per prompt with the
+Each file line in the full reconstruction and in `graphene why` ends with one sentence. By default
+it is a template built from the diff: "Edited 2 definitions in auth.py: login and refresh_token
+(+12/−4)." With `--explain claude` (never by default), Graphene makes one `claude -p` call per prompt with the
 request text and the diffs of all its files (each capped at 4,000 characters, 80,000 in total;
 files past the budget are sent with line counts and an "omitted" marker), asks for a JSON object
 of one sentence per path validated by a JSON schema, in batches of at most 120 files, and stores the sentences so `graphene why`

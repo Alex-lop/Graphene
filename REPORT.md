@@ -4,6 +4,15 @@ Written for Alex at the end of the rebuild run on 2026-09-17, on branch `rebuild
 was run on this machine; nothing is claimed that was not executed. `main` is untouched and tagged
 `hackathon-2026`.
 
+**Addendum, later the same day (commits `0f94ca0` onward):** after reading the debrief of the rebuild
+session, the product was corrected. `graphene why` is the product; `graphene` with no arguments
+prints a short card and reads Claude Code's transcripts itself the first time; `graphene debrief`
+is that card, `--full` the old reconstruction; explanations are templates unless `--explain claude`
+is passed; a file is flagged as not asked for only when the prompt named a file scope that excludes
+it (the old rule flagged all 25 files of this session); and failed tool calls are one summary line
+rather than a list. The commands in section 1 still work, but the everyday ones are now `graphene`
+and `graphene why PATH`. The verbatim debrief in section 6 is the output of the old default view.
+
 ## 1. Run these
 
 ```
