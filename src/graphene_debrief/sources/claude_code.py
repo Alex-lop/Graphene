@@ -35,7 +35,6 @@ from pathlib import Path
 
 from ..model import Prompt, Session, ToolEvent
 from ..store import Store
-from ..store import ignore_store_dir as _ignore_store_dir
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop")
 HOOK_COMMAND = "graphene ingest hook"
@@ -152,13 +151,14 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     if not isinstance(sid, str) or not sid or name not in HOOK_EVENTS:
         return False
     if name == "SessionStart" or store.session(sid) is None:
-        # A missing row on any event means hooks were installed mid-session.
+        # A missing row on any other event means the hooks were installed mid-session: the
+        # session started earlier, so its start HEAD is unknown (git resolves it by time later).
         store.upsert_session(
             Session(
                 id=sid,
                 repo=str(root),
                 started_at=ts,
-                head_at_start=git_head(root),
+                head_at_start=git_head(root) if name == "SessionStart" else None,
                 source="hook",
                 transcript_path=event.get("transcript_path"),
             )
@@ -267,11 +267,6 @@ def _handlers(group: dict) -> list:
 
 def _is_ours(handler: object) -> bool:
     return isinstance(handler, dict) and handler.get("command") == HOOK_COMMAND
-
-
-def ignore_store_dir(root: Path) -> bool:
-    """Add .graphene/ to .gitignore unless already there (the store also does this on every open)."""
-    return _ignore_store_dir(root)
 
 
 # -- transcript backfill ------------------------------------------------------------------------

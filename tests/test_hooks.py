@@ -5,13 +5,8 @@ import json
 
 import pytest
 
-from graphene_debrief.sources.claude_code import (
-    hook_main,
-    ignore_store_dir,
-    ingest_hook_event,
-    install_hooks,
-)
-from graphene_debrief.store import Store
+from graphene_debrief.sources.claude_code import hook_main, ingest_hook_event, install_hooks
+from graphene_debrief.store import Store, ignore_store_dir
 
 T0 = "2026-01-01T10:00:00.000Z"
 T1 = "2026-01-01T10:00:01.000Z"
@@ -187,8 +182,9 @@ def test_hooks_installed_mid_session_create_the_session_lazily(repo):
     )
     with Store.open(repo) as store:
         ingest_hook_event(store, ev, repo, T0)
-        assert store.session("sess-1").started_at == T0
+        session = store.session("sess-1")
         (stored,) = store.events("sess-1")
+    assert (session.started_at, session.head_at_start) == (T0, None)  # start HEAD unknown: resolved by time
     assert stored.prompt_id is None
     assert stored.agent_id == "agent-7"
 

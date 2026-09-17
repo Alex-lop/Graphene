@@ -47,7 +47,6 @@ CREATE TABLE IF NOT EXISTS tool_events (
   PRIMARY KEY (session_id, id)
 );
 CREATE INDEX IF NOT EXISTS tool_events_by_session ON tool_events (session_id, timestamp);
-CREATE INDEX IF NOT EXISTS tool_events_by_path ON tool_events (file_path);
 CREATE TABLE IF NOT EXISTS explanations (
   prompt_id TEXT NOT NULL,
   path TEXT NOT NULL,
@@ -227,12 +226,6 @@ class Store:
     def events(self, session_id: str) -> list[ToolEvent]:
         rows = self.conn.execute(
             "SELECT * FROM tool_events WHERE session_id = ? ORDER BY timestamp, rowid", (session_id,)
-        ).fetchall()
-        return [_event(r) for r in rows]
-
-    def events_for_path(self, path: str) -> list[ToolEvent]:
-        rows = self.conn.execute(
-            "SELECT * FROM tool_events WHERE file_path = ? ORDER BY timestamp, rowid", (path,)
         ).fetchall()
         return [_event(r) for r in rows]
 

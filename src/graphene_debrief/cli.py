@@ -29,8 +29,8 @@ def build():
     from . import __version__
     from .debrief import build_debrief, preview, render_markdown, select_sessions, stamp, to_json
     from .explain import pick_explainer
-    from .sources.claude_code import backfill, ignore_store_dir, install_hooks, now_iso, repo_root
-    from .store import Store
+    from .sources.claude_code import backfill, install_hooks, now_iso, repo_root
+    from .store import Store, ignore_store_dir
     from .why import why_line, why_path
 
     cli = typer.Typer(

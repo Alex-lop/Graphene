@@ -237,10 +237,6 @@ def _is_checker(name: str, rest: list[str]) -> bool:
     return name == "npx" and bool(rest[:1]) and rest[0] in ("jest", "vitest", "tsc", "eslint")
 
 
-def is_check_command(command: str) -> bool:
-    return bool(check_segments(command))
-
-
 # -- per-file timelines -------------------------------------------------------------------------
 
 

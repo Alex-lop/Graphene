@@ -9,8 +9,8 @@ from graphene_debrief.attribute import (
     GitState,
     attribute_session,
     bash_written_paths,
+    check_segments,
     diff_hunks,
-    is_check_command,
     mentions,
 )
 from graphene_debrief.model import Prompt, Session, ToolEvent
@@ -152,11 +152,11 @@ def test_failed_then_passing_check_command(session, tmp_path):
 
 
 def test_check_command_detection():
-    assert is_check_command("uv run pytest tests/ -q")
-    assert is_check_command("cd app && npm test")
-    assert is_check_command("make lint")
-    assert not is_check_command("git status")
-    assert not is_check_command("cat pytest.ini")
+    assert check_segments("uv run pytest tests/ -q")
+    assert check_segments("cd app && npm test") == ["npm test"]
+    assert check_segments("make lint")
+    assert not check_segments("git status")
+    assert not check_segments("cat pytest.ini")
 
 
 def test_bash_written_paths(tmp_path):
@@ -285,8 +285,6 @@ def test_relative_paths_follow_cd(tmp_path):
 
 
 def test_check_segments_and_reruns_inside_longer_commands(session, tmp_path):
-    from graphene_debrief.attribute import check_segments
-
     assert check_segments("uv run ruff check src && uv run pytest -q 2>&1 | tail -3") == [
         "uv run ruff check src",
         "uv run pytest -q 2>&1",
@@ -363,8 +361,6 @@ def test_mentions_matches_stems_and_directories_as_whole_words():
 
 
 def test_runner_prefixes_are_peeled_in_any_order():
-    from graphene_debrief.attribute import check_segments
-
     assert check_segments("uv run python -m pytest -q") == ["uv run python -m pytest -q"]
     assert check_segments("poetry run python -m pytest") == ["poetry run python -m pytest"]
     assert check_segments("uv run --frozen pytest") == ["uv run --frozen pytest"]
