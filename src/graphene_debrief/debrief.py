@@ -304,7 +304,7 @@ def preview(text: str, lines: int = PROMPT_PREVIEW_LINES, chars: int = PROMPT_PR
     if len(clipped) > chars:
         clipped = clipped[:chars].rstrip()
     if sum(1 for r in clipped.splitlines() if r.strip().startswith("```")) % 2:
-        clipped += "\n```"  # close a code fence the clip left open
+        clipped += "\n```"  # close a code block the clip left open
     return clipped + ("…" if truncated else "")
 
 
