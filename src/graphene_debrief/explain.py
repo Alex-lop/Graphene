@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,7 @@ Return ONLY a JSON object: keys are the file paths exactly as given, values are 
 present tense, no preamble, saying what changed in that file in service of the request.
 If a file's change does not serve the request, the value must be exactly: unrelated to the request
 """
+REPLY_SCHEMA = '{"type":"object","additionalProperties":{"type":"string"}}'
 MAX_DIFF_CHARS = 4000
 MAX_TOTAL_CHARS = 80000
 
@@ -95,6 +97,8 @@ class ClaudeCodeExplainer:
             "",
             "--disable-slash-commands",
             "--strict-mcp-config",
+            "--json-schema",
+            REPLY_SCHEMA,
         ]
         if self.model:
             args += ["--model", self.model]
@@ -143,20 +147,41 @@ def parse_reply(stdout: str, paths: list[str]) -> dict[str, str]:
         raise ExplainError("reply was not JSON") from exc
     if not isinstance(envelope, dict) or envelope.get("is_error"):
         raise ExplainError("claude reported an error")
-    text = envelope.get("result")
-    if not isinstance(text, str):
-        raise ExplainError("reply had no result text")
+    structured = envelope.get("structured_output")
+    if isinstance(structured, dict):
+        mapping = structured
+    else:
+        text = envelope.get("result")
+        if not isinstance(text, str):
+            raise ExplainError("reply had no result text")
+        mapping = _object_in(text)
+    wanted = set(paths)
+    return {k: v.strip() for k, v in mapping.items() if k in wanted and isinstance(v, str) and v.strip()}
+
+
+_PAIR = re.compile(r'"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"')
+
+
+def _object_in(text: str) -> dict:
+    """The JSON object in a model reply; when it does not parse, salvage the "key": "value" pairs."""
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
         raise ExplainError("reply contained no JSON object")
     try:
         mapping = json.loads(text[start : end + 1])
-    except ValueError as exc:
-        raise ExplainError("reply JSON did not parse") from exc
-    if not isinstance(mapping, dict):
-        raise ExplainError("reply JSON was not an object")
-    wanted = set(paths)
-    return {k: v.strip() for k, v in mapping.items() if k in wanted and isinstance(v, str) and v.strip()}
+    except ValueError:
+        mapping = None
+    if isinstance(mapping, dict):
+        return mapping
+    salvaged: dict[str, str] = {}
+    for key, value in _PAIR.findall(text[start : end + 1]):
+        try:
+            salvaged[json.loads(f'"{key}"')] = json.loads(f'"{value}"')
+        except ValueError:
+            continue
+    if not salvaged:
+        raise ExplainError("reply JSON did not parse")
+    return salvaged
 
 
 def pick_explainer(choice: str | None) -> tuple[Explainer, str | None]:

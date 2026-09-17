@@ -86,6 +86,7 @@ def test_one_call_per_prompt_and_parsed_reply():
     argv, request = runner.calls[0]
     assert argv[:3] == ["claude", "-p", "--output-format"]
     assert "--no-session-persistence" in argv and "--model" in argv and "haiku" in argv
+    assert argv[argv.index("--json-schema") + 1].startswith('{"type":"object"')
     payload = json.loads(request[request.index("{") :])
     assert payload["request"] == "add login"
     assert [f["path"] for f in payload["files"]] == ["a.py", "b.py", "c.py"]
@@ -130,8 +131,29 @@ def test_failures_raise_explain_error(runner):
         ClaudeCodeExplainer(runner=runner).explain_prompt("p", [change("a.py")])
 
 
+def test_structured_output_is_preferred_over_result_text():
+    stdout = json.dumps(
+        {"is_error": False, "result": "prose", "structured_output": {"a.py": " Structured. "}}
+    )
+    assert parse_reply(stdout, ["a.py"]) == {"a.py": "Structured."}
+
+
 def test_parse_reply_keeps_only_known_paths():
     assert parse_reply(envelope('{"a": "x", "b": "", "c": 3}'), ["a", "b", "c"]) == {"a": "x"}
+
+
+def test_parse_reply_salvages_pairs_from_slightly_broken_json():
+    broken = (
+        'Here you go:\n{\n "a.py": "Adds \\"login\\".",\n'
+        ' "b.py": "Unquoted trailing text" oops,\n "c.py": "Fine."\n}'
+    )
+    assert parse_reply(envelope(broken), ["a.py", "b.py", "c.py"]) == {
+        "a.py": 'Adds "login".',
+        "b.py": "Unquoted trailing text",
+        "c.py": "Fine.",
+    }
+    with pytest.raises(ExplainError):
+        parse_reply(envelope("{ nothing usable here }"), ["a.py"])
 
 
 def test_pick_explainer(monkeypatch):
