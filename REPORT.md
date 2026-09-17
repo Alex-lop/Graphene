@@ -11,7 +11,7 @@ cd ~/Desktop/AllThingsAgenticHackathon
 git checkout rebuild
 uv sync
 uv run ruff check
-uv run pytest -q                       # 110 tests, offline, about 4 s
+uv run pytest -q                       # 115 tests, offline, about 5 s
 uv tool install --editable .           # puts `graphene` on PATH; the hooks call it by name
 graphene init                          # already done in this repo; idempotent
 graphene ingest --backfill             # this repo's Claude Code transcripts (26 sessions here)
@@ -73,15 +73,20 @@ is no migration.
 - `graphene why PATH` and `PATH:LINE`: newest-first history with stored explanations, orphan changes
   included; line blame via git blame with same-line preference, text fallback, and no answers from
   prompts that ran after the line was committed. tests/test_why.py (9 tests), tests/test_cli.py.
-- Clean-environment install: `UV_TOOL_DIR=<tmp> uv tool install "graphene-debrief @ git+file://<repo>@rebuild"`
-  built from the committed tree; `graphene --version`, `--help`, the hook fast path and `sessions`
-  worked from that install.
+- Clean-environment install over the network: after the push,
+  `UV_TOOL_DIR=<tmp> uv tool install git+https://github.com/Alex-lop/Graphene@rebuild` in a fresh tool
+  directory installed `graphene 0.1.0`; `graphene init` and `graphene sessions` worked from it. The
+  same was verified earlier from the local clone with the `git+file://` form.
+- CI: the pushed branch's first GitHub Actions run (`uv sync`, `ruff check`, `pytest`) completed
+  successfully in 14 s.
 - Review: an adversarial workflow (six lenses: directive compliance, ingestion robustness,
   attribution correctness, safety and privacy, documentation truth, end-to-end use; each finding
-  handed to three independent skeptics) produced 34 findings. 31 were reproduced and fixed in the
-  commits from `e963877` to `1c79052`, each with a test; 2 were about this report and the fixture
-  (sections 4 and 5); 1 was refuted (`--max-turns` is a documented print-mode flag and every real run
-  used it).
+  handed to three independent skeptics; 123 agents) produced 39 findings. 36 were reproduced and
+  fixed in the commits from `e963877` to `7472618`, each with a test; 2 were about this report and
+  the fixture (sections 4 and 5); 1 was refuted (`--max-turns` is a documented print-mode flag and
+  every real run used it). I fixed findings as each lens reported rather than waiting, so the
+  skeptics could reproduce only the first one (the store being git-ignored by `init` alone, upheld
+  3 of 3) and marked the rest "not reproducible" against the already-fixed code.
 
 ## 3. Not verified
 
@@ -92,10 +97,8 @@ Implemented, but not exercised against the real thing:
   notebook, then `graphene debrief`.
 - Hook events fired inside a subagent (`agent_id` present): stored and grouped like any other, tested
   with fixture JSON only.
-- `uv tool install git+https://github.com/Alex-lop/Graphene@rebuild` over the network: verified only
-  with the `git+file://` form from this clone. Verify after the push with a clean `UV_TOOL_DIR`.
-- The GitHub Actions workflow (`uv sync`, `ruff check`, `pytest` on push and pull request) has not run
-  on GitHub yet. Verify: the Actions tab after the push.
+- The GitHub Actions run verified above is for commit `1d68b03`; the three commits after it
+  (`014caee`, `7472618` and this one) were pushed afterwards and their runs were not waited for.
 - The disk-full case for the hook: exits 0 by construction (every exception is caught), not by
   experiment. The locked-database case is tested.
 - `claude -p` timing out (120 s) or being absent: fake-subprocess tests only.
@@ -140,10 +143,11 @@ Repo mechanics
 - Commits carry no attribution trailers, per the repo convention.
 - `.gitignore` was rewritten (the directive kept the file, but the old one used two of the banned
   words in comments).
-- Size: 2,581 lines of non-test Python against the directive's "~2,500". The last 80 lines are the
-  quote-aware shell tokenizer and the tree/orphan handling the review asked for; I chose them over
-  the budget. Easy cuts if you disagree: `from_json` (only the round-trip test uses it) and the
-  `ingest hook` Typer alias that exists so `--help` lists it.
+- Size: 2,646 lines of non-test Python against the directive's "~2,500" (tests: 2,548 lines). The
+  overrun is the quote-aware shell tokenizer, the tree, orphan and symlink handling, and the safety
+  changes the review asked for; I chose them over the budget. Easy cuts if you disagree:
+  `from_json` (only the round-trip test uses it), the `ingest hook` Typer alias that exists so
+  `--help` lists it, and the batched explainer call.
 
 Heuristics and format assumptions (all in docs/HOW_IT_WORKS.md)
 
@@ -204,8 +208,9 @@ Things that will look odd
 
 ## 6. Debrief of the rebuild session
 
-`graphene ingest --backfill --replace && graphene debrief 9982bcf7 --md FILE` at the end of the run,
-verbatim (one `claude -p` call for the sentences; 25 s):
+`graphene ingest --backfill --replace && graphene debrief 9982bcf7 --md FILE`, verbatim, captured at
+commit `014caee` (the sentences come from one `claude -p` call made two commits earlier and stored;
+the three small safety commits that followed are not in it):
 
 ```
 # Graphene debrief
