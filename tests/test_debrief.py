@@ -247,3 +247,12 @@ def test_preview_truncation_and_fences():
     assert preview("one\ntwo\nthree\nfour") == "one\ntwo\nthree…"
     assert preview("x" * 400).endswith("…") and len(preview("x" * 400)) == 301
     assert preview("see:\n```python\nboom\nmore\nlines") == "see:\n```python\nboom\n```…"
+
+
+def test_many_outside_paths_collapse_to_directories():
+    from graphene_debrief.debrief import outside_summary
+
+    few = ["/home/dev/notes/a.md", "/home/dev/notes/b.md"]
+    assert outside_summary(few) == few
+    many = [f"/tmp/scratch/review-{i}/t.py" for i in range(20)] + ["/home/dev/.zshrc"]
+    assert outside_summary(many) == ["/home/dev/.zshrc", "/tmp/scratch/ (20 files)"]

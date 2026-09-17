@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
@@ -390,7 +391,11 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
             f"rerun under {where(r['rerun_under'], r['session_id'])}: {outcome}"
         )
     if d.outside_repo:
-        out += ["", "**Files written outside the repo:** " + ", ".join(f"`{p}`" for p in d.outside_repo)]
+        out += [
+            "",
+            "**Files written outside the repo:** "
+            + ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo)),
+        ]
     if d.notes:
         out += ["", *[f"_Note: {n}_" for n in d.notes]]
     out += [
@@ -399,6 +404,26 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
         "",
     ]
     return "\n".join(out)
+
+
+def outside_summary(paths: list[str], limit: int = 6) -> list[str]:
+    """Paths outside the repo, collapsed to directories with counts once there are many of them."""
+    if len(paths) <= limit:
+        return sorted(paths)
+    buckets: dict[str, list[str]] = {}
+    for path in paths:
+        parts = path.split("/")
+        buckets.setdefault("/".join(parts[:3]), []).append(path)
+    out: list[str] = []
+    for group in buckets.values():
+        if len(group) == 1:
+            out.append(group[0])
+        else:
+            common = os.path.commonpath(group)
+            if len(group) > 1 and common in group:  # commonpath is one of the files: use its directory
+                common = os.path.dirname(common)
+            out.append(f"{common}/ ({len(group)} files)")
+    return sorted(out)
 
 
 def to_json(d: Debrief) -> str:
