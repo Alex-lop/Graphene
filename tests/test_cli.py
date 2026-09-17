@@ -123,3 +123,20 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
     assert result.exit_code == 2
     assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
     assert run("sessions").exit_code == 2
+
+
+def test_md_into_a_missing_directory_and_together_with_json(repo, transcript):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    nested = repo / "reports" / "today.md"
+    result = run("debrief", "--md", str(nested), "--json", "--explain", "none")
+    assert result.exit_code == 0, result.output
+    assert nested.read_text().startswith("# Graphene debrief")
+    assert json.loads(result.stdout)["prompt_count"] == 3
+    assert run("debrief", "--md", str(repo), "--explain", "none").exit_code == 1  # a directory: clean failure
+
+
+def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    result = run("debrief", "--since", "1h", "--explain", "none")
+    assert result.exit_code == 1
+    assert "no session in that window" in result.output + result.stderr

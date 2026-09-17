@@ -13,6 +13,7 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from .model import FileChange, Hunk, Prompt, Session, ToolEvent
@@ -41,6 +42,8 @@ _HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
+_WORD = re.compile(r"[a-z0-9_]+")
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git's well-known empty tree object
 
 
 # -- diffing ------------------------------------------------------------------------------------
@@ -208,9 +211,16 @@ def check_segments(command: str) -> list[str]:
     out: list[str] = []
     for segment in _SEPARATORS.split(strip_heredocs(command)):
         words = _words(segment)
-        for prefix in RUNNER_PREFIXES:
-            if tuple(words[: len(prefix)]) == prefix:
-                words = [w for w in words[len(prefix) :] if not w.startswith("-")]
+        while True:  # peel runner prefixes (`uv run`, `python -m`, ...) and their flags, in any order
+            for prefix in RUNNER_PREFIXES:
+                if tuple(words[: len(prefix)]) == prefix:
+                    words = words[len(prefix) :]
+                    break
+            else:
+                if words and words[0].startswith("-"):
+                    words.pop(0)
+                    continue
+                break
         if words and _is_checker(os.path.basename(words[0]), words[1:]):
             out.append(" ".join(segment.split()))
     return out
@@ -290,6 +300,22 @@ class GitState:
         out = self._run("rev-parse", "HEAD")
         return out.strip() if out else None
 
+    def commit_before(self, timestamp: str) -> str | None:
+        """The last commit made before an ISO timestamp, or the empty tree when there is none."""
+        out = self._run("rev-list", "-1", f"--before={timestamp[:19]}Z", "HEAD")
+        if out is None:
+            return None
+        return out.strip() or EMPTY_TREE
+
+    def kind(self, rev: str, path: str) -> str | None:
+        """'blob', 'tree', or None when the path is not in that revision."""
+        out = self._run("cat-file", "-t", f"{rev}:{path}")
+        return out.strip() if out else None
+
+    def files_under(self, rev: str, path: str) -> list[str]:
+        out = self._run("ls-tree", "-r", "--name-only", rev, "--", path)
+        return [line for line in (out or "").splitlines() if line]
+
 
 def _working_copy(root: Path, path: str) -> str | None:
     full = root / path
@@ -305,13 +331,17 @@ def _working_copy(root: Path, path: str) -> str | None:
 
 
 def mentions(prompt_text: str, path: str) -> bool:
-    """Does the prompt name the file: full path, basename, stem or parent directory name?"""
+    """Does the prompt name the file: its path or basename anywhere, or its stem or parent
+    directory as a whole word (so "happy" does not count as naming app.py)?"""
     text = prompt_text.lower()
     p = Path(path)
-    names = {path.lower(), p.name.lower(), p.stem.lower()}
+    if path.lower() in text or p.name.lower() in text:
+        return True
+    words = set(_WORD.findall(text))
+    names = {p.stem.lower()}
     if p.parent.name:
         names.add(p.parent.name.lower())
-    return any(n and n in text for n in names)
+    return any(n in words for n in names if n)
 
 
 @dataclass
@@ -345,10 +375,22 @@ def attribute_session(
             continue
         per_path.setdefault(touch.path, []).append(touch)
 
+    base = _base(session, git)
     for path, timeline in per_path.items():
         if (root / path).is_dir():
             continue
-        result.changes.extend(_file_changes(path, timeline, session, root, git, by_prompt, result.reverted))
+        paths = [path]
+        if base and not (root / path).exists() and git.kind(base, path) == "tree":
+            paths = git.files_under(base, path)  # a deleted or moved directory: one change per file it held
+        for one in paths:
+            tl = (
+                timeline
+                if one == path
+                else [Touch(t.event, one, None, None, False, t.deleted) for t in timeline]
+            )
+            result.changes.extend(
+                _file_changes(one, tl, session, root, git, base, by_prompt, result.reverted)
+            )
 
     result.failed = [e for e in events if e.success is False]
     result.reruns = _reruns(events)
@@ -364,12 +406,37 @@ _Content = tuple[bool, str | None]  # (known, content)
 _UNKNOWN: _Content = (False, None)
 
 
+def _base(session: Session, git: GitState) -> str | None:
+    """The revision the session started from: the hook-captured HEAD, else the last commit before
+    the session began (so commits made during or after it do not hide its changes), else HEAD."""
+    if session.head_at_start:
+        return session.head_at_start
+    if session.started_at:
+        found = git.commit_before(session.started_at)
+        if found:
+            return found
+    return git.head()
+
+
+def _untouched_since(root: Path, path: str, started_at: str | None) -> bool:
+    """True when the file on disk predates the session, so a shell 'write' left no trace."""
+    if not started_at:
+        return False
+    try:
+        mtime = os.path.getmtime(root / path)
+    except OSError:
+        return False
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00")).timestamp()
+    return mtime < started
+
+
 def _file_changes(
     path: str,
     timeline: list[Touch],
     session: Session,
     root: Path,
     git: GitState,
+    base: str | None,
     by_prompt: dict[str, Prompt],
     reverted: list[FileChange],
 ) -> list[FileChange]:
@@ -401,11 +468,15 @@ def _file_changes(
         elif i == len(groups) - 1:
             after[i] = (True, _working_copy(root, path))
             used_git = True
-    if not before[0][0]:
-        base = session.head_at_start or git.head()
-        if git.available and base:
+    if not before[0][0] and git.available and base:
+        kind = git.kind(base, path)
+        if kind == "blob":
             before[0] = (True, git.show(base, path))
-            used_git = True
+        elif kind is None and _untouched_since(root, path, session.started_at):
+            return []  # not in git at the start and not modified since: the shell write left nothing
+        elif kind is None:
+            before[0] = (True, None)  # absent at the start (or untracked: then the whole file reads as added)
+        used_git = True
     for i in range(1, len(groups)):
         if not before[i][0] and after[i - 1][0]:
             before[i] = after[i - 1]

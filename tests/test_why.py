@@ -169,3 +169,15 @@ def test_paths_are_normalised_to_the_repo(repo, monkeypatch):
         by_abs = why_path(store, repo, str(repo / "notes.txt"))
         by_rel = why_path(store, repo, "./notes.txt")
     assert [e.prompt_id for e in by_abs] == [e.prompt_id for e in by_rel] == ["p5", "p4", "p3", "p2", "p1"]
+
+
+def test_changes_before_the_first_prompt_are_listed(repo):
+    with Store.open(repo) as store:
+        store.upsert_session(Session("s0", str(repo), started_at="2025-12-31T09:00:00.000Z", source="hook"))
+        store.add_event(event("w0", "s0", None, "2025-12-31T09:01:00.000Z", "Write", None, V1))
+        (entry,) = why_path(store, repo, "notes.txt")
+    assert (entry.ordinal, entry.prompt_text, entry.effect) == (
+        0,
+        "(changes recorded before the first prompt)",
+        "created",
+    )

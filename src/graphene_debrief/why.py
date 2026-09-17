@@ -66,18 +66,18 @@ def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
         by_id = {p.id: p for p in prompts}
         result = attribute_session(session, prompts, events, root, git)
         for change in result.changes:
-            if change.path != rel or change.prompt_id not in by_id:
+            if change.path != rel:
                 continue
-            prompt = by_id[change.prompt_id]
-            stored = store.explanation(change.prompt_id, rel)
+            prompt = by_id.get(change.prompt_id)
+            stored = store.explanation(change.prompt_id, rel) if prompt else None
             text, by = stored if stored else (template(change), "none")
             entries.append(
                 WhyEntry(
                     session.id,
-                    prompt.id,
-                    prompt.ordinal,
-                    prompt.timestamp,
-                    prompt.text,
+                    prompt.id if prompt else "",
+                    prompt.ordinal if prompt else 0,
+                    prompt.timestamp if prompt else (session.started_at or ""),
+                    prompt.text if prompt else "(changes recorded before the first prompt)",
                     change.effect,
                     change.added,
                     change.removed,

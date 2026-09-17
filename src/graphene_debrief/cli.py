@@ -167,20 +167,25 @@ def build():
                 ids = select_sessions(store, session_id, since)
             except ValueError as exc:
                 fail(str(exc))
-            if not ids:
+            if not ids and not store.sessions():
                 fail("no sessions recorded yet: run `graphene init`, or `graphene ingest --backfill`", 1)
+            if not ids:
+                fail(f"no session in that window; `graphene sessions` lists {len(store.sessions())}", 1)
             if notice:
                 errors.print(f"[dim]{escape(notice)}[/dim]")
             result = build_debrief(store, ids, r, explainer)
             store.add_debrief_run(ids, now_iso())
-        if as_json:
-            sys.stdout.write(to_json(result) + "\n")
-            return
         markdown = render_markdown(result, full=full)
         if md:
-            md.write_text(markdown, encoding="utf-8")
-            console.print(f"wrote {md}")
-        else:
+            try:
+                md.parent.mkdir(parents=True, exist_ok=True)
+                md.write_text(markdown, encoding="utf-8")
+            except OSError as exc:
+                fail(f"cannot write {md}: {exc.strerror or exc}", 1)
+            errors.print(f"wrote {md}")
+        if as_json:
+            sys.stdout.write(to_json(result) + "\n")
+        elif not md:
             console.print(Markdown(markdown))
 
     @cli.command()

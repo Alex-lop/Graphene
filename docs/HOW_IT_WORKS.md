@@ -30,7 +30,8 @@ What each event contributes:
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session. Subagent calls carry `agent_id` and are grouped the same way.
+the session; calls made before any recorded prompt appear in the debrief under their own heading,
+"Before the first recorded prompt". Subagent calls carry `agent_id` and are grouped the same way.
 
 ### Transcript backfill
 
@@ -52,7 +53,9 @@ the session. Subagent calls carry `agent_id` and are grouped the same way.
 - Subagent transcripts live in `<transcript dir>/<session id>/subagents/**/*.jsonl` and are
   merged into the session, keeping their `agentId`.
 - The transcript never records the git HEAD at session start, so backfilled sessions store it as
-  unknown and the git fallback below uses the current HEAD instead.
+  unknown; the git fallback below then uses the last commit made before the session started
+  (or git's empty tree when there is none), so commits made during or after the session do not
+  hide its changes.
 
 A backfilled session is reloaded when its transcript has grown. A session the hooks recorded is
 left alone unless you pass `--replace`, which rebuilds its prompts and calls from the transcript
@@ -100,9 +103,13 @@ No git involved, and the payload diffs of the other prompts are untouched.
 the missing boundary comes from `git show <HEAD at session start>:<path>` at the start, or from
 the working tree now at the end. Several consecutive prompts writing a file through shell
 commands with no payload in between form one span credited to the last of them; the earlier ones
-are listed with no hunks. Failure modes: for backfilled sessions the base is the current HEAD, so
-commits made during the session hide their changes from the diff; changes made after the session
-by anything else are blamed on its last prompt.
+are listed with no hunks. A deleted or moved directory is expanded to the files it held at the
+base revision, one change each. A file that is absent from the base revision reads as created;
+an untracked file that already existed and was then changed by a shell command therefore shows
+its whole content as added, while one whose modification time predates the session is dropped as
+untouched. Failure modes: changes made after the session by anything else are blamed on its last
+prompt; for backfilled sessions the base is the commit before the session's first record, which
+misses work committed within the same second.
 
 **No strategy**: without git, the file is listed with its effect and no hunks.
 
@@ -111,8 +118,9 @@ The effect per prompt is `created` (no content before), `deleted` (no content af
 
 ## 4. Unrequested changes
 
-A file is flagged `unrequested` when the prompt text mentions none of the file's path, basename,
-stem or parent directory name (case-insensitive substring). This over-flags on purpose: "fix the
+A file is flagged `unrequested` when the prompt text mentions none of the file's path or basename
+(anywhere in the text) or its stem or parent directory name (as a whole word, so "happy" does not
+count as naming `app.py`), case-insensitively. This over-flags on purpose: "fix the
 login bug" says nothing about `auth.py`, and a prompt naming only a task flags every file the
 agent touched. It never under-flags a file the prompt names. The flag is per prompt, so a file can
 be requested under one prompt and unrequested under the next.

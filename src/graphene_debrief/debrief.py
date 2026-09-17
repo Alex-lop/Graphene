@@ -146,7 +146,29 @@ def build_debrief(
         debrief.prompt_count += len(prompts)
         by_prompt: dict[str, list[FileChange]] = {}
         for change in result.changes:
-            by_prompt.setdefault(change.prompt_id, []).append(change)
+            by_prompt.setdefault(change.prompt_id or "", []).append(change)
+        orphans = by_prompt.get("", [])
+        if orphans:  # recorded before any prompt (hooks installed mid-session, or a slash-command turn)
+            block = PromptBlock(
+                sid, "", 0, session.started_at or "", "(changes recorded before the first prompt)"
+            )
+            for change in orphans:
+                block.files.append(
+                    FileLine(
+                        change.path,
+                        change.effect,
+                        change.added,
+                        change.removed,
+                        False,
+                        change.strategy,
+                        template(change),
+                        "none",
+                    )
+                )
+                paths.add(change.path)
+                debrief.added += change.added
+                debrief.removed += change.removed
+            debrief.prompts.append(block)
         for prompt in prompts:
             changes = by_prompt.get(prompt.id, [])
             explanations, explainer, fallback = _explain(
@@ -180,11 +202,6 @@ def build_debrief(
                         }
                     )
             debrief.prompts.append(block)
-        orphans = by_prompt.get("", []) + by_prompt.get(None, [])  # type: ignore[arg-type]
-        if orphans:
-            debrief.notes.append(
-                f"{len(orphans)} file change(s) in session {sid[:8]} happened before any recorded prompt"
-            )
         ordinal = {p.id: p.ordinal for p in prompts}
         debrief.reverted += [
             {"path": c.path, "session_id": sid, "prompt_ordinal": ordinal.get(c.prompt_id, 0)}
@@ -283,9 +300,12 @@ def commits_between(root: Path, start: str | None, end: str) -> list[str]:
 def preview(text: str, lines: int = PROMPT_PREVIEW_LINES, chars: int = PROMPT_PREVIEW_CHARS) -> str:
     rows = [r for r in text.strip().splitlines() if r.strip()]
     clipped = "\n".join(rows[:lines])
+    truncated = len(rows) > lines or len(clipped) > chars
     if len(clipped) > chars:
         clipped = clipped[:chars].rstrip()
-    return clipped + ("…" if clipped != text.strip() else "")
+    if sum(1 for r in clipped.splitlines() if r.strip().startswith("```")) % 2:
+        clipped += "\n```"  # close a code fence the clip left open
+    return clipped + ("…" if truncated else "")
 
 
 def stamp(value: str | None) -> str:
@@ -326,7 +346,10 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
                 "",
             ]
         text = block.text.strip() if full else preview(block.text)
-        out.append(f"### {block.ordinal}. {stamp(block.timestamp)}")
+        if block.ordinal == 0:
+            out.append(f"### Before the first recorded prompt (session started {stamp(block.timestamp)})")
+        else:
+            out.append(f"### {block.ordinal}. {stamp(block.timestamp)}")
         out += [f"> {line}" for line in text.splitlines()]
         out.append("")
         if not block.files:

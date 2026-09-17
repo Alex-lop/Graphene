@@ -207,3 +207,43 @@ if __name__ == "__main__":  # regenerate the golden file after a deliberate rend
             render_markdown(build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW))
         )
     print(f"wrote {GOLDEN}")
+
+
+def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
+    with Store.open(tmp_path) as store:
+        seed_golden(store)
+        store.add_event(
+            ToolEvent(
+                "e0",
+                "sess-golden-1",
+                None,
+                "2026-03-01T08:59:00.000Z",
+                "Write",
+                {"file_path": "early.py", "content": "x\n"},
+                {"type": "create", "content": "x\n"},
+                True,
+                file_path="early.py",
+                old_content=None,
+                new_content="x\n",
+            )
+        )
+        debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    first = debrief.prompts[0]
+    assert (first.ordinal, [f.path for f in first.files], first.files[0].unrequested) == (
+        0,
+        ["early.py"],
+        False,
+    )
+    assert debrief.files_changed == 4 and debrief.notes == []
+    assert "### Before the first recorded prompt (session started 2026-03-01 09:00)" in render_markdown(
+        debrief
+    )
+
+
+def test_preview_truncation_and_fences():
+    from graphene_debrief.debrief import preview
+
+    assert preview("Fix the bug.\n\nIt is in auth.py.") == "Fix the bug.\nIt is in auth.py."
+    assert preview("one\ntwo\nthree\nfour") == "one\ntwo\nthree…"
+    assert preview("x" * 400).endswith("…") and len(preview("x" * 400)) == 301
+    assert preview("see:\n```python\nboom\nmore\nlines") == "see:\n```python\nboom\n```…"

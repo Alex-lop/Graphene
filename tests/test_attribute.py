@@ -349,3 +349,80 @@ def test_shell_write_between_two_edits_is_bridged_by_the_next_original_file(sess
     assert by["p2"].hunks[0].lines == ["-one", "+two"]
     assert by["p1"].strategy == "payload" and by["p3"].strategy == "payload"
     assert result.reverted == []
+
+
+def test_mentions_matches_stems_and_directories_as_whole_words():
+    assert not mentions("make the happy path faster", "web/app.py")
+    assert not mentions("make this rapid", "src/api.py")
+    assert mentions("open app.py", "web/app.py")
+    assert mentions("the app module", "web/app.py")
+    assert mentions("look under web", "web/app.py")
+
+
+def test_runner_prefixes_are_peeled_in_any_order():
+    from graphene_debrief.attribute import check_segments
+
+    assert check_segments("uv run python -m pytest -q") == ["uv run python -m pytest -q"]
+    assert check_segments("poetry run python -m pytest") == ["poetry run python -m pytest"]
+    assert check_segments("uv run --frozen pytest") == ["uv run --frozen pytest"]
+    assert check_segments("uv run python script.py") == []
+
+
+def test_backfilled_session_diffs_against_the_commit_before_it_started(git_repo):
+    import os
+
+    def commit(msg, date):
+        env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+        subprocess.run(["git", "commit", "-q", "-am", msg], cwd=git_repo, check=True, env=env)
+
+    (git_repo / "README.md").write_text("x\n")
+    commit("a", "2026-01-01T12:00:00Z")
+    session = Session(id="s", repo=str(git_repo), started_at="2026-01-02T12:00:00.000Z", head_at_start=None)
+    p1 = prompt("p1", "bump README.md", 1)
+    events = [bash("b1", "p1", "sed -i '' 's/x/y/' README.md", 11)]
+    (git_repo / "README.md").write_text("y\n")
+    commit("b", "2026-01-03T12:00:00Z")  # the agent's work, committed after the session
+    result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
+    (change,) = result.changes
+    assert (change.effect, change.added, change.removed, change.strategy) == ("modified", 1, 1, "git")
+    assert result.reverted == []
+
+
+def test_deleted_directory_expands_to_the_files_it_held(git_repo):
+    (git_repo / "docs").mkdir()
+    (git_repo / "docs" / "a.md").write_text("a\n")
+    (git_repo / "docs" / "b.md").write_text("b\nb\n")
+    git("add", "docs", cwd=git_repo)
+    git("commit", "-q", "-m", "docs", cwd=git_repo)
+    head = git("rev-parse", "HEAD", cwd=git_repo).strip()
+    import shutil
+
+    shutil.rmtree(git_repo / "docs")
+    session = Session(id="s", repo=str(git_repo), started_at=T % 0, head_at_start=head)
+    p1 = prompt("p1", "remove the docs", 1)
+    result = attribute_session(
+        session, [p1], [bash("b1", "p1", "rm -rf docs", 11)], git_repo, GitState(git_repo)
+    )
+    assert [(c.path, c.effect, c.removed) for c in result.changes] == [
+        ("docs/a.md", "deleted", 1),
+        ("docs/b.md", "deleted", 2),
+    ]
+
+
+def test_untracked_file_the_shell_did_not_actually_change_is_not_listed(git_repo):
+    import os
+    import time
+
+    head = git("rev-parse", "HEAD", cwd=git_repo).strip()
+    (git_repo / "old.txt").write_text("old\n")
+    long_ago = time.time() - 86400
+    os.utime(git_repo / "old.txt", (long_ago, long_ago))
+    (git_repo / "fresh.txt").write_text("fresh\n")
+    from datetime import UTC, datetime, timedelta
+
+    a_minute_ago = (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    session = Session(id="s", repo=str(git_repo), started_at=a_minute_ago, head_at_start=head)
+    p1 = prompt("p1", "append to old.txt and write fresh.txt", 1)
+    events = [bash("b1", "p1", "echo x >> old.txt", 11), bash("b2", "p1", "echo fresh > fresh.txt", 12)]
+    result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
+    assert [(c.path, c.effect) for c in result.changes] == [("fresh.txt", "created")]
