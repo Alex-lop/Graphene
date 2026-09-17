@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "graphene": {
-      "command": "uv",
-      "args": ["run", "--frozen", "graphene-mcp"]
-    }
-  }
-}
