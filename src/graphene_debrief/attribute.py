@@ -39,6 +39,8 @@ _DEF = re.compile(
 )
 _HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+_SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
 
 
 # -- diffing ------------------------------------------------------------------------------------
@@ -67,36 +69,98 @@ def count_lines(hunks: list[Hunk]) -> tuple[int, int]:
     return added, removed
 
 
-# -- bash commands that visibly write files -------------------------------------------------------
+def changed_symbols(before: str, after: str, hunks: list[Hunk]) -> list[str]:
+    """Names of the definitions (def/class/function/fn...) that enclose the changed lines."""
+    names: list[str] = []
+    before_lines, after_lines = before.splitlines(), after.splitlines()
+    for hunk in hunks:
+        new_no, old_no = hunk.new_start, hunk.old_start
+        for line in hunk.lines:
+            if line.startswith("+"):
+                found = _enclosing(after_lines, new_no - 1)
+                new_no += 1
+            elif line.startswith("-"):
+                found = _enclosing(before_lines, old_no - 1)
+                old_no += 1
+            else:
+                found = None
+                new_no += 1
+                old_no += 1
+            if found and found not in names:
+                names.append(found)
+    return names
+
+
+def _enclosing(lines: list[str], index: int) -> str | None:
+    if not 0 <= index < len(lines) or not lines[index].strip():
+        return None
+    match = _DEF.match(lines[index])
+    if match:
+        return match.group(2)
+    indent = len(lines[index]) - len(lines[index].lstrip())
+    for i in range(index - 1, -1, -1):
+        match = _DEF.match(lines[i])
+        if match and len(match.group(1)) < indent:
+            return match.group(2)
+    return None
+
+
+# -- shell commands -----------------------------------------------------------------------------
+
+
+def strip_heredocs(command: str) -> str:
+    """Drop heredoc bodies so a `>` inside a script fed to a command is not read as a redirection."""
+    lines = command.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        for marker in _HEREDOC.finditer(line):
+            terminator = marker.group(2)
+            while i < len(lines) and lines[i].strip() != terminator:
+                i += 1
+            i += 1
+    return "\n".join(out)
+
+
+def _words(segment: str) -> list[str]:
+    try:
+        tokens = shlex.split(segment, posix=True)
+    except ValueError:
+        tokens = segment.split()
+    while tokens and (
+        ("=" in tokens[0] and not tokens[0].startswith("-")) or tokens[0] in ("sudo", "env", "time")
+    ):
+        tokens.pop(0)
+    return tokens
 
 
 def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     """(repo-relative path, "write" | "delete") for the obvious forms: > >> tee sed -i mv cp rm touch.
 
-    Deliberately incomplete: anything else a shell command does to a file is invisible here.
+    Relative paths follow `cd` segments inside the command. Deliberately incomplete: anything
+    else a shell command does to a file is invisible here.
     """
-    try:
-        tokens = shlex.split(command, posix=True)
-    except ValueError:
-        tokens = command.split()
+    cwd = os.path.normpath(str(root))
     found: list[tuple[str, str]] = []
-    segment: list[str] = []
-    for token in tokens + ["\n"]:
-        if token in (";", "&&", "||", "|", "\n") or token.endswith((";", "&&")):
-            if token not in (";", "&&", "||", "|", "\n"):
-                segment.append(token.rstrip(";&"))
-            found.extend(_segment_paths(segment))
-            segment = []
-        else:
-            segment.append(token)
-    out: list[tuple[str, str]] = []
-    for path, kind in found:
-        if _NOT_A_PATH.search(path) or path in ("/dev/null", "-", "") or path.startswith("-"):
+    for segment in _SEPARATORS.split(strip_heredocs(command)):
+        tokens = _words(segment)
+        if not tokens:
             continue
-        rel = _relative(path, root)
-        if (rel, kind) not in out:
-            out.append((rel, kind))
-    return out
+        if os.path.basename(tokens[0]) == "cd":
+            target = tokens[1] if len(tokens) > 1 and not tokens[1].startswith("-") else "~"
+            if not _NOT_A_PATH.search(target):
+                cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(target)))
+            continue
+        for path, kind in _segment_paths(tokens):
+            if _NOT_A_PATH.search(path) or path in ("/dev/null", "-", "") or path.startswith("-"):
+                continue
+            rel = _relative(os.path.join(cwd, os.path.expanduser(path)), root)
+            if (rel, kind) not in found:
+                found.append((rel, kind))
+    return found
 
 
 def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
@@ -111,17 +175,8 @@ def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
         if t.startswith((">", ">>", "1>", "&>")) and len(t) > 2 and not t.startswith(">&"):
             out.append((t.lstrip(">1&"), "write"))
         i += 1
-    if not tokens:
-        return out
-    # skip leading VAR=value assignments and sudo/env wrappers
-    start = 0
-    while start < len(tokens) and ("=" in tokens[start] and not tokens[start].startswith("-")):
-        start += 1
-    cmd = tokens[start:]
-    if not cmd:
-        return out
-    name = os.path.basename(cmd[0])
-    args = [a for a in cmd[1:] if a not in (">", ">>", "1>", "&>", "2>")]
+    name = os.path.basename(tokens[0])
+    args = [a for a in tokens[1:] if a not in (">", ">>", "1>", "&>", "2>")]
     plain = [a for a in args if not a.startswith("-") and a != ""]
     if name in ("tee", "touch"):
         out.extend((p, "write") for p in plain)
@@ -143,11 +198,37 @@ def _sed_scripts(args: list[str]) -> set[str]:
 
 
 def _relative(path: str, root: Path) -> str:
-    if os.path.isabs(path):
-        norm = os.path.normpath(path)
-        base = os.path.normpath(str(root))
-        return os.path.relpath(norm, base) if norm == base or norm.startswith(base + os.sep) else norm
-    return os.path.normpath(path)
+    norm = os.path.normpath(path)
+    base = os.path.normpath(str(root))
+    return os.path.relpath(norm, base) if norm == base or norm.startswith(base + os.sep) else norm
+
+
+def check_segments(command: str) -> list[str]:
+    """Normalised shell segments that run a test or lint tool (pytest, npm test, cargo test, make, ...)."""
+    out: list[str] = []
+    for segment in _SEPARATORS.split(strip_heredocs(command)):
+        words = _words(segment)
+        for prefix in RUNNER_PREFIXES:
+            if tuple(words[: len(prefix)]) == prefix:
+                words = [w for w in words[len(prefix) :] if not w.startswith("-")]
+        if words and _is_checker(os.path.basename(words[0]), words[1:]):
+            out.append(" ".join(segment.split()))
+    return out
+
+
+def _is_checker(name: str, rest: list[str]) -> bool:
+    if name in CHECKERS:
+        return True
+    if name in ("cargo", "go") and rest[:1] == ["test"]:
+        return True
+    if name in ("npm", "yarn", "pnpm"):
+        scripts = ("test", "lint", "check", "typecheck")
+        return rest[:1] == ["test"] or (rest[:1] == ["run"] and bool(rest[1:2]) and rest[1] in scripts)
+    return name == "npx" and bool(rest[:1]) and rest[0] in ("jest", "vitest", "tsc", "eslint")
+
+
+def is_check_command(command: str) -> bool:
+    return bool(check_segments(command))
 
 
 # -- per-file timelines -------------------------------------------------------------------------
@@ -193,8 +274,7 @@ class GitState:
     available: bool = True
 
     def show(self, rev: str, path: str) -> str | None:
-        out = self._run("show", f"{rev}:{path}")
-        return out if out is not None else None
+        return self._run("show", f"{rev}:{path}")
 
     def _run(self, *args: str) -> str | None:
         if not self.available:
@@ -239,12 +319,18 @@ class Attribution:
     changes: list[FileChange] = field(default_factory=list)
     reverted: list[FileChange] = field(default_factory=list)  # session-level revert, effect="reverted"
     failed: list[ToolEvent] = field(default_factory=list)
-    reruns: list[tuple[ToolEvent, ToolEvent]] = field(default_factory=list)  # (failed check, later rerun)
+    reruns: list[tuple[ToolEvent, ToolEvent, str]] = field(
+        default_factory=list
+    )  # (failed, latest rerun, check)
     outside_repo: list[str] = field(default_factory=list)
 
 
 def attribute_session(
-    session: Session, prompts: list[Prompt], events: list[ToolEvent], root: Path, git: GitState | None = None
+    session: Session,
+    prompts: list[Prompt],
+    events: list[ToolEvent],
+    root: Path,
+    git: GitState | None = None,
 ) -> Attribution:
     """Everything the debrief needs for one session, computed deterministically."""
     git = git or GitState(root)
@@ -260,60 +346,59 @@ def attribute_session(
         per_path.setdefault(touch.path, []).append(touch)
 
     for path, timeline in per_path.items():
-        all_known = all(t.known for t in timeline)
-        start = timeline[0].old if timeline[0].known else None
         touched_prompts: list[str] = []
         for t in timeline:
             pid = t.event.prompt_id or ""
             if pid not in touched_prompts:
                 touched_prompts.append(pid)
         touched_prompts.sort(key=lambda pid: order.get(pid, 0))
-        if all_known:
-            final = timeline[-1].new
+        if all(t.known for t in timeline):
+            start, final = timeline[0].old, timeline[-1].new
             for pid in touched_prompts:
                 mine = [t for t in timeline if (t.event.prompt_id or "") == pid]
-                before, after = mine[0].old, mine[-1].new
-                result.changes.append(_change(path, session.id, pid, before, after, by_prompt, "payload"))
+                result.changes.append(
+                    _change(path, session.id, pid, mine[0].old, mine[-1].new, by_prompt, "payload")
+                )
             if start == final and any(t.old != t.new for t in timeline):
                 result.reverted.append(FileChange(path, session.id, touched_prompts[-1], "reverted"))
             continue
         # git fallback: whole-session diff, credited to the last prompt that touched the file
+        if (root / path).is_dir():
+            continue
         base = session.head_at_start or git.head()
         before = git.show(base, path) if base else None
         after = None if timeline[-1].deleted else _working_copy(root, path)
         strategy = "git" if git.available and base else "none"
-        for pid in touched_prompts[:-1]:
-            result.changes.append(
-                FileChange(
-                    path,
-                    session.id,
-                    pid,
-                    "modified",
-                    strategy=strategy,
-                    unrequested=not mentions(by_prompt[pid].text, path) if pid in by_prompt else True,
-                )
-            )
+        if before is None and after is None and (strategy == "git" or timeline[-1].deleted):
+            continue  # nothing at the session start and nothing now: a glob, temp file, or unseen path
         last = touched_prompts[-1]
+        for pid in touched_prompts[:-1]:
+            result.changes.append(_placeholder(path, session.id, pid, by_prompt, strategy))
         if strategy == "git":
             result.changes.append(_change(path, session.id, last, before, after, by_prompt, "git"))
             if before is not None and before == after:
                 result.reverted.append(FileChange(path, session.id, last, "reverted", strategy="git"))
         else:
-            result.changes.append(
-                FileChange(
-                    path,
-                    session.id,
-                    last,
-                    "modified",
-                    strategy="none",
-                    unrequested=not mentions(by_prompt[last].text, path) if last in by_prompt else True,
-                )
-            )
+            result.changes.append(_placeholder(path, session.id, last, by_prompt, strategy))
 
     result.failed = [e for e in events if e.success is False]
     result.reruns = _reruns(events)
     result.changes.sort(key=lambda c: (order.get(c.prompt_id, 0), c.path))
     return result
+
+
+def _placeholder(
+    path: str, session_id: str, prompt_id: str, by_prompt: dict[str, Prompt], strategy: str
+) -> FileChange:
+    prompt = by_prompt.get(prompt_id)
+    return FileChange(
+        path,
+        session_id,
+        prompt_id,
+        "modified",
+        strategy=strategy,
+        unrequested=not mentions(prompt.text, path) if prompt else True,
+    )
 
 
 def _change(
@@ -349,85 +434,21 @@ def _change(
     )
 
 
-def is_check_command(command: str) -> bool:
-    """Is any shell segment a test or lint runner (pytest, npm test, cargo test, make, ruff, ...)?"""
-    for segment in re.split(r"&&|\|\||;|\||\n", command):
-        words = segment.split()
-        while words and (
-            ("=" in words[0] and not words[0].startswith("-")) or words[0] in ("sudo", "env", "time")
-        ):
-            words.pop(0)
-        for prefix in RUNNER_PREFIXES:
-            if tuple(words[: len(prefix)]) == prefix:
-                words = [w for w in words[len(prefix) :] if not w.startswith("-")]
-        if not words:
-            continue
-        name = os.path.basename(words[0])
-        rest = words[1:]
-        if name in CHECKERS:
-            return True
-        if name in ("cargo", "go") and rest[:1] == ["test"]:
-            return True
-        if name in ("npm", "yarn", "pnpm") and (
-            rest[:1] == ["test"]
-            or (rest[:1] == ["run"] and rest[1:2] and rest[1] in ("test", "lint", "check", "typecheck"))
-        ):
-            return True
-        if name == "npx" and rest[:1] and rest[0] in ("jest", "vitest", "tsc", "eslint"):
-            return True
-    return False
-
-
-def changed_symbols(before: str, after: str, hunks: list[Hunk]) -> list[str]:
-    """Names of the definitions (def/class/function/fn...) that enclose the changed lines."""
-    names: list[str] = []
-    before_lines, after_lines = before.splitlines(), after.splitlines()
-    for hunk in hunks:
-        new_no, old_no = hunk.new_start, hunk.old_start
-        for line in hunk.lines:
-            if line.startswith("+"):
-                found = _enclosing(after_lines, new_no - 1)
-                new_no += 1
-            elif line.startswith("-"):
-                found = _enclosing(before_lines, old_no - 1)
-                old_no += 1
-            else:
-                found = None
-                new_no += 1
-                old_no += 1
-            if found and found not in names:
-                names.append(found)
-    return names
-
-
-def _enclosing(lines: list[str], index: int) -> str | None:
-    if not 0 <= index < len(lines) or not lines[index].strip():
-        return None
-    match = _DEF.match(lines[index])
-    if match:
-        return match.group(2)
-    indent = len(lines[index]) - len(lines[index].lstrip())
-    for i in range(index - 1, -1, -1):
-        match = _DEF.match(lines[i])
-        if match and len(match.group(1)) < indent:
-            return match.group(2)
-    return None
-
-
-def _reruns(events: list[ToolEvent]) -> list[tuple[ToolEvent, ToolEvent]]:
-    """A check command that failed and was run again later (whatever the rerun's outcome)."""
-    groups: dict[str, list[ToolEvent]] = {}
+def _reruns(events: list[ToolEvent]) -> list[tuple[ToolEvent, ToolEvent, str]]:
+    """A check that failed and was run again later, by check segment; paired with the latest rerun."""
+    pending: dict[str, ToolEvent] = {}  # check segment -> first failed call still awaiting a rerun
+    latest: dict[tuple[str, str], tuple[ToolEvent, ToolEvent, str]] = {}
     for ev in events:
         command = ev.input.get("command") if ev.tool == "Bash" else None
-        if isinstance(command, str) and is_check_command(command):
-            groups.setdefault(" ".join(command.split()), []).append(ev)
-    out: list[tuple[ToolEvent, ToolEvent]] = []
-    for runs in groups.values():
-        for i, ev in enumerate(runs):
-            if ev.success is False and i + 1 < len(runs):
-                out.append((ev, runs[-1]))
-                break
-    return out
+        if not isinstance(command, str):
+            continue
+        for segment in check_segments(command):
+            if segment in pending and pending[segment].id != ev.id:
+                failed = pending[segment]
+                latest[(failed.id, segment)] = (failed, ev, segment)
+            elif ev.success is False and segment not in pending:
+                pending[segment] = ev
+    return sorted(latest.values(), key=lambda item: (item[0].timestamp, item[2]))
 
 
 def attribute(store: Store, session_ids: list[str], root: Path) -> dict[str, Attribution]:

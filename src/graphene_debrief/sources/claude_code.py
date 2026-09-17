@@ -475,7 +475,8 @@ def backfill(
             store.delete_session_data(session_id)
             parsed.session.head_at_start = existing.head_at_start
             parsed.session.source = existing.source
-            parsed.session.started_at = existing.started_at or parsed.session.started_at
+            starts = [t for t in (existing.started_at, parsed.session.started_at) if t]
+            parsed.session.started_at = min(starts) if starts else None
             report.refreshed.append(session_id)
         else:
             report.added.append(session_id)

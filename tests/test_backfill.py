@@ -134,14 +134,24 @@ def test_second_backfill_skips_until_the_transcript_grows(tmp_path, projects):
 def test_replace_rebuilds_a_hook_session_and_keeps_its_head(tmp_path, projects):
     with Store.open(tmp_path) as store:
         store.upsert_session(
-            Session(id=SID, repo=str(ROOT), started_at="t0", head_at_start="abc123", source="hook")
+            Session(
+                id=SID,
+                repo=str(ROOT),
+                started_at="2026-03-01T09:05:00.000Z",
+                head_at_start="abc123",
+                source="hook",
+            )
         )
         untouched = backfill(store, ROOT, projects=projects)
         assert untouched.skipped == [SID] and store.prompts(SID) == []
         replaced = backfill(store, ROOT, projects=projects, replace=True)
         assert replaced.refreshed == [SID]
         session = store.session(SID)
-        assert (session.head_at_start, session.source, session.started_at) == ("abc123", "hook", "t0")
+        assert (session.head_at_start, session.source, session.started_at) == (
+            "abc123",
+            "hook",
+            "2026-03-01T09:00:01.000Z",
+        )
         assert len(store.prompts(SID)) == 3
 
 

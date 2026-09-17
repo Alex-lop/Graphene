@@ -146,7 +146,9 @@ def test_failed_then_passing_check_command(session, tmp_path):
     ]
     result = run(session, [p1, p2], events, tmp_path)
     assert [e.id for e in result.failed] == ["b1", "b2"]
-    assert [(a.id, b.id, b.success) for a, b in result.reruns] == [("b1", "b3", True)]
+    assert [(a.id, b.id, b.success, c) for a, b, c in result.reruns] == [
+        ("b1", "b3", True, "uv run pytest -q")
+    ]
 
 
 def test_check_command_detection():
@@ -267,3 +269,45 @@ def test_diff_hunks_counts():
     assert len(hunks) == 1
     assert hunks[0].lines == [" a", "-b", "+B", " c", "+d"]
     assert diff_hunks("same\n", "same\n") == []
+
+
+def test_heredoc_bodies_are_not_shell_syntax(tmp_path):
+    command = "cat > out.py <<'EOF'\nif len(v) > 4096:\n    x = a > CONTENT_CAP\nEOF\necho done"
+    assert bash_written_paths(command, tmp_path) == [("out.py", "write")]
+    assert bash_written_paths("python - <<EOF\nprint(1 > 0)\nEOF", tmp_path) == []
+
+
+def test_relative_paths_follow_cd(tmp_path):
+    assert bash_written_paths("cd sub && echo hi > a.txt", tmp_path) == [("sub/a.txt", "write")]
+    assert bash_written_paths("cd /elsewhere && echo x > a.txt", tmp_path) == [("/elsewhere/a.txt", "write")]
+    assert bash_written_paths("cd sub && cd .. && echo x > b.txt", tmp_path) == [("b.txt", "write")]
+    assert bash_written_paths("cd ~ && echo x > c.txt", tmp_path) == [(str(Path.home() / "c.txt"), "write")]
+
+
+def test_check_segments_and_reruns_inside_longer_commands(session, tmp_path):
+    from graphene_debrief.attribute import check_segments
+
+    assert check_segments("uv run ruff check src && uv run pytest -q 2>&1 | tail -3") == [
+        "uv run ruff check src",
+        "uv run pytest -q 2>&1",
+    ]
+    p1, p2 = prompt("p1", "test", 1), prompt("p2", "fix", 2)
+    events = [
+        bash("b1", "p1", "uv run ruff check src && uv run pytest -q 2>&1 | tail -3", 11, ok=False),
+        bash("b2", "p2", "git status", 20),
+        bash("b3", "p2", "uv run pytest -q 2>&1 | tail -3", 21, ok=False),
+        bash("b4", "p2", "uv run pytest -q 2>&1 | tail -1", 22),
+    ]
+    result = run(session, [p1, p2], events, tmp_path)
+    assert [(a.id, b.id, c) for a, b, c in result.reruns] == [("b1", "b4", "uv run pytest -q 2>&1")]
+
+
+def test_git_fallback_skips_paths_that_never_existed_or_are_directories(git_repo):
+    head = git("rev-parse", "HEAD", cwd=git_repo).strip()
+    session = Session(id="s", repo=str(git_repo), started_at=T % 0, head_at_start=head)
+    (git_repo / "build").mkdir()
+    p1 = prompt("p1", "clean up", 1)
+    events = [bash("b1", "p1", "rm -rf dist && mv build /tmp/elsewhere-build && rm old.log", 11)]
+    result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
+    assert result.changes == []
+    assert result.outside_repo == ["/tmp/elsewhere-build"]
