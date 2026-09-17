@@ -50,6 +50,12 @@ def template(change: FileChange) -> str:
     """The factual sentence used when no model is involved."""
     name = change.path.rsplit("/", 1)[-1]
     counts = f"+{change.added}/−{change.removed}"
+    if change.strategy == "deferred":
+        return f"Touched {name}; its diff for this session is credited to a later prompt."
+    if change.strategy == "none" and change.effect == "deleted":
+        return f"Deleted {name} through a shell command (no content available)."
+    if change.effect == "reverted" and change.strategy != "payload":
+        return f"Touched {name}, but its content matches the session start."
     if change.effect == "created":
         defined = f", defining {_join(change.symbols)}" if change.symbols else ""
         return f"Created {name} with {change.added} lines{defined}."

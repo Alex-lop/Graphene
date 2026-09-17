@@ -181,3 +181,15 @@ def test_changes_before_the_first_prompt_are_listed(repo):
         "(changes recorded before the first prompt)",
         "created",
     )
+
+
+def test_a_prompt_after_the_commit_is_never_the_answer(repo):
+    (repo / "notes.txt").write_text("alpha\nbeta two\n")  # 'beta two' committed long before any session
+    git("add", "notes.txt", cwd=repo)
+    git("commit", "-q", "-m", "ancient", cwd=repo, date="2020-01-01T12:00:00Z")
+    sha = git("rev-parse", "HEAD", cwd=repo).strip()
+    with Store.open(repo) as store:
+        seed(store, repo)  # p2 and p5 add an identical 'beta two' line, years later
+        answer = why_line(store, repo, "notes.txt", 2)
+    assert answer.matches == []
+    assert answer.reason == f"committed in {sha[:7]} before any recorded session; no recorded edit wrote it"

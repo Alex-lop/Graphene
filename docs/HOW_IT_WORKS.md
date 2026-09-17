@@ -41,8 +41,9 @@ the session; calls made before any recorded prompt appear in the debrief under t
 `cwd` lies inside the repo. Facts the parser relies on, observed on Claude Code 2.1.27x:
 
 - One JSON object per line. `type` is `user`, `assistant`, or bookkeeping (`attachment`,
-  `system`, `file-history-snapshot`, `queue-operation`, `mode`, ...). Unknown types are skipped
-  and counted; the count is printed after a backfill.
+  `system`, `file-history-snapshot`, `queue-operation`, `mode`, ...). Only `user` and `assistant`
+  records carry prompts and tool calls; every other type is counted and listed after a backfill
+  as "other record types", so a new type Claude Code starts writing is at least visible.
 - A prompt is a `user` record whose content is a string (or text blocks) and that is not
   `isMeta`, not `isSidechain`, not a compaction summary, and not a slash-command echo wrapped in
   `<command-name>` or `<local-command-stdout>` tags.
@@ -111,7 +112,14 @@ untouched. Failure modes: changes made after the session by anything else are bl
 prompt; for backfilled sessions the base is the commit before the session's first record, which
 misses work committed within the same second.
 
-**No strategy**: without git, the file is listed with its effect and no hunks.
+**Deferred**: a prompt inside such a span, other than the last, is listed as touching the file
+with no hunks and the sentence "its diff for this session is credited to a later prompt", never as
+having changed zero lines.
+
+**No strategy**: without git (or with git unavailable), a file a shell command wrote is listed as
+modified with no hunks, since created cannot be told from modified, and a file a shell command
+removed is listed as deleted with no content. In a repository with no commits yet, git's empty
+tree is the base, so files the agent wrote read as created.
 
 The effect per prompt is `created` (no content before), `deleted` (no content after),
 `reverted` (before and after identical), otherwise `modified`.
@@ -161,10 +169,11 @@ default model during the rebuild.
 prompts newest first, each with its diff summary and the stored explanation if one exists.
 
 `graphene why PATH:LINE` reads the line from disk, asks `git blame` which commit last touched it,
-then looks for prompts whose recorded diff added a line with the same text. If the line is
-committed, prompts that ran after the commit are excluded. One match is reported as the answer;
-several are listed newest first; none is explained: committed before any recorded session, or
-changed by something Graphene did not see.
+then looks for prompts whose recorded diff added a line with the same text, preferring an edit at
+the same line number and falling back to the same text elsewhere. If the line is committed, prompts
+that ran after the commit are excluded even when they added identical text. One match is reported
+as the answer; several are listed newest first; none is explained: committed before any recorded
+session, committed before any matching edit, or changed by something Graphene did not see.
 
 All commands except the hook refuse to run outside a git repository, and never treat your home
 directory as one, so `~/.claude/settings.json` (Claude Code's user-level settings) is never

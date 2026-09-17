@@ -415,7 +415,9 @@ def _base(session: Session, git: GitState) -> str | None:
         found = git.commit_before(session.started_at)
         if found:
             return found
-    return git.head()
+    if git.head():
+        return git.head()
+    return EMPTY_TREE if git.available and (git.root / ".git").exists() else None
 
 
 def _untouched_since(root: Path, path: str, started_at: str | None) -> bool:
@@ -492,34 +494,49 @@ def _file_changes(
         if run_start is None or not a[0]:
             pending.append(i)  # unresolved; a later known boundary may close the run
             continue
-        for j in pending:  # the run's diff is credited to its last prompt; earlier ones get no hunks
-            out.append(_placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "git"))
-        if run_start[1] is not None or a[1] is not None:
+        if run_start[1] is None and a[1] is None:
+            if group[-1].deleted:  # nothing before or after: only the delete itself is worth naming
+                out.append(_placeholder(path, session.id, pid, by_prompt, "none", "deleted"))
+        else:
+            for j in pending:  # the run's diff is credited to its last prompt; earlier ones get no hunks
+                out.append(
+                    _placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "deferred")
+                )
             if all(t.known for t in group) and not pending:
                 strategy = "payload"
             else:
                 strategy = "git" if used_git else "bridged"
             out.append(_change(path, session.id, pid, run_start[1], a[1], by_prompt, strategy))
         pending, run_start = [], None
-    for j in pending:  # never resolved: without git there is nothing to show but the fact of a touch
-        if not all(t.deleted for t in groups[j]):
-            out.append(_placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "none"))
+    for j in pending:  # never resolved: without git there is only the fact of a touch to show
+        group = groups[j]
+        effect = "deleted" if group[-1].deleted else "modified"
+        out.append(_placeholder(path, session.id, group[0].event.prompt_id or "", by_prompt, "none", effect))
     start, final = before[0], after[-1]
     touched = any(t.known and t.old != t.new or not t.known for t in timeline)
-    if start[0] and final[0] and start[1] == final[1] and touched:
+    existed = start[1] is not None or any(
+        t.known for t in timeline
+    )  # a shell rm of a never-seen path is no revert
+    if start[0] and final[0] and start[1] == final[1] and touched and existed:
         reverted.append(FileChange(path, session.id, groups[-1][0].event.prompt_id or "", "reverted"))
     return out
 
 
 def _placeholder(
-    path: str, session_id: str, prompt_id: str, by_prompt: dict[str, Prompt], strategy: str
+    path: str,
+    session_id: str,
+    prompt_id: str,
+    by_prompt: dict[str, Prompt],
+    strategy: str,
+    effect: str = "modified",
 ) -> FileChange:
+    """A change with no hunks: 'deferred' (credited to a later prompt) or 'none' (no git to ask)."""
     prompt = by_prompt.get(prompt_id)
     return FileChange(
         path,
         session_id,
         prompt_id,
-        "modified",
+        effect,
         strategy=strategy,
         unrequested=not mentions(prompt.text, path) if prompt else True,
     )

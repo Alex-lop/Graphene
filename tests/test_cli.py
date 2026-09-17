@@ -79,8 +79,14 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert as_json.exit_code == 0, as_json.output
     data = json.loads(as_json.output)
     assert [p["ordinal"] for p in data["prompts"]] == [1, 2, 3]
-    assert data["files_changed"] == 3
+    assert (
+        data["files_changed"] == 4
+    )  # README.md, app/hello.py, tests/test_hello.py, and the rm'd scratch.txt
     assert [f["path"] for f in data["prompts"][0]["files"]] == ["app/hello.py", "tests/test_hello.py"]
+    assert [(f["path"], f["effect"]) for f in data["prompts"][2]["files"]] == [
+        ("README.md", "reverted"),
+        ("scratch.txt", "deleted"),
+    ]
     assert data["reverted"] == [{"path": "README.md", "session_id": fixture.SID, "prompt_ordinal": 3}]
     assert [r["rerun_passed"] for r in data["reruns"]] == [True]
 

@@ -103,11 +103,12 @@ def why_line(store: Store, root: Path, path: str, line: int) -> LineAnswer:
     anywhere = [e for e in entries if any(text == wanted for _, text in _added_lines(e.change))]
     matches = here or anywhere
     if committed_at:
-        dated = [e for e in matches if e.timestamp <= committed_at]
-        matches = dated or matches
+        matches = [e for e in matches if e.timestamp <= committed_at]  # a later prompt cannot have written it
     if not matches:
         if commit and entries and committed_at and committed_at < min(e.timestamp for e in entries):
             reason = f"committed in {commit[:7]} before any recorded session; no recorded edit wrote it"
+        elif commit and committed_at:
+            reason = f"committed in {commit[:7]}; no recorded edit before that commit added this line"
         elif entries:
             reason = "prompts changed this file but none of their recorded edits added this exact line"
         else:

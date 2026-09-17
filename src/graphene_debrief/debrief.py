@@ -359,6 +359,8 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
                 what = "reverted"
             elif f.strategy == "none":
                 what = f"{f.effect} (no diff available)"
+            elif f.strategy == "deferred":
+                what = "modified (diff credited to a later prompt)"
             else:
                 what = f"{f.effect} +{f.added}/−{f.removed}"
             flag = " **[unrequested]**" if f.unrequested else ""

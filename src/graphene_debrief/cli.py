@@ -118,7 +118,7 @@ def build():
             console.print(f"[yellow]could not read {path}: {error}[/yellow]")
         if report.skipped_records:
             kinds = ", ".join(f"{k} {v}" for k, v in sorted(report.skipped_records.items()))
-            console.print(f"skipped record types: {kinds}")
+            console.print(f"other record types (not prompts or tool calls): {kinds}")
 
     @ingest.command("hook")
     def ingest_hook() -> None:

@@ -48,6 +48,15 @@ def test_templates():
     assert template(change("notes.md", added=1, removed=0)) == "Changed 1 line in notes.md (+1/−0)."
     assert template(change("notes.md")) == "Changed 3 lines in notes.md (+2/−1)."
     assert template(change("x", strategy="none")) == "Changed x through a shell command (no diff available)."
+    assert template(change("x", "deleted", 0, 0, strategy="none")) == (
+        "Deleted x through a shell command (no content available)."
+    )
+    assert template(change("n.md", added=0, removed=0, strategy="deferred")) == (
+        "Touched n.md; its diff for this session is credited to a later prompt."
+    )
+    assert template(change("n.md", "reverted", 0, 0, strategy="git")) == (
+        "Touched n.md, but its content matches the session start."
+    )
 
 
 def test_null_explainer_covers_every_file():

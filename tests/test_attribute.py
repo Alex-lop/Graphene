@@ -309,7 +309,10 @@ def test_git_fallback_skips_paths_that_never_existed_or_are_directories(git_repo
     p1 = prompt("p1", "clean up", 1)
     events = [bash("b1", "p1", "rm -rf dist && mv build /tmp/elsewhere-build && rm old.log", 11)]
     result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
-    assert result.changes == []
+    assert [(c.path, c.effect, c.strategy) for c in result.changes] == [
+        ("dist", "deleted", "none"),
+        ("old.log", "deleted", "none"),
+    ]  # the rm targets are named; build still exists on disk as a directory, so it is skipped
     assert result.outside_repo == ["/tmp/elsewhere-build"]
 
 
@@ -426,3 +429,28 @@ def test_untracked_file_the_shell_did_not_actually_change_is_not_listed(git_repo
     events = [bash("b1", "p1", "echo x >> old.txt", 11), bash("b2", "p1", "echo fresh > fresh.txt", 12)]
     result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
     assert [(c.path, c.effect) for c in result.changes] == [("fresh.txt", "created")]
+
+
+def test_repo_without_commits_still_reports_shell_creates_and_deletes(tmp_path):
+    git("init", "-q", cwd=tmp_path)
+    (tmp_path / "notes.md").write_text("hello\n")
+    session = Session(id="s", repo=str(tmp_path), started_at=T % 0, head_at_start=None)
+    p1 = prompt("p1", "write notes.md, drop old.py", 1)
+    events = [bash("b1", "p1", "printf 'hello\\n' > notes.md", 11), bash("b2", "p1", "rm old.py", 12)]
+    result = attribute_session(session, [p1], events, tmp_path, GitState(tmp_path))
+    assert [(c.path, c.effect, c.added, c.strategy) for c in result.changes] == [
+        ("notes.md", "created", 1, "git"),
+        ("old.py", "deleted", 0, "none"),
+    ]
+
+
+def test_earlier_prompts_in_a_shell_run_are_deferred_not_zero(git_repo):
+    head = git("rev-parse", "HEAD", cwd=git_repo).strip()
+    (git_repo / "README.md").write_text("one\ntwo\nthree\nfour\n")
+    session = Session(id="s", repo=str(git_repo), started_at=T % 0, head_at_start=head)
+    p1, p2 = prompt("p1", "append to README.md", 1), prompt("p2", "append again to README.md", 2)
+    events = [bash("b1", "p1", "echo three >> README.md", 11), bash("b2", "p2", "echo four >> README.md", 21)]
+    result = attribute_session(session, [p1, p2], events, git_repo, GitState(git_repo))
+    first, last = result.changes
+    assert (first.prompt_id, first.strategy, first.hunks) == ("p1", "deferred", [])
+    assert (last.prompt_id, last.strategy, last.added) == ("p2", "git", 2)
