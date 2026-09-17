@@ -213,13 +213,11 @@ def _object_in(text: str) -> dict:
 
 
 def pick_explainer(choice: str | None) -> tuple[Explainer, str | None]:
-    """``--explain`` resolution: explicit choice wins; otherwise claude if on PATH, with a notice."""
-    if choice == "none":
+    """``--explain`` resolution: templates unless ``claude`` is asked for explicitly."""
+    if choice in (None, "none"):
         return NullExplainer(), None
     if choice == "claude":
+        if not shutil.which("claude"):
+            return NullExplainer(), "claude is not on PATH; showing template sentences"
         return ClaudeCodeExplainer(), None
-    if choice is not None:
-        raise ValueError(f"unknown explainer {choice!r}; use claude or none")
-    if shutil.which("claude"):
-        return ClaudeCodeExplainer(), "explanations by claude (pass --explain none to skip the model)"
-    return NullExplainer(), None
+    raise ValueError(f"unknown explainer {choice!r}; use claude or none")

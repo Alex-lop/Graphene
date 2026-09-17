@@ -7,8 +7,10 @@ import pytest
 
 from graphene_debrief.debrief import (
     build_debrief,
+    file_rows,
     from_json,
     parse_since,
+    render_card,
     render_markdown,
     select_sessions,
     to_json,
@@ -17,6 +19,7 @@ from graphene_debrief.model import Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
 GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"
+CARD_GOLDEN = Path(__file__).parent / "fixtures" / "card_golden.md"
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 HELLO_V1 = 'def greet(name):\n    return f"hi {name}"\n'
 HELLO_V2 = 'def greet(name):\n    return f"hello {name}"\n'
@@ -145,6 +148,123 @@ def test_golden_markdown(store, tmp_path):
     )
 
 
+def test_golden_card(store, tmp_path):
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    assert render_card(debrief) == CARD_GOLDEN.read_text(), (
+        "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
+    )
+
+
+def denial(eid, pid, when, tool="Bash", reason="Irreversible Local Destruction"):
+    error = (
+        f"Permission for this action was denied by the Claude Code auto mode classifier. Reason: [{reason}]. "
+        "If you have other tasks that don't depend on this action, continue working on those."
+    )
+    return ToolEvent(
+        eid, "sess-golden-1", pid, when, tool, {"command": "rm -rf build"}, {"error": error}, False
+    )
+
+
+def test_failure_summary_groups_refusals(store, tmp_path):
+    store.add_event(denial("d1", "p1", ts(6)))
+    store.add_event(denial("d2", "p1", ts(7)))
+    store.add_event(denial("d3", "p2", ts(43), reason="Credential Materialization"))
+    store.add_event(
+        ToolEvent(
+            "d4",
+            "sess-golden-1",
+            "p2",
+            ts(44),
+            "AskUserQuestion",
+            {"questions": []},
+            "Error: The user doesn't want to proceed with this tool use.",
+            False,
+        )
+    )
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    assert debrief.failure_summary == {"total": 6, "by_tool": {"Bash": 5, "AskUserQuestion": 1}, "denials": 4}
+    card = render_card(debrief)
+    assert (
+        "- 6 tool failures (5 Bash, 1 AskUserQuestion; 4 refused before running); "
+        "`graphene debrief --full` lists them"
+    ) in card
+    assert "classifier" not in card and "rm -rf" not in card
+    full = render_markdown(debrief)
+    assert (
+        "- 2 Bash calls refused before running (auto mode classifier: Irreversible Local Destruction)" in full
+    )
+    assert "- 1 Bash call refused before running (auto mode classifier: Credential Materialization)" in full
+    assert "- 1 AskUserQuestion call refused before running (rejected by the user)" in full
+    assert full.count("refused before running") == 3  # grouped, not one line per refusal
+    assert "- failed Bash: `uv run pytest -q`" in full  # real failures are still listed one by one
+
+
+def test_card_omits_sections_with_nothing_in_them(tmp_path):
+    with Store.open(tmp_path) as s:
+        s.upsert_session(
+            Session(id="quiet", repo="/repo", started_at=ts(0), ended_at=ts(30), source="backfill")
+        )
+        s.add_prompt(Prompt("p1", "quiet", 1, ts(1), "add a.py"))
+        s.add_event(
+            ToolEvent(
+                "w",
+                "quiet",
+                "p1",
+                ts(2),
+                "Write",
+                {"file_path": "a.py", "content": "x\n"},
+                {"type": "create", "content": "x\n"},
+                True,
+                file_path="a.py",
+                old_content=None,
+                new_content="x\n",
+            )
+        )
+        card = render_card(build_debrief(s, ["quiet"], tmp_path, now=NOW))
+    assert "Abandoned" not in card and "Not what you asked for" not in card and "None" not in card
+    assert "**Commits during the session:** none" in card
+    assert "- `a.py` created +1/−0" in card
+    assert card.rstrip().endswith("for one line.")
+
+
+def test_card_caps_the_file_list(tmp_path):
+    with Store.open(tmp_path) as s:
+        s.upsert_session(
+            Session(id="big", repo="/repo", started_at=ts(0), ended_at=ts(30), source="backfill")
+        )
+        s.add_prompt(Prompt("p1", "big", 1, ts(1), "generate everything"))
+        for i in range(35):
+            s.add_event(
+                ToolEvent(
+                    f"w{i}",
+                    "big",
+                    "p1",
+                    ts(2, i),
+                    "Write",
+                    {"file_path": f"gen/f{i:02d}.py"},
+                    {"type": "create", "content": "x\n" * (i + 1)},
+                    True,
+                    file_path=f"gen/f{i:02d}.py",
+                    old_content=None,
+                    new_content="x\n" * (i + 1),
+                )
+            )
+        debrief = build_debrief(s, ["big"], tmp_path, now=NOW)
+    card = render_card(debrief)
+    assert card.count("- `gen/") == 30
+    assert "- … 5 more; `graphene why <path>` for any of them" in card
+    assert card.splitlines()[6] == "- `gen/f34.py` created +35/−0"  # biggest change first
+    assert render_card(debrief, limit=100).count("- `gen/") == 35
+
+
+def test_file_rows_net_effect(store, tmp_path):
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    rows = {r["path"]: r for r in file_rows(debrief)}
+    assert rows["app/hello.py"] == {"path": "app/hello.py", "effect": "created", "added": 2, "removed": 0}
+    assert rows["README.md"]["effect"] == "reverted"
+    assert rows["tests/test_hello.py"]["effect"] == "created"
+
+
 def test_full_expands_prompts(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     short, full = render_markdown(debrief), render_markdown(debrief, full=True)
@@ -203,10 +323,10 @@ if __name__ == "__main__":  # regenerate the golden file after a deliberate rend
 
     with Store.open(Path(tempfile.mkdtemp())) as s:
         seed_golden(s)
-        GOLDEN.write_text(
-            render_markdown(build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW))
-        )
-    print(f"wrote {GOLDEN}")
+        debrief = build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW)
+        GOLDEN.write_text(render_markdown(debrief))
+        CARD_GOLDEN.write_text(render_card(debrief))
+    print(f"wrote {GOLDEN} and {CARD_GOLDEN}")
 
 
 def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):

@@ -25,6 +25,7 @@ def run(*args):
 def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # no real transcripts in tests
     return tmp_path
 
 
@@ -42,7 +43,8 @@ def transcript(repo, tmp_path, monkeypatch):
 
 def test_version_and_help():
     assert "graphene 0.1.0" in run("--version").output
-    assert "debrief" in run().output
+    text = run("--help").output
+    assert "why" in text and text.index("why") < text.index("debrief")
 
 
 def test_init_installs_hooks_and_ignores_the_store(repo):
@@ -62,11 +64,30 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert "already installed" in run("init").output
 
 
-def test_empty_store_messages(repo):
-    assert "no sessions recorded yet" in run("sessions").output
-    result = run("debrief", "--explain", "none")
-    assert result.exit_code == 1
+def test_nothing_recorded_and_nothing_to_backfill(repo):
+    for args in ([], ["debrief"], ["sessions"], ["why", "x.py"]):
+        result = run(*args)
+        assert result.exit_code == 1, args
+        assert "no Claude Code sessions found" in result.output + result.stderr
     assert run("ingest").exit_code == 1
+
+
+def test_first_run_backfills_from_transcripts(repo, tmp_path, monkeypatch):
+    from graphene_debrief.sources.claude_code import project_dir_name
+
+    monkeypatch.setattr(fixture, "CWD", str(repo))
+    target = tmp_path / "claude" / "projects" / project_dir_name(repo)
+    for path, text in fixture.render().items():
+        out = target / path.relative_to(fixture.OUT)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+    card = run()
+    assert card.exit_code == 0, card.output + card.stderr
+    assert "loaded 1 session" in card.output + card.stderr
+    assert "Session 11111111" in card.output and "app/hello.py" in card.output
+    assert "graphene init" in card.output + card.stderr  # the one-line hint, since no hooks are installed
+    assert run("why", "README.md").exit_code == 0
+    assert "loaded" not in run("why", "README.md").output + run("why", "README.md").stderr  # only once
 
 
 def test_backfill_debrief_and_why(repo, transcript):
@@ -74,6 +95,12 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert loaded.exit_code == 0, loaded.output
     assert "added 1" in loaded.output
     assert fixture.SID[:8] in run("sessions").output
+
+    card = run()
+    assert card.exit_code == 0, card.output
+    assert "Files changed" in card.output and "app/hello.py" in card.output and "Abandoned" in card.output
+    assert "What you asked" not in card.output and "classifier" not in card.output
+    assert "1 tool failure" in card.output or "tool failures" in card.output
 
     as_json = run("debrief", "--json", "--explain", "none")
     assert as_json.exit_code == 0, as_json.output
@@ -93,10 +120,12 @@ def test_backfill_debrief_and_why(repo, transcript):
     out = repo / "debrief.md"
     written = run("debrief", fixture.SID[:8], "--md", str(out), "--explain", "none")
     assert written.exit_code == 0, written.output
-    assert out.read_text().startswith("# Graphene debrief")
+    assert out.read_text().startswith("# Graphene\n")
 
-    plain = run("debrief", "--since", "2026-01-01", "--explain", "none", "--full")
-    assert plain.exit_code == 0 and "What you asked" in plain.output
+    plain = run("debrief", "--since", "2026-01-01")
+    assert plain.exit_code == 0 and "Files changed" in plain.output and "What you asked" not in plain.output
+    full = run("debrief", "--since", "2026-01-01", "--full")
+    assert full.exit_code == 0 and "What you asked" in full.output and "Keep it tiny" not in full.output
 
     assert run("debrief", "zzz", "--explain", "none").exit_code == 2
     assert run("debrief", "--since", "soon", "--explain", "none").exit_code == 2
@@ -127,6 +156,7 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = run("init")
     assert result.exit_code == 2
+    assert run().exit_code == 2
     assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
     assert run("sessions").exit_code == 2
 
@@ -136,7 +166,7 @@ def test_md_into_a_missing_directory_and_together_with_json(repo, transcript):
     nested = repo / "reports" / "today.md"
     result = run("debrief", "--md", str(nested), "--json", "--explain", "none")
     assert result.exit_code == 0, result.output
-    assert nested.read_text().startswith("# Graphene debrief")
+    assert nested.read_text().startswith("# Graphene\n")
     assert json.loads(result.stdout)["prompt_count"] == 3
     assert run("debrief", "--md", str(repo), "--explain", "none").exit_code == 1  # a directory: clean failure
 

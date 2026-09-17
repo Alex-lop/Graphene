@@ -28,16 +28,27 @@ def build():
     from rich.table import Table
 
     from . import __version__
-    from .debrief import build_debrief, preview, render_markdown, select_sessions, stamp, to_json
+    from .debrief import (
+        build_debrief,
+        preview,
+        render_card,
+        render_markdown,
+        select_sessions,
+        stamp,
+        to_json,
+    )
     from .explain import pick_explainer
-    from .sources.claude_code import backfill, install_hooks, now_iso, repo_root
+    from .sources.claude_code import HOOK_COMMAND, backfill, install_hooks, now_iso, repo_root
     from .store import Store, ignore_store_dir
     from .why import why_line, why_path
 
     cli = typer.Typer(
-        help="What your coding agent did, and why, grouped by what you asked for.",
-        no_args_is_help=True,
+        help=(
+            "Why did my coding agent change this? `graphene why PATH` or `graphene why PATH:LINE` "
+            "answers across Claude Code sessions; `graphene` alone shows a short card of the latest one."
+        ),
         add_completion=False,
+        no_args_is_help=False,
     )
     console = Console()
     errors = Console(stderr=True)
@@ -61,21 +72,158 @@ def build():
             fail(f"cannot open {r / '.graphene' / 'graphene.db'}: {exc}", 1)
             raise AssertionError from None  # unreachable: fail() exits
 
+    def loaded_store(r: Path) -> Store:
+        """The repo's store; when it holds no sessions yet, Claude Code's transcripts are read first."""
+        store = open_store(r)
+        if store.sessions():
+            return store
+        report = backfill(store, r)
+        n = len(report.added)
+        if not n:
+            store.close()
+            fail(
+                "no Claude Code sessions found for this repo: run Claude Code here first "
+                "(`graphene init` records sessions live)",
+                1,
+            )
+        errors.print(f"[dim]loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts[/dim]")
+        return store
+
+    def hooks_hint(r: Path) -> None:
+        settings = r / ".claude" / "settings.json"
+        try:
+            installed = HOOK_COMMAND in settings.read_text(encoding="utf-8")
+        except OSError:
+            installed = False
+        if not installed:
+            errors.print(
+                "[dim]`graphene init` would record sessions live; "
+                "until then Graphene reads Claude Code's transcripts[/dim]"
+            )
+
+    def show(
+        session_id: str | None,
+        since: str | None,
+        as_json: bool = False,
+        md: Path | None = None,
+        full: bool = False,
+        explain: str | None = None,
+    ) -> None:
+        r = root()
+        try:
+            explainer, notice = pick_explainer(explain)
+        except ValueError as exc:
+            fail(str(exc))
+        with loaded_store(r) as store:
+            try:
+                ids = select_sessions(store, session_id, since)
+            except ValueError as exc:
+                fail(str(exc))
+            if not ids:
+                fail(f"no session in that window; `graphene sessions` lists {len(store.sessions())}", 1)
+            if notice:
+                errors.print(f"[dim]{escape(notice)}[/dim]")
+            result = build_debrief(store, ids, r, explainer)
+            store.add_debrief_run(ids, now_iso())
+        markdown = render_markdown(result, full=True) if full else render_card(result)
+        if md:
+            try:
+                md.parent.mkdir(parents=True, exist_ok=True)
+                md.write_text(markdown, encoding="utf-8")
+            except OSError as exc:
+                fail(f"cannot write {md}: {exc.strerror or exc}", 1)
+            errors.print(f"wrote {md}")
+        if as_json:
+            sys.stdout.write(to_json(result) + "\n")
+        elif not md:
+            console.print(Markdown(markdown))
+            if not full:
+                hooks_hint(r)
+
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
+        """With no command: a short card of what changed since you last looked."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
-            console.print(ctx.get_help())
-            raise typer.Exit()
+            show(None, None)
+
+    @cli.command()
+    def why(target: str = typer.Argument(..., help="PATH, or PATH:LINE for one line.")) -> None:
+        """Which prompts changed a file (newest first), or which one wrote a given line."""
+        r = root()
+        path, _, line = target.rpartition(":")
+        with loaded_store(r) as store:
+            if path and line.isdigit():
+                answer = why_line(store, r, path, int(line))
+                if answer.content is None:
+                    fail(answer.reason, 1)
+                where = (
+                    f"committed in {answer.commit[:7]} ({stamp(answer.committed_at)})"
+                    if answer.commit
+                    else "not committed"
+                )
+                console.print(
+                    f"[bold]{escape(answer.path)}:{answer.line}[/bold]  {escape(answer.content.strip())}"
+                )
+                console.print(f"{where} · {escape(answer.reason)}")
+                entries = answer.matches
+            else:
+                entries = why_path(store, r, target)
+                if not entries:
+                    fail(f"no recorded prompt changed {target}", 1)
+                console.print(
+                    f"[bold]{escape(entries[0].change.path)}[/bold]  {len(entries)} prompt(s), newest first"
+                )
+        for e in entries:
+            console.print(
+                f"\n{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  "
+                f"{e.effect} +{e.added}/−{e.removed}"
+            )
+            for row in preview(e.prompt_text).splitlines():
+                console.print(f"  [dim]> {escape(row)}[/dim]")
+            console.print(f"  {escape(e.explanation)}")
+
+    @cli.command()
+    def debrief(
+        session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
+        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
+        full: bool = typer.Option(
+            False, "--full", help="The whole reconstruction: every prompt, file and failure."
+        ),
+        as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
+        md: Path = typer.Option(None, "--md", help="Write the output as markdown to this file."),
+        explain: str = typer.Option(
+            None, "--explain", help="claude (one call per prompt) or none (default)."
+        ),
+    ) -> None:
+        """The short card (default) or, with --full, the whole reconstruction of the sessions."""
+        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain)
+
+    @cli.command()
+    def sessions() -> None:
+        """List recorded sessions."""
+        with loaded_store(root()) as store:
+            rows = store.sessions()
+            table = Table("session (prefix)", "source", "started", "ended", "prompts", "tool calls")
+            for s in rows:
+                table.add_row(
+                    s.id[:8],
+                    s.source,
+                    stamp(s.started_at),
+                    stamp(s.ended_at),
+                    str(len(store.prompts(s.id))),
+                    str(store.event_count(s.id)),
+                )
+        console.print(table)
 
     @cli.command()
     def init() -> None:
-        """Install Claude Code hooks for this repo and ignore .graphene/."""
+        """Install Claude Code hooks so this repo's sessions are recorded live (optional)."""
         r = root()
         try:
             added = install_hooks(r)
@@ -95,7 +243,10 @@ def build():
                 "Install it with `uv tool install graphene-debrief` (or `--editable .`)."
             )
 
-    ingest = typer.Typer(help="Record what the agent did.", invoke_without_command=True)
+    ingest = typer.Typer(
+        help="Record what the agent did (the hooks and --backfill do this for you).",
+        invoke_without_command=True,
+    )
     cli.add_typer(ingest, name="ingest")
 
     @ingest.callback()
@@ -134,102 +285,5 @@ def build():
         from .sources.claude_code import hook_main
 
         raise typer.Exit(hook_main())
-
-    @cli.command()
-    def sessions() -> None:
-        """List recorded sessions."""
-        with open_store(root()) as store:
-            rows = store.sessions()
-            table = Table("session (prefix)", "source", "started", "ended", "prompts", "tool calls")
-            for s in rows:
-                table.add_row(
-                    s.id[:8],
-                    s.source,
-                    stamp(s.started_at),
-                    stamp(s.ended_at),
-                    str(len(store.prompts(s.id))),
-                    str(store.event_count(s.id)),
-                )
-        if not rows:
-            console.print("no sessions recorded yet: run `graphene init`, or `graphene ingest --backfill`")
-        else:
-            console.print(table)
-
-    @cli.command()
-    def debrief(
-        session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
-        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
-        as_json: bool = typer.Option(False, "--json", help="Print the debrief structure as JSON."),
-        md: Path = typer.Option(None, "--md", help="Write the debrief as markdown to this file."),
-        full: bool = typer.Option(False, "--full", help="Show whole prompts instead of their first lines."),
-        explain: str = typer.Option(None, "--explain", help="claude or none (default: claude when on PATH)."),
-    ) -> None:
-        """What the agent did since the last debrief, grouped by what you asked for."""
-        r = root()
-        try:
-            explainer, notice = pick_explainer(explain)
-        except ValueError as exc:
-            fail(str(exc))
-        with open_store(r) as store:
-            try:
-                ids = select_sessions(store, session_id, since)
-            except ValueError as exc:
-                fail(str(exc))
-            if not ids and not store.sessions():
-                fail("no sessions recorded yet: run `graphene init`, or `graphene ingest --backfill`", 1)
-            if not ids:
-                fail(f"no session in that window; `graphene sessions` lists {len(store.sessions())}", 1)
-            if notice:
-                errors.print(f"[dim]{escape(notice)}[/dim]")
-            result = build_debrief(store, ids, r, explainer)
-            store.add_debrief_run(ids, now_iso())
-        markdown = render_markdown(result, full=full)
-        if md:
-            try:
-                md.parent.mkdir(parents=True, exist_ok=True)
-                md.write_text(markdown, encoding="utf-8")
-            except OSError as exc:
-                fail(f"cannot write {md}: {exc.strerror or exc}", 1)
-            errors.print(f"wrote {md}")
-        if as_json:
-            sys.stdout.write(to_json(result) + "\n")
-        elif not md:
-            console.print(Markdown(markdown))
-
-    @cli.command()
-    def why(target: str = typer.Argument(..., help="PATH, or PATH:LINE for one line.")) -> None:
-        """Which prompts changed a file, newest first; or which one wrote a given line."""
-        r = root()
-        path, _, line = target.rpartition(":")
-        with open_store(r) as store:
-            if path and line.isdigit():
-                answer = why_line(store, r, path, int(line))
-                if answer.content is None:
-                    fail(answer.reason, 1)
-                where = (
-                    f"committed in {answer.commit[:7]} ({stamp(answer.committed_at)})"
-                    if answer.commit
-                    else "not committed"
-                )
-                console.print(
-                    f"[bold]{escape(answer.path)}:{answer.line}[/bold]  {escape(answer.content.strip())}"
-                )
-                console.print(f"{where} · {escape(answer.reason)}")
-                entries = answer.matches
-            else:
-                entries = why_path(store, r, target)
-                if not entries:
-                    fail(f"no recorded prompt changed {target}", 1)
-                console.print(
-                    f"[bold]{escape(entries[0].change.path)}[/bold]  {len(entries)} prompt(s), newest first"
-                )
-        for e in entries:
-            console.print(
-                f"\n{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  "
-                f"{e.effect} +{e.added}/−{e.removed}"
-            )
-            for row in preview(e.prompt_text).splitlines():
-                console.print(f"  [dim]> {escape(row)}[/dim]")
-            console.print(f"  {escape(e.explanation)}")
 
     return cli

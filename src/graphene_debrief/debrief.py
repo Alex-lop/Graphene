@@ -55,6 +55,7 @@ class Debrief:
     unrequested: list[dict] = field(default_factory=list)
     reverted: list[dict] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)
+    failure_summary: dict = field(default_factory=dict)  # total, by_tool, denials
     reruns: list[dict] = field(default_factory=list)
     outside_repo: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -222,6 +223,14 @@ def build_debrief(
         debrief.outside_repo += [p for p in result.outside_repo if p not in debrief.outside_repo]
         debrief.commits += commits_between(root, session.started_at, end)
     debrief.files_changed = len(paths)
+    by_tool: dict[str, int] = {}
+    for f in debrief.failed:
+        by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
+    debrief.failure_summary = {
+        "total": len(debrief.failed),
+        "by_tool": dict(sorted(by_tool.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "denials": sum(1 for f in debrief.failed if f["denied"]),
+    }
     return debrief
 
 
@@ -266,13 +275,31 @@ def _failed(e: ToolEvent, ordinal: dict[str, int], sid: str) -> dict:
     summary = lines[0] if lines else ""
     if "Exit code" in summary and len(lines) > 1:
         summary += " · " + lines[1]
+    denied, reason = _denial(str(error) if error else "")
     return {
         "tool": e.tool,
         "what": what,
         "error": summary[:160],
+        "denied": denied,
+        "reason": reason,
         "session_id": sid,
         "prompt_ordinal": ordinal.get(e.prompt_id, 0),
     }
+
+
+_CLASSIFIER_REASON = re.compile(r"Reason: \[?([^\]\n.]+)")
+
+
+def _denial(error: str) -> tuple[bool, str]:
+    """Was this call refused before it ran (permission system, classifier, the user), and why?"""
+    if "denied by the Claude Code auto mode classifier" in error:
+        match = _CLASSIFIER_REASON.search(error)
+        return True, f"auto mode classifier: {match.group(1).strip() if match else 'unknown reason'}"
+    if "doesn't want to proceed" in error or "user declined" in error.lower():
+        return True, "rejected by the user"
+    if "permission" in error.lower() and "denied" in error.lower():
+        return True, "permission denied"
+    return False, ""
 
 
 def _dt(value: str) -> datetime:
@@ -367,29 +394,28 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
             flag = " **[unrequested]**" if f.unrequested else ""
             out.append(f"- `{f.path}` {what}{flag} — {f.explanation}")
         out.append("")
-    out += ["## Changes you didn't ask for", ""]
     if d.unrequested:
+        out += ["## Not what you asked for", ""]
         groups: dict[tuple[str, int, str], list[str]] = {}
         for u in d.unrequested:
             groups.setdefault((u["session_id"], u["prompt_ordinal"], u["prompt"]), []).append(u["path"])
         for (sid, ordinal, text), paths in groups.items():
             out.append(f'- under {where(ordinal, sid)} "{text}": ' + ", ".join(f"`{p}`" for p in paths))
-    else:
-        out.append("_None flagged._")
-    out += ["", "## Tried and abandoned", ""]
-    if not (d.reverted or d.failed or d.reruns):
-        out.append("_Nothing recorded._")
-    out += [f"- reverted: `{r['path']}` ({where(r['prompt_ordinal'], r['session_id'])})" for r in d.reverted]
-    out += [
-        f"- failed {f['tool']}: `{f['what']}` ({where(f['prompt_ordinal'], f['session_id'])}) — {f['error']}"
-        for f in d.failed
-    ]
-    for r in d.reruns:
-        outcome = "passed" if r["rerun_passed"] else "failed again"
-        out.append(
-            f"- check `{r['command']}` failed under {where(r['failed_under'], r['session_id'])}, "
-            f"rerun under {where(r['rerun_under'], r['session_id'])}: {outcome}"
-        )
+        out.append("")
+    if d.reverted or d.failed or d.reruns:
+        out += ["## Tried and abandoned", ""]
+        out += _abandoned_lines(d, where)
+        denials = [f for f in d.failed if f["denied"]]
+        groups: dict[tuple[str, str], int] = {}
+        for f in denials:
+            groups[(f["tool"], f["reason"])] = groups.get((f["tool"], f["reason"]), 0) + 1
+        for (tool, reason), count in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0])):
+            out.append(f"- {count} {tool} call{'s' if count != 1 else ''} refused before running ({reason})")
+        for f in d.failed:
+            if not f["denied"]:
+                place = where(f["prompt_ordinal"], f["session_id"])
+                out.append(f"- failed {f['tool']}: `{f['what']}` ({place}) — {f['error']}")
+        out.append("")
     if d.outside_repo:
         out += [
             "",
@@ -398,11 +424,106 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
         ]
     if d.notes:
         out += ["", *[f"_Note: {n}_" for n in d.notes]]
-    out += [
-        "",
-        "Run `graphene why <path>` for one file's history, or `graphene why <path>:<line>` for one line.",
-        "",
-    ]
+    out += ["", WHY_HINT, ""]
+    return "\n".join(out)
+
+
+WHY_HINT = (
+    "Ask `graphene why <path>` for who changed a file and why, or `graphene why <path>:<line>` for one line."
+)
+
+
+def _abandoned_lines(d: Debrief, where) -> list[str]:
+    """Real abandoned work: files put back to their session-start content, checks that failed then reran."""
+    out = [f"- reverted: `{r['path']}` ({where(r['prompt_ordinal'], r['session_id'])})" for r in d.reverted]
+    for r in d.reruns:
+        outcome = "passed" if r["rerun_passed"] else "failed again"
+        out.append(
+            f"- check `{r['command']}` failed under {where(r['failed_under'], r['session_id'])}, "
+            f"rerun under {where(r['rerun_under'], r['session_id'])}: {outcome}"
+        )
+    return out
+
+
+def file_rows(d: Debrief) -> list[dict]:
+    """One row per file with its net effect and summed counts over the covered sessions."""
+    rows: dict[str, dict] = {}
+    for block in d.prompts:
+        for f in block.files:
+            row = rows.setdefault(f.path, {"path": f.path, "effects": [], "added": 0, "removed": 0})
+            row["effects"].append(f.effect)
+            row["added"] += f.added
+            row["removed"] += f.removed
+    reverted = {r["path"] for r in d.reverted}
+    out = []
+    for row in rows.values():
+        effects = row["effects"]
+        if row["path"] in reverted or all(e == "reverted" for e in effects):
+            effect = "reverted"
+        elif effects[-1] == "deleted":
+            effect = "deleted"
+        elif "created" in effects:
+            effect = "created"
+        else:
+            effect = "modified"
+        out.append({"path": row["path"], "effect": effect, "added": row["added"], "removed": row["removed"]})
+    return sorted(out, key=lambda r: (-(r["added"] + r["removed"]), r["path"]))
+
+
+def render_card(d: Debrief, limit: int = 30) -> str:
+    """The short come-back view: numbers, commits, a capped net file list, and only the sections
+    that have something real in them."""
+    many = len(d.sessions) > 1
+
+    def where(ordinal: int, session_id: str) -> str:
+        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
+
+    out: list[str] = ["# Graphene", ""]
+    if d.sessions:
+        span = f"{stamp(d.sessions[0]['started_at'])} → {stamp(d.sessions[-1]['ended_at'])}"
+        head = (
+            f"**Sessions {len(d.sessions)}** ({', '.join(s['id'][:8] for s in d.sessions)})"
+            if many
+            else f"**Session {d.sessions[0]['id'][:8]}**"
+        )
+        prompts = f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''}"
+        files = f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} (+{d.added}/−{d.removed})"
+        out.append(f"{head} · {span} · {duration(d.wall_seconds)} · {prompts} · {files}  ")
+    noun = "sessions" if many else "session"
+    out.append(f"**Commits during the {noun}:** {len(d.commits) or 'none'}")
+    out += [f"- {c}" for c in d.commits]
+    rows = file_rows(d)
+    if rows:
+        out += ["", "**Files changed**"]
+        for row in rows[:limit]:
+            counts = "" if row["effect"] == "reverted" else f" +{row['added']}/−{row['removed']}"
+            out.append(f"- `{row['path']}` {row['effect']}{counts}")
+        if len(rows) > limit:
+            out.append(f"- … {len(rows) - limit} more; `graphene why <path>` for any of them")
+    if d.unrequested:
+        out += ["", "**Not what you asked for**"]
+        for u in d.unrequested:
+            out.append(f'- `{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"')
+    abandoned = _abandoned_lines(d, where)
+    total = d.failure_summary.get("total", 0)
+    if total:
+        by_tool = ", ".join(f"{n} {tool}" for tool, n in d.failure_summary.get("by_tool", {}).items())
+        denials = d.failure_summary.get("denials", 0)
+        refused = f"; {denials} refused before running" if denials else ""
+        abandoned.append(
+            f"- {total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused}); "
+            "`graphene debrief --full` lists them"
+        )
+    if abandoned:
+        out += ["", "**Abandoned**", *abandoned]
+    if d.outside_repo:
+        out += [
+            "",
+            "**Written outside the repo:** " + ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo)),
+        ]
+    if d.notes:
+        out += ["", *[f"_Note: {n}_" for n in d.notes]]
+    out += ["", WHY_HINT, ""]
     return "\n".join(out)
 
 

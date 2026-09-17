@@ -189,15 +189,16 @@ def test_parse_reply_salvages_pairs_from_slightly_broken_json():
 
 def test_pick_explainer(monkeypatch):
     assert pick_explainer("none")[0].name == "none"
-    assert pick_explainer("claude")[0].name == "claude"
+    assert pick_explainer(None)[0].name == "none" and pick_explainer(None)[1] is None
     with pytest.raises(ValueError):
         pick_explainer("gpt")
-    monkeypatch.setattr("graphene_debrief.explain.shutil.which", lambda _: None)
-    explainer, notice = pick_explainer(None)
-    assert (explainer.name, notice) == ("none", None)
     monkeypatch.setattr("graphene_debrief.explain.shutil.which", lambda _: "/usr/bin/claude")
-    explainer, notice = pick_explainer(None)
-    assert explainer.name == "claude" and "claude" in notice
+    assert pick_explainer(None)[0].name == "none"  # claude on PATH changes nothing unless asked for
+    explainer, notice = pick_explainer("claude")
+    assert (explainer.name, notice) == ("claude", None)
+    monkeypatch.setattr("graphene_debrief.explain.shutil.which", lambda _: None)
+    explainer, notice = pick_explainer("claude")
+    assert explainer.name == "none" and "not on PATH" in notice
 
 
 class CountingExplainer:
