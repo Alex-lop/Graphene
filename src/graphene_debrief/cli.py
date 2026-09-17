@@ -42,7 +42,12 @@ def build():
     errors = Console(stderr=True)
 
     def root() -> Path:
-        return repo_root(Path.cwd())
+        r = repo_root(Path.cwd())
+        if not (r / ".git").exists():
+            fail("run this inside a git repository (no .git found above the current directory)")
+        if r == Path.home():
+            fail("refusing to treat your home directory as a repo")
+        return r
 
     def fail(message: str, code: int = 2) -> None:
         errors.print(f"[red]{escape(message)}[/red]")
@@ -109,6 +114,8 @@ def build():
         )
         for sid in report.added + report.refreshed:
             console.print(f"  {sid}")
+        for path, error in report.failed:
+            console.print(f"[yellow]could not read {path}: {error}[/yellow]")
         if report.skipped_records:
             kinds = ", ".join(f"{k} {v}" for k, v in sorted(report.skipped_records.items()))
             console.print(f"skipped record types: {kinds}")

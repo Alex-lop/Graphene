@@ -115,3 +115,11 @@ def test_debrief_runs_are_recorded_so_the_next_one_is_incremental(repo, transcri
     assert [s["id"] for s in first["sessions"]] == [fixture.SID]
     again = json.loads(run("debrief", "--json", "--explain", "none").output)
     assert [s["id"] for s in again["sessions"]] == [fixture.SID]  # nothing newer: falls back to the latest
+
+
+def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = run("init")
+    assert result.exit_code == 2
+    assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
+    assert run("sessions").exit_code == 2

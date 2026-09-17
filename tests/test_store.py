@@ -85,3 +85,14 @@ def test_delete_session_data_keeps_explanations(tmp_path):
         assert store.prompts("s") == []
         assert store.events("s") == []
         assert store.explanation("p1", "a.py") == ("text", "null")
+
+
+def test_ids_are_scoped_to_their_session(tmp_path):
+    with Store.open(tmp_path) as store:
+        for sid in ("a", "b"):
+            store.add_prompt(Prompt("p1", sid, 1, "t", f"{sid} prompt"))
+            store.add_event(ToolEvent("e1", sid, "p1", "t", "Bash", {}))
+        assert store.prompt("a", "p1").text == "a prompt"
+        assert store.prompt("b", "p1").text == "b prompt"
+        assert store.prompt("a", "nope") is None
+        assert len(store.events("a")) == 1 and len(store.events("b")) == 1

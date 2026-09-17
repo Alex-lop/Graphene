@@ -108,7 +108,8 @@ def attach_file_content(event: ToolEvent, root: Path) -> None:
     resp = event.response if isinstance(event.response, dict) else {}
     tin = event.input
     if event.tool == "Write":
-        event.old_content = resp.get("originalFile")
+        original = resp.get("originalFile")
+        event.old_content = original if isinstance(original, str) else None
         content = resp.get("content", tin.get("content"))
         event.new_content = content if isinstance(content, str) else None
     elif event.tool == "Edit" and isinstance(resp.get("originalFile"), str):
@@ -191,7 +192,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         }
     )
     prompt_id = event.get("prompt_id")
-    if not isinstance(prompt_id, str) or store.prompt(prompt_id) is None:
+    if not isinstance(prompt_id, str) or store.prompt(sid, prompt_id) is None:
         prompt_id = store.latest_prompt_id(sid)
     ev = ToolEvent(
         id=str(event.get("tool_use_id") or uuid.uuid4()),
@@ -242,10 +243,14 @@ def install_hooks(root: Path) -> list[str]:
     if not isinstance(settings, dict):
         raise ValueError(f"{path} is not a JSON object")
     hooks = settings.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError(f"{path}: 'hooks' is not an object")
     added: list[str] = []
     for event in HOOK_EVENTS:
         groups = hooks.setdefault(event, [])
-        if any(h.get("command") == HOOK_COMMAND for g in groups for h in g.get("hooks", [])):
+        if not isinstance(groups, list):
+            raise ValueError(f"{path}: hooks.{event} is not a list")
+        if any(_is_ours(h) for g in groups if isinstance(g, dict) for h in _handlers(g)):
             continue
         groups.append({"hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]})
         added.append(event)
@@ -253,6 +258,15 @@ def install_hooks(root: Path) -> list[str]:
         path.parent.mkdir(exist_ok=True)
         path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
     return added
+
+
+def _handlers(group: dict) -> list:
+    handlers = group.get("hooks")
+    return handlers if isinstance(handlers, list) else []
+
+
+def _is_ours(handler: object) -> bool:
+    return isinstance(handler, dict) and handler.get("command") == HOOK_COMMAND
 
 
 def ignore_store_dir(root: Path) -> bool:
@@ -309,13 +323,26 @@ def transcript_cwd(path: Path) -> str | None:
     return None
 
 
+_INJECTED = re.compile(r"<system-reminder>[\s\S]*?</system-reminder>")
+
+
+def _human_text(block: str) -> str:
+    """A text block minus injected context; empty when the block is not the user's own words."""
+    text = _INJECTED.sub("", block).strip()
+    return "" if text.startswith(_NOT_A_PROMPT) else text
+
+
 def _text_of(content: object) -> str | None:
+    """The user's text in a message, or None when the message is a tool result or carries none."""
     if isinstance(content, str):
-        return content
+        return _human_text(content) or None
     if isinstance(content, list):
         if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
             return None
-        parts = [b["text"] for b in content if isinstance(b, dict) and isinstance(b.get("text"), str)]
+        parts = [
+            _human_text(b["text"]) for b in content if isinstance(b, dict) and isinstance(b.get("text"), str)
+        ]
+        parts = [part for part in parts if part]
         return "\n".join(parts) if parts else None
     return None
 
@@ -331,10 +358,9 @@ def _result_text(content: object) -> str:
 def is_prompt(record: dict) -> bool:
     if record.get("type") != "user" or record.get("isMeta") or record.get("isSidechain"):
         return False
-    if record.get("isCompactSummary"):
+    if record.get("isCompactSummary") or not isinstance(record.get("message"), dict):
         return False
-    text = _text_of((record.get("message") or {}).get("content"))
-    return bool(text and text.strip()) and not text.lstrip().startswith(_NOT_A_PROMPT)
+    return bool(_text_of(record["message"].get("content")))
 
 
 def _prompt_before(prompts: list[Prompt], timestamp: str) -> str | None:
@@ -376,11 +402,13 @@ def parse_transcript(path: Path, root: Path) -> ParsedSession:
     for record in main + subs:
         kind = record.get("type")
         if kind == "assistant":
-            for block in (record.get("message") or {}).get("content") or []:
+            message = record.get("message")
+            for block in (message.get("content") if isinstance(message, dict) else None) or []:
                 if (
                     isinstance(block, dict)
                     and block.get("type") == "tool_use"
                     and isinstance(block.get("id"), str)
+                    and block["id"] not in calls
                 ):
                     calls[block["id"]] = ToolEvent(
                         id=block["id"],
@@ -394,7 +422,8 @@ def parse_transcript(path: Path, root: Path) -> ParsedSession:
                         agent_id=record.get("agentId"),
                     )
         elif kind == "user":
-            content = (record.get("message") or {}).get("content")
+            message = record.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
             if not isinstance(content, list):
                 continue
             for block in content:
@@ -434,6 +463,7 @@ class BackfillReport:
     refreshed: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     other_repo: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (transcript path, error)
     skipped_records: Counter = field(default_factory=Counter)
 
 
@@ -452,34 +482,41 @@ def backfill(
     """
     report = BackfillReport()
     for path in transcripts if transcripts is not None else transcripts_for(root, projects):
-        cwd = transcript_cwd(path)
-        if cwd is None or not is_within(cwd, root):
-            report.other_repo.append(path.stem)
-            continue
-        session_id = path.stem
-        existing = store.session(session_id)
-        parsed = None
-        if existing is not None:
-            if existing.source != "backfill" and not replace:
-                report.skipped.append(session_id)
-                continue
-            parsed = parse_transcript(path, root)
-            if not replace and (parsed.session.ended_at or "") <= (existing.ended_at or ""):
-                report.skipped.append(session_id)
-                continue
-            store.delete_session_data(session_id)
-            parsed.session.head_at_start = existing.head_at_start
-            parsed.session.source = existing.source
-            starts = [t for t in (existing.started_at, parsed.session.started_at) if t]
-            parsed.session.started_at = min(starts) if starts else None
-            report.refreshed.append(session_id)
-        else:
-            report.added.append(session_id)
-        parsed = parsed or parse_transcript(path, root)
-        store.upsert_session(parsed.session)
-        for prompt in parsed.prompts:
-            store.add_prompt(prompt)
-        for event in parsed.events:
-            store.add_event(event)
-        report.skipped_records.update(parsed.skipped)
+        try:
+            _backfill_one(store, root, path, replace, report)
+        except Exception as exc:  # one unreadable transcript must not stop the others
+            report.failed.append((str(path), f"{exc.__class__.__name__}: {exc}"))
     return report
+
+
+def _backfill_one(store: Store, root: Path, path: Path, replace: bool, report: BackfillReport) -> None:
+    cwd = transcript_cwd(path)
+    if cwd is None or not is_within(cwd, root):
+        report.other_repo.append(path.stem)
+        return
+    session_id = path.stem
+    existing = store.session(session_id)
+    parsed = None
+    if existing is not None:
+        if existing.source != "backfill" and not replace:
+            report.skipped.append(session_id)
+            return
+        parsed = parse_transcript(path, root)
+        if not replace and (parsed.session.ended_at or "") <= (existing.ended_at or ""):
+            report.skipped.append(session_id)
+            return
+        store.delete_session_data(session_id)
+        parsed.session.head_at_start = existing.head_at_start
+        parsed.session.source = existing.source
+        starts = [t for t in (existing.started_at, parsed.session.started_at) if t]
+        parsed.session.started_at = min(starts) if starts else None
+        report.refreshed.append(session_id)
+    else:
+        report.added.append(session_id)
+    parsed = parsed or parse_transcript(path, root)
+    store.upsert_session(parsed.session)
+    for prompt in parsed.prompts:
+        store.add_prompt(prompt)
+    for event in parsed.events:
+        store.add_event(event)
+    report.skipped_records.update(parsed.skipped)

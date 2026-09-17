@@ -311,3 +311,41 @@ def test_git_fallback_skips_paths_that_never_existed_or_are_directories(git_repo
     result = attribute_session(session, [p1], events, git_repo, GitState(git_repo))
     assert result.changes == []
     assert result.outside_repo == ["/tmp/elsewhere-build"]
+
+
+def test_shell_write_after_payload_edits_keeps_the_earlier_diffs(git_repo):
+    head = git("rev-parse", "HEAD", cwd=git_repo).strip()
+    session = Session(id="s", repo=str(git_repo), started_at=T % 0, head_at_start=head)
+    p1, p2, p3 = (
+        prompt("p1", "create calc.py", 1),
+        prompt("p2", "edit calc.py", 2),
+        prompt("p3", "sed calc.py", 3),
+    )
+    v1, v2, v3 = "a\n", "a\nb\n", "a\nB\n"
+    (git_repo / "calc.py").write_text(v3)  # what the sed left on disk
+    events = [
+        write("w", "p1", "calc.py", v1, 11),
+        edit("e", "p2", "calc.py", v1, v2, 21),
+        bash("b", "p3", "sed -i '' 's/b/B/' calc.py", 31),
+    ]
+    result = attribute_session(session, [p1, p2, p3], events, git_repo, GitState(git_repo))
+    by = {c.prompt_id: c for c in result.changes}
+    assert (by["p1"].effect, by["p1"].added, by["p1"].strategy) == ("created", 1, "payload")
+    assert (by["p2"].added, by["p2"].removed, by["p2"].strategy) == (1, 0, "payload")
+    assert (by["p3"].added, by["p3"].removed, by["p3"].strategy) == (1, 1, "git")
+    assert by["p3"].hunks[0].lines == [" a", "-b", "+B"]
+
+
+def test_shell_write_between_two_edits_is_bridged_by_the_next_original_file(session, tmp_path):
+    p1, p2, p3 = prompt("p1", "write f.txt", 1), prompt("p2", "sed f.txt", 2), prompt("p3", "edit f.txt", 3)
+    events = [
+        write("w", "p1", "f.txt", "one\n", 11),
+        bash("b", "p2", "sed -i '' 's/one/two/' f.txt", 21),
+        edit("e", "p3", "f.txt", "two\n", "three\n", 31),
+    ]
+    result = run(session, [p1, p2, p3], events, tmp_path)
+    by = {c.prompt_id: c for c in result.changes}
+    assert (by["p2"].strategy, by["p2"].added, by["p2"].removed) == ("bridged", 1, 1)
+    assert by["p2"].hunks[0].lines == ["-one", "+two"]
+    assert by["p1"].strategy == "payload" and by["p3"].strategy == "payload"
+    assert result.reverted == []

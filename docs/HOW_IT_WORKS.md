@@ -56,7 +56,9 @@ the session. Subagent calls carry `agent_id` and are grouped the same way.
 
 A backfilled session is reloaded when its transcript has grown. A session the hooks recorded is
 left alone unless you pass `--replace`, which rebuilds its prompts and calls from the transcript
-and keeps the HEAD the hook captured.
+and keeps the HEAD the hook captured. A transcript that cannot be read is reported and skipped;
+the others still load. Injected context blocks (`<system-reminder>…</system-reminder>`) are
+stripped from prompt text, and a message that consists only of them is not a prompt.
 
 ## 2. File content: what is known and what is not
 
@@ -89,12 +91,18 @@ script) makes the next call's `originalFile` differ from the previous call's res
 that prompt then includes the outside change. Across 19 consecutive edits checked on real
 transcripts, 17 chained exactly and 2 had such interference.
 
-**Git strategy** (used when any call on the file lacks content): the diff is `git show
-<HEAD at session start>:<path>` against the working tree now, credited in full to the last prompt
-that touched the file; earlier prompts that touched it are listed with no hunks. Failure modes:
-for backfilled sessions the base is the current HEAD, so commits made during the session hide
-their changes from the diff; changes made after the session are blamed on it; if the file was
-touched by several prompts, only the last one gets the diff.
+**Bridged strategy** (a shell write between two payload calls): whatever a shell command left
+in the file is exactly what the next `Edit` or `Write` reports as `originalFile`, so the
+shell-writing prompt gets the diff between the previous payload's result and that `originalFile`.
+No git involved, and the payload diffs of the other prompts are untouched.
+
+**Git strategy** (a shell write at the start or the end of the file's history in the session):
+the missing boundary comes from `git show <HEAD at session start>:<path>` at the start, or from
+the working tree now at the end. Several consecutive prompts writing a file through shell
+commands with no payload in between form one span credited to the last of them; the earlier ones
+are listed with no hunks. Failure modes: for backfilled sessions the base is the current HEAD, so
+commits made during the session hide their changes from the diff; changes made after the session
+by anything else are blamed on its last prompt.
 
 **No strategy**: without git, the file is listed with its effect and no hunks.
 
@@ -149,6 +157,10 @@ then looks for prompts whose recorded diff added a line with the same text. If t
 committed, prompts that ran after the commit are excluded. One match is reported as the answer;
 several are listed newest first; none is explained: committed before any recorded session, or
 changed by something Graphene did not see.
+
+All commands except the hook refuse to run outside a git repository, and never treat your home
+directory as one, so `~/.claude/settings.json` (Claude Code's user-level settings) is never
+written.
 
 ## 8. What Graphene never does
 

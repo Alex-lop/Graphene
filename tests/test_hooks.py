@@ -307,3 +307,31 @@ def test_store_dir_is_private_and_ignored_on_any_open(repo):
     Store.open(repo).close()
     assert ".graphene/" in (repo / ".gitignore").read_text()
     assert oct(os.stat(repo / ".graphene").st_mode & 0o777) == "0o700"
+
+
+def test_install_hooks_rejects_odd_shapes_without_clobbering(repo):
+    settings = repo / ".claude" / "settings.json"
+    settings.parent.mkdir()
+    for shape in ('{"hooks": null}', '{"hooks": []}', '{"hooks": {"PostToolUse": "junk"}}'):
+        settings.write_text(shape)
+        with pytest.raises(ValueError):
+            install_hooks(repo)
+        assert settings.read_text() == shape
+    settings.write_text('{"hooks": {"PostToolUse": ["junk", {"hooks": "junk"}]}}')
+    assert "PostToolUse" in install_hooks(repo)  # junk entries are left alone and ours is appended
+    assert json.loads(settings.read_text())["hooks"]["PostToolUse"][:2] == ["junk", {"hooks": "junk"}]
+
+
+def test_write_response_with_an_odd_original_file_is_still_recorded(repo):
+    ev = event(
+        "PostToolUse",
+        repo,
+        tool_name="Write",
+        tool_use_id="w1",
+        tool_input={"file_path": str(repo / "a.txt"), "content": "x"},
+        tool_response={"type": "update", "originalFile": {"a": 1}, "content": "x"},
+    )
+    with Store.open(repo) as store:
+        ingest_hook_event(store, ev, repo, T0)
+        (stored,) = store.events("sess-1")
+    assert (stored.old_content, stored.new_content) == (None, "x")

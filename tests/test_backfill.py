@@ -294,3 +294,68 @@ def test_prompt_detection_rules():
     assert not is_prompt(user([{"type": "tool_result", "tool_use_id": "t", "content": "x"}]))
     assert not is_prompt(user("   "))
     assert not is_prompt({"type": "assistant", "message": {"content": "x"}})
+
+
+def test_prompt_with_injected_reminder_keeps_only_the_human_text(tmp_path):
+    path = tmp_path / "abc.jsonl"
+    records = [
+        {
+            "type": "user",
+            "cwd": str(ROOT),
+            "timestamp": "2026-01-01T00:00:00.000Z",
+            "promptId": "p1",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "<system-reminder>\nThe git status is clean.\n</system-reminder>",
+                    },
+                    {"type": "text", "text": "Add a greet function to app/hello.py"},
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "cwd": str(ROOT),
+            "timestamp": "2026-01-01T00:01:00.000Z",
+            "promptId": "p2",
+            "message": {
+                "role": "user",
+                "content": "fix the test\n\n<system-reminder>context</system-reminder>",
+            },
+        },
+        {
+            "type": "user",
+            "cwd": str(ROOT),
+            "timestamp": "2026-01-01T00:02:00.000Z",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "<system-reminder>noise</system-reminder>"}],
+            },
+        },
+        {"type": "user", "cwd": str(ROOT), "timestamp": "2026-01-01T00:03:00.000Z", "message": "not a dict"},
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    parsed = parse_transcript(path, ROOT)
+    assert [p.text for p in parsed.prompts] == ["Add a greet function to app/hello.py", "fix the test"]
+
+
+def test_one_unreadable_transcript_does_not_stop_the_others(tmp_path, projects):
+    bad = projects / project_dir_name(ROOT) / "0000-bad.jsonl"
+    bad.mkdir()  # a directory where a file should be, so open() fails
+    with Store.open(tmp_path) as store:
+        report = backfill(store, ROOT, projects=projects)
+    assert report.added == [SID]
+    assert [p for p, _ in report.failed] == [str(bad)]
+    assert "IsADirectoryError" in report.failed[0][1]
+
+
+def test_forked_transcript_with_the_same_ids_keeps_both_sessions(tmp_path, projects):
+    d = projects / project_dir_name(ROOT)
+    shutil.copy(d / f"{SID}.jsonl", d / "22222222-fork.jsonl")  # same prompt and tool ids, new session
+    with Store.open(tmp_path) as store:
+        report = backfill(store, ROOT, projects=projects)
+        assert sorted(report.added) == sorted([SID, "22222222-fork"])
+        assert len(store.events(SID)) == 12 and len(store.events("22222222-fork")) == 11
+        assert len(store.prompts(SID)) == 3 and len(store.prompts("22222222-fork")) == 3

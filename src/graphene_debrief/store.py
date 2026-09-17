@@ -23,15 +23,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   transcript_path TEXT
 );
 CREATE TABLE IF NOT EXISTS prompts (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   ordinal INTEGER NOT NULL,
   timestamp TEXT NOT NULL,
   text TEXT NOT NULL,
+  PRIMARY KEY (session_id, id),
   UNIQUE (session_id, ordinal)
 );
 CREATE TABLE IF NOT EXISTS tool_events (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   prompt_id TEXT,
   timestamp TEXT NOT NULL,
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS tool_events (
   agent_id TEXT,
   file_path TEXT,
   old_content TEXT,
-  new_content TEXT
+  new_content TEXT,
+  PRIMARY KEY (session_id, id)
 );
 CREATE INDEX IF NOT EXISTS tool_events_by_session ON tool_events (session_id, timestamp);
 CREATE INDEX IF NOT EXISTS tool_events_by_path ON tool_events (file_path);
@@ -97,8 +99,8 @@ def capped_json(value: object, cap: int = RESPONSE_CAP) -> str | None:
     return json.dumps({"truncated": True, "bytes": len(text)})
 
 
-def _content(text: str | None) -> str | None:
-    return None if text is None or len(text) > CONTENT_CAP else text
+def _content(text: object) -> str | None:
+    return text if isinstance(text, str) and len(text) <= CONTENT_CAP else None
 
 
 class Store:
@@ -186,8 +188,10 @@ class Store:
         ).fetchall()
         return [_prompt(r) for r in rows]
 
-    def prompt(self, prompt_id: str) -> Prompt | None:
-        row = self.conn.execute("SELECT * FROM prompts WHERE id = ?", (prompt_id,)).fetchone()
+    def prompt(self, session_id: str, prompt_id: str) -> Prompt | None:
+        row = self.conn.execute(
+            "SELECT * FROM prompts WHERE session_id = ? AND id = ?", (session_id, prompt_id)
+        ).fetchone()
         return _prompt(row) if row else None
 
     def latest_prompt_id(self, session_id: str) -> str | None:

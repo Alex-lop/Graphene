@@ -346,45 +346,98 @@ def attribute_session(
         per_path.setdefault(touch.path, []).append(touch)
 
     for path, timeline in per_path.items():
-        touched_prompts: list[str] = []
-        for t in timeline:
-            pid = t.event.prompt_id or ""
-            if pid not in touched_prompts:
-                touched_prompts.append(pid)
-        touched_prompts.sort(key=lambda pid: order.get(pid, 0))
-        if all(t.known for t in timeline):
-            start, final = timeline[0].old, timeline[-1].new
-            for pid in touched_prompts:
-                mine = [t for t in timeline if (t.event.prompt_id or "") == pid]
-                result.changes.append(
-                    _change(path, session.id, pid, mine[0].old, mine[-1].new, by_prompt, "payload")
-                )
-            if start == final and any(t.old != t.new for t in timeline):
-                result.reverted.append(FileChange(path, session.id, touched_prompts[-1], "reverted"))
-            continue
-        # git fallback: whole-session diff, credited to the last prompt that touched the file
         if (root / path).is_dir():
             continue
-        base = session.head_at_start or git.head()
-        before = git.show(base, path) if base else None
-        after = None if timeline[-1].deleted else _working_copy(root, path)
-        strategy = "git" if git.available and base else "none"
-        if before is None and after is None and (strategy == "git" or timeline[-1].deleted):
-            continue  # nothing at the session start and nothing now: a glob, temp file, or unseen path
-        last = touched_prompts[-1]
-        for pid in touched_prompts[:-1]:
-            result.changes.append(_placeholder(path, session.id, pid, by_prompt, strategy))
-        if strategy == "git":
-            result.changes.append(_change(path, session.id, last, before, after, by_prompt, "git"))
-            if before is not None and before == after:
-                result.reverted.append(FileChange(path, session.id, last, "reverted", strategy="git"))
-        else:
-            result.changes.append(_placeholder(path, session.id, last, by_prompt, strategy))
+        result.changes.extend(_file_changes(path, timeline, session, root, git, by_prompt, result.reverted))
 
     result.failed = [e for e in events if e.success is False]
     result.reruns = _reruns(events)
     result.changes.sort(key=lambda c: (order.get(c.prompt_id, 0), c.path))
     return result
+
+
+# A file's content at some point is either known (a str, or None when the file does not exist)
+# or unknown. Known values come from tool payloads, from a delete, from the next payload's
+# originalFile (which reveals what a shell command left behind), and as a last resort from git
+# (session start) or the working tree (session end).
+_Content = tuple[bool, str | None]  # (known, content)
+_UNKNOWN: _Content = (False, None)
+
+
+def _file_changes(
+    path: str,
+    timeline: list[Touch],
+    session: Session,
+    root: Path,
+    git: GitState,
+    by_prompt: dict[str, Prompt],
+    reverted: list[FileChange],
+) -> list[FileChange]:
+    groups: list[list[Touch]] = []
+    for touch in timeline:  # consecutive touches by the same prompt form one group
+        if groups and (groups[-1][0].event.prompt_id or "") == (touch.event.prompt_id or ""):
+            groups[-1].append(touch)
+        else:
+            groups.append([touch])
+    before: list[_Content] = []
+    after: list[_Content] = []
+    carried: _Content = _UNKNOWN
+    for group in groups:
+        first, last = group[0], group[-1]
+        before.append((True, first.old) if first.known else carried)
+        if last.known:
+            after.append((True, last.new))
+        elif last.deleted:
+            after.append((True, None))
+        else:
+            after.append(_UNKNOWN)
+        carried = after[-1]
+    used_git = False
+    for i in range(len(groups) - 1, -1, -1):  # a shell write is revealed by the next payload's originalFile
+        if after[i][0]:
+            continue
+        if i + 1 < len(groups) and groups[i + 1][0].known:
+            after[i] = (True, groups[i + 1][0].old)
+        elif i == len(groups) - 1:
+            after[i] = (True, _working_copy(root, path))
+            used_git = True
+    if not before[0][0]:
+        base = session.head_at_start or git.head()
+        if git.available and base:
+            before[0] = (True, git.show(base, path))
+            used_git = True
+    for i in range(1, len(groups)):
+        if not before[i][0] and after[i - 1][0]:
+            before[i] = after[i - 1]
+
+    out: list[FileChange] = []
+    run_start: _Content | None = None  # known content where the current unresolved run began
+    pending: list[int] = []  # groups in that run still waiting for a known boundary
+    for i, group in enumerate(groups):
+        pid = group[0].event.prompt_id or ""
+        b, a = before[i], after[i]
+        if run_start is None and b[0]:
+            run_start = b
+        if run_start is None or not a[0]:
+            pending.append(i)  # unresolved; a later known boundary may close the run
+            continue
+        for j in pending:  # the run's diff is credited to its last prompt; earlier ones get no hunks
+            out.append(_placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "git"))
+        if run_start[1] is not None or a[1] is not None:
+            if all(t.known for t in group) and not pending:
+                strategy = "payload"
+            else:
+                strategy = "git" if used_git else "bridged"
+            out.append(_change(path, session.id, pid, run_start[1], a[1], by_prompt, strategy))
+        pending, run_start = [], None
+    for j in pending:  # never resolved: without git there is nothing to show but the fact of a touch
+        if not all(t.deleted for t in groups[j]):
+            out.append(_placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "none"))
+    start, final = before[0], after[-1]
+    touched = any(t.known and t.old != t.new or not t.known for t in timeline)
+    if start[0] and final[0] and start[1] == final[1] and touched:
+        reverted.append(FileChange(path, session.id, groups[-1][0].event.prompt_id or "", "reverted"))
+    return out
 
 
 def _placeholder(
