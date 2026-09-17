@@ -188,7 +188,7 @@ def build():
                 console.print(f"  [dim]> {escape(row)}[/dim]")
             console.print(f"  {escape(e.explanation)}")
 
-    @cli.command()
+    @cli.command(rich_help_panel="Advanced")
     def debrief(
         session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
         since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
@@ -201,10 +201,13 @@ def build():
             None, "--explain", help="claude (one call per prompt) or none (default)."
         ),
     ) -> None:
-        """The short card (default) or, with --full, the whole reconstruction of the sessions."""
+        """Verbose: with --full, the whole reconstruction (every prompt, file and failure).
+
+        Not the come-back view; that is plain `graphene`. Without --full it prints the same card.
+        """
         show(session_id, since, as_json=as_json, md=md, full=full, explain=explain)
 
-    @cli.command()
+    @cli.command(rich_help_panel="Advanced")
     def sessions() -> None:
         """List recorded sessions."""
         with loaded_store(root()) as store:
@@ -247,7 +250,7 @@ def build():
         help="Record what the agent did (the hooks and --backfill do this for you).",
         invoke_without_command=True,
     )
-    cli.add_typer(ingest, name="ingest")
+    cli.add_typer(ingest, name="ingest", rich_help_panel="Advanced")
 
     @ingest.callback()
     def ingest_main(

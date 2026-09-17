@@ -18,8 +18,8 @@ from graphene_debrief.debrief import (
 from graphene_debrief.model import Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
-GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"
-CARD_GOLDEN = Path(__file__).parent / "fixtures" / "card_golden.md"
+GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the short default render
+FULL_GOLDEN = Path(__file__).parent / "fixtures" / "debrief_full_golden.md"  # `debrief --full`
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 HELLO_V1 = 'def greet(name):\n    return f"hi {name}"\n'
 HELLO_V2 = 'def greet(name):\n    return f"hello {name}"\n'
@@ -140,19 +140,30 @@ def store(tmp_path):
         yield s
 
 
-def test_golden_markdown(store, tmp_path):
+REGENERATE = "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
+
+
+def test_golden_default_render(store, tmp_path):
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    rendered = render_card(debrief)
+    assert rendered == GOLDEN.read_text(), REGENERATE
+    assert (
+        "unrequested" not in rendered and "Not what you asked for" not in rendered
+    )  # the test twin is in scope
+    assert (
+        "failed Bash:" not in rendered and "cat missing.txt" not in rendered
+    )  # failures are one summary line
+    assert "- 2 tool failures (2 Bash); `graphene debrief --full` lists them" in rendered
+    assert "- reverted: `README.md` (prompt 3)" in rendered
+    assert "- check `uv run pytest -q` failed under prompt 1, rerun under prompt 1: passed" in rendered
+    assert len(rendered.splitlines()) < 25
+
+
+def test_golden_full_render(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     rendered = render_markdown(debrief)
-    assert rendered == GOLDEN.read_text(), (
-        "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
-    )
-
-
-def test_golden_card(store, tmp_path):
-    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    assert render_card(debrief) == CARD_GOLDEN.read_text(), (
-        "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
-    )
+    assert rendered == FULL_GOLDEN.read_text(), REGENERATE
+    assert "- failed Bash: `cat missing.txt` (prompt 3)" in rendered  # --full still lists real failures
 
 
 def denial(eid, pid, when, tool="Bash", reason="Irreversible Local Destruction"):
@@ -324,9 +335,9 @@ if __name__ == "__main__":  # regenerate the golden file after a deliberate rend
     with Store.open(Path(tempfile.mkdtemp())) as s:
         seed_golden(s)
         debrief = build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW)
-        GOLDEN.write_text(render_markdown(debrief))
-        CARD_GOLDEN.write_text(render_card(debrief))
-    print(f"wrote {GOLDEN} and {CARD_GOLDEN}")
+        GOLDEN.write_text(render_card(debrief))
+        FULL_GOLDEN.write_text(render_markdown(debrief))
+    print(f"wrote {GOLDEN} and {FULL_GOLDEN}")
 
 
 def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):

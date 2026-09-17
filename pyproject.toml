@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "graphene-debrief"
 version = "0.1.0"
-description = "Tells you what your coding agent did, and why, grouped by what you asked for."
+description = "Ask why your coding agent changed a file or a line, across Claude Code sessions."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"
