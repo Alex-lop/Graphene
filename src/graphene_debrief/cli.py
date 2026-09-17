@@ -16,15 +16,21 @@ def app() -> None:
 
 
 def build():
+    import shutil
     from pathlib import Path
 
     import typer
     from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.markup import escape
     from rich.table import Table
 
     from . import __version__
-    from .sources.claude_code import backfill, ignore_store_dir, install_hooks, repo_root
+    from .debrief import build_debrief, preview, render_markdown, select_sessions, stamp, to_json
+    from .explain import pick_explainer
+    from .sources.claude_code import backfill, ignore_store_dir, install_hooks, now_iso, repo_root
     from .store import Store
+    from .why import why_line, why_path
 
     cli = typer.Typer(
         help="What your coding agent did, and why, grouped by what you asked for.",
@@ -32,9 +38,14 @@ def build():
         add_completion=False,
     )
     console = Console()
+    errors = Console(stderr=True)
 
     def root() -> Path:
         return repo_root(Path.cwd())
+
+    def fail(message: str, code: int = 2) -> None:
+        errors.print(f"[red]{escape(message)}[/red]")
+        raise typer.Exit(code)
 
     @cli.callback(invoke_without_command=True)
     def main(
@@ -55,8 +66,7 @@ def build():
         try:
             added = install_hooks(r)
         except ValueError as exc:
-            console.print(f"[red]cannot update .claude/settings.json:[/red] {exc}")
-            raise typer.Exit(1) from None
+            fail(f"cannot update .claude/settings.json: {exc}", 1)
         if added:
             console.print(f"hooks added to {r / '.claude' / 'settings.json'}: {', '.join(added)}")
         else:
@@ -64,8 +74,6 @@ def build():
         if ignore_store_dir(r):
             console.print("added .graphene/ to .gitignore")
         Store.open(r).close()
-        import shutil
-
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
@@ -84,15 +92,15 @@ def build():
         transcript: list[Path] = typer.Option(
             None, "--transcript", help="Backfill these transcript files only."
         ),
+        replace: bool = typer.Option(False, "--replace", help="Rebuild sessions the hooks recorded, too."),
     ) -> None:
         if ctx.invoked_subcommand is not None:
             return
         if not do_backfill:
-            console.print("nothing to do: pass --backfill, or let the hooks call `graphene ingest hook`")
-            raise typer.Exit(1)
+            fail("nothing to do: pass --backfill, or let the hooks call `graphene ingest hook`", 1)
         r = root()
         with Store.open(r) as store:
-            report = backfill(store, r, transcripts=transcript or None)
+            report = backfill(store, r, transcripts=transcript or None, replace=replace)
         console.print(
             f"added {len(report.added)}, refreshed {len(report.refreshed)}, "
             f"already present {len(report.skipped)}, other repos {len(report.other_repo)}"
@@ -115,13 +123,13 @@ def build():
         """List recorded sessions."""
         with Store.open(root()) as store:
             rows = store.sessions()
-            table = Table("session", "source", "started", "ended", "prompts", "tool calls")
+            table = Table("session (prefix)", "source", "started", "ended", "prompts", "tool calls")
             for s in rows:
                 table.add_row(
-                    s.id,
+                    s.id[:8],
                     s.source,
-                    s.started_at or "",
-                    s.ended_at or "",
+                    stamp(s.started_at),
+                    stamp(s.ended_at),
                     str(len(store.prompts(s.id))),
                     str(store.event_count(s.id)),
                 )
@@ -129,5 +137,77 @@ def build():
             console.print("no sessions recorded yet: run `graphene init`, or `graphene ingest --backfill`")
         else:
             console.print(table)
+
+    @cli.command()
+    def debrief(
+        session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
+        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
+        as_json: bool = typer.Option(False, "--json", help="Print the debrief structure as JSON."),
+        md: Path = typer.Option(None, "--md", help="Write the debrief as markdown to this file."),
+        full: bool = typer.Option(False, "--full", help="Show whole prompts instead of their first lines."),
+        explain: str = typer.Option(None, "--explain", help="claude or none (default: claude when on PATH)."),
+    ) -> None:
+        """What the agent did since the last debrief, grouped by what you asked for."""
+        r = root()
+        try:
+            explainer, notice = pick_explainer(explain)
+        except ValueError as exc:
+            fail(str(exc))
+        with Store.open(r) as store:
+            try:
+                ids = select_sessions(store, session_id, since)
+            except ValueError as exc:
+                fail(str(exc))
+            if not ids:
+                fail("no sessions recorded yet: run `graphene init`, or `graphene ingest --backfill`", 1)
+            if notice:
+                errors.print(f"[dim]{escape(notice)}[/dim]")
+            result = build_debrief(store, ids, r, explainer)
+            store.add_debrief_run(ids, now_iso())
+        if as_json:
+            sys.stdout.write(to_json(result) + "\n")
+            return
+        markdown = render_markdown(result, full=full)
+        if md:
+            md.write_text(markdown, encoding="utf-8")
+            console.print(f"wrote {md}")
+        else:
+            console.print(Markdown(markdown))
+
+    @cli.command()
+    def why(target: str = typer.Argument(..., help="PATH, or PATH:LINE for one line.")) -> None:
+        """Which prompts changed a file, newest first; or which one wrote a given line."""
+        r = root()
+        path, _, line = target.rpartition(":")
+        with Store.open(r) as store:
+            if path and line.isdigit():
+                answer = why_line(store, r, path, int(line))
+                if answer.content is None:
+                    fail(answer.reason, 1)
+                where = (
+                    f"committed in {answer.commit[:7]} ({stamp(answer.committed_at)})"
+                    if answer.commit
+                    else "not committed"
+                )
+                console.print(
+                    f"[bold]{escape(answer.path)}:{answer.line}[/bold]  {escape(answer.content.strip())}"
+                )
+                console.print(f"{where} · {escape(answer.reason)}")
+                entries = answer.matches
+            else:
+                entries = why_path(store, r, target)
+                if not entries:
+                    fail(f"no recorded prompt changed {target}", 1)
+                console.print(
+                    f"[bold]{escape(entries[0].change.path)}[/bold]  {len(entries)} prompt(s), newest first"
+                )
+        for e in entries:
+            console.print(
+                f"\n{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  "
+                f"{e.effect} +{e.added}/−{e.removed}"
+            )
+            for row in preview(e.prompt_text).splitlines():
+                console.print(f"  [dim]> {escape(row)}[/dim]")
+            console.print(f"  {escape(e.explanation)}")
 
     return cli
