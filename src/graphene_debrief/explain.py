@@ -24,6 +24,15 @@ If a file's change does not serve the request, the value must be exactly: unrela
 """
 REPLY_SCHEMA = '{"type":"object","additionalProperties":{"type":"string"}}'
 MAX_DIFF_CHARS = 4000
+SECRET_FILE = re.compile(
+    r"(^|/)(\.env[^/]*|[^/]*\.(pem|key|p12|pfx|jks)|id_(rsa|dsa|ecdsa|ed25519)[^/]*"
+    r"|[^/]*(credential|secret|token|password)[^/]*)$",
+    re.IGNORECASE,
+)
+SECRET_TEXT = re.compile(
+    r"(sk-ant-|sk-|ghp_|gho_|github_pat_|AKIA|xox[baprs]-|AIza)[A-Za-z0-9_\-]{8,}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+)
 MAX_TOTAL_CHARS = 80000
 
 
@@ -60,6 +69,14 @@ def template(change: FileChange) -> str:
 
 def _join(names: list[str]) -> str:
     return ", ".join(names[:-1]) + f" and {names[-1]}" if len(names) > 1 else names[0]
+
+
+def redact(path: str, diff: str) -> str:
+    """Never hand the model what looks like a secret: named secret files lose their diff entirely,
+    and token-shaped strings or private-key blocks anywhere are masked."""
+    if SECRET_FILE.search(path):
+        return "(diff withheld: the file name suggests it holds secrets)"
+    return SECRET_TEXT.sub("[redacted]", diff)
 
 
 class NullExplainer:
@@ -108,7 +125,7 @@ class ClaudeCodeExplainer:
         budget = MAX_TOTAL_CHARS
         entries = []
         for f in files:
-            diff = "\n".join(line for h in f.hunks for line in h.lines)
+            diff = redact(f.path, "\n".join(line for h in f.hunks for line in h.lines))
             if len(diff) > MAX_DIFF_CHARS:
                 diff = diff[:MAX_DIFF_CHARS] + "\n… (diff truncated)"
             if len(diff) > budget:

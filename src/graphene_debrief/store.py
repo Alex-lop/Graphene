@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -61,6 +62,19 @@ CREATE TABLE IF NOT EXISTS debrief_runs (
 """
 
 
+def ignore_store_dir(root: Path) -> bool:
+    """Add .graphene/ to .gitignore unless already there. Returns True when it was added."""
+    path = root / ".gitignore"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    if any(line.strip().rstrip("/") == ".graphene" for line in lines):
+        return False
+    with open(path, "a", encoding="utf-8") as f:
+        if lines and lines[-1].strip():
+            f.write("\n")
+        f.write(".graphene/\n")
+    return True
+
+
 def capped_json(value: object, cap: int = RESPONSE_CAP) -> str | None:
     """Serialise a tool response, shrinking oversized string fields, then giving up."""
     if value is None:
@@ -88,20 +102,28 @@ def _content(text: str | None) -> str | None:
 
 
 class Store:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, timeout: float = 5.0) -> None:
         self.path = path
-        self.conn = sqlite3.connect(path, timeout=5.0, isolation_level=None)
+        self.conn = sqlite3.connect(path, timeout=timeout, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
         self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA busy_timeout=5000")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.executescript(SCHEMA)
 
     @classmethod
-    def open(cls, repo_root: Path) -> Store:
+    def open(cls, repo_root: Path, quick: bool = False) -> Store:
+        """Open (creating) the repo's store. ``quick`` is the hook path: give up on a lock after 250 ms.
+
+        The directory is private to the user and git-ignored on every open, not only by `init`,
+        because whichever command creates it fills it with transcript content.
+        """
         directory = repo_root / ".graphene"
         directory.mkdir(exist_ok=True)
-        return cls(directory / "graphene.db")
+        os.chmod(directory, 0o700)
+        if (repo_root / ".git").exists():
+            ignore_store_dir(repo_root)
+        return cls(directory / "graphene.db", timeout=0.25 if quick else 5.0)
 
     def close(self) -> None:
         self.conn.close()

@@ -88,7 +88,7 @@ def test_backfill_loads_a_session(tmp_path, projects):
         ("toolu_e1", "app/hello.py", fixture.HELLO_V1, fixture.HELLO_V2),
         ("toolu_e2", "README.md", fixture.README_OLD, fixture.README_NEW),
         ("toolu_e3", "README.md", fixture.README_NEW, fixture.README_OLD),
-        ("toolu_w3", "/home/dev/notes/todo.md", None, "remember to push\n"),
+        ("toolu_w3", "/home/dev/notes/todo.md", None, None),  # outside the repo: path only
     ]
 
     (subagent,) = [e for e in events if e.agent_id]

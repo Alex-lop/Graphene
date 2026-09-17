@@ -206,6 +206,10 @@ def test_files_outside_the_repo_keep_absolute_paths(repo):
         ingest_hook_event(store, ev, repo, T0)
         (stored,) = store.events("sess-1")
     assert stored.file_path == "/elsewhere/note.md"
+    assert (stored.old_content, stored.new_content) == (
+        None,
+        None,
+    )  # never store bodies from outside the repo
 
 
 def test_ignored_events_and_bad_input_record_nothing(repo):
@@ -276,3 +280,30 @@ def test_ignore_store_dir_appends_once(repo):
     assert gitignore.read_text() == ".venv/\n.graphene/\n"
     assert not ignore_store_dir(repo)
     assert gitignore.read_text() == ".venv/\n.graphene/\n"
+
+
+def test_hook_gives_up_quickly_when_the_store_is_locked(repo):
+    import sqlite3
+    import time
+
+    Store.open(repo).close()
+    other = sqlite3.connect(repo / ".graphene" / "graphene.db", isolation_level=None)
+    other.execute("BEGIN EXCLUSIVE")
+    try:
+        started = time.monotonic()
+        payload = json.dumps(event("UserPromptSubmit", repo, prompt_id="p1", prompt="x"))
+        assert hook_main(io.StringIO(payload), cwd=repo) == 0
+        assert time.monotonic() - started < 2.0
+    finally:
+        other.execute("ROLLBACK")
+        other.close()
+    assert "locked" in (repo / ".graphene" / "ingest.log").read_text()
+
+
+def test_store_dir_is_private_and_ignored_on_any_open(repo):
+    import os
+
+    (repo / ".gitignore").write_text("*.pyc\n")
+    Store.open(repo).close()
+    assert ".graphene/" in (repo / ".gitignore").read_text()
+    assert oct(os.stat(repo / ".graphene").st_mode & 0o777) == "0o700"

@@ -35,6 +35,7 @@ from pathlib import Path
 
 from ..model import Prompt, Session, ToolEvent
 from ..store import Store
+from ..store import ignore_store_dir as _ignore_store_dir
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop")
 HOOK_COMMAND = "graphene ingest hook"
@@ -102,6 +103,8 @@ def attach_file_content(event: ToolEvent, root: Path) -> None:
     if not path:
         return
     event.file_path = relative_path(path, root)
+    if os.path.isabs(event.file_path):
+        return  # outside the repo: keep the path, never the contents (they may be credentials)
     resp = event.response if isinstance(event.response, dict) else {}
     tin = event.input
     if event.tool == "Write":
@@ -215,7 +218,7 @@ def hook_main(stdin=None, cwd: Path | None = None) -> int:
         if not isinstance(event, dict):
             raise ValueError("hook input is not a JSON object")
         root = repo_root(Path(event.get("cwd") or root))
-        with Store.open(root) as store:
+        with Store.open(root, quick=True) as store:
             ingest_hook_event(store, event, root)
     except Exception:
         _log_error(root)
@@ -253,16 +256,8 @@ def install_hooks(root: Path) -> list[str]:
 
 
 def ignore_store_dir(root: Path) -> bool:
-    """Add .graphene/ to .gitignore unless already there. Returns True when it was added."""
-    path = root / ".gitignore"
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    if any(line.strip().rstrip("/") == ".graphene" for line in lines):
-        return False
-    with open(path, "a", encoding="utf-8") as f:
-        if lines and lines[-1].strip():
-            f.write("\n")
-        f.write(".graphene/\n")
-    return True
+    """Add .graphene/ to .gitignore unless already there (the store also does this on every open)."""
+    return _ignore_store_dir(root)
 
 
 # -- transcript backfill ------------------------------------------------------------------------

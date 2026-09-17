@@ -14,7 +14,9 @@ repo's `.claude/settings.json`: `SessionStart`, `UserPromptSubmit`, `PostToolUse
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, never to stdout, so a broken Graphene can never block the agent. It takes
-about 35 ms because it imports only the standard library on that path.
+about 35 ms because it imports only the standard library on that path, and if another process
+holds the database lock (a backfill, a second session) it gives up after 250 ms and logs the
+missed event rather than stalling the agent.
 
 What each event contributes:
 
@@ -62,7 +64,9 @@ For `Edit`, `MultiEdit` and `Write`, Claude Code's response carries `originalFil
 before the call, and either the new content (`Write`) or the strings replaced (`Edit`), from which
 Graphene derives the content after the call. Both are stored (up to 2 MB each) so a diff can be
 computed later without touching the working tree. A `Write` whose response says `create` counts
-as known with no prior content.
+as known with no prior content. For a file outside the repo (a dotfile in your home directory,
+say) only the path is kept, never the contents: the debrief lists such files by name and nothing
+else.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
 For `Bash`, Graphene recognises only the obvious write forms: `>` and `>>` redirections, `tee`,
@@ -128,7 +132,10 @@ of one sentence per path validated by a JSON schema, and stores the sentences so
 and later debriefs never call the model again. Any failure (no binary, timeout, an unusable
 reply) falls back to the templates for the rest of the run and says so at the bottom of the
 debrief. The call runs with no tools, no MCP servers, no settings files, no session persistence
-and a temporary working directory, so it leaves no transcript behind and fires no hooks. It uses
+and a temporary working directory, so it leaves no transcript behind and fires no hooks. Before
+anything is sent, the diff of any file whose name looks like a secrets file (`.env*`, `*.pem`,
+`*.key`, `id_rsa*`, anything with credential, secret, token or password in the name) is replaced
+by a note, and token-shaped strings or private-key blocks in any diff are masked. It uses
 whatever model your Claude Code defaults to; a 23-file prompt cost about half a dollar on the
 default model during the rebuild.
 
@@ -147,5 +154,5 @@ changed by something Graphene did not see.
 
 It never runs an agent, never orchestrates, never pushes, and never sends anything anywhere. The
 only network use is the optional `claude -p` call, made by your own Claude Code installation.
-Transcripts can contain secrets; the store stays in `.graphene/` inside the repo and is
-git-ignored by `graphene init`.
+Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
+that is made private to your user and git-ignored the first time any command creates it.

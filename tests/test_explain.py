@@ -107,6 +107,28 @@ def test_request_caps_diff_size():
     assert '"added": 2' in request
 
 
+def test_secrets_never_reach_the_request():
+    from graphene_debrief.explain import redact
+
+    env = change(".env", "created", 1, 0)
+    env.hunks = [Hunk(1, 0, 1, 1, ["+STRIPE_KEY=sk-live-abcdefghijklmnop"])]
+    creds = change("config/credentials.yml")
+    creds.hunks = [Hunk(1, 1, 1, 1, ["+password: hunter2"])]
+    code = change("app.py")
+    code.hunks = [Hunk(1, 1, 1, 2, ['+TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz"', "+x = 1"])]
+    request = ClaudeCodeExplainer(runner=FakeRunner()).request("p", [env, creds, code])
+    assert "sk-live" not in request and "hunter2" not in request and "ghp_" not in request
+    assert request.count("(diff withheld: the file name suggests it holds secrets)") == 2
+    assert '[redacted]\\"' in request and "+x = 1" in request
+    assert (
+        redact("notes/id_rsa.pub", "+ssh-rsa AAAA")
+        == "(diff withheld: the file name suggests it holds secrets)"
+    )
+    assert (
+        redact("a.py", "-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----") == "[redacted]"
+    )
+
+
 def test_empty_file_list_makes_no_call():
     runner = FakeRunner()
     assert ClaudeCodeExplainer(runner=runner).explain_prompt("p", []) == {}
