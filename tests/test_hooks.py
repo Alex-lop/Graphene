@@ -331,3 +331,15 @@ def test_write_response_with_an_odd_original_file_is_still_recorded(repo):
         ingest_hook_event(store, ev, repo, T0)
         (stored,) = store.events("sess-1")
     assert (stored.old_content, stored.new_content) == (None, "x")
+
+
+def test_install_hooks_writes_through_a_symlink_atomically(repo, tmp_path):
+    real = tmp_path / "dotfiles" / "settings.json"
+    real.parent.mkdir()
+    real.write_text('{"model": "x"}')
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "settings.json").symlink_to(real)
+    assert install_hooks(repo)
+    assert (repo / ".claude" / "settings.json").is_symlink()
+    assert "hooks" in json.loads(real.read_text()) and json.loads(real.read_text())["model"] == "x"
+    assert [p.name for p in real.parent.iterdir()] == ["settings.json"]  # no temp file left behind

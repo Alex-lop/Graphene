@@ -20,11 +20,13 @@ What this relies on, as observed on Claude Code 2.1.2xx transcripts (see docs/HO
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import traceback
 import uuid
 from collections import Counter
@@ -72,14 +74,23 @@ def git_head(root: Path) -> str | None:
     return (out.stdout.strip() or None) if out.returncode == 0 else None
 
 
+def _inside(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + os.sep)
+
+
 def is_within(path: str, root: Path) -> bool:
+    """Lexically inside the repo, or inside it once symlinks are resolved (/tmp vs /private/tmp)."""
     p, r = os.path.normpath(path), os.path.normpath(str(root))
-    return p == r or p.startswith(r + os.sep)
+    return _inside(p, r) or _inside(os.path.realpath(p), os.path.realpath(r))
 
 
 def relative_path(path: str, root: Path) -> str:
     """Repo-relative when inside the repo, otherwise the path unchanged."""
-    return os.path.relpath(os.path.normpath(path), str(root)) if is_within(path, root) else path
+    p, r = os.path.normpath(path), os.path.normpath(str(root))
+    if _inside(p, r):
+        return os.path.relpath(p, r)
+    rp, rr = os.path.realpath(p), os.path.realpath(r)
+    return os.path.relpath(rp, rr) if _inside(rp, rr) else path
 
 
 def file_path_of(tool: str, tool_input: dict) -> str | None:
@@ -256,8 +267,22 @@ def install_hooks(root: Path) -> list[str]:
         added.append(event)
     if added:
         path.parent.mkdir(exist_ok=True)
-        path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+        _write_atomically(path, json.dumps(settings, indent=2) + "\n")
     return added
+
+
+def _write_atomically(path: Path, text: str) -> None:
+    """Write via a temp file and os.replace (a crash leaves the old file), through a symlink to its target."""
+    target = path.resolve() if path.exists() else path
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".settings-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def _handlers(group: dict) -> list:
@@ -283,12 +308,14 @@ def project_dir_name(root: Path) -> str:
 def transcripts_for(root: Path, projects: Path | None = None) -> list[Path]:
     """Transcript files whose project directory was launched at or under ``root``."""
     projects = projects or default_projects_dir()
-    name = project_dir_name(root)
+    names = {project_dir_name(root), project_dir_name(Path(os.path.realpath(root)))}
     if not projects.is_dir():
         return []
     found: list[Path] = []
     for directory in sorted(projects.iterdir()):
-        if directory.is_dir() and (directory.name == name or directory.name.startswith(name + "-")):
+        if directory.is_dir() and any(
+            directory.name == n or directory.name.startswith(n + "-") for n in names
+        ):
             found.extend(sorted(directory.glob("*.jsonl")))
     return found
 

@@ -10,7 +10,8 @@ optional explanation sentences, and those are written from a diff Graphene has a
 
 `graphene init` adds one command hook, `graphene ingest hook`, to five Claude Code events in the
 repo's `.claude/settings.json`: `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
-`PostToolUseFailure` and `Stop`. Existing settings and hooks are kept; the hook is added once.
+`PostToolUseFailure` and `Stop`. Existing settings and hooks are kept; the hook is added once, and
+the file is rewritten atomically (through a symlink to its target) so a crash cannot truncate it.
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, never to stdout, so a broken Graphene can never block the agent. It takes
@@ -37,8 +38,8 @@ the session; calls made before any recorded prompt appear in the debrief under t
 
 `graphene ingest --backfill` reads the JSONL transcripts Claude Code keeps under
 `~/.claude/projects/<encoded repo path>/`, plus any directory whose name starts with that prefix
-(sessions launched from a subdirectory of the repo). A transcript is used only if its recorded
-`cwd` lies inside the repo. Facts the parser relies on, observed on Claude Code 2.1.27x:
+(sessions launched from a subdirectory of the repo), under the repo's path as given and as
+resolved through symlinks. A transcript is used only if its recorded `cwd` lies inside the repo. Facts the parser relies on, observed on Claude Code 2.1.27x:
 
 - One JSON object per line. `type` is `user`, `assistant`, or bookkeeping (`attachment`,
   `system`, `file-history-snapshot`, `queue-operation`, `mode`, ...). Only `user` and `assistant`
@@ -152,7 +153,7 @@ diff: "Edited 2 definitions in auth.py: login and refresh_token (+12/−4)." Wit
 (the default when `claude` is on PATH), Graphene makes one `claude -p` call per prompt with the
 request text and the diffs of all its files (each capped at 4,000 characters, 80,000 in total;
 files past the budget are sent with line counts and an "omitted" marker), asks for a JSON object
-of one sentence per path validated by a JSON schema, and stores the sentences so `graphene why`
+of one sentence per path validated by a JSON schema, in batches of at most 120 files, and stores the sentences so `graphene why`
 and later debriefs never call the model again. Any failure (no binary, timeout, an unusable
 reply) falls back to the templates for the rest of the run and says so at the bottom of the
 debrief. The call runs with no tools, no MCP servers, no settings files, no session persistence

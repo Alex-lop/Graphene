@@ -272,3 +272,11 @@ def test_failure_falls_back_to_templates_with_a_note(tmp_path):
         ]
         assert debrief.notes == ["explanations by claude failed (boom); showing templates instead"]
         assert store.explanation("p1", "a.py") is None
+
+
+def test_a_prompt_with_hundreds_of_files_is_explained_in_batches():
+    runner = FakeRunner(stdout=envelope("{}"))
+    files = [change(f"f{i}.py") for i in range(250)]
+    assert ClaudeCodeExplainer(runner=runner).explain_prompt("p", files) == {}
+    assert len(runner.calls) == 3
+    assert all(len(request) < 200_000 for _, request in runner.calls)

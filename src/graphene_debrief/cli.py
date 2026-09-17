@@ -18,6 +18,7 @@ def app() -> None:
 def build():
     import os
     import shutil
+    import sqlite3
     from pathlib import Path
 
     import typer
@@ -53,6 +54,13 @@ def build():
         errors.print(f"[red]{escape(message)}[/red]")
         raise typer.Exit(code)
 
+    def open_store(r: Path) -> Store:
+        try:
+            return Store.open(r)
+        except (sqlite3.DatabaseError, OSError) as exc:
+            fail(f"cannot open {r / '.graphene' / 'graphene.db'}: {exc}", 1)
+            raise AssertionError from None  # unreachable: fail() exits
+
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
@@ -80,7 +88,7 @@ def build():
             console.print("hooks already installed")
         if ignore_store_dir(r):
             console.print("added .graphene/ to .gitignore")
-        Store.open(r).close()
+        open_store(r).close()
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
@@ -106,7 +114,7 @@ def build():
         if not do_backfill:
             fail("nothing to do: pass --backfill, or let the hooks call `graphene ingest hook`", 1)
         r = root()
-        with Store.open(r) as store:
+        with open_store(r) as store:
             report = backfill(store, r, transcripts=transcript or None, replace=replace)
         console.print(
             f"added {len(report.added)}, refreshed {len(report.refreshed)}, "
@@ -130,7 +138,7 @@ def build():
     @cli.command()
     def sessions() -> None:
         """List recorded sessions."""
-        with Store.open(root()) as store:
+        with open_store(root()) as store:
             rows = store.sessions()
             table = Table("session (prefix)", "source", "started", "ended", "prompts", "tool calls")
             for s in rows:
@@ -162,7 +170,7 @@ def build():
             explainer, notice = pick_explainer(explain)
         except ValueError as exc:
             fail(str(exc))
-        with Store.open(r) as store:
+        with open_store(r) as store:
             try:
                 ids = select_sessions(store, session_id, since)
             except ValueError as exc:
@@ -193,7 +201,7 @@ def build():
         """Which prompts changed a file, newest first; or which one wrote a given line."""
         r = root()
         path, _, line = target.rpartition(":")
-        with Store.open(r) as store:
+        with open_store(r) as store:
             if path and line.isdigit():
                 answer = why_line(store, r, path, int(line))
                 if answer.content is None:

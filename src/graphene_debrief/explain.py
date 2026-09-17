@@ -34,6 +34,7 @@ SECRET_TEXT = re.compile(
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
 )
 MAX_TOTAL_CHARS = 80000
+MAX_FILES_PER_CALL = 120  # a prompt that touched more files gets one call per batch
 
 
 class ExplainError(Exception):
@@ -144,8 +145,12 @@ class ClaudeCodeExplainer:
         return INSTRUCTION + "\n" + json.dumps(payload, ensure_ascii=False, indent=1)
 
     def explain_prompt(self, prompt_text: str, files: list[FileChange]) -> dict[str, str]:
-        if not files:
-            return {}
+        out: dict[str, str] = {}
+        for i in range(0, len(files), MAX_FILES_PER_CALL):
+            out.update(self._call(prompt_text, files[i : i + MAX_FILES_PER_CALL]))
+        return out
+
+    def _call(self, prompt_text: str, files: list[FileChange]) -> dict[str, str]:
         try:
             proc = self.runner(
                 self.argv(),

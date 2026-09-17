@@ -359,3 +359,29 @@ def test_forked_transcript_with_the_same_ids_keeps_both_sessions(tmp_path, proje
         assert sorted(report.added) == sorted([SID, "22222222-fork"])
         assert len(store.events(SID)) == 12 and len(store.events("22222222-fork")) == 11
         assert len(store.prompts(SID)) == 3 and len(store.prompts("22222222-fork")) == 3
+
+
+def test_a_repo_reached_through_a_symlink_still_backfills(tmp_path, projects):
+    link = tmp_path / "link"
+    link.symlink_to(ROOT, target_is_directory=True) if ROOT.exists() else None
+    real = tmp_path / "real-repo"
+    real.mkdir()
+    via = tmp_path / "via"
+    via.symlink_to(real, target_is_directory=True)
+    d = tmp_path / "projects2" / project_dir_name(real)
+    d.mkdir(parents=True)
+    (d / "s.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "cwd": str(real),
+                "promptId": "p1",
+                "timestamp": "2026-01-01T00:00:00.000Z",
+                "message": {"role": "user", "content": "hi"},
+            }
+        )
+        + "\n"
+    )
+    with Store.open(tmp_path) as store:
+        report = backfill(store, via, projects=tmp_path / "projects2")
+    assert report.added == ["s"]
