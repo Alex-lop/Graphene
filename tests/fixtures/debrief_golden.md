@@ -11,7 +11,7 @@
 > Keep it tiny.
 
 - `app/hello.py` created +2/−0 — Created hello.py with 2 lines, defining greet.
-- `tests/test_hello.py` created +5/−0 **[unrequested]** — Created test_hello.py with 5 lines, defining test_greet.
+- `tests/test_hello.py` created +5/−0 — Created test_hello.py with 5 lines, defining test_greet.
 
 ### 2. 2026-03-01 09:40
 > Try making greet shout in hello.py, then put it back.
@@ -27,7 +27,7 @@
 
 ## Changes you didn't ask for
 
-- under prompt 1 "Add a greet function to app/hello.py and a test for it.…": `tests/test_hello.py`
+_None flagged._
 
 ## Tried and abandoned
 

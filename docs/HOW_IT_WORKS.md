@@ -127,12 +127,28 @@ The effect per prompt is `created` (no content before), `deleted` (no content af
 
 ## 4. Unrequested changes
 
-A file is flagged `unrequested` when the prompt text mentions none of the file's path or basename
-(anywhere in the text) or its stem or parent directory name (as a whole word, so "happy" does not
-count as naming `app.py`), case-insensitively. This over-flags on purpose: "fix the
-login bug" says nothing about `auth.py`, and a prompt naming only a task flags every file the
-agent touched. It never under-flags a file the prompt names. The flag is per prompt, so a file can
-be requested under one prompt and unrequested under the next.
+A file is flagged `unrequested` only when the prompt named a file scope and the file lies outside
+it. Silence is preferred to a flag people learn to ignore, so every one of these must hold:
+
+1. The prompt names a **file scope**: a path-like token (`auth.py`, `src/app/`, `.env`,
+   `docs/HOW_IT_WORKS.md`), or a bare word right after *in*, *under*, *inside*, *within*, *into* or
+   *at* that is a directory of a file the prompt changed ("look in app"). A prompt with no such
+   token ("fix the login bug") flags nothing: a goal is not a file list.
+2. Names that point at a goal rather than a place define no scope: `.md`, `.txt`, `.rst` or `.adoc`
+   files at the repo root, and anywhere when their name contains words like directive, spec, goal,
+   plan, readme, todo, prompt or notes. "Implement REBUILD_DIRECTIVE.md" flags nothing.
+3. A changed file is **in scope** when a named directory contains it, a named file is it, or it is
+   a conventional companion of an in-scope file: a test twin by stem (`tests/test_hello.py` for
+   `app/hello.py`, `x_test.go` for `x.go`, `a.spec.ts` for `a.ts`), or any file in the same
+   directory as a named file, `__init__.py` included.
+4. Every other changed file is flagged, with the prompt it happened under.
+
+Failure modes: a domain or version-like token that looks like a file name (`node.js`) can name a
+scope by accident and flag real work; a prompt that names one small file while asking for broad
+work ("start in cli.py and wire everything up") flags the everything; naming a directory brings
+its whole subtree into scope even if the prompt meant one file; and nothing outside the repo is
+ever considered here, those paths are listed separately. The flag is per prompt, so a file can be
+in scope under one prompt and flagged under the next.
 
 ## 5. Tried and abandoned
 

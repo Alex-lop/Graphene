@@ -42,7 +42,6 @@ _HUNK_HEADER = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
-_WORD = re.compile(r"[a-z0-9_]+")
 _REDIRECTS = (">", ">>", "&>", ">|", "<", ">&", "<&")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git's well-known empty tree object
 
@@ -385,18 +384,109 @@ def _working_copy(root: Path, path: str) -> str | None:
 # -- attribution --------------------------------------------------------------------------------
 
 
-def mentions(prompt_text: str, path: str) -> bool:
-    """Does the prompt name the file: its path or basename anywhere, or its stem or parent
-    directory as a whole word (so "happy" does not count as naming app.py)?"""
-    text = prompt_text.lower()
-    p = Path(path)
-    if path.lower() in text or p.name.lower() in text:
-        return True
-    words = set(_WORD.findall(text))
-    names = {p.stem.lower()}
-    if p.parent.name:
-        names.add(p.parent.name.lower())
-    return any(n in words for n in names if n)
+_DOC_EXT = {"md", "txt", "rst", "adoc"}
+_SPEC_NAME = re.compile(
+    r"directive|spec|goal|plan|readme|todo|roadmap|rfc|design|proposal|prd|requirements|changelog|"
+    r"contributing|agents|claude|context|handoff|report|prompt|notes",
+    re.IGNORECASE,
+)
+_FILE_TOKEN = re.compile(r"^(?:\.?[\w-]{2,}(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,4}|\.[A-Za-z][\w-]+)$")
+_LOCATIVE = re.compile(
+    r"\b(?:in|under|inside|within|into|at)\s+(?:the\s+)?([A-Za-z0-9_][\w-]*)", re.IGNORECASE
+)
+_STRIP = "\"'`()[]{}<>,:;!?*"
+
+
+def named_scopes(prompt_text: str, paths: list[str]) -> list[str]:
+    """File scopes the prompt names: path-like tokens (``auth.py``, ``src/app/``, ``.env``) and bare
+    words after in/under/inside/within/into/at that are a directory of one of ``paths``.
+
+    Spec-like documents (``REBUILD_DIRECTIVE.md``, ``README.md``, a root-level ``NOTES.md``) name a
+    goal, not a scope, and are ignored. Directories are returned with a trailing slash.
+    """
+    scopes: list[str] = []
+    for raw in prompt_text.split():
+        token = raw
+        while True:  # peel quotes, brackets and a sentence-ending period, in any order
+            bare = token.strip(_STRIP)
+            if bare.endswith(".") and not _FILE_TOKEN.match(bare):
+                bare = bare[:-1]
+            if bare == token:
+                break
+            token = bare
+        if not token or "://" in token or token.startswith("-"):
+            continue
+        is_dir = token.endswith("/")
+        token = token.strip("/").lower()
+        if not token:
+            continue
+        last = token.rsplit("/", 1)[-1]
+        if is_dir or "/" in token or _FILE_TOKEN.match(token):
+            if not is_dir and not _FILE_TOKEN.match(last):
+                is_dir = True  # a slash path whose last part has no extension is a directory
+            if not is_dir and _spec_like(token):
+                continue
+            scopes.append(token + "/" if is_dir else token)
+    dirs = {part for path in paths for part in path.lower().split("/")[:-1]}
+    for word in _LOCATIVE.findall(prompt_text):
+        if word.lower() in dirs and word.lower() + "/" not in scopes:
+            scopes.append(word.lower() + "/")
+    return scopes
+
+
+def _spec_like(token: str) -> bool:
+    name = token.rsplit("/", 1)[-1]
+    stem, _, ext = name.rpartition(".")
+    return ext in _DOC_EXT and (bool(_SPEC_NAME.search(stem)) or "/" not in token)
+
+
+def _core_stem(path: str) -> str:
+    """``tests/test_hello.py`` -> ``hello``; ``hello_test.go`` -> ``hello``; ``a.spec.ts`` -> ``a``."""
+    stem = path.rsplit("/", 1)[-1].lower().lstrip(".").split(".")[0]
+    for prefix in ("test_",):
+        if stem.startswith(prefix):
+            stem = stem[len(prefix) :]
+    for suffix in ("_test", "_tests"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    return stem
+
+
+def unrequested_paths(prompt_text: str, paths: list[str]) -> set[str]:
+    """Which of ``paths`` fall outside every scope the prompt names.
+
+    Empty when the prompt names no file scope (a goal is not a file list). A file is in scope when a
+    named path or directory covers it, or when it is a conventional companion of one that is: a test
+    twin by stem, or any file in the same directory (``__init__.py`` included).
+    """
+    scopes = named_scopes(prompt_text, paths)
+    if not scopes:
+        return set()
+    lowered = {path: path.lower() for path in paths}
+    in_scope: set[str] = set()
+    companion_dirs: set[str] = set()
+    for scope in scopes:
+        if scope.endswith("/"):
+            directory = scope[:-1]
+            for path, low in lowered.items():
+                parts = low.split("/")[:-1]
+                if low.startswith(directory + "/") or ("/" not in directory and directory in parts):
+                    in_scope.add(path)
+            continue
+        matched = [path for path, low in lowered.items() if low == scope or low.endswith("/" + scope)]
+        if not matched and "/" in scope:
+            matched = [path for path, low in lowered.items() if low.endswith("/" + scope.rsplit("/", 1)[-1])]
+        for path in matched:
+            in_scope.add(path)
+            companion_dirs.add(path.rsplit("/", 1)[0] if "/" in path else "")
+        if not matched and "/" in scope:  # named but untouched: its directory is still the place meant
+            companion_dirs.add(scope.rsplit("/", 1)[0])
+    stems = {_core_stem(p) for p in in_scope} | {_core_stem(s) for s in scopes if not s.endswith("/")}
+    for path, low in lowered.items():
+        directory = low.rsplit("/", 1)[0] if "/" in low else ""
+        if directory in companion_dirs or _core_stem(low) in stems:
+            in_scope.add(path)
+    return {path for path in paths if path not in in_scope}
 
 
 @dataclass
@@ -446,6 +536,15 @@ def attribute_session(
             result.changes.extend(
                 _file_changes(one, tl, session, root, git, base, by_prompt, result.reverted)
             )
+
+    by_pid: dict[str, list[FileChange]] = {}
+    for change in result.changes:
+        by_pid.setdefault(change.prompt_id or "", []).append(change)
+    for pid, changes in by_pid.items():
+        prompt = by_prompt.get(pid)
+        flagged = unrequested_paths(prompt.text, [c.path for c in changes]) if prompt else set()
+        for change in changes:
+            change.unrequested = change.path in flagged
 
     result.failed = [e for e in events if e.success is False]
     result.reruns = _reruns(events)
@@ -586,15 +685,7 @@ def _placeholder(
     effect: str = "modified",
 ) -> FileChange:
     """A change with no hunks: 'deferred' (credited to a later prompt) or 'none' (no git to ask)."""
-    prompt = by_prompt.get(prompt_id)
-    return FileChange(
-        path,
-        session_id,
-        prompt_id,
-        effect,
-        strategy=strategy,
-        unrequested=not mentions(prompt.text, path) if prompt else True,
-    )
+    return FileChange(path, session_id, prompt_id, effect, strategy=strategy)
 
 
 def _change(
@@ -615,7 +706,6 @@ def _change(
     else:
         effect, hunks = "modified", diff_hunks(before or "", after or "")
     added, removed = count_lines(hunks)
-    prompt = by_prompt.get(prompt_id)
     return FileChange(
         path=path,
         session_id=session_id,
@@ -625,7 +715,6 @@ def _change(
         added=added,
         removed=removed,
         strategy=strategy,
-        unrequested=not mentions(prompt.text, path) if prompt else True,
         symbols=changed_symbols(before or "", after or "", hunks)[:8],
     )
 

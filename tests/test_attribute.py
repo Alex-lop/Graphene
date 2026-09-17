@@ -11,7 +11,8 @@ from graphene_debrief.attribute import (
     bash_written_paths,
     check_segments,
     diff_hunks,
-    mentions,
+    named_scopes,
+    unrequested_paths,
 )
 from graphene_debrief.model import Prompt, Session, ToolEvent
 
@@ -112,12 +113,57 @@ def test_unrequested_file_is_flagged_with_its_prompt(session, tmp_path):
     assert flagged == {"auth.py": False, "utils/helpers.py": True}
 
 
-def test_mentions_matches_path_basename_stem_or_parent_dir():
-    assert mentions("edit src/app/models.py", "src/app/models.py")
-    assert mentions("the Models.PY file", "src/app/models.py")
-    assert mentions("update the models module", "src/app/models.py")
-    assert mentions("look in app", "src/app/models.py")
-    assert not mentions("fix the login bug", "src/app/models.py")
+def test_unrequested_only_when_a_named_scope_excludes_the_file():
+    auth = ["auth.py", "utils/helpers.py"]
+    assert unrequested_paths("fix the login bug in auth.py", auth) == {"utils/helpers.py"}
+    assert unrequested_paths("fix the login bug", auth) == set()  # no scope named: silence
+    hello = ["app/hello.py", "tests/test_hello.py"]
+    assert unrequested_paths("Add a greet function to app/hello.py and a test for it.", hello) == set()
+    assert (
+        unrequested_paths("Try making greet shout in hello.py, then put it back.", ["app/hello.py"]) == set()
+    )
+    rebuild = [
+        "src/graphene_debrief/cli.py",
+        "tests/test_cli.py",
+        "README.md",
+        "pyproject.toml",
+        ".gitignore",
+    ]
+    assert (
+        unrequested_paths("Please implement REBUILD_DIRECTIVE.md to the best of your abilities", rebuild)
+        == set()
+    )
+    assert (
+        unrequested_paths("Rename the title in README.md, then undo it", ["README.md", "notes.md"]) == set()
+    )
+    assert unrequested_paths("look in app", ["app/hello.py", "app/__init__.py", "lib/other.py"]) == {
+        "lib/other.py"
+    }
+    assert unrequested_paths(
+        "update docs/HOW_IT_WORKS.md for the new flag", ["docs/HOW_IT_WORKS.md", "src/x.py"]
+    ) == {"src/x.py"}
+    assert unrequested_paths(
+        "edit src/app/models.py", ["src/app/models.py", "src/app/__init__.py", "src/db.py"]
+    ) == {"src/db.py"}
+    env = ["config/settings.py", "config/__init__.py", ".env.example", "main.py"]
+    assert unrequested_paths("rewrite the .env loader in config/settings.py", env) == {"main.py"}
+    assert unrequested_paths("fix auth.py", ["README.md", "main.py"]) == {"README.md", "main.py"}
+    assert unrequested_paths("see https://example.com/a/b.py for context", ["x.py"]) == set()
+    assert unrequested_paths("make the happy path faster, e.g. in v1.2", ["web/app.py"]) == set()
+
+
+def test_named_scopes():
+    assert named_scopes("fix auth.py and utils/", []) == ["auth.py", "utils/"]
+    assert named_scopes("read README.md and REBUILD_DIRECTIVE.md then go", []) == []
+    assert named_scopes("update docs/HOW_IT_WORKS.md", []) == ["docs/how_it_works.md"]
+    assert named_scopes("work under src/graphene_debrief", []) == ["src/graphene_debrief/"]
+    assert named_scopes("look in app, then under tests", ["app/x.py", "tests/y.py"]) == ["app/", "tests/"]
+    assert named_scopes("look in app", ["lib/x.py"]) == []  # not a directory of anything that changed
+    assert named_scopes("the (auth.py) file, `.env`, and `pyproject.toml`.", []) == [
+        "auth.py",
+        ".env",
+        "pyproject.toml",
+    ]
 
 
 def test_revert_across_prompts_is_abandoned_work(session, tmp_path):
@@ -350,14 +396,6 @@ def test_shell_write_between_two_edits_is_bridged_by_the_next_original_file(sess
     assert by["p2"].hunks[0].lines == ["-one", "+two"]
     assert by["p1"].strategy == "payload" and by["p3"].strategy == "payload"
     assert result.reverted == []
-
-
-def test_mentions_matches_stems_and_directories_as_whole_words():
-    assert not mentions("make the happy path faster", "web/app.py")
-    assert not mentions("make this rapid", "src/api.py")
-    assert mentions("open app.py", "web/app.py")
-    assert mentions("the app module", "web/app.py")
-    assert mentions("look under web", "web/app.py")
 
 
 def test_runner_prefixes_are_peeled_in_any_order():
