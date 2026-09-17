@@ -43,6 +43,7 @@ _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
 _WORD = re.compile(r"[a-z0-9_]+")
+_REDIRECTS = (">", ">>", "&>", ">|", "<", ">&", "<&")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # git's well-known empty tree object
 
 
@@ -128,11 +129,7 @@ def strip_heredocs(command: str) -> str:
     return "\n".join(out)
 
 
-def _words(segment: str) -> list[str]:
-    try:
-        tokens = shlex.split(segment, posix=True)
-    except ValueError:
-        tokens = segment.split()
+def _strip_wrappers(tokens: list[str]) -> list[str]:
     while tokens and (
         ("=" in tokens[0] and not tokens[0].startswith("-")) or tokens[0] in ("sudo", "env", "time")
     ):
@@ -140,27 +137,85 @@ def _words(segment: str) -> list[str]:
     return tokens
 
 
+def _words(segment: str) -> list[str]:
+    try:
+        tokens = shlex.split(segment, posix=True)
+    except ValueError:
+        tokens = segment.split()
+    return _strip_wrappers(tokens)
+
+
+def _unquoted_newlines_to_semicolons(text: str) -> str:
+    out: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for ch in text:
+        if escaped:
+            escaped = False
+        elif ch == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if ch == quote:
+                quote = None
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "\n":
+            out.append(";")
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def _shell_segments(command: str) -> list[list[str]]:
+    """Token lists of each simple command, split on && || | ; & ( ) and unquoted newlines.
+
+    Quotes are respected, so a `|` or an `rm` inside a grep pattern is not shell syntax.
+    """
+    text = _unquoted_newlines_to_semicolons(strip_heredocs(command))
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    segments: list[list[str]] = [[]]
+    try:
+        for token in lexer:
+            if token in ("&&", "||", "|", ";", "&", "(", ")", ";;"):
+                segments.append([])
+            else:
+                segments[-1].append(token)
+    except ValueError:  # unbalanced quotes: fall back to a crude split
+        segments = [segment.split() for segment in _SEPARATORS.split(text)]
+    return [_strip_wrappers(segment) for segment in segments if segment]
+
+
 def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     """(repo-relative path, "write" | "delete") for the obvious forms: > >> tee sed -i mv cp rm touch.
 
-    Relative paths follow `cd` segments inside the command. Deliberately incomplete: anything
-    else a shell command does to a file is invisible here.
+    Relative paths follow `cd` inside the command; after a `cd` to a directory that cannot be
+    resolved (a variable, a glob) relative paths are dropped rather than guessed. Deliberately
+    incomplete: anything else a shell command does to a file is invisible here.
     """
-    cwd = os.path.normpath(str(root))
+    cwd: str | None = os.path.normpath(str(root))
     found: list[tuple[str, str]] = []
-    for segment in _SEPARATORS.split(strip_heredocs(command)):
-        tokens = _words(segment)
+    for tokens in _shell_segments(command):
         if not tokens:
             continue
         if os.path.basename(tokens[0]) == "cd":
             target = tokens[1] if len(tokens) > 1 and not tokens[1].startswith("-") else "~"
-            if not _NOT_A_PATH.search(target):
-                cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(target)))
+            if _NOT_A_PATH.search(target):
+                cwd = None
+            elif os.path.isabs(os.path.expanduser(target)):
+                cwd = os.path.normpath(os.path.expanduser(target))
+            elif cwd is not None:
+                cwd = os.path.normpath(os.path.join(cwd, target))
             continue
         for path, kind in _segment_paths(tokens):
             if _NOT_A_PATH.search(path) or path in ("/dev/null", "-", "") or path.startswith("-"):
                 continue
-            rel = _relative(os.path.join(cwd, os.path.expanduser(path)), root)
+            expanded = os.path.expanduser(path)
+            if not os.path.isabs(expanded):
+                if cwd is None:
+                    continue  # somewhere we cannot name
+                expanded = os.path.join(cwd, expanded)
+            rel = _relative(expanded, root)
             if (rel, kind) not in found:
                 found.append((rel, kind))
     return found
@@ -170,16 +225,18 @@ def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     i = 0
     while i < len(tokens):
-        t = tokens[i]
-        if t in (">", ">>", "1>", "1>>", "&>", "2>") and i + 1 < len(tokens):
+        if tokens[i] in (">", ">>", "&>", ">|") and i + 1 < len(tokens):
             out.append((tokens[i + 1], "write"))
             i += 2
             continue
-        if t.startswith((">", ">>", "1>", "&>")) and len(t) > 2 and not t.startswith(">&"):
-            out.append((t.lstrip(">1&"), "write"))
         i += 1
     name = os.path.basename(tokens[0])
-    args = [a for a in tokens[1:] if a not in (">", ">>", "1>", "&>", "2>")]
+    args = []
+    for j in range(1, len(tokens)):  # drop redirection operators, their descriptors (2>...) and targets (>&1)
+        t, prev, nxt = tokens[j], tokens[j - 1], tokens[j + 1] if j + 1 < len(tokens) else ""
+        if t in _REDIRECTS or (t in ("0", "1", "2") and nxt in _REDIRECTS) or prev in _REDIRECTS:
+            continue
+        args.append(t)
     plain = [a for a in args if not a.startswith("-") and a != ""]
     if name in ("tee", "touch"):
         out.extend((p, "write") for p in plain)
@@ -268,6 +325,8 @@ def touches(events: list[ToolEvent], root: Path) -> list[Touch]:
             command = ev.input.get("command")
             if isinstance(command, str):
                 for path, kind in bash_written_paths(command, root):
+                    if path == ".graphene" or path.startswith(".graphene/"):
+                        continue  # Graphene's own store is never part of the story
                     out.append(Touch(ev, path, None, None, False, deleted=kind == "delete"))
     return out
 

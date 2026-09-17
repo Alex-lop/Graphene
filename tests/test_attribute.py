@@ -450,3 +450,32 @@ def test_earlier_prompts_in_a_shell_run_are_deferred_not_zero(git_repo):
     first, last = result.changes
     assert (first.prompt_id, first.strategy, first.hunks) == ("p1", "deferred", [])
     assert (last.prompt_id, last.strategy, last.added) == ("p2", "git", 2)
+
+
+def test_quotes_variables_and_newlines_in_shell_commands(tmp_path):
+    cases = {
+        'grep -n "directory\\|rm -rf" docs/x.md | head -40': [],
+        "echo 'a; rm -rf b' > note.txt": [("note.txt", "write")],
+        'cd "$T" && echo x > f.txt && rm g.txt': [],
+        'cd "$T" && echo x > /abs/f.txt': [("/abs/f.txt", "write")],
+        "echo hi >notes.txt 2>/dev/null": [("notes.txt", "write")],
+        "echo hi > a.txt\necho yo > b.txt": [("a.txt", "write"), ("b.txt", "write")],
+        "printf 'x\\ny' > c.txt": [("c.txt", "write")],
+        "cd sub; cd ..; echo > d.txt": [("d.txt", "write")],
+        "(cd sub && echo > e.txt)": [("sub/e.txt", "write")],
+        "rm -f x.txt 2>/dev/null": [("x.txt", "delete")],
+        "rm -f y.txt 2>&1": [("y.txt", "delete")],
+        "mv a.txt b.txt 1>log.txt": [("log.txt", "write"), ("b.txt", "write"), ("a.txt", "delete")],
+    }
+    for command, expected in cases.items():
+        assert bash_written_paths(command, tmp_path) == expected, command
+
+
+def test_the_store_directory_is_never_attributed(session, tmp_path):
+    p1 = prompt("p1", "move the db", 1)
+    events = [
+        bash("b1", "p1", "mv .graphene/graphene.db /tmp/elsewhere.db && rm .graphene/graphene.db-shm", 11)
+    ]
+    result = run(session, [p1], events, tmp_path)
+    assert result.changes == []
+    assert result.outside_repo == ["/tmp/elsewhere.db"]
