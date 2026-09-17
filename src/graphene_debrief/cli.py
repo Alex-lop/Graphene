@@ -16,6 +16,7 @@ def app() -> None:
 
 
 def build():
+    import os
     import shutil
     from pathlib import Path
 
@@ -68,7 +69,8 @@ def build():
         except ValueError as exc:
             fail(f"cannot update .claude/settings.json: {exc}", 1)
         if added:
-            console.print(f"hooks added to {r / '.claude' / 'settings.json'}: {', '.join(added)}")
+            settings = Path(os.path.relpath(r / ".claude" / "settings.json", Path.cwd()))
+            console.print(f"hooks added to {settings}: {', '.join(added)}")
         else:
             console.print("hooks already installed")
         if ignore_store_dir(r):

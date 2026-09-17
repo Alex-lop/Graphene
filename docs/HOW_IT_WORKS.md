@@ -66,8 +66,10 @@ as known with no prior content.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
 For `Bash`, Graphene recognises only the obvious write forms: `>` and `>>` redirections, `tee`,
-`sed -i`, `mv`, `cp`, `rm` and `touch`. A script that rewrites files, a formatter, a `git
-checkout`, or a `python -c` that writes are all invisible to it.
+`sed -i`, `mv`, `cp`, `rm` and `touch`. Relative paths follow `cd` segments earlier in the same
+command; heredoc bodies are ignored so a `>` inside a script fed to `python` is not a
+redirection. A script that rewrites files, a formatter, a `git checkout`, or a `python -c` that
+writes are all invisible to it.
 
 ## 3. Attribution: prompt → file → hunks
 
@@ -112,19 +114,23 @@ be requested under one prompt and unrequested under the next.
   (and the first output line after an `Exit code N` line).
 - **Checks that failed and were rerun**: a shell segment whose command word is a test or lint
   runner (`pytest`, `npm test`, `cargo test`, `go test`, `make`, `ruff`, `mypy`, `tsc`, `jest`,
-  `vitest`, `eslint`, ...) that failed and was run again later with the same text, reporting the
-  last rerun's outcome.
+  `vitest`, `eslint`, ...) that failed and whose check segment (`uv run pytest -q`, say) was run
+  again later, whatever surrounded it in the command, reporting the last rerun's outcome.
 
 ## 6. Explanations
 
 Each file line in a debrief ends with one sentence. By default it is a template built from the
 diff: "Edited 2 definitions in auth.py: login and refresh_token (+12/−4)." With `--explain claude`
 (the default when `claude` is on PATH), Graphene makes one `claude -p` call per prompt with the
-request text and the capped diffs of all its files, asks for a JSON object of one sentence per
-path, and stores the sentences so `graphene why` and later debriefs never call the model again.
-Any failure (no binary, timeout, non-JSON reply) falls back to the templates for the rest of the
-run and says so at the bottom of the debrief. The call runs with no tools, no MCP servers, no
-settings files and no session persistence.
+request text and the diffs of all its files (each capped at 4,000 characters, 80,000 in total;
+files past the budget are sent with line counts and an "omitted" marker), asks for a JSON object
+of one sentence per path validated by a JSON schema, and stores the sentences so `graphene why`
+and later debriefs never call the model again. Any failure (no binary, timeout, an unusable
+reply) falls back to the templates for the rest of the run and says so at the bottom of the
+debrief. The call runs with no tools, no MCP servers, no settings files, no session persistence
+and a temporary working directory, so it leaves no transcript behind and fires no hooks. It uses
+whatever model your Claude Code defaults to; a 23-file prompt cost about half a dollar on the
+default model during the rebuild.
 
 ## 7. `graphene why`
 
