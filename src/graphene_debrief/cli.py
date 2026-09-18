@@ -306,12 +306,14 @@ def build():
             say(f"hooks added to {settings}: {', '.join(added)}")
         else:
             say("hooks already installed")
-        open_store(r).close()
         say(
             f"{settings} is your personal settings file (if your team shares .claude/, add that file "
-            "to .gitignore); .graphene/ is private to you and ignores itself in git"
+            "to .gitignore); nothing else is written until a session is recorded"
         )
-        say("the next Claude Code session in this repo is recorded live; then run `graphene`")
+        say(
+            "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
+            "you, ignores itself in git); then run `graphene`"
+        )
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

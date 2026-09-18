@@ -82,10 +82,12 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
         "PostToolUseFailure",
         "Stop",
     }
-    assert not (repo / ".gitignore").exists()  # the store ignores itself instead
-    assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"
-    assert (repo / ".graphene" / "graphene.db").exists()
+    assert not (repo / ".gitignore").exists() and not (repo / ".graphene").exists()  # nothing recorded yet
     assert "already installed" in run("init").output
+    from graphene_debrief.store import Store
+
+    Store.open(repo).close()  # what the first hook event does
+    assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"  # the store ignores itself
 
 
 def test_nothing_recorded_and_nothing_to_backfill(repo):
