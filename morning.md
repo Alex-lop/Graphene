@@ -1,10 +1,10 @@
 # morning.md — 2026-09-18
 
 ## 30-second version
-- main: the gate passed at this commit (tests, both walkthroughs clean, CI green on `rebuild`); the merge and its CI run are recorded in the last commit on `rebuild`, which updates this section.
+- main: merged and green. Merge commit 165343b (`--no-ff` of `rebuild` onto your PR #23 merge), pushed with the `hackathon-2026` tag; CI on main run 35314366731, all four jobs green (`gh run view 35314366731`). `rebuild` is this one docs commit ahead of main (this file); `git checkout main && git merge --ff-only rebuild && git push origin main` if you want it there too.
 - Releasable today: yes, blocked only on the two human steps below (PyPI trusted publisher, then the tag).
-- Run this first: `cd ~/Desktop/AllThingsAgenticHackathon && git checkout rebuild && uv sync && graphene`
-- Biggest risk: `release.yml` has never run; its publish job fails until step 1 is done (the build and smoke steps are the same as CI's, which is green).
+- Run this first: `cd ~/Desktop/AllThingsAgenticHackathon && git checkout main && uv sync && graphene`
+- Biggest risk: `release.yml` has never run; its publish job fails until step 1 is done (the build and smoke steps are the same as CI's, which is green on main and on every rebuild push since 628baa8).
 
 ## Do these today (in order, minutes in brackets)
 1. [5] PyPI: create the account if needed, then add a trusted publisher:
