@@ -24,7 +24,7 @@ What each event contributes:
 | Event | Recorded |
 | --- | --- |
 | `SessionStart` | the session, its repo, the time, and `git rev-parse HEAD` at that moment |
-| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id` |
+| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id`; a slash command (`/model`, a skill) is skipped, as in the transcripts |
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
 | `Stop` | the session's end time (updated on every turn end) |

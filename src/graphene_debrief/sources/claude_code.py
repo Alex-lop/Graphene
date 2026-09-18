@@ -50,6 +50,7 @@ _NOT_A_PROMPT = (
     "<system-reminder>",
     "[Request interrupted",
 )
+_SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 
 
 def now_iso() -> str:
@@ -177,6 +178,9 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         if name == "SessionStart":
             return True
     if name == "UserPromptSubmit":
+        text = str(event.get("prompt") or "")
+        if _SLASH_COMMAND.match(text.strip()):
+            return False  # a slash command is not a request; the transcript parser skips them too
         prompt_id = event.get("prompt_id") or str(uuid.uuid4())
         store.add_prompt(
             Prompt(
@@ -184,7 +188,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
                 session_id=sid,
                 ordinal=store.next_ordinal(sid),
                 timestamp=ts,
-                text=str(event.get("prompt") or ""),
+                text=text,
             )
         )
         return True

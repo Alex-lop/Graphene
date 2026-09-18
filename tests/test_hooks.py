@@ -343,3 +343,15 @@ def test_install_hooks_writes_through_a_symlink_atomically(repo, tmp_path):
     assert (repo / ".claude" / "settings.json").is_symlink()
     assert "hooks" in json.loads(real.read_text()) and json.loads(real.read_text())["model"] == "x"
     assert [p.name for p in real.parent.iterdir()] == ["settings.json"]  # no temp file left behind
+
+
+def test_slash_commands_are_not_prompts(repo):
+    """The hook sees what was typed: `/model` or a skill invocation is not a request (nor in transcripts)."""
+    with Store.open(repo) as store:
+        ingest_hook_event(store, event("SessionStart", repo), repo, T0)
+        for text in ("/model", "/mode;", "/plugin:skill some args", "  /help  "):
+            submit = event("UserPromptSubmit", repo, prompt_id="p0", prompt=text)
+            assert not ingest_hook_event(store, submit, repo, T0)
+        real = event("UserPromptSubmit", repo, prompt_id="p1", prompt="/tmp/x.py is broken, fix it")
+        assert ingest_hook_event(store, real, repo, T1)
+        assert [p.text for p in store.prompts("sess-1")] == ["/tmp/x.py is broken, fix it"]
