@@ -32,8 +32,9 @@ graphene
 ```
 
 Graphene reads the transcripts Claude Code keeps for the repo (the first time takes a couple of
-seconds; after that only what changed) and prints the card for the latest session, or for everything
-since you last looked.
+seconds; after that only what changed) and prints the card: the latest session, or every session
+that ended since the last time you ran it. In a repo where Claude Code has not run yet it says so,
+and where it looked.
 
 ```
 graphene why src/app/auth.py
@@ -51,19 +52,24 @@ Which prompt wrote this line.
 
 ![graphene why PATH:LINE](docs/assets/why-line.svg)
 
-When you want more: `graphene debrief --full` is the whole reconstruction, prompt by prompt;
-`--json` is the structure behind it; `--md FILE` writes either to a file; `--html FILE` writes a
-self-contained page (a timeline of prompts and files, opens offline, safe to send to a teammate).
-`graphene init` installs hooks so sessions are recorded live (exact prompt boundaries and the commit
-each session started from); without it Graphene keeps reading the transcripts.
+When you want more: `graphene debrief` is the same card with options. `--full` is the whole
+reconstruction, prompt by prompt; `--json` is the structure behind it; `--md FILE` writes the card
+(or, with `--full`, the reconstruction) as markdown; `--html FILE` writes a self-contained page, a
+timeline of prompts and files that opens offline and is safe to send to a teammate;
+`--explain claude` runs your own `claude -p` once per prompt to write a sentence per file (model
+`haiku` unless you pass `--model`; the sentences are stored, so it is never asked twice).
+`graphene init` installs hooks in the repo's `.claude/settings.json` so sessions are recorded live
+(exact prompt boundaries and the commit each session started from); without it Graphene keeps
+reading the transcripts.
 
 ## How it works
 
 Graphene reads Claude Code's transcript files for the repo, or the events its hook recorded live,
 and groups every tool call under the prompt whose turn it ran in. Claude Code's own payloads carry
-the file before and after each edit, so the diff per prompt and file is computed directly, and only
-the edges of a file's history fall back to git. A file is flagged as not asked for only when the
-prompt named a file scope that does not cover it; a prompt that names no file flags nothing.
+the file before and after each edit, so the diff per prompt and file is computed directly; only a
+file's first or last state in a session, when a shell command wrote it, is read from git. A file is
+flagged as not asked for only when the prompt named a path (`auth.py`, `src/app/`) that does not
+cover it; a prompt that names no path flags nothing.
 "Abandoned" means files restored to their session-start content and checks that failed and were
 rerun. No model is involved unless you ask for explanation sentences with `--explain claude`. The
 heuristics and their failure modes are spelled out in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
@@ -77,13 +83,15 @@ heuristics and their failure modes are spelled out in [docs/HOW_IT_WORKS.md](doc
 
 ## Privacy
 
-- The store is `.graphene/` inside the repo: local, created `0700`, git-ignored automatically.
+- The store is `.graphene/` inside the repo: local, created `0700`, and Graphene adds that line to
+  the repo's `.gitignore` (the only file it writes there, besides `.claude/settings.json` on `init`).
 - Transcripts can contain secrets, so files outside the repo are recorded by path only, never by content.
 - Delete `.graphene/` to forget everything; Graphene rebuilds it from the transcripts next time.
 
 ## Requirements
 
-macOS or Linux, Python 3.12 or later (uv fetches it if needed), and Claude Code.
+macOS or Linux, [uv](https://docs.astral.sh/uv/) to install it, Python 3.12 or later (uv fetches it if
+needed), and Claude Code. Run it inside the repo you ran Claude Code in.
 
 ## Where this is going
 
