@@ -5,14 +5,38 @@ build-backend = "hatchling.build"
 [project]
 name = "graphene-debrief"
 version = "0.1.0"
-description = "Ask why your coding agent changed a file or a line, across Claude Code sessions."
+description = "Why did my coding agent change this line? Intent-blame for code written by Claude Code, across sessions."
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.13"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "Alex Lopez", email = "alexlp2024@gmail.com" },
+]
+keywords = ["claude-code", "coding-agents", "git", "blame", "debrief", "cli", "ai-agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = [
   "typer>=0.15",
   "rich>=13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Alex-lop/Graphene"
+Repository = "https://github.com/Alex-lop/Graphene"
+Issues = "https://github.com/Alex-lop/Graphene/issues"
+Changelog = "https://github.com/Alex-lop/Graphene/blob/main/CHANGELOG.md"
 
 [project.scripts]
 graphene = "graphene_debrief.cli:app"
@@ -28,7 +52,7 @@ packages = ["src/graphene_debrief"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
