@@ -155,7 +155,7 @@ def build():
 
     def hooks_hint(r: Path) -> None:
         if not hooks_installed(r):
-            note("`graphene init` records sessions live; until then Graphene reads the transcripts")
+            note("`graphene init` records sessions live; until then Graphene reads transcripts")
 
     def show(
         session_id: str | None,
@@ -245,6 +245,7 @@ def build():
                     row.append(path.ljust(pad), ACCENT)
                     row.append("  " + stamp(when), "dim")
                     write_line(console, row)
+                console.file.flush()  # the list before the usage line, whichever stream is captured
                 fail("usage: graphene why <path> | <path>:<line>")
             if path and line.isdigit():
                 answer = why_line(store, r, path, int(line))

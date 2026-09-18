@@ -430,8 +430,9 @@ def test_the_terminal_full_view_shows_every_prompt_file_and_failure(tmp_path):
             assert f.path in text and f.explanation[:30] in text
     assert "failed and was rerun under prompt 1: passed" in text
     lines = text.splitlines()
-    assert all(len(line) <= 80 for line in lines)
-    assert all(line.startswith("  ") for line in lines if line and not line[0].isalnum())  # hanging indent
+    assert all(len(line) <= 79 for line in lines) and not any(line.endswith(" ") for line in lines)
+    wrapped = [line for line in lines if line.startswith("    tests/test_hello.py::test_greet")]
+    assert wrapped, "the long failure line wraps, and its continuation hangs two columns deeper"
     assert "failed Bash:" in text  # every real failure, one per line; the card shows only a count
 
 

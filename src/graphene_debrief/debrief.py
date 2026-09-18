@@ -595,23 +595,27 @@ WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line> · graphene de
 
 
 def write_line(console, text: Text, wrap: bool = False) -> None:
-    """One line: styled for a colour terminal, plain text (no escape codes) anywhere else."""
+    """One line: styled for a colour terminal, plain text (no escape codes) anywhere else. With
+    ``wrap``, a terminal gets it word-wrapped one column short of its width, no trailing spaces."""
     text.rstrip()
-    if console.is_terminal and not console.no_color:
-        console.print(text, no_wrap=not wrap, crop=wrap, overflow="fold" if wrap else "ignore")
-    else:
+    if not (console.is_terminal and not console.no_color):
         console.file.write(text.plain + "\n")
+        return
+    lines = text.wrap(console, max(20, console.width - 1)) if wrap else [text]
+    for line in lines:
+        line.rstrip()
+        console.print(line, no_wrap=True, crop=False, overflow="ignore")
 
 
 def write_indented(console, text: Text, indent: int, wrap: bool = False) -> None:
-    """A row under ``indent`` spaces; on a terminal, wrapped at words with a hanging indent so a
-    continuation line lines up under its row instead of starting at column 0."""
+    """A row under ``indent`` spaces; on a terminal, wrapped at words with a hanging indent: a
+    continuation line sits two columns deeper than its row, so it cannot be read as a new row."""
     if not (wrap and console.is_terminal):
         write_line(console, Text(" " * indent).append_text(text))
         return
-    for line in text.wrap(console, max(20, console.width - 1 - indent)):  # -1: some terminals wrap at 80
+    for i, line in enumerate(text.wrap(console, max(20, console.width - 3 - indent))):
         line.rstrip()
-        write_line(console, Text(" " * indent).append_text(line))
+        write_line(console, Text(" " * (indent + (2 if i else 0))).append_text(line))
 
 
 def clip(text: str, width: int) -> str:
