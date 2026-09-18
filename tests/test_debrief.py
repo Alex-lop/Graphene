@@ -159,7 +159,7 @@ def test_golden_default_render(store, tmp_path):
     )  # failures are one summary line
     assert "- 2 tool failures (2 Bash); `graphene debrief --full` lists them" in rendered
     assert "- reverted: `README.md` (prompt 3)" in rendered
-    assert "- check `uv run pytest -q` failed under prompt 1, rerun under prompt 1: passed" in rendered
+    assert "- check `uv run pytest -q` failed and was rerun under prompt 1: passed" in rendered
     assert len(rendered.splitlines()) < 25
 
 
@@ -411,6 +411,25 @@ def test_parse_since_rejects_garbage():
     with pytest.raises(ValueError):
         parse_since("yesterday", NOW)
     assert parse_since("90m", NOW) == "2026-03-01T10:30:00.000Z"
+
+
+def test_the_terminal_full_view_shows_every_prompt_file_and_failure(tmp_path):
+    from rich.console import Console
+
+    from graphene_debrief.debrief import print_full
+
+    with Store.open(tmp_path) as store:
+        seed_golden(store)
+        debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    console = Console(width=80, record=True, force_terminal=True)
+    print_full(console, debrief)
+    text = console.export_text()
+    for block in debrief.prompts:
+        assert f"{block.ordinal}. " in text and block.text.splitlines()[0][:40] in text
+        for f in block.files:
+            assert f.path in text and f.explanation[:30] in text
+    assert "failed and was rerun under prompt 1: passed" in text
+    assert "failed Bash:" in text  # every real failure, one per line; the card shows only a count
 
 
 if __name__ == "__main__":  # regenerate the golden file after a deliberate rendering change

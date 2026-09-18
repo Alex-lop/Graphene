@@ -9,7 +9,8 @@ optional explanation sentences, and those are written from a diff Graphene has a
 ### Live hooks
 
 `graphene init` adds one command hook, `graphene ingest hook`, to five Claude Code events in the
-repo's `.claude/settings.json`: `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
+repo's `.claude/settings.local.json` (the personal file; the team's `settings.json` is never
+written, though hooks found there are recognised): `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
 `PostToolUseFailure` and `Stop`. Existing settings and hooks are kept; the hook is added once, and
 the file is rewritten atomically (through a symlink to its target) so a crash cannot truncate it.
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
@@ -93,8 +94,8 @@ before the call, and either the new content (`Write`) or the strings replaced (`
 Graphene derives the content after the call. Both are stored (up to 2 MB each) so a diff can be
 computed later without touching the working tree. A `Write` whose response says `create` counts
 as known with no prior content. For a file outside the repo (a dotfile in your home directory,
-say) only the path is kept, never the contents: the debrief lists such files by name and nothing
-else. A file inside another git checkout below the repo root (a worktree under
+say) only the path is kept, never the contents, not even inside the raw tool payload the store
+keeps for every call: the debrief lists such files by name and nothing else. A file inside another git checkout below the repo root (a worktree under
 `.claude/worktrees/`, a vendored clone) counts as outside too: it belongs to that checkout.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
@@ -197,7 +198,8 @@ made during the sessions; a net list of files (created, modified, deleted or rev
 whole span, biggest change first, capped at 30 rows); and then only the sections that have
 something in them: files outside a named scope (§4), abandoned work (§5), a one-line failure
 count, files written outside the repo. `graphene debrief --full` is the whole reconstruction,
-prompt by prompt, with a sentence per file. `--json` is the structure behind both.
+prompt by prompt, with a sentence per file, in the same terminal style (complete and wrapped
+rather than capped and clipped) and as markdown when piped. `--json` is the structure behind both.
 
 In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
 colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
@@ -259,7 +261,8 @@ written.
 It never runs an agent, never orchestrates, never pushes, and never sends anything anywhere. The
 only network use is the optional `claude -p` call, made by your own Claude Code installation.
 Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
-that is made private to your user and git-ignored the first time any command creates it.
+that is made private to your user (`0700`, the database `0600`) and that ignores itself in git
+through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
 ## 9. The HTML record
 

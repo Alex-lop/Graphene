@@ -58,9 +58,10 @@ reconstruction, prompt by prompt; `--json` is the structure behind it; `--md FIL
 timeline of prompts and files that opens offline and is safe to send to a teammate;
 `--explain claude` runs your own `claude -p` once per prompt to write a sentence per file (model
 `haiku` unless you pass `--model`; the sentences are stored, so it is never asked twice).
-`graphene init` installs hooks in the repo's `.claude/settings.json` so sessions are recorded live
-(exact prompt boundaries and the commit each session started from); without it Graphene keeps
-reading the transcripts.
+`graphene debrief --since 6h` covers a window; `graphene sessions` lists what is recorded.
+`graphene init` installs hooks in the repo's `.claude/settings.local.json` (yours, not the team's
+`settings.json`) so sessions are recorded live, with exact prompt boundaries and the commit each
+session started from; without it Graphene keeps reading the transcripts.
 
 ## How it works
 
@@ -83,9 +84,11 @@ heuristics and their failure modes are spelled out in [docs/HOW_IT_WORKS.md](doc
 
 ## Privacy
 
-- The store is `.graphene/` inside the repo: local, created `0700`, and Graphene adds that line to
-  the repo's `.gitignore` (the only file it writes there, besides `.claude/settings.json` on `init`).
-- Transcripts can contain secrets, so files outside the repo are recorded by path only, never by content.
+- The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git
+  (a `.gitignore` inside it), so your own `.gitignore` is never edited. The only other file Graphene
+  writes is `.claude/settings.local.json`, on `init`.
+- Transcripts can contain secrets, so files outside the repo are recorded by path only: their content
+  is dropped before it reaches the store.
 - Delete `.graphene/` to forget everything; Graphene rebuilds it from the transcripts next time.
 
 ## Requirements

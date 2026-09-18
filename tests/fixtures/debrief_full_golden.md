@@ -28,7 +28,7 @@
 ## Tried and abandoned
 
 - reverted: `README.md` (prompt 3)
-- check `uv run pytest -q` failed under prompt 1, rerun under prompt 1: passed
+- check `uv run pytest -q` failed and was rerun under prompt 1: passed
 - failed Bash: `uv run pytest -q` (prompt 1) — Exit code 1 · FAILED tests/test_hello.py::test_greet - AssertionError
 - failed Bash: `cat missing.txt` (prompt 3) — Exit code 1 · cat: missing.txt: No such file
 

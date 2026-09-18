@@ -31,6 +31,7 @@ def build():
         ACCENT,
         build_debrief,
         print_card,
+        print_full,
         print_sessions,
         print_why,
         render_card,
@@ -202,9 +203,9 @@ def build():
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
         elif not md and not html:
-            if console.is_terminal and not full:
-                print_card(console, result)
-            else:  # piped, redirected, or the long view: the markdown text itself, unrendered
+            if console.is_terminal:
+                (print_full if full else print_card)(console, result)
+            else:  # piped or redirected: the markdown text itself, unrendered
                 sys.stdout.write(markdown)
             if not full:
                 hooks_hint(r)
@@ -230,6 +231,7 @@ def build():
         path, _, line = (target or "").rpartition(":")
         with loaded_store(r) as store:
             if target is None:
+                write_line(console, Text("files with recorded changes, newest first:", "dim"))
                 for recent, when in store.recent_paths():
                     row = Text()
                     row.append(recent, ACCENT)
@@ -256,9 +258,9 @@ def build():
                 entries = why_path(store, r, target)
                 if not entries:
                     empty(f"no recorded prompt changed {target}")
-                print_why(
-                    console, entries[0].change.path, "", f"{len(entries)} prompt(s), newest first", entries
-                )
+                n = len(entries)
+                subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
+                print_why(console, entries[0].change.path, "", subtitle, entries)
 
     @cli.command()
     def debrief(

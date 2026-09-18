@@ -189,7 +189,7 @@ def test_backfill_debrief_and_why(repo, transcript):
 
     history = run("why", "README.md")
     assert history.exit_code == 0, history.output
-    assert "1 prompt(s)" in history.output and "reverted" in history.output
+    assert "1 prompt, newest first" in history.output and "reverted" in history.output
     assert run("why", "nope.txt").exit_code == 1
 
     (repo / "app").mkdir()
@@ -352,3 +352,16 @@ def test_a_corrupt_store_is_rebuilt(repo):
     assert "store rebuilt" in output and "Traceback" not in output
     assert result.exit_code == 1  # nothing to backfill from here: the usual one-line message
     assert "no Claude Code sessions for this repo" in output
+
+
+def test_why_accepts_the_paths_the_card_prints_from_a_subdirectory(repo, transcript, monkeypatch):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    (repo / "app").mkdir()
+    (repo / "app" / "hello.py").write_text(fixture.HELLO_V2)
+    monkeypatch.chdir(repo / "app")
+    assert run("why", "hello.py").exit_code == 0  # relative to where you stand
+    pasted = run("why", "app/hello.py")  # pasted from the card: relative to the repo root
+    assert pasted.exit_code == 0, pasted.stderr
+    assert "1 prompt, newest first" in pasted.stdout
+    assert run("why", "app/hello.py:2").exit_code == 0
+    assert run("why", "nope/hello.py").exit_code == 1
