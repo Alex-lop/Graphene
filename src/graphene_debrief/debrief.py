@@ -30,6 +30,7 @@ class FileLine:
     explanation: str
     explained_by: str
     model: str | None = None  # the model that wrote the sentence, when one did
+    hunks: list[dict] = field(default_factory=list)  # the change's unified-diff hunks, as dicts
 
 
 @dataclass
@@ -166,6 +167,8 @@ def build_debrief(
                         change.strategy,
                         template(change),
                         "none",
+                        None,
+                        [asdict(h) for h in change.hunks],
                     )
                 )
                 paths.add(change.path)
@@ -191,6 +194,7 @@ def build_debrief(
                         text,
                         by,
                         model,
+                        [asdict(h) for h in change.hunks],
                     )
                 )
                 paths.add(change.path)

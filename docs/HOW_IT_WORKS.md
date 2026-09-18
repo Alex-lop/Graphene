@@ -240,3 +240,21 @@ It never runs an agent, never orchestrates, never pushes, and never sends anythi
 only network use is the optional `claude -p` call, made by your own Claude Code installation.
 Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
 that is made private to your user and git-ignored the first time any command creates it.
+
+## 9. The HTML record
+
+`graphene debrief --html record.html` writes one file: the same structure `--json` prints, embedded
+as JSON in a `<script type="application/json">` tag, plus a stylesheet and a script that build the
+page from it. Nothing is fetched when you open it — no fonts, scripts, images or trackers — so it
+works offline and can be emailed to someone who has neither the repo nor Graphene. Every piece of
+text from your prompts, diffs and file paths reaches the page through `textContent`, and `</` is
+escaped inside the JSON, so nothing recorded can turn into markup.
+
+The page is a timeline: session bands at the top, then one row per prompt in time order with its
+text (three lines, click to expand) and the files it touched with `+N/−N` and an `unrequested`
+marker. Clicking a file opens a panel with that prompt's diff, the explanation sentence and who
+wrote it, and the file's history inside the record — every prompt that touched the same path,
+newest first, each one a link back to its row. Two checkboxes filter the rows down to the
+unrequested or the abandoned ones. Alongside the debrief the file carries a `nodes` list in which
+sessions, prompts, files and directories are distinct node types, and the markup tags them the same
+way (`data-node="file"`, `data-node="dir"`, …); today only the timeline reads them.

@@ -112,6 +112,7 @@ def build():
         full: bool = False,
         explain: str | None = None,
         model: str | None = None,
+        html: Path | None = None,
     ) -> None:
         r = root()
         try:
@@ -137,9 +138,18 @@ def build():
             except OSError as exc:
                 fail(f"cannot write {md}: {exc.strerror or exc}", 1)
             errors.print(f"wrote {md}")
+        if html:
+            from .export_html import render as render_html
+
+            try:
+                html.parent.mkdir(parents=True, exist_ok=True)
+                html.write_text(render_html(result), encoding="utf-8")
+            except OSError as exc:
+                fail(f"cannot write {html}: {exc.strerror or exc}", 1)
+            errors.print(f"wrote {html}")
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
-        elif not md:
+        elif not md and not html:
             console.print(Markdown(markdown))
             if not full:
                 hooks_hint(r)
@@ -201,6 +211,11 @@ def build():
         ),
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         md: Path = typer.Option(None, "--md", help="Write the output as markdown to this file."),
+        html: Path = typer.Option(
+            None,
+            "--html",
+            help="Write a self-contained HTML record of the selected sessions to this file.",
+        ),
         explain: str = typer.Option(
             None, "--explain", help="claude (one call per prompt) or none (default)."
         ),
@@ -210,7 +225,7 @@ def build():
 
         Not the come-back view; that is plain `graphene`. Without --full it prints the same card.
         """
-        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model)
+        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model, html=html)
 
     @cli.command(rich_help_panel="Advanced")
     def sessions() -> None:
