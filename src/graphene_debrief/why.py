@@ -28,6 +28,21 @@ class WhyEntry:
     explained_by: str
     change: FileChange = field(repr=False, compare=False)
 
+    def change_line(self):
+        """The change as the renderers' file line, so `why` shows counts exactly as the card does."""
+        from .debrief import FileLine
+
+        return FileLine(
+            self.change.path,
+            self.effect,
+            self.added,
+            self.removed,
+            self.change.unrequested,
+            self.change.strategy,
+            self.explanation,
+            self.explained_by,
+        )
+
 
 @dataclass
 class LineAnswer:

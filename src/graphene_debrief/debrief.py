@@ -812,12 +812,8 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
     for e in entries:
         write_line(console, Text(""))
         row = Text()
-        row.append(
-            f"{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  {e.effect} ", "dim"
-        )
-        row.append(f"+{e.added}", "green")
-        row.append("  ")
-        row.append(f"−{e.removed}", "red")
+        row.append(f"{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
+        row.append_text(_effect_text(e.change_line()))
         write_line(console, row)
         for line in preview(e.prompt_text).splitlines():
             write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
