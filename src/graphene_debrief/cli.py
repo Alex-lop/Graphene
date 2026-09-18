@@ -90,7 +90,7 @@ def build():
         if not (r / ".git").exists():
             fail("run this inside a git repository (no .git found above the current directory)")
         if r.resolve() == Path.home().resolve():
-            fail("refusing to treat your home directory as a repo")
+            fail("refusing to treat your home directory as a repo; cd into the repo you ran Claude Code in")
         return r
 
     def note(message: str, style: str | None = "dim") -> None:
@@ -103,6 +103,10 @@ def build():
     def fail(message: str, code: int = 2) -> None:
         note(message, "red")
         raise typer.Exit(code)
+
+    def say(message: str) -> None:
+        """A plain line on stdout: wrapped at words on a terminal, one line when piped."""
+        write_line(console, Text(message), wrap=True)
 
     def empty(message: str) -> None:
         """Nothing to show yet is not an error: plain text, exit 1 so scripts can tell."""
@@ -292,17 +296,17 @@ def build():
             added = install_hooks(r)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
+        settings = Path(os.path.relpath(r / SETTINGS, Path.cwd()))
         if added:
-            settings = Path(os.path.relpath(r / SETTINGS, Path.cwd()))
-            console.print(f"hooks added to {settings}: {', '.join(added)}", soft_wrap=True)
+            say(f"hooks added to {settings}: {', '.join(added)}")
         else:
-            console.print("hooks already installed", soft_wrap=True)
+            say("hooks already installed")
         open_store(r).close()
-        console.print(
-            "the next Claude Code session in this repo is recorded live into .graphene/ "
-            "(private to you, ignores itself in git); then run `graphene`",
-            soft_wrap=True,
+        say(
+            f"{settings} is your personal settings file (keep it out of git if your team shares "
+            ".claude/); .graphene/ is private to you and ignores itself in git"
         )
+        say("the next Claude Code session in this repo is recorded live; then run `graphene`")
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

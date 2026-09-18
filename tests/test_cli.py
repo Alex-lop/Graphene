@@ -95,7 +95,7 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
     assert "`graphene init` records sessions live" in one_line(run())
     init = run("init")
-    assert "next Claude Code session" in init.output
+    assert "next Claude Code session" in init.output and "settings.local.json is your personal" in init.output
     line = one_line(run())
     assert "hooks are installed" in line and "graphene init" not in line
 
@@ -228,7 +228,7 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     result = run()
     assert result.exit_code == 2
-    assert one_line(result) == "refusing to treat your home directory as a repo"
+    assert one_line(result).startswith("refusing to treat your home directory as a repo; cd into")
     assert not (home / ".graphene").exists()
 
 
