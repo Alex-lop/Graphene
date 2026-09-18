@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..attribute import nested_checkout
 from ..model import Prompt, Session, ToolEvent
 from ..store import StaleStore, Store
 
@@ -86,12 +87,16 @@ def is_within(path: str, root: Path) -> bool:
 
 
 def relative_path(path: str, root: Path) -> str:
-    """Repo-relative when inside the repo, otherwise the path unchanged."""
+    """Repo-relative when inside the repo (and not inside a nested checkout), else the path unchanged."""
     p, r = os.path.normpath(path), os.path.normpath(str(root))
+    rel = None
     if _inside(p, r):
-        return os.path.relpath(p, r)
-    rp, rr = os.path.realpath(p), os.path.realpath(r)
-    return os.path.relpath(rp, rr) if _inside(rp, rr) else path
+        rel = os.path.relpath(p, r)
+    else:
+        rp, rr = os.path.realpath(p), os.path.realpath(r)
+        if _inside(rp, rr):
+            rel = os.path.relpath(rp, rr)
+    return path if rel is None or nested_checkout(root, rel) else rel
 
 
 def file_path_of(tool: str, tool_input: dict) -> str | None:

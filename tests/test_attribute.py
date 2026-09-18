@@ -517,3 +517,23 @@ def test_the_store_directory_is_never_attributed(session, tmp_path):
     result = run(session, [p1], events, tmp_path)
     assert result.changes == []
     assert result.outside_repo == ["/tmp/elsewhere.db"]
+
+
+def test_files_inside_a_nested_checkout_are_outside_the_repo(tmp_path):
+    """A worktree under .claude/worktrees/ (Claude Code puts them there) is another checkout."""
+    from graphene_debrief.sources.claude_code import relative_path
+
+    worktree = tmp_path / ".claude" / "worktrees" / "agent-1"
+    (worktree / "src").mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: elsewhere\n")
+    inside = str(worktree / "src" / "app.py")
+    assert relative_path(inside, tmp_path) == inside
+    assert relative_path(str(tmp_path / "src" / "app.py"), tmp_path) == "src/app.py"
+    assert bash_written_paths(f"echo x > {inside}", tmp_path) == [(inside, "write")]
+    session = Session(id="s", repo=str(tmp_path), started_at="2026-01-01T00:00:00.000Z")
+    ev = ToolEvent("e1", "s", "p1", "2026-01-01T00:00:01.000Z", "Write", {"file_path": inside})
+    ev.response = {"type": "create"}
+    ev.file_path = relative_path(inside, tmp_path)
+    prompts = [Prompt("p1", "s", 1, "2026-01-01T00:00:00.500Z", "go")]
+    result = attribute_session(session, prompts, [ev], tmp_path)
+    assert result.changes == [] and result.outside_repo == [inside]

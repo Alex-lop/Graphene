@@ -94,7 +94,8 @@ Graphene derives the content after the call. Both are stored (up to 2 MB each) s
 computed later without touching the working tree. A `Write` whose response says `create` counts
 as known with no prior content. For a file outside the repo (a dotfile in your home directory,
 say) only the path is kept, never the contents: the debrief lists such files by name and nothing
-else.
+else. A file inside another git checkout below the repo root (a worktree under
+`.claude/worktrees/`, a vendored clone) counts as outside too: it belongs to that checkout.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
 For `Bash`, Graphene recognises only the obvious write forms: `>` and `>>` redirections, `tee`,

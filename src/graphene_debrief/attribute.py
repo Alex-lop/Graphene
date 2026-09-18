@@ -14,6 +14,7 @@ import shlex
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 from .model import FileChange, Hunk, Prompt, Session, ToolEvent
@@ -259,7 +260,27 @@ def _sed_scripts(args: list[str]) -> set[str]:
 def _relative(path: str, root: Path) -> str:
     norm = os.path.normpath(path)
     base = os.path.normpath(str(root))
-    return os.path.relpath(norm, base) if norm == base or norm.startswith(base + os.sep) else norm
+    if norm == base or norm.startswith(base + os.sep):
+        rel = os.path.relpath(norm, base)
+        return norm if nested_checkout(root, rel) else rel
+    return norm
+
+
+@lru_cache(maxsize=4096)
+def _is_checkout(directory: str) -> bool:
+    return os.path.exists(os.path.join(directory, ".git"))
+
+
+def nested_checkout(root: Path, rel: str) -> bool:
+    """True when a repo-relative path lies inside another git checkout below the root: a worktree
+    under `.claude/worktrees/`, a vendored clone. Those files belong to that checkout, not this one,
+    so they count as outside the repo (path only, no content)."""
+    current = str(root)
+    for part in rel.split("/")[:-1]:
+        current = os.path.join(current, part)
+        if _is_checkout(current):
+            return True
+    return False
 
 
 def check_segments(command: str) -> list[str]:
