@@ -42,12 +42,13 @@ def build():
     )
     from .explain import pick_explainer
     from .sources.claude_code import (
-        HOOK_COMMAND,
         backfill,
+        hooks_installed,
         install_hooks,
         looked_in,
         now_iso,
         repo_root,
+        transcripts_for,
     )
     from .store import Store, ignore_store_dir
     from .why import why_line, why_path
@@ -86,17 +87,25 @@ def build():
         r = repo_root(Path.cwd())
         if not (r / ".git").exists():
             fail("run this inside a git repository (no .git found above the current directory)")
-        if r == Path.home():
+        if r.resolve() == Path.home().resolve():
             fail("refusing to treat your home directory as a repo")
         return r
 
-    def note(message: str, style: str = "dim") -> None:
-        """One line on stderr, whatever its length: notices and refusals never wrap or stack."""
-        errors.print(Text(message), style=style, no_wrap=True, crop=False, overflow="ignore")
+    def note(message: str, style: str | None = "dim") -> None:
+        """One message on stderr: one line when piped (greppable), word-wrapped on a terminal."""
+        if errors.is_terminal:
+            errors.print(Text(message), style=style, overflow="fold")
+        else:
+            errors.print(Text(message), style=style, no_wrap=True, crop=False, overflow="ignore")
 
     def fail(message: str, code: int = 2) -> None:
         note(message, "red")
         raise typer.Exit(code)
+
+    def empty(message: str) -> None:
+        """Nothing to show yet is not an error: plain text, exit 1 so scripts can tell."""
+        note(message, None)
+        raise typer.Exit(1)
 
     def open_store(r: Path) -> Store:
         try:
@@ -110,30 +119,34 @@ def build():
             note(f"store rebuilt (old copy at {store.rebuilt_from})")
         return store
 
+    def no_sessions(r: Path) -> None:
+        if hooks_installed(r):
+            then = "the hooks are installed, so the next session here is recorded live"
+        else:
+            then = "`graphene init` records sessions live"
+        empty(
+            f"no Claude Code sessions for this repo yet (looked in {looked_in(r)}): "
+            f"run Claude Code here, then `graphene` again; {then}"
+        )
+
     def loaded_store(r: Path) -> Store:
         """The repo's store, topped up from Claude Code's transcripts first (a transcript that has not
-        changed since it was last read costs one stat, so this is cheap on every run)."""
+        changed since it was last read costs one stat, so this is cheap on every run). A repo with
+        neither a store nor a transcript gets the empty state and nothing written."""
+        if not (r / ".graphene" / "graphene.db").exists() and not transcripts_for(r):
+            no_sessions(r)
         store = open_store(r)
         report = backfill(store, r)
         if not store.sessions():
             store.close()
-            fail(
-                f"no Claude Code sessions for this repo (looked in {looked_in(r)}): run Claude Code here, "
-                "then `graphene` again; `graphene init` records sessions live",
-                1,
-            )
+            no_sessions(r)
         n = len(report.added)
         if n:
             note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
         return store
 
     def hooks_hint(r: Path) -> None:
-        settings = r / ".claude" / "settings.json"
-        try:
-            installed = HOOK_COMMAND in settings.read_text(encoding="utf-8")
-        except OSError:
-            installed = False
-        if not installed:
+        if not hooks_installed(r):
             note("`graphene init` records sessions live; until then Graphene reads the transcripts")
 
     def show(
@@ -157,17 +170,16 @@ def build():
             except ValueError as exc:
                 fail(str(exc))
             if not ids:
-                fail(f"no session in that window; `graphene sessions` lists {len(store.sessions())}", 1)
+                empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
             if notice:
                 note(notice)
             result = build_debrief(store, ids, r, explainer)
             store.add_debrief_run(ids, now_iso())
         if md is None and html is None and not as_json and not (result.files_changed or result.commits):
             n, p = len(result.sessions), result.prompt_count
-            fail(
+            empty(
                 f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
-                f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}",
-                1,
+                f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}"
             )
         markdown = render_markdown(result, full=True) if full else render_card(result)
         if md:
@@ -242,7 +254,7 @@ def build():
             else:
                 entries = why_path(store, r, target)
                 if not entries:
-                    fail(f"no recorded prompt changed {target}", 1)
+                    empty(f"no recorded prompt changed {target}")
                 print_why(
                     console, entries[0].change.path, "", f"{len(entries)} prompt(s), newest first", entries
                 )
@@ -285,6 +297,7 @@ def build():
         if ignore_store_dir(r):
             console.print("added .graphene/ to .gitignore")
         open_store(r).close()
+        console.print("the next Claude Code session in this repo is recorded live; then run `graphene`")
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

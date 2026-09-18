@@ -84,9 +84,18 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
         result = run(*args)
         assert result.exit_code == 1, args
         line = one_line(result)
-        assert line.startswith("no Claude Code sessions for this repo (looked in ")
+        assert line.startswith("no Claude Code sessions for this repo yet (looked in ")
         assert project_dir_name(repo) in line  # the encoded project directory it searched
     assert run("ingest").exit_code == 1
+    assert not (repo / ".graphene").exists() and not (repo / ".gitignore").exists()  # nothing to record
+
+
+def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
+    assert "`graphene init` records sessions live" in one_line(run())
+    init = run("init")
+    assert "next Claude Code session" in init.output and "added .graphene/ to .gitignore" in init.output
+    line = one_line(run())
+    assert "hooks are installed" in line and "graphene init" not in line
 
 
 def test_the_empty_first_run_says_where_it_looked(repo, tmp_path, monkeypatch):
@@ -95,7 +104,7 @@ def test_the_empty_first_run_says_where_it_looked(repo, tmp_path, monkeypatch):
     result = run()
     assert result.exit_code == 1
     line = one_line(result)
-    assert line.startswith("no Claude Code sessions for this repo (looked in ~/.claude/projects/")
+    assert line.startswith("no Claude Code sessions for this repo yet (looked in ~/.claude/projects/")
     assert "`graphene init` records sessions live" in line
 
 
@@ -210,7 +219,9 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
 def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkeypatch):
     home = tmp_path / "home"
     (home / ".git").mkdir(parents=True)
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+    link = tmp_path / "link"
+    link.symlink_to(home)  # $HOME may be spelled through a symlink (/tmp on macOS); cwd is resolved
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: link))
     monkeypatch.chdir(home)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     result = run()

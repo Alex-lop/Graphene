@@ -208,7 +208,10 @@ columns. `NO_COLOR` turns the colour off and keeps the layout. When stdout is no
 all; `--full`, `--json` and `--md` are always plain. `graphene why` and `graphene sessions`
 follow the same rules.
 
-Every dead end is one line on stderr and a non-zero exit: outside a git repository, inside your
+Graphene writes nothing until it has something to record: in a repo with neither a store nor a
+transcript the empty state is printed and `.graphene/` and `.gitignore` are left alone (`graphene
+init` creates them, and says so). Every dead end is one line on stderr and a non-zero exit (plain text when it is merely empty,
+red when it is an error; word-wrapped on a terminal, one line when piped): outside a git repository, inside your
 home directory, no transcripts for this repo (naming the directory it searched), a session that
 changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
 and `why` with no path at all, which first lists the five files that changed most recently.
