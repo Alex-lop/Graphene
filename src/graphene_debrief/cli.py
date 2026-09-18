@@ -96,7 +96,9 @@ def build():
     def note(message: str, style: str | None = "dim") -> None:
         """One message on stderr: one line when piped (greppable), word-wrapped on a terminal."""
         if errors.is_terminal:
-            errors.print(Text(message), style=style, overflow="fold")
+            for line in Text(message).wrap(errors, max(20, errors.width - 1)):
+                line.rstrip()
+                errors.print(line, style=style, no_wrap=True, crop=False, overflow="ignore")
         else:
             errors.print(Text(message), style=style, no_wrap=True, crop=False, overflow="ignore")
 
@@ -236,9 +238,11 @@ def build():
         with loaded_store(r) as store:
             if target is None:
                 write_line(console, Text("files with recorded changes, newest first:", "dim"))
-                for recent, when in store.recent_paths():
+                recent = store.recent_paths()
+                pad = max((len(path) for path, _ in recent), default=0)
+                for path, when in recent:
                     row = Text()
-                    row.append(recent, ACCENT)
+                    row.append(path.ljust(pad), ACCENT)
                     row.append("  " + stamp(when), "dim")
                     write_line(console, row)
                 fail("usage: graphene why <path> | <path>:<line>")
@@ -303,8 +307,8 @@ def build():
             say("hooks already installed")
         open_store(r).close()
         say(
-            f"{settings} is your personal settings file (keep it out of git if your team shares "
-            ".claude/); .graphene/ is private to you and ignores itself in git"
+            f"{settings} is your personal settings file (if your team shares .claude/, add that file "
+            "to .gitignore); .graphene/ is private to you and ignores itself in git"
         )
         say("the next Claude Code session in this repo is recorded live; then run `graphene`")
         if shutil.which("graphene") is None:

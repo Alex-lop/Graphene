@@ -32,7 +32,6 @@
 - failed Bash: `uv run pytest -q` (prompt 1) — Exit code 1 · FAILED tests/test_hello.py::test_greet - AssertionError
 - failed Bash: `cat missing.txt` (prompt 3) — Exit code 1 · cat: missing.txt: No such file
 
-
 **Files written outside the repo:** `/home/dev/notes/graphene.md`
 
 Ask `graphene why <path>` for who changed a file and why, or `graphene why <path>:<line>` for one line.

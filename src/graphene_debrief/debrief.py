@@ -408,11 +408,10 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
         out += [f"- {line}" for line in _abandoned_lines(d, where) + _failure_lines(d, where)]
         out.append("")
     if d.outside_repo:
-        out += [
-            "",
-            "**Files written outside the repo:** "
-            + ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo)),
-        ]
+        if out[-1] != "":
+            out.append("")
+        paths = ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo))
+        out.append(f"**Files written outside the repo:** {paths}")
     if d.notes:
         out += ["", *[f"_Note: {n}_" for n in d.notes]]
     out += ["", WHY_HINT, ""]
@@ -512,6 +511,13 @@ def file_rows(d: Debrief) -> list[dict]:
     return sorted(out, key=lambda r: (-(r["added"] + r["removed"]), r["path"]))
 
 
+def _counted(row: dict) -> bool:
+    """A reverted file has no net counts; a deletion with none known (a shell `rm`) shows none either."""
+    if row["effect"] == "reverted":
+        return False
+    return not (row["effect"] == "deleted" and row["added"] + row["removed"] == 0)
+
+
 def render_card(d: Debrief, limit: int = 30) -> str:
     """The short come-back view: numbers, commits, a capped net file list, and only the sections
     that have something real in them."""
@@ -538,7 +544,7 @@ def render_card(d: Debrief, limit: int = 30) -> str:
     if rows:
         out += ["", "**Files changed**"]
         for row in rows[:limit]:
-            counts = "" if row["effect"] == "reverted" else f" +{row['added']}/−{row['removed']}"
+            counts = f" +{row['added']}/−{row['removed']}" if _counted(row) else ""
             out.append(f"- `{row['path']}` {row['effect']}{counts}")
         if len(rows) > limit:
             out.append(f"- … {len(rows) - limit} more; `graphene why <path>` for any of them")
@@ -597,6 +603,17 @@ def write_line(console, text: Text, wrap: bool = False) -> None:
         console.file.write(text.plain + "\n")
 
 
+def write_indented(console, text: Text, indent: int, wrap: bool = False) -> None:
+    """A row under ``indent`` spaces; on a terminal, wrapped at words with a hanging indent so a
+    continuation line lines up under its row instead of starting at column 0."""
+    if not (wrap and console.is_terminal):
+        write_line(console, Text(" " * indent).append_text(text))
+        return
+    for line in text.wrap(console, max(20, console.width - 1 - indent)):  # -1: some terminals wrap at 80
+        line.rstrip()
+        write_line(console, Text(" " * indent).append_text(line))
+
+
 def clip(text: str, width: int) -> str:
     """Truncate at the end, so a row never wraps."""
     return text if len(text) <= width else text[: max(1, width - 1)].rstrip() + "…"
@@ -633,7 +650,7 @@ def _section(console, label: str, rows: list[str], width: int, limit: int | None
     write_line(console, Text(""))
     write_line(console, Text(label))
     for row in rows[: limit or len(rows)]:
-        write_line(console, code_text(f"  {row}", width if limit else None), wrap=not limit)
+        write_indented(console, code_text(row, width - 2 if limit else None), 2, wrap=not limit)
     if limit and len(rows) > limit:
         write_line(console, Text(f"  … {len(rows) - limit} more", "dim"))
 
@@ -686,7 +703,7 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
             row = Text("  ")
             row.append(clip_middle(r["path"], paths).ljust(paths), ACCENT)
             row.append("  " + r["effect"].ljust(effect), "dim")
-            if r["effect"] != "reverted":
+            if _counted(r):
                 row.append("  " + f"+{r['added']}".rjust(added), "green")
                 row.append("  " + f"−{r['removed']}".rjust(removed), "red")
             write_line(console, row)
@@ -752,18 +769,18 @@ def print_full(console, d: Debrief) -> None:
             title = f"{block.ordinal}. {stamp(block.timestamp)}"
         write_line(console, Text(clip(title, width), "bold"))
         for line in block.text.strip().splitlines():
-            write_line(console, Text(f"  > {line}", "dim"), wrap=True)
+            write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
         if not block.files:
             write_line(console, Text("  no file changes", "dim"))
         for f in block.files:
-            row = Text("  ")
+            row = Text()
             row.append(f.path, ACCENT)
             row.append("  ")
             row.append_text(_effect_text(f))
             if f.unrequested:
                 row.append("  [unrequested]")
-            write_line(console, row, wrap=True)
-            write_line(console, Text(f"    {f.explanation}"), wrap=True)
+            write_indented(console, row, 2, wrap=True)
+            write_indented(console, Text(f.explanation), 4, wrap=True)
     _section(console, "Not what you asked for", _unrequested_lines(d, where), width, limit=None)
     abandoned = _abandoned_lines(d, where) + _failure_lines(d, where)
     _section(console, "Tried and abandoned", abandoned, width, limit=None)
@@ -799,8 +816,8 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
         row.append(f"−{e.removed}", "red")
         write_line(console, row)
         for line in preview(e.prompt_text).splitlines():
-            write_line(console, Text(f"  > {line}", "dim"), wrap=True)
-        write_line(console, Text(f"  {e.explanation}"), wrap=True)
+            write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
+        write_indented(console, Text(e.explanation), 2, wrap=True)
 
 
 def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]]) -> None:

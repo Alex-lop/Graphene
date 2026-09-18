@@ -13,11 +13,13 @@ never asked for, or what it tried and then abandoned. Graphene does.
 
 ## Install
 
+Once the package is on PyPI (not yet: see the line below for today):
+
 ```
 uv tool install graphene-debrief
 ```
 
-That line works once the package is on PyPI. Until then, install from GitHub:
+Today, from GitHub:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
