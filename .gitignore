@@ -14,3 +14,6 @@ dist/
 .claude/
 .vscode/
 local/
+
+# Playwright MCP session output (the HTML export was checked in a browser)
+.playwright-mcp/

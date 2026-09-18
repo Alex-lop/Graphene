@@ -195,17 +195,17 @@ def test_files_outside_the_repo_keep_absolute_paths(repo):
         repo,
         tool_name="Write",
         tool_use_id="w1",
-        tool_input={"file_path": "/elsewhere/note.md", "content": "x"},
-        tool_response={"type": "create", "filePath": "/elsewhere/note.md", "content": "x"},
+        tool_input={"file_path": "/elsewhere/note.md", "content": "SECRET BODY"},
+        tool_response={"type": "create", "filePath": "/elsewhere/note.md", "content": "SECRET BODY"},
     )
     with Store.open(repo) as store:
         ingest_hook_event(store, ev, repo, T0)
         (stored,) = store.events("sess-1")
+        raw = store.conn.execute("SELECT input, response FROM tool_events").fetchone()
     assert stored.file_path == "/elsewhere/note.md"
-    assert (stored.old_content, stored.new_content) == (
-        None,
-        None,
-    )  # never store bodies from outside the repo
+    assert (stored.old_content, stored.new_content) == (None, None)
+    assert stored.input == {"file_path": "/elsewhere/note.md"} and stored.response is None
+    assert "SECRET BODY" not in (raw[0] or "") + (raw[1] or "")  # not even inside the raw payload
 
 
 def test_ignored_events_and_bad_input_record_nothing(repo):
@@ -237,7 +237,7 @@ def test_hook_main_reads_stdin_and_finds_repo_from_event_cwd(repo, capsys):
 
 
 def test_install_hooks_merges_and_is_idempotent(repo):
-    settings = repo / ".claude" / "settings.json"
+    settings = repo / ".claude" / "settings.local.json"
     settings.parent.mkdir()
     settings.write_text(
         json.dumps(
@@ -261,7 +261,7 @@ def test_install_hooks_merges_and_is_idempotent(repo):
 
 
 def test_install_hooks_refuses_to_clobber_malformed_settings(repo):
-    settings = repo / ".claude" / "settings.json"
+    settings = repo / ".claude" / "settings.local.json"
     settings.parent.mkdir()
     settings.write_text("[]")
     with pytest.raises(ValueError):
@@ -269,13 +269,13 @@ def test_install_hooks_refuses_to_clobber_malformed_settings(repo):
     assert settings.read_text() == "[]"
 
 
-def test_ignore_store_dir_appends_once(repo):
+def test_ignore_store_dir_writes_inside_the_store_only(repo):
     gitignore = repo / ".gitignore"
     gitignore.write_text(".venv/")
     assert ignore_store_dir(repo)
-    assert gitignore.read_text() == ".venv/\n.graphene/\n"
+    assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"
+    assert gitignore.read_text() == ".venv/"  # the repo's own file is never touched
     assert not ignore_store_dir(repo)
-    assert gitignore.read_text() == ".venv/\n.graphene/\n"
 
 
 def test_hook_gives_up_quickly_when_the_store_is_locked(repo):
@@ -301,12 +301,14 @@ def test_store_dir_is_private_and_ignored_on_any_open(repo):
 
     (repo / ".gitignore").write_text("*.pyc\n")
     Store.open(repo).close()
-    assert ".graphene/" in (repo / ".gitignore").read_text()
+    assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"
+    assert (repo / ".gitignore").read_text() == "*.pyc\n"
     assert oct(os.stat(repo / ".graphene").st_mode & 0o777) == "0o700"
+    assert oct(os.stat(repo / ".graphene" / "graphene.db").st_mode & 0o777) == "0o600"
 
 
 def test_install_hooks_rejects_odd_shapes_without_clobbering(repo):
-    settings = repo / ".claude" / "settings.json"
+    settings = repo / ".claude" / "settings.local.json"
     settings.parent.mkdir()
     for shape in ('{"hooks": null}', '{"hooks": []}', '{"hooks": {"PostToolUse": "junk"}}'):
         settings.write_text(shape)
@@ -334,12 +336,24 @@ def test_write_response_with_an_odd_original_file_is_still_recorded(repo):
 
 
 def test_install_hooks_writes_through_a_symlink_atomically(repo, tmp_path):
-    real = tmp_path / "dotfiles" / "settings.json"
+    real = tmp_path / "dotfiles" / "settings.local.json"
     real.parent.mkdir()
     real.write_text('{"model": "x"}')
     (repo / ".claude").mkdir()
-    (repo / ".claude" / "settings.json").symlink_to(real)
+    (repo / ".claude" / "settings.local.json").symlink_to(real)
     assert install_hooks(repo)
-    assert (repo / ".claude" / "settings.json").is_symlink()
+    assert (repo / ".claude" / "settings.local.json").is_symlink()
     assert "hooks" in json.loads(real.read_text()) and json.loads(real.read_text())["model"] == "x"
-    assert [p.name for p in real.parent.iterdir()] == ["settings.json"]  # no temp file left behind
+    assert [p.name for p in real.parent.iterdir()] == ["settings.local.json"]  # no temp file left behind
+
+
+def test_slash_commands_are_not_prompts(repo):
+    """The hook sees what was typed: `/model` or a skill invocation is not a request (nor in transcripts)."""
+    with Store.open(repo) as store:
+        ingest_hook_event(store, event("SessionStart", repo), repo, T0)
+        for text in ("/model", "/mode;", "/plugin:skill some args", "  /help  "):
+            submit = event("UserPromptSubmit", repo, prompt_id="p0", prompt=text)
+            assert not ingest_hook_event(store, submit, repo, T0)
+        real = event("UserPromptSubmit", repo, prompt_id="p1", prompt="/tmp/x.py is broken, fix it")
+        assert ingest_hook_event(store, real, repo, T1)
+        assert [p.text for p in store.prompts("sess-1")] == ["/tmp/x.py is broken, fix it"]

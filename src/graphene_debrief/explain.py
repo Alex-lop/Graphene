@@ -35,6 +35,7 @@ SECRET_TEXT = re.compile(
 )
 MAX_TOTAL_CHARS = 80000
 MAX_FILES_PER_CALL = 120  # a prompt that touched more files gets one call per batch
+DEFAULT_MODEL = "haiku"  # the cheapest alias; `--model NAME` overrides it
 
 
 class ExplainError(Exception):
@@ -212,12 +213,12 @@ def _object_in(text: str) -> dict:
     return salvaged
 
 
-def pick_explainer(choice: str | None) -> tuple[Explainer, str | None]:
+def pick_explainer(choice: str | None, model: str | None = None) -> tuple[Explainer, str | None]:
     """``--explain`` resolution: templates unless ``claude`` is asked for explicitly."""
     if choice in (None, "none"):
-        return NullExplainer(), None
+        return NullExplainer(), ("--model is ignored without --explain claude" if model else None)
     if choice == "claude":
         if not shutil.which("claude"):
             return NullExplainer(), "claude is not on PATH; showing template sentences"
-        return ClaudeCodeExplainer(), None
+        return ClaudeCodeExplainer(model=model or DEFAULT_MODEL), None
     raise ValueError(f"unknown explainer {choice!r}; use claude or none")

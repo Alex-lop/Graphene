@@ -1,3 +1,3 @@
-"""Graphene: what your coding agent did, and why, grouped by what you asked for."""
+"""Graphene: why your coding agent changed a file or a line, across Claude Code sessions."""
 
 __version__ = "0.1.0"

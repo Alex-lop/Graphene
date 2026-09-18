@@ -33,13 +33,16 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
+from ..attribute import nested_checkout
 from ..model import Prompt, Session, ToolEvent
-from ..store import Store
+from ..store import StaleStore, Store
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop")
 HOOK_COMMAND = "graphene ingest hook"
+SETTINGS = ".claude/settings.local.json"  # personal; the team's settings.json is the committed one
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 _NOT_A_PROMPT = (
     "<command-name>",
@@ -50,6 +53,7 @@ _NOT_A_PROMPT = (
     "<system-reminder>",
     "[Request interrupted",
 )
+_SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 
 
 def now_iso() -> str:
@@ -78,19 +82,35 @@ def _inside(path: str, root: str) -> bool:
     return path == root or path.startswith(root + os.sep)
 
 
+@lru_cache(maxsize=4096)
+def _real_dir(directory: str) -> str:
+    """realpath of a directory, cached: on macOS an lstat under /home (an automounter mount) costs
+    about 12 ms, and a session that writes outside the repo would pay it for every call."""
+    return os.path.realpath(directory)
+
+
+def _real(path: str) -> str:
+    head, tail = os.path.split(path)
+    return os.path.join(_real_dir(head), tail) if head and tail else _real_dir(path)
+
+
 def is_within(path: str, root: Path) -> bool:
     """Lexically inside the repo, or inside it once symlinks are resolved (/tmp vs /private/tmp)."""
     p, r = os.path.normpath(path), os.path.normpath(str(root))
-    return _inside(p, r) or _inside(os.path.realpath(p), os.path.realpath(r))
+    return _inside(p, r) or _inside(_real_dir(p), _real_dir(r))
 
 
 def relative_path(path: str, root: Path) -> str:
-    """Repo-relative when inside the repo, otherwise the path unchanged."""
+    """Repo-relative when inside the repo (and not inside a nested checkout), else the path unchanged."""
     p, r = os.path.normpath(path), os.path.normpath(str(root))
+    rel = None
     if _inside(p, r):
-        return os.path.relpath(p, r)
-    rp, rr = os.path.realpath(p), os.path.realpath(r)
-    return os.path.relpath(rp, rr) if _inside(rp, rr) else path
+        rel = os.path.relpath(p, r)
+    else:
+        rp, rr = _real(p), _real_dir(r)
+        if _inside(rp, rr):
+            rel = os.path.relpath(rp, rr)
+    return path if rel is None or nested_checkout(root, rel) else rel
 
 
 def file_path_of(tool: str, tool_input: dict) -> str | None:
@@ -113,10 +133,15 @@ def attach_file_content(event: ToolEvent, root: Path) -> None:
     if not path:
         return
     event.file_path = relative_path(path, root)
-    if os.path.isabs(event.file_path):
-        return  # outside the repo: keep the path, never the contents (they may be credentials)
-    resp = event.response if isinstance(event.response, dict) else {}
     tin = event.input
+    if os.path.isabs(event.file_path):
+        # outside the repo: keep the path, never the contents (they may be credentials), not even
+        # inside the raw payload the store keeps for every call
+        event.input = {k: v for k, v in tin.items() if k in ("file_path", "notebook_path")}
+        if isinstance(event.response, dict) and "error" not in event.response:
+            event.response = None
+        return
+    resp = event.response if isinstance(event.response, dict) else {}
     if event.tool == "Write":
         original = resp.get("originalFile")
         event.old_content = original if isinstance(original, str) else None
@@ -177,6 +202,9 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         if name == "SessionStart":
             return True
     if name == "UserPromptSubmit":
+        text = str(event.get("prompt") or "")
+        if _SLASH_COMMAND.match(text.strip()):
+            return False  # a slash command is not a request; the transcript parser skips them too
         prompt_id = event.get("prompt_id") or str(uuid.uuid4())
         store.add_prompt(
             Prompt(
@@ -184,7 +212,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
                 session_id=sid,
                 ordinal=store.next_ordinal(sid),
                 timestamp=ts,
-                text=str(event.get("prompt") or ""),
+                text=text,
             )
         )
         return True
@@ -232,24 +260,35 @@ def hook_main(stdin=None, cwd: Path | None = None) -> int:
         root = repo_root(Path(event.get("cwd") or root))
         with Store.open(root, quick=True) as store:
             ingest_hook_event(store, event, root)
+    except StaleStore:
+        # Rebuilding is the CLI's job (it takes seconds and backfills): skip the event instead.
+        _log(root, "store needs a rebuild: event skipped, run graphene")
     except Exception:
         _log_error(root)
     return 0
 
 
-def _log_error(root: Path) -> None:
+def _log(root: Path, message: str) -> None:
     try:
         directory = root / ".graphene"
         directory.mkdir(exist_ok=True)
         with open(directory / "ingest.log", "a", encoding="utf-8") as log:
-            log.write(f"{now_iso()} {traceback.format_exc()}\n")
+            log.write(f"{now_iso()} {message}\n")
     except Exception:
         pass
 
 
+def _log_error(root: Path) -> None:
+    _log(root, traceback.format_exc())
+
+
 def install_hooks(root: Path) -> list[str]:
-    """Merge our hook into .claude/settings.json, keeping everything else. Returns events added."""
-    path = root / ".claude" / "settings.json"
+    """Merge our hook into .claude/settings.local.json, keeping everything else. Returns events added.
+
+    The local file, not settings.json: the hooks call a tool installed on this machine, and the
+    team's settings.json is the one people commit.
+    """
+    path = root / SETTINGS
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     if not isinstance(settings, dict):
         raise ValueError(f"{path} is not a JSON object")
@@ -320,6 +359,13 @@ def transcripts_for(root: Path, projects: Path | None = None) -> list[Path]:
     return found
 
 
+def looked_in(root: Path, projects: Path | None = None) -> str:
+    """Where ``transcripts_for`` looks, as one path pattern to show when it found nothing."""
+    pattern = str((projects or default_projects_dir()) / project_dir_name(root)) + "*"
+    home = str(Path.home())
+    return "~" + pattern[len(home) :] if pattern.startswith(home + os.sep) else pattern
+
+
 def iter_records(path: Path) -> Iterator[dict]:
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -349,9 +395,10 @@ _INJECTED = re.compile(r"<system-reminder>[\s\S]*?</system-reminder>")
 
 
 def _human_text(block: str) -> str:
-    """A text block minus injected context; empty when the block is not the user's own words."""
+    """A text block minus injected context; empty when the block is not the user's own words
+    (a slash-command echo, a tool notification) or is a slash command itself."""
     text = _INJECTED.sub("", block).strip()
-    return "" if text.startswith(_NOT_A_PROMPT) else text
+    return "" if text.startswith(_NOT_A_PROMPT) or _SLASH_COMMAND.match(text) else text
 
 
 def _text_of(content: object) -> str | None:
@@ -498,36 +545,66 @@ def backfill(
 ) -> BackfillReport:
     """Load sessions not already in the store.
 
-    A backfilled session whose transcript grew since is reloaded. A session the hooks recorded is
-    left alone unless ``replace`` is set: then its prompts and tool calls are rebuilt from the
-    transcript (the hooks may have been installed mid-session) and its git HEAD is kept.
+    A transcript whose size and modification time are unchanged since it was last read is skipped
+    without being parsed again; one that grew is reloaded. A session the hooks recorded is left
+    alone unless ``replace`` is set, or unless the hooks are installed here and the transcript
+    holds more tool calls than the hooks captured (they were installed mid-session): then its
+    prompts and tool calls are rebuilt from the transcript and its git HEAD and start are kept.
     """
     report = BackfillReport()
+    hooks = hooks_installed(root)
     for path in transcripts if transcripts is not None else transcripts_for(root, projects):
         try:
-            _backfill_one(store, root, path, replace, report)
+            _backfill_one(store, root, path, replace, report, hooks)
         except Exception as exc:  # one unreadable transcript must not stop the others
             report.failed.append((str(path), f"{exc.__class__.__name__}: {exc}"))
     return report
 
 
-def _backfill_one(store: Store, root: Path, path: Path, replace: bool, report: BackfillReport) -> None:
+def hooks_installed(root: Path) -> bool:
+    """Our hook command appears in either settings file (earlier versions wrote settings.json)."""
+    for name in (SETTINGS, ".claude/settings.json"):
+        try:
+            if HOOK_COMMAND in (root / name).read_text(encoding="utf-8"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _stat(path: Path) -> tuple[int, float]:
+    st = path.stat()
+    return st.st_size, st.st_mtime
+
+
+def _backfill_one(
+    store: Store, root: Path, path: Path, replace: bool, report: BackfillReport, hooks: bool = False
+) -> None:
+    session_id = path.stem
+    existing = store.session(session_id)
+    stat = _stat(path)
+    if existing is not None and not replace and store.transcript_stat(session_id) == stat:
+        report.skipped.append(session_id)  # same bytes, same mtime: nothing new to read
+        return
     cwd = transcript_cwd(path)
     if cwd is None or not is_within(cwd, root):
         report.other_repo.append(path.stem)
         return
-    session_id = path.stem
-    existing = store.session(session_id)
     parsed = None
     if existing is not None:
         if existing.source != "backfill" and not replace:
-            report.skipped.append(session_id)
-            return
-        parsed = parse_transcript(path, root)
+            parsed = parse_transcript(path, root) if hooks else None
+            if parsed is None or len(parsed.events) <= store.event_count(session_id):
+                if parsed is not None:
+                    store.set_transcript_stat(session_id, stat)
+                report.skipped.append(session_id)
+                return
+            replace = True  # the hooks missed calls this transcript has: rebuild from it
+        parsed = parsed or parse_transcript(path, root)
         if not replace and (parsed.session.ended_at or "") <= (existing.ended_at or ""):
+            store.set_transcript_stat(session_id, stat)
             report.skipped.append(session_id)
             return
-        store.delete_session_data(session_id)
         parsed.session.head_at_start = existing.head_at_start
         parsed.session.source = existing.source
         starts = [t for t in (existing.started_at, parsed.session.started_at) if t]
@@ -536,9 +613,13 @@ def _backfill_one(store: Store, root: Path, path: Path, replace: bool, report: B
     else:
         report.added.append(session_id)
     parsed = parsed or parse_transcript(path, root)
-    store.upsert_session(parsed.session)
-    for prompt in parsed.prompts:
-        store.add_prompt(prompt)
-    for event in parsed.events:
-        store.add_event(event)
+    with store.transaction():  # one transaction per session: atomic, and 10x faster than autocommit
+        if existing is not None:
+            store.delete_session_data(session_id)
+        store.upsert_session(parsed.session)
+        store.set_transcript_stat(session_id, stat)
+        for prompt in parsed.prompts:
+            store.add_prompt(prompt)
+        for event in parsed.events:
+            store.add_event(event)
     report.skipped_records.update(parsed.skipped)

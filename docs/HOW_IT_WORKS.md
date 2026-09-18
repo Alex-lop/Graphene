@@ -9,7 +9,8 @@ optional explanation sentences, and those are written from a diff Graphene has a
 ### Live hooks
 
 `graphene init` adds one command hook, `graphene ingest hook`, to five Claude Code events in the
-repo's `.claude/settings.json`: `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
+repo's `.claude/settings.local.json` (the personal file; the team's `settings.json` is never
+written, though hooks found there are recognised): `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
 `PostToolUseFailure` and `Stop`. Existing settings and hooks are kept; the hook is added once, and
 the file is rewritten atomically (through a symlink to its target) so a crash cannot truncate it.
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
@@ -24,7 +25,7 @@ What each event contributes:
 | Event | Recorded |
 | --- | --- |
 | `SessionStart` | the session, its repo, the time, and `git rev-parse HEAD` at that moment |
-| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id` |
+| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id`; a slash command (`/model`, a skill) is skipped, as in the transcripts |
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
 | `Stop` | the session's end time (updated on every turn end) |
@@ -59,11 +60,32 @@ resolved through symlinks. A transcript is used only if its recorded `cwd` lies 
   (or git's empty tree when there is none), so commits made during or after the session do not
   hide its changes.
 
-A backfilled session is reloaded when its transcript has grown. A session the hooks recorded is
-left alone unless you pass `--replace`, which rebuilds its prompts and calls from the transcript
-and keeps the HEAD the hook captured. A transcript that cannot be read is reported and skipped;
-the others still load. Injected context blocks (`<system-reminder>…</system-reminder>`) are
-stripped from prompt text, and a message that consists only of them is not a prompt.
+A transcript is only parsed when it might have changed: the store keeps the file's size and
+modification time from the last time it was read, and a transcript matching both is skipped
+without being opened. One that grew is parsed and its session reloaded. A transcript that cannot
+be read is reported and skipped; the others still load. Injected context blocks
+(`<system-reminder>…</system-reminder>`) are stripped from prompt text, and a message that
+consists only of them is not a prompt.
+
+A session the hooks recorded is left alone, because the hooks saw more than the transcript does
+(the content before and after each call, and the git HEAD at the start). There is one exception:
+if the hooks are installed in this repo and the transcript holds more tool calls than the store
+has events for that session — which means they were installed part-way through it — the session
+is rebuilt from the transcript automatically, keeping the HEAD the hook captured and the earlier
+of the two start times, and is reported as refreshed. `--replace` forces that rebuild for every
+session the hooks recorded, installed or not.
+
+### The store
+
+`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. Everything in it is
+derived from transcripts and hook events, so a store written by another version of Graphene is
+not migrated: it is moved to `.graphene/graphene.db.v<old>.bak` (with its `-wal`/`-shm` sidecars,
+and a numeric suffix rather than overwriting an existing backup), and the command that found it
+creates an empty store, prints one line to stderr saying so, and backfills from the transcripts.
+A file SQLite refuses to read at all goes to `.graphene/graphene.db.corrupt.bak` the same way. A
+locked database is not that case and is never moved aside. The hook path never rebuilds: on a
+store it cannot use it skips the event, writes one line to `.graphene/ingest.log` saying a rebuild
+is needed, and exits 0, so the next `graphene` command is what does the work.
 
 ## 2. File content: what is known and what is not
 
@@ -72,8 +94,9 @@ before the call, and either the new content (`Write`) or the strings replaced (`
 Graphene derives the content after the call. Both are stored (up to 2 MB each) so a diff can be
 computed later without touching the working tree. A `Write` whose response says `create` counts
 as known with no prior content. For a file outside the repo (a dotfile in your home directory,
-say) only the path is kept, never the contents: the debrief lists such files by name and nothing
-else.
+say) only the path is kept, never the contents, not even inside the raw tool payload the store
+keeps for every call: the debrief lists such files by name and nothing else. A file inside another git checkout below the repo root (a worktree under
+`.claude/worktrees/`, a vendored clone) counts as outside too: it belongs to that checkout.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
 For `Bash`, Graphene recognises only the obvious write forms: `>` and `>>` redirections, `tee`,
@@ -167,13 +190,33 @@ in scope under one prompt and flagged under the next.
 
 ## 5a. What you see
 
-`graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
+Every command first tops the store up from the repo's transcripts (a transcript that has not
+changed since it was last read costs one `stat`), so a session run without the hooks still
+shows up the next time you look. `graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
 their span, wall time and prompt count; files changed with added and removed lines; the commits
 made during the sessions; a net list of files (created, modified, deleted or reverted over the
 whole span, biggest change first, capped at 30 rows); and then only the sections that have
 something in them: files outside a named scope (§4), abandoned work (§5), a one-line failure
 count, files written outside the repo. `graphene debrief --full` is the whole reconstruction,
-prompt by prompt, with a sentence per file. `--json` is the structure behind both.
+prompt by prompt, with a sentence per file, in the same terminal style (complete and wrapped
+rather than capped and clipped) and as markdown when piped. `--json` is the structure behind both.
+
+In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
+colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
+wrap — paths are shortened in the middle, commit subjects at the end — and the terminal card
+shows at most 5 commits and 20 files before "… N more", so a session fits in 40 rows at 80
+columns. `NO_COLOR` turns the colour off and keeps the layout. When stdout is not a terminal
+(`graphene > out.txt`, a pipe, CI) the markdown text is written as it is, with no rendering at
+all; `--full`, `--json` and `--md` are always plain. `graphene why` and `graphene sessions`
+follow the same rules.
+
+Graphene writes nothing until it has something to record: in a repo with neither a store nor a
+transcript the empty state is printed and `.graphene/` and `.gitignore` are left alone (`graphene
+init` creates them, and says so). Every dead end is one line on stderr and a non-zero exit (plain text when it is merely empty,
+red when it is an error; word-wrapped on a terminal, one line when piped): outside a git repository, inside your
+home directory, no transcripts for this repo (naming the directory it searched), a session that
+changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
+and `why` with no path at all, which first lists the five files that changed most recently.
 
 ## 6. Explanations
 
@@ -189,9 +232,13 @@ debrief. The call runs with no tools, no MCP servers, no settings files, no sess
 and a temporary working directory, so it leaves no transcript behind and fires no hooks. Before
 anything is sent, the diff of any file whose name looks like a secrets file (`.env*`, `*.pem`,
 `*.key`, `id_rsa*`, anything with credential, secret, token or password in the name) is replaced
-by a note, and token-shaped strings or private-key blocks in any diff are masked. It uses
-whatever model your Claude Code defaults to; a 23-file prompt cost about half a dollar on the
-default model during the rebuild.
+by a note, and token-shaped strings or private-key blocks in any diff are masked.
+
+The model is `haiku` unless `--model NAME` names another one (`graphene debrief --explain claude
+--model sonnet`), and the name is stored with each sentence and appears in `--json`. `--model`
+without `--explain claude` changes nothing and says so in one line. A 23-file prompt cost about
+half a dollar on the model Claude Code defaults to, which is why the default here is the cheap
+one; a one-word round trip on `haiku` cost about a cent.
 
 ## 7. `graphene why`
 
@@ -214,4 +261,23 @@ written.
 It never runs an agent, never orchestrates, never pushes, and never sends anything anywhere. The
 only network use is the optional `claude -p` call, made by your own Claude Code installation.
 Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
-that is made private to your user and git-ignored the first time any command creates it.
+that is made private to your user (`0700`, the database `0600`) and that ignores itself in git
+through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
+
+## 9. The HTML record
+
+`graphene debrief --html record.html` writes one file: the same structure `--json` prints, embedded
+as JSON in a `<script type="application/json">` tag, plus a stylesheet and a script that build the
+page from it. Nothing is fetched when you open it — no fonts, scripts, images or trackers — so it
+works offline and can be emailed to someone who has neither the repo nor Graphene. Every piece of
+text from your prompts, diffs and file paths reaches the page through `textContent`, and `</` is
+escaped inside the JSON, so nothing recorded can turn into markup.
+
+The page is a timeline: session bands at the top, then one row per prompt in time order with its
+text (three lines, click to expand) and the files it touched with `+N/−N` and an `unrequested`
+marker. Clicking a file opens a panel with that prompt's diff, the explanation sentence and who
+wrote it, and the file's history inside the record — every prompt that touched the same path,
+newest first, each one a link back to its row. Two checkboxes filter the rows down to the
+unrequested or the abandoned ones. Alongside the debrief the file carries a `nodes` list in which
+sessions, prompts, files and directories are distinct node types, and the markup tags them the same
+way (`data-node="file"`, `data-node="dir"`, …); today only the timeline reads them.

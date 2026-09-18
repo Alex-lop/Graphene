@@ -28,6 +28,21 @@ class WhyEntry:
     explained_by: str
     change: FileChange = field(repr=False, compare=False)
 
+    def change_line(self):
+        """The change as the renderers' file line, so `why` shows counts exactly as the card does."""
+        from .debrief import FileLine
+
+        return FileLine(
+            self.change.path,
+            self.effect,
+            self.added,
+            self.removed,
+            self.change.unrequested,
+            self.change.strategy,
+            self.explanation,
+            self.explained_by,
+        )
+
 
 @dataclass
 class LineAnswer:
@@ -48,9 +63,26 @@ def normalise(root: Path, path: str) -> str:
     return os.path.normpath(path)
 
 
+def candidates(root: Path, path: str) -> list[str]:
+    """The path as typed, relative to the current directory; then relative to the repo root when that
+    is different, because the card prints root-relative paths and people paste them from anywhere."""
+    first = normalise(root, path)
+    if os.path.isabs(path):
+        return [first]
+    alt = os.path.normpath(path)
+    return [first] if alt == first or alt.startswith("..") else [first, alt]
+
+
 def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
     """Every prompt that changed the file, newest first, with the stored explanation when there is one."""
-    rel = normalise(root, path)
+    for rel in candidates(root, path):
+        entries = _why_rel(store, root, rel)
+        if entries:
+            return entries
+    return []
+
+
+def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
     name = os.path.basename(rel)
     git = GitState(root)
     entries: list[WhyEntry] = []
@@ -70,7 +102,7 @@ def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
                 continue
             prompt = by_id.get(change.prompt_id)
             stored = store.explanation(change.prompt_id, rel) if prompt else None
-            text, by = stored if stored else (template(change), "none")
+            text, by = stored[:2] if stored else (template(change), "none")
             entries.append(
                 WhyEntry(
                     session.id,
@@ -92,12 +124,13 @@ def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
 
 def why_line(store: Store, root: Path, path: str, line: int) -> LineAnswer:
     """Narrow to the prompt whose edit wrote this line; list candidates when more than one could have."""
-    rel = normalise(root, path)
+    options = candidates(root, path)
+    rel = next((c for c in options if (root / c).is_file()), options[0])
     content = _line(root / rel, line)
     if content is None:
         return LineAnswer(rel, line, None, None, None, [], f"{rel} has no line {line} on disk")
     commit, committed_at = blame(root, rel, line)
-    entries = why_path(store, root, rel)
+    entries = _why_rel(store, root, rel)
     wanted = content.strip()
     here = [e for e in entries if (line, wanted) in _added_lines(e.change)]
     anywhere = [e for e in entries if any(text == wanted for _, text in _added_lines(e.change))]

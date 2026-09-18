@@ -1,15 +1,19 @@
-"""The debrief: golden markdown for a fixed session, JSON round trip, session selection."""
+"""The debrief: golden markdown for a fixed session, the terminal card, JSON round trip, selection."""
 
+import io
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from graphene_debrief.debrief import (
     build_debrief,
     file_rows,
     from_json,
     parse_since,
+    print_card,
+    print_sessions,
     render_card,
     render_markdown,
     select_sessions,
@@ -18,8 +22,8 @@ from graphene_debrief.debrief import (
 from graphene_debrief.model import Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
-GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"
-CARD_GOLDEN = Path(__file__).parent / "fixtures" / "card_golden.md"
+GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the short default render
+FULL_GOLDEN = Path(__file__).parent / "fixtures" / "debrief_full_golden.md"  # `debrief --full`
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 HELLO_V1 = 'def greet(name):\n    return f"hi {name}"\n'
 HELLO_V2 = 'def greet(name):\n    return f"hello {name}"\n'
@@ -140,19 +144,110 @@ def store(tmp_path):
         yield s
 
 
-def test_golden_markdown(store, tmp_path):
+REGENERATE = "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
+
+
+def test_golden_default_render(store, tmp_path):
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    rendered = render_card(debrief)
+    assert rendered == GOLDEN.read_text(), REGENERATE
+    assert (
+        "unrequested" not in rendered and "Not what you asked for" not in rendered
+    )  # the test twin is in scope
+    assert (
+        "failed Bash:" not in rendered and "cat missing.txt" not in rendered
+    )  # failures are one summary line
+    assert "- 2 tool failures (2 Bash); `graphene debrief --full` lists them" in rendered
+    assert "- reverted: `README.md` (prompt 3)" in rendered
+    assert "- check `uv run pytest -q` failed and was rerun under prompt 1: passed" in rendered
+    assert len(rendered.splitlines()) < 25
+
+
+def test_golden_full_render(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     rendered = render_markdown(debrief)
-    assert rendered == GOLDEN.read_text(), (
-        "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
-    )
+    assert rendered == FULL_GOLDEN.read_text(), REGENERATE
+    assert "- failed Bash: `cat missing.txt` (prompt 3)" in rendered  # --full still lists real failures
 
 
-def test_golden_card(store, tmp_path):
+def terminal(width: int = 80) -> Console:
+    return Console(width=width, record=True, force_terminal=True)
+
+
+def test_the_terminal_card_shows_what_the_markdown_card_shows(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    assert render_card(debrief) == CARD_GOLDEN.read_text(), (
-        "run `uv run python tests/test_debrief.py` to regenerate after a deliberate change"
+    console = terminal()
+    print_card(console, debrief)
+    text = console.export_text()
+    assert text.splitlines()[0].startswith("Session sess-gol")
+    assert "3 prompts" in text and "3 files" in text and "+7" in text and "−0" in text
+    for row in file_rows(debrief):
+        assert row["path"] in text
+        if row["effect"] != "reverted":
+            assert f"+{row['added']}" in text and f"−{row['removed']}" in text
+    assert "2 tool failures (2 Bash)" in text  # failures stay one line
+    assert "/home/dev/notes/graphene.md" in text
+    assert "graphene why <path>" in text
+
+
+def test_the_terminal_card_fits_forty_rows_at_eighty_columns(tmp_path):
+    with Store.open(tmp_path) as s:
+        s.upsert_session(Session(id="wide", repo="/repo", started_at=ts(0), ended_at=ts(50)))
+        s.add_prompt(Prompt("p1", "wide", 1, ts(1), "build all of it"))
+        for i in range(30):
+            path = f"src/graphene_debrief/generated/module_number_{i:02d}/handler.py"
+            s.add_event(
+                ToolEvent(
+                    f"w{i}",
+                    "wide",
+                    "p1",
+                    ts(2, i),
+                    "Write",
+                    {"file_path": path},
+                    {"type": "create", "content": "x\n" * (i + 1)},
+                    True,
+                    file_path=path,
+                    old_content=None,
+                    new_content="x\n" * (i + 1),
+                )
+            )
+        debrief = build_debrief(s, ["wide"], tmp_path, now=NOW)
+    debrief.commits = [
+        f"{i:07x} a commit subject long enough to run past eighty columns {i}" for i in range(24)
+    ]
+    console = terminal()
+    print_card(console, debrief)
+    lines = console.export_text().splitlines()
+    assert len(lines) <= 40, "\n".join(lines)
+    assert max(len(line) for line in lines) <= 80
+    assert "… 10 more; graphene why <path> for any" in "\n".join(lines)
+    assert "… 19 more" in "\n".join(lines)
+
+
+def test_the_sessions_list_is_columns_not_a_table():
+    console = terminal()
+    print_sessions(
+        console,
+        [
+            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 3, 11),
+            ("22222222", "hooks", "2026-03-02 09:00", "running", 12, 140),
+        ],
     )
+    lines = console.export_text().splitlines()
+    assert lines[0].split() == ["session", "source", "started", "ended", "prompts", "calls"]
+    assert max(len(line) for line in lines) <= 80  # no wrapping at eighty columns
+    assert not any(char in "\n".join(lines) for char in "─│┌┐└┘━┃")
+    assert lines[1].index("backfill") == lines[2].index("hooks")  # columns line up
+    assert lines[2].rstrip().endswith("140")
+
+
+def test_no_color_leaves_no_escape_codes(store, tmp_path, monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    out = io.StringIO()
+    console = Console(file=out, width=80, force_terminal=True)
+    print_card(console, build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW))
+    assert "\x1b" not in out.getvalue()
+    assert "Files changed" in out.getvalue()  # same card, no colour
 
 
 def denial(eid, pid, when, tool="Bash", reason="Irreversible Local Destruction"):
@@ -318,15 +413,38 @@ def test_parse_since_rejects_garbage():
     assert parse_since("90m", NOW) == "2026-03-01T10:30:00.000Z"
 
 
+def test_the_terminal_full_view_shows_every_prompt_file_and_failure(tmp_path):
+    from rich.console import Console
+
+    from graphene_debrief.debrief import print_full
+
+    with Store.open(tmp_path) as store:
+        seed_golden(store)
+        debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    console = Console(width=80, record=True, force_terminal=True)
+    print_full(console, debrief)
+    text = console.export_text()
+    for block in debrief.prompts:
+        assert f"{block.ordinal}. " in text and block.text.splitlines()[0][:40] in text
+        for f in block.files:
+            assert f.path in text and f.explanation[:30] in text
+    assert "failed and was rerun under prompt 1: passed" in text
+    lines = text.splitlines()
+    assert all(len(line) <= 79 for line in lines) and not any(line.endswith(" ") for line in lines)
+    wrapped = [line for line in lines if line.startswith("    tests/test_hello.py::test_greet")]
+    assert wrapped, "the long failure line wraps, and its continuation hangs two columns deeper"
+    assert "failed Bash:" in text  # every real failure, one per line; the card shows only a count
+
+
 if __name__ == "__main__":  # regenerate the golden file after a deliberate rendering change
     import tempfile
 
     with Store.open(Path(tempfile.mkdtemp())) as s:
         seed_golden(s)
         debrief = build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW)
-        GOLDEN.write_text(render_markdown(debrief))
-        CARD_GOLDEN.write_text(render_card(debrief))
-    print(f"wrote {GOLDEN} and {CARD_GOLDEN}")
+        GOLDEN.write_text(render_card(debrief))
+        FULL_GOLDEN.write_text(render_markdown(debrief))
+    print(f"wrote {GOLDEN} and {FULL_GOLDEN}")
 
 
 def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
