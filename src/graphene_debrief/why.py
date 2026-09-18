@@ -70,7 +70,7 @@ def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
                 continue
             prompt = by_id.get(change.prompt_id)
             stored = store.explanation(change.prompt_id, rel) if prompt else None
-            text, by = stored if stored else (template(change), "none")
+            text, by = stored[:2] if stored else (template(change), "none")
             entries.append(
                 WhyEntry(
                     session.id,

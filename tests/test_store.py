@@ -1,9 +1,23 @@
-"""The SQLite store: schema, capping, concurrent writers."""
+"""The SQLite store: schema, capping, concurrent writers, and rebuilding an unusable one."""
 
+import io
 import json
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
 
+import pytest
+from typer.testing import CliRunner
+
+from graphene_debrief.cli import build
 from graphene_debrief.model import Prompt, Session, ToolEvent
-from graphene_debrief.store import RESPONSE_CAP, Store, capped_json
+from graphene_debrief.sources.claude_code import hook_main, project_dir_name
+from graphene_debrief.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
+
+FIXTURES = Path(__file__).parent / "fixtures"
+sys.path.insert(0, str(FIXTURES))
+import make_transcript_fixture as fixture  # noqa: E402
 
 
 def test_opens_in_wal_mode_with_schema(tmp_path):
@@ -67,8 +81,9 @@ def test_explanations_and_debrief_runs(tmp_path):
         run = store.add_debrief_run(["s1", "s2"], "t")
         assert store.last_debrief_run() == run
         store.set_explanation("p1", "a.py", "Edited a.py", "null", "t")
-        store.set_explanation("p1", "a.py", "Better", "claude", "t2")
-        assert store.explanation("p1", "a.py") == ("Better", "claude")
+        assert store.explanation("p1", "a.py") == ("Edited a.py", "null", None)
+        store.set_explanation("p1", "a.py", "Better", "claude", "t2", "haiku")
+        assert store.explanation("p1", "a.py") == ("Better", "claude", "haiku")
         assert store.explanation("p1", "zzz") is None
 
 
@@ -84,7 +99,7 @@ def test_delete_session_data_keeps_explanations(tmp_path):
         assert store.session("s") is None
         assert store.prompts("s") == []
         assert store.events("s") == []
-        assert store.explanation("p1", "a.py") == ("text", "null")
+        assert store.explanation("p1", "a.py") == ("text", "null", None)
 
 
 def test_ids_are_scoped_to_their_session(tmp_path):
@@ -96,3 +111,85 @@ def test_ids_are_scoped_to_their_session(tmp_path):
         assert store.prompt("b", "p1").text == "b prompt"
         assert store.prompt("a", "nope") is None
         assert len(store.events("a")) == 1 and len(store.events("b")) == 1
+
+
+# -- rebuilding a store this version cannot use ------------------------------------------------
+
+
+@pytest.fixture
+def repo_with_transcripts(tmp_path, monkeypatch):
+    """A git repo, current directory, with the synthetic transcript under CLAUDE_CONFIG_DIR."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    monkeypatch.setattr(fixture, "CWD", str(tmp_path))
+    target = tmp_path / "claude" / "projects" / project_dir_name(tmp_path)
+    for path, text in fixture.render().items():
+        out = target / path.relative_to(fixture.OUT)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+    return tmp_path
+
+
+def set_version(db: Path, version: int) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute(f"PRAGMA user_version = {version}")
+    conn.close()
+
+
+def test_a_new_store_records_the_schema_version(tmp_path):
+    with Store.open(tmp_path) as store:
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert store.rebuilt_from is None
+
+
+def test_a_store_from_an_older_schema_is_rebuilt_and_backfilled(repo_with_transcripts):
+    repo = repo_with_transcripts
+    Store.open(repo).close()
+    set_version(repo / ".graphene" / "graphene.db", 0)  # every store written before versioning
+    result = CliRunner().invoke(build(), [])
+    output = result.output + result.stderr
+    assert result.exit_code == 0, output
+    assert (repo / ".graphene" / "graphene.db.v0.bak").exists()
+    assert "store rebuilt" in output and ".graphene/graphene.db.v0.bak" in output
+    assert "loaded 1 session" in output
+    assert "Session 11111111" in result.output  # the card, from the rebuilt store
+    with Store.open(repo) as store:
+        assert len(store.sessions()) == 1
+        assert store.rebuilt_from is None  # and now it opens normally
+
+
+def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
+    repo = repo_with_transcripts
+    (repo / ".graphene").mkdir()
+    (repo / ".graphene" / "graphene.db").write_text("this is not a database")
+    result = CliRunner().invoke(build(), [])
+    output = result.output + result.stderr
+    assert result.exit_code == 0, output
+    assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
+    assert "store rebuilt" in output and "Session 11111111" in result.output
+
+
+def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
+    (tmp_path / ".graphene").mkdir()
+    for n, name in enumerate(("graphene.db.corrupt.bak", "graphene.db.corrupt.2.bak")):
+        (tmp_path / ".graphene" / "graphene.db").write_text(f"not a database {n}")
+        store = Store.open(tmp_path)
+        store.close()
+        assert store.rebuilt_from == str(Path(".graphene") / name)
+        assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
+
+
+def test_the_hook_skips_a_stale_store_instead_of_rebuilding_it(tmp_path, capsys):
+    (tmp_path / ".git").mkdir()
+    Store.open(tmp_path).close()
+    db = tmp_path / ".graphene" / "graphene.db"
+    set_version(db, SCHEMA_VERSION + 1)
+    before = db.read_bytes()
+    event = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(tmp_path)})
+    assert hook_main(io.StringIO(event), cwd=tmp_path) == 0
+    assert capsys.readouterr().out == ""
+    assert db.read_bytes() == before  # not rebuilt, not backfilled, not even written to
+    assert list((tmp_path / ".graphene").glob("*.bak")) == []
+    log = (tmp_path / ".graphene" / "ingest.log").read_text()
+    assert "run graphene" in log and "Traceback" not in log

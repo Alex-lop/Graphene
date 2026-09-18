@@ -67,10 +67,13 @@ def build():
 
     def open_store(r: Path) -> Store:
         try:
-            return Store.open(r)
+            store = Store.open(r)
         except (sqlite3.DatabaseError, OSError) as exc:
             fail(f"cannot open {r / '.graphene' / 'graphene.db'}: {exc}", 1)
             raise AssertionError from None  # unreachable: fail() exits
+        if store.rebuilt_from:
+            errors.print(f"[dim]store rebuilt (old copy at {escape(store.rebuilt_from)})[/dim]")
+        return store
 
     def loaded_store(r: Path) -> Store:
         """The repo's store; when it holds no sessions yet, Claude Code's transcripts are read first."""
@@ -108,10 +111,11 @@ def build():
         md: Path | None = None,
         full: bool = False,
         explain: str | None = None,
+        model: str | None = None,
     ) -> None:
         r = root()
         try:
-            explainer, notice = pick_explainer(explain)
+            explainer, notice = pick_explainer(explain, model)
         except ValueError as exc:
             fail(str(exc))
         with loaded_store(r) as store:
@@ -200,12 +204,13 @@ def build():
         explain: str = typer.Option(
             None, "--explain", help="claude (one call per prompt) or none (default)."
         ),
+        model: str = typer.Option(None, "--model", help="Model for --explain claude (default haiku)."),
     ) -> None:
         """Verbose: with --full, the whole reconstruction (every prompt, file and failure).
 
         Not the come-back view; that is plain `graphene`. Without --full it prints the same card.
         """
-        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain)
+        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model)
 
     @cli.command(rich_help_panel="Advanced")
     def sessions() -> None:

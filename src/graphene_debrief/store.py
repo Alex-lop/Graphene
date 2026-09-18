@@ -11,6 +11,7 @@ from .model import DebriefRun, Prompt, Session, ToolEvent
 
 RESPONSE_CAP = 256 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
+SCHEMA_VERSION = 1  # everything here is regenerable, so a mismatch is rebuilt, never migrated
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -20,7 +21,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at TEXT,
   head_at_start TEXT,
   source TEXT NOT NULL,
-  transcript_path TEXT
+  transcript_path TEXT,
+  transcript_size INTEGER,
+  transcript_mtime REAL
 );
 CREATE TABLE IF NOT EXISTS prompts (
   id TEXT NOT NULL,
@@ -53,6 +56,7 @@ CREATE TABLE IF NOT EXISTS explanations (
   text TEXT NOT NULL,
   source TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  model TEXT,
   PRIMARY KEY (prompt_id, path)
 );
 CREATE TABLE IF NOT EXISTS debrief_runs (
@@ -61,6 +65,33 @@ CREATE TABLE IF NOT EXISTS debrief_runs (
   timestamp TEXT NOT NULL
 );
 """
+
+
+class StaleStore(Exception):
+    """The file on disk is not a store of this schema version (or not a database at all).
+
+    ``tag`` names the backup the CLI moves it to: ``v0`` for an older schema, ``corrupt`` for a
+    file SQLite will not read.
+    """
+
+    def __init__(self, tag: str) -> None:
+        super().__init__(tag)
+        self.tag = tag
+
+
+def set_aside(path: Path, tag: str) -> Path:
+    """Move an unusable store and its WAL sidecars out of the way; never overwrite an older backup."""
+    backup = path.with_name(f"{path.name}.{tag}.bak")
+    n = 2
+    while backup.exists():
+        backup = path.with_name(f"{path.name}.{tag}.{n}.bak")
+        n += 1
+    os.replace(path, backup)
+    for sidecar in ("-wal", "-shm"):  # else SQLite would replay them into the new file
+        side = Path(str(path) + sidecar)
+        if side.exists():
+            os.replace(side, Path(str(backup) + sidecar))
+    return backup
 
 
 def ignore_store_dir(root: Path) -> bool:
@@ -105,12 +136,27 @@ def _content(text: object) -> str | None:
 class Store:
     def __init__(self, path: Path, timeout: float = 5.0) -> None:
         self.path = path
+        self.rebuilt_from: str | None = None  # set by open() when this store replaced an unusable one
         self.conn = sqlite3.connect(path, timeout=timeout, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.executescript(SCHEMA)
+        try:
+            self.conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+            version = int(self.conn.execute("PRAGMA user_version").fetchone()[0])
+            written = self.conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0]
+            if version != SCHEMA_VERSION and written:  # a brand new file is version 0 and empty
+                raise StaleStore(f"v{version}")
+            self.conn.executescript(SCHEMA)
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        except sqlite3.DatabaseError as exc:
+            self.conn.close()
+            if isinstance(exc, sqlite3.OperationalError):
+                raise  # a locked database is fine, just busy: never move that aside
+            raise StaleStore("corrupt") from exc
+        except BaseException:
+            self.conn.close()
+            raise
 
     @classmethod
     def open(cls, repo_root: Path, quick: bool = False) -> Store:
@@ -118,13 +164,27 @@ class Store:
 
         The directory is private to the user and git-ignored on every open, not only by `init`,
         because whichever command creates it fills it with transcript content.
+
+        A store from another schema version, or a file SQLite cannot read, is moved aside and
+        replaced by an empty one (the caller backfills it); ``rebuilt_from`` then holds the backup
+        path. The hook path never rebuilds: it raises ``StaleStore`` and skips the event.
         """
         directory = repo_root / ".graphene"
         directory.mkdir(exist_ok=True)
         os.chmod(directory, 0o700)
         if (repo_root / ".git").exists():
             ignore_store_dir(repo_root)
-        return cls(directory / "graphene.db", timeout=0.25 if quick else 5.0)
+        path = directory / "graphene.db"
+        timeout = 0.25 if quick else 5.0
+        try:
+            return cls(path, timeout=timeout)
+        except StaleStore as stale:
+            if quick:
+                raise
+            backup = set_aside(path, stale.tag)
+            store = cls(path, timeout=timeout)
+            store.rebuilt_from = str(backup.relative_to(repo_root))
+            return store
 
     def close(self) -> None:
         self.conn.close()
@@ -160,6 +220,19 @@ class Store:
     def sessions(self) -> list[Session]:
         rows = self.conn.execute("SELECT * FROM sessions ORDER BY started_at, id").fetchall()
         return [_session(r) for r in rows]
+
+    def transcript_stat(self, session_id: str) -> tuple[int, float] | None:
+        """Size and mtime of the transcript when this session was last read from it."""
+        row = self.conn.execute(
+            "SELECT transcript_size, transcript_mtime FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return None if row is None or row[0] is None else (int(row[0]), float(row[1]))
+
+    def set_transcript_stat(self, session_id: str, stat: tuple[int, float]) -> None:
+        self.conn.execute(
+            "UPDATE sessions SET transcript_size = ?, transcript_mtime = ? WHERE id = ?",
+            (stat[0], stat[1], session_id),
+        )
 
     def delete_session_data(self, session_id: str) -> None:
         """Drop prompts and events (explanations are kept so `why` never re-calls a model)."""
@@ -238,18 +311,28 @@ class Store:
 
     # -- explanations -------------------------------------------------------------------------
 
-    def set_explanation(self, prompt_id: str, path: str, text: str, source: str, created_at: str) -> None:
+    def set_explanation(
+        self,
+        prompt_id: str,
+        path: str,
+        text: str,
+        source: str,
+        created_at: str,
+        model: str | None = None,
+    ) -> None:
         self.conn.execute(
-            "INSERT OR REPLACE INTO explanations (prompt_id, path, text, source, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (prompt_id, path, text, source, created_at),
+            "INSERT OR REPLACE INTO explanations (prompt_id, path, text, source, created_at, model) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (prompt_id, path, text, source, created_at, model),
         )
 
-    def explanation(self, prompt_id: str, path: str) -> tuple[str, str] | None:
+    def explanation(self, prompt_id: str, path: str) -> tuple[str, str, str | None] | None:
+        """(sentence, who wrote it, which model wrote it if any)."""
         row = self.conn.execute(
-            "SELECT text, source FROM explanations WHERE prompt_id = ? AND path = ?", (prompt_id, path)
+            "SELECT text, source, model FROM explanations WHERE prompt_id = ? AND path = ?",
+            (prompt_id, path),
         ).fetchone()
-        return (row[0], row[1]) if row else None
+        return (row[0], row[1], row[2]) if row else None
 
     # -- debrief runs -------------------------------------------------------------------------
 

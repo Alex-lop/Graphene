@@ -8,9 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.model import Session
+from graphene_debrief.model import Session, ToolEvent
 from graphene_debrief.sources.claude_code import (
     backfill,
+    install_hooks,
     is_prompt,
     parse_transcript,
     project_dir_name,
@@ -153,6 +154,61 @@ def test_replace_rebuilds_a_hook_session_and_keeps_its_head(tmp_path, projects):
             "2026-03-01T09:00:01.000Z",
         )
         assert len(store.prompts(SID)) == 3
+
+
+@pytest.fixture
+def repo_projects(tmp_path, monkeypatch):
+    """The fixture transcript re-rendered so its cwd is a real temporary repo we can write into."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(fixture, "CWD", str(repo))
+    directory = tmp_path / "projects" / project_dir_name(repo)
+    for path, text in fixture.render().items():
+        out = directory / path.relative_to(fixture.OUT)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+    return repo, tmp_path / "projects"
+
+
+def test_a_hook_session_is_replaced_when_the_transcript_holds_more_calls(repo_projects):
+    repo, projects = repo_projects
+    with Store.open(repo) as store:
+        store.upsert_session(
+            Session(
+                id=SID,
+                repo=str(repo),
+                started_at="2026-03-01T09:05:00.000Z",
+                head_at_start="abc123",
+                source="hook",
+            )
+        )  # the hooks were installed mid-session, so they caught one call out of twelve
+        store.add_event(ToolEvent("toolu_e1", SID, None, "2026-03-01T09:06:00.000Z", "Edit", {}))
+
+        assert backfill(store, repo, projects=projects).skipped == [SID]  # no hooks in this repo
+        assert store.event_count(SID) == 1
+
+        install_hooks(repo)
+        report = backfill(store, repo, projects=projects)
+        assert report.refreshed == [SID]
+        assert store.event_count(SID) == 12  # everything the transcript holds
+        session = store.session(SID)
+        assert (session.head_at_start, session.source, session.started_at) == (
+            "abc123",
+            "hook",
+            "2026-03-01T09:00:01.000Z",  # the hook-captured HEAD and the earlier start are kept
+        )
+        assert backfill(store, repo, projects=projects).skipped == [SID]  # nothing new next time
+
+
+def test_a_hook_session_the_transcript_adds_nothing_to_is_left_alone(repo_projects):
+    repo, projects = repo_projects
+    install_hooks(repo)
+    with Store.open(repo) as store:
+        store.upsert_session(Session(id=SID, repo=str(repo), started_at="t0", source="hook"))
+        for i in range(12):
+            store.add_event(ToolEvent(f"e{i}", SID, None, "t", "Edit", {}))
+        assert backfill(store, repo, projects=projects).skipped == [SID]
+        assert store.prompts(SID) == [] and store.event_count(SID) == 12
 
 
 def test_transcripts_from_other_repos_are_ignored(tmp_path, projects):

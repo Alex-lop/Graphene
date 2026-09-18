@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from graphene_debrief.debrief import build_debrief
+from graphene_debrief.debrief import build_debrief, to_json
 from graphene_debrief.explain import (
     ClaudeCodeExplainer,
     ExplainError,
@@ -195,7 +195,11 @@ def test_pick_explainer(monkeypatch):
     monkeypatch.setattr("graphene_debrief.explain.shutil.which", lambda _: "/usr/bin/claude")
     assert pick_explainer(None)[0].name == "none"  # claude on PATH changes nothing unless asked for
     explainer, notice = pick_explainer("claude")
-    assert (explainer.name, notice) == ("claude", None)
+    assert (explainer.name, explainer.model, notice) == ("claude", "haiku", None)  # the cheap default
+    chosen, _ = pick_explainer("claude", "opus")
+    assert chosen.model == "opus" and chosen.argv()[-2:] == ["--model", "opus"]
+    ignored, note = pick_explainer("none", "opus")
+    assert ignored.name == "none" and note == "--model is ignored without --explain claude"
     monkeypatch.setattr("graphene_debrief.explain.shutil.which", lambda _: None)
     explainer, notice = pick_explainer("claude")
     assert explainer.name == "none" and "not on PATH" in notice
@@ -255,7 +259,7 @@ def test_model_explanations_are_stored_and_reused(tmp_path):
             "Model says b.py.",
         ]
         assert explainer.calls == 2  # one call per prompt
-        assert store.explanation("p1", "a.py") == ("Model says a.py.", "claude")
+        assert store.explanation("p1", "a.py") == ("Model says a.py.", "claude", None)
         second = build_debrief(store, ["s"], tmp_path, CountingExplainer())
         assert [f.explained_by for p in second.prompts for f in p.files] == ["claude", "claude"]
         assert second.notes == []
@@ -273,6 +277,26 @@ def test_failure_falls_back_to_templates_with_a_note(tmp_path):
         ]
         assert debrief.notes == ["explanations by claude failed (boom); showing templates instead"]
         assert store.explanation("p1", "a.py") is None
+
+
+def test_the_model_name_is_stored_beside_the_sentence_and_shown_in_json(tmp_path):
+    with Store.open(tmp_path) as store:
+        seed(store)
+        explainer = CountingExplainer()
+        explainer.model = "haiku"
+        first = build_debrief(store, ["s"], tmp_path, explainer)
+        assert [f.model for p in first.prompts for f in p.files] == ["haiku", "haiku"]
+        assert store.explanation("p1", "a.py") == ("Model says a.py.", "claude", "haiku")
+        assert '"model": "haiku"' in to_json(first)
+        reused = build_debrief(store, ["s"], tmp_path, NullExplainer())
+        assert [f.model for p in reused.prompts for f in p.files] == ["haiku", "haiku"]
+
+
+def test_a_template_sentence_carries_no_model(tmp_path):
+    with Store.open(tmp_path) as store:
+        seed(store)
+        debrief = build_debrief(store, ["s"], tmp_path, NullExplainer())
+        assert [f.model for p in debrief.prompts for f in p.files] == [None, None]
 
 
 def test_a_prompt_with_hundreds_of_files_is_explained_in_batches():

@@ -59,11 +59,32 @@ resolved through symlinks. A transcript is used only if its recorded `cwd` lies 
   (or git's empty tree when there is none), so commits made during or after the session do not
   hide its changes.
 
-A backfilled session is reloaded when its transcript has grown. A session the hooks recorded is
-left alone unless you pass `--replace`, which rebuilds its prompts and calls from the transcript
-and keeps the HEAD the hook captured. A transcript that cannot be read is reported and skipped;
-the others still load. Injected context blocks (`<system-reminder>…</system-reminder>`) are
-stripped from prompt text, and a message that consists only of them is not a prompt.
+A transcript is only parsed when it might have changed: the store keeps the file's size and
+modification time from the last time it was read, and a transcript matching both is skipped
+without being opened. One that grew is parsed and its session reloaded. A transcript that cannot
+be read is reported and skipped; the others still load. Injected context blocks
+(`<system-reminder>…</system-reminder>`) are stripped from prompt text, and a message that
+consists only of them is not a prompt.
+
+A session the hooks recorded is left alone, because the hooks saw more than the transcript does
+(the content before and after each call, and the git HEAD at the start). There is one exception:
+if the hooks are installed in this repo and the transcript holds more tool calls than the store
+has events for that session — which means they were installed part-way through it — the session
+is rebuilt from the transcript automatically, keeping the HEAD the hook captured and the earlier
+of the two start times, and is reported as refreshed. `--replace` forces that rebuild for every
+session the hooks recorded, installed or not.
+
+### The store
+
+`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. Everything in it is
+derived from transcripts and hook events, so a store written by another version of Graphene is
+not migrated: it is moved to `.graphene/graphene.db.v<old>.bak` (with its `-wal`/`-shm` sidecars,
+and a numeric suffix rather than overwriting an existing backup), and the command that found it
+creates an empty store, prints one line to stderr saying so, and backfills from the transcripts.
+A file SQLite refuses to read at all goes to `.graphene/graphene.db.corrupt.bak` the same way. A
+locked database is not that case and is never moved aside. The hook path never rebuilds: on a
+store it cannot use it skips the event, writes one line to `.graphene/ingest.log` saying a rebuild
+is needed, and exits 0, so the next `graphene` command is what does the work.
 
 ## 2. File content: what is known and what is not
 
@@ -189,9 +210,13 @@ debrief. The call runs with no tools, no MCP servers, no settings files, no sess
 and a temporary working directory, so it leaves no transcript behind and fires no hooks. Before
 anything is sent, the diff of any file whose name looks like a secrets file (`.env*`, `*.pem`,
 `*.key`, `id_rsa*`, anything with credential, secret, token or password in the name) is replaced
-by a note, and token-shaped strings or private-key blocks in any diff are masked. It uses
-whatever model your Claude Code defaults to; a 23-file prompt cost about half a dollar on the
-default model during the rebuild.
+by a note, and token-shaped strings or private-key blocks in any diff are masked.
+
+The model is `haiku` unless `--model NAME` names another one (`graphene debrief --explain claude
+--model sonnet`), and the name is stored with each sentence and appears in `--json`. `--model`
+without `--explain claude` changes nothing and says so in one line. A 23-file prompt cost about
+half a dollar on the model Claude Code defaults to, which is why the default here is the cheap
+one; a one-word round trip on `haiku` cost about a cent.
 
 ## 7. `graphene why`
 

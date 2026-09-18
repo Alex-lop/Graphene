@@ -29,6 +29,7 @@ class FileLine:
     strategy: str
     explanation: str
     explained_by: str
+    model: str | None = None  # the model that wrote the sentence, when one did
 
 
 @dataclass
@@ -178,7 +179,7 @@ def build_debrief(
             )
             block = PromptBlock(sid, prompt.id, prompt.ordinal, prompt.timestamp, prompt.text)
             for change in changes:
-                text, by = explanations.get(change.path, (template(change), "none"))
+                text, by, model = explanations.get(change.path, (template(change), "none", None))
                 block.files.append(
                     FileLine(
                         change.path,
@@ -189,6 +190,7 @@ def build_debrief(
                         change.strategy,
                         text,
                         by,
+                        model,
                     )
                 )
                 paths.add(change.path)
@@ -236,7 +238,7 @@ def build_debrief(
 
 def _explain(store, explainer, fallback, text, prompt_id, changes, notes, now):
     """Explanations for one prompt: stored model output first, else the explainer, else templates."""
-    out: dict[str, tuple[str, str]] = {}
+    out: dict[str, tuple[str, str, str | None]] = {}
     missing: list[FileChange] = []
     for change in changes:
         stored = store.explanation(prompt_id, change.path)
@@ -253,12 +255,13 @@ def _explain(store, explainer, fallback, text, prompt_id, changes, notes, now):
             fallback = NullExplainer()
             produced = fallback.explain_prompt(text, missing)
             active = fallback
+        model = getattr(active, "model", None)
         for change in missing:
             sentence = produced.get(change.path) or template(change)
             by = active.name if change.path in produced else "none"
-            out[change.path] = (sentence, by)
+            out[change.path] = (sentence, by, model if by != "none" else None)
             if by != "none":
-                store.set_explanation(prompt_id, change.path, sentence, by, iso(now))
+                store.set_explanation(prompt_id, change.path, sentence, by, iso(now), model)
     return out, explainer, fallback
 
 

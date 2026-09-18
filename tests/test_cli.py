@@ -178,9 +178,12 @@ def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
     assert "no session in that window" in result.output + result.stderr
 
 
-def test_a_corrupt_store_fails_cleanly(repo):
+def test_a_corrupt_store_is_rebuilt(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
     result = run("sessions")
-    assert result.exit_code == 1
-    assert "cannot open" in result.output + result.stderr and "Traceback" not in result.output + result.stderr
+    output = result.output + result.stderr
+    assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
+    assert "store rebuilt" in output and "Traceback" not in output
+    assert result.exit_code == 1  # nothing to backfill from here: the usual one-line message
+    assert "no Claude Code sessions found" in output
