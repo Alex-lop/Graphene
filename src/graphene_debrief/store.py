@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -96,15 +97,13 @@ def set_aside(path: Path, tag: str) -> Path:
 
 
 def ignore_store_dir(root: Path) -> bool:
-    """Add .graphene/ to .gitignore unless already there. Returns True when it was added."""
-    path = root / ".gitignore"
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    if any(line.strip().rstrip("/") == ".graphene" for line in lines):
+    """Make .graphene/ ignore itself with a `.gitignore` of its own (the .venv/ trick), so the repo's
+    own .gitignore is never touched. Returns True when the file was written."""
+    path = root / ".graphene" / ".gitignore"
+    if path.exists():
         return False
-    with open(path, "a", encoding="utf-8") as f:
-        if lines and lines[-1].strip():
-            f.write("\n")
-        f.write(".graphene/\n")
+    path.parent.mkdir(exist_ok=True)
+    path.write_text("*\n", encoding="utf-8")
     return True
 
 
@@ -173,19 +172,20 @@ class Store:
         directory = repo_root / ".graphene"
         directory.mkdir(exist_ok=True)
         os.chmod(directory, 0o700)
-        if (repo_root / ".git").exists():
-            ignore_store_dir(repo_root)
+        ignore_store_dir(repo_root)
         path = directory / "graphene.db"
         timeout = 0.25 if quick else TIMEOUT
         try:
-            return cls(path, timeout=timeout)
+            store = cls(path, timeout=timeout)
         except StaleStore as stale:
             if quick:
                 raise
             backup = set_aside(path, stale.tag)
             store = cls(path, timeout=timeout)
             store.rebuilt_from = str(backup.relative_to(repo_root))
-            return store
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)  # the file too, not only the directory: transcripts can hold secrets
+        return store
 
     def close(self) -> None:
         self.conn.close()

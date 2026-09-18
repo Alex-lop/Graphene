@@ -66,7 +66,8 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     first = run("init")
     assert first.exit_code == 0, first.output
     assert "SessionStart" in first.output
-    settings = json.loads((repo / ".claude" / "settings.json").read_text())
+    settings = json.loads((repo / ".claude" / "settings.local.json").read_text())
+    assert not (repo / ".claude" / "settings.json").exists()  # the team's file is never touched
     assert set(settings["hooks"]) == {
         "SessionStart",
         "UserPromptSubmit",
@@ -74,7 +75,8 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
         "PostToolUseFailure",
         "Stop",
     }
-    assert ".graphene/" in (repo / ".gitignore").read_text()
+    assert not (repo / ".gitignore").exists()  # the store ignores itself instead
+    assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"
     assert (repo / ".graphene" / "graphene.db").exists()
     assert "already installed" in run("init").output
 
@@ -87,13 +89,13 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
         assert line.startswith("no Claude Code sessions for this repo yet (looked in ")
         assert project_dir_name(repo) in line  # the encoded project directory it searched
     assert run("ingest").exit_code == 1
-    assert not (repo / ".graphene").exists() and not (repo / ".gitignore").exists()  # nothing to record
+    assert not (repo / ".graphene").exists()  # nothing to record, nothing written
 
 
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
     assert "`graphene init` records sessions live" in one_line(run())
     init = run("init")
-    assert "next Claude Code session" in init.output and "added .graphene/ to .gitignore" in init.output
+    assert "next Claude Code session" in init.output
     line = one_line(run())
     assert "hooks are installed" in line and "graphene init" not in line
 

@@ -41,6 +41,7 @@ from ..store import StaleStore, Store
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop")
 HOOK_COMMAND = "graphene ingest hook"
+SETTINGS = ".claude/settings.local.json"  # personal; the team's settings.json is the committed one
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 _NOT_A_PROMPT = (
     "<command-name>",
@@ -119,10 +120,15 @@ def attach_file_content(event: ToolEvent, root: Path) -> None:
     if not path:
         return
     event.file_path = relative_path(path, root)
-    if os.path.isabs(event.file_path):
-        return  # outside the repo: keep the path, never the contents (they may be credentials)
-    resp = event.response if isinstance(event.response, dict) else {}
     tin = event.input
+    if os.path.isabs(event.file_path):
+        # outside the repo: keep the path, never the contents (they may be credentials), not even
+        # inside the raw payload the store keeps for every call
+        event.input = {k: v for k, v in tin.items() if k in ("file_path", "notebook_path")}
+        if isinstance(event.response, dict) and "error" not in event.response:
+            event.response = None
+        return
+    resp = event.response if isinstance(event.response, dict) else {}
     if event.tool == "Write":
         original = resp.get("originalFile")
         event.old_content = original if isinstance(original, str) else None
@@ -264,8 +270,12 @@ def _log_error(root: Path) -> None:
 
 
 def install_hooks(root: Path) -> list[str]:
-    """Merge our hook into .claude/settings.json, keeping everything else. Returns events added."""
-    path = root / ".claude" / "settings.json"
+    """Merge our hook into .claude/settings.local.json, keeping everything else. Returns events added.
+
+    The local file, not settings.json: the hooks call a tool installed on this machine, and the
+    team's settings.json is the one people commit.
+    """
+    path = root / SETTINGS
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     if not isinstance(settings, dict):
         raise ValueError(f"{path} is not a JSON object")
@@ -539,10 +549,14 @@ def backfill(
 
 
 def hooks_installed(root: Path) -> bool:
-    try:
-        return HOOK_COMMAND in (root / ".claude" / "settings.json").read_text(encoding="utf-8")
-    except OSError:
-        return False
+    """Our hook command appears in either settings file (earlier versions wrote settings.json)."""
+    for name in (SETTINGS, ".claude/settings.json"):
+        try:
+            if HOOK_COMMAND in (root / name).read_text(encoding="utf-8"):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _stat(path: Path) -> tuple[int, float]:

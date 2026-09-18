@@ -42,6 +42,7 @@ def build():
     )
     from .explain import pick_explainer
     from .sources.claude_code import (
+        SETTINGS,
         backfill,
         hooks_installed,
         install_hooks,
@@ -50,7 +51,7 @@ def build():
         repo_root,
         transcripts_for,
     )
-    from .store import Store, ignore_store_dir
+    from .store import Store
     from .why import why_line, why_path
 
     ADVANCED = "Advanced"
@@ -288,16 +289,18 @@ def build():
         try:
             added = install_hooks(r)
         except ValueError as exc:
-            fail(f"cannot update .claude/settings.json: {exc}", 1)
+            fail(f"cannot update {SETTINGS}: {exc}", 1)
         if added:
-            settings = Path(os.path.relpath(r / ".claude" / "settings.json", Path.cwd()))
-            console.print(f"hooks added to {settings}: {', '.join(added)}")
+            settings = Path(os.path.relpath(r / SETTINGS, Path.cwd()))
+            console.print(f"hooks added to {settings}: {', '.join(added)}", soft_wrap=True)
         else:
-            console.print("hooks already installed")
-        if ignore_store_dir(r):
-            console.print("added .graphene/ to .gitignore")
+            console.print("hooks already installed", soft_wrap=True)
         open_store(r).close()
-        console.print("the next Claude Code session in this repo is recorded live; then run `graphene`")
+        console.print(
+            "the next Claude Code session in this repo is recorded live into .graphene/ "
+            "(private to you, ignores itself in git); then run `graphene`",
+            soft_wrap=True,
+        )
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

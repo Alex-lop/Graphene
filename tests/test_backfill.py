@@ -441,3 +441,13 @@ def test_a_repo_reached_through_a_symlink_still_backfills(tmp_path, projects):
     with Store.open(tmp_path) as store:
         report = backfill(store, via, projects=tmp_path / "projects2")
     assert report.added == ["s"]
+
+
+def test_outside_repo_content_never_reaches_the_store(tmp_path, projects):
+    """The fixture writes /home/dev/notes/todo.md with a known body; the store keeps the path only."""
+    with Store.open(tmp_path) as store:
+        backfill(store, ROOT, projects=projects)
+        rows = store.conn.execute("SELECT input, response FROM tool_events WHERE tool = 'Write'").fetchall()
+        outside = [e for e in store.events(SID) if e.file_path == "/home/dev/notes/todo.md"]
+    assert len(outside) == 1 and outside[0].input == {"file_path": "/home/dev/notes/todo.md"}
+    assert not any("remember to push" in (r[0] or "") + (r[1] or "") for r in rows)
