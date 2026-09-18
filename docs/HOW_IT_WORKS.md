@@ -196,6 +196,20 @@ something in them: files outside a named scope (§4), abandoned work (§5), a on
 count, files written outside the repo. `graphene debrief --full` is the whole reconstruction,
 prompt by prompt, with a sentence per file. `--json` is the structure behind both.
 
+In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
+colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
+wrap — paths are shortened in the middle, commit subjects at the end — and the terminal card
+shows at most 5 commits and 20 files before "… N more", so a session fits in 40 rows at 80
+columns. `NO_COLOR` turns the colour off and keeps the layout. When stdout is not a terminal
+(`graphene > out.txt`, a pipe, CI) the markdown text is written as it is, with no rendering at
+all; `--full`, `--json` and `--md` are always plain. `graphene why` and `graphene sessions`
+follow the same rules.
+
+Every dead end is one line on stderr and a non-zero exit: outside a git repository, inside your
+home directory, no transcripts for this repo (naming the directory it searched), a session that
+changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
+and `why` with no path at all, which first lists the five files that changed most recently.
+
 ## 6. Explanations
 
 Each file line in the full reconstruction and in `graphene why` ends with one sentence. By default

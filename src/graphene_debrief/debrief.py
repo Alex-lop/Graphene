@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from rich.text import Text
+
 from .attribute import attribute
 from .explain import Explainer, ExplainError, NullExplainer, template
 from .model import FileChange, ToolEvent
@@ -411,7 +413,7 @@ def render_markdown(d: Debrief, full: bool = False) -> str:
         out.append("")
     if d.reverted or d.failed or d.reruns:
         out += ["## Tried and abandoned", ""]
-        out += _abandoned_lines(d, where)
+        out += [f"- {line}" for line in _abandoned_lines(d, where)]
         denials = [f for f in d.failed if f["denied"]]
         groups: dict[tuple[str, str], int] = {}
         for f in denials:
@@ -442,14 +444,36 @@ WHY_HINT = (
 
 def _abandoned_lines(d: Debrief, where) -> list[str]:
     """Real abandoned work: files put back to their session-start content, checks that failed then reran."""
-    out = [f"- reverted: `{r['path']}` ({where(r['prompt_ordinal'], r['session_id'])})" for r in d.reverted]
+    out = [f"reverted: `{r['path']}` ({where(r['prompt_ordinal'], r['session_id'])})" for r in d.reverted]
     for r in d.reruns:
         outcome = "passed" if r["rerun_passed"] else "failed again"
         out.append(
-            f"- check `{r['command']}` failed under {where(r['failed_under'], r['session_id'])}, "
+            f"check `{r['command']}` failed under {where(r['failed_under'], r['session_id'])}, "
             f"rerun under {where(r['rerun_under'], r['session_id'])}: {outcome}"
         )
     return out
+
+
+def _unrequested_lines(d: Debrief, where) -> list[str]:
+    return [
+        f'`{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"'
+        for u in d.unrequested
+    ]
+
+
+def _failure_line(d: Debrief, hint: bool = True) -> str | None:
+    """Every failed tool call as one line; the full reconstruction lists them one by one.
+
+    The terminal card drops the ``hint`` because its closing line already points at ``--full``.
+    """
+    total = d.failure_summary.get("total", 0)
+    if not total:
+        return None
+    by_tool = ", ".join(f"{n} {tool}" for tool, n in d.failure_summary.get("by_tool", {}).items())
+    denials = d.failure_summary.get("denials", 0)
+    refused = f"; {denials} refused before running" if denials else ""
+    tail = "; `graphene debrief --full` lists them" if hint else ""
+    return f"{total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused}){tail}"
 
 
 def file_rows(d: Debrief) -> list[dict]:
@@ -509,20 +533,10 @@ def render_card(d: Debrief, limit: int = 30) -> str:
             out.append(f"- … {len(rows) - limit} more; `graphene why <path>` for any of them")
     if d.unrequested:
         out += ["", "**Not what you asked for**"]
-        for u in d.unrequested:
-            out.append(f'- `{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"')
-    abandoned = _abandoned_lines(d, where)
-    total = d.failure_summary.get("total", 0)
-    if total:
-        by_tool = ", ".join(f"{n} {tool}" for tool, n in d.failure_summary.get("by_tool", {}).items())
-        denials = d.failure_summary.get("denials", 0)
-        refused = f"; {denials} refused before running" if denials else ""
-        abandoned.append(
-            f"- {total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused}); "
-            "`graphene debrief --full` lists them"
-        )
+        out += [f"- {line}" for line in _unrequested_lines(d, where)]
+    abandoned = _abandoned_lines(d, where) + [line for line in [_failure_line(d)] if line]
     if abandoned:
-        out += ["", "**Abandoned**", *abandoned]
+        out += ["", "**Abandoned**", *[f"- {line}" for line in abandoned]]
     if d.outside_repo:
         out += [
             "",
@@ -552,6 +566,168 @@ def outside_summary(paths: list[str], limit: int = 6) -> list[str]:
                 common = os.path.dirname(common)
             out.append(f"{common}/ ({len(group)} files)")
     return sorted(out)
+
+
+# -- terminal rendering -------------------------------------------------------------------------
+
+ACCENT = "cyan"  # the one colour: the paths and commands you could act on
+CARD_FILES = 20  # file rows before the card says "… N more"
+CARD_COMMITS = 5
+SECTION_ROWS = 6
+WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line> · graphene debrief --full"
+
+
+def write_line(console, text: Text, wrap: bool = False) -> None:
+    """One line: styled for a colour terminal, plain text (no escape codes) anywhere else."""
+    text.rstrip()
+    if console.is_terminal and not console.no_color:
+        console.print(text, no_wrap=not wrap, crop=wrap, overflow="fold" if wrap else "ignore")
+    else:
+        console.file.write(text.plain + "\n")
+
+
+def clip(text: str, width: int) -> str:
+    """Truncate at the end, so a row never wraps."""
+    return text if len(text) <= width else text[: max(1, width - 1)].rstrip() + "…"
+
+
+def clip_middle(text: str, width: int) -> str:
+    """Truncate a path in the middle: its name matters as much as its directory."""
+    if len(text) <= width or width < 5:
+        return clip(text, width)
+    head = (width - 1) // 2
+    return text[:head] + "…" + text[len(text) - (width - 1 - head) :]
+
+
+def code_text(line: str, width: int) -> Text:
+    """A markdown-ish line as Text: what `backticks` marked takes the accent, the rest is plain."""
+    out = Text()
+    for i, part in enumerate(line.split("`")):
+        out.append(part, ACCENT if i % 2 else None)
+    out.truncate(width, overflow="ellipsis")
+    return out
+
+
+def _span(d: Debrief) -> str:
+    start, end = stamp(d.sessions[0]["started_at"]), stamp(d.sessions[-1]["ended_at"])
+    return f"{start} → {end[11:] if end[:10] == start[:10] else end}"
+
+
+def _section(console, label: str, rows: list[str], width: int, limit: int = SECTION_ROWS) -> None:
+    if not rows:
+        return
+    write_line(console, Text(""))
+    write_line(console, Text(label))
+    for row in rows[:limit]:
+        write_line(console, code_text(f"  {row}", width))
+    if len(rows) > limit:
+        write_line(console, Text(f"  … {len(rows) - limit} more", "dim"))
+
+
+def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD_COMMITS) -> None:
+    """The card for a terminal: the facts `render_card` writes, aligned into columns and coloured."""
+    width = max(40, console.width)
+    many = len(d.sessions) > 1
+    ids = ", ".join(s["id"][:8] for s in d.sessions)
+    head = f"Sessions {len(d.sessions)} ({ids})" if many else f"Session {ids or 'none'}"
+    if d.sessions:
+        head += f" · {_span(d)} · {duration(d.wall_seconds)}"
+    write_line(console, Text(clip(head, width), "bold"))
+
+    counts = Text()
+    counts.append(f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''} · ", "dim")
+    counts.append(f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} ", "dim")
+    counts.append(f"+{d.added}", "green")
+    counts.append("/", "dim")
+    counts.append(f"−{d.removed}", "red")
+    counts.append(f" · {len(d.commits) or 'no'} commit{'s' if len(d.commits) != 1 else ''}", "dim")
+    write_line(console, counts)
+    for entry in d.commits[:commits]:
+        sha, _, subject = entry.partition(" ")
+        row = Text("  ")
+        row.append(sha, "dim")
+        row.append(" " + clip(subject, width - len(sha) - 3))
+        write_line(console, row)
+    if len(d.commits) > commits:
+        write_line(console, Text(f"  … {len(d.commits) - commits} more", "dim"))
+
+    rows = file_rows(d)
+    if rows:
+        shown = rows[:files]
+        effect = max(len(r["effect"]) for r in shown)
+        added = max(len(f"+{r['added']}") for r in shown)
+        removed = max(len(f"−{r['removed']}") for r in shown)
+        room = max(12, width - 8 - effect - added - removed)
+        paths = min(room, max(len(r["path"]) for r in shown))
+        write_line(console, Text(""))
+        write_line(console, Text("Files changed"))
+        for r in shown:
+            row = Text("  ")
+            row.append(clip_middle(r["path"], paths).ljust(paths), ACCENT)
+            row.append("  " + r["effect"].ljust(effect), "dim")
+            if r["effect"] != "reverted":
+                row.append("  " + f"+{r['added']}".rjust(added), "green")
+                row.append("  " + f"−{r['removed']}".rjust(removed), "red")
+            write_line(console, row)
+        if len(rows) > files:
+            write_line(
+                console,
+                Text(f"  … {len(rows) - files} more; graphene why <path> for any", "dim"),
+            )
+
+    def where(ordinal: int, session_id: str) -> str:
+        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
+
+    _section(console, "Not what you asked for", _unrequested_lines(d, where), width)
+    _section(
+        console,
+        "Abandoned",
+        _abandoned_lines(d, where) + [line for line in [_failure_line(d, hint=False)] if line],
+        width,
+    )
+    _section(console, "Written outside the repo", outside_summary(d.outside_repo), width)
+    for note in d.notes:
+        write_line(console, Text(""))
+        write_line(console, Text(f"Note: {note}", "dim"), wrap=True)
+    write_line(console, Text(""))
+    write_line(console, Text(clip(WHY_HINT_TTY, width), "dim"))
+
+
+def print_why(console, path: str, content: str, subtitle: str, entries: list) -> None:
+    """`why PATH` and `why PATH:LINE`: the file, one line of provenance, then a block per prompt."""
+    width = max(40, console.width)
+    head = Text()
+    head.append(clip_middle(path, width if not content else max(16, width // 2)), ACCENT)
+    if content:
+        head.append("  " + clip(content.strip(), max(8, width - len(head.plain) - 2)))
+    write_line(console, head)
+    write_line(console, Text(clip(subtitle, width), "dim"))
+    for e in entries:
+        write_line(console, Text(""))
+        row = Text()
+        row.append(
+            f"{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  {e.effect} ", "dim"
+        )
+        row.append(f"+{e.added}", "green")
+        row.append("  ")
+        row.append(f"−{e.removed}", "red")
+        write_line(console, row)
+        for line in preview(e.prompt_text).splitlines():
+            write_line(console, Text(f"  > {line}", "dim"), wrap=True)
+        write_line(console, Text(f"  {e.explanation}"), wrap=True)
+
+
+def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]]) -> None:
+    """`graphene sessions`: aligned columns, no box, newest first."""
+    head = ("session", "source", "started", "ended", "prompts", "calls")
+    table = [head] + [tuple(str(cell) for cell in row) for row in rows]
+    widths = [max(len(row[i]) for row in table) for i in range(len(head))]
+    for n, row in enumerate(table):
+        line = Text()
+        for i, cell in enumerate(row):
+            padded = cell.rjust(widths[i]) if i >= 4 else cell.ljust(widths[i])
+            line.append(padded + ("  " if i < len(row) - 1 else ""), "dim" if n == 0 or i < 4 else None)
+        write_line(console, line)
 
 
 def to_json(d: Debrief) -> str:

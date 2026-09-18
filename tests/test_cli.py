@@ -1,6 +1,7 @@
 """The command line, end to end, through Typer's runner."""
 
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +9,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from graphene_debrief import store as store_module
 from graphene_debrief.cli import build
+from graphene_debrief.sources.claude_code import project_dir_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
@@ -19,6 +22,14 @@ runner = CliRunner()
 
 def run(*args):
     return runner.invoke(build(), list(args))
+
+
+def one_line(result) -> str:
+    """Every refusal is exactly one line on stderr, and never a traceback."""
+    text = result.stderr.strip()
+    assert "Traceback" not in text, text
+    assert len(text.splitlines()) == 1, text
+    return text
 
 
 @pytest.fixture
@@ -41,10 +52,14 @@ def transcript(repo, tmp_path, monkeypatch):
     return out / f"{fixture.SID}.jsonl"
 
 
-def test_version_and_help():
+def test_version_and_help_read_as_a_product():
     assert "graphene 0.1.0" in run("--version").output
     text = run("--help").output
-    assert "why" in text and text.index("why") < text.index("debrief")
+    assert text.index("why") < text.index("debrief") < text.index("init") < text.index("sessions")
+    assert "Advanced" in text  # init, ingest and sessions are out of the way
+    card = run("debrief", "--help").output
+    assert "short" in card and "--full" in card
+    assert "PATH:LINE" in run("why", "--help").output
 
 
 def test_init_installs_hooks_and_ignores_the_store(repo):
@@ -68,13 +83,23 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
     for args in ([], ["debrief"], ["sessions"], ["why", "x.py"]):
         result = run(*args)
         assert result.exit_code == 1, args
-        assert "no Claude Code sessions found" in result.output + result.stderr
+        line = one_line(result)
+        assert line.startswith("no Claude Code sessions for this repo (looked in ")
+        assert project_dir_name(repo) in line  # the encoded project directory it searched
     assert run("ingest").exit_code == 1
 
 
-def test_first_run_backfills_from_transcripts(repo, tmp_path, monkeypatch):
-    from graphene_debrief.sources.claude_code import project_dir_name
+def test_the_empty_first_run_says_where_it_looked(repo, tmp_path, monkeypatch):
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
+    result = run()
+    assert result.exit_code == 1
+    line = one_line(result)
+    assert line.startswith("no Claude Code sessions for this repo (looked in ~/.claude/projects/")
+    assert "`graphene init` records sessions live" in line
 
+
+def test_first_run_backfills_from_transcripts(repo, tmp_path, monkeypatch):
     monkeypatch.setattr(fixture, "CWD", str(repo))
     target = tmp_path / "claude" / "projects" / project_dir_name(repo)
     for path, text in fixture.render().items():
@@ -156,9 +181,22 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = run("init")
     assert result.exit_code == 2
+    assert one_line(result) == "run this inside a git repository (no .git found above the current directory)"
     assert run().exit_code == 2
     assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
     assert run("sessions").exit_code == 2
+
+
+def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".git").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+    monkeypatch.chdir(home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    result = run()
+    assert result.exit_code == 2
+    assert one_line(result) == "refusing to treat your home directory as a repo"
+    assert not (home / ".graphene").exists()
 
 
 def test_md_into_a_missing_directory_and_together_with_json(repo, transcript):
@@ -178,6 +216,100 @@ def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
     assert "no session in that window" in result.output + result.stderr
 
 
+def quiet_transcript(repo, tmp_path, monkeypatch) -> Path:
+    """A session that only read files and ran a command: nothing was changed."""
+    monkeypatch.setattr(fixture, "CWD", str(repo))
+    records = [
+        fixture.user_text("what does hello.py do?", "prompt-quiet", 0, 1),
+        fixture.tool_use("t1", "Read", {"file_path": f"{repo}/app/hello.py"}, 0, 2),
+        fixture.tool_result("t1", "def greet(name): ...", {"type": "text"}, "prompt-quiet", 0, 3),
+        fixture.tool_use("t2", "Bash", {"command": "uv run pytest -q"}, 0, 4),
+        fixture.tool_result("t2", "ok", fixture.bash_ok("2 passed"), "prompt-quiet", 0, 5),
+    ]
+    path = tmp_path / "quiet" / "99999999-2222-4333-8444-555555555555.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    return path
+
+
+def test_a_session_that_changed_nothing_is_one_line(repo, tmp_path, monkeypatch):
+    path = quiet_transcript(repo, tmp_path, monkeypatch)
+    assert run("ingest", "--backfill", "--transcript", str(path)).exit_code == 0
+    result = run()
+    assert result.exit_code == 1
+    assert one_line(result) == (
+        "1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it"
+    )
+    assert run("sessions").exit_code == 0  # and it does list it
+    assert json.loads(run("debrief", "--json").stdout)["prompt_count"] == 1  # --json still answers
+
+
+def test_a_store_another_process_is_writing_is_one_line(repo, transcript, monkeypatch):
+    monkeypatch.setattr(store_module, "TIMEOUT", 0.2)
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
+    other.execute("BEGIN EXCLUSIVE")  # a hook or a backfill, mid-write
+    try:
+        result = run()  # the lock is hit late, while recording the debrief run
+        assert result.exit_code == 1
+        assert one_line(result) == (
+            "the store .graphene/graphene.db is locked by another graphene process "
+            "(a backfill or a hook); try again in a moment"
+        )
+    finally:
+        other.close()
+
+
+def test_a_store_locked_before_it_is_even_opened_is_the_same_line(repo, monkeypatch):
+    monkeypatch.setattr(store_module, "TIMEOUT", 0.2)
+    (repo / ".graphene").mkdir()
+    other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
+    other.execute("BEGIN EXCLUSIVE")  # holds the lock before Graphene can create its tables
+    try:
+        result = run("sessions")
+        assert result.exit_code == 1
+        assert one_line(result).startswith("the store .graphene/graphene.db is locked")
+    finally:
+        other.close()
+
+
+def test_why_with_no_path_suggests_the_files_that_changed_last(repo, transcript):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    result = run("why")
+    assert result.exit_code == 2
+    assert one_line(result) == "usage: graphene why <path> | <path>:<line>"
+    suggestions = [line.split("  ")[0] for line in result.stdout.strip().splitlines()]
+    assert 0 < len(suggestions) <= 5
+    assert "app/hello.py" in suggestions
+    assert not any(path.startswith("/") for path in suggestions)
+
+
+def test_why_on_a_path_nothing_touched_is_one_line(repo, transcript):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    result = run("why", "nope.txt")
+    assert result.exit_code == 1
+    assert one_line(result) == "no recorded prompt changed nope.txt"
+
+
+def test_the_card_is_plain_text_when_stdout_is_not_a_terminal(repo, transcript):
+    run("ingest", "--backfill", "--transcript", str(transcript))
+    result = run()
+    assert result.exit_code == 0
+    assert result.stdout.startswith("# Graphene\n")
+    assert "•" not in result.stdout
+    assert not any(char in result.stdout for char in "─│┌┐└┘━┃╭╮╯╰")
+
+
+def test_the_asset_script_renders_three_svgs(tmp_path):
+    script = Path(__file__).parents[1] / "docs" / "assets" / "render_assets.py"
+    done = subprocess.run(
+        [sys.executable, str(script), "--out", str(tmp_path)], capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    for name in ("card.svg", "why-path.svg", "why-line.svg"):
+        assert (tmp_path / name).read_text().startswith("<svg")
+
+
 def test_a_corrupt_store_is_rebuilt(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
@@ -186,4 +318,4 @@ def test_a_corrupt_store_is_rebuilt(repo):
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
     assert "store rebuilt" in output and "Traceback" not in output
     assert result.exit_code == 1  # nothing to backfill from here: the usual one-line message
-    assert "no Claude Code sessions found" in output
+    assert "no Claude Code sessions for this repo" in output

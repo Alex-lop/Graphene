@@ -23,29 +23,58 @@ def build():
 
     import typer
     from rich.console import Console
-    from rich.markdown import Markdown
-    from rich.markup import escape
-    from rich.table import Table
+    from rich.text import Text
+    from typer.core import TyperGroup
 
     from . import __version__
     from .debrief import (
+        ACCENT,
         build_debrief,
-        preview,
+        print_card,
+        print_sessions,
+        print_why,
         render_card,
         render_markdown,
         select_sessions,
         stamp,
         to_json,
+        write_line,
     )
     from .explain import pick_explainer
-    from .sources.claude_code import HOOK_COMMAND, backfill, install_hooks, now_iso, repo_root
+    from .sources.claude_code import (
+        HOOK_COMMAND,
+        backfill,
+        install_hooks,
+        looked_in,
+        now_iso,
+        repo_root,
+    )
     from .store import Store, ignore_store_dir
     from .why import why_line, why_path
 
+    ADVANCED = "Advanced"
+    LOCKED = (
+        "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
+        "try again in a moment"
+    )
+
+    class LockAware(TyperGroup):
+        """One place where losing the race with a hook or a backfill is a line, not a traceback."""
+
+        def invoke(self, ctx):
+            try:
+                return super().invoke(ctx)
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc):
+                    raise
+                fail(LOCKED, 1)
+
     cli = typer.Typer(
+        cls=LockAware,
         help=(
-            "Why did my coding agent change this? `graphene why PATH` or `graphene why PATH:LINE` "
-            "answers across Claude Code sessions; `graphene` alone shows a short card of the latest one."
+            "Why did your coding agent change this? `graphene why <path>` and `graphene why <path>:<line>` "
+            "answer that from Claude Code's own records; `graphene` alone prints the short card of the "
+            "latest session."
         ),
         add_completion=False,
         no_args_is_help=False,
@@ -61,18 +90,24 @@ def build():
             fail("refusing to treat your home directory as a repo")
         return r
 
+    def note(message: str, style: str = "dim") -> None:
+        """One line on stderr, whatever its length: notices and refusals never wrap or stack."""
+        errors.print(Text(message), style=style, no_wrap=True, crop=False, overflow="ignore")
+
     def fail(message: str, code: int = 2) -> None:
-        errors.print(f"[red]{escape(message)}[/red]")
+        note(message, "red")
         raise typer.Exit(code)
 
     def open_store(r: Path) -> Store:
         try:
             store = Store.open(r)
         except (sqlite3.DatabaseError, OSError) as exc:
+            if "locked" in str(exc):
+                fail(LOCKED, 1)
             fail(f"cannot open {r / '.graphene' / 'graphene.db'}: {exc}", 1)
             raise AssertionError from None  # unreachable: fail() exits
         if store.rebuilt_from:
-            errors.print(f"[dim]store rebuilt (old copy at {escape(store.rebuilt_from)})[/dim]")
+            note(f"store rebuilt (old copy at {store.rebuilt_from})")
         return store
 
     def loaded_store(r: Path) -> Store:
@@ -85,11 +120,11 @@ def build():
         if not n:
             store.close()
             fail(
-                "no Claude Code sessions found for this repo: run Claude Code here first "
-                "(`graphene init` records sessions live)",
+                f"no Claude Code sessions for this repo (looked in {looked_in(r)}): run Claude Code here, "
+                "then `graphene` again; `graphene init` records sessions live",
                 1,
             )
-        errors.print(f"[dim]loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts[/dim]")
+        note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
         return store
 
     def hooks_hint(r: Path) -> None:
@@ -99,10 +134,7 @@ def build():
         except OSError:
             installed = False
         if not installed:
-            errors.print(
-                "[dim]`graphene init` would record sessions live; "
-                "until then Graphene reads Claude Code's transcripts[/dim]"
-            )
+            note("`graphene init` records sessions live; until then Graphene reads the transcripts")
 
     def show(
         session_id: str | None,
@@ -127,9 +159,16 @@ def build():
             if not ids:
                 fail(f"no session in that window; `graphene sessions` lists {len(store.sessions())}", 1)
             if notice:
-                errors.print(f"[dim]{escape(notice)}[/dim]")
+                note(notice)
             result = build_debrief(store, ids, r, explainer)
             store.add_debrief_run(ids, now_iso())
+        if md is None and html is None and not as_json and not (result.files_changed or result.commits):
+            n, p = len(result.sessions), result.prompt_count
+            fail(
+                f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
+                f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}",
+                1,
+            )
         markdown = render_markdown(result, full=True) if full else render_card(result)
         if md:
             try:
@@ -150,7 +189,10 @@ def build():
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
         elif not md and not html:
-            console.print(Markdown(markdown))
+            if console.is_terminal and not full:
+                print_card(console, result)
+            else:  # piped, redirected, or the long view: the markdown text itself, unrendered
+                sys.stdout.write(markdown)
             if not full:
                 hooks_hint(r)
 
@@ -159,7 +201,7 @@ def build():
         ctx: typer.Context,
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command: a short card of what changed since you last looked."""
+        """With no command, `graphene` prints the short card of the latest session."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
@@ -167,11 +209,20 @@ def build():
             show(None, None)
 
     @cli.command()
-    def why(target: str = typer.Argument(..., help="PATH, or PATH:LINE for one line.")) -> None:
+    def why(
+        target: str = typer.Argument(None, help="PATH for a file's history, or PATH:LINE for one line."),
+    ) -> None:
         """Which prompts changed a file (newest first), or which one wrote a given line."""
         r = root()
-        path, _, line = target.rpartition(":")
+        path, _, line = (target or "").rpartition(":")
         with loaded_store(r) as store:
+            if target is None:
+                for recent, when in store.recent_paths():
+                    row = Text()
+                    row.append(recent, ACCENT)
+                    row.append("  " + stamp(when), "dim")
+                    write_line(console, row)
+                fail("usage: graphene why <path> | <path>:<line>")
             if path and line.isdigit():
                 answer = why_line(store, r, path, int(line))
                 if answer.content is None:
@@ -181,28 +232,22 @@ def build():
                     if answer.commit
                     else "not committed"
                 )
-                console.print(
-                    f"[bold]{escape(answer.path)}:{answer.line}[/bold]  {escape(answer.content.strip())}"
+                print_why(
+                    console,
+                    f"{answer.path}:{answer.line}",
+                    answer.content,
+                    f"{where} · {answer.reason}",
+                    answer.matches,
                 )
-                console.print(f"{where} · {escape(answer.reason)}")
-                entries = answer.matches
             else:
                 entries = why_path(store, r, target)
                 if not entries:
                     fail(f"no recorded prompt changed {target}", 1)
-                console.print(
-                    f"[bold]{escape(entries[0].change.path)}[/bold]  {len(entries)} prompt(s), newest first"
+                print_why(
+                    console, entries[0].change.path, "", f"{len(entries)} prompt(s), newest first", entries
                 )
-        for e in entries:
-            console.print(
-                f"\n{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  "
-                f"{e.effect} +{e.added}/−{e.removed}"
-            )
-            for row in preview(e.prompt_text).splitlines():
-                console.print(f"  [dim]> {escape(row)}[/dim]")
-            console.print(f"  {escape(e.explanation)}")
 
-    @cli.command(rich_help_panel="Advanced")
+    @cli.command()
     def debrief(
         session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
         since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
@@ -221,30 +266,10 @@ def build():
         ),
         model: str = typer.Option(None, "--model", help="Model for --explain claude (default haiku)."),
     ) -> None:
-        """Verbose: with --full, the whole reconstruction (every prompt, file and failure).
-
-        Not the come-back view; that is plain `graphene`. Without --full it prints the same card.
-        """
+        """The short session card, the same as plain `graphene`; --full is the whole reconstruction."""
         show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model, html=html)
 
-    @cli.command(rich_help_panel="Advanced")
-    def sessions() -> None:
-        """List recorded sessions."""
-        with loaded_store(root()) as store:
-            rows = store.sessions()
-            table = Table("session (prefix)", "source", "started", "ended", "prompts", "tool calls")
-            for s in rows:
-                table.add_row(
-                    s.id[:8],
-                    s.source,
-                    stamp(s.started_at),
-                    stamp(s.ended_at),
-                    str(len(store.prompts(s.id))),
-                    str(store.event_count(s.id)),
-                )
-        console.print(table)
-
-    @cli.command()
+    @cli.command(rich_help_panel=ADVANCED)
     def init() -> None:
         """Install Claude Code hooks so this repo's sessions are recorded live (optional)."""
         r = root()
@@ -270,7 +295,7 @@ def build():
         help="Record what the agent did (the hooks and --backfill do this for you).",
         invoke_without_command=True,
     )
-    cli.add_typer(ingest, name="ingest", rich_help_panel="Advanced")
+    cli.add_typer(ingest, name="ingest", rich_help_panel=ADVANCED)
 
     @ingest.callback()
     def ingest_main(
@@ -308,5 +333,22 @@ def build():
         from .sources.claude_code import hook_main
 
         raise typer.Exit(hook_main())
+
+    @cli.command(rich_help_panel=ADVANCED)
+    def sessions() -> None:
+        """List the recorded sessions, newest first."""
+        with loaded_store(root()) as store:
+            rows = [
+                (
+                    s.id[:8],
+                    s.source,
+                    stamp(s.started_at),
+                    stamp(s.ended_at) if s.ended_at else "running",
+                    len(store.prompts(s.id)),
+                    store.event_count(s.id),
+                )
+                for s in reversed(store.sessions())
+            ]
+        print_sessions(console, rows)
 
     return cli

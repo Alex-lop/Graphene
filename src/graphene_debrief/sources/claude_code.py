@@ -331,6 +331,13 @@ def transcripts_for(root: Path, projects: Path | None = None) -> list[Path]:
     return found
 
 
+def looked_in(root: Path, projects: Path | None = None) -> str:
+    """Where ``transcripts_for`` looks, as one path pattern to show when it found nothing."""
+    pattern = str((projects or default_projects_dir()) / project_dir_name(root)) + "*"
+    home = str(Path.home())
+    return "~" + pattern[len(home) :] if pattern.startswith(home + os.sep) else pattern
+
+
 def iter_records(path: Path) -> Iterator[dict]:
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:

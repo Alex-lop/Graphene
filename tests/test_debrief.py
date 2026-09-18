@@ -1,15 +1,19 @@
-"""The debrief: golden markdown for a fixed session, JSON round trip, session selection."""
+"""The debrief: golden markdown for a fixed session, the terminal card, JSON round trip, selection."""
 
+import io
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from graphene_debrief.debrief import (
     build_debrief,
     file_rows,
     from_json,
     parse_since,
+    print_card,
+    print_sessions,
     render_card,
     render_markdown,
     select_sessions,
@@ -164,6 +168,86 @@ def test_golden_full_render(store, tmp_path):
     rendered = render_markdown(debrief)
     assert rendered == FULL_GOLDEN.read_text(), REGENERATE
     assert "- failed Bash: `cat missing.txt` (prompt 3)" in rendered  # --full still lists real failures
+
+
+def terminal(width: int = 80) -> Console:
+    return Console(width=width, record=True, force_terminal=True)
+
+
+def test_the_terminal_card_shows_what_the_markdown_card_shows(store, tmp_path):
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    console = terminal()
+    print_card(console, debrief)
+    text = console.export_text()
+    assert text.splitlines()[0].startswith("Session sess-gol")
+    assert "3 prompts" in text and "3 files" in text and "+7" in text and "−0" in text
+    for row in file_rows(debrief):
+        assert row["path"] in text
+        if row["effect"] != "reverted":
+            assert f"+{row['added']}" in text and f"−{row['removed']}" in text
+    assert "2 tool failures (2 Bash)" in text  # failures stay one line
+    assert "/home/dev/notes/graphene.md" in text
+    assert "graphene why <path>" in text
+
+
+def test_the_terminal_card_fits_forty_rows_at_eighty_columns(tmp_path):
+    with Store.open(tmp_path) as s:
+        s.upsert_session(Session(id="wide", repo="/repo", started_at=ts(0), ended_at=ts(50)))
+        s.add_prompt(Prompt("p1", "wide", 1, ts(1), "build all of it"))
+        for i in range(30):
+            path = f"src/graphene_debrief/generated/module_number_{i:02d}/handler.py"
+            s.add_event(
+                ToolEvent(
+                    f"w{i}",
+                    "wide",
+                    "p1",
+                    ts(2, i),
+                    "Write",
+                    {"file_path": path},
+                    {"type": "create", "content": "x\n" * (i + 1)},
+                    True,
+                    file_path=path,
+                    old_content=None,
+                    new_content="x\n" * (i + 1),
+                )
+            )
+        debrief = build_debrief(s, ["wide"], tmp_path, now=NOW)
+    debrief.commits = [
+        f"{i:07x} a commit subject long enough to run past eighty columns {i}" for i in range(24)
+    ]
+    console = terminal()
+    print_card(console, debrief)
+    lines = console.export_text().splitlines()
+    assert len(lines) <= 40, "\n".join(lines)
+    assert max(len(line) for line in lines) <= 80
+    assert "… 10 more; graphene why <path> for any" in "\n".join(lines)
+    assert "… 19 more" in "\n".join(lines)
+
+
+def test_the_sessions_list_is_columns_not_a_table():
+    console = terminal()
+    print_sessions(
+        console,
+        [
+            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 3, 11),
+            ("22222222", "hooks", "2026-03-02 09:00", "running", 12, 140),
+        ],
+    )
+    lines = console.export_text().splitlines()
+    assert lines[0].split() == ["session", "source", "started", "ended", "prompts", "calls"]
+    assert max(len(line) for line in lines) <= 80  # no wrapping at eighty columns
+    assert not any(char in "\n".join(lines) for char in "─│┌┐└┘━┃")
+    assert lines[1].index("backfill") == lines[2].index("hooks")  # columns line up
+    assert lines[2].rstrip().endswith("140")
+
+
+def test_no_color_leaves_no_escape_codes(store, tmp_path, monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    out = io.StringIO()
+    console = Console(file=out, width=80, force_terminal=True)
+    print_card(console, build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW))
+    assert "\x1b" not in out.getvalue()
+    assert "Files changed" in out.getvalue()  # same card, no colour
 
 
 def denial(eid, pid, when, tool="Bash", reason="Irreversible Local Destruction"):

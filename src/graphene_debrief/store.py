@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .model import DebriefRun, Prompt, Session, ToolEvent
 
+TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
 RESPONSE_CAP = 256 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
 SCHEMA_VERSION = 1  # everything here is regenerable, so a mismatch is rebuilt, never migrated
@@ -175,7 +176,7 @@ class Store:
         if (repo_root / ".git").exists():
             ignore_store_dir(repo_root)
         path = directory / "graphene.db"
-        timeout = 0.25 if quick else 5.0
+        timeout = 0.25 if quick else TIMEOUT
         try:
             return cls(path, timeout=timeout)
         except StaleStore as stale:
@@ -346,6 +347,16 @@ class Store:
     def last_debrief_run(self) -> DebriefRun | None:
         row = self.conn.execute("SELECT * FROM debrief_runs ORDER BY id DESC LIMIT 1").fetchone()
         return DebriefRun(row["id"], json.loads(row["session_ids"]), row["timestamp"]) if row else None
+
+    def recent_paths(self, limit: int = 5) -> list[tuple[str, str]]:
+        """(repo-relative path, last time it was touched), newest first: what `why` suggests."""
+        rows = self.conn.execute(
+            "SELECT file_path, MAX(timestamp) AS last FROM tool_events "
+            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%' "
+            "GROUP BY file_path ORDER BY last DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [(r["file_path"], r["last"]) for r in rows]
 
 
 def _session(r: sqlite3.Row) -> Session:
