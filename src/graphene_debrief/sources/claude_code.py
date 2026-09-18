@@ -372,9 +372,10 @@ _INJECTED = re.compile(r"<system-reminder>[\s\S]*?</system-reminder>")
 
 
 def _human_text(block: str) -> str:
-    """A text block minus injected context; empty when the block is not the user's own words."""
+    """A text block minus injected context; empty when the block is not the user's own words
+    (a slash-command echo, a tool notification) or is a slash command itself."""
     text = _INJECTED.sub("", block).strip()
-    return "" if text.startswith(_NOT_A_PROMPT) else text
+    return "" if text.startswith(_NOT_A_PROMPT) or _SLASH_COMMAND.match(text) else text
 
 
 def _text_of(content: object) -> str | None:

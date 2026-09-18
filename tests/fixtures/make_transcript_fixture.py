@@ -155,6 +155,7 @@ def main_records() -> list[dict]:
                 "content": "<command-name>/model</command-name>\n<command-args></command-args>",
             },
         ),
+        user_text("/model", "p-0", 0, 3),  # a slash command typed at the prompt: not a request
         user_text("Add a greet function to app/hello.py and a test for it.", "p-1", 0, 5),
         base(
             "assistant",
