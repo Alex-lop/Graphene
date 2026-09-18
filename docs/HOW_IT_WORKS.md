@@ -189,7 +189,9 @@ in scope under one prompt and flagged under the next.
 
 ## 5a. What you see
 
-`graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
+Every command first tops the store up from the repo's transcripts (a transcript that has not
+changed since it was last read costs one `stat`), so a session run without the hooks still
+shows up the next time you look. `graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
 their span, wall time and prompt count; files changed with added and removed lines; the commits
 made during the sessions; a net list of files (created, modified, deleted or reverted over the
 whole span, biggest change first, capped at 30 rows); and then only the sections that have

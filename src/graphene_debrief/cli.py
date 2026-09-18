@@ -111,20 +111,20 @@ def build():
         return store
 
     def loaded_store(r: Path) -> Store:
-        """The repo's store; when it holds no sessions yet, Claude Code's transcripts are read first."""
+        """The repo's store, topped up from Claude Code's transcripts first (a transcript that has not
+        changed since it was last read costs one stat, so this is cheap on every run)."""
         store = open_store(r)
-        if store.sessions():
-            return store
         report = backfill(store, r)
-        n = len(report.added)
-        if not n:
+        if not store.sessions():
             store.close()
             fail(
                 f"no Claude Code sessions for this repo (looked in {looked_in(r)}): run Claude Code here, "
                 "then `graphene` again; `graphene init` records sessions live",
                 1,
             )
-        note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
+        n = len(report.added)
+        if n:
+            note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
         return store
 
     def hooks_hint(r: Path) -> None:

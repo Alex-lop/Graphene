@@ -115,6 +115,26 @@ def test_first_run_backfills_from_transcripts(repo, tmp_path, monkeypatch):
     assert "loaded" not in run("why", "README.md").output + run("why", "README.md").stderr  # only once
 
 
+def test_every_run_picks_up_new_transcripts_without_hooks(repo, tmp_path, monkeypatch):
+    """A second session appears in plain `graphene` even though `graphene init` was never run."""
+    monkeypatch.setattr(fixture, "CWD", str(repo))
+    target = tmp_path / "claude" / "projects" / project_dir_name(repo)
+    rendered = fixture.render()
+    main = next(p for p in rendered if p.name == f"{fixture.SID}.jsonl")
+    target.mkdir(parents=True)
+    (target / main.name).write_text(rendered[main])
+    first = run()
+    assert first.exit_code == 0 and "loaded 1 session" in first.stderr
+    second_id = "22222222-2222-4333-8444-555555555555"
+    later = rendered[main].replace(fixture.SID, second_id).replace("2026-03-01T", "2026-03-02T")
+    (target / f"{second_id}.jsonl").write_text(later)
+    again = run()
+    assert again.exit_code == 0, again.output + again.stderr
+    assert "loaded 1 session" in again.stderr and "Session 22222222" in again.stdout
+    third = run()
+    assert "loaded" not in third.stderr  # nothing new: no parse, no notice
+
+
 def test_backfill_debrief_and_why(repo, transcript):
     loaded = run("ingest", "--backfill", "--transcript", str(transcript))
     assert loaded.exit_code == 0, loaded.output
