@@ -190,6 +190,17 @@ class Store:
     def close(self) -> None:
         self.conn.close()
 
+    @contextlib.contextmanager
+    def transaction(self):
+        """Group writes (the store is autocommit otherwise): all or nothing, one WAL append."""
+        self.conn.execute("BEGIN")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        self.conn.execute("COMMIT")
+
     def __enter__(self) -> Store:
         return self
 

@@ -32,6 +32,13 @@ def one_line(result) -> str:
     return text
 
 
+@pytest.fixture(autouse=True)
+def no_forced_colour(monkeypatch):
+    """Typer forces colour under GitHub Actions (and FORCE_COLOR); the help tests read plain text."""
+    for name in ("GITHUB_ACTIONS", "FORCE_COLOR", "PY_COLORS", "CLICOLOR_FORCE"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)

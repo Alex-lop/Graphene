@@ -33,6 +33,7 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 from ..attribute import nested_checkout
@@ -81,10 +82,22 @@ def _inside(path: str, root: str) -> bool:
     return path == root or path.startswith(root + os.sep)
 
 
+@lru_cache(maxsize=4096)
+def _real_dir(directory: str) -> str:
+    """realpath of a directory, cached: on macOS an lstat under /home (an automounter mount) costs
+    about 12 ms, and a session that writes outside the repo would pay it for every call."""
+    return os.path.realpath(directory)
+
+
+def _real(path: str) -> str:
+    head, tail = os.path.split(path)
+    return os.path.join(_real_dir(head), tail) if head and tail else _real_dir(path)
+
+
 def is_within(path: str, root: Path) -> bool:
     """Lexically inside the repo, or inside it once symlinks are resolved (/tmp vs /private/tmp)."""
     p, r = os.path.normpath(path), os.path.normpath(str(root))
-    return _inside(p, r) or _inside(os.path.realpath(p), os.path.realpath(r))
+    return _inside(p, r) or _inside(_real_dir(p), _real_dir(r))
 
 
 def relative_path(path: str, root: Path) -> str:
@@ -94,7 +107,7 @@ def relative_path(path: str, root: Path) -> str:
     if _inside(p, r):
         rel = os.path.relpath(p, r)
     else:
-        rp, rr = os.path.realpath(p), os.path.realpath(r)
+        rp, rr = _real(p), _real_dir(r)
         if _inside(rp, rr):
             rel = os.path.relpath(rp, rr)
     return path if rel is None or nested_checkout(root, rel) else rel
@@ -592,7 +605,6 @@ def _backfill_one(
             store.set_transcript_stat(session_id, stat)
             report.skipped.append(session_id)
             return
-        store.delete_session_data(session_id)
         parsed.session.head_at_start = existing.head_at_start
         parsed.session.source = existing.source
         starts = [t for t in (existing.started_at, parsed.session.started_at) if t]
@@ -601,10 +613,13 @@ def _backfill_one(
     else:
         report.added.append(session_id)
     parsed = parsed or parse_transcript(path, root)
-    store.upsert_session(parsed.session)
-    store.set_transcript_stat(session_id, stat)
-    for prompt in parsed.prompts:
-        store.add_prompt(prompt)
-    for event in parsed.events:
-        store.add_event(event)
+    with store.transaction():  # one transaction per session: atomic, and 10x faster than autocommit
+        if existing is not None:
+            store.delete_session_data(session_id)
+        store.upsert_session(parsed.session)
+        store.set_transcript_stat(session_id, stat)
+        for prompt in parsed.prompts:
+            store.add_prompt(prompt)
+        for event in parsed.events:
+            store.add_event(event)
     report.skipped_records.update(parsed.skipped)
