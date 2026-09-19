@@ -3,7 +3,7 @@
 import { expect, test } from "vitest";
 
 import golden from "../../tests/fixtures/run_graph.json";
-import { chain, cull, hues, laneRegion, matching, rowRegion, span, LANE_H, ROW_H } from "./model";
+import { chain, cull, hues, laneRegion, matching, rowRegion, spaced, span, LANE_H, ROW_H } from "./model";
 import type { Graph } from "./types";
 
 const graph = golden as unknown as Graph;
@@ -124,4 +124,11 @@ test("a span reads the way the terminal prints it", () => {
   expect(span(830)).toBe("13m 50s");
   expect(span(7380)).toBe("2h 03m");
   expect(span(45)).toBe("45s");
+});
+
+test("a label that would print over the one before it is skipped, and nothing moves", () => {
+  const ticks = [0, 30, 60, 61, 200].map((x) => ({ x }));
+  expect(spaced(ticks, (t) => t.x, 56).map((t) => t.x)).toEqual([0, 60, 200]);
+  expect(spaced(ticks, (t) => t.x * 100, 56)).toEqual(ticks); // zoomed in, every label has room
+  expect(spaced([], (t: { x: number }) => t.x, 56)).toEqual([]);
 });

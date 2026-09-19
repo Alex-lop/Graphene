@@ -382,6 +382,7 @@ def build():
         server = make_server(r, ids)
         url = f"http://127.0.0.1:{server.server_address[1]}/"
         say(f"{url}  (this machine only; Ctrl-C stops it)")
+        console.file.flush()  # piped or redirected, the address must not wait in a buffer for the server to end
         if not no_open:
             webbrowser.open(url)
         try:

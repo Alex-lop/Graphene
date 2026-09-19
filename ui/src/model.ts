@@ -50,6 +50,20 @@ export const laneRegion = (graph: Graph, open: Open): Region => place(graph.lane
 export const rowRegion = (graph: Graph, open: Open): Region => place(graph.rows, (r) => r.dir, open, ROW_H);
 
 /** The marks between two x, on an array already sorted by x. */
+// Which labels to print is the viewport's business, like culling: every tick stays where Python put
+// it, and a label is skipped when it would print over the one before it.
+export function spaced<T>(items: readonly T[], at: (item: T) => number, gap: number): T[] {
+  const kept: T[] = [];
+  let last = -Infinity;
+  for (const item of items) {
+    if (at(item) - last >= gap) {
+      kept.push(item);
+      last = at(item);
+    }
+  }
+  return kept;
+}
+
 export function cull(marks: readonly Mark[], x0: number, x1: number): Mark[] {
   let lo = 0;
   let hi = marks.length;

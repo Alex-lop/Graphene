@@ -5,7 +5,7 @@ import { select } from "d3-selection";
 import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { LANE_H, ROW_H, clock, cull, dash, hue, hues, laneRegion, rowRegion, span } from "./model";
+import { LANE_H, ROW_H, clock, cull, dash, hue, hues, laneRegion, rowRegion, spaced, span } from "./model";
 import type { Chain, Open, Selection } from "./model";
 import type { Graph, Lane, Mark } from "./types";
 
@@ -18,6 +18,8 @@ const RIGHT = 16;
 const TOP = AXIS_H + BREAK_H;
 const CHAR = 6.4; // enough to keep a 12px label inside the gutter
 const MONO = 7.0;
+const TICK_GAP = 56; // a clock label is about 36px wide
+const BREAK_GAP = 96; // an idle label is about 80px wide
 
 interface Props {
   graph: Graph;
@@ -344,12 +346,12 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
         {/* the axis rides the scroll: a map of when is worth nothing with its when off screen */}
         <g className="axis-labels" clipPath="url(#plot)" transform={`translate(0,${scrolled})`}>
           <rect x={GUTTER} y={0} width={plot + RIGHT} height={TOP} />
-          {graph.axis.ticks.map((tick) => (
+          {spaced(graph.axis.ticks, (tick) => px(tick.x), TICK_GAP).map((tick) => (
             <text key={tick.x} x={px(tick.x)} y={16} className="tick-label">
               {clock(tick.t)}
             </text>
           ))}
-          {graph.axis.breaks.map((brk) => (
+          {spaced(graph.axis.breaks, (brk) => (px(brk.x0) + px(brk.x1)) / 2, BREAK_GAP).map((brk) => (
             <text key={brk.x0} x={(px(brk.x0) + px(brk.x1)) / 2} y={AXIS_H + 12} className="break-label">
               {span(brk.seconds)} idle
             </text>
