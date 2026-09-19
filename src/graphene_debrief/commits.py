@@ -12,11 +12,12 @@ import os
 import re
 import subprocess
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .attribute import shell_segments
 from .model import Commit, ToolEvent
+from .record import seconds
 from .store import Store
 
 STAMP = "%Y-%m-%dT%H:%M:%S.000Z"
@@ -99,14 +100,22 @@ def credit(commits: list[Commit], events: list[ToolEvent]) -> None:
             verb = _verb(segment)
             if verb == "commit":
                 for made in named(e.response, by_prefix):
-                    _claim(made, e, None)
+                    if _during(made, e):
+                        _claim(made, e, None)
             elif verb == "cherry-pick":
                 origin = next(iter(named(" ".join(segment[1:]), by_prefix)), None)
                 if origin is None or origin.session_id is None:
                     continue  # the origin is outside the window, or no record says who made it
                 for made in named(e.response, by_prefix):
-                    if made is not origin:
+                    if made is not origin and _during(made, e):
                         _claim(made, e, origin)
+
+
+def _during(commit: Commit, e: ToolEvent) -> bool:
+    """A call can only have made a commit that did not exist when it started. Agents print
+    `git log --oneline -3` after committing, and that names older commits too: made by a person, a
+    merge, another tool. Naming one is not making it. One second covers git's whole-second stamps."""
+    return seconds(commit.committed_at) >= seconds(e.timestamp) - 1
 
 
 def named(response: object, by_prefix: dict[str, Commit]) -> list[Commit]:
@@ -162,3 +171,15 @@ def _verb(segment: list[str]) -> str | None:
 def _utc(committed: str) -> str:
     """git's committer date as the store's stamp."""
     return datetime.fromisoformat(committed).astimezone(UTC).strftime(STAMP)
+
+
+def refresh_commits(store: Store, root: Path | str, fresh: list[str]) -> None:
+    """Keep ``commits`` current without asking git about every session on every command: all of them
+    the first time, afterwards the sessions just loaded and any still running or ended within a day."""
+    sessions = store.sessions()
+    if store.conn.execute("SELECT 1 FROM commits LIMIT 1").fetchone() is None:
+        ids = [s.id for s in sessions]
+    else:
+        recent = (datetime.now(UTC) - timedelta(days=1)).strftime(STAMP)
+        ids = [s.id for s in sessions if s.id in fresh or s.ended_at is None or s.ended_at >= recent]
+    sync_commits(store, root, ids)

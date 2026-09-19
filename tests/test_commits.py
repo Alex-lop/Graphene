@@ -134,15 +134,16 @@ def bash(eid: str, minute: int, command: str, response: object, agent: str | Non
     return ToolEvent(eid, run.S1, "p1", T % (minute, 0), "Bash", {"command": command}, response, True, agent)
 
 
-def one(sha: str) -> list[Commit]:
-    return [Commit(sha, T % (5, 0), "parser: read the import file")]
+def one(sha: str, minute: int = 5) -> list[Commit]:
+    """A commit made one second into the call that starts at ``minute``: a call makes what did not exist."""
+    return [Commit(sha, T % (minute, 1), "parser: read the import file")]
 
 
 SHA = run.SHAS["parser"]  # 4d35474499bd...
 
 
 def test_a_prefix_inside_a_longer_hex_word_or_a_plain_number_credits_nothing():
-    commits = one(SHA)
+    commits = one(SHA, 6)
     longer, number = SHA[:12] + "9" + SHA[13:20], SHA[:7].replace("d", "1").replace("a", "2")
     credit(commits, [bash("b1", 5, "git commit -q -m x", {"stdout": f"{longer} {number}"})])
     assert commits[0].session_id is None
@@ -151,7 +152,7 @@ def test_a_prefix_inside_a_longer_hex_word_or_a_plain_number_credits_nothing():
 
 
 def test_a_commit_named_by_two_agents_belongs_to_the_earlier_call():
-    commits = one(SHA)
+    commits = one(SHA, 7)
     made = "git commit -q -m x && git log --oneline -1"
     credit(
         commits,
@@ -166,13 +167,22 @@ def test_a_commit_named_by_two_agents_belongs_to_the_earlier_call():
 def test_a_sha_on_a_later_line_of_the_response_is_read_like_the_first():
     """`git log --oneline -3` prints one commit per line; only the first begins the string."""
     other = run.SHAS["a2"]
-    commits = one(SHA) + [Commit(other, T % (4, 0), "api: the handler")]
+    commits = one(SHA) + [Commit(other, T % (5, 2), "api: the handler")]  # both made by this one call
     for separator in ("\n", "\r\n", "\t"):
         for c in commits:
             c.session_id = c.event_id = None
         out = f"{other[:7]} api: the handler{separator}{SHA[:7]} parser: read the import file"
         credit(commits, [bash("b1", 5, "git commit -q -m x && git log --oneline -3", {"stdout": out})])
         assert [c.session_id for c in commits] == [run.S1, run.S1], separator
+
+
+def test_naming_an_older_commit_is_not_making_it():
+    """`git commit -q && git log --oneline -3` prints commits that existed before the call started."""
+    older = Commit(run.SHAS["a2"], T % (2, 0), "api: the handler")
+    commits = one(SHA) + [older]
+    out = f"{SHA[:7]} parser: read the import file\n{older.sha[:7]} api: the handler"
+    credit(commits, [bash("b1", 5, "git commit -q -m x && git log --oneline -3", {"stdout": out})])
+    assert [(c.session_id, c.event_id) for c in commits] == [(run.S1, "b1"), (None, None)]
 
 
 def test_a_sha_in_a_nested_content_block_is_read():
