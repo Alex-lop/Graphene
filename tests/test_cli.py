@@ -355,3 +355,13 @@ def test_why_accepts_the_paths_the_card_prints_from_a_subdirectory(repo, transcr
     assert "1 prompt, newest first" in pasted.stdout
     assert run("why", "app/hello.py:2").exit_code == 0
     assert run("why", "nope/hello.py").exit_code == 1
+
+
+def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tmp_path, monkeypatch):
+    config = tmp_path / "claude-config"
+    config.mkdir(exist_ok=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    assert '"bashEditDiffEnabled": true' in " ".join(run("init").output.split())
+    (config / "settings.json").write_text('{"bashEditDiffEnabled": true}')
+    assert "bashEditDiffEnabled" not in run("init").output
+    assert (config / "settings.json").read_text() == '{"bashEditDiffEnabled": true}'  # read, never written

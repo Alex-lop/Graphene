@@ -30,6 +30,7 @@ def build():
     from .commits import refresh_commits
     from .debrief import (
         ACCENT,
+        SHELL_LISTS_HINT,
         build_debrief,
         coverage_cell,
         offset,
@@ -38,6 +39,7 @@ def build():
         print_why,
         render_card,
         select_sessions,
+        shell_lists_enabled,
         stamp,
         stamp_tz,
         to_json,
@@ -309,6 +311,8 @@ def build():
             "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
             "you, ignores itself in git); then run `graphene`"
         )
+        if not shell_lists_enabled():
+            say(SHELL_LISTS_HINT)
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

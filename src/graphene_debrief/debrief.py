@@ -64,6 +64,23 @@ class Debrief:
     coverage: dict = field(default_factory=dict)  # of the window's committed files: the three counts
 
 
+SHELL_LISTS_HINT = (
+    'one line only you can add: "bashEditDiffEnabled": true in ~/.claude/settings.json makes Claude Code '
+    "record which files every shell command changed (a repo's settings cannot turn it on). Without it "
+    "those lists exist only when Claude Code itself routes edits through the shell, and a file an agent "
+    "writes with a heredoc or a script traces to its commit at best"
+)
+
+
+def shell_lists_enabled() -> bool:
+    """Is the vendor's shell change list on in the person's own settings? Read, never written."""
+    config = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "settings.json"
+    try:
+        return json.loads(config.read_text(encoding="utf-8")).get("bashEditDiffEnabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def coverage_line(c: dict) -> str:
     """How much of what git committed the records account for. Never one number: a file an agent
     only committed is not a file it is recorded writing."""
@@ -279,7 +296,16 @@ def build_debrief(
     debrief.files_changed = len(paths)
     from .graph import coverage_counts, run_records  # here: graph imports this module
 
-    debrief.coverage = coverage_counts(run_records(store, [s["id"] for s in debrief.sessions]).coverage)
+    run = run_records(store, [s["id"] for s in debrief.sessions])
+    debrief.coverage = coverage_counts(run.coverage)
+    shell = [e for e in run.events if e.tool == "Bash"]
+    listed = any(isinstance(e.response, dict) and "bashEditDiff" in e.response for e in shell)
+    if shell and not listed and debrief.coverage["commit"] + debrief.coverage["nothing"]:
+        debrief.notes.append(
+            f"none of this window's {len(shell)} shell calls carries Claude Code's list of the files it "
+            "changed, so a file written through the shell traces to a commit at best; `graphene init` "
+            "says how to turn the lists on"
+        )
     by_tool: dict[str, int] = {}
     for f in debrief.failed:
         by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1

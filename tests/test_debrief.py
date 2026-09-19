@@ -20,7 +20,7 @@ from graphene_debrief.debrief import (
     select_sessions,
     to_json,
 )
-from graphene_debrief.model import Prompt, Session, ToolEvent
+from graphene_debrief.model import Commit, Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
 GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the card, as markdown
@@ -414,6 +414,24 @@ def test_the_card_prints_coverage_as_counts_never_one_number(tmp_path):
     print_card(console, debrief)
     assert "coverage 12 committed files" in " ".join(console.export_text().split())
     assert "%" not in want and coverage_line({}) == ""
+    assert debrief.notes == []  # the synthetic run has the vendor's lists: nothing to explain
+
+
+def test_the_card_says_so_when_no_shell_call_carries_a_change_list(tmp_path):
+    with Store.open(tmp_path) as store:
+        store.upsert_session(
+            Session("s", str(tmp_path), "2026-03-01T09:00:00.000Z", "2026-03-01T09:30:00.000Z")
+        )
+        made = {"stdout": "abc1234 x"}
+        commit = {"command": "git commit -q -m x && git log --oneline -1"}
+        store.add_event(ToolEvent("b1", "s", None, "2026-03-01T09:05:00.000Z", "Bash", commit, made))
+        files = [("app/x.py", "A")]
+        store.add_commit(
+            Commit("abc1234" + "0" * 33, "2026-03-01T09:05:01.000Z", "x", "s", None, "b1", files=files)
+        )
+        debrief = build_debrief(store, ["s"], tmp_path, now=NOW)
+    assert debrief.coverage["commit"] == 1
+    assert len(debrief.notes) == 1 and "none of this window's 1 shell calls" in debrief.notes[0]
 
 
 def test_parse_since_rejects_garbage():
