@@ -166,7 +166,7 @@ def _unquoted_newlines_to_semicolons(text: str) -> str:
     return "".join(out)
 
 
-def _shell_segments(command: str) -> list[list[str]]:
+def shell_segments(command: str) -> list[list[str]]:
     """Token lists of each simple command, split on && || | ; & ( ) and unquoted newlines.
 
     Quotes are respected, so a `|` or an `rm` inside a grep pattern is not shell syntax.
@@ -195,7 +195,7 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     """
     cwd: str | None = os.path.normpath(str(root))
     found: list[tuple[str, str]] = []
-    for tokens in _shell_segments(command):
+    for tokens in shell_segments(command):
         if not tokens:
             continue
         if os.path.basename(tokens[0]) == "cd":
@@ -533,6 +533,46 @@ class Attribution:
         default_factory=list
     )  # (failed, latest rerun, check)
     outside_repo: list[str] = field(default_factory=list)
+    to_disk: list[tuple[FileChange, bool]] = field(default_factory=list)  # (to the file on disk, payload)
+
+
+def credit_once(results: list[tuple[Session, Attribution]]) -> None:
+    """One change, one session. Sessions are attributed one at a time, and a change reconstructed
+    from git runs from the session's base revision to the file as it is on disk now; two sessions
+    that started from the same revision therefore reconstruct the very same diff and would each be
+    credited it. Evidence decides before time: the session holding a payload record for the file
+    keeps the diff, and among equals the one whose window ends last, because that is where the
+    reconstruction ends; the others keep the fact of the touch. Spans that differ are left alone
+    (different diffs, not one counted twice), and an empty diff is taken from nobody."""
+    best: dict[tuple, tuple[bool, float, float, str]] = {}
+    for session, result in results:
+        for change, payload in result.to_disk:
+            if not change.hunks:
+                continue
+            key = _same_diff(change)
+            rank = _rank(session, payload)
+            best[key] = max(best.get(key, rank), rank)
+    for session, result in results:
+        for change, payload in result.to_disk:
+            if change.hunks and best[_same_diff(change)] != _rank(session, payload):
+                change.hunks, change.added, change.removed, change.symbols = [], 0, 0, []
+                change.strategy = "later"
+
+
+def _same_diff(change: FileChange) -> tuple:
+    """What makes two reconstructions one change: the same file and the same diff, line for line."""
+    return change.path, change.effect, tuple(line for hunk in change.hunks for line in hunk.lines)
+
+
+def _rank(session: Session, payload: bool) -> tuple[bool, float, float, str]:
+    """Sessions ordered by the evidence they hold for the file, then by the end of their window; one
+    still running reaches the disk now."""
+    end = _epoch(session.ended_at, float("inf"))
+    return payload, end, _epoch(session.started_at, float("-inf")), session.id
+
+
+def _epoch(stamp: str | None, fallback: float) -> float:
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else fallback
 
 
 def attribute_session(
@@ -569,7 +609,7 @@ def attribute_session(
                 else [Touch(t.event, one, None, None, False, t.deleted) for t in timeline]
             )
             result.changes.extend(
-                _file_changes(one, tl, session, root, git, base, by_prompt, result.reverted)
+                _file_changes(one, tl, session, root, git, base, by_prompt, result.reverted, result.to_disk)
             )
 
     by_pid: dict[str, list[FileChange]] = {}
@@ -630,6 +670,7 @@ def _file_changes(
     base: str | None,
     by_prompt: dict[str, Prompt],
     reverted: list[FileChange],
+    to_disk: list[tuple[FileChange, bool]],
 ) -> list[FileChange]:
     groups: list[list[Touch]] = []
     for touch in timeline:  # consecutive touches by the same prompt form one group
@@ -650,7 +691,7 @@ def _file_changes(
         else:
             after.append(_UNKNOWN)
         carried = after[-1]
-    used_git = False
+    used_git = disk = False
     for i in range(len(groups) - 1, -1, -1):  # a shell write is revealed by the next payload's originalFile
         if after[i][0]:
             continue
@@ -658,7 +699,7 @@ def _file_changes(
             after[i] = (True, groups[i + 1][0].old)
         elif i == len(groups) - 1:
             after[i] = (True, _working_copy(root, path))
-            used_git = True
+            used_git = disk = True
     if not before[0][0] and git.available and base:
         kind = git.kind(base, path)
         if kind == "blob":
@@ -695,7 +736,10 @@ def _file_changes(
                 strategy = "payload"
             else:
                 strategy = "git" if used_git else "bridged"
-            out.append(_change(path, session.id, pid, run_start[1], a[1], by_prompt, strategy))
+            change = _change(path, session.id, pid, run_start[1], a[1], by_prompt, strategy)
+            if disk and i == len(groups) - 1:  # its after side is the file on disk now
+                to_disk.append((change, any(t.known for t in timeline)))
+            out.append(change)
         pending, run_start = [], None
     for j in pending:  # never resolved: without git there is only the fact of a touch to show
         group = groups[j]
@@ -774,9 +818,12 @@ def _reruns(events: list[ToolEvent]) -> list[tuple[ToolEvent, ToolEvent, str]]:
 def attribute(store: Store, session_ids: list[str], root: Path) -> dict[str, Attribution]:
     git = GitState(root)
     out: dict[str, Attribution] = {}
+    done: list[tuple[Session, Attribution]] = []
     for sid in session_ids:
         session = store.session(sid)
         if session is None:
             continue
         out[sid] = attribute_session(session, store.prompts(sid), store.events(sid), root, git)
+        done.append((session, out[sid]))
+    credit_once(done)
     return out

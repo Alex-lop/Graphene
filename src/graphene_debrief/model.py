@@ -102,7 +102,7 @@ class FileChange:
     added: int = 0
     removed: int = 0
     unrequested: bool = False
-    strategy: str = "payload"  # payload | git | none
+    strategy: str = "payload"  # payload | git | bridged | deferred | later | none
     symbols: list[str] = field(default_factory=list)  # definitions enclosing the changed lines
 
 

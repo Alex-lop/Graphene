@@ -103,7 +103,43 @@ def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[li
                     )
                 )
     out.sort(key=lambda c: (c.timestamp, c.event_id, c.path))
+    if any(c.shared for c in out):
+        out = _prefer_edits(out, _spans(events))
     return out, omitted
+
+
+def _spans(events: list[ToolEvent]) -> dict[str, tuple[float, float]]:
+    """How far the records bound each call: from the same agent's previous call to its next one. A
+    command running beside it ran inside that span, which is the span a ``shared`` list covers."""
+    spans: dict[str, tuple[float, float]] = {}
+    per_agent: dict[tuple[str, str | None], list[ToolEvent]] = {}
+    for e in sorted(events, key=lambda e: (e.timestamp, e.id)):
+        per_agent.setdefault((e.session_id, e.agent_id), []).append(e)
+    for calls in per_agent.values():
+        for i, e in enumerate(calls):
+            lo = calls[i - 1].timestamp if i else e.timestamp
+            hi = calls[i + 1].timestamp if i + 1 < len(calls) else e.timestamp
+            spans[e.id] = (seconds(lo), seconds(hi))
+    return spans
+
+
+def _prefer_edits(out: list[Change], spans: dict[str, tuple[float, float]]) -> list[Change]:
+    """The vendor sets ``shared`` when a change list may belong to a command running beside the one
+    it is attached to. Another agent's payload edit of that file inside the call's span is the
+    better record of who wrote it, so the shared shell change gives way to it."""
+    edits = [c for c in out if c.grade == "edit"]
+    keep: list[Change] = []
+    for c in out:
+        lo, hi = spans.get(c.event_id, (0.0, 0.0))
+        if c.shared and any(
+            e.path == c.path
+            and (e.session_id, e.agent_id) != (c.session_id, c.agent_id)
+            and lo <= seconds(e.timestamp) <= hi
+            for e in edits
+        ):
+            continue
+        keep.append(c)
+    return keep
 
 
 RANK = {"edit": 3, "shell": 2, "commit": 1, "window": 0}
