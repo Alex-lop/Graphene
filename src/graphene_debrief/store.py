@@ -247,7 +247,7 @@ class Store:
         )
 
     def delete_session_data(self, session_id: str) -> None:
-        """Drop prompts and events (explanations are kept so `why` never re-calls a model)."""
+        """Drop prompts and events; rows recorded against them in other tables are left alone."""
         self.conn.execute("DELETE FROM tool_events WHERE session_id = ?", (session_id,))
         self.conn.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
         self.conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))

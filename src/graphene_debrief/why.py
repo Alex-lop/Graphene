@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .attribute import GitState, attribute_session
-from .explain import template
+from .debrief import FileLine, template
 from .model import FileChange
 from .store import Store
 
@@ -25,13 +25,10 @@ class WhyEntry:
     added: int
     removed: int
     explanation: str
-    explained_by: str
     change: FileChange = field(repr=False, compare=False)
 
     def change_line(self):
         """The change as the renderers' file line, so `why` shows counts exactly as the card does."""
-        from .debrief import FileLine
-
         return FileLine(
             self.change.path,
             self.effect,
@@ -40,7 +37,7 @@ class WhyEntry:
             self.change.unrequested,
             self.change.strategy,
             self.explanation,
-            self.explained_by,
+            "none",
         )
 
 
@@ -74,7 +71,7 @@ def candidates(root: Path, path: str) -> list[str]:
 
 
 def why_path(store: Store, root: Path, path: str) -> list[WhyEntry]:
-    """Every prompt that changed the file, newest first, with the stored explanation when there is one."""
+    """Every prompt that changed the file, newest first, each with what it did to the file."""
     for rel in candidates(root, path):
         entries = _why_rel(store, root, rel)
         if entries:
@@ -101,8 +98,6 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
             if change.path != rel:
                 continue
             prompt = by_id.get(change.prompt_id)
-            stored = store.explanation(change.prompt_id, rel) if prompt else None
-            text, by = stored[:2] if stored else (template(change), "none")
             entries.append(
                 WhyEntry(
                     session.id,
@@ -113,8 +108,7 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
                     change.effect,
                     change.added,
                     change.removed,
-                    text,
-                    by,
+                    template(change),
                     change,
                 )
             )

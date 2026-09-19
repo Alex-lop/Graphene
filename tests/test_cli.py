@@ -60,12 +60,12 @@ def transcript(repo, tmp_path, monkeypatch):
 
 
 def test_version_and_help_read_as_a_product():
-    assert "graphene 0.1.0" in run("--version").output
+    assert "graphene 0.2.0" in run("--version").output
     text = run("--help").output
-    assert text.index("why") < text.index("debrief") < text.index("init") < text.index("sessions")
-    assert "Advanced" in text  # init, ingest and sessions are out of the way
-    card = run("debrief", "--help").output
-    assert "short" in card and "--full" in card
+    assert text.index("why") < text.index("init") < text.index("sessions")
+    assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
+    assert "--session" in text and "--since" in text and "--json" in text
+    assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it
     assert "PATH:LINE" in run("why", "--help").output
 
 
@@ -167,7 +167,7 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert "What you asked" not in card.output and "classifier" not in card.output
     assert "1 tool failure" in card.output or "tool failures" in card.output
 
-    as_json = run("debrief", "--json", "--explain", "none")
+    as_json = run("--json")
     assert as_json.exit_code == 0, as_json.output
     data = json.loads(as_json.output)
     assert [p["ordinal"] for p in data["prompts"]] == [1, 2, 3]
@@ -182,19 +182,15 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert data["reverted"] == [{"path": "README.md", "session_id": fixture.SID, "prompt_ordinal": 3}]
     assert [r["rerun_passed"] for r in data["reruns"]] == [True]
 
-    out = repo / "debrief.md"
-    written = run("debrief", fixture.SID[:8], "--md", str(out), "--explain", "none")
-    assert written.exit_code == 0, written.output
-    assert out.read_text().startswith("# Graphene\n")
+    one = run("--session", fixture.SID[:8], "--json")
+    assert one.exit_code == 0, one.output
+    assert [s["id"] for s in json.loads(one.output)["sessions"]] == [fixture.SID]
 
-    plain = run("debrief", "--since", "2026-01-01")
+    plain = run("--since", "2026-01-01")
     assert plain.exit_code == 0 and "Files changed" in plain.output and "What you asked" not in plain.output
-    full = run("debrief", "--since", "2026-01-01", "--full")
-    assert full.exit_code == 0 and "What you asked" in full.output and "Keep it tiny" not in full.output
 
-    assert run("debrief", "zzz", "--explain", "none").exit_code == 2
-    assert run("debrief", "--since", "soon", "--explain", "none").exit_code == 2
-    assert run("debrief", "--explain", "gpt").exit_code == 2
+    assert run("--session", "zzz").exit_code == 2
+    assert run("--since", "soon").exit_code == 2
 
     history = run("why", "README.md")
     assert history.exit_code == 0, history.output
@@ -214,9 +210,9 @@ def test_backfill_debrief_and_why(repo, transcript):
 
 def test_debrief_runs_are_recorded_so_the_next_one_is_incremental(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
-    first = json.loads(run("debrief", "--json", "--explain", "none").output)
+    first = json.loads(run("--json").output)
     assert [s["id"] for s in first["sessions"]] == [fixture.SID]
-    again = json.loads(run("debrief", "--json", "--explain", "none").output)
+    again = json.loads(run("--json").output)
     assert [s["id"] for s in again["sessions"]] == [fixture.SID]  # nothing newer: falls back to the latest
 
 
@@ -244,19 +240,9 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     assert not (home / ".graphene").exists()
 
 
-def test_md_into_a_missing_directory_and_together_with_json(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    nested = repo / "reports" / "today.md"
-    result = run("debrief", "--md", str(nested), "--json", "--explain", "none")
-    assert result.exit_code == 0, result.output
-    assert nested.read_text().startswith("# Graphene\n")
-    assert json.loads(result.stdout)["prompt_count"] == 3
-    assert run("debrief", "--md", str(repo), "--explain", "none").exit_code == 1  # a directory: clean failure
-
-
 def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run("debrief", "--since", "1h", "--explain", "none")
+    result = run("--since", "1h")
     assert result.exit_code == 1
     assert "no session in that window" in result.output + result.stderr
 
@@ -286,7 +272,7 @@ def test_a_session_that_changed_nothing_is_one_line(repo, tmp_path, monkeypatch)
         "1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it"
     )
     assert run("sessions").exit_code == 0  # and it does list it
-    assert json.loads(run("debrief", "--json").stdout)["prompt_count"] == 1  # --json still answers
+    assert json.loads(run("--json").stdout)["prompt_count"] == 1  # --json still answers
 
 
 def test_a_store_another_process_is_writing_is_one_line(repo, transcript, monkeypatch):

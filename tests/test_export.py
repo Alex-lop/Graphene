@@ -125,7 +125,7 @@ def test_the_cli_writes_the_record(tmp_path, monkeypatch):
     assert loaded.exit_code == 0, loaded.output
 
     out = tmp_path / "out" / "record.html"
-    result = runner.invoke(build(), ["debrief", "--html", str(out), "--explain", "none"])
+    result = runner.invoke(build(), ["debrief", "--html", str(out)])
     assert result.exit_code == 0, result.output + result.stderr
     assert "wrote" in result.output + result.stderr
     page = out.read_text(encoding="utf-8")

@@ -15,15 +15,13 @@ from graphene_debrief.debrief import (
     print_card,
     print_sessions,
     render_card,
-    render_markdown,
     select_sessions,
     to_json,
 )
 from graphene_debrief.model import Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
-GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the short default render
-FULL_GOLDEN = Path(__file__).parent / "fixtures" / "debrief_full_golden.md"  # `debrief --full`
+GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the card, as markdown
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 HELLO_V1 = 'def greet(name):\n    return f"hi {name}"\n'
 HELLO_V2 = 'def greet(name):\n    return f"hello {name}"\n'
@@ -157,17 +155,10 @@ def test_golden_default_render(store, tmp_path):
     assert (
         "failed Bash:" not in rendered and "cat missing.txt" not in rendered
     )  # failures are one summary line
-    assert "- 2 tool failures (2 Bash); `graphene debrief --full` lists them" in rendered
+    assert "- 2 tool failures (2 Bash)" in rendered
     assert "- reverted: `README.md` (prompt 3)" in rendered
     assert "- check `uv run pytest -q` failed and was rerun under prompt 1: passed" in rendered
     assert len(rendered.splitlines()) < 25
-
-
-def test_golden_full_render(store, tmp_path):
-    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    rendered = render_markdown(debrief)
-    assert rendered == FULL_GOLDEN.read_text(), REGENERATE
-    assert "- failed Bash: `cat missing.txt` (prompt 3)" in rendered  # --full still lists real failures
 
 
 def terminal(width: int = 80) -> Console:
@@ -279,19 +270,8 @@ def test_failure_summary_groups_refusals(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     assert debrief.failure_summary == {"total": 6, "by_tool": {"Bash": 5, "AskUserQuestion": 1}, "denials": 4}
     card = render_card(debrief)
-    assert (
-        "- 6 tool failures (5 Bash, 1 AskUserQuestion; 4 refused before running); "
-        "`graphene debrief --full` lists them"
-    ) in card
-    assert "classifier" not in card and "rm -rf" not in card
-    full = render_markdown(debrief)
-    assert (
-        "- 2 Bash calls refused before running (auto mode classifier: Irreversible Local Destruction)" in full
-    )
-    assert "- 1 Bash call refused before running (auto mode classifier: Credential Materialization)" in full
-    assert "- 1 AskUserQuestion call refused before running (rejected by the user)" in full
-    assert full.count("refused before running") == 3  # grouped, not one line per refusal
-    assert "- failed Bash: `uv run pytest -q`" in full  # real failures are still listed one by one
+    assert "- 6 tool failures (5 Bash, 1 AskUserQuestion; 4 refused before running)" in card
+    assert "classifier" not in card and "rm -rf" not in card  # the reasons stay in --json
 
 
 def test_card_omits_sections_with_nothing_in_them(tmp_path):
@@ -360,18 +340,11 @@ def test_file_rows_net_effect(store, tmp_path):
     assert rows["tests/test_hello.py"]["effect"] == "created"
 
 
-def test_full_expands_prompts(store, tmp_path):
-    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    short, full = render_markdown(debrief), render_markdown(debrief, full=True)
-    assert "> Thanks!" in full and "> Thanks!" not in short
-    assert "Also note it somewhere.…" in short
-
-
 def test_json_round_trip(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     text = to_json(debrief)
     assert from_json(text) == debrief
-    assert render_markdown(from_json(text)) == render_markdown(debrief)
+    assert render_card(from_json(text)) == render_card(debrief)
 
 
 def test_select_sessions(tmp_path):
@@ -413,29 +386,6 @@ def test_parse_since_rejects_garbage():
     assert parse_since("90m", NOW) == "2026-03-01T10:30:00.000Z"
 
 
-def test_the_terminal_full_view_shows_every_prompt_file_and_failure(tmp_path):
-    from rich.console import Console
-
-    from graphene_debrief.debrief import print_full
-
-    with Store.open(tmp_path) as store:
-        seed_golden(store)
-        debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    console = Console(width=80, record=True, force_terminal=True)
-    print_full(console, debrief)
-    text = console.export_text()
-    for block in debrief.prompts:
-        assert f"{block.ordinal}. " in text and block.text.splitlines()[0][:40] in text
-        for f in block.files:
-            assert f.path in text and f.explanation[:30] in text
-    assert "failed and was rerun under prompt 1: passed" in text
-    lines = text.splitlines()
-    assert all(len(line) <= 79 for line in lines) and not any(line.endswith(" ") for line in lines)
-    wrapped = [line for line in lines if line.startswith("    tests/test_hello.py::test_greet")]
-    assert wrapped, "the long failure line wraps, and its continuation hangs two columns deeper"
-    assert "failed Bash:" in text  # every real failure, one per line; the card shows only a count
-
-
 if __name__ == "__main__":  # regenerate the golden file after a deliberate rendering change
     import tempfile
 
@@ -443,8 +393,7 @@ if __name__ == "__main__":  # regenerate the golden file after a deliberate rend
         seed_golden(s)
         debrief = build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW)
         GOLDEN.write_text(render_card(debrief))
-        FULL_GOLDEN.write_text(render_markdown(debrief))
-    print(f"wrote {GOLDEN} and {FULL_GOLDEN}")
+    print(f"wrote {GOLDEN}")
 
 
 def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
@@ -473,9 +422,7 @@ def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
         False,
     )
     assert debrief.files_changed == 4 and debrief.notes == []
-    assert "### Before the first recorded prompt (session started 2026-03-01 09:00)" in render_markdown(
-        debrief
-    )
+    assert first.files[0].explanation == "Created early.py with 1 lines."
 
 
 def test_preview_truncation_and_fences():

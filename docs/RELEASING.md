@@ -11,8 +11,8 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
 3. Commit both, then tag and push the tag:
 
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
 4. Watch the run:
@@ -27,7 +27,7 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
 ## First time only
 
 PyPI has to be told to trust this repository. On PyPI, add a trusted publisher
-to the `graphene-debrief` project with exactly these values:
+to the `graphene-map` project with exactly these values:
 
 - Owner: `Alex-lop`
 - Repository: `Graphene`

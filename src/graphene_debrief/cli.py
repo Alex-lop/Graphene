@@ -31,17 +31,14 @@ def build():
         ACCENT,
         build_debrief,
         print_card,
-        print_full,
         print_sessions,
         print_why,
         render_card,
-        render_markdown,
         select_sessions,
         stamp,
         to_json,
         write_line,
     )
-    from .explain import pick_explainer
     from .sources.claude_code import (
         SETTINGS,
         backfill,
@@ -55,7 +52,6 @@ def build():
     from .store import Store
     from .why import why_line, why_path
 
-    ADVANCED = "Advanced"
     LOCKED = (
         "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
         "try again in a moment"
@@ -161,17 +157,9 @@ def build():
         session_id: str | None,
         since: str | None,
         as_json: bool = False,
-        md: Path | None = None,
-        full: bool = False,
-        explain: str | None = None,
-        model: str | None = None,
         html: Path | None = None,
     ) -> None:
         r = root()
-        try:
-            explainer, notice = pick_explainer(explain, model)
-        except ValueError as exc:
-            fail(str(exc))
         with loaded_store(r) as store:
             try:
                 ids = select_sessions(store, session_id, since)
@@ -179,24 +167,14 @@ def build():
                 fail(str(exc))
             if not ids:
                 empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
-            if notice:
-                note(notice)
-            result = build_debrief(store, ids, r, explainer)
+            result = build_debrief(store, ids, r)
             store.add_debrief_run(ids, now_iso())
-        if md is None and html is None and not as_json and not (result.files_changed or result.commits):
+        if html is None and not as_json and not (result.files_changed or result.commits):
             n, p = len(result.sessions), result.prompt_count
             empty(
                 f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
                 f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}"
             )
-        markdown = render_markdown(result, full=True) if full else render_card(result)
-        if md:
-            try:
-                md.parent.mkdir(parents=True, exist_ok=True)
-                md.write_text(markdown, encoding="utf-8")
-            except OSError as exc:
-                fail(f"cannot write {md}: {exc.strerror or exc}", 1)
-            errors.print(f"wrote {md}")
         if html:
             from .export_html import render as render_html
 
@@ -208,17 +186,19 @@ def build():
             errors.print(f"wrote {html}")
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
-        elif not md and not html:
+        elif not html:
             if console.is_terminal:
-                (print_full if full else print_card)(console, result)
+                print_card(console, result)
             else:  # piped or redirected: the markdown text itself, unrendered
-                sys.stdout.write(markdown)
-            if not full:
-                hooks_hint(r)
+                sys.stdout.write(render_card(result))
+            hooks_hint(r)
 
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
+        session_id: str = typer.Option(None, "--session", help="A session id, or a unique prefix of one."),
+        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
+        as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
         """With no command, `graphene` prints the short card of the latest session."""
@@ -226,7 +206,7 @@ def build():
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
-            show(None, None)
+            show(session_id, since, as_json=as_json)
 
     @cli.command()
     def why(
@@ -271,31 +251,23 @@ def build():
                 subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
                 print_why(console, entries[0].change.path, "", subtitle, entries)
 
-    @cli.command()
+    @cli.command(hidden=True)
     def debrief(
         session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
         since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
-        full: bool = typer.Option(
-            False, "--full", help="The whole reconstruction: every prompt, file and failure."
-        ),
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
-        md: Path = typer.Option(None, "--md", help="Write the output as markdown to this file."),
         html: Path = typer.Option(
             None,
             "--html",
             help="Write a self-contained HTML record of the selected sessions to this file.",
         ),
-        explain: str = typer.Option(
-            None, "--explain", help="claude (one call per prompt) or none (default)."
-        ),
-        model: str = typer.Option(None, "--model", help="Model for --explain claude (default haiku)."),
     ) -> None:
-        """The short session card, the same as plain `graphene`; --full is the whole reconstruction."""
-        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model, html=html)
+        """The short session card: an alias of plain `graphene`, kept for scripts that call it."""
+        show(session_id, since, as_json=as_json, html=html)
 
-    @cli.command(rich_help_panel=ADVANCED)
+    @cli.command()
     def init() -> None:
-        """Install Claude Code hooks so this repo's sessions are recorded live (optional)."""
+        """Install Claude Code hooks so this repo's sessions are recorded live."""
         r = root()
         try:
             added = install_hooks(r)
@@ -317,14 +289,14 @@ def build():
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
-                "Install it with `uv tool install graphene-debrief` (or `--editable .`)."
+                "Install it with `uv tool install graphene-map` (or `--editable .`)."
             )
 
     ingest = typer.Typer(
         help="Record what the agent did (the hooks and --backfill do this for you).",
         invoke_without_command=True,
     )
-    cli.add_typer(ingest, name="ingest", rich_help_panel=ADVANCED)
+    cli.add_typer(ingest, name="ingest", hidden=True)
 
     @ingest.callback()
     def ingest_main(
@@ -363,7 +335,7 @@ def build():
 
         raise typer.Exit(hook_main())
 
-    @cli.command(rich_help_panel=ADVANCED)
+    @cli.command()
     def sessions() -> None:
         """List the recorded sessions, newest first."""
         with loaded_store(root()) as store:

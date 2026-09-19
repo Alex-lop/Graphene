@@ -10,8 +10,7 @@ Graphene gets there in three layers, in this order, each built only once the one
 What happened, and why, attributable to the request that caused it. `graphene why PATH:LINE`
 answers "which prompt wrote this line"; `graphene` prints the short card of what a session
 changed, what it changed that you never asked for, and what it tried and abandoned. Everything
-comes from Claude Code's own transcripts and hook events; no model is involved except the
-opt-in explanation sentences.
+comes from Claude Code's own transcripts and hook events; no model is involved at any point.
 
 ## 2. The rules (next)
 
