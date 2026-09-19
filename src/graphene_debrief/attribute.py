@@ -418,12 +418,13 @@ _LOCATIVE = re.compile(
 _STRIP = "\"'`()[]{}<>,:;!?*"
 
 
-def named_scopes(prompt_text: str, paths: list[str]) -> list[str]:
+def named_scopes(prompt_text: str, paths: list[str], goals: list[str] | None = None) -> list[str]:
     """File scopes the prompt names: path-like tokens (``auth.py``, ``src/app/``, ``.env``) and bare
     words after in/under/inside/within/into/at that are a directory of one of ``paths``.
 
     Spec-like documents (``REBUILD_DIRECTIVE.md``, ``README.md``, a root-level ``NOTES.md``) name a
-    goal, not a scope, and are ignored. Directories are returned with a trailing slash.
+    goal, not a scope: they are left out, and collected in ``goals`` when the caller wants them.
+    Directories are returned with a trailing slash.
     """
     scopes: list[str] = []
     for raw in prompt_text.split():
@@ -446,6 +447,8 @@ def named_scopes(prompt_text: str, paths: list[str]) -> list[str]:
             if not is_dir and not _FILE_TOKEN.match(last):
                 is_dir = True  # a slash path whose last part has no extension is a directory
             if not is_dir and _spec_like(token):
+                if goals is not None:
+                    goals.append(token)
                 continue
             scopes.append(token + "/" if is_dir else token)
     dirs = {part for path in paths for part in path.lower().split("/")[:-1]}
@@ -480,11 +483,13 @@ def unrequested_paths(prompt_text: str, paths: list[str]) -> set[str]:
     named path or directory covers it, or when it is a conventional companion of one that is: a test
     twin by stem, or any file in the same directory (``__init__.py`` included).
     """
-    scopes = named_scopes(prompt_text, paths)
+    goals: list[str] = []
+    scopes = named_scopes(prompt_text, paths, goals)
     if not scopes:
         return set()
     lowered = {path: path.lower() for path in paths}
-    in_scope: set[str] = set()
+    # a document the prompt names sets no scope, but it was asked for: never flag it
+    in_scope = {p for p, low in lowered.items() if any(low == g or low.endswith("/" + g) for g in goals)}
     companion_dirs: set[str] = set()
     for scope in scopes:
         if scope.endswith("/"):

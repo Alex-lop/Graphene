@@ -152,6 +152,13 @@ def test_unrequested_only_when_a_named_scope_excludes_the_file():
     assert unrequested_paths("make the happy path faster, e.g. in v1.2", ["web/app.py"]) == set()
 
 
+def test_a_document_the_prompt_names_is_never_flagged_even_though_it_sets_no_scope():
+    prompt = "Rewrite OVERVIEW.md for a stranger, and fix the parser in src/parse/."
+    paths = ["OVERVIEW.md", "src/parse/lexer.py", "docs/other.md"]
+    assert unrequested_paths(prompt, paths) == {"docs/other.md"}
+    assert unrequested_paths("Update OVERVIEW.md.", paths) == set()  # a document alone names no scope
+
+
 def test_named_scopes():
     assert named_scopes("fix auth.py and utils/", []) == ["auth.py", "utils/"]
     assert named_scopes("read README.md and REBUILD_DIRECTIVE.md then go", []) == []
