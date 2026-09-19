@@ -227,6 +227,17 @@ def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
         assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
 
 
+def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo_with_transcripts):
+    repo = repo_with_transcripts
+    Store.open(repo).close()
+    db = repo / ".graphene" / "graphene.db"
+    set_version(db, SCHEMA_VERSION + 1)
+    result = CliRunner().invoke(build(), [])
+    assert result.exit_code == 1 and "Traceback" not in result.output + result.stderr
+    assert "written by a newer graphene" in " ".join(result.stderr.split())
+    assert list((repo / ".graphene").glob("*.bak")) == []
+
+
 def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_path, capsys):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()

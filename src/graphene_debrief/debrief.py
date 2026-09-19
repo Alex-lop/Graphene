@@ -13,7 +13,6 @@ from pathlib import Path
 from rich.text import Text
 
 from .attribute import attribute
-from .explain import Explainer, ExplainError, NullExplainer, template
 from .model import FileChange, ToolEvent
 from .store import Store
 
@@ -31,7 +30,6 @@ class FileLine:
     strategy: str
     explanation: str
     explained_by: str
-    model: str | None = None  # the model that wrote the sentence, when one did
     hunks: list[dict] = field(default_factory=list)  # the change's unified-diff hunks, as dicts
 
 
@@ -118,18 +116,46 @@ def select_sessions(
 # -- building -----------------------------------------------------------------------------------
 
 
+def template(change: FileChange) -> str:
+    """The factual sentence under each file line: what the diff itself says, and nothing more."""
+    name = change.path.rsplit("/", 1)[-1]
+    counts = f"+{change.added}/−{change.removed}"
+    if change.strategy == "deferred":
+        return f"Touched {name}; its diff for this session is credited to a later prompt."
+    if change.strategy == "none" and change.effect == "deleted":
+        return f"Deleted {name} through a shell command (no content available)."
+    if change.effect == "reverted" and change.strategy != "payload":
+        return f"Touched {name}, but its content matches the session start."
+    if change.effect == "created":
+        defined = f", defining {_join(change.symbols)}" if change.symbols else ""
+        return f"Created {name} with {change.added} lines{defined}."
+    if change.effect == "deleted":
+        return f"Deleted {name} ({change.removed} lines)."
+    if change.effect == "reverted":
+        return f"Edited {name} and then restored it; no net change."
+    if change.strategy == "none":
+        return f"Changed {name} through a shell command (no diff available)."
+    if change.symbols:
+        n = len(change.symbols)
+        noun = "definition" if n == 1 else "definitions"
+        return f"Edited {n} {noun} in {name}: {_join(change.symbols)} ({counts})."
+    total = change.added + change.removed
+    return f"Changed {total} line{'s' if total != 1 else ''} in {name} ({counts})."
+
+
+def _join(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + f" and {names[-1]}" if len(names) > 1 else names[0]
+
+
 def build_debrief(
     store: Store,
     session_ids: list[str],
     root: Path,
-    explainer: Explainer | None = None,
     now: datetime | None = None,
 ) -> Debrief:
     now = now or datetime.now(UTC)
-    explainer = explainer or NullExplainer()
     debrief = Debrief(generated_at=iso(now))
     results = attribute(store, session_ids, root)
-    fallback: Explainer | None = None
     paths: set[str] = set()
     for sid in session_ids:
         session = store.session(sid)
@@ -169,7 +195,6 @@ def build_debrief(
                         change.strategy,
                         template(change),
                         "none",
-                        None,
                         [asdict(h) for h in change.hunks],
                     )
                 )
@@ -179,12 +204,8 @@ def build_debrief(
             debrief.prompts.append(block)
         for prompt in prompts:
             changes = by_prompt.get(prompt.id, [])
-            explanations, explainer, fallback = _explain(
-                store, explainer, fallback, prompt.text, prompt.id, changes, debrief.notes, now
-            )
             block = PromptBlock(sid, prompt.id, prompt.ordinal, prompt.timestamp, prompt.text)
             for change in changes:
-                text, by, model = explanations.get(change.path, (template(change), "none", None))
                 block.files.append(
                     FileLine(
                         change.path,
@@ -193,9 +214,8 @@ def build_debrief(
                         change.removed,
                         change.unrequested,
                         change.strategy,
-                        text,
-                        by,
-                        model,
+                        template(change),
+                        "none",
                         [asdict(h) for h in change.hunks],
                     )
                 )
@@ -240,35 +260,6 @@ def build_debrief(
         "denials": sum(1 for f in debrief.failed if f["denied"]),
     }
     return debrief
-
-
-def _explain(store, explainer, fallback, text, prompt_id, changes, notes, now):
-    """Explanations for one prompt: stored model output first, else the explainer, else templates."""
-    out: dict[str, tuple[str, str, str | None]] = {}
-    missing: list[FileChange] = []
-    for change in changes:
-        stored = store.explanation(prompt_id, change.path)
-        if stored and stored[1] != "none":
-            out[change.path] = stored
-        else:
-            missing.append(change)
-    if missing:
-        active = fallback or explainer
-        try:
-            produced = active.explain_prompt(text, missing)
-        except ExplainError as exc:
-            notes.append(f"explanations by {active.name} failed ({exc}); showing templates instead")
-            fallback = NullExplainer()
-            produced = fallback.explain_prompt(text, missing)
-            active = fallback
-        model = getattr(active, "model", None)
-        for change in missing:
-            sentence = produced.get(change.path) or template(change)
-            by = active.name if change.path in produced else "none"
-            out[change.path] = (sentence, by, model if by != "none" else None)
-            if by != "none":
-                store.set_explanation(prompt_id, change.path, sentence, by, iso(now), model)
-    return out, explainer, fallback
 
 
 def _failed(e: ToolEvent, ordinal: dict[str, int], sid: str) -> dict:
@@ -355,69 +346,6 @@ def duration(seconds: int) -> str:
     return f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
 
 
-def render_markdown(d: Debrief, full: bool = False) -> str:
-    many = len(d.sessions) > 1
-
-    def where(ordinal: int, session_id: str) -> str:
-        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
-
-    out: list[str] = ["# Graphene debrief", ""]
-    ids = ", ".join(s["id"][:8] for s in d.sessions) or "none"
-    span = f"{stamp(d.sessions[0]['started_at'])} → {stamp(d.sessions[-1]['ended_at'])}" if d.sessions else ""
-    out.append(f"**Sessions:** {len(d.sessions)} ({ids}) {span}  ")
-    out.append(
-        f"**Wall time:** {duration(d.wall_seconds)} · **Prompts:** {d.prompt_count} · "
-        f"**Files changed:** {d.files_changed} (+{d.added}/−{d.removed})  "
-    )
-    out.append(f"**Commits during the sessions:** {len(d.commits)}")
-    out += [f"- {c}" for c in d.commits]
-    out += ["", "## What you asked, and what happened", ""]
-    current_session = None
-    for block in d.prompts:
-        if many and block.session_id != current_session:
-            current_session = block.session_id
-            info = next(s for s in d.sessions if s["id"] == block.session_id)
-            out += [
-                f"**Session {block.session_id[:8]}** ({info['source']}, {stamp(info['started_at'])} → "
-                f"{stamp(info['ended_at'])})",
-                "",
-            ]
-        text = block.text.strip() if full else preview(block.text)
-        if block.ordinal == 0:
-            out.append(f"### Before the first recorded prompt (session started {stamp(block.timestamp)})")
-        else:
-            out.append(f"### {block.ordinal}. {stamp(block.timestamp)}")
-        out += [f"> {line}" for line in text.splitlines()]
-        out.append("")
-        if not block.files:
-            out.append("_No file changes._")
-        for f in block.files:
-            flag = " **[unrequested]**" if f.unrequested else ""
-            out.append(f"- `{f.path}` {_what(f)}{flag} — {f.explanation}")
-        out.append("")
-    if d.unrequested:
-        out += ["## Not what you asked for", ""]
-        groups: dict[tuple[str, int, str], list[str]] = {}
-        for u in d.unrequested:
-            groups.setdefault((u["session_id"], u["prompt_ordinal"], u["prompt"]), []).append(u["path"])
-        for (sid, ordinal, text), paths in groups.items():
-            out.append(f'- under {where(ordinal, sid)} "{text}": ' + ", ".join(f"`{p}`" for p in paths))
-        out.append("")
-    if d.reverted or d.failed or d.reruns:
-        out += ["## Tried and abandoned", ""]
-        out += [f"- {line}" for line in _abandoned_lines(d, where) + _failure_lines(d, where)]
-        out.append("")
-    if d.outside_repo:
-        if out[-1] != "":
-            out.append("")
-        paths = ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo))
-        out.append(f"**Files written outside the repo:** {paths}")
-    if d.notes:
-        out += ["", *[f"_Note: {n}_" for n in d.notes]]
-    out += ["", WHY_HINT, ""]
-    return "\n".join(out)
-
-
 WHY_HINT = (
     "Ask `graphene why <path>` for who changed a file and why, or `graphene why <path>:<line>` for one line."
 )
@@ -447,23 +375,6 @@ def _abandoned_lines(d: Debrief, where) -> list[str]:
     return out
 
 
-def _failure_lines(d: Debrief, where) -> list[str]:
-    """The full view only: refusals grouped by reason, then every real failure on its own line."""
-    groups: dict[tuple[str, str], int] = {}
-    for f in d.failed:
-        if f["denied"]:
-            groups[(f["tool"], f["reason"])] = groups.get((f["tool"], f["reason"]), 0) + 1
-    out = [
-        f"{count} {tool} call{'s' if count != 1 else ''} refused before running ({reason})"
-        for (tool, reason), count in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
-    ]
-    for f in d.failed:
-        if not f["denied"]:
-            place = where(f["prompt_ordinal"], f["session_id"])
-            out.append(f"failed {f['tool']}: `{f['what']}` ({place}) — {f['error']}")
-    return out
-
-
 def _unrequested_lines(d: Debrief, where) -> list[str]:
     return [
         f'`{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"'
@@ -471,19 +382,15 @@ def _unrequested_lines(d: Debrief, where) -> list[str]:
     ]
 
 
-def _failure_line(d: Debrief, hint: bool = True) -> str | None:
-    """Every failed tool call as one line; the full reconstruction lists them one by one.
-
-    The terminal card drops the ``hint`` because its closing line already points at ``--full``.
-    """
+def _failure_line(d: Debrief) -> str | None:
+    """Every failed tool call as one line; `--json` carries them one by one."""
     total = d.failure_summary.get("total", 0)
     if not total:
         return None
     by_tool = ", ".join(f"{n} {tool}" for tool, n in d.failure_summary.get("by_tool", {}).items())
     denials = d.failure_summary.get("denials", 0)
     refused = f"; {denials} refused before running" if denials else ""
-    tail = "; `graphene debrief --full` lists them" if hint else ""
-    return f"{total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused}){tail}"
+    return f"{total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused})"
 
 
 def file_rows(d: Debrief) -> list[dict]:
@@ -591,7 +498,7 @@ ACCENT = "cyan"  # the one colour: the paths and commands you could act on
 CARD_FILES = 20  # file rows before the card says "… N more"
 CARD_COMMITS = 5
 SECTION_ROWS = 6
-WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line> · graphene debrief --full"
+WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line>"
 
 
 def write_line(console, text: Text, wrap: bool = False) -> None:
@@ -724,7 +631,7 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
     _section(
         console,
         "Abandoned",
-        _abandoned_lines(d, where) + [line for line in [_failure_line(d, hint=False)] if line],
+        _abandoned_lines(d, where) + [line for line in [_failure_line(d)] if line],
         width,
     )
     _section(console, "Written outside the repo", outside_summary(d.outside_repo), width)
@@ -746,58 +653,6 @@ def _effect_text(f: FileLine) -> Text:
     out.append("  ")
     out.append(f"−{f.removed}", "red")
     return out
-
-
-def print_full(console, d: Debrief) -> None:
-    """`debrief --full` for a terminal: every prompt, file and failure, in the card's style, complete
-    (nothing capped) and wrapped rather than clipped."""
-    width = max(40, console.width)
-    many = len(d.sessions) > 1
-
-    def where(ordinal: int, session_id: str) -> str:
-        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
-
-    _print_header(console, d, width, None)
-    current = None
-    for block in d.prompts:
-        write_line(console, Text(""))
-        if many and block.session_id != current:
-            current = block.session_id
-            info = next(s for s in d.sessions if s["id"] == block.session_id)
-            session = f"Session {block.session_id[:8]} ({info['source']}, {_span_of(info)})"
-            write_line(console, Text(clip(session, width), "bold"))
-            write_line(console, Text(""))
-        if block.ordinal == 0:
-            title = f"Before the first recorded prompt (session started {stamp(block.timestamp)})"
-        else:
-            title = f"{block.ordinal}. {stamp(block.timestamp)}"
-        write_line(console, Text(clip(title, width), "bold"))
-        for line in block.text.strip().splitlines():
-            write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
-        if not block.files:
-            write_line(console, Text("  no file changes", "dim"))
-        for f in block.files:
-            row = Text()
-            row.append(f.path, ACCENT)
-            row.append("  ")
-            row.append_text(_effect_text(f))
-            if f.unrequested:
-                row.append("  [unrequested]")
-            write_indented(console, row, 2, wrap=True)
-            write_indented(console, Text(f.explanation), 4, wrap=True)
-    _section(console, "Not what you asked for", _unrequested_lines(d, where), width, limit=None)
-    abandoned = _abandoned_lines(d, where) + _failure_lines(d, where)
-    _section(console, "Tried and abandoned", abandoned, width, limit=None)
-    _section(console, "Written outside the repo", outside_summary(d.outside_repo), width, limit=None)
-    for note in d.notes:
-        write_line(console, Text(""))
-        write_line(console, Text(f"Note: {note}", "dim"), wrap=True)
-    write_line(console, Text(""))
-    write_line(console, Text(clip(WHY_HINT_TTY, width), "dim"))
-
-
-def _span_of(info: dict) -> str:
-    return f"{stamp(info['started_at'])} → {stamp(info['ended_at'])}"
 
 
 def print_why(console, path: str, content: str, subtitle: str, entries: list) -> None:

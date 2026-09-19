@@ -104,7 +104,6 @@ class FileChange:
     unrequested: bool = False
     strategy: str = "payload"  # payload | git | none
     symbols: list[str] = field(default_factory=list)  # definitions enclosing the changed lines
-    explanation: str | None = None
 
 
 @dataclass(slots=True)

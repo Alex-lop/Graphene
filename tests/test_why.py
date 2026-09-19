@@ -80,7 +80,6 @@ def seed(store, repo):
     store.add_event(event("e2", "s2", "p3", "2026-01-02T09:01:00.000Z", "Edit", V2, V3))
     store.add_event(event("e3", "s2", "p4", "2026-01-02T09:11:00.000Z", "Edit", V3, V4))
     store.add_event(event("e4", "s2", "p5", "2026-01-02T09:21:00.000Z", "Edit", V4, V5))
-    store.set_explanation("p2", "notes.txt", "Rewrites the second line.", "claude", "t")
 
 
 def test_why_path_lists_prompts_newest_first(repo):
@@ -95,8 +94,7 @@ def test_why_path_lists_prompts_newest_first(repo):
         ("s1", 2, "modified", 1, 1),
         ("s1", 1, "created", 3, 0),
     ]
-    assert (entries[3].explanation, entries[3].explained_by) == ("Rewrites the second line.", "claude")
-    assert entries[0].explained_by == "none"
+    assert entries[3].explanation == "Changed 2 lines in notes.txt (+1/−1)."
     assert entries[4].prompt_text.startswith("create notes.txt")
 
 

@@ -11,7 +11,7 @@
 **Abandoned**
 - reverted: `README.md` (prompt 3)
 - check `uv run pytest -q` failed and was rerun under prompt 1: passed
-- 2 tool failures (2 Bash); `graphene debrief --full` lists them
+- 2 tool failures (2 Bash)
 
 **Written outside the repo:** `/home/dev/notes/graphene.md`
 

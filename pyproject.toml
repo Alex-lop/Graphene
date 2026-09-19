@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "graphene-debrief"
-version = "0.1.0"
-description = "Why did my coding agent change this line? Intent-blame for code written by Claude Code, across sessions."
+name = "graphene-map"
+version = "0.2.0"
+description = "See what your coding agents did to your repo: a local, replayable map of agents, files, commits and checks, built from Claude Code's own records."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

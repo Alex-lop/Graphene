@@ -16,7 +16,7 @@ never asked for, or what it tried and then abandoned. Graphene does.
 Once the package is on PyPI (not yet: see the line below for today):
 
 ```
-uv tool install graphene-debrief
+uv tool install graphene-map
 ```
 
 Today, from GitHub:
@@ -54,13 +54,10 @@ Which prompt wrote this line.
 
 ![graphene why PATH:LINE](docs/assets/why-line.svg)
 
-When you want more: `graphene debrief` is the same card with options. `--full` is the whole
-reconstruction, prompt by prompt; `--json` is the structure behind it; `--md FILE` writes the card
-(or, with `--full`, the reconstruction) as markdown; `--html FILE` writes a self-contained page, a
-timeline of prompts and files that opens offline and is safe to send to a teammate;
-`--explain claude` runs your own `claude -p` once per prompt to write a sentence per file (model
-`haiku` unless you pass `--model`; the sentences are stored, so it is never asked twice).
-`graphene debrief --since 6h` covers a window; `graphene sessions` lists what is recorded.
+When you want more: `graphene --json` is the structure behind the card; `graphene debrief --html
+FILE` writes a self-contained page, a timeline of prompts and files that opens offline and is safe
+to send to a teammate. `graphene --since 6h` covers a window, `graphene --session ID` one session,
+and `graphene sessions` lists what is recorded.
 `graphene init` installs hooks in the repo's `.claude/settings.local.json` (yours, not the team's
 `settings.json`) so sessions are recorded live, with exact prompt boundaries and the commit each
 session started from; without it Graphene keeps reading the transcripts.
@@ -74,15 +71,15 @@ file's first or last state in a session, when a shell command wrote it, is read 
 flagged as not asked for only when the prompt named a path (`auth.py`, `src/app/`) that does not
 cover it; a prompt that names no path flags nothing.
 "Abandoned" means files restored to their session-start content and checks that failed and were
-rerun. No model is involved unless you ask for explanation sentences with `--explain claude`. The
-heuristics and their failure modes are spelled out in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
+rerun. No model is involved at any point. The heuristics and their failure modes are spelled out in
+[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## What it doesn't do
 
 - It does not run agents.
 - It does not orchestrate anything.
 - It does not push, commit, or touch your git history.
-- It does not phone home: nothing leaves your machine unless you opt into `--explain claude`, and then only through your own Claude Code.
+- It does not phone home: nothing leaves your machine, and it calls no model.
 
 ## Privacy
 
