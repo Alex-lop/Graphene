@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,7 +12,6 @@ from pathlib import Path
 from rich.text import Text
 
 from .attribute import attribute
-from .explain import Explainer, ExplainError, NullExplainer, template
 from .model import FileChange, ToolEvent
 from .store import Store
 
@@ -31,7 +29,6 @@ class FileLine:
     strategy: str
     explanation: str
     explained_by: str
-    model: str | None = None  # the model that wrote the sentence, when one did
     hunks: list[dict] = field(default_factory=list)  # the change's unified-diff hunks, as dicts
 
 
@@ -63,6 +60,54 @@ class Debrief:
     reruns: list[dict] = field(default_factory=list)
     outside_repo: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    coverage: dict = field(default_factory=dict)  # of the window's committed files: the three counts
+    listed: list[str] = field(default_factory=list)  # in Claude Code's shell change lists, no diff recorded
+    unaccounted: dict = field(default_factory=dict)  # the paths behind coverage's last two counts
+
+
+SHELL_LISTS_HINT = (
+    'one line only you can add: "bashEditDiffEnabled": true in ~/.claude/settings.json makes Claude Code '
+    "record which files every shell command changed (a repo's settings cannot turn it on). Without it "
+    "those lists exist only when Claude Code itself routes edits through the shell, and a file an agent "
+    "writes with a heredoc or a script traces to its commit at best"
+)
+
+
+def shell_lists_enabled() -> bool:
+    """Is the vendor's shell change list on in the person's own settings? Read, never written."""
+    config = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "settings.json"
+    try:
+        return json.loads(config.read_text(encoding="utf-8")).get("bashEditDiffEnabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def unaccounted_lines(d: Debrief, limit: int = 5) -> list[str]:
+    """Which files the last two coverage counts are: a number nobody can check is not an account."""
+    out = []
+    for key, label in (("commit", "only in an agent's commit"), ("nothing", "traced to nothing")):
+        paths = d.unaccounted.get(key, [])
+        if paths:
+            more = f" … {len(paths) - limit} more; `graphene ui` lists them all" if len(paths) > limit else ""
+            out.append(f"{label}: " + ", ".join(f"`{p}`" for p in paths[:limit]) + more)
+    return out
+
+
+def coverage_line(c: dict) -> str:
+    """How much of what git committed the records account for. Never one number: a file an agent
+    only committed is not a file it is recorded writing."""
+    if not c:
+        return ""
+    n = c["committed_files"]
+    if not n:
+        return "no commits in the window, so no committed file to account for"
+    nothing = f"{c['nothing']} to nothing"
+    if c["window"]:
+        nothing += f" ({c['window']} committed in the window by no identifiable agent)"
+    return (
+        f"{n} committed file{'s' if n != 1 else ''} · {c['write']} traced to a recorded write "
+        f"({c['edit']} edit, {c['shell']} shell) · {c['commit']} only to an agent's commit · {nothing}"
+    )
 
 
 # -- selecting sessions -------------------------------------------------------------------------
@@ -110,26 +155,65 @@ def select_sessions(
     last = store.last_debrief_run()
     if last:
         fresh = [s.id for s in sessions if (s.ended_at or iso(now)) > last.timestamp]
+        fresh = [i for i in fresh if store.did_something(i)]
         if fresh:
             return fresh
+    # the latest session that did something: a card about an empty session says nothing. Latest is
+    # the one that finished last, which is the one a person comes back to, not the one started last
+    latest = sorted(sessions, key=lambda s: s.ended_at or s.started_at or "", reverse=True)
+    for wanted in (store.did_something, store.event_count):
+        for s in latest:
+            if wanted(s.id):
+                return [s.id]
     return [sessions[-1].id] if sessions else []
 
 
 # -- building -----------------------------------------------------------------------------------
 
 
+def template(change: FileChange) -> str:
+    """The factual sentence under each file line: what the diff itself says, and nothing more."""
+    name = change.path.rsplit("/", 1)[-1]
+    counts = f"+{change.added}/−{change.removed}"
+    if change.strategy == "deferred":
+        return f"Touched {name}; its diff for this session is credited to a later prompt."
+    if change.strategy == "later":
+        return f"Touched {name}; its diff is credited to a later session, which is where it ends."
+    if change.strategy == "none" and change.effect == "deleted":
+        return f"Deleted {name} through a shell command (no content available)."
+    if change.effect == "reverted" and change.strategy != "payload":
+        return f"Touched {name}, but its content matches the session start."
+    if change.effect == "created":
+        defined = f", defining {_join(change.symbols)}" if change.symbols else ""
+        return f"Created {name} with {change.added} lines{defined}."
+    if change.effect == "deleted":
+        return f"Deleted {name} ({change.removed} lines)."
+    if change.effect == "reverted":
+        return f"Edited {name} and then restored it; no net change."
+    if change.strategy == "none":
+        return f"Changed {name} through a shell command (no diff available)."
+    if change.symbols:
+        n = len(change.symbols)
+        noun = "definition" if n == 1 else "definitions"
+        return f"Edited {n} {noun} in {name}: {_join(change.symbols)} ({counts})."
+    total = change.added + change.removed
+    return f"Changed {total} line{'s' if total != 1 else ''} in {name} ({counts})."
+
+
+def _join(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + f" and {names[-1]}" if len(names) > 1 else names[0]
+
+
 def build_debrief(
     store: Store,
     session_ids: list[str],
     root: Path,
-    explainer: Explainer | None = None,
     now: datetime | None = None,
 ) -> Debrief:
     now = now or datetime.now(UTC)
-    explainer = explainer or NullExplainer()
     debrief = Debrief(generated_at=iso(now))
+    spans: list[tuple[datetime, datetime]] = []
     results = attribute(store, session_ids, root)
-    fallback: Explainer | None = None
     paths: set[str] = set()
     for sid in session_ids:
         session = store.session(sid)
@@ -148,7 +232,7 @@ def build_debrief(
             }
         )
         if session.started_at:
-            debrief.wall_seconds += max(0, int((_dt(end) - _dt(session.started_at)).total_seconds()))
+            spans.append((_dt(session.started_at), _dt(end)))
         debrief.prompt_count += len(prompts)
         by_prompt: dict[str, list[FileChange]] = {}
         for change in result.changes:
@@ -169,7 +253,6 @@ def build_debrief(
                         change.strategy,
                         template(change),
                         "none",
-                        None,
                         [asdict(h) for h in change.hunks],
                     )
                 )
@@ -179,12 +262,8 @@ def build_debrief(
             debrief.prompts.append(block)
         for prompt in prompts:
             changes = by_prompt.get(prompt.id, [])
-            explanations, explainer, fallback = _explain(
-                store, explainer, fallback, prompt.text, prompt.id, changes, debrief.notes, now
-            )
             block = PromptBlock(sid, prompt.id, prompt.ordinal, prompt.timestamp, prompt.text)
             for change in changes:
-                text, by, model = explanations.get(change.path, (template(change), "none", None))
                 block.files.append(
                     FileLine(
                         change.path,
@@ -193,9 +272,8 @@ def build_debrief(
                         change.removed,
                         change.unrequested,
                         change.strategy,
-                        text,
-                        by,
-                        model,
+                        template(change),
+                        "none",
                         [asdict(h) for h in change.hunks],
                     )
                 )
@@ -229,8 +307,33 @@ def build_debrief(
             for a, b, check in result.reruns
         ]
         debrief.outside_repo += [p for p in result.outside_repo if p not in debrief.outside_repo]
-        debrief.commits += commits_between(root, session.started_at, end)
     debrief.files_changed = len(paths)
+    covered, reach = 0.0, None  # the time the sessions cover together: an overlap is counted once
+    for start, stop in sorted(spans):
+        covered += max(0.0, (stop - max(start, reach or start)).total_seconds())
+        reach = max(stop, reach or stop)
+    debrief.wall_seconds = int(covered)
+    from .graph import coverage_counts, run_records  # here: graph imports this module
+
+    run = run_records(store, [s["id"] for s in debrief.sessions])
+    debrief.coverage = coverage_counts(run.coverage)
+    # one commit list in the product: the card lists the commits its coverage line counts, newest first
+    debrief.commits = [f"{c.sha[:7]} {c.subject}" for c in reversed(run.commits)]
+    debrief.listed = sorted({w.path for w in run.written} - paths)
+    debrief.files_changed += len(debrief.listed)
+    grades = run.coverage.grades
+    debrief.unaccounted = {
+        "commit": sorted(p for p, g in grades.items() if g == "commit"),
+        "nothing": sorted(p for p, g in grades.items() if g == "window"),
+    }
+    shell = [e for e in run.events if e.tool == "Bash"]
+    listed = any(isinstance(e.response, dict) and "bashEditDiff" in e.response for e in shell)
+    if shell and not listed and debrief.coverage["commit"] + debrief.coverage["nothing"]:
+        debrief.notes.append(
+            f"none of this window's {len(shell)} shell calls carries Claude Code's list of the files it "
+            "changed, so a file written through the shell traces to a commit at best; `graphene init` "
+            "says how to turn the lists on"
+        )
     by_tool: dict[str, int] = {}
     for f in debrief.failed:
         by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
@@ -240,35 +343,6 @@ def build_debrief(
         "denials": sum(1 for f in debrief.failed if f["denied"]),
     }
     return debrief
-
-
-def _explain(store, explainer, fallback, text, prompt_id, changes, notes, now):
-    """Explanations for one prompt: stored model output first, else the explainer, else templates."""
-    out: dict[str, tuple[str, str, str | None]] = {}
-    missing: list[FileChange] = []
-    for change in changes:
-        stored = store.explanation(prompt_id, change.path)
-        if stored and stored[1] != "none":
-            out[change.path] = stored
-        else:
-            missing.append(change)
-    if missing:
-        active = fallback or explainer
-        try:
-            produced = active.explain_prompt(text, missing)
-        except ExplainError as exc:
-            notes.append(f"explanations by {active.name} failed ({exc}); showing templates instead")
-            fallback = NullExplainer()
-            produced = fallback.explain_prompt(text, missing)
-            active = fallback
-        model = getattr(active, "model", None)
-        for change in missing:
-            sentence = produced.get(change.path) or template(change)
-            by = active.name if change.path in produced else "none"
-            out[change.path] = (sentence, by, model if by != "none" else None)
-            if by != "none":
-                store.set_explanation(prompt_id, change.path, sentence, by, iso(now), model)
-    return out, explainer, fallback
 
 
 def _failed(e: ToolEvent, ordinal: dict[str, int], sid: str) -> dict:
@@ -315,22 +389,6 @@ def _dt(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def commits_between(root: Path, start: str | None, end: str) -> list[str]:
-    if not start or not (root / ".git").exists():
-        return []
-    try:
-        proc = subprocess.run(
-            ["git", "log", "--format=%h %s", f"--since={start}", f"--until={end}"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return proc.stdout.strip().splitlines() if proc.returncode == 0 else []
-
-
 # -- rendering ----------------------------------------------------------------------------------
 
 
@@ -345,77 +403,27 @@ def preview(text: str, lines: int = PROMPT_PREVIEW_LINES, chars: int = PROMPT_PR
     return clipped + ("…" if truncated else "")
 
 
+def _local(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+
+
 def stamp(value: str | None) -> str:
-    return value[:16].replace("T", " ") if value else "?"
+    """A recorded moment in this machine's local time; `offset` says which time that is."""
+    return _local(value).strftime("%Y-%m-%d %H:%M") if value else "?"
+
+
+def offset(value: str | None) -> str:
+    return _local(value).strftime("%z") if value else ""
+
+
+def stamp_tz(value: str | None) -> str:
+    return f"{stamp(value)} {offset(value)}".rstrip()
 
 
 def duration(seconds: int) -> str:
     hours, rest = divmod(seconds, 3600)
     minutes = rest // 60
     return f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
-
-
-def render_markdown(d: Debrief, full: bool = False) -> str:
-    many = len(d.sessions) > 1
-
-    def where(ordinal: int, session_id: str) -> str:
-        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
-
-    out: list[str] = ["# Graphene debrief", ""]
-    ids = ", ".join(s["id"][:8] for s in d.sessions) or "none"
-    span = f"{stamp(d.sessions[0]['started_at'])} → {stamp(d.sessions[-1]['ended_at'])}" if d.sessions else ""
-    out.append(f"**Sessions:** {len(d.sessions)} ({ids}) {span}  ")
-    out.append(
-        f"**Wall time:** {duration(d.wall_seconds)} · **Prompts:** {d.prompt_count} · "
-        f"**Files changed:** {d.files_changed} (+{d.added}/−{d.removed})  "
-    )
-    out.append(f"**Commits during the sessions:** {len(d.commits)}")
-    out += [f"- {c}" for c in d.commits]
-    out += ["", "## What you asked, and what happened", ""]
-    current_session = None
-    for block in d.prompts:
-        if many and block.session_id != current_session:
-            current_session = block.session_id
-            info = next(s for s in d.sessions if s["id"] == block.session_id)
-            out += [
-                f"**Session {block.session_id[:8]}** ({info['source']}, {stamp(info['started_at'])} → "
-                f"{stamp(info['ended_at'])})",
-                "",
-            ]
-        text = block.text.strip() if full else preview(block.text)
-        if block.ordinal == 0:
-            out.append(f"### Before the first recorded prompt (session started {stamp(block.timestamp)})")
-        else:
-            out.append(f"### {block.ordinal}. {stamp(block.timestamp)}")
-        out += [f"> {line}" for line in text.splitlines()]
-        out.append("")
-        if not block.files:
-            out.append("_No file changes._")
-        for f in block.files:
-            flag = " **[unrequested]**" if f.unrequested else ""
-            out.append(f"- `{f.path}` {_what(f)}{flag} — {f.explanation}")
-        out.append("")
-    if d.unrequested:
-        out += ["## Not what you asked for", ""]
-        groups: dict[tuple[str, int, str], list[str]] = {}
-        for u in d.unrequested:
-            groups.setdefault((u["session_id"], u["prompt_ordinal"], u["prompt"]), []).append(u["path"])
-        for (sid, ordinal, text), paths in groups.items():
-            out.append(f'- under {where(ordinal, sid)} "{text}": ' + ", ".join(f"`{p}`" for p in paths))
-        out.append("")
-    if d.reverted or d.failed or d.reruns:
-        out += ["## Tried and abandoned", ""]
-        out += [f"- {line}" for line in _abandoned_lines(d, where) + _failure_lines(d, where)]
-        out.append("")
-    if d.outside_repo:
-        if out[-1] != "":
-            out.append("")
-        paths = ", ".join(f"`{p}`" for p in outside_summary(d.outside_repo))
-        out.append(f"**Files written outside the repo:** {paths}")
-    if d.notes:
-        out += ["", *[f"_Note: {n}_" for n in d.notes]]
-    out += ["", WHY_HINT, ""]
-    return "\n".join(out)
 
 
 WHY_HINT = (
@@ -430,6 +438,8 @@ def _what(f: FileLine) -> str:
         return f"{f.effect} (no diff available)"
     if f.strategy == "deferred":
         return "modified (diff credited to a later prompt)"
+    if f.strategy == "later":
+        return "modified (diff credited to a later session)"
     return f"{f.effect} +{f.added}/−{f.removed}"
 
 
@@ -447,23 +457,6 @@ def _abandoned_lines(d: Debrief, where) -> list[str]:
     return out
 
 
-def _failure_lines(d: Debrief, where) -> list[str]:
-    """The full view only: refusals grouped by reason, then every real failure on its own line."""
-    groups: dict[tuple[str, str], int] = {}
-    for f in d.failed:
-        if f["denied"]:
-            groups[(f["tool"], f["reason"])] = groups.get((f["tool"], f["reason"]), 0) + 1
-    out = [
-        f"{count} {tool} call{'s' if count != 1 else ''} refused before running ({reason})"
-        for (tool, reason), count in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
-    ]
-    for f in d.failed:
-        if not f["denied"]:
-            place = where(f["prompt_ordinal"], f["session_id"])
-            out.append(f"failed {f['tool']}: `{f['what']}` ({place}) — {f['error']}")
-    return out
-
-
 def _unrequested_lines(d: Debrief, where) -> list[str]:
     return [
         f'`{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"'
@@ -471,19 +464,15 @@ def _unrequested_lines(d: Debrief, where) -> list[str]:
     ]
 
 
-def _failure_line(d: Debrief, hint: bool = True) -> str | None:
-    """Every failed tool call as one line; the full reconstruction lists them one by one.
-
-    The terminal card drops the ``hint`` because its closing line already points at ``--full``.
-    """
+def _failure_line(d: Debrief) -> str | None:
+    """Every failed tool call as one line; `--json` carries them one by one."""
     total = d.failure_summary.get("total", 0)
     if not total:
         return None
     by_tool = ", ".join(f"{n} {tool}" for tool, n in d.failure_summary.get("by_tool", {}).items())
     denials = d.failure_summary.get("denials", 0)
     refused = f"; {denials} refused before running" if denials else ""
-    tail = "; `graphene debrief --full` lists them" if hint else ""
-    return f"{total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused}){tail}"
+    return f"{total} tool failure{'s' if total != 1 else ''} ({by_tool}{refused})"
 
 
 def file_rows(d: Debrief) -> list[dict]:
@@ -508,12 +497,16 @@ def file_rows(d: Debrief) -> list[dict]:
         else:
             effect = "modified"
         out.append({"path": row["path"], "effect": effect, "added": row["added"], "removed": row["removed"]})
+    out += [{"path": p, "effect": LISTED, "added": 0, "removed": 0} for p in d.listed if p not in rows]
     return sorted(out, key=lambda r: (-(r["added"] + r["removed"]), r["path"]))
+
+
+LISTED = "changed by a shell command"  # Claude Code's list names the file; no payload has its diff
 
 
 def _counted(row: dict) -> bool:
     """A reverted file has no net counts; a deletion with none known (a shell `rm`) shows none either."""
-    if row["effect"] == "reverted":
+    if row["effect"] in ("reverted", LISTED):
         return False
     return not (row["effect"] == "deleted" and row["added"] + row["removed"] == 0)
 
@@ -528,18 +521,25 @@ def render_card(d: Debrief, limit: int = 30) -> str:
 
     out: list[str] = ["# Graphene", ""]
     if d.sessions:
-        span = f"{stamp(d.sessions[0]['started_at'])} → {stamp(d.sessions[-1]['ended_at'])}"
+        span = _span(d)
         head = (
             f"**Sessions {len(d.sessions)}** ({', '.join(s['id'][:8] for s in d.sessions)})"
             if many
             else f"**Session {d.sessions[0]['id'][:8]}**"
         )
         prompts = f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''}"
-        files = f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} (+{d.added}/−{d.removed})"
+        files = (
+            f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} written (+{d.added}/−{d.removed})"
+        )
         out.append(f"{head} · {span} · {duration(d.wall_seconds)} · {prompts} · {files}  ")
     noun = "sessions" if many else "session"
     out.append(f"**Commits during the {noun}:** {len(d.commits) or 'none'}")
-    out += [f"- {c}" for c in d.commits]
+    out += [f"- {c}" for c in d.commits[:CARD_COMMITS]]
+    if len(d.commits) > CARD_COMMITS:
+        out.append(f"- … {len(d.commits) - CARD_COMMITS} more; `git log` has them all")
+    if d.coverage:
+        out += ["", f"**Coverage:** {coverage_line(d.coverage)}"]
+        out += [f"- {line}" for line in unaccounted_lines(d)]
     rows = file_rows(d)
     if rows:
         out += ["", "**Files changed**"]
@@ -591,7 +591,7 @@ ACCENT = "cyan"  # the one colour: the paths and commands you could act on
 CARD_FILES = 20  # file rows before the card says "… N more"
 CARD_COMMITS = 5
 SECTION_ROWS = 6
-WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line> · graphene debrief --full"
+WHY_HINT_TTY = "graphene why <path> · graphene why <path>:<line>"
 
 
 def write_line(console, text: Text, wrap: bool = False) -> None:
@@ -643,8 +643,10 @@ def code_text(line: str, width: int | None) -> Text:
 
 
 def _span(d: Debrief) -> str:
-    start, end = stamp(d.sessions[0]["started_at"]), stamp(d.sessions[-1]["ended_at"])
-    return f"{start} → {end[11:] if end[:10] == start[:10] else end}"
+    ends = [s["ended_at"] for s in d.sessions if s["ended_at"]]
+    start, end = stamp(d.sessions[0]["started_at"]), stamp(max(ends, key=_dt) if ends else None)
+    zone = offset(d.sessions[0]["started_at"])
+    return f"{start} → {end[11:] if end[:10] == start[:10] else end} {zone}".rstrip()
 
 
 def _section(console, label: str, rows: list[str], width: int, limit: int | None = SECTION_ROWS) -> None:
@@ -670,7 +672,7 @@ def _print_header(console, d: Debrief, width: int, commits: int | None) -> None:
 
     counts = Text()
     counts.append(f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''} · ", "dim")
-    counts.append(f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} ", "dim")
+    counts.append(f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} written ", "dim")
     counts.append(f"+{d.added}", "green")
     counts.append("/", "dim")
     counts.append(f"−{d.removed}", "red")
@@ -685,6 +687,12 @@ def _print_header(console, d: Debrief, width: int, commits: int | None) -> None:
         write_line(console, row)
     if len(d.commits) > len(shown):
         write_line(console, Text(f"  … {len(d.commits) - len(shown)} more", "dim"))
+    if d.coverage:
+        line = Text("coverage ", "dim")
+        line.append(coverage_line(d.coverage))
+        write_line(console, line, wrap=True)
+        for gap in unaccounted_lines(d):
+            write_indented(console, Text(gap, "dim"), 2, wrap=True)
 
 
 def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD_COMMITS) -> None:
@@ -724,7 +732,7 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
     _section(
         console,
         "Abandoned",
-        _abandoned_lines(d, where) + [line for line in [_failure_line(d, hint=False)] if line],
+        _abandoned_lines(d, where) + [line for line in [_failure_line(d)] if line],
         width,
     )
     _section(console, "Written outside the repo", outside_summary(d.outside_repo), width)
@@ -738,7 +746,7 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
 def _effect_text(f: FileLine) -> Text:
     """The effect and counts of one file line: dim words, green `+N`, red `−N`."""
     out = Text()
-    if f.effect == "reverted" or f.strategy in ("none", "deferred"):
+    if f.effect == "reverted" or f.strategy in ("none", "deferred", "later"):
         out.append(_what(f), "dim")
         return out
     out.append(f"{f.effect} ", "dim")
@@ -748,56 +756,11 @@ def _effect_text(f: FileLine) -> Text:
     return out
 
 
-def print_full(console, d: Debrief) -> None:
-    """`debrief --full` for a terminal: every prompt, file and failure, in the card's style, complete
-    (nothing capped) and wrapped rather than clipped."""
-    width = max(40, console.width)
-    many = len(d.sessions) > 1
-
-    def where(ordinal: int, session_id: str) -> str:
-        return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
-
-    _print_header(console, d, width, None)
-    current = None
-    for block in d.prompts:
-        write_line(console, Text(""))
-        if many and block.session_id != current:
-            current = block.session_id
-            info = next(s for s in d.sessions if s["id"] == block.session_id)
-            session = f"Session {block.session_id[:8]} ({info['source']}, {_span_of(info)})"
-            write_line(console, Text(clip(session, width), "bold"))
-            write_line(console, Text(""))
-        if block.ordinal == 0:
-            title = f"Before the first recorded prompt (session started {stamp(block.timestamp)})"
-        else:
-            title = f"{block.ordinal}. {stamp(block.timestamp)}"
-        write_line(console, Text(clip(title, width), "bold"))
-        for line in block.text.strip().splitlines():
-            write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
-        if not block.files:
-            write_line(console, Text("  no file changes", "dim"))
-        for f in block.files:
-            row = Text()
-            row.append(f.path, ACCENT)
-            row.append("  ")
-            row.append_text(_effect_text(f))
-            if f.unrequested:
-                row.append("  [unrequested]")
-            write_indented(console, row, 2, wrap=True)
-            write_indented(console, Text(f.explanation), 4, wrap=True)
-    _section(console, "Not what you asked for", _unrequested_lines(d, where), width, limit=None)
-    abandoned = _abandoned_lines(d, where) + _failure_lines(d, where)
-    _section(console, "Tried and abandoned", abandoned, width, limit=None)
-    _section(console, "Written outside the repo", outside_summary(d.outside_repo), width, limit=None)
-    for note in d.notes:
-        write_line(console, Text(""))
-        write_line(console, Text(f"Note: {note}", "dim"), wrap=True)
-    write_line(console, Text(""))
-    write_line(console, Text(clip(WHY_HINT_TTY, width), "dim"))
-
-
-def _span_of(info: dict) -> str:
-    return f"{stamp(info['started_at'])} → {stamp(info['ended_at'])}"
+GRADE_WORDS = {
+    "edit": "recorded edit",
+    "shell": "in Claude Code's list of what a shell command changed",
+    "command": "read from the recorded command",
+}
 
 
 def print_why(console, path: str, content: str, subtitle: str, entries: list) -> None:
@@ -808,21 +771,53 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
     if content:
         head.append("  " + clip(content.strip(), max(8, width - len(head.plain) - 2)))
     write_line(console, head)
-    write_line(console, Text(clip(subtitle, width), "dim"))
+    for part in subtitle.split("\n"):  # the count, then the file's coverage
+        write_line(console, Text(part, "dim"), wrap=True)
     for e in entries:
         write_line(console, Text(""))
         row = Text()
-        row.append(f"{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
+        row.append(f"{stamp_tz(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
         row.append_text(_effect_text(e.change_line()))
+        row.append(f"  {GRADE_WORDS.get(e.grade, e.grade)}", "dim")
         write_line(console, row)
+        for agent, task in e.who:
+            name = f"agent {agent[:8]}" if agent else "the main agent"
+            write_indented(console, Text(f"by {name}" + (f": {task}" if task else ""), "dim"), 2, wrap=True)
         for line in preview(e.prompt_text).splitlines():
             write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
         write_indented(console, Text(e.explanation), 2, wrap=True)
 
 
-def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]]) -> None:
-    """`graphene sessions`: aligned columns, no box, newest first."""
-    head = ("session", "source", "started", "ended", "prompts", "calls")
+def print_writes(console, path: str, subtitle: str, writes: list) -> None:
+    """`why PATH` for a file with recorded writes and no recorded diff: who wrote it, when, how known."""
+    write_line(console, Text(clip_middle(path, max(40, console.width)), ACCENT))
+    for part in subtitle.split("\n"):
+        write_line(console, Text(part, "dim"), wrap=True)
+    for when, session_id, agent, task, grade in writes:
+        write_line(console, Text(""))
+        row = Text(f"{stamp_tz(when)}  session {session_id[:8]}  ", "dim")
+        row.append(GRADE_WORDS.get(grade, grade))
+        write_line(console, row)
+        name = f"agent {agent[:8]}" if agent else "the main agent"
+        write_indented(console, Text(f"by {name}" + (f": {task}" if task else ""), "dim"), 2, wrap=True)
+
+
+COVERAGE_KEY = (
+    "coverage = committed files: traced to a recorded write / only to an agent's commit / to nothing"
+)
+
+
+def coverage_cell(c: dict) -> str:
+    return (
+        f"{c['committed_files']}: {c['write']}/{c['commit']}/{c['nothing']}"
+        if c.get("committed_files")
+        else "-"
+    )
+
+
+def print_sessions(console, rows: list[tuple[str, str, str, str, int, str]], zone: str = "") -> None:
+    """`graphene sessions`: aligned columns, no box, newest first; ``zone`` is the times' UTC offset."""
+    head = ("session", "source", f"started {zone}".rstrip(), "ended", "calls", "coverage")
     table = [head] + [tuple(str(cell) for cell in row) for row in rows]
     widths = [max(len(row[i]) for row in table) for i in range(len(head))]
     for n, row in enumerate(table):
@@ -831,6 +826,8 @@ def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]]) -> 
             padded = cell.rjust(widths[i]) if i >= 4 else cell.ljust(widths[i])
             line.append(padded + ("  " if i < len(row) - 1 else ""), "dim" if n == 0 or i < 4 else None)
         write_line(console, line)
+    if any(row[5] != "-" for row in rows):
+        write_line(console, Text(COVERAGE_KEY, "dim"), wrap=True)
 
 
 def to_json(d: Debrief) -> str:

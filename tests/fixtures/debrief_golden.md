@@ -1,7 +1,9 @@
 # Graphene
 
-**Session sess-gol** · 2026-03-01 09:00 → 2026-03-01 10:30 · 1h 30m · 3 prompts · 3 files (+7/−0)  
+**Session sess-gol** · 2026-03-01 09:00 → 10:30 +0000 · 1h 30m · 3 prompts · 3 files written (+7/−0)  
 **Commits during the session:** none
+
+**Coverage:** no commits in the window, so no committed file to account for
 
 **Files changed**
 - `tests/test_hello.py` created +5/−0
@@ -11,7 +13,7 @@
 **Abandoned**
 - reverted: `README.md` (prompt 3)
 - check `uv run pytest -q` failed and was rerun under prompt 1: passed
-- 2 tool failures (2 Bash); `graphene debrief --full` lists them
+- 2 tool failures (2 Bash)
 
 **Written outside the repo:** `/home/dev/notes/graphene.md`
 

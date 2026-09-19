@@ -152,6 +152,35 @@ def test_unrequested_only_when_a_named_scope_excludes_the_file():
     assert unrequested_paths("make the happy path faster, e.g. in v1.2", ["web/app.py"]) == set()
 
 
+def test_a_document_the_prompt_names_is_never_flagged_even_though_it_sets_no_scope():
+    prompt = "Rewrite OVERVIEW.md for a stranger, and fix the parser in src/parse/."
+    paths = ["OVERVIEW.md", "src/parse/lexer.py", "docs/other.md"]
+    assert unrequested_paths(prompt, paths) == {"docs/other.md"}
+    assert unrequested_paths("Update OVERVIEW.md.", paths) == set()  # a document alone names no scope
+
+
+def test_a_slash_in_prose_is_not_a_directory_scope(tmp_path):
+    (tmp_path / "src" / "app").mkdir(parents=True)
+    prose = "That covers the broad/high level picture and/or the details; now write an overview of it."
+    assert named_scopes(prose, ["OVERVIEW.md"], root=tmp_path) == []
+    assert unrequested_paths(prose, ["OVERVIEW.md"], tmp_path) == set()
+    # a directory of the repo is still a scope when nothing under it changed, and so is one that did
+    assert unrequested_paths("tidy src/app and nothing else", ["docs/y.md"], tmp_path) == {"docs/y.md"}
+    assert "lib/gone/" in named_scopes("work in lib/gone", ["lib/gone/x.py"], root=tmp_path)
+
+
+def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():
+    body = "parser: the gate is green\n\nuv run pytest -q (121 passed)."
+    message = f'git commit -q -m "{body}" && git log --oneline -1'
+    assert check_segments(message) == []
+    heredoc = "python3 - <<'EOF'\nprint('ruff check')\nEOF\ngit commit -q -m \"lint: ruff check passes\""
+    assert check_segments(heredoc) == []
+    assert check_segments('cd app && uv run pytest -q tests/ && echo "pytest done"') == [
+        "uv run pytest -q tests/"
+    ]
+    assert check_segments("uv run ruff check; uv run pytest -q") == ["uv run ruff check", "uv run pytest -q"]
+
+
 def test_named_scopes():
     assert named_scopes("fix auth.py and utils/", []) == ["auth.py", "utils/"]
     assert named_scopes("read README.md and REBUILD_DIRECTIVE.md then go", []) == []
@@ -333,7 +362,7 @@ def test_relative_paths_follow_cd(tmp_path):
 def test_check_segments_and_reruns_inside_longer_commands(session, tmp_path):
     assert check_segments("uv run ruff check src && uv run pytest -q 2>&1 | tail -3") == [
         "uv run ruff check src",
-        "uv run pytest -q 2>&1",
+        "uv run pytest -q",  # the redirection is not part of what ran
     ]
     p1, p2 = prompt("p1", "test", 1), prompt("p2", "fix", 2)
     events = [
@@ -343,7 +372,7 @@ def test_check_segments_and_reruns_inside_longer_commands(session, tmp_path):
         bash("b4", "p2", "uv run pytest -q 2>&1 | tail -1", 22),
     ]
     result = run(session, [p1, p2], events, tmp_path)
-    assert [(a.id, b.id, c) for a, b, c in result.reruns] == [("b1", "b4", "uv run pytest -q 2>&1")]
+    assert [(a.id, b.id, c) for a, b, c in result.reruns] == [("b1", "b4", "uv run pytest -q")]
 
 
 def test_git_fallback_skips_paths_that_never_existed_or_are_directories(git_repo):

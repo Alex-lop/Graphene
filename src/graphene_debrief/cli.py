@@ -27,24 +27,29 @@ def build():
     from typer.core import TyperGroup
 
     from . import __version__
+    from .commits import refresh_commits
     from .debrief import (
         ACCENT,
+        SHELL_LISTS_HINT,
         build_debrief,
+        coverage_cell,
+        offset,
         print_card,
-        print_full,
         print_sessions,
         print_why,
+        print_writes,
         render_card,
-        render_markdown,
         select_sessions,
+        shell_lists_enabled,
         stamp,
+        stamp_tz,
         to_json,
         write_line,
     )
-    from .explain import pick_explainer
     from .sources.claude_code import (
         SETTINGS,
         backfill,
+        hooks_file,
         hooks_installed,
         install_hooks,
         looked_in,
@@ -52,10 +57,17 @@ def build():
         repo_root,
         transcripts_for,
     )
-    from .store import Store
-    from .why import why_line, why_path
+    from .store import StaleStore, Store
+    from .why import (
+        candidates,
+        commits_of,
+        last_commit,
+        path_coverage,
+        recorded_writes,
+        why_line,
+        why_path,
+    )
 
-    ADVANCED = "Advanced"
     LOCKED = (
         "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
         "try again in a moment"
@@ -118,6 +130,12 @@ def build():
     def open_store(r: Path) -> Store:
         try:
             store = Store.open(r)
+        except StaleStore:  # only "newer" reaches here: an unreadable file was moved aside
+            fail(
+                f"{r / '.graphene' / 'graphene.db'} was written by a newer graphene; upgrade this one "
+                "(`uv tool upgrade graphene-map`). The store was left as it is",
+                1,
+            )
         except (sqlite3.DatabaseError, OSError) as exc:
             if "locked" in str(exc):
                 fail(LOCKED, 1)
@@ -148,6 +166,7 @@ def build():
         if not store.sessions():
             store.close()
             no_sessions(r)
+        refresh_commits(store, r, report.added + report.refreshed)
         n = len(report.added)
         if n:
             note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
@@ -161,17 +180,8 @@ def build():
         session_id: str | None,
         since: str | None,
         as_json: bool = False,
-        md: Path | None = None,
-        full: bool = False,
-        explain: str | None = None,
-        model: str | None = None,
-        html: Path | None = None,
     ) -> None:
         r = root()
-        try:
-            explainer, notice = pick_explainer(explain, model)
-        except ValueError as exc:
-            fail(str(exc))
         with loaded_store(r) as store:
             try:
                 ids = select_sessions(store, session_id, since)
@@ -179,46 +189,34 @@ def build():
                 fail(str(exc))
             if not ids:
                 empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
-            if notice:
-                note(notice)
-            result = build_debrief(store, ids, r, explainer)
+            result = build_debrief(store, ids, r)
             store.add_debrief_run(ids, now_iso())
-        if md is None and html is None and not as_json and not (result.files_changed or result.commits):
+            others = sum(1 for s in store.sessions() if s.id not in ids and store.event_count(s.id))
+        if not as_json and not (result.files_changed or result.commits):
             n, p = len(result.sessions), result.prompt_count
             empty(
                 f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
                 f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}"
             )
-        markdown = render_markdown(result, full=True) if full else render_card(result)
-        if md:
-            try:
-                md.parent.mkdir(parents=True, exist_ok=True)
-                md.write_text(markdown, encoding="utf-8")
-            except OSError as exc:
-                fail(f"cannot write {md}: {exc.strerror or exc}", 1)
-            errors.print(f"wrote {md}")
-        if html:
-            from .export_html import render as render_html
-
-            try:
-                html.parent.mkdir(parents=True, exist_ok=True)
-                html.write_text(render_html(result), encoding="utf-8")
-            except OSError as exc:
-                fail(f"cannot write {html}: {exc.strerror or exc}", 1)
-            errors.print(f"wrote {html}")
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
-        elif not md and not html:
-            if console.is_terminal:
-                (print_full if full else print_card)(console, result)
-            else:  # piped or redirected: the markdown text itself, unrendered
-                sys.stdout.write(markdown)
-            if not full:
-                hooks_hint(r)
+            return
+        if console.is_terminal:
+            print_card(console, result)
+        else:  # piped or redirected: the markdown text itself, unrendered
+            sys.stdout.write(render_card(result))
+        if others:
+            note(
+                f"{others} other session{'s' if others != 1 else ''} recorded; `graphene sessions` lists them"
+            )
+        hooks_hint(r)
 
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
+        session_id: str = typer.Option(None, "--session", help="A session id, or a unique prefix of one."),
+        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
+        as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
         """With no command, `graphene` prints the short card of the latest session."""
@@ -226,7 +224,7 @@ def build():
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
-            show(None, None)
+            show(session_id, since, as_json=as_json)
 
     @cli.command()
     def why(
@@ -237,14 +235,17 @@ def build():
         path, _, line = (target or "").rpartition(":")
         with loaded_store(r) as store:
             if target is None:
-                write_line(console, Text("files with recorded changes, newest first:", "dim"))
+                write_line(console, Text("files with recorded edits, newest first:", "dim"))
                 recent = store.recent_paths()
                 pad = max((len(path) for path, _ in recent), default=0)
                 for path, when in recent:
                     row = Text()
                     row.append(path.ljust(pad), ACCENT)
-                    row.append("  " + stamp(when), "dim")
+                    row.append("  " + stamp_tz(when), "dim")
                     write_line(console, row)
+                more = store.recorded_path_count() - len(recent)
+                if more > 0:
+                    write_line(console, Text(f"… {more} more; `graphene` lists a session's files", "dim"))
                 console.file.flush()  # the list before the usage line, whichever stream is captured
                 fail("usage: graphene why <path> | <path>:<line>")
             if path and line.isdigit():
@@ -252,7 +253,7 @@ def build():
                 if answer.content is None:
                     fail(answer.reason, 1)
                 where = (
-                    f"committed in {answer.commit[:7]} ({stamp(answer.committed_at)})"
+                    f"committed in {answer.commit[:7]} ({stamp_tz(answer.committed_at)})"
                     if answer.commit
                     else "not committed"
                 )
@@ -265,66 +266,84 @@ def build():
                 )
             else:
                 entries = why_path(store, r, target)
+                rel = entries[0].change.path if entries else candidates(r, target)[-1]
+                covered = path_coverage(store, rel)
                 if not entries:
-                    empty(f"no recorded prompt changed {target}")
+                    writes = recorded_writes(store, rel)
+                    held = commits_of(store, rel)
+                    told = "; ".join(
+                        f"{len(shas)} commit{'s' if len(shas) != 1 else ''} "
+                        + (f"during session {sid[:8]}" if sid else "outside any recorded session")
+                        for sid, shas in held.items()
+                    )
+                    if writes:  # recorded, but no payload carries its diff: show the writes themselves
+                        n = len(writes)
+                        head = (
+                            f"{n} recorded write{'s' if n != 1 else ''}, newest first; no diff was recorded"
+                        )
+                        print_writes(console, rel, head + (f"\n{covered}" if covered else ""), writes)
+                        return
+                    if told:  # git knows the file changed, and that is the answer: no write was recorded
+                        say(f"{rel}: changed in {told}; no recorded write. {covered}")
+                        return
+                    known = last_commit(r, rel)
+                    if known:
+                        say(
+                            f"no recorded prompt changed {rel}; git last changed it in {known[0]} "
+                            f"({stamp_tz(known[1])}), outside every recorded session"
+                        )
+                        return
+                    if not (r / rel).exists():
+                        empty(f"{target}: no such file in this repo, on disk or in git's history")
+                    empty(f"no recorded prompt changed {rel}, and git has no commit of it yet")
                 n = len(entries)
                 subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
-                print_why(console, entries[0].change.path, "", subtitle, entries)
+                print_why(console, rel, "", subtitle + (f"\n{covered}" if covered else ""), entries)
 
-    @cli.command()
+    @cli.command(hidden=True)
     def debrief(
         session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
         since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
-        full: bool = typer.Option(
-            False, "--full", help="The whole reconstruction: every prompt, file and failure."
-        ),
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
-        md: Path = typer.Option(None, "--md", help="Write the output as markdown to this file."),
-        html: Path = typer.Option(
-            None,
-            "--html",
-            help="Write a self-contained HTML record of the selected sessions to this file.",
-        ),
-        explain: str = typer.Option(
-            None, "--explain", help="claude (one call per prompt) or none (default)."
-        ),
-        model: str = typer.Option(None, "--model", help="Model for --explain claude (default haiku)."),
     ) -> None:
-        """The short session card, the same as plain `graphene`; --full is the whole reconstruction."""
-        show(session_id, since, as_json=as_json, md=md, full=full, explain=explain, model=model, html=html)
+        """The short session card: an alias of plain `graphene`, kept for scripts that call it."""
+        show(session_id, since, as_json=as_json)
 
-    @cli.command(rich_help_panel=ADVANCED)
+    @cli.command()
     def init() -> None:
-        """Install Claude Code hooks so this repo's sessions are recorded live (optional)."""
+        """Install Claude Code hooks so this repo's sessions are recorded live."""
         r = root()
         try:
             added = install_hooks(r)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
-        settings = Path(os.path.relpath(r / SETTINGS, Path.cwd()))
+        settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
         if added:
             say(f"hooks added to {settings}: {', '.join(added)}")
         else:
             say("hooks already installed")
-        say(
-            f"{settings} is your personal settings file (if your team shares .claude/, add that file "
-            "to .gitignore); nothing else is written until a session is recorded"
-        )
+        if settings.name == Path(SETTINGS).name:
+            say(
+                f"{settings} is your personal settings file (if your team shares .claude/, add that "
+                "file to .gitignore); nothing else is written until a session is recorded"
+            )
         say(
             "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
             "you, ignores itself in git); then run `graphene`"
         )
+        if not shell_lists_enabled():
+            say(SHELL_LISTS_HINT)
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
-                "Install it with `uv tool install graphene-debrief` (or `--editable .`)."
+                "Install it with `uv tool install graphene-map` (or `--editable .`)."
             )
 
     ingest = typer.Typer(
         help="Record what the agent did (the hooks and --backfill do this for you).",
         invoke_without_command=True,
     )
-    cli.add_typer(ingest, name="ingest", rich_help_panel=ADVANCED)
+    cli.add_typer(ingest, name="ingest", hidden=True)
 
     @ingest.callback()
     def ingest_main(
@@ -363,21 +382,78 @@ def build():
 
         raise typer.Exit(hook_main())
 
-    @cli.command(rich_help_panel=ADVANCED)
-    def sessions() -> None:
+    @cli.command()
+    def ui(
+        session: list[str] = typer.Option(
+            None, "--session", help="A session id or unique prefix; repeat it to put several on one axis."
+        ),
+        export: Path = typer.Option(None, "--export", help="Write the map as one self-contained HTML file."),
+        no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
+        as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
+    ) -> None:
+        """The map of a run: agents, files, commits and checks, drawn from the records."""
+        import webbrowser
+
+        from .graph import build_graph, to_json
+        from .server import export_html, make_server
+
+        r = root()
+        with loaded_store(r) as store:
+            try:
+                ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
+            except ValueError as exc:
+                fail(str(exc))
+            if as_json:
+                sys.stdout.write(to_json(build_graph(store, ids)) + "\n")
+                return
+            if export:
+                try:
+                    export.parent.mkdir(parents=True, exist_ok=True)
+                    export.write_text(export_html(store, ids), encoding="utf-8")
+                except OSError as exc:
+                    fail(f"cannot write {export}: {exc.strerror or exc}", 1)
+                errors.print(f"wrote {export}")
+                return
+        server = make_server(r, ids)
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
+        say(f"{url}  (this machine only; Ctrl-C stops it)")
+        console.file.flush()  # piped or redirected, the address must not sit in a buffer until the end
+        if not no_open:
+            webbrowser.open(url)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
+
+    @cli.command()
+    def sessions(
+        everything: bool = typer.Option(False, "--all", help="Also list sessions that made no calls."),
+    ) -> None:
         """List the recorded sessions, newest first."""
+        from .graph import coverage_counts, run_records
+
         with loaded_store(root()) as store:
+            listed = list(reversed(store.sessions()))
+            listed = [(s, store.event_count(s.id)) for s in listed]
             rows = [
                 (
                     s.id[:8],
                     s.source,
                     stamp(s.started_at),
                     stamp(s.ended_at) if s.ended_at else "running",
-                    len(store.prompts(s.id)),
-                    store.event_count(s.id),
+                    calls,
+                    coverage_cell(coverage_counts(run_records(store, [s.id]).coverage)) if calls else "-",
                 )
-                for s in reversed(store.sessions())
+                for s, calls in listed
+                if calls or everything
             ]
-        print_sessions(console, rows)
+        quiet = [s for s, calls in listed if not calls]
+        zone = next((offset(s.started_at) for s, _ in listed if s.started_at), "")
+        print_sessions(console, rows, zone)
+        if quiet and not everything:
+            n = len(quiet)
+            note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")
 
     return cli

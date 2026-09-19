@@ -1,0 +1,8 @@
+{
+  "agentType": "workflow-agent",
+  "description": "Generate the schema",
+  "requestNonInteractive": true,
+  "requestShape": "prompt",
+  "spawnDepth": 1,
+  "workflowPhase": "Build"
+}

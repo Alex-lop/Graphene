@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from graphene_debrief import store as store_module
 from graphene_debrief.cli import build
-from graphene_debrief.sources.claude_code import project_dir_name
+from graphene_debrief.sources.claude_code import HOOK_EVENTS, project_dir_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
@@ -60,12 +60,12 @@ def transcript(repo, tmp_path, monkeypatch):
 
 
 def test_version_and_help_read_as_a_product():
-    assert "graphene 0.1.0" in run("--version").output
+    assert "graphene 0.2.0" in run("--version").output
     text = run("--help").output
-    assert text.index("why") < text.index("debrief") < text.index("init") < text.index("sessions")
-    assert "Advanced" in text  # init, ingest and sessions are out of the way
-    card = run("debrief", "--help").output
-    assert "short" in card and "--full" in card
+    assert text.index("why") < text.index("init") < text.index("sessions")
+    assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
+    assert "--session" in text and "--since" in text and "--json" in text
+    assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it
     assert "PATH:LINE" in run("why", "--help").output
 
 
@@ -75,13 +75,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert "SessionStart" in first.output
     settings = json.loads((repo / ".claude" / "settings.local.json").read_text())
     assert not (repo / ".claude" / "settings.json").exists()  # the team's file is never touched
-    assert set(settings["hooks"]) == {
-        "SessionStart",
-        "UserPromptSubmit",
-        "PostToolUse",
-        "PostToolUseFailure",
-        "Stop",
-    }
+    assert set(settings["hooks"]) == set(HOOK_EVENTS)
     assert not (repo / ".gitignore").exists() and not (repo / ".graphene").exists()  # nothing recorded yet
     assert "already installed" in run("init").output
     from graphene_debrief.store import Store
@@ -167,7 +161,7 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert "What you asked" not in card.output and "classifier" not in card.output
     assert "1 tool failure" in card.output or "tool failures" in card.output
 
-    as_json = run("debrief", "--json", "--explain", "none")
+    as_json = run("--json")
     assert as_json.exit_code == 0, as_json.output
     data = json.loads(as_json.output)
     assert [p["ordinal"] for p in data["prompts"]] == [1, 2, 3]
@@ -182,26 +176,22 @@ def test_backfill_debrief_and_why(repo, transcript):
     assert data["reverted"] == [{"path": "README.md", "session_id": fixture.SID, "prompt_ordinal": 3}]
     assert [r["rerun_passed"] for r in data["reruns"]] == [True]
 
-    out = repo / "debrief.md"
-    written = run("debrief", fixture.SID[:8], "--md", str(out), "--explain", "none")
-    assert written.exit_code == 0, written.output
-    assert out.read_text().startswith("# Graphene\n")
+    one = run("--session", fixture.SID[:8], "--json")
+    assert one.exit_code == 0, one.output
+    assert [s["id"] for s in json.loads(one.output)["sessions"]] == [fixture.SID]
 
-    plain = run("debrief", "--since", "2026-01-01")
+    plain = run("--since", "2026-01-01")
     assert plain.exit_code == 0 and "Files changed" in plain.output and "What you asked" not in plain.output
-    full = run("debrief", "--since", "2026-01-01", "--full")
-    assert full.exit_code == 0 and "What you asked" in full.output and "Keep it tiny" not in full.output
 
-    assert run("debrief", "zzz", "--explain", "none").exit_code == 2
-    assert run("debrief", "--since", "soon", "--explain", "none").exit_code == 2
-    assert run("debrief", "--explain", "gpt").exit_code == 2
+    assert run("--session", "zzz").exit_code == 2
+    assert run("--since", "soon").exit_code == 2
 
     history = run("why", "README.md")
     assert history.exit_code == 0, history.output
     assert "1 prompt, newest first" in history.output and "reverted" in history.output
-    assert "+0" not in history.output  # a reverted file has no net counts
+    assert "+0/" not in history.output  # a reverted file has no net counts
     gone = run("why", "scratch.txt")
-    assert gone.exit_code == 0 and "deleted (no diff available)" in gone.output and "+0" not in gone.output
+    assert gone.exit_code == 0 and "deleted (no diff available)" in gone.output and "+0/" not in gone.output
     assert run("why", "nope.txt").exit_code == 1
 
     (repo / "app").mkdir()
@@ -214,9 +204,9 @@ def test_backfill_debrief_and_why(repo, transcript):
 
 def test_debrief_runs_are_recorded_so_the_next_one_is_incremental(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
-    first = json.loads(run("debrief", "--json", "--explain", "none").output)
+    first = json.loads(run("--json").output)
     assert [s["id"] for s in first["sessions"]] == [fixture.SID]
-    again = json.loads(run("debrief", "--json", "--explain", "none").output)
+    again = json.loads(run("--json").output)
     assert [s["id"] for s in again["sessions"]] == [fixture.SID]  # nothing newer: falls back to the latest
 
 
@@ -244,19 +234,9 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     assert not (home / ".graphene").exists()
 
 
-def test_md_into_a_missing_directory_and_together_with_json(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    nested = repo / "reports" / "today.md"
-    result = run("debrief", "--md", str(nested), "--json", "--explain", "none")
-    assert result.exit_code == 0, result.output
-    assert nested.read_text().startswith("# Graphene\n")
-    assert json.loads(result.stdout)["prompt_count"] == 3
-    assert run("debrief", "--md", str(repo), "--explain", "none").exit_code == 1  # a directory: clean failure
-
-
 def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run("debrief", "--since", "1h", "--explain", "none")
+    result = run("--since", "1h")
     assert result.exit_code == 1
     assert "no session in that window" in result.output + result.stderr
 
@@ -282,11 +262,9 @@ def test_a_session_that_changed_nothing_is_one_line(repo, tmp_path, monkeypatch)
     assert run("ingest", "--backfill", "--transcript", str(path)).exit_code == 0
     result = run()
     assert result.exit_code == 1
-    assert one_line(result) == (
-        "1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it"
-    )
+    assert one_line(result) == ("1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it")
     assert run("sessions").exit_code == 0  # and it does list it
-    assert json.loads(run("debrief", "--json").stdout)["prompt_count"] == 1  # --json still answers
+    assert json.loads(run("--json").stdout)["prompt_count"] == 1  # --json still answers
 
 
 def test_a_store_another_process_is_writing_is_one_line(repo, transcript, monkeypatch):
@@ -333,7 +311,7 @@ def test_why_on_a_path_nothing_touched_is_one_line(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
     result = run("why", "nope.txt")
     assert result.exit_code == 1
-    assert one_line(result) == "no recorded prompt changed nope.txt"
+    assert one_line(result) == "nope.txt: no such file in this repo, on disk or in git's history"
 
 
 def test_the_card_is_plain_text_when_stdout_is_not_a_terminal(repo, transcript):
@@ -377,3 +355,13 @@ def test_why_accepts_the_paths_the_card_prints_from_a_subdirectory(repo, transcr
     assert "1 prompt, newest first" in pasted.stdout
     assert run("why", "app/hello.py:2").exit_code == 0
     assert run("why", "nope/hello.py").exit_code == 1
+
+
+def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tmp_path, monkeypatch):
+    config = tmp_path / "claude-config"
+    config.mkdir(exist_ok=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    assert '"bashEditDiffEnabled": true' in " ".join(run("init").output.split())
+    (config / "settings.json").write_text('{"bashEditDiffEnabled": true}')
+    assert "bashEditDiffEnabled" not in run("init").output
+    assert (config / "settings.json").read_text() == '{"bashEditDiffEnabled": true}'  # read, never written

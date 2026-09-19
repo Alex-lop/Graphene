@@ -1,6 +1,7 @@
 """The debrief: golden markdown for a fixed session, the terminal card, JSON round trip, selection."""
 
 import io
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,21 +10,20 @@ from rich.console import Console
 
 from graphene_debrief.debrief import (
     build_debrief,
+    coverage_line,
     file_rows,
     from_json,
     parse_since,
     print_card,
     print_sessions,
     render_card,
-    render_markdown,
     select_sessions,
     to_json,
 )
-from graphene_debrief.model import Prompt, Session, ToolEvent
+from graphene_debrief.model import Commit, Prompt, Session, ToolEvent
 from graphene_debrief.store import Store
 
-GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the short default render
-FULL_GOLDEN = Path(__file__).parent / "fixtures" / "debrief_full_golden.md"  # `debrief --full`
+GOLDEN = Path(__file__).parent / "fixtures" / "debrief_golden.md"  # the card, as markdown
 NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 HELLO_V1 = 'def greet(name):\n    return f"hi {name}"\n'
 HELLO_V2 = 'def greet(name):\n    return f"hello {name}"\n'
@@ -157,17 +157,10 @@ def test_golden_default_render(store, tmp_path):
     assert (
         "failed Bash:" not in rendered and "cat missing.txt" not in rendered
     )  # failures are one summary line
-    assert "- 2 tool failures (2 Bash); `graphene debrief --full` lists them" in rendered
+    assert "- 2 tool failures (2 Bash)" in rendered
     assert "- reverted: `README.md` (prompt 3)" in rendered
     assert "- check `uv run pytest -q` failed and was rerun under prompt 1: passed" in rendered
     assert len(rendered.splitlines()) < 25
-
-
-def test_golden_full_render(store, tmp_path):
-    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    rendered = render_markdown(debrief)
-    assert rendered == FULL_GOLDEN.read_text(), REGENERATE
-    assert "- failed Bash: `cat missing.txt` (prompt 3)" in rendered  # --full still lists real failures
 
 
 def terminal(width: int = 80) -> Console:
@@ -229,16 +222,19 @@ def test_the_sessions_list_is_columns_not_a_table():
     print_sessions(
         console,
         [
-            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 3, 11),
-            ("22222222", "hooks", "2026-03-02 09:00", "running", 12, 140),
+            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 11, "12: 9/2/1"),
+            ("22222222", "hooks", "2026-03-02 09:00", "running", 140, "-"),
         ],
+        "+0000",
     )
     lines = console.export_text().splitlines()
-    assert lines[0].split() == ["session", "source", "started", "ended", "prompts", "calls"]
+    assert lines[0].split() == ["session", "source", "started", "+0000", "ended", "calls", "coverage"]
+    assert lines[1].rstrip().endswith("12: 9/2/1") and lines[3].startswith("coverage = committed files:")
+    lines = lines[:3]
     assert max(len(line) for line in lines) <= 80  # no wrapping at eighty columns
     assert not any(char in "\n".join(lines) for char in "─│┌┐└┘━┃")
     assert lines[1].index("backfill") == lines[2].index("hooks")  # columns line up
-    assert lines[2].rstrip().endswith("140")
+    assert lines[2].split()[-2:] == ["140", "-"]
 
 
 def test_no_color_leaves_no_escape_codes(store, tmp_path, monkeypatch):
@@ -279,19 +275,8 @@ def test_failure_summary_groups_refusals(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     assert debrief.failure_summary == {"total": 6, "by_tool": {"Bash": 5, "AskUserQuestion": 1}, "denials": 4}
     card = render_card(debrief)
-    assert (
-        "- 6 tool failures (5 Bash, 1 AskUserQuestion; 4 refused before running); "
-        "`graphene debrief --full` lists them"
-    ) in card
-    assert "classifier" not in card and "rm -rf" not in card
-    full = render_markdown(debrief)
-    assert (
-        "- 2 Bash calls refused before running (auto mode classifier: Irreversible Local Destruction)" in full
-    )
-    assert "- 1 Bash call refused before running (auto mode classifier: Credential Materialization)" in full
-    assert "- 1 AskUserQuestion call refused before running (rejected by the user)" in full
-    assert full.count("refused before running") == 3  # grouped, not one line per refusal
-    assert "- failed Bash: `uv run pytest -q`" in full  # real failures are still listed one by one
+    assert "- 6 tool failures (5 Bash, 1 AskUserQuestion; 4 refused before running)" in card
+    assert "classifier" not in card and "rm -rf" not in card  # the reasons stay in --json
 
 
 def test_card_omits_sections_with_nothing_in_them(tmp_path):
@@ -348,7 +333,8 @@ def test_card_caps_the_file_list(tmp_path):
     card = render_card(debrief)
     assert card.count("- `gen/") == 30
     assert "- … 5 more; `graphene why <path>` for any of them" in card
-    assert card.splitlines()[6] == "- `gen/f34.py` created +35/−0"  # biggest change first
+    lines = card.splitlines()
+    assert lines[lines.index("**Files changed**") + 1] == "- `gen/f34.py` created +35/−0"  # biggest first
     assert render_card(debrief, limit=100).count("- `gen/") == 35
 
 
@@ -360,18 +346,11 @@ def test_file_rows_net_effect(store, tmp_path):
     assert rows["tests/test_hello.py"]["effect"] == "created"
 
 
-def test_full_expands_prompts(store, tmp_path):
-    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    short, full = render_markdown(debrief), render_markdown(debrief, full=True)
-    assert "> Thanks!" in full and "> Thanks!" not in short
-    assert "Also note it somewhere.…" in short
-
-
 def test_json_round_trip(store, tmp_path):
     debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     text = to_json(debrief)
     assert from_json(text) == debrief
-    assert render_markdown(from_json(text)) == render_markdown(debrief)
+    assert render_card(from_json(text)) == render_card(debrief)
 
 
 def test_select_sessions(tmp_path):
@@ -394,7 +373,15 @@ def test_select_sessions(tmp_path):
             )
         )
         store.upsert_session(Session(id="ccc-3", repo="/r", started_at="2026-03-01T11:30:00.000Z"))
-        assert select_sessions(store, now=NOW) == ["ccc-3"]  # no run yet: most recent session
+        assert select_sessions(store, now=NOW) == ["ccc-3"]  # nobody did anything: the most recent session
+        store.add_event(
+            ToolEvent("r1", "aaa-1", None, "2026-02-28T08:30:00.000Z", "Read", {"file_path": "/r/a"})
+        )
+        assert select_sessions(store, now=NOW) == ["aaa-1"]  # the latest that made a call at all
+        for sid, when in (("bbb-2", "2026-03-01T09:00:00.000Z"), ("ccc-3", "2026-03-01T11:40:00.000Z")):
+            write = ToolEvent("w1", sid, None, when, "Write", {"file_path": "/r/a.py"}, file_path="a.py")
+            store.add_event(write)
+        assert select_sessions(store, now=NOW) == ["ccc-3"]  # no run yet: the latest that did something
         assert select_sessions(store, "bbb", now=NOW) == ["bbb-2"]
         with pytest.raises(ValueError):
             select_sessions(store, "zzz", now=NOW)
@@ -405,35 +392,52 @@ def test_select_sessions(tmp_path):
         assert select_sessions(store, now=NOW) == ["bbb-2", "ccc-3"]  # ended after the run, or still open
         store.add_debrief_run(["bbb-2", "ccc-3"], "2026-03-01T13:00:00.000Z")
         assert select_sessions(store, now=NOW) == ["ccc-3"]  # still open, so still fresh
+        store.upsert_session(Session(id="ddd-4", repo="/r", started_at="2026-03-01T13:30:00.000Z"))
+        assert select_sessions(store, now=NOW) == [
+            "ccc-3"
+        ]  # a newer session that did nothing is not the card
+
+
+def test_the_card_prints_coverage_as_counts_never_one_number(tmp_path):
+    sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
+    import make_run_fixture as run
+
+    with Store.open(tmp_path) as store:
+        run.load(store)
+        debrief = build_debrief(store, [run.S1], tmp_path, now=NOW)
+    want = (
+        "12 committed files · 9 traced to a recorded write (6 edit, 3 shell) · 2 only to an agent's commit"
+        " · 1 to nothing (1 committed in the window by no identifiable agent)"
+    )
+    assert coverage_line(debrief.coverage) == want and f"**Coverage:** {want}" in render_card(debrief)
+    console = terminal()
+    print_card(console, debrief)
+    assert "coverage 12 committed files" in " ".join(console.export_text().split())
+    assert "%" not in want and coverage_line({}) == ""
+    assert debrief.notes == []  # the synthetic run has the vendor's lists: nothing to explain
+
+
+def test_the_card_says_so_when_no_shell_call_carries_a_change_list(tmp_path):
+    with Store.open(tmp_path) as store:
+        store.upsert_session(
+            Session("s", str(tmp_path), "2026-03-01T09:00:00.000Z", "2026-03-01T09:30:00.000Z")
+        )
+        made = {"stdout": "abc1234 x"}
+        commit = {"command": "git commit -q -m x && git log --oneline -1"}
+        store.add_event(ToolEvent("b1", "s", None, "2026-03-01T09:05:00.000Z", "Bash", commit, made))
+        files = [("app/x.py", "A")]
+        store.add_commit(
+            Commit("abc1234" + "0" * 33, "2026-03-01T09:05:01.000Z", "x", "s", None, "b1", files=files)
+        )
+        debrief = build_debrief(store, ["s"], tmp_path, now=NOW)
+    assert debrief.coverage["commit"] == 1
+    assert len(debrief.notes) == 1 and "none of this window's 1 shell calls" in debrief.notes[0]
 
 
 def test_parse_since_rejects_garbage():
     with pytest.raises(ValueError):
         parse_since("yesterday", NOW)
     assert parse_since("90m", NOW) == "2026-03-01T10:30:00.000Z"
-
-
-def test_the_terminal_full_view_shows_every_prompt_file_and_failure(tmp_path):
-    from rich.console import Console
-
-    from graphene_debrief.debrief import print_full
-
-    with Store.open(tmp_path) as store:
-        seed_golden(store)
-        debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
-    console = Console(width=80, record=True, force_terminal=True)
-    print_full(console, debrief)
-    text = console.export_text()
-    for block in debrief.prompts:
-        assert f"{block.ordinal}. " in text and block.text.splitlines()[0][:40] in text
-        for f in block.files:
-            assert f.path in text and f.explanation[:30] in text
-    assert "failed and was rerun under prompt 1: passed" in text
-    lines = text.splitlines()
-    assert all(len(line) <= 79 for line in lines) and not any(line.endswith(" ") for line in lines)
-    wrapped = [line for line in lines if line.startswith("    tests/test_hello.py::test_greet")]
-    assert wrapped, "the long failure line wraps, and its continuation hangs two columns deeper"
-    assert "failed Bash:" in text  # every real failure, one per line; the card shows only a count
 
 
 if __name__ == "__main__":  # regenerate the golden file after a deliberate rendering change
@@ -443,8 +447,7 @@ if __name__ == "__main__":  # regenerate the golden file after a deliberate rend
         seed_golden(s)
         debrief = build_debrief(s, ["sess-golden-1"], Path(tempfile.mkdtemp()), now=NOW)
         GOLDEN.write_text(render_card(debrief))
-        FULL_GOLDEN.write_text(render_markdown(debrief))
-    print(f"wrote {GOLDEN} and {FULL_GOLDEN}")
+    print(f"wrote {GOLDEN}")
 
 
 def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
@@ -473,9 +476,7 @@ def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
         False,
     )
     assert debrief.files_changed == 4 and debrief.notes == []
-    assert "### Before the first recorded prompt (session started 2026-03-01 09:00)" in render_markdown(
-        debrief
-    )
+    assert first.files[0].explanation == "Created early.py with 1 lines."
 
 
 def test_preview_truncation_and_fences():

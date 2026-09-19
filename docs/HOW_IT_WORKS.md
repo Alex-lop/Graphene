@@ -1,8 +1,8 @@
 # How Graphene works
 
 Graphene reads what Claude Code already records about a session and turns it into an account
-of what happened, grouped by what you asked for. Nothing here involves a model except the
-optional explanation sentences, and those are written from a diff Graphene has already computed.
+of what happened, grouped by what you asked for. No model is involved at any point: every
+sentence here is computed from a diff Graphene already has.
 
 ## 1. Where the data comes from
 
@@ -16,7 +16,8 @@ the file is rewritten atomically (through a symlink to its target) so a crash ca
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, never to stdout, so a broken Graphene can never block the agent. It takes
-about 35 ms because it imports only the standard library on that path, and if another process
+about 40 ms (a median of twenty runs on the author's machine, measured by `tests/test_hook_budget.py`
+and held under 60 ms there) because it imports only the standard library on that path, and if another process
 holds the database lock (a backfill, a second session) it gives up after 250 ms and logs the
 missed event rather than stalling the agent.
 
@@ -29,6 +30,14 @@ What each event contributes:
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
 | `Stop` | the session's end time (updated on every turn end) |
+
+Not all of a response is worth keeping. A `Read` is recorded as the call, the path and whether it
+worked: its response is the file itself, and nothing here reads it back. Any other recorded string
+longer than 8 KB keeps its first and last 4 KB with a count of the characters between them, so a
+command is remembered by how its output started and how it ended — a `git commit … && git log
+--oneline -1` prints the new SHA on the very last line. Paths, names, the list of files a command
+changed and the error of a failed call are never cut, and a file edit's before and after content
+keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
@@ -181,8 +190,7 @@ in scope under one prompt and flagged under the next.
 - **Failed calls**: every tool call whose result was an error is recorded, but a failed call is
   not abandoned work, so the default view shows only one line with their count by tool and how
   many were refused before running (the permission system, the auto mode classifier, or the
-  user). `graphene debrief --full` lists real failures one by one and groups refusals by reason;
-  `--json` carries every one.
+  user). `--json` carries every one.
 - **Checks that failed and were rerun**: a shell segment whose command word is a test or lint
   runner (`pytest`, `npm test`, `cargo test`, `go test`, `make`, `ruff`, `mypy`, `tsc`, `jest`,
   `vitest`, `eslint`, ...) that failed and whose check segment (`uv run pytest -q`, say) was run
@@ -192,14 +200,13 @@ in scope under one prompt and flagged under the next.
 
 Every command first tops the store up from the repo's transcripts (a transcript that has not
 changed since it was last read costs one `stat`), so a session run without the hooks still
-shows up the next time you look. `graphene` with no command, and `graphene debrief`, print a short card: the sessions covered,
+shows up the next time you look. `graphene` prints a short card: the sessions covered,
 their span, wall time and prompt count; files changed with added and removed lines; the commits
 made during the sessions; a net list of files (created, modified, deleted or reverted over the
 whole span, biggest change first, capped at 30 rows); and then only the sections that have
 something in them: files outside a named scope (§4), abandoned work (§5), a one-line failure
-count, files written outside the repo. `graphene debrief --full` is the whole reconstruction,
-prompt by prompt, with a sentence per file, in the same terminal style (complete and wrapped
-rather than capped and clipped) and as markdown when piped. `--json` is the structure behind both.
+count, files written outside the repo. `--session ID` picks one session and `--since 6h` a
+window; `--json` is the whole structure behind the card, prompt by prompt.
 
 In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
 colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
@@ -207,8 +214,7 @@ wrap — paths are shortened in the middle, commit subjects at the end — and t
 shows at most 5 commits and 20 files before "… N more", so a session fits in 40 rows at 80
 columns. `NO_COLOR` turns the colour off and keeps the layout. When stdout is not a terminal
 (`graphene > out.txt`, a pipe, CI) the markdown text is written as it is, with no rendering at
-all; `--full`, `--json` and `--md` are always plain. `graphene why` and `graphene sessions`
-follow the same rules.
+all; `--json` is always plain. `graphene why` and `graphene sessions` follow the same rules.
 
 Graphene writes nothing until it has something to record: in a repo with neither a store nor a
 transcript the empty state is printed and `.graphene/` and `.gitignore` are left alone (`graphene
@@ -218,32 +224,11 @@ home directory, no transcripts for this repo (naming the directory it searched),
 changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
 and `why` with no path at all, which first lists the five files that changed most recently.
 
-## 6. Explanations
-
-Each file line in the full reconstruction and in `graphene why` ends with one sentence. By default
-it is a template built from the diff: "Edited 2 definitions in auth.py: login and refresh_token
-(+12/−4)." With `--explain claude` (never by default), Graphene makes one `claude -p` call per prompt with the
-request text and the diffs of all its files (each capped at 4,000 characters, 80,000 in total;
-files past the budget are sent with line counts and an "omitted" marker), asks for a JSON object
-of one sentence per path validated by a JSON schema, in batches of at most 120 files, and stores the sentences so `graphene why`
-and later debriefs never call the model again. Any failure (no binary, timeout, an unusable
-reply) falls back to the templates for the rest of the run and says so at the bottom of the
-debrief. The call runs with no tools, no MCP servers, no settings files, no session persistence
-and a temporary working directory, so it leaves no transcript behind and fires no hooks. Before
-anything is sent, the diff of any file whose name looks like a secrets file (`.env*`, `*.pem`,
-`*.key`, `id_rsa*`, anything with credential, secret, token or password in the name) is replaced
-by a note, and token-shaped strings or private-key blocks in any diff are masked.
-
-The model is `haiku` unless `--model NAME` names another one (`graphene debrief --explain claude
---model sonnet`), and the name is stored with each sentence and appears in `--json`. `--model`
-without `--explain claude` changes nothing and says so in one line. A 23-file prompt cost about
-half a dollar on the model Claude Code defaults to, which is why the default here is the cheap
-one; a one-word round trip on `haiku` cost about a cent.
-
-## 7. `graphene why`
+## 6. `graphene why`
 
 `graphene why PATH` runs the attribution for every session that touched the file and lists the
-prompts newest first, each with its diff summary and the stored explanation if one exists.
+prompts newest first, each with its diff summary and a sentence built from that diff: "Edited 2
+definitions in auth.py: login and refresh_token (+12/−4)."
 
 `graphene why PATH:LINE` reads the line from disk, asks `git blame` which commit last touched it,
 then looks for prompts whose recorded diff added a line with the same text, preferring an edit at
@@ -256,15 +241,14 @@ All commands except the hook refuse to run outside a git repository, and never t
 directory as one, so `~/.claude/settings.json` (Claude Code's user-level settings) is never
 written.
 
-## 8. What Graphene never does
+## 7. What Graphene never does
 
-It never runs an agent, never orchestrates, never pushes, and never sends anything anywhere. The
-only network use is the optional `claude -p` call, made by your own Claude Code installation.
-Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
+It never runs an agent, never orchestrates, never pushes, never calls a model, and never sends
+anything anywhere. Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
 that is made private to your user (`0700`, the database `0600`) and that ignores itself in git
 through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
-## 9. The HTML record
+## 8. The HTML record
 
 `graphene debrief --html record.html` writes one file: the same structure `--json` prints, embedded
 as JSON in a `<script type="application/json">` tag, plus a stylesheet and a script that build the
@@ -275,9 +259,9 @@ escaped inside the JSON, so nothing recorded can turn into markup.
 
 The page is a timeline: session bands at the top, then one row per prompt in time order with its
 text (three lines, click to expand) and the files it touched with `+N/−N` and an `unrequested`
-marker. Clicking a file opens a panel with that prompt's diff, the explanation sentence and who
-wrote it, and the file's history inside the record — every prompt that touched the same path,
-newest first, each one a link back to its row. Two checkboxes filter the rows down to the
+marker. Clicking a file opens a panel with that prompt's diff, its sentence, and the file's
+history inside the record — every prompt that touched the same path, newest first, each one a
+link back to its row. Two checkboxes filter the rows down to the
 unrequested or the abandoned ones. Alongside the debrief the file carries a `nodes` list in which
 sessions, prompts, files and directories are distinct node types, and the markup tags them the same
 way (`data-node="file"`, `data-node="dir"`, …); today only the timeline reads them.

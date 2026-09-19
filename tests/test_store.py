@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from graphene_debrief.cli import build
-from graphene_debrief.model import Prompt, Session, ToolEvent
+from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
 from graphene_debrief.sources.claude_code import hook_main, project_dir_name
 from graphene_debrief.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
@@ -67,12 +67,93 @@ def test_event_round_trip_including_unknown_success(tmp_path):
 def test_response_is_capped():
     big = capped_json({"stdout": "x" * (RESPONSE_CAP + 10), "stderr": "ok"})
     assert len(big) <= RESPONSE_CAP
-    assert "chars truncated" in big
+    assert "chars omitted" in big
     assert json.loads(big)["stderr"] == "ok"
     hopeless = capped_json({"items": ["y" * 10] * 40000})
     assert json.loads(hopeless)["truncated"] is True
     assert capped_json(None) is None
     assert capped_json("Error: boom") == '"Error: boom"'
+
+
+# -- what a call is worth keeping --------------------------------------------------------------
+
+
+def tool_event(tool: str, tool_input: dict, response: object) -> ToolEvent:
+    return ToolEvent(
+        id="e1", session_id="s", prompt_id=None, timestamp="t", tool=tool, input=tool_input, response=response
+    )
+
+
+def stored(tmp_path: Path, ev: ToolEvent) -> ToolEvent:
+    with Store.open(tmp_path) as store:
+        store.add_event(ev)
+        (back,) = store.events("s")
+    return back
+
+
+def test_a_read_keeps_the_call_but_not_the_file_it_read(tmp_path):
+    back = stored(tmp_path, tool_event("Read", {"file_path": "big.py"}, {"file": {"content": "x" * 100_000}}))
+    assert back.response is None
+    assert (back.input, back.tool, back.timestamp, back.success) == (
+        {"file_path": "big.py"},
+        "Read",
+        "t",
+        True,
+    )
+
+
+def test_bash_output_keeps_its_head_and_its_tail(tmp_path):
+    last = "abc1234 the commit that was just made"
+    out = "line\n" * 20_000 + last
+    back = stored(
+        tmp_path,
+        tool_event(
+            "Bash",
+            {"command": "git commit -q -m x && git log --oneline -1"},
+            {
+                "stdout": out,
+                "stderr": "",
+                "interrupted": False,
+                "gitOperation": {"type": "commit"},
+            },
+        ),
+    )
+    kept = back.response["stdout"]
+    assert len(kept) < len(out) and kept.startswith("line\nline\n")
+    assert kept.endswith(last)  # the SHA is on the last line: attribution reads it there
+    assert "chars omitted" in kept
+    assert (back.response["interrupted"], back.response["gitOperation"]) == (False, {"type": "commit"})
+
+
+def test_a_huge_change_list_keeps_its_paths_and_loses_its_hunks(tmp_path):
+    diff = {
+        "changedFiles": ["src/a.py"],
+        "files": [{"filePath": "src/a.py", "hunks": ["h" * RESPONSE_CAP]}],
+        "created": [],
+        "deleted": [],
+        "moreFiles": 3,
+        "shared": True,
+        "unavailable": False,
+    }
+    back = stored(
+        tmp_path, tool_event("Bash", {"command": "make"}, {"stdout": "z" * 100_000, "bashEditDiff": diff})
+    )
+    kept = back.response["bashEditDiff"]
+    assert kept["files"] == [{"filePath": "src/a.py"}]  # the hunks went, the path stayed
+    assert (kept["changedFiles"], kept["moreFiles"], kept["shared"]) == (["src/a.py"], 3, True)
+    assert (kept["created"], kept["deleted"], kept["unavailable"]) == ([], [], False)
+
+
+def test_a_huge_write_keeps_its_path_and_its_content_column(tmp_path):
+    content = "def f():\n    pass\n" * 6_000
+    ev = tool_event(
+        "Write", {"file_path": "src/a.py", "content": content}, {"type": "create", "content": content}
+    )
+    ev.file_path, ev.new_content = "src/a.py", content
+    back = stored(tmp_path, ev)
+    assert back.input["file_path"] == "src/a.py"
+    assert len(back.input["content"]) < len(content) and "chars omitted" in back.input["content"]
+    assert back.new_content == content  # the diff is computed from this column, so it is kept whole
 
 
 def test_explanations_and_debrief_runs(tmp_path):
@@ -143,20 +224,83 @@ def test_a_new_store_records_the_schema_version(tmp_path):
         assert store.rebuilt_from is None
 
 
-def test_a_store_from_an_older_schema_is_rebuilt_and_backfilled(repo_with_transcripts):
+V1_TABLES = ("sessions", "prompts", "tool_events", "explanations", "debrief_runs")
+
+
+def downgrade_to_v1(db: Path, version: int = 1) -> None:
+    """Turn a current store back into what version 1 wrote: no agents, no commits, no cwd column."""
+    conn = sqlite3.connect(db)
+    for table in ("agents", "commits", "commit_files"):
+        conn.execute(f"DROP TABLE {table}")
+    conn.execute("ALTER TABLE tool_events DROP COLUMN cwd")
+    conn.execute(f"PRAGMA user_version = {version}")
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.parametrize("version", [0, 1])  # 0: every store written before versioning
+def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, version):
+    with Store.open(tmp_path) as store:
+        store.upsert_session(Session(id="hooked", repo=str(tmp_path), source="hook"))
+        store.add_event(
+            ToolEvent("t1", "hooked", None, "2026-03-01T09:00:00.000Z", "Bash", {"command": "ls"})
+        )
+    db = tmp_path / ".graphene" / "graphene.db"
+    downgrade_to_v1(db, version)
+    with Store.open(tmp_path) as store:
+        assert store.rebuilt_from is None and list((tmp_path / ".graphene").glob("*.bak")) == []
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert [s.id for s in store.sessions()] == ["hooked"]  # its transcript may be gone: never dropped
+        assert [e.id for e in store.events("hooked")] == ["t1"] and store.events("hooked")[0].cwd is None
+        tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert tables >= {*V1_TABLES, "agents", "commits", "commit_files"}
+
+
+def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):
     repo = repo_with_transcripts
-    Store.open(repo).close()
-    set_version(repo / ".graphene" / "graphene.db", 0)  # every store written before versioning
-    result = CliRunner().invoke(build(), [])
-    output = result.output + result.stderr
-    assert result.exit_code == 0, output
-    assert (repo / ".graphene" / "graphene.db.v0.bak").exists()
-    assert "store rebuilt" in output and ".graphene/graphene.db.v0.bak" in output
-    assert "loaded 1 session" in output
-    assert "Session 11111111" in result.output  # the card, from the rebuilt store
+    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
     with Store.open(repo) as store:
-        assert len(store.sessions()) == 1
-        assert store.rebuilt_from is None  # and now it opens normally
+        (sid,) = [s.id for s in store.sessions()]
+        assert store.transcript_stat(sid) is not None
+        store.conn.execute("DELETE FROM agents")  # what a store read by the old parser looks like
+    downgrade_to_v1(repo / ".graphene" / "graphene.db")
+    with Store.open(repo) as store:
+        assert store.transcript_stat(sid) is None  # migrated: the read is forgotten, the session is not
+        assert [s.id for s in store.sessions()] == [sid]
+    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
+    with Store.open(repo) as store:
+        assert [a.id for a in store.agents(sid)] == [fixture.AGENT]  # read again, by the new parser
+
+
+def test_the_hook_migrates_an_older_store_and_records_the_event(tmp_path):
+    (tmp_path / ".git").mkdir()
+    Store.open(tmp_path).close()
+    downgrade_to_v1(tmp_path / ".graphene" / "graphene.db")
+    event = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(tmp_path)})
+    assert hook_main(io.StringIO(event), cwd=tmp_path) == 0
+    with Store.open(tmp_path) as store:
+        assert [s.id for s in store.sessions()] == ["s1"]
+
+
+def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
+    with Store.open(tmp_path) as store:
+        store.upsert_agent(Agent(id="a1", session_id="s", started_at="2026-03-01T09:00:00.000Z"))
+        store.upsert_agent(Agent(id="a1", session_id="s", task="write the guide", closing="done"))
+        (agent,) = store.agents("s")
+        assert (agent.task, agent.closing, agent.started_at) == (
+            "write the guide",
+            "done",
+            "2026-03-01T09:00:00.000Z",
+        )
+        when = "2026-03-01T09:05:00.000Z"
+        store.add_commit(Commit("abc1234", when, "parser", files=[("app/parser.py", "A")]))
+        store.add_commit(Commit("abc1234", when, "parser", session_id="s", agent_id="a1", event_id="t9"))
+        store.add_commit(Commit("abc1234", when, "parser", session_id="other", agent_id="zz"))
+        (commit,) = store.commits_between("2026-03-01T09:00:00.000Z", "2026-03-01T10:00:00.000Z")
+        assert (commit.session_id, commit.agent_id, commit.event_id) == ("s", "a1", "t9")
+        assert commit.files == [("app/parser.py", "A")]
+        store.delete_session_data("s")
+        assert store.agents("s") == [] and len(store.commits_between(when, when)) == 1
 
 
 def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
@@ -180,7 +324,18 @@ def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
         assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
 
 
-def test_the_hook_skips_a_stale_store_instead_of_rebuilding_it(tmp_path, capsys):
+def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo_with_transcripts):
+    repo = repo_with_transcripts
+    Store.open(repo).close()
+    db = repo / ".graphene" / "graphene.db"
+    set_version(db, SCHEMA_VERSION + 1)
+    result = CliRunner().invoke(build(), [])
+    assert result.exit_code == 1 and "Traceback" not in result.output + result.stderr
+    assert "written by a newer graphene" in " ".join(result.stderr.split())
+    assert list((repo / ".graphene").glob("*.bak")) == []
+
+
+def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_path, capsys):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()
     db = tmp_path / ".graphene" / "graphene.db"
@@ -193,3 +348,13 @@ def test_the_hook_skips_a_stale_store_instead_of_rebuilding_it(tmp_path, capsys)
     assert list((tmp_path / ".graphene").glob("*.bak")) == []
     log = (tmp_path / ".graphene" / "ingest.log").read_text()
     assert "run graphene" in log and "Traceback" not in log
+
+
+def test_a_huge_error_keeps_its_ends_instead_of_being_lost_whole(tmp_path):
+    error = "permission denied: " + "x" * (2 * RESPONSE_CAP) + " the last line"
+    with Store.open(tmp_path) as store:
+        store.add_event(
+            ToolEvent("f1", "s", None, "2026-03-01T09:00:00.000Z", "Bash", {}, {"error": error}, False)
+        )
+        kept = store.events("s")[0].response["error"]
+    assert kept.startswith("permission denied") and kept.endswith("the last line") and len(kept) < 10_000

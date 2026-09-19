@@ -27,3 +27,15 @@ jobs:
           uv venv smoke
           uv pip install --python smoke/bin/python "$GITHUB_WORKSPACE"/dist/*.whl
           ./smoke/bin/graphene --version
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - run: npm ci --prefix ui
+      - run: npm --prefix ui run check
+      - name: The committed page is what the source builds
+        run: git diff --exit-code -- src/graphene_debrief/ui/static
