@@ -87,9 +87,11 @@
   cherry-pick shows its origin's grade; the old shell-command parser does not know worktrees, so
   the card lists 2 of tonight's worktree files under "outside the repo"; a never-committed,
   since-deleted subdirectory holding a file named like a repo path is still re-rooted.
-- Left over on this machine: about 25 worktrees under `.claude/worktrees/` and the sub-agents'
-  local branches (`n0-ground`, `n1-fixture`, `n2*`, `n3-map*`, `trial-integration`), all merged or
-  superseded. I did not delete them: `git worktree prune` and `git branch -d` are yours to run.
+- Left over on this machine: 17 worktrees under `.claude/worktrees/` (13 from tonight, 4 from the
+  night before) and ten local branches: nine sub-agent branches, all merged into `main`
+  (`n0-ground`, `n1-fixture`, `n2a-agents`, `n2b-commits`, `n2c-store`, `n3-map` and three `-fix`),
+  and `trial-integration`, my rehearsal branch, superseded. I did not delete them:
+  `git worktree remove <path>` and `git branch -d <name>` are yours to run.
 
 ## Decisions to check
 1. Root command has `--session`, `--since`, `--json` because `debrief` is hidden.
