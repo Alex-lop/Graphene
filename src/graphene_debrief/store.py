@@ -539,6 +539,13 @@ class Store:
         ).fetchall()
         return [(r["file_path"], r["last"]) for r in rows]
 
+    def recorded_path_count(self) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(DISTINCT file_path) FROM tool_events "
+            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%'"
+        ).fetchone()
+        return int(row[0])
+
 
 def _session(r: sqlite3.Row) -> Session:
     return Session(

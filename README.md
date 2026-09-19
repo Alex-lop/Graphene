@@ -118,7 +118,7 @@ file's first or last state in a session, when a shell command wrote it, is read 
 flagged as not asked for only when the prompt named a path (`auth.py`, `src/app/`) that does not
 cover it; a prompt that names no path flags nothing.
 "Abandoned" means files restored to their session-start content and checks that failed and were
-rerun. No model is involved at any point. The heuristics and their failure modes are spelled out in
+rerun; the card also puts one line under it counting the tool calls that failed or were refused. No model is involved at any point. The heuristics and their failure modes are spelled out in
 [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## What it doesn't do

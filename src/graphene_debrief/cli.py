@@ -191,6 +191,7 @@ def build():
                 empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
             result = build_debrief(store, ids, r)
             store.add_debrief_run(ids, now_iso())
+            others = sum(1 for s in store.sessions() if s.id not in ids and store.event_count(s.id))
         if not as_json and not (result.files_changed or result.commits):
             n, p = len(result.sessions), result.prompt_count
             empty(
@@ -204,6 +205,10 @@ def build():
             print_card(console, result)
         else:  # piped or redirected: the markdown text itself, unrendered
             sys.stdout.write(render_card(result))
+        if others:
+            note(
+                f"{others} other session{'s' if others != 1 else ''} recorded; `graphene sessions` lists them"
+            )
         hooks_hint(r)
 
     @cli.callback(invoke_without_command=True)
@@ -230,7 +235,7 @@ def build():
         path, _, line = (target or "").rpartition(":")
         with loaded_store(r) as store:
             if target is None:
-                write_line(console, Text("files with recorded changes, newest first:", "dim"))
+                write_line(console, Text("files with recorded edits, newest first:", "dim"))
                 recent = store.recent_paths()
                 pad = max((len(path) for path, _ in recent), default=0)
                 for path, when in recent:
@@ -238,6 +243,9 @@ def build():
                     row.append(path.ljust(pad), ACCENT)
                     row.append("  " + stamp_tz(when), "dim")
                     write_line(console, row)
+                more = store.recorded_path_count() - len(recent)
+                if more > 0:
+                    write_line(console, Text(f"… {more} more; `graphene` lists a session's files", "dim"))
                 console.file.flush()  # the list before the usage line, whichever stream is captured
                 fail("usage: graphene why <path> | <path>:<line>")
             if path and line.isdigit():
@@ -280,10 +288,11 @@ def build():
                         return
                     known = last_commit(r, rel)
                     if known:
-                        empty(
+                        say(
                             f"no recorded prompt changed {rel}; git last changed it in {known[0]} "
                             f"({stamp_tz(known[1])}), outside every recorded session"
                         )
+                        return
                     if not (r / rel).exists():
                         empty(f"{target}: no such file in this repo, on disk or in git's history")
                     empty(f"no recorded prompt changed {rel}, and git has no commit of it yet")

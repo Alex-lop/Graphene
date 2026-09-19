@@ -9,7 +9,7 @@ import type { Counter } from "./model";
 import type { Grade, Graph, Mark, Run } from "./types";
 
 const COUNTERS: Counter[] = ["failed_checks", "rerun_green", "refused", "failures", "outside", "collisions"];
-const ONE: Partial<Record<Counter, string>> = { failed_checks: "failed check", failures: "failure", collisions: "collision" };
+const ONE: Partial<Record<Counter, string>> = { failed_checks: "failed check", failures: "other failed call", collisions: "collision" };
 const GRADES: Grade[] = ["edit", "shell", "commit", "window", "unknown"];
 
 const many = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;

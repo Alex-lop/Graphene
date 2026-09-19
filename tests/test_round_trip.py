@@ -65,7 +65,7 @@ def test_why_names_the_agent_its_task_and_the_grade(ingested, monkeypatch):
     text = " ".join(result.output.split())
     assert result.exit_code == 0, result.output
     assert "by agent 0a1b2c3d: Build the parser" in text and "recorded edit" in text
-    assert "1 commit of this file in recorded sessions · 1 traced to a recorded write" in text
+    assert "1 commit of this file in recorded sessions · 1 with a write recorded before it" in text
 
 
 def said(result) -> str:
@@ -78,8 +78,8 @@ def test_why_on_a_file_only_a_commit_holds_says_so_and_that_is_an_answer(ingeste
     result = CliRunner().invoke(build(), ["why", "app/gen_a.py"])
     assert result.exit_code == 0
     assert "app/gen_a.py: changed in 1 commit during session 22222222; no recorded write." in said(result)
-    assert "0 traced to a recorded write · 1 only to an agent's commit · 0 to nothing" in said(result)
-    assert "1 to nothing" in said(CliRunner().invoke(build(), ["why", "pyproject.toml"]))
+    assert "0 with a write recorded before it · 1 made by an agent with no write recorded" in said(result)
+    assert "1 by no identifiable agent" in said(CliRunner().invoke(build(), ["why", "pyproject.toml"]))
 
 
 def test_why_never_calls_a_file_unrecorded_while_its_coverage_says_it_is_recorded(ingested, monkeypatch):
@@ -91,7 +91,7 @@ def test_why_never_calls_a_file_unrecorded_while_its_coverage_says_it_is_recorde
     assert "1 recorded write, newest first; no diff was recorded" in said(result)
     assert "in Claude Code's list of what a shell command changed" in said(result)
     assert "by agent 3a4b5c6d: Generate the schema" in said(result)
-    assert "1 commit of this file in recorded sessions · 1 traced to a recorded write" in said(result)
+    assert "1 commit of this file in recorded sessions · 1 with a write recorded before it" in said(result)
 
 
 def test_a_commit_is_held_by_the_session_credited_with_it_not_by_a_window_it_falls_in(ingested, monkeypatch):
@@ -99,7 +99,7 @@ def test_a_commit_is_held_by_the_session_credited_with_it_not_by_a_window_it_fal
     _store, repo, _elsewhere = ingested
     monkeypatch.chdir(repo)
     text = said(CliRunner().invoke(build(), ["why", "docs/guide.md"]))
-    assert "1 commit of this file in recorded sessions · 1 traced to a recorded write" in text
+    assert "1 commit of this file in recorded sessions · 1 with a write recorded before it" in text
 
 
 def test_the_first_card_is_the_session_that_finished_last_and_it_agrees_with_the_map(ingested, monkeypatch):
@@ -126,6 +126,23 @@ def test_two_sessions_on_one_card_span_first_start_to_last_end_and_overlap_count
 def test_a_path_git_knows_and_no_session_touched_is_not_the_same_answer_as_a_typo(ingested, monkeypatch):
     _store, repo, _elsewhere = ingested
     monkeypatch.chdir(repo)
-    known = said(CliRunner().invoke(build(), ["why", "README.md"]))
-    assert "no recorded prompt changed README.md; git last changed it in 319ac43" in known
+    answered = CliRunner().invoke(build(), ["why", "README.md"])
+    assert answered.exit_code == 0  # git's last commit of it is an answer
+    assert "no recorded prompt changed README.md; git last changed it in 319ac43" in said(answered)
     assert "no such file in this repo" in said(CliRunner().invoke(build(), ["why", "app/nope.py"]))
+
+
+def test_a_why_row_is_timed_when_the_file_was_written_and_the_bare_list_says_what_it_leaves_out(
+    ingested, monkeypatch
+):
+    _store, repo, _elsewhere = ingested
+    monkeypatch.chdir(repo)
+    assert "2026-03-02 09:31 +0000 session 22222222" in said(
+        CliRunner().invoke(build(), ["why", "docs/guide.md"])
+    )
+    listing = said(CliRunner().invoke(build(), ["why"]))
+    assert "docs/guide.md 2026-03-02 09:31 +0000" in listing  # the same moment on both screens
+    assert "more; `graphene` lists a session's files" in listing
+    gone = said(CliRunner().invoke(build(), ["why", "app/api.py:5"]))
+    assert "app/api.py is not on disk in this checkout" in gone
+    assert "1 other session recorded; `graphene sessions` lists them" in said(CliRunner().invoke(build(), []))

@@ -123,7 +123,8 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
                     session.id,
                     prompt.id if prompt else "",
                     prompt.ordinal if prompt else 0,
-                    prompt.timestamp if prompt else (session.started_at or ""),
+                    min((w.timestamp for w in mine), default=None)  # when it was written, as the map says
+                    or (prompt.timestamp if prompt else (session.started_at or "")),
                     prompt.text if prompt else "(changes recorded before the first prompt)",
                     change.effect,
                     change.added,
@@ -144,7 +145,12 @@ def why_line(store: Store, root: Path, path: str, line: int) -> LineAnswer:
     rel = next((c for c in options if (root / c).is_file()), options[0])
     content = _line(root / rel, line)
     if content is None:
-        return LineAnswer(rel, line, None, None, None, [], f"{rel} has no line {line} on disk")
+        missing = (
+            f"{rel} is not on disk in this checkout (it may live on another branch or in a worktree); "
+            f"`graphene why {rel}` shows its history"
+        )
+        here = f"{rel} has no line {line} on disk"
+        return LineAnswer(rel, line, None, None, None, [], here if (root / rel).is_file() else missing)
     commit, committed_at = blame(root, rel, line)
     entries = _why_rel(store, root, rel)
     wanted = content.strip()
@@ -251,9 +257,10 @@ def path_coverage(store: Store, rel: str) -> str:
     grades = [grade for (_sha, path), grade in pairs.items() if path == rel]
     write = sum(g in ("edit", "shell") for g in grades)
     n = len(grades)
-    line = (
-        f"{n} commit{'s' if n != 1 else ''} of this file in recorded sessions · {write} traced to a recorded "
-        f"write · {grades.count('commit')} only to an agent's commit · {grades.count('window')} to nothing"
+    line = (  # these are commits of one file; the card's line counts files, so the words differ
+        f"{n} commit{'s' if n != 1 else ''} of this file in recorded sessions · {write} with a write "
+        f"recorded before it · {grades.count('commit')} made by an agent with no write recorded · "
+        f"{grades.count('window')} by no identifiable agent"
     )
     outside = len(held.get(None, []))
     return line + (f" · {outside} more outside any recorded session" if outside else "")

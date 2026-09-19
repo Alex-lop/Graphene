@@ -201,7 +201,7 @@ export const COUNTER: Record<Counter, string> = {
   failed_checks: "failed checks",
   rerun_green: "rerun green",
   refused: "refused",
-  failures: "failures",
+  failures: "other failed calls",
   outside: "outside the repo",
   collisions: "collisions",
 };
