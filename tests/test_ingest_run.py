@@ -32,6 +32,48 @@ sys.path.insert(0, str(FIXTURES))
 import make_run_fixture as run  # noqa: E402
 
 S1, S2 = run.S1, run.S2
+S3 = "44444444-5555-4666-8777-888888888888"  # sessions the single tests below invent
+S4 = "55555555-6666-4777-8888-999999999999"
+
+
+def _records(path: Path, records: list[dict]) -> None:
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+
+def _call(tid: str, cwd: str, path: str, content: str, at: str) -> list[dict]:
+    """One recorded Write: the assistant record that made it, in the working directory it ran in,
+    and the result record that carries what was written."""
+    call = {"type": "tool_use", "id": tid, "name": "Write", "input": {"file_path": path, "content": content}}
+    result = {"type": "tool_result", "tool_use_id": tid, "content": "ok"}
+    return [
+        {"type": "assistant", "cwd": cwd, "timestamp": run.stamp(at), "message": {"content": [call]}},
+        {
+            "type": "user",
+            "cwd": cwd,
+            "timestamp": run.stamp(at),
+            "message": {"content": [result]},
+            "toolUseResult": {"type": "create", "content": content},
+        },
+    ]
+
+
+def _transcript(projects: Path, directory: str, sid: str, cwd: str, calls: list[dict]) -> None:
+    """A session of one prompt and the given calls, in the named project directory."""
+    prompt = {
+        "type": "user",
+        "cwd": cwd,
+        "timestamp": run.stamp("11:00:00"),
+        "message": {"content": "write it"},
+    }
+    (projects / directory).mkdir(parents=True, exist_ok=True)
+    _records(projects / directory / f"{sid}.jsonl", [prompt, *calls])
+
+
+def _ingest(repo: Path, projects: Path, into: Path, sid: str) -> tuple[dict, list[str]]:
+    into.mkdir(exist_ok=True)
+    with Store.open(into) as store:
+        backfill(store, repo, projects=projects)
+        return {e.id: e for e in store.events(sid)}, [s.id for s in store.sessions()]
 
 
 @pytest.fixture
@@ -177,6 +219,94 @@ def test_a_directory_that_was_never_a_worktree_stays_outside(scenario, tmp_path)
     _, _, rows, _ = load(repo, projects, tmp_path / "later")
     outside = next(r for r in rows if r["id"] == "toolu_a1_outside")
     assert outside["file_path"] == "/home/dev/notes/plan.md"  # absolute: no worktree ever held it
+
+
+def test_a_worktree_path_a_meta_json_names_is_taken_only_when_git_agrees(scenario, tmp_path):
+    """A checkout that is still there and is a repo of its own is not a worktree of this one,
+    whatever an agent's meta.json calls it: its files keep their own path and not their contents,
+    and its sessions are not this repo's."""
+    repo, elsewhere, projects = scenario
+    vendor = tmp_path / "vendor"
+    (vendor / "app").mkdir(parents=True)
+    run._git(vendor, "init", "-q", "-b", "main")
+    written = str(vendor / "app" / "api.py")  # a path this repo's history holds, in another repo
+    _transcript(projects, project_dir_name(repo), S3, str(repo), [])
+    subagents = projects / project_dir_name(repo) / S3 / "subagents"
+    subagents.mkdir(parents=True)
+    (subagents / "agent-v1.meta.json").write_text(
+        json.dumps({"agentType": "general-purpose", "worktreePath": str(vendor)}), encoding="utf-8"
+    )
+    _records(
+        subagents / "agent-v1.jsonl",
+        [
+            {
+                "type": "user",
+                "isSidechain": True,
+                "agentId": "v1",
+                "cwd": str(vendor),
+                "timestamp": run.stamp("11:00:01"),
+                "message": {"role": "user", "content": "work in the vendored clone"},
+            },
+            *_call("toolu_v1", str(vendor), written, "TOKEN=abc123\n", "11:00:02"),
+        ],
+    )
+    _transcript(
+        projects,
+        project_dir_name(vendor),
+        S4,
+        str(vendor),
+        _call("toolu_o1", str(vendor), str(vendor / "app" / "cli.py"), "print(1)\n", "11:00:03"),
+    )
+
+    events, sessions = _ingest(repo, projects, tmp_path / "store", S3)
+    assert events["toolu_v1"].file_path == written  # absolute: another repo's file is not ours
+    assert (events["toolu_v1"].new_content, events["toolu_v1"].input.get("content")) == (None, None)
+    assert S4 not in sessions  # and neither is a whole session of that repo
+
+
+@pytest.mark.parametrize("order", [("11:00:01", "11:00:02"), ("11:00:02", "11:00:01")])
+def test_a_working_directory_that_is_gone_is_read_one_path_at_a_time(scenario, tmp_path, order):
+    """A gone working directory is taken for a worktree per path, not once for the directory: the
+    file beside a copy is not a copy because the copy happened to be written first."""
+    repo, _, projects = scenario
+    gone = tmp_path / "scratch-run"  # never a worktree of anything, and not there any more
+    _transcript(
+        projects,
+        project_dir_name(repo),
+        S3,
+        str(repo),
+        [
+            *_call("toolu_g1", str(gone), str(gone / "README.md"), "notes\n", order[0]),
+            *_call("toolu_g2", str(gone), str(gone / ".env"), "TOKEN=abc123\n", order[1]),
+        ],
+    )
+    events, _ = _ingest(repo, projects, tmp_path / "store", S3)
+    assert events["toolu_g1"].file_path == "README.md"  # the history holds what was written there
+    assert events["toolu_g2"].file_path == str(gone / ".env")  # it holds no .env, so this is no copy
+    assert (events["toolu_g2"].new_content, events["toolu_g2"].input.get("content")) == (None, None)
+
+
+def test_a_deleted_directory_of_the_repo_keeps_the_path_the_history_holds_it_at(scenario, tmp_path):
+    """A subdirectory the repo itself deleted is no worktree: a README.md written in it is that
+    file, not the repo's own README.md."""
+    repo, _, projects = scenario
+    notes = repo / "docs" / "rehearsals"
+    notes.mkdir(parents=True)
+    (notes / "README.md").write_text("rehearsal notes\n", encoding="utf-8")
+    run._git(repo, "add", "--", "docs/rehearsals/README.md")
+    run._git(repo, "commit", "-q", "-m", "the rehearsal notes")
+    run._git(repo, "rm", "-rq", "--", "docs/rehearsals")
+    run._git(repo, "commit", "-q", "-m", "drop the rehearsal notes")
+    assert not notes.exists()
+    _transcript(
+        projects,
+        project_dir_name(repo),
+        S3,
+        str(repo),
+        _call("toolu_n1", str(notes), str(notes / "README.md"), "rehearsal notes\n", "11:00:01"),
+    )
+    events, _ = _ingest(repo, projects, tmp_path / "store", S3)
+    assert events["toolu_n1"].file_path == "docs/rehearsals/README.md"
 
 
 # c -- the live hooks ------------------------------------------------------------------------------

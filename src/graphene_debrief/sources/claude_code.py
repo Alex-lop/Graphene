@@ -144,16 +144,20 @@ def _in_history(root: str, rel: str) -> bool:
 
 class Worktrees:
     """The worktree roots of one repo, as one run learns them. While a worktree exists git's own
-    files say it is one (``worktree_root``); once it is gone only the records are left: the
-    ``worktreePath`` of an agent's ``meta.json``, and a bare recorded working directory, which is
-    taken only when what was written in it is a path this repo's history holds."""
+    files say it is one (``worktree_root``), and a directory that is still there and is a checkout
+    of its own is another repo whatever a record calls it; once it is gone only the records are
+    left: the ``worktreePath`` of an agent's ``meta.json``, and a bare recorded working directory,
+    which is taken, one path at a time, only for a path this repo's history holds."""
 
     def __init__(self, root: Path) -> None:
         self.root = os.path.normpath(str(root))
         self.roots: list[str] = []
+        self.copied: set[str] = set()  # gone directories a path of ours was written in
 
     def add(self, path: str | None) -> None:
         p = os.path.normpath(path) if path else ""
+        if os.path.isdir(p) and not _worktree_of(p, self.root):
+            return  # still there and a checkout of its own: another repo, whatever a record calls it
         if p and p != self.root and p not in self.roots:
             self.roots.append(p)
             self.roots.sort(key=len, reverse=True)  # .claude/worktrees/ is inside the repo root
@@ -161,7 +165,7 @@ class Worktrees:
     def known(self, path: str) -> bool:
         """Is this directory a worktree root of the repo: one an agent recorded, or one git says is."""
         p = os.path.normpath(path)
-        return p in self.roots or _worktree_of(p, self.root)
+        return p in self.roots or p in self.copied or _worktree_of(p, self.root)
 
     def relative(self, path: str) -> str | None:
         for root in self.roots:  # longest first: the copy is the path it copies, not the copy's own
@@ -169,13 +173,16 @@ class Worktrees:
                 return os.path.relpath(path, root)
         return None
 
-    def accept(self, cwd: str, path: str) -> bool:
-        """Take a recorded working directory for a worktree root because the file written in it is a
-        path this repo's history holds. The directory is gone, so nothing else can say."""
+    def copies(self, cwd: str, path: str) -> bool:
+        """Was this path, written in a working directory that is gone, a copy of a path this repo
+        holds? Asked of every path, never once of the directory: the file beside a copy is its own."""
         rel = os.path.relpath(path, cwd)
         if rel.startswith("..") or not _in_history(self.root, rel):
             return False
-        self.add(cwd)
+        here = relative_path(path, Path(self.root))
+        if not os.path.isabs(here) and _in_history(self.root, here):
+            return False  # the repo holds this path where it sits: a deleted subdirectory, no copy
+        self.copied.add(cwd)  # for finding this repo's sessions, never for rewriting another path
         return True
 
 
@@ -266,7 +273,7 @@ def _map_path(path: str, root: Path, cwd: str | None, worktrees: Worktrees | Non
     # directory that is no longer there is the only one worth testing that way: a directory that
     # still exists and is no worktree is an ordinary directory, whatever its files are called.
     here = os.path.normpath(cwd) if cwd else ""
-    if worktrees is not None and here and not os.path.isdir(here) and worktrees.accept(here, p):
+    if worktrees is not None and here and not os.path.isdir(here) and worktrees.copies(here, p):
         return os.path.relpath(p, here)
     return relative_path(p, root)
 
