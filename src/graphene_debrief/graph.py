@@ -168,10 +168,8 @@ def _ref(event: ToolEvent) -> str:
     return f"event:{event.session_id[:8]}:{event.id}"
 
 
-def _kind(event: ToolEvent) -> tuple[str, str | None, bool | None]:
-    """(mark kind, label, ok) for one call on its agent's lane."""
-    command = str(event.input.get("command") or "") if event.tool == "Bash" else ""
-    checks = check_segments(command) if command else []
+def _kind(event: ToolEvent, checks: list[str]) -> tuple[str, str | None, bool | None]:
+    """(mark kind, label, ok) for one call on its agent's lane; ``checks`` are its check commands."""
     if checks:
         return "check", checks[0], event.success is not False
     if event.success is False:
@@ -271,6 +269,11 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
     repo = sessions[0].repo if sessions else ""
     starts = [s.started_at for s in sessions if s.started_at]
     by_id = {(e.session_id, e.id): e for e in events}
+    # parsing a shell command is the expensive step here: once per call, not once per redraw
+    ran = {
+        id(e): check_segments(str(e.input.get("command") or "")) if e.tool == "Bash" else [] for e in events
+    }
+    kind_of = {id(e): _kind(e, ran[id(e)]) for e in events}
 
     # -- the axis: every recorded moment ---------------------------------------------------------
     stamps = {e.timestamp for e in events} | {p.timestamp for p in prompts} | set(starts)
@@ -444,7 +447,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             )
         for e in events:
             lane = _lane_id(e.session_id, e.agent_id)
-            kind, label, ok = _kind(e)
+            kind, label, ok = kind_of[id(e)]
             lane_mark(kind, lane, e.timestamp, lane, _ref(e), label, ok)
         for c in commits:
             label = f"{c.sha[:7]} {c.subject}"
@@ -560,7 +563,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             if state:
                 tasks[str(e.input["taskId"])][state] = e.timestamp
 
-    checks = [(e, check_segments(str(e.input.get("command") or ""))) for e in events if e.tool == "Bash"]
+    checks = [(e, ran[id(e)]) for e in events if e.tool == "Bash"]
     failed = [(e, segs) for e, segs in checks if segs and e.success is False]
     green = sum(
         any(
@@ -569,7 +572,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         )
         for e, segs in failed
     )
-    kinds = [_kind(e)[0] for e in events]
+    kinds = [kind_of[id(e)][0] for e in events]
     nothing = [p for p, g in cov.grades.items() if g == "window"]
     only_commit = [p for p, g in cov.grades.items() if g == "commit"]
     return Graph(
@@ -610,7 +613,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             "rerun_green": green,
             "refused": kinds.count("refused"),
             "failures": kinds.count("failure"),
-            "outside": len({e.file_path for e in events if _kind(e)[0] == "outside"}),
+            "outside": len({e.file_path for e in events if kind_of[id(e)][0] == "outside"}),
             "collisions": sum(r.collision for r in rows.values() if r.kind == "file"),
         },
         omitted={
