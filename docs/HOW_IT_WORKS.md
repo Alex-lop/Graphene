@@ -16,7 +16,8 @@ the file is rewritten atomically (through a symlink to its target) so a crash ca
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, never to stdout, so a broken Graphene can never block the agent. It takes
-about 35 ms because it imports only the standard library on that path, and if another process
+about 40 ms (a median of twenty runs on the author's machine, measured by `tests/test_hook_budget.py`
+and held under 60 ms there) because it imports only the standard library on that path, and if another process
 holds the database lock (a backfill, a second session) it gives up after 250 ms and logs the
 missed event rather than stalling the agent.
 
@@ -29,6 +30,14 @@ What each event contributes:
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
 | `Stop` | the session's end time (updated on every turn end) |
+
+Not all of a response is worth keeping. A `Read` is recorded as the call, the path and whether it
+worked: its response is the file itself, and nothing here reads it back. Any other recorded string
+longer than 8 KB keeps its first and last 4 KB with a count of the characters between them, so a
+command is remembered by how its output started and how it ended — a `git commit … && git log
+--oneline -1` prints the new SHA on the very last line. Paths, names, the list of files a command
+changed and the error of a failed call are never cut, and a file edit's before and after content
+keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in

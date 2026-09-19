@@ -67,12 +67,93 @@ def test_event_round_trip_including_unknown_success(tmp_path):
 def test_response_is_capped():
     big = capped_json({"stdout": "x" * (RESPONSE_CAP + 10), "stderr": "ok"})
     assert len(big) <= RESPONSE_CAP
-    assert "chars truncated" in big
+    assert "chars omitted" in big
     assert json.loads(big)["stderr"] == "ok"
     hopeless = capped_json({"items": ["y" * 10] * 40000})
     assert json.loads(hopeless)["truncated"] is True
     assert capped_json(None) is None
     assert capped_json("Error: boom") == '"Error: boom"'
+
+
+# -- what a call is worth keeping --------------------------------------------------------------
+
+
+def tool_event(tool: str, tool_input: dict, response: object) -> ToolEvent:
+    return ToolEvent(
+        id="e1", session_id="s", prompt_id=None, timestamp="t", tool=tool, input=tool_input, response=response
+    )
+
+
+def stored(tmp_path: Path, ev: ToolEvent) -> ToolEvent:
+    with Store.open(tmp_path) as store:
+        store.add_event(ev)
+        (back,) = store.events("s")
+    return back
+
+
+def test_a_read_keeps_the_call_but_not_the_file_it_read(tmp_path):
+    back = stored(tmp_path, tool_event("Read", {"file_path": "big.py"}, {"file": {"content": "x" * 100_000}}))
+    assert back.response is None
+    assert (back.input, back.tool, back.timestamp, back.success) == (
+        {"file_path": "big.py"},
+        "Read",
+        "t",
+        True,
+    )
+
+
+def test_bash_output_keeps_its_head_and_its_tail(tmp_path):
+    last = "abc1234 the commit that was just made"
+    out = "line\n" * 20_000 + last
+    back = stored(
+        tmp_path,
+        tool_event(
+            "Bash",
+            {"command": "git commit -q -m x && git log --oneline -1"},
+            {
+                "stdout": out,
+                "stderr": "",
+                "interrupted": False,
+                "gitOperation": {"type": "commit"},
+            },
+        ),
+    )
+    kept = back.response["stdout"]
+    assert len(kept) < len(out) and kept.startswith("line\nline\n")
+    assert kept.endswith(last)  # the SHA is on the last line: attribution reads it there
+    assert "chars omitted" in kept
+    assert (back.response["interrupted"], back.response["gitOperation"]) == (False, {"type": "commit"})
+
+
+def test_a_huge_change_list_keeps_its_paths_and_loses_its_hunks(tmp_path):
+    diff = {
+        "changedFiles": ["src/a.py"],
+        "files": [{"filePath": "src/a.py", "hunks": ["h" * RESPONSE_CAP]}],
+        "created": [],
+        "deleted": [],
+        "moreFiles": 3,
+        "shared": True,
+        "unavailable": False,
+    }
+    back = stored(
+        tmp_path, tool_event("Bash", {"command": "make"}, {"stdout": "z" * 100_000, "bashEditDiff": diff})
+    )
+    kept = back.response["bashEditDiff"]
+    assert kept["files"] == [{"filePath": "src/a.py"}]  # the hunks went, the path stayed
+    assert (kept["changedFiles"], kept["moreFiles"], kept["shared"]) == (["src/a.py"], 3, True)
+    assert (kept["created"], kept["deleted"], kept["unavailable"]) == ([], [], False)
+
+
+def test_a_huge_write_keeps_its_path_and_its_content_column(tmp_path):
+    content = "def f():\n    pass\n" * 6_000
+    ev = tool_event(
+        "Write", {"file_path": "src/a.py", "content": content}, {"type": "create", "content": content}
+    )
+    ev.file_path, ev.new_content = "src/a.py", content
+    back = stored(tmp_path, ev)
+    assert back.input["file_path"] == "src/a.py"
+    assert len(back.input["content"]) < len(content) and "chars omitted" in back.input["content"]
+    assert back.new_content == content  # the diff is computed from this column, so it is kept whole
 
 
 def test_explanations_and_debrief_runs(tmp_path):

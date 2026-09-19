@@ -12,6 +12,8 @@ from .model import Agent, Commit, DebriefRun, Prompt, Session, ToolEvent
 
 TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
 RESPONSE_CAP = 256 * 1024
+STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
+KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
 SCHEMA_VERSION = 2  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
 
@@ -149,26 +151,55 @@ def ignore_store_dir(root: Path) -> bool:
     return True
 
 
+# Values kept whole however long they are: the vendor's list of files a command changed, what it
+# says about the git operation and the interrupt, and the error text of a failed call.
+RESPONSE_KEPT = frozenset({"bashEditDiff", "gitOperation", "interrupted", "error", "is_interrupt"})
+# The same on the way in: a path or a name is never cut, however deep in the payload it sits.
+INPUT_KEPT = frozenset({"file_path", "notebook_path", "path", "description", "subagent_type"})
+
+
+def _trim(text: str) -> str:
+    """A long string as its head and its tail. The tail is the point: agents run
+    `git commit -q … && git log --oneline -1`, so the new SHA is on the very last line."""
+    if len(text) <= STRING_CAP:
+        return text
+    return f"{text[:KEEP]}\n… [{len(text) - 2 * KEEP} chars omitted] …\n{text[-KEEP:]}"
+
+
+def _trimmed(value: object, kept: frozenset[str]) -> object:
+    """``_trim`` every string in a payload, except the values of the keys named in ``kept``."""
+    if isinstance(value, str):
+        return _trim(value)
+    if isinstance(value, dict):
+        return {k: v if k in kept else _trimmed(v, kept) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_trimmed(v, kept) for v in value]
+    return value
+
+
 def capped_json(value: object, cap: int = RESPONSE_CAP) -> str | None:
-    """Serialise a tool response, shrinking oversized string fields, then giving up."""
+    """Serialise a tool response: long output strings keep their head and tail, then the vendor's
+    change list loses its hunks (never its paths), and only then the response is given up whole."""
     if value is None:
         return None
+    value = _trimmed(value, RESPONSE_KEPT)
     text = json.dumps(value, ensure_ascii=False, default=str)
     if len(text) <= cap:
         return text
-    if isinstance(value, dict):
-        shrunk = {
-            k: (
-                v[:4096] + f"… [{len(v) - 4096} chars truncated]"
-                if isinstance(v, str) and len(v) > 4096
-                else v
-            )
-            for k, v in value.items()
-        }
-        text = json.dumps(shrunk, ensure_ascii=False, default=str)
+    if isinstance(value, dict) and isinstance(value.get("bashEditDiff"), dict):
+        value = {**value, "bashEditDiff": _without_hunks(value["bashEditDiff"])}
+        text = json.dumps(value, ensure_ascii=False, default=str)
         if len(text) <= cap:
             return text
     return json.dumps({"truncated": True, "bytes": len(text)})
+
+
+def _without_hunks(diff: dict) -> dict:
+    """The change list minus the diff bodies: which files changed is what the records read."""
+    if not isinstance(diff.get("files"), list):
+        return diff
+    kept = [{k: v for k, v in f.items() if k != "hunks"} if isinstance(f, dict) else f for f in diff["files"]]
+    return {**diff, "files": kept}
 
 
 def _content(text: object) -> str | None:
@@ -365,8 +396,10 @@ class Store:
                 e.prompt_id,
                 e.timestamp,
                 e.tool,
-                json.dumps(e.input, ensure_ascii=False, default=str),
-                capped_json(e.response),
+                json.dumps(_trimmed(e.input, INPUT_KEPT), ensure_ascii=False, default=str),
+                # A Read's response is the file it read: nothing here ever reads it back, and on
+                # the author's store those copies were 10 MB of 73 MB.
+                None if e.tool == "Read" else capped_json(e.response),
                 None if e.success is None else int(e.success),
                 e.agent_id,
                 e.file_path,
