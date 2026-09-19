@@ -133,6 +133,17 @@ card that mirrors the terminal card (about 120); the scope heuristics behind "no
 for" (about 100). None was cut tonight: each is used and covered by tests. TypeScript is 1,318 of
 1,500 and CSS 266 of 450 (the night-two ceilings).
 
+## The gate
+
+All four conditions held, in order: lint, 227 tests, the `ui` check and the built-page diff green;
+both new-user walkthroughs without a blocker (the second one after a first pass found two, which
+were fixed and then checked by a fresh agent with a rebuilt wheel); `graph` pushed at `fa5d9d2`
+and every CI job green (run 35426559585: Ubuntu and macOS on Python 3.12 and 3.13, and the `ui`
+job, which rebuilt the page on Ubuntu and found it identical to the committed one); the report and
+`morning.md` committed. N3 stood at "the inspector works on real data". `main` was then merged with
+`git merge --no-ff graph -m "Graphene 0.2.0: the truthful record and the first map"` (`6147caf`)
+and pushed; CI on `main` is green on all five jobs (run 35426671814). The rollback is in `morning.md`.
+
 ## Not verified, and not done
 
 See `morning.md`, which is the list Alex reads.

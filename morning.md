@@ -1,7 +1,7 @@
 # morning.md — 2026-09-19 — night 1 of 3
 
 ## 30-second version
-- main: untouched when this was committed; this line is rewritten once the gate's CI finishes
+- main: merged and green. `6147caf` (`--no-ff` of `graph` @ `fa5d9d2`); CI green on all 5 jobs, run 35426671814 (graph's: 35426559585)
 - What you can open right now: `cd ~/Desktop/AllThingsAgenticHackathon && graphene ui --session 9e5f295d`
 - Coverage on last night's own session: 87 committed files · 33 traced to a recorded write ·
   30 only to an agent's commit · 24 to nothing. **Poor, and the finding of the night:** not one of
