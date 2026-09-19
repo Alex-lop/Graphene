@@ -193,13 +193,16 @@ export const COUNTER: Record<Counter, string> = {
 };
 
 // This machine's local time, ordered the way the terminal prints it so the two agree on sight.
-const CLOCK = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+// A moment is printed to the second, so a span and the duration beside it never disagree by a
+// rounding; the axis and the tooltips, where the minute is the unit that reads, keep the minute.
+const CLOCK = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const MINUTE = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 const DAY = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
 
 /** A recorded moment in this machine's local time; `zone` says which time that is. */
 export const stamp = (t: string | null): string => (t ? `${DAY.format(new Date(t))} ${CLOCK.format(new Date(t))}` : "?");
 
-export const clock = (t: string | null): string => (t ? CLOCK.format(new Date(t)) : "?");
+export const clock = (t: string | null): string => (t ? MINUTE.format(new Date(t)) : "?");
 
 /** Two moments, with the second one's date dropped when it is the same day. */
 export const between = (t0: string | null, t1: string | null): string =>

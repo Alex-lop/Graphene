@@ -42,20 +42,21 @@ test("opening a directory moves its files out and the directories below down", (
   expect(open.shown.has("file:docs/guide.md")).toBe(false); // its own directory is still closed
 });
 
-test("culling keeps the marks inside the window, on sorted x", () => {
-  const rows = graph.marks.filter((m) => m.region === "rows");
-  expect(rows.map((m) => m.x)).toEqual([...rows.map((m) => m.x)].sort((a, b) => a - b));
-  expect(cull(rows, 0, graph.axis.width)).toHaveLength(rows.length);
-  expect(cull(rows, -50, -1)).toHaveLength(0);
-  expect(cull(rows, 1e9, 2e9)).toHaveLength(0);
-  const middle = cull(rows, 655, 805);
+test("culling keeps the marks inside the window, on the marks as the payload gives them", () => {
+  const all = graph.marks; // every mark, lanes and rows together: what the page actually culls
+  expect(all.map((m) => m.x)).toEqual([...all.map((m) => m.x)].sort((a, b) => a - b));
+  expect(cull(all, 0, graph.axis.width)).toHaveLength(all.length);
+  expect(cull(all, -50, -1)).toHaveLength(0);
+  expect(cull(all, 1e9, 2e9)).toHaveLength(0);
+  const middle = cull(all, 655, 805);
   expect(middle.every((m) => m.x >= 655 && m.x <= 805)).toBe(true);
-  expect(middle.map((m) => m.at)).toEqual([
+  expect(middle.filter((m) => m.region === "rows").map((m) => m.at)).toEqual([
     "file:app/util.py",
     "file:app/util.py",
     "file:app/util.py",
     "file:app/core.py",
   ]);
+  expect(middle.some((m) => m.region === "lanes")).toBe(true); // both regions, from one scan
 });
 
 test("a selected agent lights its lane, its files, its commit and the links between", () => {

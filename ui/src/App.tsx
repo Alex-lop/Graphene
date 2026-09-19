@@ -53,7 +53,7 @@ export function App(): ReactElement {
   }, []);
 
   if (failed) return <p className="state">The server did not answer.</p>;
-  if (!payload) return <p className="state" />;
+  if (!payload) return <p className="state">Reading the records of this repo&rsquo;s runs.</p>;
 
   const { graph, runs } = payload;
   const lit = chain(graph, selection) ?? (chip ? matching(graph, chip) : null);

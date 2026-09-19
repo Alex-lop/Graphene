@@ -7,7 +7,11 @@ import { GRADE, between, duration, stamp } from "./model";
 import type { Selection } from "./model";
 import type { Graph, Grade, Lane, Mark } from "./types";
 
-const Ref = ({ of }: { of: string }): ReactElement => <code className="ref">{of}</code>;
+const Ref = ({ of }: { of: string }): ReactElement => (
+  <code className="ref" title={of}>
+    {of}
+  </code>
+);
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }): ReactElement => (
   <div className="fact">
@@ -204,7 +208,10 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
       <dl className="facts">
         <Fact label="records drawn">{graph.omitted.records ?? 0}</Fact>
         <Fact label="merged into counts">{graph.omitted.merged_into_counts ?? 0}</Fact>
-        <Fact label="files the vendor would not list">{graph.omitted.vendor_lists_unavailable ?? 0}</Fact>
+        <Fact label="files the vendor would not list">{graph.omitted.vendor_more_files ?? 0}</Fact>
+        <Fact label="shell calls whose file list the vendor did not return">
+          {graph.omitted.vendor_lists_unavailable ?? 0}
+        </Fact>
       </dl>
     );
   }

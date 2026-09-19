@@ -3,11 +3,14 @@
 
 import type { ReactElement } from "react";
 
-import { COUNTER, between, duration, stamp, clock, zone } from "./model";
+import { Glyph } from "./Map";
+import { COUNTER, GRADE, between, duration, stamp, clock, zone } from "./model";
 import type { Counter } from "./model";
-import type { Graph, Run } from "./types";
+import type { Grade, Graph, Mark, Run } from "./types";
 
 const COUNTERS: Counter[] = ["failed_checks", "rerun_green", "refused", "failures", "outside", "collisions"];
+const ONE: Partial<Record<Counter, string>> = { failed_checks: "failed check", failures: "failure", collisions: "collision" };
+const GRADES: Grade[] = ["edit", "shell", "commit", "window", "unknown"];
 
 const many = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -68,7 +71,7 @@ export function Header({
             aria-pressed={chip === name}
             onClick={() => onChip(chip === name ? null : name)}
           >
-            <b>{graph.counters[name]}</b> {COUNTER[name]}
+            <b>{graph.counters[name]}</b> {(graph.counters[name] === 1 && ONE[name]) || COUNTER[name]}
           </button>
         ))}
       </div>
@@ -127,7 +130,9 @@ export function Footer({ graph }: { graph: Graph }): ReactElement {
                   {task.started ? ` · started ${clock(task.started)}` : ""}
                   {task.done ? ` · done ${clock(task.done)}` : ""}
                 </span>
-                <code className="ref">{task.ref}</code>
+                <code className="ref" title={task.ref}>
+                  {task.ref}
+                </code>
               </li>
             ))}
           </ul>
@@ -147,6 +152,22 @@ export function Footer({ graph }: { graph: Graph }): ReactElement {
           </ul>
         </section>
       )}
+      {/* the shape is what carries the grade, so the shapes are named where they are drawn */}
+      <ul className="legend" data-testid="legend">
+        {GRADES.map((grade) => (
+          <li key={grade} title={GRADE[grade]}>
+            <svg width={14} height={14} aria-hidden="true">
+              <g transform="translate(7,7)">
+                <Glyph mark={{ region: "rows", grade } as Mark} colour="var(--neutral)" />
+              </g>
+            </svg>
+            {grade}
+          </li>
+        ))}
+        <li>
+          <span className="swatch" /> two agents held the file at once
+        </li>
+      </ul>
       <p className="caption" data-testid="caption">
         {graph.caption}
       </p>

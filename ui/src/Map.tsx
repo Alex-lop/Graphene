@@ -10,7 +10,7 @@ import type { Chain, Open, Selection } from "./model";
 import type { Graph, Lane, Mark } from "./types";
 
 const GUTTER = 196; // the fixed label column: it never pans
-const AXIS_H = 26;
+const AXIS_H = 28;
 const BREAK_H = 16;
 const GAP = 28; // between the two regions, with the repo divider in it
 const RIGHT = 16;
@@ -43,7 +43,7 @@ const laneName = (lane: Lane): string =>
 const curve = (sx: number, sy: number, tx: number, ty: number): string =>
   `M${sx},${sy}C${sx + (tx - sx) / 2},${sy} ${tx - (tx - sx) / 2},${ty} ${tx},${ty}`;
 
-function Glyph({ mark, colour }: { mark: Mark; colour: string }): ReactElement {
+export function Glyph({ mark, colour }: { mark: Mark; colour: string }): ReactElement {
   if (mark.region === "rows") {
     if (mark.grade === "edit") return <circle r={4.5} fill={colour} />;
     if (mark.grade === "shell") return <rect x={-4} y={-4} width={8} height={8} fill={colour} />;
@@ -79,13 +79,14 @@ function Glyph({ mark, colour }: { mark: Mark; colour: string }): ReactElement {
 export function MapView({ graph, open, toggle, selection, select: choose, lit }: Props): ReactElement {
   const box = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
-  const [{ width, tall }, setBox] = useState({ width: 900, tall: 400 });
+  const [width, setWidth] = useState(900);
+  const [scrolled, setScrolled] = useState(0); // how far the rows have been scrolled under the axis
   const [t, setT] = useState<ZoomTransform>(zoomIdentity);
 
   useEffect(() => {
     const node = box.current;
     if (!node) return;
-    const measure = () => setBox({ width: node.clientWidth, tall: node.clientHeight });
+    const measure = () => setWidth(node.clientWidth);
     const watch = new ResizeObserver(measure);
     watch.observe(node);
     measure();
@@ -119,8 +120,7 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
   const lanes = laneRegion(graph, open);
   const rows = rowRegion(graph, open);
   const ROWS_Y = TOP + lanes.height + GAP;
-  const content = ROWS_Y + rows.height + 12;
-  const height = Math.max(content, tall); // the time grid runs the whole canvas, not just the rows
+  const height = ROWS_Y + rows.height + 12; // the canvas is its content: no banded empty half
   const colour = hues(graph);
   const px = (x: number): number => GUTTER + t.applyX(x);
   const laneMid = (id: string): number => TOP + (lanes.y.get(id) ?? 0) + LANE_H / 2;
@@ -143,7 +143,7 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
     selection && selection.kind === kind && selection.id === id ? true : undefined;
 
   return (
-    <div className="map" ref={box}>
+    <div className="map" ref={box} onScroll={(e) => setScrolled(e.currentTarget.scrollTop)}>
       <svg ref={svg} width={width} height={height} aria-label="the map" onClick={() => choose(null)}>
         <defs>
           <pattern id="hatch" width={4} height={4} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -159,20 +159,17 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
 
         <g className="axis" clipPath="url(#plot)">
           {graph.axis.ticks.map((tick) => (
-            <g key={tick.x} transform={`translate(${px(tick.x)},0)`}>
-              <line y1={AXIS_H - 6} y2={height} className="tick" />
-              <text y={16} className="tick-label">
-                {clock(tick.t)}
-              </text>
-            </g>
+            <line key={tick.x} x1={px(tick.x)} x2={px(tick.x)} y1={AXIS_H - 6} y2={height} className="tick" />
           ))}
           {graph.axis.breaks.map((brk) => (
-            <g key={brk.x0}>
-              <rect x={px(brk.x0)} y={AXIS_H} width={Math.max(2, px(brk.x1) - px(brk.x0))} height={height - AXIS_H} className="break" />
-              <text x={(px(brk.x0) + px(brk.x1)) / 2} y={AXIS_H + 12} className="break-label">
-                {span(brk.seconds)} idle
-              </text>
-            </g>
+            <rect
+              key={brk.x0}
+              x={px(brk.x0)}
+              y={AXIS_H}
+              width={Math.max(2, px(brk.x1) - px(brk.x0))}
+              height={height - AXIS_H}
+              className="break"
+            />
           ))}
         </g>
 
@@ -229,6 +226,7 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
                 {group && (
                   <text x={GUTTER - 12} y={y + LANE_H / 2 + 4} className="count" textAnchor="end">
                     {lane.members}
+                    <title>{`${lane.members} agents`}</title>
                   </text>
                 )}
               </g>
@@ -251,7 +249,11 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
               {...away(!rows.shown.has(row.id))}
               onClick={(e) => pick(e, { kind: dir ? "dir" : "file", id: row.id })}
             >
-              <rect className={`band ${dir ? "dir" : ""} ${row.collision ? "collide" : ""}`} x={0} y={y} width={width} height={ROW_H} />
+              <rect className={`band ${dir ? "dir" : ""}`} x={0} y={y} width={width} height={ROW_H} />
+              {/* the collision is its own mark, so selecting the row cannot paint it out; the
+                  directory carries only the edge, because the file under it is what collided */}
+              {row.collision && !dir && <rect className="collide" x={0} y={y} width={width} height={ROW_H} />}
+              {row.collision && <rect className="collide edge" x={0} y={y} width={3} height={ROW_H} />}
               <g clipPath="url(#names)">
                 {dir ? (
                   <g className="caret" transform={`translate(0,${y})`} onClick={(e) => (e.stopPropagation(), toggle(row.id))}>
@@ -264,7 +266,8 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
                   <title>{row.path}</title>
                 </text>
                 <text x={GUTTER - 12} y={y + ROW_H / 2 + 4} className="count" textAnchor="end">
-                  {dir ? `${row.files}f` : row.changes || ""}
+                  {dir ? `${row.files}f` : row.changes}
+                  <title>{dir ? `${row.files} files` : `${row.changes} recorded changes`}</title>
                 </text>
               </g>
             </g>
@@ -336,6 +339,21 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
               </g>
             );
           })}
+        </g>
+
+        {/* the axis rides the scroll: a map of when is worth nothing with its when off screen */}
+        <g className="axis-labels" clipPath="url(#plot)" transform={`translate(0,${scrolled})`}>
+          <rect x={GUTTER} y={0} width={plot + RIGHT} height={TOP} />
+          {graph.axis.ticks.map((tick) => (
+            <text key={tick.x} x={px(tick.x)} y={16} className="tick-label">
+              {clock(tick.t)}
+            </text>
+          ))}
+          {graph.axis.breaks.map((brk) => (
+            <text key={brk.x0} x={(px(brk.x0) + px(brk.x1)) / 2} y={AXIS_H + 12} className="break-label">
+              {span(brk.seconds)} idle
+            </text>
+          ))}
         </g>
       </svg>
     </div>

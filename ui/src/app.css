@@ -13,7 +13,7 @@
   --pass: #17703f;
   --fail: #b3261e;
   --ask: #8a5a00;
-  --a1: #0072b2; --a2: #007a5a; --a3: #cc79a7; --a4: #c24500;
+  --a1: #0072b2; --a2: #007a5a; --a3: #b34a86; --a4: #c24500;
   --a5: #1b7f9e; --a6: #8a6d00; --a7: #6b4423; --a8: #4a5568;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -48,7 +48,11 @@ body {
 h1, h2, h3 { margin: 0; font-weight: 600; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .muted { color: var(--muted); }
-.ref, .path { font: 12px/1.45 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.path { overflow-wrap: anywhere; }
+.ref, .path { font: 12px/1.45 var(--mono); color: var(--muted); }
+/* an identifier broken across lines reads as corrupt data: it truncates, with its full text in
+   the tooltip, and never wraps mid-token */
+.ref { display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .state { padding: 24px; color: var(--muted); }
 
 .app {
@@ -81,12 +85,13 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
   padding-left: 24px;
   border-left: 1px solid var(--line);
 }
+.cov { width: 112px; } /* the four labels break the same way, so the four numbers read as a row */
 .cov b { display: block; font-size: 20px; font-weight: 600; line-height: 1.2; }
-.cov span { font-size: 12px; color: var(--muted); }
+.cov span { display: block; min-height: 32px; font-size: 12px; color: var(--muted); }
 .cov.warn b { color: var(--fail); }
 .coverage .window { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--muted); }
 
-.counters { display: flex; flex-wrap: wrap; gap: 4px; max-width: 268px; }
+.counters { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 340px; }
 @media (max-width: 1400px) {
   .header { gap: 16px; }
   .coverage { padding-left: 16px; gap: 4px 12px; }
@@ -103,7 +108,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 }
 .chip b { color: var(--muted); }
 .chip.on, .chip.on b { border-color: var(--accent); color: var(--accent); }
-.chip:disabled { opacity: 0.4; cursor: default; }
+.chip:disabled, .chip:disabled b { color: var(--muted); cursor: default; }
 
 /* -- rail ------------------------------------------------------------------------------------- */
 
@@ -152,13 +157,15 @@ svg [hidden] { display: none; }
 .region-label { text-transform: uppercase; letter-spacing: 0.06em; }
 .region-rule line { stroke: var(--line); }
 .break { fill: url(#hatch); opacity: 0.35; }
-.break-label { text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.break-label { text-anchor: middle; }
+.axis-labels rect { fill: var(--bg); }
 
 .lane .hit, .row .band { fill: transparent; cursor: pointer; }
 /* decoration: the band and the row are what a click is aimed at */
-.guide, .lane-line, .tick, .break, .break-label, .region-rule, .merged, .link { pointer-events: none; }
+.guide, .lane-line, .tick, .break, .region-rule, .merged, .link, .collide, .axis-labels { pointer-events: none; }
 .row .band.dir { fill: color-mix(in srgb, var(--text) 4%, transparent); }
-.row .band.collide { fill: color-mix(in srgb, var(--ask) 16%, transparent); }
+.row .collide { fill: color-mix(in srgb, var(--ask) 16%, transparent); }
+.row .collide.edge { fill: var(--ask); }
 .guide { stroke: var(--line); stroke-dasharray: 1 3; }
 /* a lane that is not one agent's work — the session, a group, the unknown — is drawn as a rule */
 .lane-line { stroke-width: 3; stroke-linecap: round; }
@@ -168,13 +175,14 @@ svg [hidden] { display: none; }
 .caret:hover path { fill: var(--text); }
 .name.main, .path.dir { font-weight: 600; }
 
-.link path { fill: none; stroke: var(--neutral); stroke-width: 1.4; opacity: 0.5; }
+.link path { fill: none; stroke: var(--neutral); stroke-width: 1.4; opacity: 0.7; }
 .link circle { fill: none; }
 .link.on path, .link.on circle { stroke: var(--accent); stroke-width: 2; opacity: 1; }
 .links.lit .link:not(.on) { opacity: 0.16; }
 .merged { fill: none; opacity: 0.45; }
 .mark { cursor: pointer; }
-.lane.off, .row.off, .mark.off { opacity: 0.16; }
+/* dimmed, not erased: the rest of the repo is the context the selected thing is read in */
+.lane.off, .row.off, .mark.off { opacity: 0.4; }
 .lane[aria-selected="true"] .hit, .row[aria-selected="true"] .band {
   fill: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -182,14 +190,28 @@ svg [hidden] { display: none; }
 
 /* -- what the map cannot account for, and the caption ------------------------------------------ */
 
-.footer { border-top: 1px solid var(--line); background: var(--panel); padding: 8px 20px 12px; }
+.footer { border-top: 1px solid var(--line); background: var(--panel); padding: 8px 20px 12px; max-height: 25vh; overflow: auto; }
 .strip h3 { font-size: 12px; color: var(--muted); padding-bottom: 4px; }
 .strip.warn h3 { color: var(--fail); }
 .strip ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .strip li { display: flex; gap: 8px; align-items: baseline; }
+.strip li > * { min-width: 0; } /* so a record reference ellipses instead of breaking in two */
 [data-testid="task-list"] ul { display: block; } /* one item a line: they are sentences, not tags */
 .footer .strip + .strip { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .footer .caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend li { display: flex; align-items: center; gap: 4px; }
+.legend .swatch { width: 14px; height: 10px; background: color-mix(in srgb, var(--ask) 16%, transparent); border-left: 3px solid var(--ask); }
 
 /* -- inspector -------------------------------------------------------------------------------- */
 
