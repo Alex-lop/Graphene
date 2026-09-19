@@ -61,6 +61,24 @@ class Debrief:
     reruns: list[dict] = field(default_factory=list)
     outside_repo: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    coverage: dict = field(default_factory=dict)  # of the window's committed files: the three counts
+
+
+def coverage_line(c: dict) -> str:
+    """How much of what git committed the records account for. Never one number: a file an agent
+    only committed is not a file it is recorded writing."""
+    if not c:
+        return ""
+    n = c["committed_files"]
+    if not n:
+        return "no commits in the window, so no committed file to account for"
+    nothing = f"{c['nothing']} to nothing"
+    if c["window"]:
+        nothing += f" ({c['window']} committed in the window by no identifiable agent)"
+    return (
+        f"{n} committed file{'s' if n != 1 else ''} · {c['write']} traced to a recorded write "
+        f"({c['edit']} edit, {c['shell']} shell) · {c['commit']} only to an agent's commit · {nothing}"
+    )
 
 
 # -- selecting sessions -------------------------------------------------------------------------
@@ -257,6 +275,9 @@ def build_debrief(
         debrief.outside_repo += [p for p in result.outside_repo if p not in debrief.outside_repo]
         debrief.commits += commits_between(root, session.started_at, end)
     debrief.files_changed = len(paths)
+    from .graph import coverage_counts, run_records  # here: graph imports this module
+
+    debrief.coverage = coverage_counts(run_records(store, [s["id"] for s in debrief.sessions]).coverage)
     by_tool: dict[str, int] = {}
     for f in debrief.failed:
         by_tool[f["tool"]] = by_tool.get(f["tool"], 0) + 1
@@ -468,6 +489,8 @@ def render_card(d: Debrief, limit: int = 30) -> str:
     out += [f"- {c}" for c in d.commits[:CARD_COMMITS]]
     if len(d.commits) > CARD_COMMITS:
         out.append(f"- … {len(d.commits) - CARD_COMMITS} more; `git log` has them all")
+    if d.coverage:
+        out += ["", f"**Coverage:** {coverage_line(d.coverage)}"]
     rows = file_rows(d)
     if rows:
         out += ["", "**Files changed**"]
@@ -614,6 +637,10 @@ def _print_header(console, d: Debrief, width: int, commits: int | None) -> None:
         write_line(console, row)
     if len(d.commits) > len(shown):
         write_line(console, Text(f"  … {len(d.commits) - len(shown)} more", "dim"))
+    if d.coverage:
+        line = Text("coverage ", "dim")
+        line.append(coverage_line(d.coverage))
+        write_line(console, line, wrap=True)
 
 
 def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD_COMMITS) -> None:

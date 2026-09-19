@@ -19,8 +19,8 @@ from dataclasses import asdict, dataclass, field
 
 from .attribute import check_segments
 from .debrief import _denial
-from .model import Agent, Commit, ToolEvent
-from .record import changes, coverage, seconds, window_commits
+from .model import Agent, Commit, Prompt, Session, ToolEvent
+from .record import Change, Coverage, Omitted, changes, coverage, seconds, window_commits
 from .store import Store
 
 CAPTION = "Layout and timing do not imply causality."
@@ -205,9 +205,21 @@ class _Marks:
         return kept
 
 
-def build_graph(store: Store, session_ids: list[str], until: str | None = None) -> Graph:
-    """The graph of these sessions, as recorded up to ``until`` (everything when None)."""
+@dataclass(slots=True)
+class Run:
+    """The records of the chosen sessions up to a moment: what the graph, the card and `why` read."""
 
+    sessions: list[Session]
+    events: list[ToolEvent]
+    prompts: list[Prompt]
+    agents: list[Agent]
+    written: list[Change]
+    vendor: Omitted
+    commits: list[Commit]
+    coverage: Coverage
+
+
+def run_records(store: Store, session_ids: list[str], until: str | None = None) -> Run:
     def seen(stamp: str | None) -> bool:
         return bool(stamp) and (until is None or seconds(stamp) <= seconds(until))
 
@@ -218,22 +230,47 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
     events.sort(key=lambda e: (seconds(e.timestamp), e.id))
     prompts = [p for i in ids for p in store.prompts(i) if seen(p.timestamp)]
     agents = [a for i in ids for a in store.agents(i) if seen(a.started_at)]
-    repo = sessions[0].repo if sessions else ""
-    written, vendor = changes(events, agents, repo)
+    written, vendor = changes(events, agents, sessions[0].repo if sessions else "")
 
-    starts = [s.started_at for s in sessions if s.started_at]
+    # A commit is the run's when it falls inside one of its sessions' own windows (compared as
+    # numbers: stored stamps differ in precision and offset), not merely between two of them.
+    windows = [
+        (seconds(s.started_at), seconds(s.ended_at) if s.ended_at else float("inf"))
+        for s in sessions
+        if s.started_at
+    ]
     commits: list[Commit] = []
-    if starts:  # the window is compared as numbers: stored stamps differ in precision and offset
-        opened = min(seconds(t) for t in starts)
-        closed = max(seconds(s.ended_at) if s.ended_at else float("inf") for s in sessions)
-        closed = min(closed, seconds(until)) if until else closed
-        day = min(starts, key=seconds)[:10]
+    if windows:
+        day = min((s.started_at for s in sessions if s.started_at), key=seconds)[:10]
+        cut = seconds(until) if until else float("inf")
         in_window = [
-            c for c in store.commits_between(day, "9999") if opened <= seconds(c.committed_at) <= closed
+            c
+            for c in store.commits_between(day, "9999")
+            if seconds(c.committed_at) <= cut
+            and any(opened <= seconds(c.committed_at) <= closed for opened, closed in windows)
         ]
         commits = window_commits(in_window, ids)
+    return Run(sessions, events, prompts, agents, written, vendor, commits, coverage(commits, written, ids))
+
+
+def coverage_counts(cov: Coverage) -> dict:
+    """Law 7's counts, in the order every surface prints them."""
+    keys = ("committed_files", "write", "edit", "shell", "commit", "nothing", "window")
+    return {key: getattr(cov, key) for key in keys}
+
+
+def build_graph(store: Store, session_ids: list[str], until: str | None = None) -> Graph:
+    """The graph of these sessions, as recorded up to ``until`` (everything when None)."""
+
+    def seen(stamp: str | None) -> bool:
+        return bool(stamp) and (until is None or seconds(stamp) <= seconds(until))
+
+    run = run_records(store, session_ids, until)
+    sessions, events, prompts, agents = run.sessions, run.events, run.prompts, run.agents
+    written, vendor, commits, cov = run.written, run.vendor, run.commits, run.coverage
+    repo = sessions[0].repo if sessions else ""
+    starts = [s.started_at for s in sessions if s.started_at]
     by_id = {(e.session_id, e.id): e for e in events}
-    cov = coverage(commits, written, ids)
 
     # -- the axis: every recorded moment ---------------------------------------------------------
     stamps = {e.timestamp for e in events} | {p.timestamp for p in prompts} | set(starts)
@@ -566,16 +603,8 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         marks=sorted(drawn, key=lambda m: (m.region, m.x, m.id)),
         links=sorted(links.values(), key=lambda item: item.id),
         tasks=sorted(tasks.values(), key=lambda t: t["x"]),
-        coverage={
-            "committed_files": cov.committed_files,
-            "write": cov.write,
-            "edit": cov.edit,
-            "shell": cov.shell,
-            "commit": cov.commit,
-            "nothing": cov.nothing,
-            "window": cov.window,
-            "paths": {"commit": only_commit[:PATHS_CAP], "nothing": nothing[:PATHS_CAP]},
-        },
+        coverage=coverage_counts(cov)
+        | {"paths": {"commit": only_commit[:PATHS_CAP], "nothing": nothing[:PATHS_CAP]}},
         counters={
             "failed_checks": len(failed),
             "rerun_green": green,

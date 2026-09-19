@@ -1,6 +1,7 @@
 """The debrief: golden markdown for a fixed session, the terminal card, JSON round trip, selection."""
 
 import io
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from rich.console import Console
 
 from graphene_debrief.debrief import (
     build_debrief,
+    coverage_line,
     file_rows,
     from_json,
     parse_since,
@@ -328,7 +330,8 @@ def test_card_caps_the_file_list(tmp_path):
     card = render_card(debrief)
     assert card.count("- `gen/") == 30
     assert "- … 5 more; `graphene why <path>` for any of them" in card
-    assert card.splitlines()[6] == "- `gen/f34.py` created +35/−0"  # biggest change first
+    lines = card.splitlines()
+    assert lines[lines.index("**Files changed**") + 1] == "- `gen/f34.py` created +35/−0"  # biggest first
     assert render_card(debrief, limit=100).count("- `gen/") == 35
 
 
@@ -390,6 +393,24 @@ def test_select_sessions(tmp_path):
         assert select_sessions(store, now=NOW) == [
             "ccc-3"
         ]  # a newer session that did nothing is not the card
+
+
+def test_the_card_prints_coverage_as_counts_never_one_number(tmp_path):
+    sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
+    import make_run_fixture as run
+
+    with Store.open(tmp_path) as store:
+        run.load(store)
+        debrief = build_debrief(store, [run.S1], tmp_path, now=NOW)
+    want = (
+        "12 committed files · 9 traced to a recorded write (6 edit, 3 shell) · 2 only to an agent's commit"
+        " · 1 to nothing (1 committed in the window by no identifiable agent)"
+    )
+    assert coverage_line(debrief.coverage) == want and f"**Coverage:** {want}" in render_card(debrief)
+    console = terminal()
+    print_card(console, debrief)
+    assert "coverage 12 committed files" in " ".join(console.export_text().split())
+    assert "%" not in want and coverage_line({}) == ""
 
 
 def test_parse_since_rejects_garbage():
