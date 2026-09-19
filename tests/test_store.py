@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from graphene_debrief.cli import build
-from graphene_debrief.model import Prompt, Session, ToolEvent
+from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
 from graphene_debrief.sources.claude_code import hook_main, project_dir_name
 from graphene_debrief.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
@@ -143,20 +143,67 @@ def test_a_new_store_records_the_schema_version(tmp_path):
         assert store.rebuilt_from is None
 
 
-def test_a_store_from_an_older_schema_is_rebuilt_and_backfilled(repo_with_transcripts):
-    repo = repo_with_transcripts
-    Store.open(repo).close()
-    set_version(repo / ".graphene" / "graphene.db", 0)  # every store written before versioning
-    result = CliRunner().invoke(build(), [])
-    output = result.output + result.stderr
-    assert result.exit_code == 0, output
-    assert (repo / ".graphene" / "graphene.db.v0.bak").exists()
-    assert "store rebuilt" in output and ".graphene/graphene.db.v0.bak" in output
-    assert "loaded 1 session" in output
-    assert "Session 11111111" in result.output  # the card, from the rebuilt store
-    with Store.open(repo) as store:
-        assert len(store.sessions()) == 1
-        assert store.rebuilt_from is None  # and now it opens normally
+V1_TABLES = ("sessions", "prompts", "tool_events", "explanations", "debrief_runs")
+
+
+def downgrade_to_v1(db: Path, version: int = 1) -> None:
+    """Turn a current store back into what version 1 wrote: no agents, no commits, no cwd column."""
+    conn = sqlite3.connect(db)
+    for table in ("agents", "commits", "commit_files"):
+        conn.execute(f"DROP TABLE {table}")
+    conn.execute("ALTER TABLE tool_events DROP COLUMN cwd")
+    conn.execute(f"PRAGMA user_version = {version}")
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.parametrize("version", [0, 1])  # 0: every store written before versioning
+def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, version):
+    with Store.open(tmp_path) as store:
+        store.upsert_session(Session(id="hooked", repo=str(tmp_path), source="hook"))
+        store.add_event(
+            ToolEvent("t1", "hooked", None, "2026-03-01T09:00:00.000Z", "Bash", {"command": "ls"})
+        )
+    db = tmp_path / ".graphene" / "graphene.db"
+    downgrade_to_v1(db, version)
+    with Store.open(tmp_path) as store:
+        assert store.rebuilt_from is None and list((tmp_path / ".graphene").glob("*.bak")) == []
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert [s.id for s in store.sessions()] == ["hooked"]  # its transcript may be gone: never dropped
+        assert [e.id for e in store.events("hooked")] == ["t1"] and store.events("hooked")[0].cwd is None
+        tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert tables >= {*V1_TABLES, "agents", "commits", "commit_files"}
+
+
+def test_the_hook_migrates_an_older_store_and_records_the_event(tmp_path):
+    (tmp_path / ".git").mkdir()
+    Store.open(tmp_path).close()
+    downgrade_to_v1(tmp_path / ".graphene" / "graphene.db")
+    event = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(tmp_path)})
+    assert hook_main(io.StringIO(event), cwd=tmp_path) == 0
+    with Store.open(tmp_path) as store:
+        assert [s.id for s in store.sessions()] == ["s1"]
+
+
+def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
+    with Store.open(tmp_path) as store:
+        store.upsert_agent(Agent(id="a1", session_id="s", started_at="2026-03-01T09:00:00.000Z"))
+        store.upsert_agent(Agent(id="a1", session_id="s", task="write the guide", closing="done"))
+        (agent,) = store.agents("s")
+        assert (agent.task, agent.closing, agent.started_at) == (
+            "write the guide",
+            "done",
+            "2026-03-01T09:00:00.000Z",
+        )
+        when = "2026-03-01T09:05:00.000Z"
+        store.add_commit(Commit("abc1234", when, "parser", files=[("app/parser.py", "A")]))
+        store.add_commit(Commit("abc1234", when, "parser", session_id="s", agent_id="a1", event_id="t9"))
+        store.add_commit(Commit("abc1234", when, "parser", session_id="other", agent_id="zz"))
+        (commit,) = store.commits_between("2026-03-01T09:00:00.000Z", "2026-03-01T10:00:00.000Z")
+        assert (commit.session_id, commit.agent_id, commit.event_id) == ("s", "a1", "t9")
+        assert commit.files == [("app/parser.py", "A")]
+        store.delete_session_data("s")
+        assert store.agents("s") == [] and len(store.commits_between(when, when)) == 1
 
 
 def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
@@ -180,7 +227,7 @@ def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
         assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
 
 
-def test_the_hook_skips_a_stale_store_instead_of_rebuilding_it(tmp_path, capsys):
+def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_path, capsys):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()
     db = tmp_path / ".graphene" / "graphene.db"

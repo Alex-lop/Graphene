@@ -260,9 +260,9 @@ def hook_main(stdin=None, cwd: Path | None = None) -> int:
         root = repo_root(Path(event.get("cwd") or root))
         with Store.open(root, quick=True) as store:
             ingest_hook_event(store, event, root)
-    except StaleStore:
-        # Rebuilding is the CLI's job (it takes seconds and backfills): skip the event instead.
-        _log(root, "store needs a rebuild: event skipped, run graphene")
+    except StaleStore as stale:
+        # An unreadable file is the CLI's to move aside and backfill; a newer store is nobody's.
+        _log(root, f"store is {stale.tag}: event skipped, run graphene")
     except Exception:
         _log_error(root)
     return 0

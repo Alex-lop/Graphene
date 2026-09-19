@@ -282,9 +282,7 @@ def test_a_session_that_changed_nothing_is_one_line(repo, tmp_path, monkeypatch)
     assert run("ingest", "--backfill", "--transcript", str(path)).exit_code == 0
     result = run()
     assert result.exit_code == 1
-    assert one_line(result) == (
-        "1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it"
-    )
+    assert one_line(result) == ("1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it")
     assert run("sessions").exit_code == 0  # and it does list it
     assert json.loads(run("debrief", "--json").stdout)["prompt_count"] == 1  # --json still answers
 

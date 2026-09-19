@@ -41,6 +41,44 @@ class ToolEvent:
     file_path: str | None = None  # repo-relative when inside the repo, else absolute
     old_content: str | None = None  # file content before this call, when the payload carries it
     new_content: str | None = None  # file content after this call, when it can be derived
+    cwd: str | None = None  # the working directory the call ran in, as recorded
+
+
+@dataclass(slots=True)
+class Agent:
+    """One subagent, from the records about it. The main agent has no row: it is the session."""
+
+    id: str
+    session_id: str
+    parent_tool_use_id: str | None = None  # the parent's Agent call; a Workflow agent has none
+    parent_agent_id: str | None = None  # who made that call; None when the main agent did
+    type: str | None = None
+    task: str | None = None  # the short description it was given
+    prompt: str | None = None  # what it was told, capped
+    cwd: str | None = None
+    worktree: str | None = None  # the worktree root it worked in, when recorded
+    workflow_run: str | None = None  # wf_<id>: the parent Workflow call's runId
+    phase: str | None = None
+    label: str | None = None
+    depth: int | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
+    closing: str | None = None  # its closing message
+    source: str = "claude-code"
+
+
+@dataclass(slots=True)
+class Commit:
+    """A commit from git, and the recorded call that made it when there is one."""
+
+    sha: str
+    committed_at: str
+    subject: str
+    session_id: str | None = None  # None: no recorded call names this commit
+    agent_id: str | None = None  # None with a session_id: the main agent
+    event_id: str | None = None  # the Bash call whose response names the SHA
+    origin_sha: str | None = None  # the commit a recorded cherry-pick copied
+    files: list[tuple[str, str | None]] = field(default_factory=list)  # (repo-relative path, status)
 
 
 @dataclass(slots=True)
