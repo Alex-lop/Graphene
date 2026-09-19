@@ -222,16 +222,19 @@ def test_the_sessions_list_is_columns_not_a_table():
     print_sessions(
         console,
         [
-            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 3, 11),
-            ("22222222", "hooks", "2026-03-02 09:00", "running", 12, 140),
+            ("11111111", "backfill", "2026-03-01 09:00", "2026-03-01 10:30", 11, "12: 9/2/1"),
+            ("22222222", "hooks", "2026-03-02 09:00", "running", 140, "-"),
         ],
+        "+0000",
     )
     lines = console.export_text().splitlines()
-    assert lines[0].split() == ["session", "source", "started", "ended", "prompts", "calls"]
+    assert lines[0].split() == ["session", "source", "started", "+0000", "ended", "calls", "coverage"]
+    assert lines[1].rstrip().endswith("12: 9/2/1") and lines[3].startswith("coverage = committed files:")
+    lines = lines[:3]
     assert max(len(line) for line in lines) <= 80  # no wrapping at eighty columns
     assert not any(char in "\n".join(lines) for char in "─│┌┐└┘━┃")
     assert lines[1].index("backfill") == lines[2].index("hooks")  # columns line up
-    assert lines[2].rstrip().endswith("140")
+    assert lines[2].split()[-2:] == ["140", "-"]
 
 
 def test_no_color_leaves_no_escape_codes(store, tmp_path, monkeypatch):

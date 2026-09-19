@@ -30,6 +30,7 @@ def build():
     from .debrief import (
         ACCENT,
         build_debrief,
+        coverage_cell,
         offset,
         print_card,
         print_sessions,
@@ -392,22 +393,26 @@ def build():
         everything: bool = typer.Option(False, "--all", help="Also list sessions that made no calls."),
     ) -> None:
         """List the recorded sessions, newest first."""
+        from .graph import coverage_counts, run_records
+
         with loaded_store(root()) as store:
             listed = list(reversed(store.sessions()))
+            listed = [(s, store.event_count(s.id)) for s in listed]
             rows = [
                 (
                     s.id[:8],
                     s.source,
                     stamp(s.started_at),
                     stamp(s.ended_at) if s.ended_at else "running",
-                    len(store.prompts(s.id)),
-                    store.event_count(s.id),
+                    calls,
+                    coverage_cell(coverage_counts(run_records(store, [s.id]).coverage)) if calls else "-",
                 )
-                for s in listed
+                for s, calls in listed
+                if calls or everything
             ]
-        quiet = [r for r in rows if not r[5]]
-        zone = next((offset(s.started_at) for s in listed if s.started_at), "")
-        print_sessions(console, rows if everything else [r for r in rows if r[5]], zone)
+        quiet = [s for s, calls in listed if not calls]
+        zone = next((offset(s.started_at) for s, _ in listed if s.started_at), "")
+        print_sessions(console, rows, zone)
         if quiet and not everything:
             n = len(quiet)
             note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")

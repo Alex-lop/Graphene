@@ -724,9 +724,22 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
         write_indented(console, Text(e.explanation), 2, wrap=True)
 
 
-def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]], zone: str = "") -> None:
+COVERAGE_KEY = (
+    "coverage = committed files: traced to a recorded write / only to an agent's commit / to nothing"
+)
+
+
+def coverage_cell(c: dict) -> str:
+    return (
+        f"{c['committed_files']}: {c['write']}/{c['commit']}/{c['nothing']}"
+        if c.get("committed_files")
+        else "-"
+    )
+
+
+def print_sessions(console, rows: list[tuple[str, str, str, str, int, str]], zone: str = "") -> None:
     """`graphene sessions`: aligned columns, no box, newest first; ``zone`` is the times' UTC offset."""
-    head = ("session", "source", f"started {zone}".rstrip(), "ended", "prompts", "calls")
+    head = ("session", "source", f"started {zone}".rstrip(), "ended", "calls", "coverage")
     table = [head] + [tuple(str(cell) for cell in row) for row in rows]
     widths = [max(len(row[i]) for row in table) for i in range(len(head))]
     for n, row in enumerate(table):
@@ -735,6 +748,8 @@ def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]], zon
             padded = cell.rjust(widths[i]) if i >= 4 else cell.ljust(widths[i])
             line.append(padded + ("  " if i < len(row) - 1 else ""), "dim" if n == 0 or i < 4 else None)
         write_line(console, line)
+    if any(row[5] != "-" for row in rows):
+        write_line(console, Text(COVERAGE_KEY, "dim"), wrap=True)
 
 
 def to_json(d: Debrief) -> str:
