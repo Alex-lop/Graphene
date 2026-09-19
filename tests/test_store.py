@@ -256,6 +256,22 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
         assert tables >= {*V1_TABLES, "agents", "commits", "commit_files"}
 
 
+def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):
+    repo = repo_with_transcripts
+    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
+    with Store.open(repo) as store:
+        (sid,) = [s.id for s in store.sessions()]
+        assert store.transcript_stat(sid) is not None
+        store.conn.execute("DELETE FROM agents")  # what a store read by the old parser looks like
+    downgrade_to_v1(repo / ".graphene" / "graphene.db")
+    with Store.open(repo) as store:
+        assert store.transcript_stat(sid) is None  # migrated: the read is forgotten, the session is not
+        assert [s.id for s in store.sessions()] == [sid]
+    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
+    with Store.open(repo) as store:
+        assert [a.id for a in store.agents(sid)] == [fixture.AGENT]  # read again, by the new parser
+
+
 def test_the_hook_migrates_an_older_store_and_records_the_event(tmp_path):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()

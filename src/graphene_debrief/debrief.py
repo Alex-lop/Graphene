@@ -708,6 +708,13 @@ def _effect_text(f: FileLine) -> Text:
     return out
 
 
+GRADE_WORDS = {
+    "edit": "recorded edit",
+    "shell": "in the vendor's list of what a shell command changed",
+    "command": "read from the recorded command",
+}
+
+
 def print_why(console, path: str, content: str, subtitle: str, entries: list) -> None:
     """`why PATH` and `why PATH:LINE`: the file, one line of provenance, then a block per prompt."""
     width = max(40, console.width)
@@ -716,13 +723,18 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
     if content:
         head.append("  " + clip(content.strip(), max(8, width - len(head.plain) - 2)))
     write_line(console, head)
-    write_line(console, Text(clip(subtitle, width), "dim"))
+    for part in subtitle.split("\n"):  # the count, then the file's coverage
+        write_line(console, Text(part, "dim"), wrap=True)
     for e in entries:
         write_line(console, Text(""))
         row = Text()
         row.append(f"{stamp_tz(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
         row.append_text(_effect_text(e.change_line()))
+        row.append(f"  {GRADE_WORDS.get(e.grade, e.grade)}", "dim")
         write_line(console, row)
+        for agent, task in e.who:
+            name = f"agent {agent[:8]}" if agent else "the main agent"
+            write_indented(console, Text(f"by {name}" + (f": {task}" if task else ""), "dim"), 2, wrap=True)
         for line in preview(e.prompt_text).splitlines():
             write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
         write_indented(console, Text(e.explanation), 2, wrap=True)

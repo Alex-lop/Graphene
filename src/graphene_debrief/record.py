@@ -35,6 +35,7 @@ class Change:
     event_id: str
     shared: bool = False  # the vendor's flag: the change may belong to a concurrent command
     copy: bool = False  # written in a worktree copy of the path
+    checkout: str = ""  # the worktree root it was written in; empty for the repo's own checkout
 
 
 @dataclass(slots=True)
@@ -63,6 +64,14 @@ def repo_path(path: str, repo: str, roots: list[str]) -> tuple[str, bool] | None
     return (os.path.relpath(p, r), False) if p.startswith(r + os.sep) else None
 
 
+def checkout_of(full: str, rel: str, repo: str) -> str:
+    """Which checkout a write landed in, read off the record: the absolute path the tool was given
+    minus the repo-relative path it maps to. Two agents writing two copies are not on one file."""
+    full = os.path.normpath(full)
+    root = full[: -len(rel) - 1] if full.endswith(os.sep + rel) else repo
+    return "" if os.path.normpath(root) == os.path.normpath(repo) else root
+
+
 def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[list[Change], Omitted]:
     """Every recorded write in these events, oldest first, and what the vendor's lists left out."""
     roots = worktree_roots(agents)
@@ -74,8 +83,20 @@ def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[li
         if e.tool in FILE_TOOLS and e.file_path and not os.path.isabs(e.file_path):
             given = str(e.input.get("file_path") or e.input.get("notebook_path") or "")
             given = given if os.path.isabs(given) else os.path.join(e.cwd or repo, given)
-            copy = any(os.path.normpath(given).startswith(root + os.sep) for root in roots)
-            out.append(Change(e.file_path, e.session_id, e.agent_id, e.timestamp, "edit", e.id, copy=copy))
+            where = checkout_of(given, e.file_path, repo)
+            out.append(
+                Change(
+                    e.file_path,
+                    e.session_id,
+                    e.agent_id,
+                    e.timestamp,
+                    "edit",
+                    e.id,
+                    False,
+                    bool(where),
+                    where,
+                )
+            )
         diff = e.response.get("bashEditDiff") if e.tool == "Bash" and isinstance(e.response, dict) else None
         if not isinstance(diff, dict):
             continue
@@ -100,6 +121,7 @@ def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[li
                         e.id,
                         shared=bool(diff.get("shared")),
                         copy=mapped[1],
+                        checkout=checkout_of(full, mapped[0], repo),
                     )
                 )
     out.sort(key=lambda c: (c.timestamp, c.event_id, c.path))

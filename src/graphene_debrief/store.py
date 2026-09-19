@@ -111,6 +111,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
              status TEXT,
              PRIMARY KEY (sha, path)
            )""",
+        # Sessions read before this version have no agents, no cwd and no worktree mapping. Forget
+        # only that their transcripts were read, so the next command reads again those that still
+        # exist; a session whose transcript is gone has no file to be re-read from and stays as it is.
+        "UPDATE sessions SET transcript_size = NULL, transcript_mtime = NULL",
     ),
 }
 

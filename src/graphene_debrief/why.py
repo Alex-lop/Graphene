@@ -11,6 +11,7 @@ from pathlib import Path
 from .attribute import Attribution, GitState, attribute_session, credit_once
 from .debrief import FileLine, template
 from .model import FileChange, Prompt, Session
+from .record import changes, seconds
 from .store import Store
 
 
@@ -26,6 +27,8 @@ class WhyEntry:
     removed: int
     explanation: str
     change: FileChange = field(repr=False, compare=False)
+    grade: str = ""  # edit | shell (the vendor's change list) | command (read from the recorded command)
+    who: list[tuple[str | None, str | None]] = field(default_factory=list)  # (agent id, its task)
 
     def change_line(self):
         """The change as the renderers' file line, so `why` shows counts exactly as the card does."""
@@ -97,10 +100,24 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
     credit_once([(session, result) for session, _, result in done])
     for session, prompts, result in done:
         by_id = {p.id: p for p in prompts}
+        events = store.events(session.id)
+        agents = store.agents(session.id)
+        task = {a.id: a.task for a in agents}
+        under = {e.id: e for e in events}
+        written = [w for w in changes(events, agents, session.repo)[0] if w.path == rel]
         for change in result.changes:
             if change.path != rel:
                 continue
             prompt = by_id.get(change.prompt_id)
+            mine = [w for w in written if under[w.event_id].prompt_id == change.prompt_id]
+            grade = "edit" if any(w.grade == "edit" for w in mine) else "shell" if mine else "command"
+            by = [w.agent_id for w in mine] or [  # no recorded write: whoever ran a command naming the file
+                e.agent_id
+                for e in events
+                if e.tool == "Bash"
+                and e.prompt_id == change.prompt_id
+                and name in str(e.input.get("command"))
+            ]
             entries.append(
                 WhyEntry(
                     session.id,
@@ -113,6 +130,8 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
                     change.removed,
                     template(change),
                     change,
+                    grade,
+                    [(agent, task.get(agent)) for agent in dict.fromkeys(by)],
                 )
             )
     entries.sort(key=lambda e: e.timestamp, reverse=True)
@@ -195,3 +214,42 @@ def blame(root: Path, rel: str, line: int) -> tuple[str | None, str | None]:
     seconds = next((r.split()[1] for r in rest if r.startswith("committer-time ")), None)
     when = datetime.fromtimestamp(int(seconds), UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z") if seconds else None
     return sha, when
+
+
+def commits_of(store: Store, rel: str) -> dict[str | None, list[str]]:
+    """The commits that changed a path, by the session whose window holds them, newest session
+    first; None gathers the commits made outside every recorded session."""
+    rows = store.conn.execute(
+        "SELECT c.sha, c.committed_at FROM commit_files f JOIN commits c USING (sha) WHERE f.path = ?", (rel,)
+    ).fetchall()
+    windows = [
+        (s.id, seconds(s.started_at), seconds(s.ended_at) if s.ended_at else float("inf"))
+        for s in reversed(store.sessions())
+        if s.started_at
+    ]
+    held: dict[str | None, list[str]] = {sid: [] for sid, _, _ in windows} | {None: []}
+    for sha, committed_at in rows:
+        at = seconds(committed_at)
+        held[next((sid for sid, start, end in windows if start <= at <= end), None)].append(sha)
+    return {sid: shas for sid, shas in held.items() if shas}
+
+
+def path_coverage(store: Store, rel: str) -> str:
+    """One file's share of law 7: of the commits that changed it, how many trace to a recorded
+    write, only to an agent's commit, or to nothing. Empty when git never committed the path."""
+    from .graph import run_records
+
+    held = commits_of(store, rel)
+    inside = [sid for sid in held if sid]
+    if not held:
+        return ""
+    pairs = run_records(store, inside).coverage.pairs if inside else {}
+    grades = [grade for (_sha, path), grade in pairs.items() if path == rel]
+    write = sum(g in ("edit", "shell") for g in grades)
+    n = len(grades)
+    line = (
+        f"{n} commit{'s' if n != 1 else ''} of this file in recorded sessions · {write} traced to a recorded "
+        f"write · {grades.count('commit')} only to an agent's commit · {grades.count('window')} to nothing"
+    )
+    outside = len(held.get(None, []))
+    return line + (f" · {outside} more outside any recorded session" if outside else "")

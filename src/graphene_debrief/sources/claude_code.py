@@ -914,10 +914,17 @@ def _backfill_one(
         return
     parsed = None
     if existing is not None:
+        if existing.source == "backfill" and store.transcript_stat(session_id) is None:
+            replace = True  # read by a version that kept less (the migration forgot the read): read again
         if existing.source != "backfill" and not replace:
             parsed = parse_transcript(path, root, worktrees, extra) if hooks else None
             if parsed is None or len(parsed.events) <= store.event_count(session_id):
                 if parsed is not None:
+                    with (
+                        store.transaction()
+                    ):  # what a hook cannot see: the task, the parent call, the closing
+                        for agent in parsed.agents:
+                            store.upsert_agent(agent)
                     store.set_transcript_stat(session_id, stat)
                 report.skipped.append(session_id)
                 return

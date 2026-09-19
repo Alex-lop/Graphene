@@ -394,7 +394,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
     stopped = {  # a recorded stop, never the last thing seen: a prefix of the run must agree with the whole
         _lane_id(a.session_id, a.id): seconds(a.ended_at) for a in known.values() if seen(a.ended_at)
     }
-    holds: dict[str, dict[str, float]] = {}  # path -> lane -> its last write
+    holds: dict[tuple[str, str], dict[str, float]] = {}  # (checkout, path) -> lane -> its last write
     for w in written:
         lane = _lane_id(w.session_id, w.agent_id)
         row = rows[f"file:{w.path}"]
@@ -403,10 +403,11 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         if lane not in row.agents:
             row.agents.append(lane)
         now = seconds(w.timestamp)
-        for other, touched in holds.setdefault(w.path, {}).items():
+        here = (w.checkout, w.path)  # two copies of a path in two checkouts are two files
+        for other, touched in holds.setdefault(here, {}).items():
             if other != lane and now <= min(touched + CLAIM, max(stopped.get(other, now), touched)):
                 row.collision = rows[row.dir].collision = True
-        holds[w.path][lane] = now
+        holds[here][lane] = now
 
     # -- marks ------------------------------------------------------------------------------------
     def existing(session_id: str | None, agent_id: str | None) -> str:

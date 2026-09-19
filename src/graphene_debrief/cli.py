@@ -27,6 +27,7 @@ def build():
     from typer.core import TyperGroup
 
     from . import __version__
+    from .commits import refresh_commits
     from .debrief import (
         ACCENT,
         build_debrief,
@@ -54,7 +55,7 @@ def build():
         transcripts_for,
     )
     from .store import StaleStore, Store
-    from .why import why_line, why_path
+    from .why import candidates, commits_of, path_coverage, why_line, why_path
 
     LOCKED = (
         "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
@@ -154,6 +155,7 @@ def build():
         if not store.sessions():
             store.close()
             no_sessions(r)
+        refresh_commits(store, r, report.added + report.refreshed)
         n = len(report.added)
         if n:
             note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
@@ -255,11 +257,21 @@ def build():
                 )
             else:
                 entries = why_path(store, r, target)
+                rel = entries[0].change.path if entries else candidates(r, target)[-1]
+                covered = path_coverage(store, rel)
                 if not entries:
-                    empty(f"no recorded prompt changed {target}")
+                    held = commits_of(store, rel)
+                    told = "; ".join(
+                        f"{len(shas)} commit{'s' if len(shas) != 1 else ''} "
+                        + (f"during session {sid[:8]}" if sid else "outside any recorded session")
+                        for sid, shas in held.items()
+                    )
+                    if told:  # git knows the file changed; say so, and that no write was recorded
+                        empty(f"{rel}: changed in {told}; no recorded write. {covered}")
+                    empty(f"no recorded prompt changed {target}, and no commit in the store changed it")
                 n = len(entries)
                 subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
-                print_why(console, entries[0].change.path, "", subtitle, entries)
+                print_why(console, rel, "", subtitle + (f"\n{covered}" if covered else ""), entries)
 
     @cli.command(hidden=True)
     def debrief(

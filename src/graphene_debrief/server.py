@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from .commits import refresh_commits
 from .graph import build_graph, to_json
 from .sources.claude_code import backfill
 from .store import Store
@@ -99,7 +100,8 @@ def make_server(root: Path, session_ids: list[str]) -> ThreadingHTTPServer:
             if url.path == "/api/graph":
                 asked = [i for v in parse_qs(url.query).get("sessions", []) for i in v.split(",") if i]
                 with Store.open(root) as store:
-                    backfill(store, root)  # a transcript that has not changed costs one stat
+                    report = backfill(store, root)  # a transcript that has not changed costs one stat
+                    refresh_commits(store, root, report.added + report.refreshed + (asked or session_ids))
                     body = payload(store, asked or session_ids)
                 return self._send(200, body.encode(), TYPES[".json"])
             name = "index.html" if url.path == "/" else url.path.lstrip("/")
