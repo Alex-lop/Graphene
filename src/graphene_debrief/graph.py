@@ -27,6 +27,7 @@ CAPTION = "Layout and timing do not imply causality."
 SOURCE = "claude-code"
 IDLE = 120.0  # seconds with nothing recorded before the axis breaks
 BREAK = 60.0  # the fixed width of a break, in x units
+TICK = 300.0  # a tick at the first recorded moment at or after every five minutes of x
 BUCKET = 10.0  # marks of one kind on one lane or row closer than this merge into one, with a count
 LANE_H = 28
 ROW_H = 22
@@ -153,6 +154,10 @@ class Axis:
                 x = round(x + width, 3)
             self.x[stamp] = x
         self.width = x
+        self.ticks: list[dict] = []  # recorded moments, so a tick never moves either
+        for stamp in self.stamps:
+            if self.x[stamp] >= len(self.ticks) * TICK:
+                self.ticks.append({"x": self.x[stamp], "t": stamp})
 
 
 def _lane_id(session_id: str, agent_id: str | None) -> str:
@@ -467,6 +472,9 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
     runs = {  # a Workflow call's runId names the directory its agents are recorded in
         e.response.get("runId"): e for e in events if e.tool == "Workflow" and isinstance(e.response, dict)
     }
+    for lane in lanes.values():
+        if lane.kind == "group" and lane.run in runs:
+            lane.label = runs[lane.run].response.get("workflowName")
     for a in known.values():
         lane = lanes[_lane_id(a.session_id, a.id)]
         call = by_id.get((a.session_id, a.parent_tool_use_id)) or runs.get(a.workflow_run)
@@ -551,6 +559,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             "width": axis.width,
             "bucket": bucket,
             "breaks": axis.segments,
+            "ticks": axis.ticks,
         },
         lanes=sorted(lanes.values(), key=lambda lane: (lane.y, lane.dy)),
         rows=sorted(rows.values(), key=lambda r: (r.y, r.dy)),

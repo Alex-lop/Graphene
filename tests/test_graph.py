@@ -143,10 +143,12 @@ def assert_no_jitter(store, session_ids):
         now = {m.id: (m.x, m.y) for m in graph.marks}
         now |= {lane.id: (lane.x0, lane.y, lane.dy) for lane in graph.lanes}
         now |= {row.id: (row.y, row.dy) for row in graph.rows}
+        now |= {f"tick:{n}": (tick["x"], tick["t"]) for n, tick in enumerate(graph.axis["ticks"])}
         moved = {key: (was, now.get(key)) for key, was in drawn.items() if now.get(key) != was}
         assert moved == {}, f"at {stamp}"
         drawn = now
-    assert drawn.keys() == {m.id for m in full.marks} | {x.id for x in full.lanes} | {r.id for r in full.rows}
+    everything = {m.id for m in full.marks} | {x.id for x in full.lanes} | {r.id for r in full.rows}
+    assert {key for key in drawn if not key.startswith("tick:")} == everything
     return len(stamps)
 
 
