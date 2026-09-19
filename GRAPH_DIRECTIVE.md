@@ -21,7 +21,9 @@ map you can open, so that is where night one is planned to end, in a usable stat
 Which night is it? Read `morning.md` and `git log`. Start at the first milestone that is not
 committed. **Clock rule:** seven hours after you start, or at 07:00 local, whichever comes first,
 stop starting new work and run the closing sequence of the night you are in (about 45 minutes). Do
-not stop before that unless the night's plan is exhausted.
+not stop before that unless the night's plan is exhausted. Keep the machine awake with
+`caffeinate`: as your first action, start `caffeinate -is` in the background and leave it running
+until the closing sequence finishes.
 
 The reasoning behind every decision here is in `docs/PRODUCT_THESIS.md`. Read it. Where this file
 and the thesis disagree, this file wins and you note the disagreement in `morning.md`.
