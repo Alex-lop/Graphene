@@ -44,6 +44,7 @@ def build():
     from .sources.claude_code import (
         SETTINGS,
         backfill,
+        hooks_file,
         hooks_installed,
         install_hooks,
         looked_in,
@@ -281,15 +282,16 @@ def build():
             added = install_hooks(r)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
-        settings = Path(os.path.relpath(r / SETTINGS, Path.cwd()))
+        settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
         if added:
             say(f"hooks added to {settings}: {', '.join(added)}")
         else:
             say("hooks already installed")
-        say(
-            f"{settings} is your personal settings file (if your team shares .claude/, add that file "
-            "to .gitignore); nothing else is written until a session is recorded"
-        )
+        if settings.name == Path(SETTINGS).name:
+            say(
+                f"{settings} is your personal settings file (if your team shares .claude/, add that "
+                "file to .gitignore); nothing else is written until a session is recorded"
+            )
         say(
             "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
             "you, ignores itself in git); then run `graphene`"
