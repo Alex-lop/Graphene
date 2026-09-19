@@ -12,6 +12,8 @@
    }
   ],
   "repo": "project",
+  "started": "2026-03-02T09:00:05.000Z",
+  "ended": "2026-03-02T09:42:00.000Z",
   "t0": "2026-03-02T09:00:05.000Z",
   "t1": "2026-03-02T09:41:00.000Z",
   "prompts": 1,
@@ -627,7 +629,8 @@
    "label": "Build a parser, a store and a CLI for the import file with a workflow, and check the tests. Then have agents write the guide and add the HTTP API.",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tc1",
@@ -644,7 +647,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tc2",
@@ -661,7 +665,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu1",
@@ -678,7 +683,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "spawn:lane:22222222:main:event:22222222:toolu_wf",
@@ -695,7 +701,8 @@
    "label": "Workflow",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_write",
@@ -712,7 +719,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/parser.py:event:22222222:toolu_w1_write",
@@ -729,7 +737,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:1a2b3c4d5e6f7082:event:22222222:toolu_w2_heredoc",
@@ -746,7 +755,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/store.py:event:22222222:toolu_w2_heredoc",
@@ -763,7 +773,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:2a3b4c5d6e7f8093:event:22222222:toolu_w3_write",
@@ -780,7 +791,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/cli.py:event:22222222:toolu_w3_write",
@@ -797,7 +809,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": true
+   "copy": true,
+   "committed": null
   },
   {
    "id": "check:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_check1",
@@ -814,7 +827,8 @@
    "label": "uv run pytest -q",
    "ok": false,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:3a4b5c6d7e8f90a4:event:22222222:toolu_w4_gen",
@@ -831,7 +845,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/schema.py:event:22222222:toolu_w4_gen",
@@ -848,7 +863,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_edit",
@@ -865,7 +881,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/parser.py:event:22222222:toolu_w1_edit",
@@ -882,7 +899,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:2a3b4c5d6e7f8093:event:22222222:toolu_w3_commit",
@@ -899,7 +917,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:2a3b4c5d6e7f8093:commit:23cb2f06198e41d711d1ce1916beb22cda7b4f28",
@@ -916,7 +935,8 @@
    "label": "23cb2f0 cli: the command line",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:04:20.000Z"
   },
   {
    "id": "check:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_check2",
@@ -933,7 +953,8 @@
    "label": "uv run pytest -q",
    "ok": true,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:2a3b4c5d6e7f8093:event:22222222:toolu_w3_back",
@@ -950,7 +971,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_commit",
@@ -967,7 +989,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:0a1b2c3d4e5f6071:commit:4d35474499bddf97a8f302e7f0a48c5afd94d91f",
@@ -984,7 +1007,8 @@
    "label": "4d35474 parser: read the import file",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:05:30.000Z"
   },
   {
    "id": "check:lane:22222222:1a2b3c4d5e6f7082:event:22222222:toolu_w2_check",
@@ -1001,7 +1025,8 @@
    "label": "uv run pytest -q",
    "ok": true,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:0a1b2c3d4e5f6071:event:22222222:toolu_w1_back",
@@ -1018,7 +1043,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:1a2b3c4d5e6f7082:event:22222222:toolu_w2_commit",
@@ -1035,7 +1061,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:1a2b3c4d5e6f7082:commit:527efa6c5f362c9ee0270bdbb3bbdf8a1792bf9a",
@@ -1052,7 +1079,8 @@
    "label": "527efa6 store: keep the rows in sqlite",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:06:30.000Z"
   },
   {
    "id": "step:lane:22222222:1a2b3c4d5e6f7082:event:22222222:toolu_w2_back",
@@ -1069,7 +1097,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:3a4b5c6d7e8f90a4:event:22222222:toolu_w4_commit",
@@ -1086,7 +1115,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:3a4b5c6d7e8f90a4:commit:a8bc60f696fd40322a48bd364e07cb3758fd7a6f",
@@ -1103,7 +1133,8 @@
    "label": "a8bc60f schema: the generated tables",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:07:30.000Z"
   },
   {
    "id": "evidence:file:app/gen_a.py:commit:a8bc60f696fd40322a48bd364e07cb3758fd7a6f",
@@ -1120,7 +1151,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "evidence:file:app/gen_b.py:commit:a8bc60f696fd40322a48bd364e07cb3758fd7a6f",
@@ -1137,7 +1169,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:3a4b5c6d7e8f90a4:event:22222222:toolu_w4_back",
@@ -1154,7 +1187,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu2",
@@ -1171,7 +1205,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:4a5b6c7d8e9fa0b5:event:22222222:toolu_w5_edit1",
@@ -1188,7 +1223,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/util.py:event:22222222:toolu_w5_edit1",
@@ -1205,7 +1241,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:5a6b7c8d9eafb0c6:event:22222222:toolu_w6_edit",
@@ -1222,7 +1259,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/util.py:event:22222222:toolu_w6_edit",
@@ -1239,7 +1277,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:4a5b6c7d8e9fa0b5:event:22222222:toolu_w5_edit2",
@@ -1256,7 +1295,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/util.py:event:22222222:toolu_w5_edit2",
@@ -1273,7 +1313,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:5a6b7c8d9eafb0c6:event:22222222:toolu_w6_sed",
@@ -1290,7 +1331,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/core.py:event:22222222:toolu_w6_sed",
@@ -1307,7 +1349,8 @@
    "label": null,
    "ok": null,
    "shared": true,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:4a5b6c7d8e9fa0b5:event:22222222:toolu_w5_back",
@@ -1324,7 +1367,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:5a6b7c8d9eafb0c6:event:22222222:toolu_w6_commit",
@@ -1341,7 +1385,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:5a6b7c8d9eafb0c6:commit:9c746c608df8db0e46da4e104b6c3384c7089593",
@@ -1358,7 +1403,8 @@
    "label": "9c746c6 verify: tighten util and core",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:14:30.000Z"
   },
   {
    "id": "step:lane:22222222:5a6b7c8d9eafb0c6:event:22222222:toolu_w6_back",
@@ -1375,7 +1421,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu3",
@@ -1392,7 +1439,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu4",
@@ -1409,7 +1457,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_cp",
@@ -1426,7 +1475,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:main:commit:92a7691fff92b4011f9ec5f5ec55b4b50ce92952",
@@ -1440,10 +1490,11 @@
    "grade": "record",
    "ref": "commit:92a7691fff92b4011f9ec5f5ec55b4b50ce92952",
    "count": 1,
-   "label": "92a7691 cli: the command line",
+   "label": "92a7691 cli: the command line (cherry-pick of 23cb2f0)",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:16:00.000Z"
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu5",
@@ -1460,7 +1511,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "spawn:lane:22222222:main:event:22222222:toolu_ag1",
@@ -1477,7 +1529,8 @@
    "label": "Write the user guide",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "spawn:lane:22222222:main:event:22222222:toolu_ag2",
@@ -1494,7 +1547,8 @@
    "label": "Add the HTTP API",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:7a8b9cadbecfd0e8:event:22222222:toolu_a2_write",
@@ -1511,7 +1565,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:app/api.py:event:22222222:toolu_a2_write",
@@ -1528,7 +1583,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": true
+   "copy": true,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:6a7b8c9daebfc0d7:event:22222222:toolu_a1_edit",
@@ -1545,7 +1601,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:docs/guide.md:event:22222222:toolu_a1_edit",
@@ -1562,7 +1619,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "outside:lane:22222222:6a7b8c9daebfc0d7:event:22222222:toolu_a1_outside",
@@ -1579,7 +1637,8 @@
    "label": "/home/dev/notes/plan.md",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:7a8b9cadbecfd0e8:event:22222222:toolu_a2_test",
@@ -1596,7 +1655,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:tests/test_api.py:event:22222222:toolu_a2_test",
@@ -1613,7 +1673,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": true
+   "copy": true,
+   "committed": null
   },
   {
    "id": "refused:lane:22222222:6a7b8c9daebfc0d7:event:22222222:toolu_a1_push",
@@ -1630,7 +1691,8 @@
    "label": "auto mode classifier: pushes to a shared remote",
    "ok": false,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:7a8b9cadbecfd0e8:event:22222222:toolu_a2_edit",
@@ -1647,7 +1709,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "change:file:tests/test_api.py:event:22222222:toolu_a2_edit",
@@ -1664,7 +1727,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": true
+   "copy": true,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:6a7b8c9daebfc0d7:event:22222222:toolu_a1_commit",
@@ -1681,7 +1745,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:6a7b8c9daebfc0d7:commit:0a95f6e53eac38f2b464a205ae2bab3872bcb774",
@@ -1698,7 +1763,8 @@
    "label": "0a95f6e guide: explain the import file",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:35:30.000Z"
   },
   {
    "id": "step:lane:22222222:6a7b8c9daebfc0d7:event:22222222:toolu_a1_back",
@@ -1715,7 +1781,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:7a8b9cadbecfd0e8:event:22222222:toolu_a2_commit",
@@ -1732,7 +1799,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:22222222:7a8b9cadbecfd0e8:commit:2d045414144e90cce7824c493e2195517476e99f",
@@ -1749,7 +1817,8 @@
    "label": "2d04541 api: serve the rows over http",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:39:00.000Z"
   },
   {
    "id": "step:lane:22222222:7a8b9cadbecfd0e8:event:22222222:toolu_a2_back",
@@ -1766,7 +1835,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "step:lane:22222222:main:event:22222222:toolu_tu6",
@@ -1783,7 +1853,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   },
   {
    "id": "commit:lane:unknown:commit:e4fe8111d3f92bc5b951f2f1a89d1375f4cd8d5c",
@@ -1800,7 +1871,8 @@
    "label": "e4fe811 widget: bump the version",
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": "2026-03-02T09:41:00.000Z"
   },
   {
    "id": "evidence:file:pyproject.toml:commit:e4fe8111d3f92bc5b951f2f1a89d1375f4cd8d5c",
@@ -1817,7 +1889,8 @@
    "label": null,
    "ok": null,
    "shared": false,
-   "copy": false
+   "copy": false,
+   "committed": null
   }
  ],
  "links": [
@@ -2273,5 +2346,9 @@
   "vendor_more_files": 2,
   "vendor_lists_unavailable": 0,
   "coverage_paths": 0
+ },
+ "rules": {
+  "collision": "a second agent wrote the file, in the same checkout, after the first wrote it and before the first is recorded stopping or 600 seconds passed since its last write; a change list Claude Code marks as possibly a concurrent command's is never counted",
+  "outside": "a file tool call whose path lies outside the repo and its worktrees"
  }
 }

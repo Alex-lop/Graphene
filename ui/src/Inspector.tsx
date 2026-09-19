@@ -27,8 +27,16 @@ const Block = ({ title, children }: { title: string; children: ReactNode }): Rea
   </section>
 );
 
-const laneRef = (lane: Lane): string =>
-  lane.agent ? `agent:${(lane.session ?? "").slice(0, 8)}:${lane.agent}` : lane.session ? `session:${lane.session.slice(0, 8)}` : lane.id;
+// A lane's record, in the graph's own reference scheme: an agent's row; for a Workflow group, the
+// Workflow call that spawned its members. The main agent is the session, which has no single record.
+const laneRef = (graph: Graph, lane: Lane): string | null => {
+  if (lane.agent) return `agent:${(lane.session ?? "").slice(0, 8)}:${lane.agent}`;
+  if (lane.kind !== "group") return null;
+  const members = new Set(graph.lanes.filter((l) => l.group === lane.id).map((l) => l.id));
+  return graph.links.find((l) => l.kind === "spawned" && members.has(l.target))?.ref ?? null;
+};
+
+const unique = <T,>(items: T[]): T[] => Array.from(new Set(items));
 
 const name = (lane: Lane | undefined): string =>
   lane?.task ?? lane?.label ?? (lane?.kind === "main" ? "main agent" : lane?.kind === "unknown" ? "no recorded agent" : "agent");
@@ -43,8 +51,10 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
   const rows = new Map(graph.rows.map((r) => [r.id, r]));
   const marks = new Map(graph.marks.map((m) => [m.id, m]));
   const path = (id: string): string => rows.get(id)?.path ?? id;
-  const change = (row: string, agent: string): Mark | undefined =>
-    graph.marks.find((m) => m.region === "rows" && m.at === row && m.agent === agent);
+  // the mark a link cites: same row, same record; else the agent's mark of that grade on the row
+  const change = (link: { ref: string; grade: Grade }, row: string, agent: string): Mark | undefined =>
+    graph.marks.find((m) => m.region === "rows" && m.at === row && m.ref === link.ref) ??
+    graph.marks.find((m) => m.region === "rows" && m.at === row && m.agent === agent && m.grade === link.grade);
 
   let body: ReactNode = null;
   let heading = "Nothing selected";
@@ -63,7 +73,7 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
         {lane.prompt && (
           <Block title="What it was asked">
             <p className="prompt">{lane.prompt}</p>
-            <Ref of={laneRef(lane)} />
+            {laneRef(graph, lane) && <Ref of={laneRef(graph, lane)!} />}
           </Block>
         )}
         <dl className="facts">
@@ -72,20 +82,27 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
           {!lane.worktree && lane.cwd && <Fact label="working directory">{lane.cwd}</Fact>}
           <Fact label="span">{between(lane.t0, lane.t1)}</Fact>
           <Fact label="duration">{duration(lane.t0, lane.t1)}</Fact>
-          {lane.session && (
+          {lane.kind === "main" && lane.session && <Fact label="session">{lane.session.slice(0, 8)}</Fact>}
+          {laneRef(graph, lane) && (
             <Fact label="record">
-              <Ref of={laneRef(lane)} />
+              <Ref of={laneRef(graph, lane)!} />
             </Fact>
           )}
         </dl>
         {touched.length > 0 && (
-          <Block title={`Files (${touched.length})`}>
+          <Block title={`Files (${unique(touched.map((l) => l.target)).length})`}>
             <ul className="list">
-              {touched.map((link) => (
-                <li key={link.id}>
-                  <code className="path">{path(link.target)}</code>
-                  <span className="grade">{words(link.grade, change(link.target, lane.id))}</span>
-                  <Ref of={link.ref} />
+              {unique(touched.map((l) => l.target)).map((target) => (
+                <li key={target}>
+                  <code className="path">{path(target)}</code>
+                  {touched
+                    .filter((l) => l.target === target)
+                    .map((link) => (
+                      <span key={link.id} className="evidence">
+                        <span className="grade">{words(link.grade, change(link, target, lane.id))}</span>
+                        <Ref of={link.ref} />
+                      </span>
+                    ))}
                 </li>
               ))}
             </ul>
@@ -143,16 +160,17 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
       <>
         <dl className="facts">
           <Fact label="first seen">{stamp(row.t0)}</Fact>
-          <Fact label="two agents at once">{row.collision ? "yes, while the first still held it" : "no"}</Fact>
+          <Fact label="two agents at once">{row.collision ? "yes" : "no"}</Fact>
         </dl>
+        {row.collision && <p className="rule">{graph.rules.collision}</p>}
         {touched.length > 0 && (
-          <Block title={`Touched by (${touched.length})`}>
+          <Block title={`Touched by (${unique(touched.map((l) => l.source)).length})`}>
             <ul className="list">
               {touched.map((link) => (
                 <li key={link.id}>
                   <span className="who">{name(lanes.get(link.source))}</span>
                   {row.kind === "dir" && <code className="path">{path(link.target)}</code>}
-                  <span className="grade">{words(link.grade, change(link.target, link.source))}</span>
+                  <span className="grade">{words(link.grade, change(link, link.target, link.source))}</span>
                   <Ref of={link.ref} />
                 </li>
               ))}
@@ -160,13 +178,20 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
           </Block>
         )}
         {carried.length > 0 && (
-          <Block title={`Commits (${carried.length})`}>
+          <Block title={`Commits (${unique(carried.map((l) => l.target)).length})`}>
             <ul className="list">
-              {carried.map((link) => (
-                <li key={link.id}>
-                  <code className="path">{marks.get(link.target)?.label ?? link.target}</code>
-                  <span className="grade">{words(link.grade)}</span>
-                  <Ref of={link.ref} />
+              {unique(carried.map((l) => l.target)).map((target) => (
+                <li key={target}>
+                  <code className="path">{marks.get(target)?.label ?? target}</code>
+                  {carried
+                    .filter((l) => l.target === target)
+                    .map((link) => (
+                      <span key={link.id} className="grade">
+                        {row.kind === "dir" ? `${path(link.source)}: ` : ""}
+                        {words(link.grade)}
+                      </span>
+                    ))}
+                  <Ref of={marks.get(target)?.ref ?? target} />
                 </li>
               ))}
             </ul>
@@ -182,7 +207,8 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
     body = (
       <>
         <dl className="facts">
-          <Fact label="made at">{stamp(commit.t)}</Fact>
+          <Fact label="committed">{stamp(commit.committed ?? commit.t)}</Fact>
+          {commit.committed && commit.committed !== commit.t && <Fact label="the call began">{stamp(commit.t)}</Fact>}
           <Fact label="ran on">{name(lanes.get(commit.at))}</Fact>
           <Fact label="credited to">{name(lanes.get(commit.agent ?? commit.at))}</Fact>
           <Fact label="record">
@@ -206,10 +232,11 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
     sub = "select a lane, a row or a mark";
     body = (
       <dl className="facts">
-        <Fact label="records drawn">{graph.omitted.records ?? 0}</Fact>
-        <Fact label="merged into counts">{graph.omitted.merged_into_counts ?? 0}</Fact>
-        <Fact label="files the vendor would not list">{graph.omitted.vendor_more_files ?? 0}</Fact>
-        <Fact label="shell calls whose file list the vendor did not return">
+        <Fact label="records read">{graph.omitted.records ?? 0}</Fact>
+        <Fact label="marks drawn">{graph.marks.length}</Fact>
+        <Fact label="records merged into another mark's count">{graph.omitted.merged_into_counts ?? 0}</Fact>
+        <Fact label="files Claude Code's shell lists left out">{graph.omitted.vendor_more_files ?? 0}</Fact>
+        <Fact label="shell calls whose list Claude Code could not make">
           {graph.omitted.vendor_lists_unavailable ?? 0}
         </Fact>
       </dl>

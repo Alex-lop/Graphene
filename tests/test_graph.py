@@ -122,6 +122,25 @@ def test_a_check_that_failed_and_was_rerun_green_is_counted_and_linked(store):
     assert spawned.source.startswith("spawn:") and spawned.target == f"lane:{SID[:8]}:a1"
 
 
+def test_a_change_list_the_vendor_marks_as_shared_never_makes_a_collision(tmp_path):
+    """Two agents, 376 ms apart, each with a list flagged `shared`: the vendor itself says either list
+    may belong to the other's command, so neither proves a second writer."""
+    diff = {"changedFiles": [f"{ROOT}/notes.md"], "files": [], "moreFiles": 0, "shared": True}
+    calls = (("s1", "2026-03-02T09:01:00.000Z", "a1"), ("s2", "2026-03-02T09:01:00.376Z", None))
+    with Store.open(tmp_path) as st:
+        st.upsert_session(Session(SID, ROOT, ts(0), ts(9), source="backfill"))
+        for event_id, stamp, agent in calls:
+            call = ToolEvent(
+                event_id, SID, None, stamp, "Bash", {"command": "make notes"}, {"bashEditDiff": diff}
+            )
+            call.agent_id = agent
+            st.add_event(call)
+        graph = build_graph(st, [SID])
+    assert [m.shared for m in marks_of(graph, "change")] == [True, True]  # drawn, and flagged
+    assert graph.counters["collisions"] == 0 and not any(r.collision for r in graph.rows)
+    assert "never counted" in graph.rules["collision"]
+
+
 def assert_every_mark_and_link_is_a_record(graph):
     ids = {lane.id for lane in graph.lanes} | {row.id for row in graph.rows} | {m.id for m in graph.marks}
     for mark in graph.marks:
@@ -217,6 +236,10 @@ def test_the_synthetic_run_draws_what_its_ground_truth_says(run_store):
         "Verify",
     }
     picked = next(m for m in marks_of(graph, "commit") if m.ref == f"commit:{run.SHAS['cp']}")
+    assert picked.label.endswith(f"(cherry-pick of {run.SHAS['w3'][:7]})")
+    assert (
+        picked.committed == "2026-03-02T09:16:00.000Z" and picked.t <= picked.committed
+    )  # git's time, the call's
     assert (
         picked.at.endswith(":main") and picked.agent != picked.at
     )  # run by main, credited to its origin's agent

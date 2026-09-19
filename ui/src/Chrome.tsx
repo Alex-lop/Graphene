@@ -31,9 +31,9 @@ export function Header({
         <h1>{run.repo || "this repo"}</h1>
         <code className="ref">{ids || "no session"}</code>
         <span>
-          {between(run.t0, run.t1)} <span className="muted">{zone(run.t0)}</span>
+          {between(run.started ?? run.t0, run.ended ?? run.t1)} <span className="muted">{zone(run.t0)}</span>
         </span>
-        <span>{duration(run.t0, run.t1)}</span>
+        <span>{duration(run.started ?? run.t0, run.ended ?? run.t1)}</span>
         <span>
           {many(run.agents, "agent")} · {many(run.commits, "commit")} · {many(run.prompts, "prompt")}
         </span>
@@ -105,7 +105,7 @@ export function Rail({
           <code className="ref">{run.id.slice(0, 8)}</code>
           <span className="when">{stamp(run.started_at)}</span>
           <span className="muted">
-            {duration(run.started_at, run.ended_at)} · {many(run.agents, "agent")} · {many(run.files, "file")} ·{" "}
+            {duration(run.started_at, run.ended_at)} · {many(run.agents, "agent")} · {many(run.files, "file")} edited ·{" "}
             {many(run.calls, "call")}
           </span>
         </button>
@@ -164,7 +164,7 @@ export function Footer({ graph }: { graph: Graph }): ReactElement {
             {grade}
           </li>
         ))}
-        <li>
+        <li title={graph.rules.collision}>
           <span className="swatch" /> two agents held the file at once
         </li>
       </ul>

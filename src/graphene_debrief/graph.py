@@ -101,6 +101,7 @@ class Mark:
     ok: bool | None = None
     shared: bool = False
     copy: bool = False
+    committed: str | None = None  # a commit mark: git's committer time (t is when the recorded call began)
 
 
 @dataclass(slots=True)
@@ -128,6 +129,7 @@ class Graph:
     coverage: dict = field(default_factory=dict)
     counters: dict = field(default_factory=dict)
     omitted: dict = field(default_factory=dict)
+    rules: dict = field(default_factory=dict)  # the rules behind a claim the page makes, in words
 
 
 def to_json(graph: Graph, indent: int | None = None) -> str:
@@ -402,6 +404,8 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         rows[row.dir].changes += 1
         if lane not in row.agents:
             row.agents.append(lane)
+        if w.shared:  # the vendor says this list may belong to a concurrent command: no proof of a writer
+            continue
         now = seconds(w.timestamp)
         here = (w.checkout, w.path)  # two copies of a path in two checkouts are two files
         for other, touched in holds.setdefault(here, {}).items():
@@ -451,8 +455,11 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             kind, label, ok = kind_of[id(e)]
             lane_mark(kind, lane, e.timestamp, lane, _ref(e), label, ok)
         for c in commits:
-            label = f"{c.sha[:7]} {c.subject}"
+            label = f"{c.sha[:7]} {c.subject}" + (
+                f" (cherry-pick of {c.origin_sha[:7]})" if c.origin_sha else ""
+            )
             lane_mark("commit", commit_lane[c.sha], commit_at[c.sha], credit(c), f"commit:{c.sha}", label)
+            specs[-1].committed = c.committed_at
         for w in written:
             row = rows[f"file:{w.path}"]
             lane = _lane_id(w.session_id, w.agent_id)
@@ -589,6 +596,10 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
                 for s in sessions
             ],
             "repo": os.path.basename(repo),
+            # the sessions' own start and end, which the card and the rail print too; t0 and t1 are
+            # the first and last recorded moment, which is what the axis spans
+            "started": min(starts, key=seconds) if starts else None,
+            "ended": max((s.ended_at for s in sessions if s.ended_at), key=seconds, default=None),
             "t0": axis.stamps[0] if axis.stamps else None,
             "t1": axis.stamps[-1] if axis.stamps else None,
             "prompts": len(prompts),
@@ -625,5 +636,13 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
             "vendor_more_files": vendor.more_files,
             "vendor_lists_unavailable": vendor.unavailable,
             "coverage_paths": max(0, len(nothing) - PATHS_CAP) + max(0, len(only_commit) - PATHS_CAP),
+        },
+        rules={
+            "collision": (
+                "a second agent wrote the file, in the same checkout, after the first wrote it and before "
+                f"the first is recorded stopping or {int(CLAIM)} seconds passed since its last write; a "
+                "change list Claude Code marks as possibly a concurrent command's is never counted"
+            ),
+            "outside": "a file tool call whose path lies outside the repo and its worktrees",
         },
     )

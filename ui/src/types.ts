@@ -75,6 +75,7 @@ export interface Mark {
   ok: boolean | null;
   shared: boolean;
   copy: boolean;
+  committed: string | null; // a commit mark: git's committer time (t is when the recorded call began)
 }
 
 export interface Link {
@@ -115,6 +116,8 @@ export interface Graph {
   run: {
     sessions: { id: string; source: string; recorded_by: string; started: string | null; ended: string | null }[];
     repo: string;
+    started: string | null; // the sessions' own start and end, as the card and the rail print them
+    ended: string | null;
     t0: string | null;
     t1: string | null;
     prompts: number;
@@ -136,6 +139,7 @@ export interface Graph {
   coverage: Coverage;
   counters: Record<"failed_checks" | "rerun_green" | "refused" | "failures" | "outside" | "collisions", number>;
   omitted: Record<string, number>;
+  rules: Record<"collision" | "outside", string>; // the rule behind a claim the page makes, in words
 }
 
 export interface Run {

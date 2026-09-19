@@ -190,7 +190,7 @@ export function matching(graph: Graph, counter: Counter): Chain {
 
 export const GRADE: Record<Grade, string> = {
   edit: "a recorded edit",
-  shell: "a shell command the vendor listed as changing it",
+  shell: "in Claude Code's list of what a shell command changed",
   commit: "only a commit this agent is recorded making",
   window: "committed during the session by no identifiable agent",
   unknown: "nothing on record",

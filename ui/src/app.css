@@ -254,3 +254,13 @@ svg [hidden] { display: none; }
 .who { color: var(--text); }
 .good { font-size: 12px; color: var(--pass); }
 .bad { font-size: 12px; color: var(--fail); }
+
+/* the rule behind a claim, printed where the claim is made */
+.rule {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.evidence {
+  display: block;
+}

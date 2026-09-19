@@ -13,16 +13,16 @@ never asked for, or what it tried and then abandoned. Graphene does.
 
 ## Install
 
-Once the package is on PyPI (not yet: see the line below for today):
-
-```
-uv tool install graphene-map
-```
-
 Today, from GitHub:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
+```
+
+Once the package is on PyPI (it is not yet, so this line fails today):
+
+```
+uv tool install graphene-map
 ```
 
 Then, once per repo, inside it:
@@ -74,7 +74,8 @@ The map of a run in your browser, served to this machine only: agents as lanes (
 Workflow groups under the agent that spawned them, each with the task it was given), the repo as
 rows, commits and checks on the lane that ran them, and the files nothing accounts for drawn as
 such. `graphene ui --export FILE` writes the same page as one file that opens offline; it carries
-paths, counts, task text and prompts, and no file contents or tool output.
+paths, counts, commit subjects, your prompts, each agent's task, what it was told and what it said
+when it stopped, and no file contents, diffs or tool output. Read it before you send it.
 
 ```
 graphene why src/app/auth.py
@@ -95,7 +96,9 @@ Which prompt wrote this line.
 `graphene why` also names the agent that made each change, the task it was given, and how the
 change is known (a recorded edit, Claude Code's list of what a shell command changed, or the
 recorded command itself). For a file that git shows changed during a session but no record
-explains, it says that: "changed in 2 commits during session 9e5f295d; no recorded write".
+explains, it says that: "changed in 2 commits during session 9e5f295d; no recorded write". For a
+file no session touched it names git's last commit of it, and for a path that does not exist it
+says so.
 
 When you want more: `graphene --json` is the structure behind the card and `graphene ui --json`
 the graph behind the map. `graphene --since 6h` covers a window, `graphene --session ID` one
@@ -104,7 +107,7 @@ session, and `graphene sessions` lists what is recorded, with each session's cov
 
 Changed in 0.2.0: the package is `graphene-map` (the command is still `graphene`). `--explain` and
 `--model` are gone, so no model is called for anything; `--full`, `--md` and `--html` are gone, the
-map replaces them; `graphene debrief` still works as an alias of the card.
+map replaces them; `graphene debrief [SESSION]` still works for scripts that call it, hidden from help.
 
 ## How it works
 
