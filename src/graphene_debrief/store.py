@@ -153,7 +153,7 @@ def ignore_store_dir(root: Path) -> bool:
 
 # Values kept whole however long they are: the vendor's list of files a command changed, what it
 # says about the git operation and the interrupt, and the error text of a failed call.
-RESPONSE_KEPT = frozenset({"bashEditDiff", "gitOperation", "interrupted", "error", "is_interrupt"})
+RESPONSE_KEPT = frozenset({"bashEditDiff", "gitOperation", "interrupted", "is_interrupt"})
 # The same on the way in: a path or a name is never cut, however deep in the payload it sits.
 INPUT_KEPT = frozenset({"file_path", "notebook_path", "path", "description", "subagent_type"})
 

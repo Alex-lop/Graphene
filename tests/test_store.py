@@ -332,3 +332,13 @@ def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_pa
     assert list((tmp_path / ".graphene").glob("*.bak")) == []
     log = (tmp_path / ".graphene" / "ingest.log").read_text()
     assert "run graphene" in log and "Traceback" not in log
+
+
+def test_a_huge_error_keeps_its_ends_instead_of_being_lost_whole(tmp_path):
+    error = "permission denied: " + "x" * (2 * RESPONSE_CAP) + " the last line"
+    with Store.open(tmp_path) as store:
+        store.add_event(
+            ToolEvent("f1", "s", None, "2026-03-01T09:00:00.000Z", "Bash", {}, {"error": error}, False)
+        )
+        kept = store.events("s")[0].response["error"]
+    assert kept.startswith("permission denied") and kept.endswith("the last line") and len(kept) < 10_000
