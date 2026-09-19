@@ -185,6 +185,16 @@ def test_naming_an_older_commit_is_not_making_it():
     assert [(c.session_id, c.event_id) for c in commits] == [(run.S1, "b1"), (None, None)]
 
 
+def test_a_pick_of_a_commit_nobody_is_recorded_making_keeps_its_origin():
+    origin = Commit(run.SHAS["a2"], T % (2, 0), "api: the handler")  # made before any recorded call
+    picked = one(SHA)[0]
+    out = f"[main {SHA[:7]}] api: the handler"
+    pick = bash("b1", 5, f"git cherry-pick {origin.sha[:7]}", {"stdout": out}, agent="picker")
+    credit([origin, picked], [pick])
+    assert (picked.agent_id, picked.event_id, picked.origin_sha) == ("picker", "b1", origin.sha)
+    assert origin.session_id is None  # naming the origin is not making it
+
+
 def test_a_sha_in_a_nested_content_block_is_read():
     commits = one(SHA)
     response = {"content": [{"type": "text", "text": f"x\n{SHA[:7]} parser"}]}

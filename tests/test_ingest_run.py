@@ -22,6 +22,7 @@ from graphene_debrief.sources.claude_code import (
     hook_main,
     ingest_hook_event,
     install_hooks,
+    parse_transcript,
     project_dir_name,
     project_dirs,
 )
@@ -336,6 +337,36 @@ def test_a_hook_event_from_inside_a_worktree_lands_in_the_main_repos_store(scena
     assert not (elsewhere / ".graphene").exists()
     with Store.open(repo) as store:
         assert store.session(S2) is not None
+
+
+def test_a_bad_event_from_inside_a_worktree_logs_to_the_main_repo_and_leaves_the_worktree_alone(scenario):
+    repo, elsewhere, _ = scenario
+    assert hook_main(io.StringIO("this is not json"), cwd=elsewhere) == 0
+    assert not (elsewhere / ".graphene").exists()
+    assert "Traceback" in (repo / ".graphene" / "ingest.log").read_text()
+
+
+def test_an_agent_id_in_an_unknown_shape_is_kept_as_written_not_read_as_the_main_agent(scenario):
+    repo, _, _ = scenario
+    call = {"hook_event_name": "PostToolUse", "session_id": "odd", "tool_name": "Bash", "tool_use_id": "t1"}
+    with Store.open(repo) as store:
+        assert ingest_hook_event(store, call | {"agent_id": 42, "tool_input": {"command": "ls"}}, repo)
+        assert [e.agent_id for e in store.events("odd")] == ["42"]
+
+
+def test_a_workflow_run_is_the_directory_under_workflows_and_nothing_else(tmp_path):
+    """A path can hold a wf_ name anywhere (a worktree, a temp dir); a run is the one under workflows/."""
+    project = tmp_path / "wf_not_a_run" / "projects" / "p"
+    main = project / "11111111.jsonl"
+    plain = project / "11111111" / "subagents" / "agent-aaaa.jsonl"
+    inside = project / "11111111" / "subagents" / "workflows" / "wf_real-123" / "agent-bbbb.jsonl"
+    for file, agent in ((main, None), (plain, "aaaa"), (inside, "bbbb")):
+        file.parent.mkdir(parents=True, exist_ok=True)
+        record = {"type": "user", "cwd": str(tmp_path), "timestamp": "2026-03-02T09:00:00.000Z"}
+        record |= {"agentId": agent, "isSidechain": True} if agent else {}
+        file.write_text(json.dumps(record | {"message": {"role": "user", "content": "go"}}) + "\n")
+    agents = parse_transcript(main, tmp_path).agents
+    assert {a.id: a.workflow_run for a in agents} == {"aaaa": None, "bbbb": "wf_real-123"}
 
 
 # d -- init ----------------------------------------------------------------------------------------

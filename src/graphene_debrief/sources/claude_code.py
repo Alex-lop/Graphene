@@ -395,6 +395,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     prompt_id = event.get("prompt_id")
     if not isinstance(prompt_id, str) or store.prompt(sid, prompt_id) is None:
         prompt_id = store.latest_prompt_id(sid)
+    agent = event.get("agent_id")
     ev = ToolEvent(
         id=str(event.get("tool_use_id") or uuid.uuid4()),
         session_id=sid,
@@ -404,7 +405,9 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         input=tool_input,
         response=response,
         success=ok,
-        agent_id=event.get("agent_id"),
+        # an agent id in a shape this does not know is kept as written: dropping the call loses a
+        # record, and reading it as "no agent" would hand a subagent's call to the main agent
+        agent_id=_text(agent) or (None if agent in (None, "") else json.dumps(agent)),
         cwd=_text(event.get("cwd")),
     )
     attach_file_content(ev, root)
@@ -416,6 +419,7 @@ def hook_main(stdin=None, cwd: Path | None = None) -> int:
     """``graphene ingest hook``: never raises, never writes stdout, always returns 0."""
     root = Path(cwd or os.getcwd())
     try:
+        root = repo_root(root)  # before anything can fail: a log written from a worktree goes to the repo
         raw = (stdin or sys.stdin).read()
         event = json.loads(raw) if raw.strip() else {}
         if not isinstance(event, dict):
@@ -726,8 +730,8 @@ def _meta_of(file: Path) -> dict:
 
 
 def _journal_labels(files: list[Path]) -> dict[str, str]:
-    """A Workflow run's ``journal.jsonl`` is that run's own log, not a transcript: the real ones on
-    this machine hold ``{type, agentId, key, result}`` and no label, so this is usually empty."""
+    """A Workflow run's ``journal.jsonl`` is that run's own log, not a transcript. Some of its records
+    carry a ``label`` for an agent and many carry none, so an agent's label is often empty."""
     labels: dict[str, str] = {}
     for file in files:
         for record in iter_records(file):
@@ -759,7 +763,14 @@ def _parse_agent(
         cwd=next((r["cwd"] for r in records if _text(r.get("cwd"))), None),
         worktree=_text(meta.get("worktreePath")),
         # the wf_ directory is named after the parent Workflow call's runId
-        workflow_run=next((p for p in file.parts if p.startswith("wf_")), None),
+        workflow_run=next(
+            (
+                run
+                for above, run in zip(file.parts, file.parts[1:], strict=False)
+                if above == "workflows" and run.startswith("wf_")
+            ),
+            None,
+        ),
         phase=_text(meta.get("workflowPhase")),
         depth=meta.get("spawnDepth") if isinstance(meta.get("spawnDepth"), int) else None,
         started_at=min(stamps) if stamps else None,

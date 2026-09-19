@@ -104,8 +104,8 @@ def credit(commits: list[Commit], events: list[ToolEvent]) -> None:
                         _claim(made, e, None)
             elif verb == "cherry-pick":
                 origin = next(iter(named(" ".join(segment[1:]), by_prefix)), None)
-                if origin is None or origin.session_id is None:
-                    continue  # the origin is outside the window, or no record says who made it
+                if origin is None:
+                    continue  # the origin is outside the window: nothing here says what was copied
                 for made in named(e.response, by_prefix):
                     if made is not origin and _during(made, e):
                         _claim(made, e, origin)
@@ -150,7 +150,8 @@ def _claim(commit: Commit, e: ToolEvent, origin: Commit | None) -> None:
     if commit.session_id is not None:
         return
     commit.session_id = e.session_id
-    commit.agent_id = origin.agent_id if origin else e.agent_id
+    # a pick of a commit nobody is recorded making is still this call's commit, with its origin kept
+    commit.agent_id = origin.agent_id if origin and origin.session_id else e.agent_id
     commit.event_id = e.id
     commit.origin_sha = origin.sha if origin else None
 
