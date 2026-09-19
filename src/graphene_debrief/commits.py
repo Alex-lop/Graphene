@@ -8,10 +8,10 @@ or by subject: patch-id was tested and fails on exactly the conflicted picks.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -54,7 +54,8 @@ def sync_commits(store: Store, root: Path | str, session_ids: list[str]) -> None
 
 def window(root: Path, start: str, end: str) -> list[Commit]:
     """Every commit git holds whose committer date lies in the window, newest first, with the paths
-    ``--name-status`` lists for it (a rename contributes its new path). One ``git log`` call."""
+    ``--name-status`` lists for it (a rename contributes its new path), and for a merge the ``--cc``
+    paths ``git show`` prints, so a conflict resolution counts. One ``git log`` call."""
     try:
         proc = subprocess.run(
             [
@@ -65,6 +66,7 @@ def window(root: Path, start: str, end: str) -> list[Commit]:
                 "--all",
                 f"--since={start[:19]}Z",
                 f"--until={end[:19]}Z",
+                "--cc",
                 "--name-status",
                 f"--format={FORMAT}",
             ],
@@ -109,14 +111,28 @@ def credit(commits: list[Commit], events: list[ToolEvent]) -> None:
 
 def named(response: object, by_prefix: dict[str, Commit]) -> list[Commit]:
     """The commits a response names, by a 7-to-40 character prefix of the SHA in any field
-    (``stdout`` and ``content`` both occur, in transcripts and hook events; so does a bare string)."""
-    text = response if isinstance(response, str) else json.dumps(response, default=str)
+    (``stdout`` and ``content`` both occur, in transcripts and hook events; so does a bare string).
+    Each string is read as it stands, not as a dump of the response: JSON writes a newline as
+    backslash-n, and that letter swallows the word boundary before a SHA that begins a line."""
     found: dict[str, Commit] = {}
-    for token in HEX.findall(text):
-        commit = by_prefix.get(token[:7])
-        if commit is not None and commit.sha.startswith(token):
-            found[commit.sha] = commit
+    for text in _strings(response):
+        for token in HEX.findall(text):
+            commit = by_prefix.get(token[:7])
+            if commit is not None and commit.sha.startswith(token):
+                found[commit.sha] = commit
     return list(found.values())
+
+
+def _strings(value: object) -> Iterator[str]:
+    """Every string a response holds, at any depth: a bare one, a field, a list of content blocks."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
 
 
 def _claim(commit: Commit, e: ToolEvent, origin: Commit | None) -> None:

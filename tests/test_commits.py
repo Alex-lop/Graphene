@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from graphene_debrief.attribute import attribute
-from graphene_debrief.commits import credit, sync_commits
+from graphene_debrief.commits import credit, sync_commits, window
 from graphene_debrief.graph import build_graph, to_json
 from graphene_debrief.model import Commit, Prompt, Session, ToolEvent
 from graphene_debrief.record import changes, coverage
@@ -96,6 +96,37 @@ def test_one_git_log_reads_the_window_and_no_git_show_reads_a_commit(store, repo
     assert [[a for a in call if a in ("log", "show")] for call in seen] == [["log"], ["log"]]
 
 
+WIDE = ("2000-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")  # a window no test commit falls outside
+
+
+def test_a_merge_contributes_the_files_it_resolved(tmp_path):
+    """Law 7's denominator is every path ``git show --name-only`` lists, and for a merge those are
+    the files the conflict resolution touched. Plain ``--name-status`` prints none of them."""
+    root = tmp_path / "merged"
+    root.mkdir()
+    git(root, "init", "-q")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "README.md").write_text("one\n")
+    git(root, "add", "README.md")
+    git(root, "commit", "-q", "-m", "init")
+    trunk = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(root, "checkout", "-q", "-b", "side")
+    (root / "README.md").write_text("side\n")
+    git(root, "commit", "-q", "-a", "-m", "side")
+    git(root, "checkout", "-q", trunk)
+    (root / "README.md").write_text("trunk\n")
+    git(root, "commit", "-q", "-a", "-m", "trunk")
+    subprocess.run(["git", "merge", "side"], cwd=root, capture_output=True, text=True)  # conflicts
+    (root / "README.md").write_text("both\n")
+    git(root, "add", "README.md")
+    git(root, "commit", "-q", "-m", "merge side")
+    sha = git(root, "rev-parse", "HEAD").strip()
+
+    found = {c.sha: [path for path, _ in c.files] for c in window(root, WIDE[0], WIDE[1])}
+    assert found[sha] == git(root, "show", "--name-only", "--format=", sha).split() == ["README.md"]
+
+
 # 2 -- the credit rule ---------------------------------------------------------------------------
 
 
@@ -130,6 +161,25 @@ def test_a_commit_named_by_two_agents_belongs_to_the_earlier_call():
         ],
     )
     assert (commits[0].agent_id, commits[0].event_id) == ("first", "b1")
+
+
+def test_a_sha_on_a_later_line_of_the_response_is_read_like_the_first():
+    """`git log --oneline -3` prints one commit per line; only the first begins the string."""
+    other = run.SHAS["a2"]
+    commits = one(SHA) + [Commit(other, T % (4, 0), "api: the handler")]
+    for separator in ("\n", "\r\n", "\t"):
+        for c in commits:
+            c.session_id = c.event_id = None
+        out = f"{other[:7]} api: the handler{separator}{SHA[:7]} parser: read the import file"
+        credit(commits, [bash("b1", 5, "git commit -q -m x && git log --oneline -3", {"stdout": out})])
+        assert [c.session_id for c in commits] == [run.S1, run.S1], separator
+
+
+def test_a_sha_in_a_nested_content_block_is_read():
+    commits = one(SHA)
+    response = {"content": [{"type": "text", "text": f"x\n{SHA[:7]} parser"}]}
+    credit(commits, [bash("b1", 5, "git commit -q -m x", response)])
+    assert commits[0].event_id == "b1"
 
 
 def test_a_call_that_ran_no_git_commit_credits_nothing():
@@ -199,7 +249,10 @@ def git(root: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True).stdout
 
 
-def test_two_overlapping_sessions_are_not_both_credited_the_same_change(tmp_path):
+def two_sessions(tmp_path: Path, on_disk: str, payload_in: str = "") -> dict[str, list[tuple]]:
+    """Two sessions off one base revision, each running the same `sed` over README.md; ``payload_in``
+    also holds an Edit record for it. Both reconstruct base -> the file on disk, so both would be
+    credited the one change."""
     root, kept = tmp_path / "repo", tmp_path / "store"
     root.mkdir()
     kept.mkdir()
@@ -210,22 +263,54 @@ def test_two_overlapping_sessions_are_not_both_credited_the_same_change(tmp_path
     git(root, "add", "README.md")
     git(root, "commit", "-q", "-m", "init")
     head = git(root, "rev-parse", "HEAD").strip()
-    (root / "README.md").write_text("one\nthree\n")  # what both sessions find on disk now
+    (root / "README.md").write_text(on_disk)  # what both sessions find on disk now
     with Store.open(kept) as store:
         for sid, ends in (("s1", 30), ("s2", 50)):  # windows overlap; s2 ends last
             store.upsert_session(Session(sid, str(root), T % (0, 0), T % (ends, 0), head_at_start=head))
             store.add_prompt(Prompt(f"p-{sid}", sid, 1, T % (1, 0), "tidy the readme"))
+            if sid == payload_in:
+                store.add_event(
+                    ToolEvent(
+                        f"e-{sid}",
+                        sid,
+                        f"p-{sid}",
+                        T % (2, 0),
+                        "Edit",
+                        {"file_path": str(root / "README.md")},
+                        {},
+                        True,
+                        None,
+                        "README.md",
+                        "one\ntwo\n",
+                        "one\nTWO\n",
+                    )
+                )
             store.add_event(
                 ToolEvent(
                     f"b-{sid}",
                     sid,
                     f"p-{sid}",
-                    T % (2, 0),
+                    T % (3, 0),
                     "Bash",
                     {"command": "sed -i '' 's/two/three/' README.md"},
                     {"stdout": ""},
                 )
             )
         results = attribute(store, ["s1", "s2"], root)
-    told = {sid: [(c.added, c.removed, c.strategy) for c in r.changes] for sid, r in results.items()}
-    assert told == {"s1": [(0, 0, "later")], "s2": [(1, 1, "git")]}
+    return {sid: [(c.added, c.removed, c.strategy) for c in r.changes] for sid, r in results.items()}
+
+
+def test_two_overlapping_sessions_are_not_both_credited_the_same_change(tmp_path):
+    assert two_sessions(tmp_path, "one\nthree\n") == {"s1": [(0, 0, "later")], "s2": [(1, 1, "git")]}
+
+
+def test_the_session_holding_a_payload_record_keeps_the_change_over_the_later_one(tmp_path):
+    """Evidence before time: s2 ends last but only ran a command; s1 has the record of the write."""
+    told = two_sessions(tmp_path, "one\nthree\n", payload_in="s1")
+    assert told == {"s1": [(1, 1, "git")], "s2": [(0, 0, "later")]}
+
+
+def test_an_empty_diff_is_credited_to_nobody_and_taken_from_nobody(tmp_path):
+    """Neither session is told its diff went elsewhere when there is no diff to go anywhere."""
+    told = two_sessions(tmp_path, "one\ntwo\n")
+    assert told == {"s1": [(0, 0, "git")], "s2": [(0, 0, "git")]}
