@@ -67,9 +67,9 @@ def test_two_hundred_sessions_load_once_and_are_not_read_again(tmp_path, monkeyp
         read: list[str] = []
         parse = claude_code.parse_transcript
 
-        def counting_parse(path, root):
+        def counting_parse(path, root, *args):
             read.append(path.stem)
-            return parse(path, root)
+            return parse(path, root, *args)
 
         monkeypatch.setattr(claude_code, "parse_transcript", counting_parse)
         start = time.monotonic()

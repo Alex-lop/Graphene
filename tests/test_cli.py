@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from graphene_debrief import store as store_module
 from graphene_debrief.cli import build
-from graphene_debrief.sources.claude_code import project_dir_name
+from graphene_debrief.sources.claude_code import HOOK_EVENTS, project_dir_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
@@ -75,13 +75,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert "SessionStart" in first.output
     settings = json.loads((repo / ".claude" / "settings.local.json").read_text())
     assert not (repo / ".claude" / "settings.json").exists()  # the team's file is never touched
-    assert set(settings["hooks"]) == {
-        "SessionStart",
-        "UserPromptSubmit",
-        "PostToolUse",
-        "PostToolUseFailure",
-        "Stop",
-    }
+    assert set(settings["hooks"]) == set(HOOK_EVENTS)
     assert not (repo / ".gitignore").exists() and not (repo / ".graphene").exists()  # nothing recorded yet
     assert "already installed" in run("init").output
     from graphene_debrief.store import Store

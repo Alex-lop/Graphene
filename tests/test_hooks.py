@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from graphene_debrief.sources.claude_code import hook_main, ingest_hook_event, install_hooks
+from graphene_debrief.sources.claude_code import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
 from graphene_debrief.store import Store, ignore_store_dir
 
 T0 = "2026-01-01T10:00:00.000Z"
@@ -250,7 +250,7 @@ def test_install_hooks_merges_and_is_idempotent(repo):
         )
     )
     added = install_hooks(repo)
-    assert added == ["SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop"]
+    assert added == list(HOOK_EVENTS)
     merged = json.loads(settings.read_text())
     assert merged["enabledPlugins"] == {"x": True}
     post = merged["hooks"]["PostToolUse"]
