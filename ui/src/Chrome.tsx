@@ -9,6 +9,8 @@ import type { Graph, Run } from "./types";
 
 const COUNTERS: Counter[] = ["failed_checks", "rerun_green", "refused", "failures", "outside", "collisions"];
 
+const many = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 export function Header({
   graph,
   chip,
@@ -30,7 +32,7 @@ export function Header({
         </span>
         <span>{duration(run.t0, run.t1)}</span>
         <span>
-          {run.agents} agents · {run.commits} commits · {run.prompts} prompts
+          {many(run.agents, "agent")} · {many(run.commits, "commit")} · {many(run.prompts, "prompt")}
         </span>
       </div>
       <div className="coverage" data-testid="coverage">
@@ -100,7 +102,8 @@ export function Rail({
           <code className="ref">{run.id.slice(0, 8)}</code>
           <span className="when">{stamp(run.started_at)}</span>
           <span className="muted">
-            {duration(run.started_at, run.ended_at)} · {run.agents} agents · {run.files} files · {run.calls} calls
+            {duration(run.started_at, run.ended_at)} · {many(run.agents, "agent")} · {many(run.files, "file")} ·{" "}
+            {many(run.calls, "call")}
           </span>
         </button>
       ))}

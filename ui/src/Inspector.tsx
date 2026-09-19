@@ -68,9 +68,11 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
           {!lane.worktree && lane.cwd && <Fact label="working directory">{lane.cwd}</Fact>}
           <Fact label="span">{between(lane.t0, lane.t1)}</Fact>
           <Fact label="duration">{duration(lane.t0, lane.t1)}</Fact>
-          <Fact label="record">
-            <Ref of={laneRef(lane)} />
-          </Fact>
+          {lane.session && (
+            <Fact label="record">
+              <Ref of={laneRef(lane)} />
+            </Fact>
+          )}
         </dl>
         {touched.length > 0 && (
           <Block title={`Files (${touched.length})`}>
@@ -144,8 +146,8 @@ export function Inspector({ graph, selection }: { graph: Graph; selection: Selec
             <ul className="list">
               {touched.map((link) => (
                 <li key={link.id}>
-                  <code className="path">{path(link.target)}</code>
                   <span className="who">{name(lanes.get(link.source))}</span>
+                  {row.kind === "dir" && <code className="path">{path(link.target)}</code>}
                   <span className="grade">{words(link.grade, change(link.target, link.source))}</span>
                   <Ref of={link.ref} />
                 </li>

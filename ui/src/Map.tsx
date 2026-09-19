@@ -28,9 +28,9 @@ interface Props {
   lit: Chain | null;
 }
 
-// A member of a closed group or directory keeps its element and stops being drawn; SVG has no
-// `hidden` in React's typings, so it goes on as the plain attribute it is.
-const away = (gone: boolean): { hidden?: "" } => (gone ? { hidden: "" } : {});
+// A member of a closed group or directory keeps its element and stops being drawn. React's SVG
+// typings have no `hidden`, and an empty string would be dropped as a falsy boolean attribute.
+const away = (gone: boolean): { hidden?: true } => (gone ? { hidden: true } : {});
 
 const clip = (text: string, width: number, per: number): string => {
   const room = Math.floor(width / per);
@@ -79,15 +79,16 @@ function Glyph({ mark, colour }: { mark: Mark; colour: string }): ReactElement {
 export function MapView({ graph, open, toggle, selection, select: choose, lit }: Props): ReactElement {
   const box = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
-  const [width, setWidth] = useState(900);
+  const [{ width, tall }, setBox] = useState({ width: 900, tall: 400 });
   const [t, setT] = useState<ZoomTransform>(zoomIdentity);
 
   useEffect(() => {
     const node = box.current;
     if (!node) return;
-    const watch = new ResizeObserver(() => setWidth(node.clientWidth));
+    const measure = () => setBox({ width: node.clientWidth, tall: node.clientHeight });
+    const watch = new ResizeObserver(measure);
     watch.observe(node);
-    setWidth(node.clientWidth);
+    measure();
     return () => watch.disconnect();
   }, []);
 
@@ -118,7 +119,8 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
   const lanes = laneRegion(graph, open);
   const rows = rowRegion(graph, open);
   const ROWS_Y = TOP + lanes.height + GAP;
-  const height = ROWS_Y + rows.height + 12;
+  const content = ROWS_Y + rows.height + 12;
+  const height = Math.max(content, tall); // the time grid runs the whole canvas, not just the rows
   const colour = hues(graph);
   const px = (x: number): number => GUTTER + t.applyX(x);
   const laneMid = (id: string): number => TOP + (lanes.y.get(id) ?? 0) + LANE_H / 2;
@@ -202,20 +204,20 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
               <rect className="hit" x={0} y={y} width={width} height={LANE_H} />
               <line className="guide" x1={GUTTER} y1={y + LANE_H / 2} x2={width} y2={y + LANE_H / 2} />
               <line
-                className="lane-line"
                 clipPath="url(#plot)"
                 x1={px(lane.x0)}
                 y1={y + LANE_H / 2}
                 x2={px(lane.x1)}
                 y2={y + LANE_H / 2}
+                className={`lane-line ${(colour.get(lane.id) ?? -1) < 0 ? "neutral" : ""}`}
                 stroke={tint(lane.id)}
                 strokeDasharray={dash(colour.get(lane.id))}
               />
               <g clipPath="url(#names)">
                 {group ? (
-                  <g className="caret" onClick={(e) => (e.stopPropagation(), toggle(lane.id))}>
-                    <rect x={4} y={y + 6} width={16} height={16} fill="transparent" />
-                    <path d={open.has(lane.id) ? "M7,10L17,10L12,17Z" : "M9,8L17,13L9,18Z"} />
+                  <g className="caret" transform={`translate(0,${y})`} onClick={(e) => (e.stopPropagation(), toggle(lane.id))}>
+                    <rect x={2} y={4} width={20} height={20} fill="transparent" />
+                    <path d={open.has(lane.id) ? "M7,11L17,11L12,18Z" : "M9,9L16,14L9,19Z"} />
                   </g>
                 ) : (
                   <rect x={indent + 6} y={y + LANE_H / 2 - 5} width={3} height={10} rx={1.5} fill={tint(lane.id)} />
@@ -252,9 +254,9 @@ export function MapView({ graph, open, toggle, selection, select: choose, lit }:
               <rect className={`band ${dir ? "dir" : ""} ${row.collision ? "collide" : ""}`} x={0} y={y} width={width} height={ROW_H} />
               <g clipPath="url(#names)">
                 {dir ? (
-                  <g className="caret" onClick={(e) => (e.stopPropagation(), toggle(row.id))}>
-                    <rect x={4} y={y + 3} width={16} height={16} fill="transparent" />
-                    <path d={open.has(row.id) ? "M7,7L17,7L12,14Z" : "M9,5L17,10L9,15Z"} />
+                  <g className="caret" transform={`translate(0,${y})`} onClick={(e) => (e.stopPropagation(), toggle(row.id))}>
+                    <rect x={2} y={1} width={20} height={20} fill="transparent" />
+                    <path d={open.has(row.id) ? "M7,8L17,8L12,15Z" : "M9,6L16,11L9,16Z"} />
                   </g>
                 ) : null}
                 <text x={dir ? 24 : 38} y={y + ROW_H / 2 + 4} className={`path ${dir ? "dir" : ""}`}>
