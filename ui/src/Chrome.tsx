@@ -66,6 +66,7 @@ export function Header({
             key={name}
             type="button"
             data-counter={name}
+            title={name === "outside" ? graph.rules.outside : name === "collisions" ? graph.rules.collision : undefined}
             className={`chip ${chip === name ? "on" : ""}`}
             disabled={graph.counters[name] === 0}
             aria-pressed={chip === name}
