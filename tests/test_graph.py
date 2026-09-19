@@ -239,6 +239,23 @@ def test_the_synthetic_run_draws_what_its_ground_truth_says(run_store):
     assert [b["seconds"] for b in graph.axis["breaks"]] == [830.0, 180.0]
 
 
+def test_marks_come_out_in_the_order_the_page_draws_and_culls_them(run_store):
+    """x order, because the page finds what is on screen by bisecting on it, and a step under the
+    mark at the same place that says more, because the page draws in this order and the last drawn
+    takes the click."""
+    graph = build_graph(run_store, [run.S1])
+    assert [m.x for m in graph.marks] == sorted(m.x for m in graph.marks)
+    where = [(m.at, m.x) for m in graph.marks]
+    covered = 0
+    for i, mark in enumerate(graph.marks):
+        if mark.kind != "commit":
+            continue
+        steps = [j for j, place in enumerate(where) if place == where[i] and graph.marks[j].kind == "step"]
+        covered += len(steps)
+        assert all(j < i for j in steps), f"a step is drawn over {mark.id}"
+    assert covered == 8  # the git-commit call of every commit an agent is recorded making
+
+
 def test_two_sessions_share_one_axis_and_their_common_file_collides(run_store):
     graph = build_graph(run_store, [run.S1, run.S2])
     assert [r.path for r in graph.rows if r.collision and r.kind == "file"] == ["app/util.py", "app/api.py"]

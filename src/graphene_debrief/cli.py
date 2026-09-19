@@ -171,7 +171,6 @@ def build():
         session_id: str | None,
         since: str | None,
         as_json: bool = False,
-        html: Path | None = None,
     ) -> None:
         r = root()
         with loaded_store(r) as store:
@@ -183,29 +182,20 @@ def build():
                 empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
             result = build_debrief(store, ids, r)
             store.add_debrief_run(ids, now_iso())
-        if html is None and not as_json and not (result.files_changed or result.commits):
+        if not as_json and not (result.files_changed or result.commits):
             n, p = len(result.sessions), result.prompt_count
             empty(
                 f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
                 f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}"
             )
-        if html:
-            from .export_html import render as render_html
-
-            try:
-                html.parent.mkdir(parents=True, exist_ok=True)
-                html.write_text(render_html(result), encoding="utf-8")
-            except OSError as exc:
-                fail(f"cannot write {html}: {exc.strerror or exc}", 1)
-            errors.print(f"wrote {html}")
         if as_json:
             sys.stdout.write(to_json(result) + "\n")
-        elif not html:
-            if console.is_terminal:
-                print_card(console, result)
-            else:  # piped or redirected: the markdown text itself, unrendered
-                sys.stdout.write(render_card(result))
-            hooks_hint(r)
+            return
+        if console.is_terminal:
+            print_card(console, result)
+        else:  # piped or redirected: the markdown text itself, unrendered
+            sys.stdout.write(render_card(result))
+        hooks_hint(r)
 
     @cli.callback(invoke_without_command=True)
     def main(
@@ -280,14 +270,9 @@ def build():
         session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
         since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
-        html: Path = typer.Option(
-            None,
-            "--html",
-            help="Write a self-contained HTML record of the selected sessions to this file.",
-        ),
     ) -> None:
         """The short session card: an alias of plain `graphene`, kept for scripts that call it."""
-        show(session_id, since, as_json=as_json, html=html)
+        show(session_id, since, as_json=as_json)
 
     @cli.command()
     def init() -> None:

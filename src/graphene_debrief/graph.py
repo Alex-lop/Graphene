@@ -604,7 +604,9 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         },
         lanes=sorted(lanes.values(), key=lambda lane: (lane.y, lane.dy)),
         rows=sorted(rows.values(), key=lambda r: (r.y, r.dy)),
-        marks=sorted(drawn, key=lambda m: (m.region, m.x, m.id)),
+        # by x, which is how the page finds the marks on screen, and a plain step before anything
+        # at the same x, so the mark that says more is the one on top and the one a click reaches
+        marks=sorted(drawn, key=lambda m: (m.x, m.kind != "step", m.id)),
         links=sorted(links.values(), key=lambda item: item.id),
         tasks=sorted(tasks.values(), key=lambda t: t["x"]),
         coverage=coverage_counts(cov)
