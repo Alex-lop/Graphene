@@ -346,21 +346,44 @@ def build():
         session: list[str] = typer.Option(
             None, "--session", help="A session id or unique prefix; repeat it to put several on one axis."
         ),
+        export: Path = typer.Option(None, "--export", help="Write the map as one self-contained HTML file."),
+        no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
         as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
     ) -> None:
         """The map of a run: agents, files, commits and checks, drawn from the records."""
-        from .graph import build_graph, to_json
+        import webbrowser
 
-        with loaded_store(root()) as store:
+        from .graph import build_graph, to_json
+        from .server import export_html, make_server
+
+        r = root()
+        with loaded_store(r) as store:
             try:
                 ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
             except ValueError as exc:
                 fail(str(exc))
-            graph = build_graph(store, ids)
-        if as_json:
-            sys.stdout.write(to_json(graph) + "\n")
-            return
-        fail("the page is not built yet; `graphene ui --json` prints the graph it will draw", 1)
+            if as_json:
+                sys.stdout.write(to_json(build_graph(store, ids)) + "\n")
+                return
+            if export:
+                try:
+                    export.parent.mkdir(parents=True, exist_ok=True)
+                    export.write_text(export_html(store, ids), encoding="utf-8")
+                except OSError as exc:
+                    fail(f"cannot write {export}: {exc.strerror or exc}", 1)
+                errors.print(f"wrote {export}")
+                return
+        server = make_server(r, ids)
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
+        say(f"{url}  (this machine only; Ctrl-C stops it)")
+        if not no_open:
+            webbrowser.open(url)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
 
     @cli.command()
     def sessions() -> None:
