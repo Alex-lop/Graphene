@@ -1,12 +1,14 @@
 """The map's contract: positions are computed in Python, final once drawn, and every mark is a record."""
 
 import json
+import sys
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from graphene_debrief.graph import BREAK, CAPTION, MARK_CAP, build_graph
+from graphene_debrief.graph import BREAK, CAPTION, MARK_CAP, build_graph, to_json
 from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
 from graphene_debrief.record import seconds
 from graphene_debrief.store import Store
@@ -172,3 +174,87 @@ def test_past_the_cap_marks_merge_further_and_the_omitted_counts_agree_with_the_
     assert graph.axis["bucket"] > 10 and len(graph.marks) <= MARK_CAP
     assert_every_mark_and_link_is_a_record(graph)
     assert sum(m.count for m in marks_of(graph, "change")) == 4 * MARK_CAP
+
+
+# -- the synthetic run: tests/fixtures/make_run_fixture.py ----------------------------------------
+
+sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
+import make_run_fixture as run  # noqa: E402
+
+GOLDEN = Path(__file__).parent / "fixtures" / "run_graph.json"
+
+
+@pytest.fixture
+def run_store(tmp_path):
+    with Store.open(tmp_path) as st:
+        run.load(st)
+        yield st
+
+
+def test_the_golden_graph_of_the_synthetic_run_is_pinned(run_store):
+    assert to_json(build_graph(run_store, [run.S1]), indent=1) + "\n" == GOLDEN.read_text(encoding="utf-8")
+
+
+def test_the_synthetic_run_draws_what_its_ground_truth_says(run_store):
+    graph = build_graph(run_store, [run.S1])
+    assert_every_mark_and_link_is_a_record(graph)
+    want = run.expected()["coverage"][run.S1]
+    assert {key: graph.coverage[key] for key in want} == want
+    assert graph.coverage["paths"] == {
+        "commit": ["app/gen_a.py", "app/gen_b.py"],
+        "nothing": ["pyproject.toml"],
+    }
+    kinds = [lane.kind for lane in graph.lanes]
+    assert (kinds.count("main"), kinds.count("group"), kinds.count("agent"), kinds.count("unknown")) == (
+        1,
+        1,
+        8,
+        1,
+    )
+    group = next(lane for lane in graph.lanes if lane.kind == "group")
+    assert group.members == 6 and {lane.phase for lane in graph.lanes if lane.group == group.id} == {
+        "Build",
+        "Verify",
+    }
+    picked = next(m for m in marks_of(graph, "commit") if m.ref == f"commit:{run.SHAS['cp']}")
+    assert (
+        picked.at.endswith(":main") and picked.agent != picked.at
+    )  # run by main, credited to its origin's agent
+    assert [r.path for r in graph.rows if r.collision and r.kind == "file"] == ["app/util.py"]
+    assert {m.at for m in graph.marks if m.copy} == {
+        "file:app/api.py",
+        "file:app/cli.py",
+        "file:tests/test_api.py",
+    }
+    assert {m.at for m in graph.marks if m.shared} == {"file:app/core.py"}
+    assert graph.omitted["vendor_more_files"] == 2 and len(graph.tasks) == 3
+    assert graph.counters == {
+        "failed_checks": 1,
+        "rerun_green": 1,
+        "refused": 1,
+        "failures": 0,
+        "outside": 1,
+        "collisions": 1,
+    }
+    assert [b["seconds"] for b in graph.axis["breaks"]] == [830.0, 180.0]
+
+
+def test_two_sessions_share_one_axis_and_their_common_file_collides(run_store):
+    graph = build_graph(run_store, [run.S1, run.S2])
+    assert [r.path for r in graph.rows if r.collision and r.kind == "file"] == ["app/util.py", "app/api.py"]
+    assert len({lane.session for lane in graph.lanes if lane.kind == "main"}) == 2
+    assert_every_mark_and_link_is_a_record(graph)
+
+
+@pytest.mark.parametrize("sessions", [[run.S1], [run.S1, run.S2]])
+def test_no_mark_lane_or_row_of_the_synthetic_run_moves_as_it_grows(run_store, sessions):
+    assert assert_no_jitter(run_store, sessions) > 40
+
+
+if __name__ == "__main__":  # regenerate the golden graph after a deliberate change to the contract
+    import tempfile
+
+    with Store.open(Path(tempfile.mkdtemp())) as s:
+        run.load(s)
+        GOLDEN.write_text(to_json(build_graph(s, [run.S1]), indent=1) + "\n", encoding="utf-8")
+    print(f"wrote {GOLDEN}")
