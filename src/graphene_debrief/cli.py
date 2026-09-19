@@ -342,6 +342,27 @@ def build():
         raise typer.Exit(hook_main())
 
     @cli.command()
+    def ui(
+        session: list[str] = typer.Option(
+            None, "--session", help="A session id or unique prefix; repeat it to put several on one axis."
+        ),
+        as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
+    ) -> None:
+        """The map of a run: agents, files, commits and checks, drawn from the records."""
+        from .graph import build_graph, to_json
+
+        with loaded_store(root()) as store:
+            try:
+                ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
+            except ValueError as exc:
+                fail(str(exc))
+            graph = build_graph(store, ids)
+        if as_json:
+            sys.stdout.write(to_json(graph) + "\n")
+            return
+        fail("the page is not built yet; `graphene ui --json` prints the graph it will draw", 1)
+
+    @cli.command()
     def sessions() -> None:
         """List the recorded sessions, newest first."""
         with loaded_store(root()) as store:
