@@ -128,6 +128,8 @@ def template(change: FileChange) -> str:
     counts = f"+{change.added}/−{change.removed}"
     if change.strategy == "deferred":
         return f"Touched {name}; its diff for this session is credited to a later prompt."
+    if change.strategy == "later":
+        return f"Touched {name}; its diff is credited to a later session, which is where it ends."
     if change.strategy == "none" and change.effect == "deleted":
         return f"Deleted {name} through a shell command (no content available)."
     if change.effect == "reverted" and change.strategy != "payload":
@@ -377,6 +379,8 @@ def _what(f: FileLine) -> str:
         return f"{f.effect} (no diff available)"
     if f.strategy == "deferred":
         return "modified (diff credited to a later prompt)"
+    if f.strategy == "later":
+        return "modified (diff credited to a later session)"
     return f"{f.effect} +{f.added}/−{f.removed}"
 
 
@@ -667,7 +671,7 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
 def _effect_text(f: FileLine) -> Text:
     """The effect and counts of one file line: dim words, green `+N`, red `−N`."""
     out = Text()
-    if f.effect == "reverted" or f.strategy in ("none", "deferred"):
+    if f.effect == "reverted" or f.strategy in ("none", "deferred", "later"):
         out.append(_what(f), "dim")
         return out
     out.append(f"{f.effect} ", "dim")

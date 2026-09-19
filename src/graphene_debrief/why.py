@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .attribute import GitState, attribute_session
+from .attribute import Attribution, GitState, attribute_session, credit_once
 from .debrief import FileLine, template
-from .model import FileChange
+from .model import FileChange, Prompt, Session
 from .store import Store
 
 
@@ -83,6 +83,7 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
     name = os.path.basename(rel)
     git = GitState(root)
     entries: list[WhyEntry] = []
+    done: list[tuple[Session, list[Prompt], Attribution]] = []
     for session in store.sessions():
         events = store.events(session.id)
         touched = any(
@@ -92,8 +93,10 @@ def _why_rel(store: Store, root: Path, rel: str) -> list[WhyEntry]:
         if not touched:
             continue
         prompts = store.prompts(session.id)
+        done.append((session, prompts, attribute_session(session, prompts, events, root, git)))
+    credit_once([(session, result) for session, _, result in done])
+    for session, prompts, result in done:
         by_id = {p.id: p for p in prompts}
-        result = attribute_session(session, prompts, events, root, git)
         for change in result.changes:
             if change.path != rel:
                 continue
