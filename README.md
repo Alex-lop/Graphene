@@ -25,6 +25,23 @@ Today, from GitHub:
 uv tool install git+https://github.com/Alex-lop/Graphene
 ```
 
+Then, once per repo, inside it:
+
+```
+graphene init
+```
+
+This adds Graphene's hook to the repo's `.claude/settings.local.json` (yours, not the team's
+`settings.json`; if an earlier version put it in `settings.json`, it is upgraded there). It is step
+two, not an extra, for two reasons. Claude Code deletes transcripts after 30 days by default, and
+a session the hook recorded stays in the store after its transcript is gone. And the hook sees
+what a transcript may no longer hold by the time you look: the working directory of every call,
+when each subagent started and stopped, and, when Claude Code records it, its own list of the files
+a shell command changed. `init` also prints the one line only you can add to your own
+`~/.claude/settings.json` to make Claude Code record that list in every session; without it a file
+an agent writes through the shell traces to its commit at best. Without `init` Graphene still reads
+the transcripts that exist.
+
 ## Use
 
 Run Claude Code on the repo as you normally do. When you come back, inside the repo:
@@ -34,9 +51,30 @@ graphene
 ```
 
 Graphene reads the transcripts Claude Code keeps for the repo (the first time takes a couple of
-seconds; after that only what changed) and prints the card: the latest session, or every session
-that ended since the last time you ran it. In a repo where Claude Code has not run yet it says so,
-and where it looked.
+seconds; after that only what changed) and prints the card for the latest session that did
+something, or for every such session that ended since the last time you ran it. In a repo where
+Claude Code has not run yet it says so, and where it looked.
+
+Every card carries a coverage line, and it is never one number:
+
+```
+12 committed files · 9 traced to a recorded write (6 edit, 3 shell) · 2 only to an agent's commit · 1 to nothing
+```
+
+Of the files the session's commits changed (every path, no exclusions): how many trace to a write
+Claude Code recorded (an edit payload, or its list of what a shell command changed), how many only
+to a commit an agent is recorded making, and how many to nothing at all. When a record is missing,
+Graphene says so instead of staying quiet.
+
+```
+graphene ui
+```
+
+The map of a run in your browser, served to this machine only: agents as lanes (subagents and
+Workflow groups under the agent that spawned them, each with the task it was given), the repo as
+rows, commits and checks on the lane that ran them, and the files nothing accounts for drawn as
+such. `graphene ui --export FILE` writes the same page as one file that opens offline; it carries
+paths, counts, task text and prompts, and no file contents or tool output.
 
 ```
 graphene why src/app/auth.py
@@ -54,13 +92,19 @@ Which prompt wrote this line.
 
 ![graphene why PATH:LINE](docs/assets/why-line.svg)
 
-When you want more: `graphene --json` is the structure behind the card; `graphene debrief --html
-FILE` writes a self-contained page, a timeline of prompts and files that opens offline and is safe
-to send to a teammate. `graphene --since 6h` covers a window, `graphene --session ID` one session,
-and `graphene sessions` lists what is recorded.
-`graphene init` installs hooks in the repo's `.claude/settings.local.json` (yours, not the team's
-`settings.json`) so sessions are recorded live, with exact prompt boundaries and the commit each
-session started from; without it Graphene keeps reading the transcripts.
+`graphene why` also names the agent that made each change, the task it was given, and how the
+change is known (a recorded edit, Claude Code's list of what a shell command changed, or the
+recorded command itself). For a file that git shows changed during a session but no record
+explains, it says that: "changed in 2 commits during session 9e5f295d; no recorded write".
+
+When you want more: `graphene --json` is the structure behind the card and `graphene ui --json`
+the graph behind the map. `graphene --since 6h` covers a window, `graphene --session ID` one
+session, and `graphene sessions` lists what is recorded, with each session's coverage
+(`graphene sessions --all` includes sessions that made no calls). Times are local, with the offset.
+
+Changed in 0.2.0: the package is `graphene-map` (the command is still `graphene`). `--explain` and
+`--model` are gone, so no model is called for anything; `--full`, `--md` and `--html` are gone, the
+map replaces them; `graphene debrief` still works as an alias of the card.
 
 ## How it works
 
@@ -88,7 +132,10 @@ rerun. No model is involved at any point. The heuristics and their failure modes
   writes is `.claude/settings.local.json`, on `init`.
 - Transcripts can contain secrets, so files outside the repo are recorded by path only: their content
   is dropped before it reaches the store.
-- Delete `.graphene/` to forget everything; Graphene rebuilds it from the transcripts next time.
+- The store no longer keeps what it never used: the content a `Read` call returned is not stored,
+  and any output or input string over 8 KB is kept as its first and last 4 KB.
+- Delete `.graphene/` to forget everything. Graphene rebuilds what the transcripts still hold next
+  time; a session only the hook recorded, whose transcript Claude Code has since deleted, is gone.
 
 ## Requirements
 
@@ -97,10 +144,10 @@ needed), and Claude Code. Run it inside the repo you ran Claude Code in.
 
 ## Where this is going
 
-This release is the record: what happened, and why, attributable to the request that caused it. Next
-come rules a person sets on a repo, enforced through the same hooks and landing in the same record,
-and after that the agent's plan as something you can see and shape. The order and the reasons are in
-[docs/ROADMAP.md](docs/ROADMAP.md).
+This release is the record and the first map of it. Next the map goes live while a run is going,
+then come rules a person sets on the map, enforced through the same hooks and landing in the same
+record. Graphene never runs an agent and nothing on the map will edit an agent's plan. The reasons
+are in [docs/PRODUCT_THESIS.md](docs/PRODUCT_THESIS.md).
 
 ## License
 
