@@ -418,7 +418,9 @@ _LOCATIVE = re.compile(
 _STRIP = "\"'`()[]{}<>,:;!?*"
 
 
-def named_scopes(prompt_text: str, paths: list[str], goals: list[str] | None = None) -> list[str]:
+def named_scopes(
+    prompt_text: str, paths: list[str], goals: list[str] | None = None, root: Path | None = None
+) -> list[str]:
     """File scopes the prompt names: path-like tokens (``auth.py``, ``src/app/``, ``.env``) and bare
     words after in/under/inside/within/into/at that are a directory of one of ``paths``.
 
@@ -427,6 +429,7 @@ def named_scopes(prompt_text: str, paths: list[str], goals: list[str] | None = N
     Directories are returned with a trailing slash.
     """
     scopes: list[str] = []
+    lowered = [path.lower() for path in paths]
     for raw in prompt_text.split():
         token = raw
         while True:  # peel quotes, brackets and a sentence-ending period, in any order
@@ -445,7 +448,13 @@ def named_scopes(prompt_text: str, paths: list[str], goals: list[str] | None = N
         last = token.rsplit("/", 1)[-1]
         if is_dir or "/" in token or _FILE_TOKEN.match(token):
             if not is_dir and not _FILE_TOKEN.match(last):
-                is_dir = True  # a slash path whose last part has no extension is a directory
+                # a slash word with no extension is a directory when a changed path lies in it or
+                # the repo has it: "and/or" and "broad/high level" are prose, and a false scope
+                # flags real work. Without a repo to ask, a slash word is taken at its word.
+                held = any(("/" + low).find("/" + token + "/") >= 0 for low in lowered)
+                if root is not None and not held and not (root / raw.strip(_STRIP + "./")).is_dir():
+                    continue
+                is_dir = True
             if not is_dir and _spec_like(token):
                 if goals is not None:
                     goals.append(token)
@@ -476,7 +485,7 @@ def _core_stem(path: str) -> str:
     return stem
 
 
-def unrequested_paths(prompt_text: str, paths: list[str]) -> set[str]:
+def unrequested_paths(prompt_text: str, paths: list[str], root: Path | None = None) -> set[str]:
     """Which of ``paths`` fall outside every scope the prompt names.
 
     Empty when the prompt names no file scope (a goal is not a file list). A file is in scope when a
@@ -484,7 +493,7 @@ def unrequested_paths(prompt_text: str, paths: list[str]) -> set[str]:
     twin by stem, or any file in the same directory (``__init__.py`` included).
     """
     goals: list[str] = []
-    scopes = named_scopes(prompt_text, paths, goals)
+    scopes = named_scopes(prompt_text, paths, goals, root)
     if not scopes:
         return set()
     lowered = {path: path.lower() for path in paths}
@@ -568,7 +577,7 @@ def attribute_session(
         by_pid.setdefault(change.prompt_id or "", []).append(change)
     for pid, changes in by_pid.items():
         prompt = by_prompt.get(pid)
-        flagged = unrequested_paths(prompt.text, [c.path for c in changes]) if prompt else set()
+        flagged = unrequested_paths(prompt.text, [c.path for c in changes], root) if prompt else set()
         for change in changes:
             change.unrequested = change.path in flagged
 

@@ -159,6 +159,16 @@ def test_a_document_the_prompt_names_is_never_flagged_even_though_it_sets_no_sco
     assert unrequested_paths("Update OVERVIEW.md.", paths) == set()  # a document alone names no scope
 
 
+def test_a_slash_in_prose_is_not_a_directory_scope(tmp_path):
+    (tmp_path / "src" / "app").mkdir(parents=True)
+    prose = "That covers the broad/high level picture and/or the details; now write an overview of it."
+    assert named_scopes(prose, ["OVERVIEW.md"], root=tmp_path) == []
+    assert unrequested_paths(prose, ["OVERVIEW.md"], tmp_path) == set()
+    # a directory of the repo is still a scope when nothing under it changed, and so is one that did
+    assert unrequested_paths("tidy src/app and nothing else", ["docs/y.md"], tmp_path) == {"docs/y.md"}
+    assert "lib/gone/" in named_scopes("work in lib/gone", ["lib/gone/x.py"], root=tmp_path)
+
+
 def test_named_scopes():
     assert named_scopes("fix auth.py and utils/", []) == ["auth.py", "utils/"]
     assert named_scopes("read README.md and REBUILD_DIRECTIVE.md then go", []) == []
