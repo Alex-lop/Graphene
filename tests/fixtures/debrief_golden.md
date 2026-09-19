@@ -1,6 +1,6 @@
 # Graphene
 
-**Session sess-gol** · 2026-03-01 09:00 → 10:30 +0000 · 1h 30m · 3 prompts · 3 files (+7/−0)  
+**Session sess-gol** · 2026-03-01 09:00 → 10:30 +0000 · 1h 30m · 3 prompts · 3 files written (+7/−0)  
 **Commits during the session:** none
 
 **Coverage:** no commits in the window, so no committed file to account for

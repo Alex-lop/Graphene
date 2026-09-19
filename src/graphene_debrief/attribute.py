@@ -284,10 +284,12 @@ def nested_checkout(root: Path, rel: str) -> bool:
 
 
 def check_segments(command: str) -> list[str]:
-    """Normalised shell segments that run a test or lint tool (pytest, npm test, cargo test, make, ...)."""
+    """The simple commands in a shell call that run a test or lint tool (pytest, npm test, cargo test,
+    make, ...), as a shell would see them: a tool named inside a quoted string, such as a commit
+    message that says which check passed, is text, not a command, and is never a check."""
     out: list[str] = []
-    for segment in _SEPARATORS.split(strip_heredocs(command)):
-        words = _words(segment)
+    for tokens in shell_segments(command):
+        words = list(tokens)
         while True:  # peel runner prefixes (`uv run`, `python -m`, ...) and their flags, in any order
             for prefix in RUNNER_PREFIXES:
                 if tuple(words[: len(prefix)]) == prefix:
@@ -299,8 +301,24 @@ def check_segments(command: str) -> list[str]:
                     continue
                 break
         if words and _is_checker(os.path.basename(words[0]), words[1:]):
-            out.append(" ".join(segment.split()))
+            out.append(" ".join(_without_redirections(tokens)))
     return out
+
+
+def _without_redirections(tokens: list[str]) -> list[str]:
+    """`pytest -q 2>&1` and `pytest -q > log` run the same check as `pytest -q`."""
+    kept: list[str] = []
+    skip = False
+    for token in tokens:
+        if skip:
+            skip = False
+        elif token in _REDIRECTS:
+            skip = True
+            if kept and kept[-1].isdigit():  # the file descriptor in front of the operator
+                kept.pop()
+        else:
+            kept.append(token)
+    return kept
 
 
 def _is_checker(name: str, rest: list[str]) -> bool:

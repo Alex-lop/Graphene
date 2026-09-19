@@ -311,7 +311,7 @@ def test_why_on_a_path_nothing_touched_is_one_line(repo, transcript):
     run("ingest", "--backfill", "--transcript", str(transcript))
     result = run("why", "nope.txt")
     assert result.exit_code == 1
-    assert one_line(result) == "no recorded prompt changed nope.txt, and no commit in the store changed it"
+    assert one_line(result) == "nope.txt: no such file in this repo, on disk or in git's history"
 
 
 def test_the_card_is_plain_text_when_stdout_is_not_a_terminal(repo, transcript):

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -62,6 +61,8 @@ class Debrief:
     outside_repo: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     coverage: dict = field(default_factory=dict)  # of the window's committed files: the three counts
+    listed: list[str] = field(default_factory=list)  # in Claude Code's shell change lists, no diff recorded
+    unaccounted: dict = field(default_factory=dict)  # the paths behind coverage's last two counts
 
 
 SHELL_LISTS_HINT = (
@@ -79,6 +80,17 @@ def shell_lists_enabled() -> bool:
         return json.loads(config.read_text(encoding="utf-8")).get("bashEditDiffEnabled") is True
     except (OSError, ValueError, AttributeError):
         return False
+
+
+def unaccounted_lines(d: Debrief, limit: int = 5) -> list[str]:
+    """Which files the last two coverage counts are: a number nobody can check is not an account."""
+    out = []
+    for key, label in (("commit", "only in an agent's commit"), ("nothing", "traced to nothing")):
+        paths = d.unaccounted.get(key, [])
+        if paths:
+            more = f" … {len(paths) - limit} more; `graphene ui` lists them all" if len(paths) > limit else ""
+            out.append(f"{label}: " + ", ".join(f"`{p}`" for p in paths[:limit]) + more)
+    return out
 
 
 def coverage_line(c: dict) -> str:
@@ -146,9 +158,11 @@ def select_sessions(
         fresh = [i for i in fresh if store.did_something(i)]
         if fresh:
             return fresh
-    # the latest session that did something: a card about an empty session says nothing
+    # the latest session that did something: a card about an empty session says nothing. Latest is
+    # the one that finished last, which is the one a person comes back to, not the one started last
+    latest = sorted(sessions, key=lambda s: s.ended_at or s.started_at or "", reverse=True)
     for wanted in (store.did_something, store.event_count):
-        for s in reversed(sessions):
+        for s in latest:
             if wanted(s.id):
                 return [s.id]
     return [sessions[-1].id] if sessions else []
@@ -198,6 +212,7 @@ def build_debrief(
 ) -> Debrief:
     now = now or datetime.now(UTC)
     debrief = Debrief(generated_at=iso(now))
+    spans: list[tuple[datetime, datetime]] = []
     results = attribute(store, session_ids, root)
     paths: set[str] = set()
     for sid in session_ids:
@@ -217,7 +232,7 @@ def build_debrief(
             }
         )
         if session.started_at:
-            debrief.wall_seconds += max(0, int((_dt(end) - _dt(session.started_at)).total_seconds()))
+            spans.append((_dt(session.started_at), _dt(end)))
         debrief.prompt_count += len(prompts)
         by_prompt: dict[str, list[FileChange]] = {}
         for change in result.changes:
@@ -292,12 +307,25 @@ def build_debrief(
             for a, b, check in result.reruns
         ]
         debrief.outside_repo += [p for p in result.outside_repo if p not in debrief.outside_repo]
-        debrief.commits += commits_between(root, session.started_at, end)
     debrief.files_changed = len(paths)
+    covered, reach = 0.0, None  # the time the sessions cover together: an overlap is counted once
+    for start, stop in sorted(spans):
+        covered += max(0.0, (stop - max(start, reach or start)).total_seconds())
+        reach = max(stop, reach or stop)
+    debrief.wall_seconds = int(covered)
     from .graph import coverage_counts, run_records  # here: graph imports this module
 
     run = run_records(store, [s["id"] for s in debrief.sessions])
     debrief.coverage = coverage_counts(run.coverage)
+    # one commit list in the product: the card lists the commits its coverage line counts, newest first
+    debrief.commits = [f"{c.sha[:7]} {c.subject}" for c in reversed(run.commits)]
+    debrief.listed = sorted({w.path for w in run.written} - paths)
+    debrief.files_changed += len(debrief.listed)
+    grades = run.coverage.grades
+    debrief.unaccounted = {
+        "commit": sorted(p for p, g in grades.items() if g == "commit"),
+        "nothing": sorted(p for p, g in grades.items() if g == "window"),
+    }
     shell = [e for e in run.events if e.tool == "Bash"]
     listed = any(isinstance(e.response, dict) and "bashEditDiff" in e.response for e in shell)
     if shell and not listed and debrief.coverage["commit"] + debrief.coverage["nothing"]:
@@ -359,22 +387,6 @@ def _denial(error: str) -> tuple[bool, str]:
 
 def _dt(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def commits_between(root: Path, start: str | None, end: str) -> list[str]:
-    if not start or not (root / ".git").exists():
-        return []
-    try:
-        proc = subprocess.run(
-            ["git", "log", "--format=%h %s", f"--since={start}", f"--until={end}"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return proc.stdout.strip().splitlines() if proc.returncode == 0 else []
 
 
 # -- rendering ----------------------------------------------------------------------------------
@@ -485,12 +497,16 @@ def file_rows(d: Debrief) -> list[dict]:
         else:
             effect = "modified"
         out.append({"path": row["path"], "effect": effect, "added": row["added"], "removed": row["removed"]})
+    out += [{"path": p, "effect": LISTED, "added": 0, "removed": 0} for p in d.listed if p not in rows]
     return sorted(out, key=lambda r: (-(r["added"] + r["removed"]), r["path"]))
+
+
+LISTED = "changed by a shell command"  # Claude Code's list names the file; no payload has its diff
 
 
 def _counted(row: dict) -> bool:
     """A reverted file has no net counts; a deletion with none known (a shell `rm`) shows none either."""
-    if row["effect"] == "reverted":
+    if row["effect"] in ("reverted", LISTED):
         return False
     return not (row["effect"] == "deleted" and row["added"] + row["removed"] == 0)
 
@@ -512,7 +528,9 @@ def render_card(d: Debrief, limit: int = 30) -> str:
             else f"**Session {d.sessions[0]['id'][:8]}**"
         )
         prompts = f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''}"
-        files = f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} (+{d.added}/−{d.removed})"
+        files = (
+            f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} written (+{d.added}/−{d.removed})"
+        )
         out.append(f"{head} · {span} · {duration(d.wall_seconds)} · {prompts} · {files}  ")
     noun = "sessions" if many else "session"
     out.append(f"**Commits during the {noun}:** {len(d.commits) or 'none'}")
@@ -521,6 +539,7 @@ def render_card(d: Debrief, limit: int = 30) -> str:
         out.append(f"- … {len(d.commits) - CARD_COMMITS} more; `git log` has them all")
     if d.coverage:
         out += ["", f"**Coverage:** {coverage_line(d.coverage)}"]
+        out += [f"- {line}" for line in unaccounted_lines(d)]
     rows = file_rows(d)
     if rows:
         out += ["", "**Files changed**"]
@@ -624,7 +643,8 @@ def code_text(line: str, width: int | None) -> Text:
 
 
 def _span(d: Debrief) -> str:
-    start, end = stamp(d.sessions[0]["started_at"]), stamp(d.sessions[-1]["ended_at"])
+    ends = [s["ended_at"] for s in d.sessions if s["ended_at"]]
+    start, end = stamp(d.sessions[0]["started_at"]), stamp(max(ends, key=_dt) if ends else None)
     zone = offset(d.sessions[0]["started_at"])
     return f"{start} → {end[11:] if end[:10] == start[:10] else end} {zone}".rstrip()
 
@@ -652,7 +672,7 @@ def _print_header(console, d: Debrief, width: int, commits: int | None) -> None:
 
     counts = Text()
     counts.append(f"{d.prompt_count} prompt{'s' if d.prompt_count != 1 else ''} · ", "dim")
-    counts.append(f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} ", "dim")
+    counts.append(f"{d.files_changed} file{'s' if d.files_changed != 1 else ''} written ", "dim")
     counts.append(f"+{d.added}", "green")
     counts.append("/", "dim")
     counts.append(f"−{d.removed}", "red")
@@ -671,6 +691,8 @@ def _print_header(console, d: Debrief, width: int, commits: int | None) -> None:
         line = Text("coverage ", "dim")
         line.append(coverage_line(d.coverage))
         write_line(console, line, wrap=True)
+        for gap in unaccounted_lines(d):
+            write_indented(console, Text(gap, "dim"), 2, wrap=True)
 
 
 def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD_COMMITS) -> None:
@@ -736,7 +758,7 @@ def _effect_text(f: FileLine) -> Text:
 
 GRADE_WORDS = {
     "edit": "recorded edit",
-    "shell": "in the vendor's list of what a shell command changed",
+    "shell": "in Claude Code's list of what a shell command changed",
     "command": "read from the recorded command",
 }
 
@@ -764,6 +786,20 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
         for line in preview(e.prompt_text).splitlines():
             write_indented(console, Text(f"> {line}", "dim"), 2, wrap=True)
         write_indented(console, Text(e.explanation), 2, wrap=True)
+
+
+def print_writes(console, path: str, subtitle: str, writes: list) -> None:
+    """`why PATH` for a file with recorded writes and no recorded diff: who wrote it, when, how known."""
+    write_line(console, Text(clip_middle(path, max(40, console.width)), ACCENT))
+    for part in subtitle.split("\n"):
+        write_line(console, Text(part, "dim"), wrap=True)
+    for when, session_id, agent, task, grade in writes:
+        write_line(console, Text(""))
+        row = Text(f"{stamp_tz(when)}  session {session_id[:8]}  ", "dim")
+        row.append(GRADE_WORDS.get(grade, grade))
+        write_line(console, row)
+        name = f"agent {agent[:8]}" if agent else "the main agent"
+        write_indented(console, Text(f"by {name}" + (f": {task}" if task else ""), "dim"), 2, wrap=True)
 
 
 COVERAGE_KEY = (

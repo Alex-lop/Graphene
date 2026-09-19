@@ -170,8 +170,8 @@ def _ref(event: ToolEvent) -> str:
 
 def _kind(event: ToolEvent, checks: list[str]) -> tuple[str, str | None, bool | None]:
     """(mark kind, label, ok) for one call on its agent's lane; ``checks`` are its check commands."""
-    if checks:
-        return "check", checks[0], event.success is not False
+    if checks:  # one call can run several; its result is the call's, and the label says all it ran
+        return "check", "; ".join(checks), event.success is not False
     if event.success is False:
         error = event.response.get("error") if isinstance(event.response, dict) else event.response
         refused, reason = _denial(str(error or ""))

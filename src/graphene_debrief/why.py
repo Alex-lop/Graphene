@@ -220,7 +220,9 @@ def commits_of(store: Store, rel: str) -> dict[str | None, list[str]]:
     """The commits that changed a path, by the session whose window holds them, newest session
     first; None gathers the commits made outside every recorded session."""
     rows = store.conn.execute(
-        "SELECT c.sha, c.committed_at FROM commit_files f JOIN commits c USING (sha) WHERE f.path = ?", (rel,)
+        "SELECT c.sha, c.committed_at, c.session_id FROM commit_files f JOIN commits c USING (sha) "
+        "WHERE f.path = ?",
+        (rel,),
     ).fetchall()
     windows = [
         (s.id, seconds(s.started_at), seconds(s.ended_at) if s.ended_at else float("inf"))
@@ -228,9 +230,11 @@ def commits_of(store: Store, rel: str) -> dict[str | None, list[str]]:
         if s.started_at
     ]
     held: dict[str | None, list[str]] = {sid: [] for sid, _, _ in windows} | {None: []}
-    for sha, committed_at in rows:
+    for sha, committed_at, credited in rows:
         at = seconds(committed_at)
-        held[next((sid for sid, start, end in windows if start <= at <= end), None)].append(sha)
+        # the session recorded making a commit holds it, whatever other window it also falls in
+        inside = next((sid for sid, start, end in windows if start <= at <= end), None)
+        held[credited if credited and credited in held else inside].append(sha)
     return {sid: shas for sid, shas in held.items() if shas}
 
 
@@ -253,3 +257,35 @@ def path_coverage(store: Store, rel: str) -> str:
     )
     outside = len(held.get(None, []))
     return line + (f" · {outside} more outside any recorded session" if outside else "")
+
+
+def recorded_writes(store: Store, rel: str) -> list[tuple[str, str, str | None, str | None, str]]:
+    """Every recorded write to a path, newest first: (time, session, agent, its task, grade). This
+    is what `why` shows for a file Claude Code lists as changed by a shell command but whose diff no
+    payload carries, so the file is never called unrecorded while its coverage says it is."""
+    rows = []
+    for session in store.sessions():
+        agents = store.agents(session.id)
+        task = {a.id: a.task for a in agents}
+        for change in changes(store.events(session.id), agents, session.repo)[0]:
+            if change.path == rel:
+                rows.append(
+                    (change.timestamp, session.id, change.agent_id, task.get(change.agent_id), change.grade)
+                )
+    return sorted(rows, reverse=True)
+
+
+def last_commit(root: Path, rel: str) -> tuple[str, str] | None:
+    """(short sha, committer date) of the last commit on any ref that changed the path, if git has one."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--all", "-1", "--format=%h %cI", "--", rel],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha, _, when = out.stdout.strip().partition(" ")
+    return (sha, when) if out.returncode == 0 and sha else None

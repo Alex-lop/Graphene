@@ -37,6 +37,7 @@ def build():
         print_card,
         print_sessions,
         print_why,
+        print_writes,
         render_card,
         select_sessions,
         shell_lists_enabled,
@@ -57,7 +58,15 @@ def build():
         transcripts_for,
     )
     from .store import StaleStore, Store
-    from .why import candidates, commits_of, path_coverage, why_line, why_path
+    from .why import (
+        candidates,
+        commits_of,
+        last_commit,
+        path_coverage,
+        recorded_writes,
+        why_line,
+        why_path,
+    )
 
     LOCKED = (
         "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
@@ -252,15 +261,32 @@ def build():
                 rel = entries[0].change.path if entries else candidates(r, target)[-1]
                 covered = path_coverage(store, rel)
                 if not entries:
+                    writes = recorded_writes(store, rel)
                     held = commits_of(store, rel)
                     told = "; ".join(
                         f"{len(shas)} commit{'s' if len(shas) != 1 else ''} "
                         + (f"during session {sid[:8]}" if sid else "outside any recorded session")
                         for sid, shas in held.items()
                     )
-                    if told:  # git knows the file changed; say so, and that no write was recorded
-                        empty(f"{rel}: changed in {told}; no recorded write. {covered}")
-                    empty(f"no recorded prompt changed {target}, and no commit in the store changed it")
+                    if writes:  # recorded, but no payload carries its diff: show the writes themselves
+                        n = len(writes)
+                        head = (
+                            f"{n} recorded write{'s' if n != 1 else ''}, newest first; no diff was recorded"
+                        )
+                        print_writes(console, rel, head + (f"\n{covered}" if covered else ""), writes)
+                        return
+                    if told:  # git knows the file changed, and that is the answer: no write was recorded
+                        say(f"{rel}: changed in {told}; no recorded write. {covered}")
+                        return
+                    known = last_commit(r, rel)
+                    if known:
+                        empty(
+                            f"no recorded prompt changed {rel}; git last changed it in {known[0]} "
+                            f"({stamp_tz(known[1])}), outside every recorded session"
+                        )
+                    if not (r / rel).exists():
+                        empty(f"{target}: no such file in this repo, on disk or in git's history")
+                    empty(f"no recorded prompt changed {rel}, and git has no commit of it yet")
                 n = len(entries)
                 subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
                 print_why(console, rel, "", subtitle + (f"\n{covered}" if covered else ""), entries)
