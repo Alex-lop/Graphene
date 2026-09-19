@@ -1,0 +1,11 @@
+{
+  "agentType": "general-purpose",
+  "description": "Add the HTTP API",
+  "toolUseId": "toolu_ag2",
+  "spawnDepth": 1,
+  "requestShape": "prompt",
+  "requestNonInteractive": true,
+  "spawnedWithWorktree": true,
+  "worktreePath": "/home/dev/wt/api",
+  "worktreeBranch": "feature/api"
+}
