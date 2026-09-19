@@ -30,12 +30,14 @@ def build():
     from .debrief import (
         ACCENT,
         build_debrief,
+        offset,
         print_card,
         print_sessions,
         print_why,
         render_card,
         select_sessions,
         stamp,
+        stamp_tz,
         to_json,
         write_line,
     )
@@ -229,7 +231,7 @@ def build():
                 for path, when in recent:
                     row = Text()
                     row.append(path.ljust(pad), ACCENT)
-                    row.append("  " + stamp(when), "dim")
+                    row.append("  " + stamp_tz(when), "dim")
                     write_line(console, row)
                 console.file.flush()  # the list before the usage line, whichever stream is captured
                 fail("usage: graphene why <path> | <path>:<line>")
@@ -238,7 +240,7 @@ def build():
                 if answer.content is None:
                     fail(answer.reason, 1)
                 where = (
-                    f"committed in {answer.commit[:7]} ({stamp(answer.committed_at)})"
+                    f"committed in {answer.commit[:7]} ({stamp_tz(answer.committed_at)})"
                     if answer.commit
                     else "not committed"
                 )
@@ -386,9 +388,12 @@ def build():
             server.server_close()
 
     @cli.command()
-    def sessions() -> None:
+    def sessions(
+        everything: bool = typer.Option(False, "--all", help="Also list sessions that made no calls."),
+    ) -> None:
         """List the recorded sessions, newest first."""
         with loaded_store(root()) as store:
+            listed = list(reversed(store.sessions()))
             rows = [
                 (
                     s.id[:8],
@@ -398,8 +403,13 @@ def build():
                     len(store.prompts(s.id)),
                     store.event_count(s.id),
                 )
-                for s in reversed(store.sessions())
+                for s in listed
             ]
-        print_sessions(console, rows)
+        quiet = [r for r in rows if not r[5]]
+        zone = next((offset(s.started_at) for s in listed if s.started_at), "")
+        print_sessions(console, rows if everything else [r for r in rows if r[5]], zone)
+        if quiet and not everything:
+            n = len(quiet)
+            note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")
 
     return cli

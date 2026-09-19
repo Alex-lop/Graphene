@@ -108,8 +108,14 @@ def select_sessions(
     last = store.last_debrief_run()
     if last:
         fresh = [s.id for s in sessions if (s.ended_at or iso(now)) > last.timestamp]
+        fresh = [i for i in fresh if store.did_something(i)]
         if fresh:
             return fresh
+    # the latest session that did something: a card about an empty session says nothing
+    for wanted in (store.did_something, store.event_count):
+        for s in reversed(sessions):
+            if wanted(s.id):
+                return [s.id]
     return [sessions[-1].id] if sessions else []
 
 
@@ -336,8 +342,21 @@ def preview(text: str, lines: int = PROMPT_PREVIEW_LINES, chars: int = PROMPT_PR
     return clipped + ("…" if truncated else "")
 
 
+def _local(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+
+
 def stamp(value: str | None) -> str:
-    return value[:16].replace("T", " ") if value else "?"
+    """A recorded moment in this machine's local time; `offset` says which time that is."""
+    return _local(value).strftime("%Y-%m-%d %H:%M") if value else "?"
+
+
+def offset(value: str | None) -> str:
+    return _local(value).strftime("%z") if value else ""
+
+
+def stamp_tz(value: str | None) -> str:
+    return f"{stamp(value)} {offset(value)}".rstrip()
 
 
 def duration(seconds: int) -> str:
@@ -435,7 +454,7 @@ def render_card(d: Debrief, limit: int = 30) -> str:
 
     out: list[str] = ["# Graphene", ""]
     if d.sessions:
-        span = f"{stamp(d.sessions[0]['started_at'])} → {stamp(d.sessions[-1]['ended_at'])}"
+        span = _span(d)
         head = (
             f"**Sessions {len(d.sessions)}** ({', '.join(s['id'][:8] for s in d.sessions)})"
             if many
@@ -446,7 +465,9 @@ def render_card(d: Debrief, limit: int = 30) -> str:
         out.append(f"{head} · {span} · {duration(d.wall_seconds)} · {prompts} · {files}  ")
     noun = "sessions" if many else "session"
     out.append(f"**Commits during the {noun}:** {len(d.commits) or 'none'}")
-    out += [f"- {c}" for c in d.commits]
+    out += [f"- {c}" for c in d.commits[:CARD_COMMITS]]
+    if len(d.commits) > CARD_COMMITS:
+        out.append(f"- … {len(d.commits) - CARD_COMMITS} more; `git log` has them all")
     rows = file_rows(d)
     if rows:
         out += ["", "**Files changed**"]
@@ -551,7 +572,8 @@ def code_text(line: str, width: int | None) -> Text:
 
 def _span(d: Debrief) -> str:
     start, end = stamp(d.sessions[0]["started_at"]), stamp(d.sessions[-1]["ended_at"])
-    return f"{start} → {end[11:] if end[:10] == start[:10] else end}"
+    zone = offset(d.sessions[0]["started_at"])
+    return f"{start} → {end[11:] if end[:10] == start[:10] else end} {zone}".rstrip()
 
 
 def _section(console, label: str, rows: list[str], width: int, limit: int | None = SECTION_ROWS) -> None:
@@ -667,7 +689,7 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
     for e in entries:
         write_line(console, Text(""))
         row = Text()
-        row.append(f"{stamp(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
+        row.append(f"{stamp_tz(e.timestamp)}  session {e.session_id[:8]}  prompt {e.ordinal}  ", "dim")
         row.append_text(_effect_text(e.change_line()))
         write_line(console, row)
         for line in preview(e.prompt_text).splitlines():
@@ -675,9 +697,9 @@ def print_why(console, path: str, content: str, subtitle: str, entries: list) ->
         write_indented(console, Text(e.explanation), 2, wrap=True)
 
 
-def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]]) -> None:
-    """`graphene sessions`: aligned columns, no box, newest first."""
-    head = ("session", "source", "started", "ended", "prompts", "calls")
+def print_sessions(console, rows: list[tuple[str, str, str, str, int, int]], zone: str = "") -> None:
+    """`graphene sessions`: aligned columns, no box, newest first; ``zone`` is the times' UTC offset."""
+    head = ("session", "source", f"started {zone}".rstrip(), "ended", "prompts", "calls")
     table = [head] + [tuple(str(cell) for cell in row) for row in rows]
     widths = [max(len(row[i]) for row in table) for i in range(len(head))]
     for n, row in enumerate(table):

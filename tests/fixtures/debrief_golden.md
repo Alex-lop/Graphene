@@ -1,6 +1,6 @@
 # Graphene
 
-**Session sess-gol** · 2026-03-01 09:00 → 2026-03-01 10:30 · 1h 30m · 3 prompts · 3 files (+7/−0)  
+**Session sess-gol** · 2026-03-01 09:00 → 10:30 +0000 · 1h 30m · 3 prompts · 3 files (+7/−0)  
 **Commits during the session:** none
 
 **Files changed**

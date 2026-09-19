@@ -195,9 +195,9 @@ def test_backfill_debrief_and_why(repo, transcript):
     history = run("why", "README.md")
     assert history.exit_code == 0, history.output
     assert "1 prompt, newest first" in history.output and "reverted" in history.output
-    assert "+0" not in history.output  # a reverted file has no net counts
+    assert "+0/" not in history.output  # a reverted file has no net counts
     gone = run("why", "scratch.txt")
-    assert gone.exit_code == 0 and "deleted (no diff available)" in gone.output and "+0" not in gone.output
+    assert gone.exit_code == 0 and "deleted (no diff available)" in gone.output and "+0/" not in gone.output
     assert run("why", "nope.txt").exit_code == 1
 
     (repo / "app").mkdir()

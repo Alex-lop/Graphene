@@ -367,7 +367,15 @@ def test_select_sessions(tmp_path):
             )
         )
         store.upsert_session(Session(id="ccc-3", repo="/r", started_at="2026-03-01T11:30:00.000Z"))
-        assert select_sessions(store, now=NOW) == ["ccc-3"]  # no run yet: most recent session
+        assert select_sessions(store, now=NOW) == ["ccc-3"]  # nobody did anything: the most recent session
+        store.add_event(
+            ToolEvent("r1", "aaa-1", None, "2026-02-28T08:30:00.000Z", "Read", {"file_path": "/r/a"})
+        )
+        assert select_sessions(store, now=NOW) == ["aaa-1"]  # the latest that made a call at all
+        for sid, when in (("bbb-2", "2026-03-01T09:00:00.000Z"), ("ccc-3", "2026-03-01T11:40:00.000Z")):
+            write = ToolEvent("w1", sid, None, when, "Write", {"file_path": "/r/a.py"}, file_path="a.py")
+            store.add_event(write)
+        assert select_sessions(store, now=NOW) == ["ccc-3"]  # no run yet: the latest that did something
         assert select_sessions(store, "bbb", now=NOW) == ["bbb-2"]
         with pytest.raises(ValueError):
             select_sessions(store, "zzz", now=NOW)
@@ -378,6 +386,10 @@ def test_select_sessions(tmp_path):
         assert select_sessions(store, now=NOW) == ["bbb-2", "ccc-3"]  # ended after the run, or still open
         store.add_debrief_run(["bbb-2", "ccc-3"], "2026-03-01T13:00:00.000Z")
         assert select_sessions(store, now=NOW) == ["ccc-3"]  # still open, so still fresh
+        store.upsert_session(Session(id="ddd-4", repo="/r", started_at="2026-03-01T13:30:00.000Z"))
+        assert select_sessions(store, now=NOW) == [
+            "ccc-3"
+        ]  # a newer session that did nothing is not the card
 
 
 def test_parse_since_rejects_garbage():
