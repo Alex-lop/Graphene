@@ -1,0 +1,8 @@
+{
+  "agentType": "workflow-agent",
+  "description": "Verify util",
+  "requestNonInteractive": true,
+  "requestShape": "prompt",
+  "spawnDepth": 1,
+  "workflowPhase": "Verify"
+}

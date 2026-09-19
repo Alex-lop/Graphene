@@ -1,0 +1,10 @@
+{
+  "agentType": "workflow-agent",
+  "description": "Build the CLI",
+  "requestNonInteractive": true,
+  "requestShape": "prompt",
+  "spawnDepth": 1,
+  "workflowPhase": "Build",
+  "spawnedWithWorktree": true,
+  "worktreePath": "/home/dev/project/.claude/worktrees/agent-w3"
+}

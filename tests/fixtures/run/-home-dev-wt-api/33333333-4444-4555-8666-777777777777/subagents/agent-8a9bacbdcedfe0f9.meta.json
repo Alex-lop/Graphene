@@ -1,0 +1,8 @@
+{
+  "agentType": "general-purpose",
+  "description": "Lint the API",
+  "toolUseId": "toolu_s2_agent",
+  "spawnDepth": 1,
+  "requestShape": "prompt",
+  "requestNonInteractive": true
+}
