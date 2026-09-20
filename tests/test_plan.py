@@ -421,6 +421,20 @@ def test_a_change_in_another_worktree_of_the_repo_does_not_pass_the_boundary(sto
     assert plan.finish(store, "n1", BOT).state == DONE
 
 
+def test_a_stale_worktree_git_can_no_longer_read_stops_nothing(store, repo, tmp_path, finish):
+    """Found by timing the audit on the author's repo: 33 other worktrees, one of them a directory
+    that was no longer a checkout, and every `node start` would have been refused over it."""
+    import shutil
+
+    stale = tmp_path.parent / f"{tmp_path.name}-stale"
+    git(repo, "worktree", "add", "-q", str(stale), "-b", "stale")
+    shutil.rmtree(stale)
+    stale.mkdir()  # the directory is there, the checkout is not
+    plan.propose(store, [api_node()], ALEX)
+    assert plan.start(store, "n1", BOT, repo).others_at_start == {}
+    assert finish(store, repo, "n1", BOT).state == DONE
+
+
 def test_a_worktree_made_after_the_start_is_compared_with_where_the_node_started(store, repo, tmp_path):
     plan.propose(store, [api_node()], ALEX)
     plan.start(store, "n1", BOT, repo)

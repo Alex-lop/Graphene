@@ -697,7 +697,7 @@ def start(
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, head(checkout), dirty(checkout)
         node.unseen_at_start = unseen(checkout)
-        node.others_at_start = {t: {"head": head(t), "dirty": dirty(t)} for t in other_checkouts(checkout)}
+        node.others_at_start = snapshot_others(checkout)
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
         extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
         _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)
@@ -713,6 +713,19 @@ def other_checkouts(checkout: str | Path) -> list[str]:
         return []
     paths = [os.path.realpath(line[9:]) for line in listed.splitlines() if line.startswith("worktree ")]
     return [p for p in paths if p != here and os.path.isdir(p)]
+
+
+def snapshot_others(checkout: str | Path) -> dict[str, dict]:
+    """HEAD and the dirty paths of each other working tree, as a node starts. A tree git lists and
+    can no longer read (its directory emptied, its .git file gone: this repo had one) is left out;
+    it answers for nothing, and it must not stop a node from starting."""
+    out = {}
+    for tree in other_checkouts(checkout):
+        try:
+            out[tree] = {"head": head(tree), "dirty": dirty(tree)}
+        except (Refused, OSError, subprocess.TimeoutExpired):
+            continue
+    return out
 
 
 def elsewhere(store, node: Node) -> list[str]:

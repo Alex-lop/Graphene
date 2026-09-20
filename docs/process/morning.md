@@ -132,8 +132,9 @@ STATE_OF_MAIN
 - The page in any browser but Playwright's Chromium; keyboard use; a plan of more than 6 nodes on
   the page (50 are laid out in a Python test and never looked at).
 - Two executors at once in one checkout on real agents. `graphene run` inside a worktree.
-- The multi-worktree audit on a repo with many stale worktrees like this one (17): it asks git about
-  each at `start` and `done`; correct in tests, not timed here.
+- Two executors at once in different worktrees of one repo, on real agents (the audit across
+  worktrees is tested, and timed on this repo: 31 readable other trees, 1.2 s at `start`, 0.9 s at
+  `done`; timing it found a stale worktree here that would have refused every `start`, now fixed).
 
 ## Questions (only what blocks the next step)
 
