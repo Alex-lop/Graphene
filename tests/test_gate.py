@@ -102,12 +102,12 @@ def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     assert write(repo, "src/api/users.py") is None  # paused: nothing is enforced
 
 
-def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo):
+def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo, finish):
     """The first real agent run waited for the last node to be done, then made the edit no node
     allowed, and said so: "no node was open. Graphene accepted the write"."""
     holding(repo)
     with Store.open(repo) as store:
-        plan.finish(store, "n1", BOT)
+        finish(store, repo, "n1", BOT)
     assert "propose a node for it" in reason(write(repo, "src/db/schema.py"))
     assert "propose a node for it" in reason(bash(repo, "echo x >> src/db/schema.py"))
     assert hook(repo, "Stop") is None  # it holds nothing, so it may stop
@@ -225,3 +225,36 @@ def test_a_gate_that_crashes_lets_the_call_through_says_so_in_the_log_and_still_
     assert "ZeroDivisionError" in (repo / ".graphene" / "ingest.log").read_text()
     with Store.open(repo) as store:
         assert store.event_count(SID) == 1
+
+
+# -- what the closing review broke ---------------------------------------------------------------------
+
+
+def test_the_plans_store_is_refused_before_any_scope_is_asked(repo):
+    """With a scope of `**`, `rm -rf .graphene` and `echo x > .graphene/pwn` passed the hook."""
+    holding(repo, scope=["**"])
+    assert "the plan's own store" in reason(bash(repo, "echo pwned > .graphene/pwn"))
+    assert "the plan's own store" in reason(bash(repo, "rm -rf .graphene"))
+    assert "the plan's own store" in reason(bash(repo, "sqlite3 .graphene/graphene.db 'select 1'"))
+    assert bash(repo, "graphene plan log > /tmp/log.txt") is None  # its own commands are how to read it
+
+
+def test_a_write_through_a_symbolic_link_that_leaves_the_repo_is_refused(repo, tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_text("original")
+    holding(repo)
+    (repo / "src/api/cache").symlink_to(outside)
+    assert "symbolic link that leaves the repo" in reason(write(repo, "src/api/cache"))
+    assert "symbolic link that leaves the repo" in reason(bash(repo, "echo OWNED > src/api/cache"))
+    (repo / "src/api/store").symlink_to(repo / ".graphene")
+    assert "symbolic link that leaves the repo" in reason(write(repo, "src/api/store/graphene.db", "Write"))
+    assert write(repo, "src/api/users.py") is None  # an ordinary path in scope is untouched by all this
+
+
+def test_a_command_too_long_to_parse_in_time_is_let_through_at_once(repo):
+    import time
+
+    holding(repo)
+    start = time.perf_counter()
+    assert bash(repo, "echo " + "x" * 400_000 + " > src/db/schema.py") is None
+    assert time.perf_counter() - start < 1.0  # parsed, this took 1.4 s, and 3 MB took 234 s

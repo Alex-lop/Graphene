@@ -103,6 +103,7 @@ def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
     assert "waiting on a person: n1 (yours to do)" in mine.stdout
     assert "n2  waiting" in mine.stdout and "waits on n1 (alex's)" in mine.stdout
     person("node", "start", "n1")
+    (repo / "schema.py").write_text("TABLES = ['users']\n")
     person("node", "done", "n1")
     assert "next: n2, use the new table" in agent("plan").stdout
 
@@ -110,6 +111,8 @@ def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
 def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo):
     person("node", "add", "users", "--scope", "api.py", "--check", "true", "--signoff")
     agent("node", "start", "n1")
+    assert "nothing inside its scope (api.py) has changed" in agent("node", "done").stderr
+    (repo / "api.py").write_text("def users():\n    return {}\n")
     assert "finished and waits for a sign-off" in agent("node", "done").stdout
     assert agent("node", "signoff", "n1").exit_code == 1
     assert "n1 (sign off)" in person("plan").stdout
@@ -119,9 +122,11 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     shown = person("node", "show", "n1").stdout
     assert "window 2:" in shown and "released: needs schema.py" in shown  # the contract, then the record
-    assert "`graphene plan log` (7 for n1)" in shown
+    assert "`graphene plan log` (8 for n1)" in shown
     kinds = [line.split()[2] for line in person("plan", "log").stdout.splitlines()]
-    assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
+    assert kinds == [
+        "added", "started", "check_passed", "check_passed", "finished", "reopened", "started", "released"
+    ]  # fmt: skip
 
 
 def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_handed_back(repo):

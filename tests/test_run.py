@@ -106,3 +106,31 @@ def test_claude_is_told_which_session_it_is_and_resumed_on_a_second_attempt():
         "again",
     ]
     assert command_for("codex exec --sandbox workspace-write", "do it", "abc", again=True)[-1] == "do it"
+
+
+def test_an_executor_that_is_not_installed_is_one_line_and_the_node_is_handed_back(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [users_node()], ALEX)
+        with pytest.raises(plan.Refused, match="cannot run `no-such-executor-anywhere`"):
+            run_plan(store, repo, "no-such-executor-anywhere --flag", say=lambda _: None)
+        assert plan.get(store, "n1").state == OPEN  # not left running with nobody on it
+        assert "could not be started" in store.node_log("n1", ("released",))[0]["detail"]["why"]
+
+
+GROWER = """
+import pathlib, time
+from graphene_debrief import plan
+from graphene_debrief.store import Store
+pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
+with Store.open(pathlib.Path(".")) as store:
+    more = {"title": "more", "scope": [f"more{time.time_ns()}.py"], "check": "true"}
+    plan.propose(store, [more], plan.Caller("dev", True))
+"""
+
+
+def test_a_plan_that_grows_while_the_run_is_going_does_not_make_the_run_unbounded(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [users_node()], ALEX)
+        done = run_plan(store, repo, executor(repo, GROWER), say=lambda _: None)
+        assert [n.id for n in done] == ["n1"]
+        assert [n.state for n in plan.nodes(store)] == [DONE, OPEN]  # the new node waits for the next run

@@ -67,11 +67,14 @@ def run_plan(
     """Run every node an agent can reach, in order. Returns the nodes that ended done (or in review)."""
     finished: list[P.Node] = []
     gave_up: set[str] = set()
+    # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
+    # proposal accepted, or an executor adding nodes) does not make an unattended run unbounded.
+    planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     while True:
         ready = [
             n
             for n in P.ready(P.nodes(store), P.Caller("agent", False))
-            if n.id not in gave_up and (not only or n.id in only)
+            if n.id in planned and n.id not in gave_up and (not only or n.id in only)
         ]
         if not ready:
             return finished
@@ -91,9 +94,16 @@ def run_plan(
             )
             env = {**os.environ, "GRAPHENE_NODE": node.id}
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
-            done = subprocess.run(
-                argv, cwd=checkout, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL
-            )
+            try:
+                done = subprocess.run(
+                    argv, cwd=checkout, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL
+                )
+            except OSError as no:  # the executor is not installed, or not executable: nothing ran
+                P.release(store, node.id, who, f"the executor could not be started: {argv[0]}: {no.strerror}")
+                raise P.Refused(
+                    f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
+                    "another executor with --with"
+                ) from None
             if logs is not None:
                 logs.mkdir(parents=True, exist_ok=True)
                 (logs / f"{node.id}-{attempt}.txt").write_text(done.stdout + done.stderr, encoding="utf-8")

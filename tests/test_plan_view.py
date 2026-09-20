@@ -122,14 +122,14 @@ def test_a_running_node_carries_who_holds_it_since_when_and_its_log(store, repo)
     assert shown["log"][0]["actor"] == "alex"
 
 
-def test_the_top_of_the_view_says_what_waits_on_the_person(store, monkeypatch):
+def test_the_top_of_the_view_says_what_waits_on_the_person(store, monkeypatch, repo, finish):
     monkeypatch.setenv("GRAPHENE_PERSON", "alex")
     plan.propose(
         store, [node("a", signoff=True), node("mine", owner="alex"), node("bobs", owner="bob")], ALEX
     )
     plan.propose(store, [node("asked")], BOT)  # a proposal nobody has accepted
     plan.start(store, "a", BOT, store.path.parent.parent)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     view = build_plan_view(store)
     waiting = {item["id"]: item["why"] for item in view["waiting_on_person"]}
     assert set(waiting) == {"a", "mine", "asked"}  # bob's node waits on bob, not on the person looking
@@ -140,10 +140,10 @@ def test_the_top_of_the_view_says_what_waits_on_the_person(store, monkeypatch):
     assert [w["id"] for w in view["forecast"]["waits"]] == ["a", "mine", "bobs", "asked"]
 
 
-def test_archived_nodes_are_not_drawn_and_a_finished_plan_says_it_is_still_in_force(store, repo):
+def test_archived_nodes_are_not_drawn_and_a_finished_plan_says_it_is_still_in_force(store, repo, finish):
     plan.propose(store, [node("a")], ALEX)
     plan.start(store, "a", BOT, repo)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     view = build_plan_view(store, checkout=repo)
     assert view["all_done"] and view["loose"] == []
     (repo / "loose.txt").write_text("after hours")

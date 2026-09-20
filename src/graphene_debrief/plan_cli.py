@@ -127,11 +127,12 @@ def register(cli: typer.Typer, root, open_store, fail):
         wid = max(len(n.id) for n in everything)
         wt = min(44, max(len(n.title) for n in everything))
         wo = max(len(n.owner) for n in everything)
+        ws = min(36, max(len(", ".join(n.scope)) for n in everything))
         for n in everything:
             state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
             out(
                 f"  {n.id.ljust(wid)}  {state.ljust(8)}  {n.title[:wt].ljust(wt)}  {n.owner.ljust(wo)}  "
-                f"{', '.join(n.scope)}  ·  {describe(store, n, by_id)}"
+                f"{', '.join(n.scope).ljust(ws)}  ·  {describe(store, n, by_id)}".rstrip()
             )
         try:
             loose = P.unowned(store, checkout()) if not counts[P.RUNNING] else []
@@ -287,9 +288,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
-            run_plan(
-                store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, r / ".graphene/runs"
-            )
+            logs = r / ".graphene" / "runs"
+            try:
+                run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
+            except P.Refused as no:
+                fail(str(no), 1)
             for line in next_lines(store, P.caller()):
                 out(line)
 

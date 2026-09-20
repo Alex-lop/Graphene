@@ -136,12 +136,12 @@ def hook(repo, name, **extra):
 # -- the windows --------------------------------------------------------------------------------
 
 
-def test_a_node_held_twice_has_a_window_each_with_the_session_that_held_it(store, repo):
+def test_a_node_held_twice_has_a_window_each_with_the_session_that_held_it(store, repo, finish):
     plan.propose(store, [api_node()], ALEX, now=T(0))
     plan.start(store, "n1", BOT, repo, now=T(1))
     plan.release(store, "n1", BOT, "the schema has to change", now=T(2))
     plan.start(store, "n1", BOT2, repo, now=T(3))
-    plan.finish(store, "n1", BOT2, now=T(4))
+    finish(store, repo, "n1", BOT2, now=T(4))
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(9))
     assert [
         (w.n, w.executor, w.session_id, w.started_at, w.ended_at, w.ended_by, w.said) for w in record.windows
@@ -352,16 +352,16 @@ def test_what_was_refused_is_counted_from_the_log(store, repo):
     assert refused.last_check["result"] == "passed"
 
 
-def test_the_persons_acts_are_kept_with_what_they_said(store, repo):
+def test_the_persons_acts_are_kept_with_what_they_said(store, repo, finish):
     plan.propose(store, [api_node(signoff=True)], BOT, now=T(0))
     plan.accept(store, ["n1"], ALEX, now=T(1))
     plan.edit(store, "n1", {"scope": ["src/api/users.py"]}, ALEX, now=T(2))
     plan.start(store, "n1", BOT, repo, now=T(3))
-    plan.finish(store, "n1", BOT, now=T(4))
+    finish(store, repo, "n1", BOT, now=T(4))
     plan.reopen(store, "n1", ALEX, "returns a list, I asked for a dict", now=T(5))
     plan.start(store, "n1", BOT, repo, now=T(6))
     (repo / "README.md").write_text("# changed\n")
-    plan.finish(store, "n1", ALEX, now=T(7), override="the README edit was mine")
+    finish(store, repo, "n1", ALEX, now=T(7), override="the README edit was mine")
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(8))
     assert (record.windows[-1].ended_at, record.windows[-1].ended_by) == (T(7), "overruled")
     acts = record.acts

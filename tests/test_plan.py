@@ -60,6 +60,8 @@ def api_node(**extra):
         ("src/db/schema.py", ["src/api/**"], False),
         ("tests/test_users.py", ["tests/test_*.py"], True),
         ("tests/deep/test_users.py", ["tests/test_*.py"], False),  # * stays inside one directory
+        ("src/a/b.py", ["src/*"], False),  # and so does a bare *: one level, not the subtree
+        ("src/a", ["src/*"], True),
         ("tests/deep/test_users.py", ["**/test_*.py"], True),
         ("test_top.py", ["**/test_*.py"], True),
         ("README.md", ["README.md"], True),
@@ -153,14 +155,14 @@ def test_the_forecast_says_before_the_run_what_will_wait_for_a_person(store):
 # -- taking a node ----------------------------------------------------------------------------------
 
 
-def test_start_is_refused_until_what_it_waits_on_is_done(store, repo):
+def test_start_is_refused_until_what_it_waits_on_is_done(store, repo, finish):
     plan.propose(store, [api_node(id="a"), api_node(id="b", needs=["a"], scope=["README.md"])], ALEX)
     with pytest.raises(Refused, match=r"b waits on a \(open\)"):
         plan.start(store, "b", BOT, repo)
     plan.start(store, "a", BOT, repo)
     with pytest.raises(Refused, match=r"b waits on a \(running\)"):
         plan.start(store, "b", BOT2, repo)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     assert plan.start(store, "b", BOT2, repo).state == RUNNING
 
 
@@ -243,12 +245,12 @@ def test_a_failing_check_keeps_the_node_open_and_graphene_is_the_one_who_ran_it(
     ]
 
 
-def test_a_sign_off_node_waits_in_review_and_only_a_person_signs(store, repo):
+def test_a_sign_off_node_waits_in_review_and_only_a_person_signs(store, repo, finish):
     plan.propose(
         store, [api_node(signoff=True), api_node(title="after", needs=["n1"], scope=["README.md"])], ALEX
     )
     plan.start(store, "n1", BOT, repo)
-    assert plan.finish(store, "n1", BOT).state == REVIEW
+    assert finish(store, repo, "n1", BOT).state == REVIEW
     with pytest.raises(Refused, match=r"n2 waits on n1 \(review\)"):
         plan.start(store, "n2", BOT, repo)
     with pytest.raises(Refused, match="person's to do"):
@@ -257,10 +259,10 @@ def test_a_sign_off_node_waits_in_review_and_only_a_person_signs(store, repo):
     assert plan.start(store, "n2", BOT, repo).state == RUNNING
 
 
-def test_reopen_sends_it_back_with_a_note_the_next_executor_is_told(store, repo):
+def test_reopen_sends_it_back_with_a_note_the_next_executor_is_told(store, repo, finish):
     plan.propose(store, [api_node(signoff=True)], ALEX)
     plan.start(store, "n1", BOT, repo)
-    plan.finish(store, "n1", BOT)
+    finish(store, repo, "n1", BOT)
     node = plan.reopen(store, "n1", ALEX, "returns a list, I asked for a dict")
     assert (node.state, node.rev, node.executor) == (OPEN, 2, None)
     assert plan.notes(store, "n1") == ["returns a list, I asked for a dict"]
@@ -299,16 +301,16 @@ def test_a_person_can_overrule_the_gate_with_a_reason_and_the_log_says_so(store,
     }
 
 
-def test_a_node_beside_it_in_the_same_checkout_is_not_its_stray_change(store, repo):
+def test_a_node_beside_it_in_the_same_checkout_is_not_its_stray_change(store, repo, finish):
     plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
     plan.start(store, "a", BOT, repo)
     plan.start(store, "b", BOT2, repo)
     (repo / "README.md").write_text("# b's work\n")
-    plan.finish(store, "b", BOT2)
-    assert plan.finish(store, "a", BOT).state == DONE
+    finish(store, repo, "b", BOT2)
+    assert finish(store, repo, "a", BOT).state == DONE
 
 
-def test_archive_puts_finished_work_away_but_keeps_what_open_work_waits_on(store, repo):
+def test_archive_puts_finished_work_away_but_keeps_what_open_work_waits_on(store, repo, finish):
     plan.propose(
         store,
         [api_node(id="a"), api_node(id="b", scope=["README.md"]), api_node(id="c", needs=["b"], scope=["x"])],
@@ -316,7 +318,7 @@ def test_archive_puts_finished_work_away_but_keeps_what_open_work_waits_on(store
     )
     for i, who in (("a", BOT), ("b", BOT2)):
         plan.start(store, i, who, repo)
-        plan.finish(store, i, who)
+        finish(store, repo, i, who)
     assert [n.id for n in plan.archive(store, ALEX)] == ["a"]  # c still waits on b
     assert plan.in_force(store)
     with pytest.raises(Refused, match="not in the plan"):
@@ -334,6 +336,77 @@ def test_a_paused_plan_binds_nobody_and_starts_nothing(store, repo):
         plan.start(store, "n1", BOT, repo)
 
 
+# -- what the closing review broke ---------------------------------------------------------------------
+
+
+def test_only_whoever_holds_a_node_finishes_it_or_hands_it_back(store, repo, finish):
+    """The review's first blocker: an agent finished, and released, the person's own running node."""
+    plan.propose(store, [api_node(id="mine", owner="alex"), api_node(id="theirs", scope=["README.md"])], ALEX)
+    plan.start(store, "mine", ALEX, repo)
+    plan.start(store, "theirs", BOT, repo)
+    for node_id in ("mine", "theirs"):
+        with pytest.raises(Refused, match=f"{node_id} is held by .*, not by claude:bbbb2222"):
+            plan.finish(store, node_id, BOT2)
+        with pytest.raises(Refused, match=f"{node_id} is held by"):
+            plan.release(store, node_id, BOT2, "not mine, but I would like it gone")
+    assert finish(store, repo, "theirs", BOT).state == DONE
+    assert plan.release(store, "mine", ALEX, "later").state == OPEN  # a person always may
+
+
+def test_a_symbolic_link_inside_the_scope_that_leaves_the_repo_is_not_inside_the_scope(store, repo, tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_text("original\n")
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/cache").symlink_to(outside)
+    (repo / "src/api/cache").write_text("OWNED\n")  # lands outside the repo
+    with pytest.raises(Refused, match=r"src/api/cache.*is a symbolic link that leaves the repo"):
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_file_git_was_told_to_stop_watching_does_not_pass_the_boundary(store, repo):
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    git(repo, "update-index", "--assume-unchanged", "README.md")
+    (repo / "README.md").write_text("# tampered, and git says nothing changed\n")
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    with pytest.raises(
+        Refused, match="README.md marked assume-unchanged or skip-worktree since it was started"
+    ):
+        plan.finish(store, "n1", BOT)
+    git(repo, "update-index", "--no-assume-unchanged", "README.md")
+    with pytest.raises(Refused, match="outside its scope .*README.md"):
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_line_added_to_the_clones_exclude_file_does_not_hide_a_new_file(store, repo):
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / ".git/info/exclude").write_text("stray.txt\n")
+    (repo / "stray.txt").write_text("hidden from git status\n")
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    with pytest.raises(Refused, match=r"\.git/info/exclude edited since it was started"):
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_node_with_nothing_changed_inside_its_scope_is_not_done(store, repo):
+    """The review ran `graphene run` with an executor that crashed at once; the check already
+    passed, and the node was reported done."""
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    with pytest.raises(Refused, match="nothing inside its scope .* has changed since it was started"):
+        plan.finish(store, "n1", BOT)
+    assert plan.finish(store, "n1", ALEX, override="it was already right").state == DONE
+
+
+def test_a_scope_spelled_in_the_wrong_case_says_so_when_it_refuses(store, repo):
+    plan.propose(store, [api_node(scope=["readme.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "README.md").write_text("# changed\n")
+    with pytest.raises(Refused, match="README.md differs from the scope only in upper and lower case"):
+        plan.finish(store, "n1", BOT)
+
+
 # -- who is asking ------------------------------------------------------------------------------------
 
 
@@ -345,8 +418,23 @@ def test_a_person_is_someone_at_a_terminal_and_nothing_else_is():
     assert plan.caller({"AI_AGENT": "some-new-agent"}, tty=True).person is False
     assert plan.caller({"USER": "Alex"}, tty=True) == Caller("alex", True, None)
     assert plan.caller({"USER": "Alex"}, tty=False) == Caller("a script", False, None)  # unknown executor
-    assert plan.caller({"USER": "alex", "GRAPHENE_AS": "person:sam"}, tty=False) == Caller("sam", True, None)
-    assert plan.caller({"GRAPHENE_AS": "agent:codex"}, tty=True) == Caller("codex", False, None)
+    stand_in = plan.caller({"USER": "alex", "GRAPHENE_AS": "person:sam"}, tty=False)
+    assert stand_in == Caller("sam", True, None, stand_in=True) and stand_in.label == "sam (no terminal)"
+    assert plan.caller({"GRAPHENE_AS": "agent:codex"}, tty=True).person is False
+
+
+def test_inside_an_agents_shell_the_variable_a_script_uses_to_speak_for_a_person_changes_nothing():
+    """The closing review spelled the variable so the hook's text match missed it (`export
+    GRAPHENE$(printf "\\137")AS=person:dev`) and got every person-only act. The agent's own
+    environment now outranks it, wherever it was set and however it was spelled."""
+    forged = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abcdef1234", "GRAPHENE_AS": "person:dev"}
+    assert plan.caller(forged, tty=True) == Caller("claude:abcdef12", False, "abcdef1234")
+    assert plan.caller({"CODEX_SESSION_ID": "01a0", "GRAPHENE_AS": "person:dev"}).person is False
+
+
+def test_a_persons_act_made_without_a_terminal_is_logged_as_such(store):
+    plan.propose(store, [api_node()], Caller("dev", True, None, stand_in=True))
+    assert store.node_log("n1")[0]["actor"] == "dev (no terminal)"
 
 
 # -- between nodes ------------------------------------------------------------------------------------
@@ -368,12 +456,12 @@ def test_work_done_after_the_audited_window_closed_stops_the_next_start(store, r
     assert plan.start(store, "n2", BOT, repo).state == RUNNING
 
 
-def test_a_file_the_person_had_graphene_write_is_not_a_loose_change(store, repo):
+def test_a_file_the_person_had_graphene_write_is_not_a_loose_change(store, repo, finish):
     """The first walkthrough: `graphene ui --export plan.html` in the repo, then the next node would
     not start: "plan.html changed while no node owned it"."""
     plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
     plan.start(store, "a", BOT, repo)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     (repo / "plan.html").write_text("<html>")
     assert plan.unowned(store, repo) == ["plan.html"]
     plan.accept_path(store, repo, repo / "plan.html")
@@ -381,19 +469,19 @@ def test_a_file_the_person_had_graphene_write_is_not_a_loose_change(store, repo)
     assert plan.start(store, "b", BOT2, repo).state == RUNNING
 
 
-def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_them(store, repo):
+def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_them(store, repo, finish):
     plan.propose(store, [api_node(id="a"), api_node(id="b", owner="me", scope=["README.md"])], ALEX)
     plan.start(store, "a", BOT, repo)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     (repo / "notes.txt").write_text("x")
     plan.start(store, "b", ALEX, repo)
     assert store.node_log("b", ("started",))[0]["detail"]["unowned"] == ["notes.txt"]
 
 
-def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, repo):
+def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, repo, finish):
     plan.propose(store, [api_node(id="a"), api_node(id="b"), api_node(id="c", scope=["README.md"])], ALEX)
     plan.start(store, "a", BOT, repo)
-    plan.finish(store, "a", BOT)
+    finish(store, repo, "a", BOT)
     plan.start(store, "b", BOT, repo)
     (repo / "src/api/users.py").write_text("half done\n")
     (repo / "src/db/schema.py").write_text("stray\n")

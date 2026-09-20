@@ -230,13 +230,13 @@ def test_what_a_check_printed_never_leaves_the_machine_in_an_export(repo):
     assert '"log": []' in page
 
 
-def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_them(repo):
+def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_them(repo, finish):
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     alex, bot = P.Caller("alex", True), P.Caller("claude:x", False, "x")
     with Store.open(repo) as store:
         P.propose(store, [node(id="n1", signoff=True)], alex)
         P.start(store, "n1", bot, repo)
-        P.finish(store, "n1", bot)
+        finish(store, repo, "n1", bot)
         P.reopen(store, "n1", alex, "return a dict, not a list")
         assert "sent back: return a dict, not a list" in ui.export_html(store, [SID])
         P.start(store, "n1", bot, repo)

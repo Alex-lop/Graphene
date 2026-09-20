@@ -58,6 +58,7 @@ class Node:
     checkout: str | None = None  # the working tree it runs in (a worktree is its own checkout)
     base_sha: str | None = None  # HEAD when it was started
     dirty_at_start: dict[str, str | None] = field(default_factory=dict)  # path -> content hash
+    unseen_at_start: dict[str, str] = field(default_factory=dict)  # what git could not see then
     told_rev: int | None = None  # the revision the executor was shown when it started
     created_at: str | None = None
     updated_at: str | None = None
@@ -72,20 +73,24 @@ class Caller:
     name: str
     person: bool
     session_id: str | None = None
+    stand_in: bool = False  # said who it is through GRAPHENE_AS, with no terminal to show for it
+
+    @property
+    def label(self) -> str:
+        """The name as the log keeps it: a person's act made with no terminal says so, for ever."""
+        return f"{self.name} (no terminal)" if self.person and self.stand_in else self.name
 
 
 def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller:
     """A person is someone at a terminal. An agent's shell says what it is (Codex exports
-    CODEX_SESSION_ID, Claude Code CLAUDECODE and its session id), and whatever has no terminal at all
-    is not a person either, so an executor nobody has heard of cannot sign anything off. A script
-    that stands in for someone says so with GRAPHENE_AS=person:<name>; the Claude Code hook refuses
-    an agent's shell command that carries that variable. An agent that forges it where no hook runs
-    passes for a person: that hole is printed wherever a person-only control is described."""
+    CODEX_SESSION_ID, Claude Code CLAUDECODE and its session id), and that outranks everything: a
+    command that sets GRAPHENE_AS inside an agent's shell is still the agent's. Whatever has no
+    terminal at all is not a person either, so an executor nobody has heard of cannot sign anything
+    off. A script that stands in for someone says so with GRAPHENE_AS=person:<name>, and every act it
+    makes is logged as made with no terminal. An agent that strips its own markers and then sets the
+    variable passes for a person: no command line can rule that out, the log shows it, and the hole
+    is printed wherever a person-only control is described."""
     env = os.environ if env is None else env
-    forced = env.get("GRAPHENE_AS")
-    if forced:
-        kind, _, name = forced.partition(":")
-        return Caller(name or kind, kind == "person", env.get("CLAUDE_CODE_SESSION_ID"))
     if env.get("CODEX_SESSION_ID") or env.get("CODEX_SANDBOX"):  # first: Codex may run inside Claude Code
         return Caller(f"codex:{env.get('CODEX_SESSION_ID', '?')[:8]}", False, None)
     sid = env.get("CLAUDE_CODE_SESSION_ID")
@@ -93,6 +98,10 @@ def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller
         return Caller(f"claude:{(sid or '?')[:8]}", False, sid)
     if env.get("AI_AGENT"):
         return Caller(env["AI_AGENT"], False, None)
+    forced = env.get("GRAPHENE_AS")
+    if forced:
+        kind, _, name = forced.partition(":")
+        return Caller(name or kind, kind == "person", None, stand_in=True)
     if not (sys.stdin.isatty() if tty is None else tty):
         return Caller("a script", False, None)
     return Caller(person_name(env), True, None)
@@ -130,7 +139,8 @@ def _pattern(glob: str) -> re.Pattern[str]:
         else:
             out.append(re.escape(glob[i]))
             i += 1
-    beneath = "" if glob.endswith("**") else "(?:/.*)?"
+    last = glob.rsplit("/", 1)[-1]  # only a plain name covers what is beneath it: `src/*` is one level
+    beneath = "" if any(c in last for c in "*?") else "(?:/.*)?"
     return re.compile("".join(out) + beneath + r"\Z")
 
 
@@ -432,7 +442,7 @@ def get(store, node_id: str) -> Node:
 def _save(store, node: Node, kind: str, who: Caller, now: str, **detail) -> None:
     node.updated_at = now
     store.put_node(to_dict(node))
-    store.log_node(node.id, now, kind, who.name, who.session_id, node.agent_id, detail or None)
+    store.log_node(node.id, now, kind, who.label, who.session_id, node.agent_id, detail or None)
 
 
 def _person_only(who: Caller, what: str) -> None:
@@ -590,7 +600,7 @@ def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None
     now = now or _now()
     paths = unowned(store, checkout)
     mark_boundary(store, checkout, now)
-    store.log_node("*", now, "acknowledged", who.name, None, None, {"paths": paths})
+    store.log_node("*", now, "acknowledged", who.label, None, None, {"paths": paths})
     return paths
 
 
@@ -658,10 +668,60 @@ def start(
             agent_id,
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, head(checkout), dirty(checkout)
+        node.unseen_at_start = unseen(checkout)
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
         extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
         _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)
     return node
+
+
+def _holder_only(node: Node, who: Caller, what: str) -> None:
+    """Only whoever holds a running node finishes it or hands it back; a person may always. A Claude
+    Code session is known by its session id; an executor `graphene run` started is known by the
+    GRAPHENE_NODE it was given; anyone else by the name they took the node under."""
+    if who.person:
+        return
+    same_session = bool(node.session_id) and who.session_id == node.session_id
+    run_gave_it = (node.executor or "").startswith("run:") and os.environ.get("GRAPHENE_NODE") == node.id
+    if not (same_session or run_gave_it or (not node.session_id and who.name == node.executor)):
+        raise Refused(
+            f"{node.id} is held by {node.executor}, not by {who.name}: {what} is theirs, or a person's"
+        )
+
+
+def unseen(checkout: str | Path) -> dict[str, str]:
+    """What stops git from answering for this checkout, as it stands: the paths marked
+    assume-unchanged or skip-worktree (a change to them never shows), and the clone's own exclude
+    file (a line in it hides a new file). `done` trusts git, so it first checks that nothing here
+    has changed since the node was started: a review made a tracked file invisible with one
+    `git update-index --assume-unchanged`, and the boundary passed."""
+    flagged = [
+        line[2:]
+        for line in _git(checkout, "ls-files", "-v").splitlines()
+        if line[:1].islower() or line[:1] == "S"
+    ]
+    exclude = Path(_git(checkout, "rev-parse", "--git-path", "info/exclude").strip())
+    exclude = exclude if exclude.is_absolute() else Path(checkout) / exclude
+    try:
+        text = exclude.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    return {"flagged": "\n".join(sorted(flagged)), "exclude": text}
+
+
+def links_out(checkout: str | Path, paths: list[str]) -> list[str]:
+    """Changed paths that are symbolic links to somewhere outside the checkout (or into the plan's
+    own store): a write "inside the scope" through one lands where no scope reaches."""
+    root = os.path.realpath(checkout)
+    out = []
+    for path in paths:
+        full = os.path.join(root, path)
+        if os.path.islink(full):
+            target = os.path.realpath(full)
+            inside = target == root or target.startswith(root + os.sep)
+            if not inside or os.path.relpath(target, root).split(os.sep, 1)[0] == ".graphene":
+                out.append(path)
+    return out
 
 
 def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[str]:
@@ -690,17 +750,40 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
     node = get(store, node_id)
     if node.state != RUNNING:
         raise Refused(f"{node.id} is {node.state}, not running; `graphene node start {node.id}` takes it")
-    if not who.person and node.session_id and who.session_id and node.session_id != who.session_id:
-        raise Refused(f"{node.id} is held by {node.executor}, not by this session")
+    _holder_only(node, who, "finishing it")
     if override is not None:
         _person_only(who, "overruling a node's check or scope")
-    changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
-    stray = outside_scope(store, node, changed)
+    checkout = node.checkout or "."
+    if override is None and node.unseen_at_start:
+        now_unseen = unseen(checkout)
+        if now_unseen != node.unseen_at_start:
+            hidden = sorted(
+                set(now_unseen["flagged"].splitlines()) - set(node.unseen_at_start["flagged"].splitlines())
+            )
+            what = (
+                f"{', '.join(hidden)} marked assume-unchanged or skip-worktree since it was started "
+                "(`git update-index --no-assume-unchanged --no-skip-worktree <path>` undoes it)"
+                if hidden
+                else ".git/info/exclude edited since it was started (put it back as it was)"
+            )
+            store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"unseen": what})
+            raise Refused(f"{node.id} is not done: git can no longer answer for this checkout: {what}")
+    changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
+    stray = sorted(set(outside_scope(store, node, changed)) | set(links_out(checkout, changed)))
     if stray and override is None:
-        store.log_node(node.id, now, "refused", who.name, who.session_id, None, {"outside": stray})
+        store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"outside": stray})
         listed = ", ".join(stray[:8]) + (f" and {len(stray) - 8} more" if len(stray) > 8 else "")
+        folded = [p for p in stray if in_scope(p.lower(), [g.lower() for g in node.scope])]
+        hint = (
+            f" ({folded[0]} differs from the scope only in upper and lower case: git's spelling is the "
+            "one that counts, and the person can correct the scope.)"
+            if folded
+            else ""
+        )
+        linked = links_out(checkout, stray)
+        hint += f" ({linked[0]} is a symbolic link that leaves the repo.)" if linked else ""
         raise Refused(
-            f"{node.id} is not done: changed outside its scope ({', '.join(node.scope)}): {listed}. "
+            f"{node.id} is not done: changed outside its scope ({', '.join(node.scope)}): {listed}.{hint} "
             "Put those back as they were (`git checkout <base> -- <path>`, or delete a new file), or say "
             f"why the scope is wrong: `graphene node release {node.id} --why '…'`. "
             "Only the person widens a scope, and only they decide a build leftover belongs in .gitignore"
@@ -721,13 +804,19 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
             node.id,
             _now(),
             "check_passed" if passed else "check_failed",
-            who.name,
+            who.label,
             who.session_id,
             None,
             {"command": node.check, "output": output},
         )
     if not passed and override is None:
         raise Refused(f"{node.id} is not done: `{node.check}` failed:\n{output}")
+    if override is None and not any(in_scope(p, node.scope) for p in changed):
+        raise Refused(
+            f"{node.id} is not done: nothing inside its scope ({', '.join(node.scope)}) has changed since "
+            "it was started, so a passing check shows nothing. If there was nothing to do, hand it "
+            f"back and say so: `graphene node release {node.id} --why '…'`"
+        )
     with store.claim():
         node = get(store, node_id)
         node.state = REVIEW if node.signoff and override is None else DONE
@@ -755,6 +844,7 @@ def release(store, node_id: str, who: Caller, why: str, now: str | None = None) 
         node = get(store, node_id)
         if node.state != RUNNING:
             raise Refused(f"{node.id} is {node.state}, not running")
+        _holder_only(node, who, "handing it back")
         try:
             changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
         except (Refused, OSError, subprocess.TimeoutExpired):
