@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "graphene-map"
-version = "0.2.0"
-description = "See what your coding agents did to your repo: a local, replayable map of agents, files, commits and checks, built from Claude Code's own records."
+version = "0.3.0"
+description = "A plan you and your coding agents share: nodes with a goal, a scope and a check, which you shape and the agents are held to, with a record of what was done for each."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -13,7 +13,7 @@ requires-python = ">=3.12"
 authors = [
   { name = "Alex Lopez", email = "alexlp2024@gmail.com" },
 ]
-keywords = ["claude-code", "coding-agents", "git", "blame", "debrief", "cli", "ai-agents"]
+keywords = ["claude-code", "codex", "coding-agents", "plan", "git", "hooks", "cli", "ai-agents"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

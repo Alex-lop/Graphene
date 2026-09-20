@@ -90,7 +90,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         if not everything:
             out(
                 "no plan yet. A person adds a node with `graphene node add 'title' --scope 'src/x/**' "
-                "--check 'pytest tests/x'`; an agent proposes some with `graphene plan propose plan.json`"
+                "--check 'pytest tests/x'`; an agent proposes some with `graphene plan propose -` and the "
+                'JSON on stdin: {"nodes": [{"title": …, "goal": …, "scope": ["glob"], "check": "command", '
+                '"needs": ["n1"], "owner": "agent"}]} (no file left behind in the repo)'
             )
             return
         by_id = {n.id: n for n in everything}
@@ -166,7 +168,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             ..., help="A JSON file ('-' for stdin): {\"nodes\": [{title, scope, check, …}]}"
         ),
     ) -> None:
-        """Add nodes from a file. From an agent they are proposals until a person accepts them."""
+        """Add nodes from JSON: a file, or '-' for stdin (nothing is left behind in the repo). From an
+        agent they are proposals until a person accepts them."""
         try:
             raw = json.loads(sys.stdin.read() if file == "-" else Path(file).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:

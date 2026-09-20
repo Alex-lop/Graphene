@@ -1,21 +1,173 @@
 # How Graphene works
 
-Graphene reads what Claude Code already records about a session and turns it into an account
-of what happened, grouped by what you asked for. No model is involved at any point: every
-sentence here is computed from a diff Graphene already has.
+Graphene keeps a plan that a person and their coding agents share, holds executors to it, and
+keeps a record of what was done for each node. No model is involved at any point: everything here
+is computed from the plan's own rows, from git, and from what Claude Code already records.
+
+Part one is the plan and what makes it bind. Part two is the record underneath it.
+
+# Part one: the plan
+
+## P1. Nodes
+
+A node is one JSON document in the repo's store (`.graphene/graphene.db`, table `nodes`): an id, a
+title, a goal, a **scope** (globs: `**` crosses directories, `*` and `?` stay inside one, a bare
+directory covers what is beneath it, `!glob` takes paths back out, the last match decides), a
+**check** (a shell command), whether a person must **sign it off**, what it **needs** (other node
+ids), an **owner** (`agent`, meaning any agent, or a person's name) and a state:
+
+| State | Means |
+| --- | --- |
+| `proposed` | an agent suggested it; nobody can start it and it binds nobody |
+| `open` | in the plan; "ready" when everything it needs is done, "waiting" otherwise |
+| `running` | someone holds it: who, since when, in which checkout, from which commit |
+| `review` | its check passed and it waits for a person's sign-off; what needs it still waits |
+| `done` | finished |
+| `dropped`, `archived` | taken out, or put away by the person; no longer part of the plan |
+
+Every change to a node is a row in `node_log` with who made it: `graphene plan log` prints it all,
+`graphene node show <id>` one node's. A plan is **in force** while any node is open, running, in
+review or done, and the person has not paused it. Done counts on purpose (see P3).
+
+Who may do what. Anyone may propose, start a node they are allowed to take, finish or hand back a
+node they hold. Only a person may accept a proposal, edit a contract, sign off, reopen, overrule
+the gate, pause, archive, or acknowledge loose changes. "A person" is a caller with a terminal and
+without an agent's environment: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and
+`CLAUDE_CODE_SESSION_ID`, and anything with no terminal at all is treated as an agent. A script that
+stands in for a person sets `GRAPHENE_AS=person:<name>`; `graphene ui` gives its page the person's
+rights only when a person started it.
+
+## P2. The boundary: what makes a node done
+
+`graphene node start <id>` refuses unless the node is open, everything it needs is done, the caller
+may take it, no running node in the same checkout claims a path it claims, and nothing has changed
+in the checkout while no node owned it (below). It then records `HEAD`, and every path git calls
+modified, staged, deleted or untracked **with a hash of its content**, and prints the contract as it
+stands at that moment. That last part is how a person's edit to the next node reaches an agent that
+read the plan an hour ago.
+
+`graphene node done <id>` is the gate, and Graphene runs all of it:
+
+1. It asks git what differs from the start: `git diff --name-only <start HEAD> HEAD`, plus
+   everything dirty now, minus paths whose content hash is what it was at the start. So committing a
+   stray change does not hide it, and a file that was already dirty is held against the node only if
+   it changed again (an agent that wipes your uncommitted edit is caught). Paths inside the scope of
+   a node that ran beside this one in the same checkout are that node's, not this one's.
+2. Any path left that the scope does not cover: refused, with the list. The node stays `running`.
+3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
+   log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
+   as it is, so a second `done` is not refused over it.
+4. Otherwise the node is `done`, or `review` when it needs a sign-off, and the tree as it stands is
+   remembered as this checkout's **boundary**.
+
+Between nodes nobody owns the repo. Whatever differs from the last boundary at the next `start`,
+outside the scope of every node started since, is a change no node owned: an agent's `start` is
+refused until it is put back, a person sees it on `graphene plan` and can accept it with
+`graphene plan ack`. This exists because a real agent did exactly that (next section).
+
+A person can overrule the gate with `graphene node done <id> --override "reason"`; the log keeps the
+reason, the stray paths and whether the check had failed. `graphene node release <id> --why "…"`
+hands a node back unfinished, and `graphene node reopen <id> --note "…"` sends a finished one back
+with the person's words, which the next executor is shown.
+
+None of this involves a vendor. On 2026-09-20 the same gate refused, and then accepted, a Claude
+Code agent, a Codex agent (`codex exec`) and a person editing by hand.
+
+## P3. What the Claude Code hooks add
+
+`graphene init` registers one command, `graphene ingest hook`, on eight events. With a plan in
+force it answers as well as records (`src/graphene_debrief/gate.py`), in the vendor's documented
+JSON:
+
+| Event | Answer |
+| --- | --- |
+| `PreToolUse` on `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | a path outside the scope of the node(s) this session holds is **denied**, with the reason and the way out; a session that holds no node is denied every write in the repo and told to take a node, or to propose one. Inside the scope it says nothing, so your own permission rules still apply. Paths outside the repo are not the plan's business. |
+| `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way; a target git ignores passes; a command carrying `GRAPHENE_AS`, or touching `.graphene/`, is denied |
+| `PostToolUse` on `Bash` | when Claude Code reports which files the command changed (`bashEditDiff`) and one is outside the scope: logged as a **breach**, and the agent is told to put it back. Claude Code does not fire this event for a command that exits non-zero, so this layer can be dodged; the boundary cannot |
+| `Stop` | refused while the session holds a running node: finish it, or hand it back saying why |
+| `SessionStart` | one paragraph of context: there is a plan, and how to take a node |
+
+The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
+checked with Graphene's own gate on a real session). The hook reads the node's row on every call,
+so tightening a scope binds the very next write. It adds about 40 ms to each event it runs on
+(`tests/test_hook_budget.py` holds the median under 60 ms for recording and for refusing); in a
+repo with no plan the gate is not even imported.
+
+A finished plan stays in force. The first real agent run against an earlier build did both nodes
+inside their scopes, waited until no node was open, then made the edit no node allowed, and said so:
+"no node was open. Graphene accepted the write." Since then a session that holds no node writes
+nothing while the plan exists, and the refusal tells it to propose a node. The same agent, refused,
+proposed one and asked the person to accept it. You end a plan with `graphene plan archive`, or
+suspend it with `graphene plan pause`.
+
+Recording and deciding fail apart. If the gate crashes, the call goes through, the traceback goes to
+`.graphene/ingest.log`, and the event is still recorded; the boundary does not depend on the hook.
+
+## P4. `graphene run`
+
+For each node an agent can reach, in order: Graphene starts the node itself, runs the executor
+command you gave (`--with`, default `claude -p --permission-mode acceptEdits`) with the node's
+contract as its last argument and `GRAPHENE_NODE` in its environment, waits for the process to end,
+and then looks at the node, not at the exit code. If the executor ran `graphene node done` itself
+and the gate agreed, fine. If it handed the node back, the reason is printed and the run moves on.
+Otherwise Graphene runs the gate; refused, the executor is sent back with the refusal (Claude Code
+is given a session id on the first attempt, so the hooks hold it to the node from its first call,
+and is resumed in that session afterwards; any other command gets the refusal in a fresh prompt).
+After `--attempts` (3) the node is handed back with the last refusal as the reason. A person's node
+is never handed to an executor. The run ends by saying what is waiting and for whom. Output of each
+attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you ran it from.
+
+## P5. Where each mechanism ends
+
+- A shell command can write a file in a way no parser reads (a script that opens files itself).
+  That is caught only at `done`, by git; until then the change is on disk.
+- A file made outside the scope and moved out of the repo before `done` is invisible to git. It is
+  caught when it comes back, as a change no node owned.
+- Claude Code ends a session after about 8 refused stops in a row (its docs say 8; 9 were observed
+  on 2.1.278), and a headless run that hits `--max-turns` never fires `Stop`. The node then stays
+  `running` on the plan. `graphene run` does not depend on `Stop` at all.
+- A hook that crashes or times out lets the call through. That is the vendor's rule.
+- The person-only rule rests on the environment. An agent that forges `GRAPHENE_AS` is denied by
+  the Claude Code hook and passes where no hook runs (Codex today).
+- Scope overlap between two running nodes is checked against tracked files and the globs as
+  spelled; two globs that would both match a file that does not exist yet are not seen until one
+  of the nodes is refused at `done`.
+- `.claude/settings*.json` is not protected by anything here. An agent that removes the hook from
+  it has removed the hook; the boundary still holds.
+
+## P6. A node's record
+
+`graphene node show <id>` prints the contract, then, from records only: each **window** the node was
+held (who, from when to when, how it ended); what changed in it (the files of commits whose time
+falls inside the window, and for a running node the working tree, each path with the record it came
+from, and paths outside the scope called out); the **coverage** three-count for the node's commits;
+what was **refused** (denied writes, breaches, refused stops, refused `done` attempts with their
+stray paths, failed checks); and the person's acts on it with their words.
+
+The coverage line is graded over every commit the holding sessions are recorded for and the node's
+commits are selected afterwards, because grading a list cut to the window would flatter its first
+commit; and a write counts only when it was recorded inside one of the node's windows. Where a
+count cannot be supported (a person held the node, so there is no session to trace), it says
+"not computed" with the reason and how many commits and files it leaves out. It never prints a zero
+it cannot stand behind.
+
+# Part two: the record
 
 ## 1. Where the data comes from
 
 ### Live hooks
 
-`graphene init` adds one command hook, `graphene ingest hook`, to five Claude Code events in the
+`graphene init` adds one command hook, `graphene ingest hook`, to eight Claude Code events in the
 repo's `.claude/settings.local.json` (the personal file; the team's `settings.json` is never
-written, though hooks found there are recognised): `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
-`PostToolUseFailure` and `Stop`. Existing settings and hooks are kept; the hook is added once, and
+written, though hooks found there are recognised, and a repo whose hooks live there gets new events
+added there): `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
+`SubagentStart`, `SubagentStop` and `Stop`. `PreToolUse` is never recorded (a call that has not
+happened is not a record); it exists for the plan (P3). Existing settings and hooks are kept; the hook is added once, and
 the file is rewritten atomically (through a symlink to its target) so a crash cannot truncate it.
 Claude Code runs the command with the event JSON on stdin. The command writes one row to
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
-`.graphene/ingest.log`, never to stdout, so a broken Graphene can never block the agent. It takes
+`.graphene/ingest.log`, and stdout carries nothing except the plan's answer when a plan is in
+force (P3), so a broken Graphene can never block the agent. It takes
 about 40 ms (a median of twenty runs on the author's machine, measured by `tests/test_hook_budget.py`
 and held under 60 ms there) because it imports only the standard library on that path, and if another process
 holds the database lock (a backfill, a second session) it gives up after 250 ms and logs the
@@ -218,24 +370,27 @@ written.
 
 ## 6. What Graphene never does
 
-It never runs an agent, never orchestrates, never pushes, never calls a model, and never sends
-anything anywhere. Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
-that is made private to your user (`0700`, the database `0600`) and that ignores itself in git
-through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
+It never calls a model, never sends anything anywhere, and never commits, merges or pushes.
+`graphene run` starts the executor you name, with the permissions you give it, and nothing else in
+Graphene starts an agent. Transcripts can contain secrets; the store stays in `.graphene/` inside
+the repo, a directory that is made private to your user (`0700`, the database `0600`) and that
+ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
-## 7. The HTML record
+## 7. The page
 
-`graphene debrief --html record.html` writes one file: the same structure `--json` prints, embedded
-as JSON in a `<script type="application/json">` tag, plus a stylesheet and a script that build the
-page from it. Nothing is fetched when you open it — no fonts, scripts, images or trackers — so it
-works offline and can be emailed to someone who has neither the repo nor Graphene. Every piece of
-text from your prompts, diffs and file paths reaches the page through `textContent`, and `</` is
-escaped inside the JSON, so nothing recorded can turn into markup.
+`graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
+first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners
+(agents first, then each person), and every position is computed in Python
+(`src/graphene_debrief/plan_view.py`, tested in pytest) so the page decides no layout. The second
+screen is the record of a run: lanes of agents over rows of files (`graph.py`).
 
-The page is a timeline: session bands at the top, then one row per prompt in time order with its
-text (three lines, click to expand) and the files it touched with `+N/−N`. Clicking a file opens a
-panel with that prompt's diff, its sentence, and the file's history inside the record — every
-prompt that touched the same path, newest first, each one a link back to its row. Alongside the
-debrief the file carries a `nodes` list in which sessions, prompts, files and directories are
-distinct node types, and the markup tags them the same way (`data-node="file"`, `data-node="dir"`,
-…); today only the timeline reads them.
+The page can change the plan only when a person started `graphene ui` (started from an agent's
+shell it is read-only and says so). A write needs the page's own origin and a token made for that
+launch, sent in a header a cross-site form cannot set. Each control calls the same function in
+`plan.py` as the command line does, a refusal is shown verbatim, and beside the scope, check and
+sign-off fields the page prints where that mechanism ends (P5).
+
+`graphene ui --export FILE` writes the same page as one file with its data inlined: paths, counts,
+commit subjects, prompts, each agent's task, and the plan without its nodes' logs (a log can hold
+the output of a check). It carries no token and cannot write. Every piece of text reaches the page
+through `textContent`, and `</` is escaped inside the JSON, so nothing recorded can turn into markup.

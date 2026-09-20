@@ -11,8 +11,8 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
 3. Commit both, then tag and push the tag:
 
    ```sh
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 
 4. Watch the run:
