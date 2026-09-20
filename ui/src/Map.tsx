@@ -5,7 +5,7 @@ import { select } from "d3-selection";
 import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { LANE_H, ROW_H, clock, cull, dash, hue, hues, laneRegion, rowRegion, spaced, span } from "./model";
+import { LANE_H, ROW_H, clip, clock, cull, dash, hue, hues, laneRegion, rowRegion, spaced, span } from "./model";
 import type { Chain, Open, Selection } from "./model";
 import type { Graph, Lane, Mark } from "./types";
 
@@ -33,11 +33,6 @@ interface Props {
 // A member of a closed group or directory keeps its element and stops being drawn. React's SVG
 // typings have no `hidden`, and an empty string would be dropped as a falsy boolean attribute.
 const away = (gone: boolean): { hidden?: true } => (gone ? { hidden: true } : {});
-
-const clip = (text: string, width: number, per: number): string => {
-  const room = Math.floor(width / per);
-  return text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`;
-};
 
 const laneName = (lane: Lane): string =>
   lane.task ?? lane.label ?? (lane.kind === "main" ? "main agent" : lane.kind === "unknown" ? "no recorded agent" : "agent");

@@ -405,14 +405,22 @@ def build():
         no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
         as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
     ) -> None:
-        """The map of a run: agents, files, commits and checks, drawn from the records."""
+        """The plan on screen, and behind it the map of a run, drawn from the records."""
         import webbrowser
 
         from .graph import build_graph, to_json
+        from .plan import caller
         from .server import export_html, make_server
 
         r = root()
-        with loaded_store(r) as store:
+        with open_store(r) as store:
+            planned = store.node_count() > 0
+        # The plan is the page's first screen, so a repo that has one opens even when no session has
+        # been recorded in it yet; `loaded_store` ends the command when there is nothing to look at.
+        with open_store(r) if planned else loaded_store(r) as store:
+            if planned:
+                report = backfill(store, r)  # the record fills in beside the plan, quietly
+                refresh_commits(store, r, report.added + report.refreshed)
             try:
                 ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
             except ValueError as exc:
@@ -428,9 +436,13 @@ def build():
                     fail(f"cannot write {export}: {exc.strerror or exc}", 1)
                 errors.print(f"wrote {export}")
                 return
-        server = make_server(r, ids)
+        # The plan is the person's to change, so the page may write only when a person opened it.
+        person = caller().person
+        server = make_server(r, ids, writable=person)
         url = f"http://127.0.0.1:{server.server_address[1]}/"
         say(f"{url}  (this machine only; Ctrl-C stops it)")
+        if not person:
+            say("the page is read-only: it was not opened from a person's terminal")
         console.file.flush()  # piped or redirected, the address must not sit in a buffer until the end
         if not no_open:
             webbrowser.open(url)
