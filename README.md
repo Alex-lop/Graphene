@@ -25,6 +25,8 @@ the plan: 3 nodes, 1 done, 0 running
 waiting on a person: rate (yours to do)
 ```
 
+![The same kind of plan in `graphene ui`: owners as lanes, what waits on you at the top, a node's contract on the right](docs/assets/plan.png)
+
 ## What works today
 
 All of this runs in a terminal, and each line was shown on a real agent, not only in tests
