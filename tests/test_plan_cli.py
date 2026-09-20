@@ -162,6 +162,20 @@ def test_a_person_can_drop_a_node_that_is_running_and_a_long_reason_is_cut_in_th
     assert row.endswith("… (`graphene node show n2` has all of it)") and len(row) < 260
 
 
+def test_a_long_scope_and_a_long_title_stay_inside_their_columns(repo):
+    """Found by proposing this repo's own next steps: one node with seven globs made every row
+    of the plan three hundred columns wide."""
+    globs = [f"src/graphene_debrief/module_{i}.py" for i in range(7)]
+    args = [a for g in globs for a in ("--scope", g)]
+    person(
+        "node", "add", "cut the session card down to a view of one node's record", *args, "--check", "true"
+    )
+    [row] = [line for line in person("plan").stdout.splitlines() if line.startswith("  n1")]
+    assert "src/graphene_debrief/module_0.py, +6 more" in row and "a view of one …" in row
+    assert len(row) < 140
+    assert all(g in person("node", "show", "n1").stdout for g in globs)  # the whole of it is one command away
+
+
 def test_plain_graphene_shows_the_plan_when_there_is_one(repo):
     nothing = person()
     assert "the plan:" not in nothing.stdout  # no plan: the card's own empty state, as before

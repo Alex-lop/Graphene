@@ -81,6 +81,18 @@ def register(cli: typer.Typer, root, open_store, fail):
         text = " ".join(text.split())
         return text if len(text) <= 100 else f"{text[:97]}… (`graphene node show {node_id}` has all of it)"
 
+    def cut(text: str, wide: int) -> str:
+        return text if len(text) <= wide else text[: wide - 1] + "…"
+
+    def scope_cell(n: P.Node, wide: int = 36) -> str:
+        """The scope as one table cell: as many globs as fit, then how many more (`node show` has all)."""
+        shown: list[str] = []
+        for glob in n.scope:
+            if shown and len(", ".join([*shown, glob])) > wide - 9:
+                return f"{', '.join(shown)}, +{len(n.scope) - len(shown)} more"
+            shown.append(glob)
+        return ", ".join(shown)
+
     def holds(n: P.Node, who: P.Caller) -> bool:
         return n.session_id == who.session_id if who.session_id else n.executor == who.name
 
@@ -127,12 +139,12 @@ def register(cli: typer.Typer, root, open_store, fail):
         wid = max(len(n.id) for n in everything)
         wt = min(44, max(len(n.title) for n in everything))
         wo = max(len(n.owner) for n in everything)
-        ws = min(36, max(len(", ".join(n.scope)) for n in everything))
+        ws = max(len(scope_cell(n)) for n in everything)  # bounded by scope_cell itself
         for n in everything:
             state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
             out(
-                f"  {n.id.ljust(wid)}  {state.ljust(8)}  {n.title[:wt].ljust(wt)}  {n.owner.ljust(wo)}  "
-                f"{', '.join(n.scope).ljust(ws)}  ·  {describe(store, n, by_id)}".rstrip()
+                f"  {n.id.ljust(wid)}  {state.ljust(8)}  {cut(n.title, wt).ljust(wt)}  {n.owner.ljust(wo)}  "
+                f"{scope_cell(n).ljust(ws)}  ·  {describe(store, n, by_id)}".rstrip()
             )
         try:
             loose = P.unowned(store, checkout()) if not counts[P.RUNNING] else []
