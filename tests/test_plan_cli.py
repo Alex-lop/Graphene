@@ -121,6 +121,16 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
 
 
+def test_plain_graphene_shows_the_plan_when_there_is_one(repo):
+    nothing = person()
+    assert "the plan:" not in nothing.stdout  # no plan: the card's own empty state, as before
+    assert not (repo / ".graphene").exists()  # and looking did not create a store
+    person("node", "add", "users", "--scope", "api.py", "--check", "true")
+    shown = person()
+    assert shown.exit_code == 0 and "the plan: 1 nodes, 0 done, 0 running" in shown.stdout
+    assert "the plan:" not in person("--json").stdout  # asking for a session's record still gives it
+
+
 def test_without_a_terminal_nobody_is_a_person(repo):
     result = runner.invoke(build(), ["node", "add", "x", "--scope", "a", "--check", "true"])
     assert "n1  proposed" in result.stdout  # taken as a proposal, not as the person's word

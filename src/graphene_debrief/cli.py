@@ -76,6 +76,12 @@ def build():
     class LockAware(TyperGroup):
         """One place where losing the race with a hook or a backfill is a line, not a traceback."""
 
+        def list_commands(self, ctx):
+            """The plan leads the help: what will be done comes before what was."""
+            first = ["plan", "node", "run", "init", "ui"]
+            names = super().list_commands(ctx)
+            return [n for n in first if n in names] + [n for n in names if n not in first]
+
         def invoke(self, ctx):
             try:
                 return super().invoke(ctx)
@@ -87,9 +93,10 @@ def build():
     cli = typer.Typer(
         cls=LockAware,
         help=(
-            "Why did your coding agent change this? `graphene why <path>` and `graphene why <path>:<line>` "
-            "answer that from Claude Code's own records; `graphene` alone prints the short card of the "
-            "latest session."
+            "The shared plan between you and your coding agents: a graph of nodes, each with a goal, the "
+            "paths it may touch and a check, which you shape and the agents are held to. `graphene` "
+            "alone shows the plan and where the work stands; `graphene node show <id>` is what was done "
+            "for one node."
         ),
         add_completion=False,
         no_args_is_help=False,
@@ -219,12 +226,19 @@ def build():
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command, `graphene` prints the short card of the latest session."""
+        """With no command, `graphene` prints the plan and where the work stands; in a repo with no
+        plan (or with --session, --since or --json), the short card of the latest session."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
+            if not (session_id or since or as_json) and plan_or_nothing():
+                return
             show(session_id, since, as_json=as_json)
+
+    from .plan_cli import register
+
+    plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 
     @cli.command()
     def why(
@@ -311,7 +325,7 @@ def build():
 
     @cli.command()
     def init() -> None:
-        """Install Claude Code hooks so this repo's sessions are recorded live."""
+        """Install the Claude Code hooks: they hold agents to the plan and keep the record."""
         r = root()
         try:
             added = install_hooks(r)
@@ -456,7 +470,4 @@ def build():
             n = len(quiet)
             note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")
 
-    from .plan_cli import register
-
-    register(cli, root, open_store, fail)
     return cli

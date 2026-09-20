@@ -62,7 +62,9 @@ def transcript(repo, tmp_path, monkeypatch):
 def test_version_and_help_read_as_a_product():
     assert "graphene 0.2.0" in run("--version").output
     text = run("--help").output
-    assert text.index("why") < text.index("init") < text.index("sessions")
+    listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
+    commands = [name for name in listed if not name.startswith("-")]
+    assert commands == ["plan", "node", "run", "init", "ui", "why", "sessions"]  # what will be, then what was
     assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
     assert "--session" in text and "--since" in text and "--json" in text
     assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it

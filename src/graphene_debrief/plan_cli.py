@@ -15,7 +15,7 @@ import typer
 from . import plan as P
 
 
-def register(cli: typer.Typer, root, open_store, fail) -> None:
+def register(cli: typer.Typer, root, open_store, fail):
     out = typer.echo
 
     def checkout() -> Path:
@@ -404,3 +404,16 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 out(log_line(e))
 
         run(go)
+
+    def plan_or_nothing() -> bool:
+        """Plain `graphene`: where the work stands, when the repo has a plan. False when it has none."""
+        r = root()
+        if not (r / ".graphene" / "graphene.db").exists():
+            return False
+        with open_store(r) as store:
+            if not [n for n in P.nodes(store) if n.state not in P.GONE]:
+                return False
+            print_plan(store, P.caller())
+        return True
+
+    return plan_or_nothing
