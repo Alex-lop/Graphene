@@ -96,7 +96,20 @@ sqlite3 .graphene/graphene.db "PRAGMA user_version = 2"   # the old code refuses
 
 ## State of main
 
-STATE_OF_MAIN
+- **Local `main`: merged (`--no-ff` of `plan`) and green.** The gate ran on a clean clone before
+  the merge: tests on Python 3.12 and 3.13, ruff, the wheel built and smoked outside the tree, the
+  page rebuilt and identical to the committed one.
+- **`origin/plan`: pushed, CI green on all five jobs** (ubuntu and macOS × 3.12 and 3.13, and the
+  page): run 35494791473 on `5cf9e60`. The only commit after it is this file.
+- **`origin/main`: not pushed. That one is yours:** `git push origin main`. The directive says
+  `main` must be green when I stop; it does not say to push, and the last time pushing `main` was
+  mine it was because the directive said so in words. Until you push, the README's GitHub install
+  line still installs 0.2.0. I did push the branch, because CI on Linux is part of what "green"
+  means in this repo; `git push origin --delete plan` removes it.
+- Left on the machine: three worktrees and branches from tonight's sub-agents, all merged
+  (`worktree-wf_ce8e5357-5ed-1`, `-2`, `-3`): `git worktree remove <path>` and `git branch -d <name>`
+  are yours, as before. This repo now has 39 worktrees; `git worktree prune` would drop the dead
+  ones.
 
 ## What was verified, and how
 
