@@ -612,6 +612,8 @@ def start(
                 for b in blockers
             )
             raise Refused(f"{node.id} waits on {told}")
+        if _boundary(store, checkout) is None:
+            mark_boundary(store, checkout, now)  # the first start in a checkout: the tree as it stands
         loose = unowned(store, checkout, but=node.id)
         if loose and not who.person:
             listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")

@@ -231,6 +231,30 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         run(lambda s: P.set_paused(s, False, P.caller()))
         out("the plan is in force")
 
+    @cli.command("run")
+    def run_(
+        executor: str = typer.Option(
+            None,
+            "--with",
+            help="The executor: a command that takes a prompt as its last argument. Default: "
+            "'claude -p --permission-mode acceptEdits'; e.g. 'codex exec --sandbox workspace-write'.",
+        ),
+        attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
+        node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
+    ) -> None:
+        """Run every node an agent can reach: one executor per node, and Graphene decides what is done."""
+        from .run import DEFAULT_WITH, run_plan
+
+        r = root()
+        with open_store(r) as store:
+            if not P.nodes(store, (P.OPEN, P.RUNNING)):
+                fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
+            run_plan(
+                store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, r / ".graphene/runs"
+            )
+            for line in next_lines(store, P.Caller("agent", False)):
+                out(line)
+
     # -- graphene node ----------------------------------------------------------------------------
 
     node_cli = typer.Typer(help="One node of the plan: shape it, take it, finish it, read its record.")

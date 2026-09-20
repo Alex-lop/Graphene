@@ -387,6 +387,17 @@ def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, rep
         plan.start(store, "c", BOT2, repo)
 
 
+def test_the_first_node_handed_back_with_a_stray_file_stops_the_next_start_too(store, repo):
+    """Found by `graphene run`'s tests: with no node finished yet there was no boundary to compare
+    with, and the next node took the stray file for something that had always been there."""
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    (repo / "src/db/schema.py").write_text("stray\n")
+    plan.release(store, "a", BOT, "stuck")
+    with pytest.raises(Refused, match="b cannot start: src/db/schema.py changed"):
+        plan.start(store, "b", BOT2, repo)
+
+
 def test_what_graphenes_own_run_of_the_check_leaves_behind_is_not_held_against_the_node(store, repo):
     check = "echo run >> .check-cache; grep -q 'return \\[1\\]' src/api/users.py"
     plan.propose(store, [api_node(check=check)], ALEX)
