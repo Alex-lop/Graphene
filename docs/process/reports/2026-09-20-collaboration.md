@@ -94,14 +94,30 @@ Section written after the auditor finished: see `docs/test/results-2026-09-20.md
 `docs/test/PROTOCOL.md` for how to run it yourself in ten minutes. The summary is in morning.md and
 in section 6 below.
 
-## 5. Not verified
+## 5. Verified on real executors, beyond the three proof scripts
+
+Each of these was one run in a scratch repo; the commands are in this session's record, the outputs
+below are the literal `graphene plan log` lines.
+
+- **Every permission mode and subagents, with Graphene's own gate.** `claude -p
+  --permission-mode bypassPermissions`, told to edit an out-of-scope file itself and then through an
+  `Agent` subagent: two `denied  src/b.py` entries, the file unchanged, the agent's words: "Subagent's
+  Edit on `src/b.py`: it got the same scope error verbatim and made no change."
+- **`graphene run --with 'codex exec --sandbox workspace-write --skip-git-repo-check'`.** One node,
+  16 s: `started run:codex`, `check_passed codex:01a0bd5b`, `finished codex:01a0bd5b`. Codex ran
+  `graphene node done` itself and was identified as Codex, not as a person.
+- **No exit code is trusted.** `--max-turns 2`: the executor "ended (exit 1)" and the node was done,
+  because it had finished the node before it ran out of turns, and Graphene looks at the node.
+- **A refused attempt is sent back.** `--max-turns 1`: attempt 1 ended at the turn limit with the
+  work half done; Graphene's own run of the check failed (`check_failed run:claude`); the same
+  session was resumed with the refusal; attempt 2; `check_passed run:claude`, `finished`. This is
+  the case the in-session route cannot handle at all: `--max-turns` never fires `Stop`.
+
+## 5a. Not verified
 
 - The vendor's ceiling on refused stops with Graphene's own gate (seen with the spike's toy hook
   only). A shell write no parser reads being caught at `done` on a real agent (unit-tested, and seen
-  in the spike's toy). A refused `graphene run` attempt being sent back, on a real agent (scripted
-  executors only).
-- `graphene run --with 'codex exec …'` (Codex was driven against the spike's toy gate, not against
-  `graphene run`).
+  in the spike's toy).
 - The page in any browser but Playwright's Chromium. Keyboard use of the plan view. A plan of more
   than 6 nodes on the page (50 nodes are laid out in a Python test, never looked at).
 - Two executors at once in one checkout, on real agents. Git worktrees with `graphene run`.
