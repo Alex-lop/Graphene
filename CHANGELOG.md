@@ -12,7 +12,7 @@ Graphene becomes the plan a person and their coding agents share; the record now
 - Removed: the guess at "not what you asked for" from prompt text. Scope is a fact of the node now.
 - The store moves to schema 3 by an additive step; a 0.2 store is upgraded in place.
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-09-20)
 
 The truthful record and the first map: agents as records (task, parent, worktree, closing message), commits credited by record, the coverage line as three counts, `graphene ui` and `--export`. `--explain`, `--model`, `--full`, `--md` and `--html` were removed; the package became `graphene-map`.
 

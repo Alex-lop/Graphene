@@ -85,8 +85,11 @@ Each has its reason, so you can tell when it no longer applies. Strike any of th
   `running` on the plan, which is how you see it. `graphene run` has no such ceiling.
 - A hook that crashes or times out lets the call through (the vendor's rule). The boundary holds
   without it.
-- An agent that forges `GRAPHENE_AS=person:…` where no hook runs (Codex today) passes for a person.
-  With the Claude Code hooks installed that command is refused.
+- "A person" rests on the environment. Inside an agent's shell `GRAPHENE_AS` changes nothing; an agent
+  that first strips its own markers and then sets it passes for a person, and the log marks the act
+  "(no terminal)". No command line can do better than that.
+- The plan's store is a file in the repo that git ignores: a script that opens it directly is
+  neither stopped nor noticed. What git ignores, nobody audits.
 - `graphene run` works in one checkout, one node at a time. Two agents at once in one checkout are
   kept off each other's paths by scope; they are not isolated from each other's half-written files.
 

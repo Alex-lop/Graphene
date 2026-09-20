@@ -11,8 +11,9 @@ Part one is the plan and what makes it bind. Part two is the record underneath i
 ## P1. Nodes
 
 A node is one JSON document in the repo's store (`.graphene/graphene.db`, table `nodes`): an id, a
-title, a goal, a **scope** (globs: `**` crosses directories, `*` and `?` stay inside one, a bare
-directory covers what is beneath it, `!glob` takes paths back out, the last match decides), a
+title, a goal, a **scope** (globs: `**` crosses directories, `*` and `?` stay inside one level, a
+plain name with no wildcard covers what is beneath it, `!glob` takes paths back out, the last match
+decides, and git's spelling of a path is the one that counts, upper and lower case included), a
 **check** (a shell command), whether a person must **sign it off**, what it **needs** (other node
 ids), an **owner** (`agent`, meaning any agent, or a person's name) and a state:
 
@@ -29,13 +30,17 @@ Every change to a node is a row in `node_log` with who made it: `graphene plan l
 `graphene node show <id>` one node's. A plan is **in force** while any node is open, running, in
 review or done, and the person has not paused it. Done counts on purpose (see P3).
 
-Who may do what. Anyone may propose, start a node they are allowed to take, finish or hand back a
-node they hold. Only a person may accept a proposal, edit a contract, sign off, reopen, overrule
+Who may do what. Anyone may propose and start a node they are allowed to take; only whoever holds a
+running node finishes it or hands it back (a Claude Code session is known by its session id, an
+executor `graphene run` started by the node it was given, anyone else by the name they took it
+under; a person always may). Only a person may accept a proposal, edit a contract, sign off, reopen, overrule
 the gate, pause, archive, or acknowledge loose changes. "A person" is a caller with a terminal and
 without an agent's environment: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and
 `CLAUDE_CODE_SESSION_ID`, and anything with no terminal at all is treated as an agent. A script that
-stands in for a person sets `GRAPHENE_AS=person:<name>`; `graphene ui` gives its page the person's
-rights only when a person started it.
+stands in for a person sets `GRAPHENE_AS=person:<name>`; inside an agent's environment that variable
+changes nothing, however it is spelled, and every act made through it is logged as made with no
+terminal (`alex (no terminal)`). `graphene ui` gives its page the person's rights only when a person
+started it.
 
 ## P2. The boundary: what makes a node done
 
@@ -48,16 +53,23 @@ read the plan an hour ago.
 
 `graphene node done <id>` is the gate, and Graphene runs all of it:
 
+0. It checks that git can still answer: a path marked `assume-unchanged` or `skip-worktree`, or an
+   edit to the clone's `.git/info/exclude`, since the node was started is refused by name.
 1. It asks git what differs from the start: `git diff --name-only <start HEAD> HEAD`, plus
    everything dirty now, minus paths whose content hash is what it was at the start. So committing a
    stray change does not hide it, and a file that was already dirty is held against the node only if
    it changed again (an agent that wipes your uncommitted edit is caught). Paths inside the scope of
    a node that ran beside this one in the same checkout are that node's, not this one's.
-2. Any path left that the scope does not cover: refused, with the list. The node stays `running`.
+2. Any path left that the scope does not cover: refused, with the list. So is a changed path that
+   is a symbolic link out of the repo. The node stays `running`.
 3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
    log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
    as it is, so a second `done` is not refused over it.
-4. Otherwise the node is `done`, or `review` when it needs a sign-off, and the tree as it stands is
+4. If nothing inside the scope has changed at all, it is not done either: a check that already
+   passed shows nothing (an executor that crashed at once was once reported done this way). An
+   executor with nothing to do hands the node back and says so.
+5. Otherwise the node is `done`, or `review` when it needs a sign-off; what git said had changed,
+   and the `HEAD` it ended at, go into the log for the node's record; and the tree as it stands is
    remembered as this checkout's **boundary**.
 
 Between nodes nobody owns the repo. Whatever differs from the last boundary at the next `start`,
@@ -82,7 +94,7 @@ JSON:
 | Event | Answer |
 | --- | --- |
 | `PreToolUse` on `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | a path outside the scope of the node(s) this session holds is **denied**, with the reason and the way out; a session that holds no node is denied every write in the repo and told to take a node, or to propose one. Inside the scope it says nothing, so your own permission rules still apply. Paths outside the repo are not the plan's business. |
-| `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way; a target git ignores passes; a command carrying `GRAPHENE_AS`, or touching `.graphene/`, is denied |
+| `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way, links resolved first; a target git ignores passes; a command that mentions `GRAPHENE_AS` or reaches into `.graphene/` is denied whatever the scope; a command over 64,000 characters is not parsed at all (the parser is superlinear, and a hook that runs out of time lets the call through) |
 | `PostToolUse` on `Bash` | when Claude Code reports which files the command changed (`bashEditDiff`) and one is outside the scope: logged as a **breach**, and the agent is told to put it back. Claude Code does not fire this event for a command that exits non-zero, so this layer can be dodged; the boundary cannot |
 | `Stop` | refused while the session holds a running node: finish it, or hand it back saying why |
 | `SessionStart` | one paragraph of context: there is a plan, and how to take a node |
@@ -127,8 +139,16 @@ attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you
   on 2.1.278), and a headless run that hits `--max-turns` never fires `Stop`. The node then stays
   `running` on the plan. `graphene run` does not depend on `Stop` at all.
 - A hook that crashes or times out lets the call through. That is the vendor's rule.
-- The person-only rule rests on the environment. An agent that forges `GRAPHENE_AS` is denied by
-  the Claude Code hook and passes where no hook runs (Codex today).
+- The person-only rule rests on the environment, and no command line can do better. Inside an
+  agent's environment `GRAPHENE_AS` changes nothing; an agent that first strips its own markers
+  (`env -u CLAUDECODE …`) and then sets it passes for a person. The log shows such an act as made
+  with no terminal, which a person's own acts at a terminal never are.
+- The plan's store is a file in the repo that git ignores. The hook refuses the commands that
+  name it; a script that opens it directly is neither stopped nor noticed. Nothing here defends
+  the store against an executor that sets out to rewrite it.
+- What git ignores, nobody audits: an executor can write anything under an ignored directory.
+- The boundary audits the checkout the node was started in. Work left in another worktree of the
+  same repo is seen when it comes back into that checkout, not before.
 - Scope overlap between two running nodes is checked against tracked files and the globs as
   spelled; two globs that would both match a file that does not exist yet are not seen until one
   of the nodes is refused at `done`.
@@ -238,15 +258,16 @@ session the hooks recorded, installed or not.
 
 ### The store
 
-`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. Everything in it is
-derived from transcripts and hook events, so a store written by another version of Graphene is
-not migrated: it is moved to `.graphene/graphene.db.v<old>.bak` (with its `-wal`/`-shm` sidecars,
-and a numeric suffix rather than overwriting an existing backup), and the command that found it
-creates an empty store, prints one line to stderr saying so, and backfills from the transcripts.
-A file SQLite refuses to read at all goes to `.graphene/graphene.db.corrupt.bak` the same way. A
-locked database is not that case and is never moved aside. The hook path never rebuilds: on a
-store it cannot use it skips the event, writes one line to `.graphene/ingest.log` saying a rebuild
-is needed, and exits 0, so the next `graphene` command is what does the work.
+`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. A hook-recorded
+session can outlive its transcript, and the plan lives nowhere else, so the store is never rebuilt
+from scratch: an older store is migrated in place, by additive steps only, by whichever process
+opens it first (the hook included). A store written by a *newer* Graphene is left exactly as it is
+and the command says to upgrade. Only a file SQLite refuses to read at all is moved aside, to
+`.graphene/graphene.db.corrupt.bak` (with its `-wal`/`-shm` sidecars, and a numeric suffix rather
+than overwriting an existing backup), and replaced by an empty store that is backfilled from the
+transcripts. A locked database is not that case and is never moved. The hook path never moves
+anything: on a store it cannot use it skips the event, writes one line to `.graphene/ingest.log`,
+and exits 0.
 
 ## 2. File content: what is known and what is not
 
@@ -325,9 +346,11 @@ The effect per prompt is `created` (no content before), `deleted` (no content af
 
 ## 4a. What you see
 
-Every command first tops the store up from the repo's transcripts (a transcript that has not
-changed since it was last read costs one `stat`), so a session run without the hooks still
-shows up the next time you look. `graphene` prints a short card: the sessions covered,
+The record's commands (`graphene` when it prints the card, `why`, `sessions`, `ui`) first top the
+store up from the repo's transcripts (a transcript that has not changed since it was last read
+costs one `stat`), so a session run without the hooks still shows up the next time you look; the
+plan's commands read only the store. Plain `graphene` prints the plan when the repo has one (part
+one). Otherwise, and always with `--session`, `--since` or `--json`, it prints a short card: the sessions covered,
 their span, wall time and prompt count; files changed with added and removed lines; the commits
 made during the sessions; a net list of files (created, modified, deleted or reverted over the
 whole span, biggest change first, capped at 30 rows); and then only the sections that have

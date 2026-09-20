@@ -42,8 +42,9 @@ All of this runs in a terminal, and each line was shown on a real agent, not onl
 - **You change the next node at the boundary and the agent honours it.** While the first node ran,
   the person rewrote the second (another file, another check). The agent, which had already read the
   old plan, did the new one: a node's contract is printed fresh when it is started.
-- **An agent cannot walk away from a node it holds.** Its stop is refused until the node is done or
-  handed back with a reason you can read.
+- **An agent is held to a node it holds.** Its stop is refused until the node is done or handed
+  back with a reason you can read. Claude Code lets a session end after about 8 refusals in a row;
+  the node then stays `running` on the plan, where you see it.
 - **You are in the graph.** A node can be yours. Agents cannot take it, what waits on it waits, the
   plan says "waiting on a person: rate (yours to do)", and before a run you are told which nodes
   agents can reach alone and which will wait for whom.
@@ -73,22 +74,25 @@ A control you cannot trust is worse than none, so here is where each one ends.
   on the plan, where you see it. `graphene run` has no such ceiling.
 - A hook that crashes or times out lets the call through. That is the vendor's rule. The boundary
   does not depend on the hook.
-- "Only a person" means someone at a terminal. An agent that forges the variable a script uses to
-  speak for a person is refused by the Claude Code hook, and passes where no hook runs.
+- "Only a person" means someone at a terminal, and it rests on the environment. Inside an agent's
+  shell the variable a script uses to speak for a person changes nothing. An agent that first strips
+  its own markers and then sets it passes for a person, and the log shows that act as made with no
+  terminal, which yours never are.
+- The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
+  a script that opens it directly is neither stopped nor noticed.
+- What git ignores, nobody audits, and the gate looks at the checkout a node was started in: work
+  left in another worktree is seen when it comes back.
 
 ## Install
 
-Today, from GitHub:
+From GitHub, which is where the plan is:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
 ```
 
-Once the package is on PyPI (it is not yet, so this line fails today):
-
-```
-uv tool install graphene-map
-```
+`uv tool install graphene-map` installs the last release on PyPI. Today that is 0.2.0, which is the
+record only: no `plan`, no `node`, no `run`. They arrive there with 0.3.0.
 
 Then, once per repo, inside it:
 
@@ -170,8 +174,8 @@ what was written outside the repo, and a coverage line that is never one number:
 `graphene ui` opens the map in your browser, served to this machine only: the plan, and behind it
 the record of a run as lanes of agents over rows of files, with the files nothing accounts for drawn
 as such. `graphene ui --export FILE` writes the page as one file that opens offline; it carries
-paths, counts, commit subjects, your prompts and each agent's task, and no file contents, diffs or
-tool output. Read it before you send it. `graphene sessions` lists what is recorded. How each number
+paths, counts, commit subjects, your prompts, each agent's task, your user name, and the plan itself
+(each node's goal, scope and check, without its log), and no file contents, diffs or tool output. Read it before you send it. `graphene sessions` lists what is recorded. How each number
 is computed, and where it can be wrong, is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## Privacy
@@ -179,8 +183,9 @@ is computed, and where it can be wrong, is in [docs/HOW_IT_WORKS.md](docs/HOW_IT
 - Nothing leaves your machine. Graphene calls no model and sends nothing anywhere. `graphene run`
   starts the executor you name, with the permissions you give it, and that is all.
 - The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git
-  (a `.gitignore` inside it), so your own `.gitignore` is never edited. The only other file Graphene
-  writes is `.claude/settings.local.json`, on `init`. Graphene never commits, merges or pushes.
+  (a `.gitignore` inside it), so your own `.gitignore` is never edited. On `init` Graphene also writes
+  `.claude/settings.local.json` (or the `.claude/settings.json` an earlier version already put its
+  hook in) and one line in `.git/info/exclude`. Graphene never commits, merges or pushes.
 - Transcripts can contain secrets, so files outside the repo are recorded by path only, the content
   a `Read` call returned is not stored, and any output or input string over 8 KB is kept as its
   first and last 4 KB.
