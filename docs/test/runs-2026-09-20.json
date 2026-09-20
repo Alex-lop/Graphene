@@ -1,0 +1,1258 @@
+[
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/inventory-graphene-1/repo",
+  "base": "3e95032334065cd0c619ad0f43c16e24f0ef699e",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [
+   "cli/main.py",
+   "core/inventory.py",
+   "core/policy.py"
+  ],
+  "files_changed_final_n": 3,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 26,
+  "rework_from_edit_events": 13,
+  "rework_from_shell": 13,
+  "final_diff_lines": 28,
+  "recorded_write_events": 2,
+  "acceptance": {
+   "passed": 11,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 9,
+  "person_chars": 983,
+  "executor_cost_usd": 0.347405,
+  "executor_turns": 16,
+  "wall_seconds": 278.6,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "run": "inventory-graphene-1",
+  "task": "inventory",
+  "rep": 1,
+  "rework_code_only": 0,
+  "spec_chars": 1368,
+  "cost_complete": true,
+  "executor_calls": 3,
+  "checks_passed": "11/11"
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/inventory-graphene-2/repo",
+  "base": "36def4500ebddd14780c5b740e4de9887087d7ed",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [
+   "cli/main.py",
+   "core/inventory.py",
+   "core/policy.py"
+  ],
+  "files_changed_final_n": 3,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 1,
+  "rework_lines": 0,
+  "rework_recorded_lines": 24,
+  "rework_from_edit_events": 24,
+  "rework_from_shell": 0,
+  "final_diff_lines": 26,
+  "recorded_write_events": 6,
+  "acceptance": {
+   "passed": 11,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 11,
+  "person_chars": 1204,
+  "executor_cost_usd": 0.172631,
+  "executor_turns": 8,
+  "wall_seconds": 277.8,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "run": "inventory-graphene-2",
+  "task": "inventory",
+  "rep": 2,
+  "rework_code_only": 0,
+  "spec_chars": 1423,
+  "cost_complete": false,
+  "executor_calls": 3,
+  "checks_passed": "11/11"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/inventory-prompt-1/repo",
+  "base": "d25db1a882ee397699436a886e9f8552057355fe",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [
+   "cli/main.py",
+   "core/inventory.py",
+   "core/policy.py"
+  ],
+  "files_changed_final_n": 3,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 29,
+  "rework_from_edit_events": 29,
+  "rework_from_shell": 0,
+  "final_diff_lines": 31,
+  "recorded_write_events": 3,
+  "acceptance": {
+   "passed": 11,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 4,
+  "person_chars": 917,
+  "executor_cost_usd": 0.186124,
+  "executor_turns": 19,
+  "wall_seconds": 166.4,
+  "notes": [],
+  "run": "inventory-prompt-1",
+  "task": "inventory",
+  "rep": 1,
+  "rework_code_only": 0,
+  "spec_chars": 549,
+  "cost_complete": true,
+  "executor_calls": 1,
+  "checks_passed": "11/11"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/inventory-prompt-2/repo",
+  "base": "010a77ae019f35aaccf22ec84f3a72f1d6b20dce",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [
+   "cli/main.py",
+   "core/inventory.py",
+   "core/policy.py"
+  ],
+  "files_changed_final_n": 3,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 27,
+  "rework_from_edit_events": 27,
+  "rework_from_shell": 0,
+  "final_diff_lines": 29,
+  "recorded_write_events": 3,
+  "acceptance": {
+   "passed": 11,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 4,
+  "person_chars": 876,
+  "executor_cost_usd": 0.175965,
+  "executor_turns": 18,
+  "wall_seconds": 152.3,
+  "notes": [],
+  "run": "inventory-prompt-2",
+  "task": "inventory",
+  "rep": 2,
+  "rework_code_only": 0,
+  "spec_chars": 554,
+  "cost_complete": true,
+  "executor_calls": 1,
+  "checks_passed": "11/11"
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/logs-graphene-1/repo",
+  "base": "355df0859b68558a89c0ceeaf928315cb390b464",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [
+   ".plan-logs.json"
+  ],
+  "files_written_outside_intent_ever_n": 1,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [
+    ".plan-logs.json"
+   ],
+   "shell": [
+    ".plan-logs.json"
+   ],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 26,
+  "rework_recorded_lines": 41,
+  "rework_from_edit_events": 21,
+  "rework_from_shell": 20,
+  "final_diff_lines": 15,
+  "recorded_write_events": 2,
+  "acceptance": {
+   "passed": 10,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 9,
+  "person_chars": 2160,
+  "executor_cost_usd": 0.353663,
+  "executor_turns": 21,
+  "wall_seconds": 210.0,
+  "notes": [],
+  "run": "logs-graphene-1",
+  "task": "logs",
+  "rep": 1,
+  "rework_code_only": 0,
+  "spec_chars": 1109,
+  "cost_complete": true,
+  "executor_calls": 3,
+  "checks_passed": "10/10"
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/logs-graphene-2/repo",
+  "base": "684c5ca2f75dc691e4b403ec881118ce3c900f5c",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [
+   ".plan-tmp.json"
+  ],
+  "files_written_outside_intent_ever_n": 1,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [
+    ".plan-tmp.json"
+   ],
+   "shell": [
+    ".plan-tmp.json"
+   ],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 20,
+  "rework_recorded_lines": 34,
+  "rework_from_edit_events": 10,
+  "rework_from_shell": 24,
+  "final_diff_lines": 14,
+  "recorded_write_events": 1,
+  "acceptance": {
+   "passed": 10,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 10,
+  "person_chars": 2012,
+  "executor_cost_usd": 0.377589,
+  "executor_turns": 20,
+  "wall_seconds": 240.3,
+  "notes": [],
+  "run": "logs-graphene-2",
+  "task": "logs",
+  "rep": 2,
+  "rework_code_only": 0,
+  "spec_chars": 1114,
+  "cost_complete": true,
+  "executor_calls": 3,
+  "checks_passed": "10/10"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/logs-prompt-1/repo",
+  "base": "6d7d598dff23651694401a973f0a569ee86484d9",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 2,
+  "rework_lines": 10,
+  "rework_recorded_lines": 26,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 26,
+  "final_diff_lines": 16,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 10,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 5,
+  "person_chars": 1175,
+  "executor_cost_usd": 0.40454,
+  "executor_turns": 8,
+  "wall_seconds": 150.9,
+  "notes": [],
+  "run": "logs-prompt-1",
+  "task": "logs",
+  "rep": 1,
+  "rework_code_only": 10,
+  "spec_chars": 905,
+  "cost_complete": true,
+  "executor_calls": 3,
+  "checks_passed": "10/10"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/logs-prompt-2/repo",
+  "base": "5d2d01c7d817d969c2c871e1d16fe294ce587236",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 1,
+  "rework_lines": 6,
+  "rework_recorded_lines": 24,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 24,
+  "final_diff_lines": 18,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 10,
+   "failed": 0,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 4,
+  "person_chars": 1180,
+  "executor_cost_usd": 0.245259,
+  "executor_turns": 6,
+  "wall_seconds": 115.8,
+  "notes": [],
+  "run": "logs-prompt-2",
+  "task": "logs",
+  "rep": 2,
+  "rework_code_only": 6,
+  "spec_chars": 788,
+  "cost_complete": true,
+  "executor_calls": 2,
+  "checks_passed": "10/10"
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/report-graphene-1/repo",
+  "base": "fede744038057b334ea2f694b7cf3615ad56f8a3",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 33,
+  "rework_from_edit_events": 33,
+  "rework_from_shell": 0,
+  "final_diff_lines": 33,
+  "recorded_write_events": 4,
+  "acceptance": {
+   "passed": 9,
+   "failed": 0,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 8,
+  "person_chars": 1481,
+  "executor_cost_usd": 0.157372,
+  "executor_turns": 9,
+  "wall_seconds": 266.9,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "run": "report-graphene-1",
+  "task": "report",
+  "rep": 1,
+  "rework_code_only": 0,
+  "spec_chars": 1119,
+  "cost_complete": false,
+  "executor_calls": 2,
+  "checks_passed": "9/9"
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/report-graphene-2/repo",
+  "base": "bc6f06259f0bf42723565efe01b2a15986abe78a",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 30,
+  "rework_from_edit_events": 30,
+  "rework_from_shell": 0,
+  "final_diff_lines": 30,
+  "recorded_write_events": 4,
+  "acceptance": {
+   "passed": 9,
+   "failed": 0,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 6,
+  "person_chars": 792,
+  "executor_cost_usd": 0.146162,
+  "executor_turns": 8,
+  "wall_seconds": 191.9,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "run": "report-graphene-2",
+  "task": "report",
+  "rep": 2,
+  "rework_code_only": 0,
+  "spec_chars": 875,
+  "cost_complete": false,
+  "executor_calls": 2,
+  "checks_passed": "9/9"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/report-prompt-1/repo",
+  "base": "467128bd6977b3a20c9b821ed927ba26e1a1413d",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 27,
+  "rework_from_edit_events": 27,
+  "rework_from_shell": 0,
+  "final_diff_lines": 27,
+  "recorded_write_events": 3,
+  "acceptance": {
+   "passed": 9,
+   "failed": 0,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 3,
+  "person_chars": 821,
+  "executor_cost_usd": 0.122362,
+  "executor_turns": 9,
+  "wall_seconds": 98.2,
+  "notes": [],
+  "run": "report-prompt-1",
+  "task": "report",
+  "rep": 1,
+  "rework_code_only": 0,
+  "spec_chars": 476,
+  "cost_complete": true,
+  "executor_calls": 1,
+  "checks_passed": "9/9"
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/358d578e-f217-4988-bb10-b1e43bbe25e0/scratchpad/thetest/report-prompt-2/repo",
+  "base": "4d9bfa7207da0e21fb41d0eb50c474392c7c90e3",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final_n": 2,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 28,
+  "rework_from_edit_events": 28,
+  "rework_from_shell": 0,
+  "final_diff_lines": 28,
+  "recorded_write_events": 3,
+  "acceptance": {
+   "passed": 9,
+   "failed": 0,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 3,
+  "person_chars": 817,
+  "executor_cost_usd": 0.134961,
+  "executor_turns": 8,
+  "wall_seconds": 83.9,
+  "notes": [],
+  "run": "report-prompt-2",
+  "task": "report",
+  "rep": 2,
+  "rework_code_only": 0,
+  "spec_chars": 446,
+  "cost_complete": true,
+  "executor_calls": 1,
+  "checks_passed": "9/9"
+ }
+]

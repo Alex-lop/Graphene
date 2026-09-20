@@ -1,0 +1,4 @@
+# The paths that may change in this task. Graphene glob syntax: ** crosses directories,
+# a leading ! takes paths back out, and the last line that matches decides.
+app/report.py
+tests/test_report_json.py
