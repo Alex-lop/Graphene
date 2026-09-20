@@ -1,4 +1,4 @@
-# docs/proof/run.sh, run 2026-09-20 02:2x -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
+# docs/proof/run.sh, run 2026-09-20 02:22 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
 # code as merged; the only edit is the scratch directory's path. 21 s wall.
 slug  open  slug() turns a title into a url slug
 rate  open  set the rate

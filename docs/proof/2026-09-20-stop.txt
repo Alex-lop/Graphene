@@ -1,4 +1,4 @@
-# docs/proof/stop.sh, run 2026-09-20 02:2x -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
+# docs/proof/stop.sh, run 2026-09-20 02:22 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
 # code as merged; the only edit is the scratch directory's path. 15 s wall.
 n1  open  notes.md says ready
 I released n1 without doing the work, so the stop hook no longer blocks. You had asked me only to start the node and stop. I left `notes.md` unchanged, and the node's check (`grep -q ready notes.md`) would still fail.

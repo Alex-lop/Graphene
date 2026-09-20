@@ -1,4 +1,4 @@
-# docs/proof/proof.sh, run 2026-09-20 02:2x -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
+# docs/proof/proof.sh, run 2026-09-20 02:22 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
 # code as merged; the only edit is the scratch directory's path. 46 s wall.
 n1  open  emails() returns lower-case emails
 n2  open  say what emails() returns
