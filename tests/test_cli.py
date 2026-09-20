@@ -60,7 +60,9 @@ def transcript(repo, tmp_path, monkeypatch):
 
 
 def test_version_and_help_read_as_a_product():
-    assert "graphene 0.3.0" in run("--version").output
+    from graphene_debrief import __version__  # no literal here: a release bumps the package, not this test
+
+    assert f"graphene {__version__}" in run("--version").output
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]

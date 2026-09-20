@@ -59,6 +59,7 @@ class Node:
     base_sha: str | None = None  # HEAD when it was started
     dirty_at_start: dict[str, str | None] = field(default_factory=dict)  # path -> content hash
     unseen_at_start: dict[str, str] = field(default_factory=dict)  # what git could not see then
+    others_at_start: dict[str, dict] = field(default_factory=dict)  # the repo's other working trees then
     told_rev: int | None = None  # the revision the executor was shown when it started
     created_at: str | None = None
     updated_at: str | None = None
@@ -462,7 +463,25 @@ def in_force(store) -> bool:
     return not paused(store) and bool(store.node_rows(LIVE))
 
 
-def propose(store, raw: list[dict], who: Caller, now: str | None = None) -> list[Node]:
+def miscased(scope: list[str], files: list[str]) -> str | None:
+    """A glob that matches nothing git tracks as spelled and something when case is ignored, with
+    the path it nearly matched. On a filesystem that ignores case the hook would allow the write (it
+    judges the spelling) and `done` would refuse it (git's spelling differs): better said now."""
+    for glob in scope:
+        if glob.startswith("!") or any(in_scope(f, [glob]) for f in files):
+            continue
+        near = next((f for f in files if in_scope(f.lower(), [glob.lower()])), None)
+        if near:
+            return (
+                f"`{glob}` matches nothing git tracks, and `{near}` differs from it only in upper and "
+                "lower case"
+            )
+    return None
+
+
+def propose(
+    store, raw: list[dict], who: Caller, now: str | None = None, files: list[str] | None = None
+) -> list[Node]:
     """Add nodes. From a person they are part of the plan at once; from an agent they are proposals,
     which nobody can start until a person accepts them."""
     now = now or _now()
@@ -490,6 +509,10 @@ def propose(store, raw: list[dict], who: Caller, now: str | None = None) -> list
             added.append(node)
         validate(existing + added)
         for node in added:
+            wrong = miscased(node.scope, files or [])
+            if wrong:
+                raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
+        for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
     return added
 
@@ -507,7 +530,9 @@ def accept(store, ids: list[str], who: Caller, now: str | None = None) -> list[N
     return chosen
 
 
-def edit(store, node_id: str, changes: dict, who: Caller, now: str | None = None) -> Node:
+def edit(
+    store, node_id: str, changes: dict, who: Caller, now: str | None = None, files: list[str] | None = None
+) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
     very next write, even on a node that is running; what waits to start is told the new contract."""
     _person_only(who, "editing a node's contract")
@@ -526,6 +551,9 @@ def edit(store, node_id: str, changes: dict, who: Caller, now: str | None = None
         if not changed:
             return node
         validate([node if n.id == node.id else n for n in nodes(store)])
+        wrong = miscased(node.scope, files or []) if "scope" in changed else None
+        if wrong:
+            raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         node.rev += 1
         _save(store, node, "edited", who, now, changed=changed, rev=node.rev)
     return node
@@ -669,10 +697,48 @@ def start(
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, head(checkout), dirty(checkout)
         node.unseen_at_start = unseen(checkout)
+        node.others_at_start = {t: {"head": head(t), "dirty": dirty(t)} for t in other_checkouts(checkout)}
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
         extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
         _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)
     return node
+
+
+def other_checkouts(checkout: str | Path) -> list[str]:
+    """The repo's other working trees that still exist, as git lists them."""
+    here = os.path.realpath(checkout)
+    try:
+        listed = _git(checkout, "worktree", "list", "--porcelain")
+    except (Refused, OSError, subprocess.TimeoutExpired):
+        return []
+    paths = [os.path.realpath(line[9:]) for line in listed.splitlines() if line.startswith("worktree ")]
+    return [p for p in paths if p != here and os.path.isdir(p)]
+
+
+def elsewhere(store, node: Node) -> list[str]:
+    """What changed since the node was started in the repo's OTHER working trees, outside its scope
+    and outside the scope of any node that ran there meanwhile, each path named with its tree. A
+    closing review wrote one file by absolute path into a second worktree, and `done` said "nothing
+    outside its scope": it had only asked about the checkout the node was started in. A worktree
+    made after the start is compared with the commit the node started from."""
+    out = []
+    for tree in other_checkouts(node.checkout or "."):
+        was = node.others_at_start.get(tree) or {"head": node.base_sha, "dirty": {}}
+        theirs = [
+            n
+            for n in nodes(store)
+            if n.id != node.id and n.checkout == tree and (n.finished_at or "9") >= (node.started_at or "")
+        ]
+        try:
+            changed = changed_since(tree, was["head"], was["dirty"])
+        except (Refused, OSError, subprocess.TimeoutExpired):
+            continue  # a working tree git cannot read any more answers for nothing
+        out += [
+            f"{p} (in the worktree {tree})"
+            for p in changed
+            if not in_scope(p, node.scope) and not any(in_scope(p, n.scope) for n in theirs)
+        ]
+    return out
 
 
 def _holder_only(node: Node, who: Caller, what: str) -> None:
@@ -770,6 +836,7 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
             raise Refused(f"{node.id} is not done: git can no longer answer for this checkout: {what}")
     changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
     stray = sorted(set(outside_scope(store, node, changed)) | set(links_out(checkout, changed)))
+    stray += elsewhere(store, node)
     if stray and override is None:
         store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"outside": stray})
         listed = ", ".join(stray[:8]) + (f" and {len(stray) - 8} more" if len(stray) > 8 else "")

@@ -80,8 +80,8 @@ A control you cannot trust is worse than none, so here is where each one ends.
   terminal, which yours never are.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
-- What git ignores, nobody audits, and the gate looks at the checkout a node was started in: work
-  left in another worktree is seen when it comes back.
+- What git ignores, nobody audits. The gate asks git about every working tree of the repo, not
+  about a copy of it somewhere else.
 
 ## Install
 

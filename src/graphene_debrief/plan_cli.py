@@ -209,7 +209,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         who = P.caller()
 
         def go(store):
-            added = P.propose(store, items, who)
+            added = P.propose(store, items, who, files=P.tracked(checkout()))
             for n in added:
                 out(f"{n.id}  {n.state}  {n.title}")
             if not who.person:
@@ -323,7 +323,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         """Add a node. From a person it is in the plan at once; from an agent it is a proposal."""
         item = changes(title=title, scope=scope, check=check, goal=goal, needs=needs, owner=owner, id=node_id)
         item["signoff"] = signoff
-        [n] = run(lambda s: P.propose(s, [item], P.caller()))
+        [n] = run(lambda s: P.propose(s, [item], P.caller(), files=P.tracked(checkout())))
         out(f"{n.id}  {n.state}  {n.title}")
 
     @node_cli.command("set")
@@ -350,7 +350,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             before = P.get(store, node_id).rev
-            node = P.edit(store, node_id, edits, P.caller())
+            node = P.edit(store, node_id, edits, P.caller(), files=P.tracked(checkout()))
             last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
             return node, last
 

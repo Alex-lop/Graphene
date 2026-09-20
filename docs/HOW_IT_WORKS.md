@@ -61,7 +61,9 @@ read the plan an hour ago.
    it changed again (an agent that wipes your uncommitted edit is caught). Paths inside the scope of
    a node that ran beside this one in the same checkout are that node's, not this one's.
 2. Any path left that the scope does not cover: refused, with the list. So is a changed path that
-   is a symbolic link out of the repo. The node stays `running`.
+   is a symbolic link out of the repo, and so is a path changed in any *other* working tree of the
+   repo since the node was started (a worktree made later is compared with the commit the node
+   started from). The node stays `running`.
 3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
    log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
    as it is, so a second `done` is not refused over it.
@@ -147,8 +149,9 @@ attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you
   name it; a script that opens it directly is neither stopped nor noticed. Nothing here defends
   the store against an executor that sets out to rewrite it.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
-- The boundary audits the checkout the node was started in. Work left in another worktree of the
-  same repo is seen when it comes back into that checkout, not before.
+- The boundary asks git about every working tree of the repo that exists when the node ends (a
+  path changed in another worktree is refused with the tree named), not about clones or copies of
+  the repo somewhere else on the disk.
 - Scope overlap between two running nodes is checked against tracked files and the globs as
   spelled; two globs that would both match a file that does not exist yet are not seen until one
   of the nodes is refused at `done`.

@@ -46,8 +46,10 @@ READ_ONLY = (
 # What the page may ask for, each one a function in plan.py and nothing else. The page never decides
 # whether an edit is allowed: plan.py refuses, and its sentence is what the person reads.
 OPS = {
-    "add": lambda store, root, body, who: P.propose(store, [body], who),
-    "set": lambda store, root, body, who: P.edit(store, _id(body), _changes(body), who),
+    "add": lambda store, root, body, who: P.propose(store, [body], who, files=P.tracked(root)),
+    "set": lambda store, root, body, who: P.edit(
+        store, _id(body), _changes(body), who, files=P.tracked(root)
+    ),
     "drop": lambda store, root, body, who: P.drop(store, _id(body), who),
     "accept": lambda store, root, body, who: P.accept(store, _ids(body), who),
     "signoff": lambda store, root, body, who: P.signoff(store, _id(body), who),

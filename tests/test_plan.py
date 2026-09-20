@@ -407,6 +407,40 @@ def test_a_scope_spelled_in_the_wrong_case_says_so_when_it_refuses(store, repo):
         plan.finish(store, "n1", BOT)
 
 
+def test_a_change_in_another_worktree_of_the_repo_does_not_pass_the_boundary(store, repo, tmp_path):
+    side = tmp_path.parent / f"{tmp_path.name}-side"
+    git(repo, "worktree", "add", "-q", str(side), "-b", "side")
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (side / "src/db/schema.py").write_text("TABLES = ['written by absolute path']\n")
+    with pytest.raises(Refused, match=r"src/db/schema.py \(in the worktree .*-side\)"):
+        plan.finish(store, "n1", BOT)
+    git(side, "checkout", "--", "src/db/schema.py")
+    (side / "src/api/helper.py").write_text("# inside the scope is inside the scope, in any tree\n")
+    assert plan.finish(store, "n1", BOT).state == DONE
+
+
+def test_a_worktree_made_after_the_start_is_compared_with_where_the_node_started(store, repo, tmp_path):
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    late = tmp_path.parent / f"{tmp_path.name}-late"
+    git(repo, "worktree", "add", "-q", str(late), "-b", "late")
+    (late / "README.md").write_text("# a subagent's worktree, outside the scope\n")
+    with pytest.raises(Refused, match=r"README.md \(in the worktree .*-late\)"):
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_scope_that_differs_from_gits_spelling_only_in_case_is_refused_when_it_is_typed(store, repo):
+    files = plan.tracked(repo)
+    with pytest.raises(Refused, match="`readme.md` matches nothing git tracks, and `README.md` differs"):
+        plan.propose(store, [api_node(scope=["readme.md"])], ALEX, files=files)
+    plan.propose(store, [api_node(scope=["docs/**"])], ALEX, files=files)  # nothing there yet: fine
+    with pytest.raises(Refused, match="`SRC/api/\\*\\*` matches nothing git tracks"):
+        plan.edit(store, "n1", {"scope": ["SRC/api/**"]}, ALEX, files=files)
+
+
 # -- who is asking ------------------------------------------------------------------------------------
 
 
