@@ -12,11 +12,11 @@ top (a write refused before it happens, a stop refused while a node is open) liv
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -68,20 +68,27 @@ class Caller:
     session_id: str | None = None
 
 
-def caller(env: dict[str, str] | None = None) -> Caller:
-    """An agent's shell says so itself (Claude Code exports CLAUDECODE and its session id, Codex its
-    own markers); anything else is a person at a terminal. An agent that strips its environment on
-    purpose can pass for a person: the log keeps how every call was made, and that hole is printed."""
+def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller:
+    """A person is someone at a terminal. An agent's shell says what it is (Codex exports
+    CODEX_SESSION_ID, Claude Code CLAUDECODE and its session id), and whatever has no terminal at all
+    is not a person either, so an executor nobody has heard of cannot sign anything off. A script
+    that stands in for someone says so with GRAPHENE_AS=person:<name>; the Claude Code hook refuses
+    an agent's shell command that carries that variable. An agent that forges it where no hook runs
+    passes for a person: that hole is printed wherever a person-only control is described."""
     env = os.environ if env is None else env
-    forced = env.get("GRAPHENE_AS")  # a script standing in for someone says who, e.g. "person:alex"
+    forced = env.get("GRAPHENE_AS")
     if forced:
         kind, _, name = forced.partition(":")
         return Caller(name or kind, kind == "person", env.get("CLAUDE_CODE_SESSION_ID"))
+    if env.get("CODEX_SESSION_ID") or env.get("CODEX_SANDBOX"):  # first: Codex may run inside Claude Code
+        return Caller(f"codex:{env.get('CODEX_SESSION_ID', '?')[:8]}", False, None)
     sid = env.get("CLAUDE_CODE_SESSION_ID")
     if sid or env.get("CLAUDECODE"):
         return Caller(f"claude:{(sid or '?')[:8]}", False, sid)
-    if any(k.startswith("CODEX_") for k in env) or env.get("AI_AGENT"):
-        return Caller(env.get("AI_AGENT") or "codex", False, None)
+    if env.get("AI_AGENT"):
+        return Caller(env["AI_AGENT"], False, None)
+    if not (sys.stdin.isatty() if tty is None else tty):
+        return Caller("a script", False, None)
     return Caller(person_name(env), True, None)
 
 
@@ -273,6 +280,8 @@ def head(checkout: str | Path) -> str | None:
 
 
 def _hash(checkout: str | Path, path: str) -> str | None:
+    import hashlib  # here: the hook imports this module on every event and never hashes anything
+
     try:
         return hashlib.sha1((Path(checkout) / path).read_bytes()).hexdigest()
     except OSError:
@@ -418,8 +427,8 @@ def _save(store, node: Node, kind: str, who: Caller, now: str, **detail) -> None
 def _person_only(who: Caller, what: str) -> None:
     if not who.person:
         raise Refused(
-            f"{what} is the person's to do, and this call comes from inside an agent's session "
-            f"({who.name}). Say what you need and why; they decide"
+            f"{what} is the person's to do, at a terminal or in the map, and this call comes from "
+            f"{who.name}. Say what you need and why; they decide"
         )
 
 
@@ -520,6 +529,46 @@ def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
     return node
 
 
+def _boundary(store, checkout: str) -> dict | None:
+    raw = store.meta(f"boundary:{checkout}")
+    return json.loads(raw) if raw else None
+
+
+def mark_boundary(store, checkout: str | Path, now: str | None = None) -> None:
+    """Remember the tree as it stands when a node closes (or when the person says it is fine as it
+    is). Whatever differs from this at the next start was changed while no node owned it."""
+    checkout = str(Path(checkout).resolve())
+    snapshot = {"at": now or _now(), "head": head(checkout), "dirty": dirty(checkout)}
+    store.set_meta(f"boundary:{checkout}", json.dumps(snapshot))
+
+
+def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
+    """Paths changed since the last boundary in this checkout that no node can answer for: outside
+    the scope of every node started since then. An executor that finishes its node inside the scope
+    and then does the rest "after the audited window closed" lands here."""
+    checkout = str(Path(checkout).resolve())
+    mark = _boundary(store, checkout)
+    if mark is None:
+        return []
+    since = [
+        n
+        for n in nodes(store)
+        if n.id != but and n.checkout == checkout and (n.started_at or "") >= mark["at"]
+    ]
+    changed = changed_since(checkout, mark["head"], mark["dirty"])
+    return [p for p in changed if not any(in_scope(p, n.scope) for n in since)]
+
+
+def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
+    """The person says the tree is fine as it stands: what changed between nodes is theirs now."""
+    _person_only(who, "accepting changes made while no node owned them")
+    now = now or _now()
+    paths = unowned(store, checkout)
+    mark_boundary(store, checkout, now)
+    store.log_node("*", now, "acknowledged", who.name, None, None, {"paths": paths})
+    return paths
+
+
 def start(
     store,
     node_id: str,
@@ -558,6 +607,14 @@ def start(
                 for b in blockers
             )
             raise Refused(f"{node.id} waits on {told}")
+        loose = unowned(store, checkout, but=node.id)
+        if loose and not who.person:
+            listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
+            raise Refused(
+                f"{node.id} cannot start: {listed} changed while no node owned "
+                f"{'it' if len(loose) == 1 else 'them'}. Put {'it' if len(loose) == 1 else 'them'} back, "
+                "or tell the person: `graphene plan ack` is theirs to run if the change is theirs"
+            )
         files = tracked(checkout)
         for other in everything:
             if other.state == RUNNING and other.checkout == checkout:
@@ -575,7 +632,8 @@ def start(
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, head(checkout), dirty(checkout)
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
-        _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout)
+        extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
+        _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)
     return node
 
 
@@ -616,10 +674,20 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
             f"{node.id} is not done: changed outside its scope ({', '.join(node.scope)}): {listed}. "
             "Put those back as they were (`git checkout <base> -- <path>`, or delete a new file), or say "
             f"why the scope is wrong: `graphene node release {node.id} --why '…'`. "
-            "Only the person widens a scope"
+            "Only the person widens a scope, and only they decide a build leftover belongs in .gitignore"
         )
+    before = dirty(node.checkout or ".") if node.check else {}
     passed, output = (True, "") if not node.check else run_check(node.check, node.checkout or ".")
     if node.check:
+        # what Graphene's own run of the check left behind (a cache, a coverage file) is not the
+        # executor's change: it is taken as it is, so a second `done` is not refused over it
+        after = dirty(node.checkout or ".")
+        left = {p: h for p, h in after.items() if before.get(p, "") != h and not in_scope(p, node.scope)}
+        if left:
+            with store.claim():
+                node = get(store, node_id)
+                node.dirty_at_start.update(left)
+                store.put_node(to_dict(node))
         store.log_node(
             node.id,
             _now(),
@@ -634,13 +702,14 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
     with store.claim():
         node = get(store, node_id)
         node.state = REVIEW if node.signoff and override is None else DONE
-        node.finished_at = _now() if now is None else now
+        node.finished_at = now
         detail = (
             {"override": override, "outside": stray, "check_passed": passed} if override is not None else {}
         )
         _save(
             store, node, "overruled" if override is not None else "finished", who, node.finished_at, **detail
         )
+    mark_boundary(store, node.checkout or ".", now)
     return node
 
 

@@ -320,14 +320,76 @@ def test_a_paused_plan_binds_nobody_and_starts_nothing(store, repo):
 # -- who is asking ------------------------------------------------------------------------------------
 
 
-def test_an_agents_shell_is_not_a_person():
-    assert plan.caller({"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abcdef1234"}) == Caller(
-        "claude:abcdef12", False, "abcdef1234"
-    )
-    assert plan.caller({"USER": "Alex"}) == Caller("alex", True, None)
-    assert plan.caller({"USER": "alex", "GRAPHENE_AS": "person:sam"}).person
-    assert plan.caller({"AI_AGENT": "codex_1"}).person is False
-    assert plan.caller({"GRAPHENE_AS": "agent:codex"}) == Caller("codex", False, None)
+def test_a_person_is_someone_at_a_terminal_and_nothing_else_is():
+    claude = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abcdef1234"}
+    assert plan.caller(claude, tty=True) == Caller("claude:abcdef12", False, "abcdef1234")
+    codex = {**claude, "CODEX_SESSION_ID": "01a0bd1a-32c4", "CODEX_SANDBOX": "seatbelt"}
+    assert plan.caller(codex, tty=False) == Caller("codex:01a0bd1a", False, None)  # Codex inside Claude Code
+    assert plan.caller({"AI_AGENT": "some-new-agent"}, tty=True).person is False
+    assert plan.caller({"USER": "Alex"}, tty=True) == Caller("alex", True, None)
+    assert plan.caller({"USER": "Alex"}, tty=False) == Caller("a script", False, None)  # unknown executor
+    assert plan.caller({"USER": "alex", "GRAPHENE_AS": "person:sam"}, tty=False) == Caller("sam", True, None)
+    assert plan.caller({"GRAPHENE_AS": "agent:codex"}, tty=True) == Caller("codex", False, None)
+
+
+# -- between nodes ------------------------------------------------------------------------------------
+
+
+def test_work_done_after_the_audited_window_closed_stops_the_next_start(store, repo):
+    """What a tempted agent really did in the spike: finish inside the scope, then do the rest."""
+    plan.propose(store, [api_node(), api_node(title="next", needs=["n1"], scope=["README.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    plan.finish(store, "n1", BOT)
+    (repo / "src/db/schema.py").write_text("TABLES = ['after hours']\n")  # no node is open now
+    assert plan.unowned(store, repo) == ["src/db/schema.py"]
+    with pytest.raises(Refused, match="src/db/schema.py changed while no node owned it"):
+        plan.start(store, "n2", BOT, repo)
+    with pytest.raises(Refused, match="person's to do"):
+        plan.acknowledge(store, repo, BOT)
+    assert plan.acknowledge(store, repo, ALEX) == ["src/db/schema.py"]  # "that was me": theirs to say
+    assert plan.start(store, "n2", BOT, repo).state == RUNNING
+
+
+def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_them(store, repo):
+    plan.propose(store, [api_node(id="a"), api_node(id="b", owner="me", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.finish(store, "a", BOT)
+    (repo / "notes.txt").write_text("x")
+    plan.start(store, "b", ALEX, repo)
+    assert store.node_log("b", ("started",))[0]["detail"]["unowned"] == ["notes.txt"]
+
+
+def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, repo):
+    plan.propose(store, [api_node(id="a"), api_node(id="b"), api_node(id="c", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.finish(store, "a", BOT)
+    plan.start(store, "b", BOT, repo)
+    (repo / "src/api/users.py").write_text("half done\n")
+    (repo / "src/db/schema.py").write_text("stray\n")
+    plan.release(store, "b", BOT, "stuck")
+    with pytest.raises(Refused, match=r"c cannot start: src/db/schema.py changed"):
+        plan.start(store, "c", BOT2, repo)
+
+
+def test_what_graphenes_own_run_of_the_check_leaves_behind_is_not_held_against_the_node(store, repo):
+    check = "echo run >> .check-cache; grep -q 'return \\[1\\]' src/api/users.py"
+    plan.propose(store, [api_node(check=check)], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    with pytest.raises(Refused, match="failed"):
+        plan.finish(store, "n1", BOT)  # the check failed, and left .check-cache behind
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    assert plan.finish(store, "n1", BOT).state == DONE
+
+
+def test_an_untracked_directory_at_the_start_does_not_hide_a_new_file_in_it(store, repo):
+    (repo / "scratch").mkdir()
+    (repo / "scratch" / "old.txt").write_text("was here")
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "scratch" / "new.txt").write_text("sneaked in")
+    with pytest.raises(Refused, match=r"scratch/new.txt"):
+        plan.finish(store, "n1", BOT)
 
 
 def test_the_contract_is_what_an_executor_is_told(store):

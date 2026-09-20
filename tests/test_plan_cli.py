@@ -33,7 +33,8 @@ def repo(tmp_path, monkeypatch):
 
 
 def person(*args):
-    return runner.invoke(build(), list(args))
+    # the runner has no terminal, and whoever has no terminal is not a person unless a script says so
+    return runner.invoke(build(), list(args), env={"GRAPHENE_AS": "person:alex"})
 
 
 def agent(*args, input=None):
@@ -118,6 +119,13 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     kinds = [line.split()[1] for line in person("node", "show", "n1").stdout.splitlines() if "Z  " in line]
     assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
+
+
+def test_without_a_terminal_nobody_is_a_person(repo):
+    result = runner.invoke(build(), ["node", "add", "x", "--scope", "a", "--check", "true"])
+    assert "n1  proposed" in result.stdout  # taken as a proposal, not as the person's word
+    refused = runner.invoke(build(), ["plan", "accept"])
+    assert refused.exit_code == 1 and "at a terminal or in the map" in refused.stderr
 
 
 def test_plan_json_round_trips_through_propose(repo, tmp_path):
