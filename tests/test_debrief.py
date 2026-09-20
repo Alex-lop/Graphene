@@ -1,6 +1,7 @@
 """The debrief: golden markdown for a fixed session, the terminal card, JSON round trip, selection."""
 
 import io
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -152,9 +153,6 @@ def test_golden_default_render(store, tmp_path):
     rendered = render_card(debrief)
     assert rendered == GOLDEN.read_text(), REGENERATE
     assert (
-        "unrequested" not in rendered and "Not what you asked for" not in rendered
-    )  # the test twin is in scope
-    assert (
         "failed Bash:" not in rendered and "cat missing.txt" not in rendered
     )  # failures are one summary line
     assert "- 2 tool failures (2 Bash)" in rendered
@@ -301,7 +299,7 @@ def test_card_omits_sections_with_nothing_in_them(tmp_path):
             )
         )
         card = render_card(build_debrief(s, ["quiet"], tmp_path, now=NOW))
-    assert "Abandoned" not in card and "Not what you asked for" not in card and "None" not in card
+    assert "Abandoned" not in card and "None" not in card
     assert "**Commits during the session:** none" in card
     assert "- `a.py` created +1/−0" in card
     assert card.rstrip().endswith("for one line.")
@@ -351,6 +349,19 @@ def test_json_round_trip(store, tmp_path):
     text = to_json(debrief)
     assert from_json(text) == debrief
     assert render_card(from_json(text)) == render_card(debrief)
+
+
+def test_json_from_an_older_graphene_still_loads(store, tmp_path):
+    """0.2.0 wrote a per-file scope flag and a list of the files it flagged. Those keys are gone;
+    a record written before they were is still a record, so from_json drops what it does not know."""
+    debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
+    data = json.loads(to_json(debrief))
+    data["flagged"] = [{"path": "app/hello.py", "session_id": "sess-golden-1"}]
+    for block in data["prompts"]:
+        block["was_slow"] = True
+        for line in block["files"]:
+            line["flagged"] = False
+    assert from_json(json.dumps(data)) == debrief
 
 
 def test_select_sessions(tmp_path):
@@ -470,11 +481,7 @@ def test_changes_before_the_first_prompt_get_their_own_block(tmp_path):
         )
         debrief = build_debrief(store, ["sess-golden-1"], tmp_path, now=NOW)
     first = debrief.prompts[0]
-    assert (first.ordinal, [f.path for f in first.files], first.files[0].unrequested) == (
-        0,
-        ["early.py"],
-        False,
-    )
+    assert (first.ordinal, [f.path for f in first.files]) == (0, ["early.py"])
     assert debrief.files_changed == 4 and debrief.notes == []
     assert first.files[0].explanation == "Created early.py with 1 lines."
 

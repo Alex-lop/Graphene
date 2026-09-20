@@ -157,32 +157,7 @@ tree is the base, so files the agent wrote read as created.
 The effect per prompt is `created` (no content before), `deleted` (no content after),
 `reverted` (before and after identical), otherwise `modified`.
 
-## 4. Unrequested changes
-
-A file is flagged `unrequested` only when the prompt named a file scope and the file lies outside
-it. Silence is preferred to a flag people learn to ignore, so every one of these must hold:
-
-1. The prompt names a **file scope**: a path-like token (`auth.py`, `src/app/`, `.env`,
-   `docs/HOW_IT_WORKS.md`), or a bare word right after *in*, *under*, *inside*, *within*, *into* or
-   *at* that is a directory of a file the prompt changed ("look in app"). A prompt with no such
-   token ("fix the login bug") flags nothing: a goal is not a file list.
-2. Names that point at a goal rather than a place define no scope: `.md`, `.txt`, `.rst` or `.adoc`
-   files at the repo root, and anywhere when their name contains words like directive, spec, goal,
-   plan, readme, todo, prompt or notes. "Implement REBUILD_DIRECTIVE.md" flags nothing.
-3. A changed file is **in scope** when a named directory contains it, a named file is it, or it is
-   a conventional companion of an in-scope file: a test twin by stem (`tests/test_hello.py` for
-   `app/hello.py`, `x_test.go` for `x.go`, `a.spec.ts` for `a.ts`), or any file in the same
-   directory as a named file, `__init__.py` included.
-4. Every other changed file is flagged, with the prompt it happened under.
-
-Failure modes: a domain or version-like token that looks like a file name (`node.js`) can name a
-scope by accident and flag real work; a prompt that names one small file while asking for broad
-work ("start in cli.py and wire everything up") flags the everything; naming a directory brings
-its whole subtree into scope even if the prompt meant one file; and nothing outside the repo is
-ever considered here, those paths are listed separately. The flag is per prompt, so a file can be
-in scope under one prompt and flagged under the next.
-
-## 5. Tried and abandoned
+## 4. Tried and abandoned
 
 - **Reverted files**: the file's content at the end of the session equals its content at the
   start (payload strategy), or the git diff against the session-start HEAD is empty (git
@@ -196,7 +171,7 @@ in scope under one prompt and flagged under the next.
   `vitest`, `eslint`, ...) that failed and whose check segment (`uv run pytest -q`, say) was run
   again later, whatever surrounded it in the command, reporting the last rerun's outcome.
 
-## 5a. What you see
+## 4a. What you see
 
 Every command first tops the store up from the repo's transcripts (a transcript that has not
 changed since it was last read costs one `stat`), so a session run without the hooks still
@@ -204,9 +179,9 @@ shows up the next time you look. `graphene` prints a short card: the sessions co
 their span, wall time and prompt count; files changed with added and removed lines; the commits
 made during the sessions; a net list of files (created, modified, deleted or reverted over the
 whole span, biggest change first, capped at 30 rows); and then only the sections that have
-something in them: files outside a named scope (§4), abandoned work (§5), a one-line failure
-count, files written outside the repo. `--session ID` picks one session and `--since 6h` a
-window; `--json` is the whole structure behind the card, prompt by prompt.
+something in them: abandoned work (§4), a one-line failure count, files written outside the repo.
+`--session ID` picks one session and `--since 6h` a window; `--json` is the whole structure behind
+the card, prompt by prompt.
 
 In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
 colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
@@ -224,7 +199,7 @@ home directory, no transcripts for this repo (naming the directory it searched),
 changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
 and `why` with no path at all, which first lists the five files that changed most recently.
 
-## 6. `graphene why`
+## 5. `graphene why`
 
 `graphene why PATH` runs the attribution for every session that touched the file and lists the
 prompts newest first, each with its diff summary and a sentence built from that diff: "Edited 2
@@ -241,14 +216,14 @@ All commands except the hook refuse to run outside a git repository, and never t
 directory as one, so `~/.claude/settings.json` (Claude Code's user-level settings) is never
 written.
 
-## 7. What Graphene never does
+## 6. What Graphene never does
 
 It never runs an agent, never orchestrates, never pushes, never calls a model, and never sends
 anything anywhere. Transcripts can contain secrets; the store stays in `.graphene/` inside the repo, a directory
 that is made private to your user (`0700`, the database `0600`) and that ignores itself in git
 through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
-## 8. The HTML record
+## 7. The HTML record
 
 `graphene debrief --html record.html` writes one file: the same structure `--json` prints, embedded
 as JSON in a `<script type="application/json">` tag, plus a stylesheet and a script that build the
@@ -258,10 +233,9 @@ text from your prompts, diffs and file paths reaches the page through `textConte
 escaped inside the JSON, so nothing recorded can turn into markup.
 
 The page is a timeline: session bands at the top, then one row per prompt in time order with its
-text (three lines, click to expand) and the files it touched with `+N/−N` and an `unrequested`
-marker. Clicking a file opens a panel with that prompt's diff, its sentence, and the file's
-history inside the record — every prompt that touched the same path, newest first, each one a
-link back to its row. Two checkboxes filter the rows down to the
-unrequested or the abandoned ones. Alongside the debrief the file carries a `nodes` list in which
-sessions, prompts, files and directories are distinct node types, and the markup tags them the same
-way (`data-node="file"`, `data-node="dir"`, …); today only the timeline reads them.
+text (three lines, click to expand) and the files it touched with `+N/−N`. Clicking a file opens a
+panel with that prompt's diff, its sentence, and the file's history inside the record — every
+prompt that touched the same path, newest first, each one a link back to its row. Alongside the
+debrief the file carries a `nodes` list in which sessions, prompts, files and directories are
+distinct node types, and the markup tags them the same way (`data-node="file"`, `data-node="dir"`,
+…); today only the timeline reads them.

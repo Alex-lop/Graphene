@@ -1,4 +1,4 @@
-"""Deterministic attribution: prompt -> file -> hunks, plus unrequested and abandoned detection.
+"""Deterministic attribution: prompt -> file -> hunks, plus abandoned detection.
 
 No model is involved. Everything here is computed from the recorded tool events and, when a
 payload does not carry file content, from git. docs/HOW_IT_WORKS.md describes the heuristics
@@ -135,14 +135,6 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
     ):
         tokens.pop(0)
     return tokens
-
-
-def _words(segment: str) -> list[str]:
-    try:
-        tokens = shlex.split(segment, posix=True)
-    except ValueError:
-        tokens = segment.split()
-    return _strip_wrappers(tokens)
 
 
 def _unquoted_newlines_to_semicolons(text: str) -> str:
@@ -423,125 +415,6 @@ def _working_copy(root: Path, path: str) -> str | None:
 # -- attribution --------------------------------------------------------------------------------
 
 
-_DOC_EXT = {"md", "txt", "rst", "adoc"}
-_SPEC_NAME = re.compile(
-    r"directive|spec|goal|plan|readme|todo|roadmap|rfc|design|proposal|prd|requirements|changelog|"
-    r"contributing|agents|claude|context|handoff|report|prompt|notes",
-    re.IGNORECASE,
-)
-_FILE_TOKEN = re.compile(r"^(?:\.?[\w-]{2,}(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,4}|\.[A-Za-z][\w-]+)$")
-_LOCATIVE = re.compile(
-    r"\b(?:in|under|inside|within|into|at)\s+(?:the\s+)?([A-Za-z0-9_][\w-]*)", re.IGNORECASE
-)
-_STRIP = "\"'`()[]{}<>,:;!?*"
-
-
-def named_scopes(
-    prompt_text: str, paths: list[str], goals: list[str] | None = None, root: Path | None = None
-) -> list[str]:
-    """File scopes the prompt names: path-like tokens (``auth.py``, ``src/app/``, ``.env``) and bare
-    words after in/under/inside/within/into/at that are a directory of one of ``paths``.
-
-    Spec-like documents (``REBUILD_DIRECTIVE.md``, ``README.md``, a root-level ``NOTES.md``) name a
-    goal, not a scope: they are left out, and collected in ``goals`` when the caller wants them.
-    Directories are returned with a trailing slash.
-    """
-    scopes: list[str] = []
-    lowered = [path.lower() for path in paths]
-    for raw in prompt_text.split():
-        token = raw
-        while True:  # peel quotes, brackets and a sentence-ending period, in any order
-            bare = token.strip(_STRIP)
-            if bare.endswith(".") and not _FILE_TOKEN.match(bare):
-                bare = bare[:-1]
-            if bare == token:
-                break
-            token = bare
-        if not token or "://" in token or token.startswith("-"):
-            continue
-        is_dir = token.endswith("/")
-        token = token.strip("/").lower()
-        if not token:
-            continue
-        last = token.rsplit("/", 1)[-1]
-        if is_dir or "/" in token or _FILE_TOKEN.match(token):
-            if not is_dir and not _FILE_TOKEN.match(last):
-                # a slash word with no extension is a directory when a changed path lies in it or
-                # the repo has it: "and/or" and "broad/high level" are prose, and a false scope
-                # flags real work. Without a repo to ask, a slash word is taken at its word.
-                held = any(("/" + low).find("/" + token + "/") >= 0 for low in lowered)
-                if root is not None and not held and not (root / raw.strip(_STRIP + "./")).is_dir():
-                    continue
-                is_dir = True
-            if not is_dir and _spec_like(token):
-                if goals is not None:
-                    goals.append(token)
-                continue
-            scopes.append(token + "/" if is_dir else token)
-    dirs = {part for path in paths for part in path.lower().split("/")[:-1]}
-    for word in _LOCATIVE.findall(prompt_text):
-        if word.lower() in dirs and word.lower() + "/" not in scopes:
-            scopes.append(word.lower() + "/")
-    return scopes
-
-
-def _spec_like(token: str) -> bool:
-    name = token.rsplit("/", 1)[-1]
-    stem, _, ext = name.rpartition(".")
-    return ext in _DOC_EXT and (bool(_SPEC_NAME.search(stem)) or "/" not in token)
-
-
-def _core_stem(path: str) -> str:
-    """``tests/test_hello.py`` -> ``hello``; ``hello_test.go`` -> ``hello``; ``a.spec.ts`` -> ``a``."""
-    stem = path.rsplit("/", 1)[-1].lower().lstrip(".").split(".")[0]
-    for prefix in ("test_",):
-        if stem.startswith(prefix):
-            stem = stem[len(prefix) :]
-    for suffix in ("_test", "_tests"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-    return stem
-
-
-def unrequested_paths(prompt_text: str, paths: list[str], root: Path | None = None) -> set[str]:
-    """Which of ``paths`` fall outside every scope the prompt names.
-
-    Empty when the prompt names no file scope (a goal is not a file list). A file is in scope when a
-    named path or directory covers it, or when it is a conventional companion of one that is: a test
-    twin by stem, or any file in the same directory (``__init__.py`` included).
-    """
-    goals: list[str] = []
-    scopes = named_scopes(prompt_text, paths, goals, root)
-    if not scopes:
-        return set()
-    lowered = {path: path.lower() for path in paths}
-    # a document the prompt names sets no scope, but it was asked for: never flag it
-    in_scope = {p for p, low in lowered.items() if any(low == g or low.endswith("/" + g) for g in goals)}
-    companion_dirs: set[str] = set()
-    for scope in scopes:
-        if scope.endswith("/"):
-            directory = scope[:-1]
-            for path, low in lowered.items():
-                parts = low.split("/")[:-1]
-                if low.startswith(directory + "/") or ("/" not in directory and directory in parts):
-                    in_scope.add(path)
-            continue
-        matched = [path for path, low in lowered.items() if low == scope or low.endswith("/" + scope)]
-        if not matched and "/" in scope:
-            matched = [path for path, low in lowered.items() if low.endswith("/" + scope.rsplit("/", 1)[-1])]
-        for path in matched:
-            in_scope.add(path)
-            companion_dirs.add(path.rsplit("/", 1)[0] if "/" in path else "")
-        if not matched and "/" in scope:  # named but untouched: its directory is still the place meant
-            companion_dirs.add(scope.rsplit("/", 1)[0])
-    stems = {_core_stem(p) for p in in_scope} | {_core_stem(s) for s in scopes if not s.endswith("/")}
-    for path, low in lowered.items():
-        directory = low.rsplit("/", 1)[0] if "/" in low else ""
-        if directory in companion_dirs or _core_stem(low) in stems:
-            in_scope.add(path)
-    return {path for path in paths if path not in in_scope}
-
-
 @dataclass
 class Attribution:
     changes: list[FileChange] = field(default_factory=list)
@@ -603,7 +476,6 @@ def attribute_session(
     """Everything the debrief needs for one session, computed deterministically."""
     git = git or GitState(root)
     result = Attribution()
-    by_prompt = {p.id: p for p in prompts}
     order = {p.id: p.ordinal for p in prompts}
     per_path: dict[str, list[Touch]] = {}
     for touch in touches(events, root):
@@ -627,17 +499,8 @@ def attribute_session(
                 else [Touch(t.event, one, None, None, False, t.deleted) for t in timeline]
             )
             result.changes.extend(
-                _file_changes(one, tl, session, root, git, base, by_prompt, result.reverted, result.to_disk)
+                _file_changes(one, tl, session, root, git, base, result.reverted, result.to_disk)
             )
-
-    by_pid: dict[str, list[FileChange]] = {}
-    for change in result.changes:
-        by_pid.setdefault(change.prompt_id or "", []).append(change)
-    for pid, changes in by_pid.items():
-        prompt = by_prompt.get(pid)
-        flagged = unrequested_paths(prompt.text, [c.path for c in changes], root) if prompt else set()
-        for change in changes:
-            change.unrequested = change.path in flagged
 
     result.failed = [e for e in events if e.success is False]
     result.reruns = _reruns(events)
@@ -686,7 +549,6 @@ def _file_changes(
     root: Path,
     git: GitState,
     base: str | None,
-    by_prompt: dict[str, Prompt],
     reverted: list[FileChange],
     to_disk: list[tuple[FileChange, bool]],
 ) -> list[FileChange]:
@@ -744,17 +606,15 @@ def _file_changes(
             continue
         if run_start[1] is None and a[1] is None:
             if group[-1].deleted:  # nothing before or after: only the delete itself is worth naming
-                out.append(_placeholder(path, session.id, pid, by_prompt, "none", "deleted"))
+                out.append(_placeholder(path, session.id, pid, "none", "deleted"))
         else:
             for j in pending:  # the run's diff is credited to its last prompt; earlier ones get no hunks
-                out.append(
-                    _placeholder(path, session.id, groups[j][0].event.prompt_id or "", by_prompt, "deferred")
-                )
+                out.append(_placeholder(path, session.id, groups[j][0].event.prompt_id or "", "deferred"))
             if all(t.known for t in group) and not pending:
                 strategy = "payload"
             else:
                 strategy = "git" if used_git else "bridged"
-            change = _change(path, session.id, pid, run_start[1], a[1], by_prompt, strategy)
+            change = _change(path, session.id, pid, run_start[1], a[1], strategy)
             if disk and i == len(groups) - 1:  # its after side is the file on disk now
                 to_disk.append((change, any(t.known for t in timeline)))
             out.append(change)
@@ -762,7 +622,7 @@ def _file_changes(
     for j in pending:  # never resolved: without git there is only the fact of a touch to show
         group = groups[j]
         effect = "deleted" if group[-1].deleted else "modified"
-        out.append(_placeholder(path, session.id, group[0].event.prompt_id or "", by_prompt, "none", effect))
+        out.append(_placeholder(path, session.id, group[0].event.prompt_id or "", "none", effect))
     start, final = before[0], after[-1]
     touched = any(t.known and t.old != t.new or not t.known for t in timeline)
     existed = start[1] is not None or any(
@@ -777,7 +637,6 @@ def _placeholder(
     path: str,
     session_id: str,
     prompt_id: str,
-    by_prompt: dict[str, Prompt],
     strategy: str,
     effect: str = "modified",
 ) -> FileChange:
@@ -791,7 +650,6 @@ def _change(
     prompt_id: str,
     before: str | None,
     after: str | None,
-    by_prompt: dict[str, Prompt],
     strategy: str,
 ) -> FileChange:
     if after is None and before is not None:

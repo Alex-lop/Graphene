@@ -6,8 +6,8 @@ Why did my coding agent change this line? Graphene answers that from Claude Code
 across sessions, and prints a short card of what happened when you come back to a repo.
 
 I run Claude Code on a repo, come back hours later or the next morning, and can't account for the
-changes. The diff doesn't tell me which request produced which change, what the agent touched that I
-never asked for, or what it tried and then abandoned. Graphene does.
+changes. The diff doesn't tell me which request produced which change, or what the agent tried and
+then abandoned. Graphene does.
 
 ![The card: what one session changed](docs/assets/card.svg)
 
@@ -114,9 +114,7 @@ map replaces them; `graphene debrief [SESSION]` still works for scripts that cal
 Graphene reads Claude Code's transcript files for the repo, or the events its hook recorded live,
 and groups every tool call under the prompt whose turn it ran in. Claude Code's own payloads carry
 the file before and after each edit, so the diff per prompt and file is computed directly; only a
-file's first or last state in a session, when a shell command wrote it, is read from git. A file is
-flagged as not asked for only when the prompt named a path (`auth.py`, `src/app/`) that does not
-cover it; a prompt that names no path flags nothing.
+file's first or last state in a session, when a shell command wrote it, is read from git.
 "Abandoned" means files restored to their session-start content and checks that failed and were
 rerun; the card also puts one line under it counting the tool calls that failed or were refused. No model is involved at any point. The heuristics and their failure modes are spelled out in
 [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
