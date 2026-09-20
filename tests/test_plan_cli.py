@@ -118,8 +118,9 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     agent("node", "release", "n1", "--why", "needs schema.py, which is outside my scope")
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     shown = person("node", "show", "n1").stdout
-    assert "window 2:" in shown and "released: needs schema.py" in shown  # the record, then the log
-    kinds = [line.split()[1] for line in shown.split("  log:")[1].splitlines() if line.strip()]
+    assert "window 2:" in shown and "released: needs schema.py" in shown  # the contract, then the record
+    assert "`graphene plan log` (7 for n1)" in shown
+    kinds = [line.split()[2] for line in person("plan", "log").stdout.splitlines()]
     assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
 
 
@@ -130,6 +131,30 @@ def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_h
     assert "next: you hold n1 (users). Finish it with `graphene node done n1`" in agent("plan").stdout
     back = agent("node", "release", "n1", "--why", "the check and the goal disagree").stdout
     assert "next: nothing is ready for you: n1 is back with the person" in back
+
+
+def test_a_proposal_shows_what_it_would_wait_on_and_an_edit_says_what_it_changed(repo):
+    """The second walkthrough: reviewing an agent's proposal, the edge it proposed was nowhere to be
+    seen, and `node set` answered only 'revision 2'."""
+    person("node", "add", "users", "--scope", "api.py", "--check", "true")
+    agent("node", "add", "docs", "--scope", "README.md", "--check", "true", "--needs", "n1")
+    assert "proposed by claude:5e55105e; would wait on n1; `graphene plan accept n2`" in person("plan").stdout
+    assert "  needs:  n1   (it cannot start until they are done)" in person("node", "show", "n2").stdout
+    edited = person("node", "set", "n2", "--scope", "docs/api.md").stdout
+    assert "n2 is now revision 2:" in edited and "scope: ['README.md'] -> ['docs/api.md']" in edited
+    assert "n2 is unchanged (revision 2)" in person("node", "set", "n2", "--scope", "docs/api.md").stdout
+
+
+def test_a_person_can_drop_a_node_that_is_running_and_a_long_reason_is_cut_in_the_table(repo):
+    person("node", "add", "probe", "--scope", "api.py", "--check", "true")
+    person("node", "add", "users", "--scope", "schema.py", "--check", "true")
+    agent("node", "start", "n1")
+    assert agent("node", "drop", "n1").exit_code == 1
+    assert person("node", "drop", "n1").exit_code == 0
+    agent("node", "start", "n2")
+    agent("node", "release", "n2", "--why", "because " + "the schema is not what the goal says " * 5)
+    row = [line for line in person("plan").stdout.splitlines() if line.startswith("  n2")][0]
+    assert row.endswith("… (`graphene node show n2` has all of it)") and len(row) < 260
 
 
 def test_plain_graphene_shows_the_plan_when_there_is_one(repo):

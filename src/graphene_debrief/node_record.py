@@ -193,7 +193,12 @@ def _coverage(store, windows: list[Window], commits: list, at: str) -> dict:
     commit of that path in between, would otherwise verify a commit made inside it (the review of
     this module found that with a probe; tests/test_node_record.py keeps it).
     """
+    under = sorted({path for w in windows for path in (w.at_end or [])})
     counts = {
+        "changed_files": len(under),  # what git said had changed when each window ended
+        "changed_edit": 0,
+        "changed_shell": 0,
+        "changed_nothing": len(under),
         "commits": len(commits),
         "committed_files": 0,
         "write": 0,
@@ -233,6 +238,13 @@ def _coverage(store, windows: list[Window], commits: list, at: str) -> dict:
         if any(lo <= seconds(change.timestamp) <= hi for lo, hi in held):
             best = written_inside.get(change.path, change.grade)
             written_inside[change.path] = max(best, change.grade, key=RANK.__getitem__)
+    for (
+        path
+    ) in under:  # a node's work is often never committed inside it: git's answer at its end is graded too
+        grade = written_inside.get(path)
+        if grade:
+            counts[f"changed_{grade}"] += 1
+            counts["changed_nothing"] -= 1
     selected, ungraded = Coverage(), set()
     for commit in commits:
         for path, _status in commit.files:
@@ -359,13 +371,23 @@ def _window_lines(record: NodeRecord) -> list[str]:
 
 
 def _coverage_lines(counts: dict) -> list[str]:
+    n = counts["changed_files"]
+    under = (
+        f"  coverage: of the {n} path{_s(n)} git said had changed under this node, "
+        f"{counts['changed_edit'] + counts['changed_shell']} to a recorded "
+        f"write by the session that held it ({counts['changed_edit']} edit, {counts['changed_shell']} "
+        f"shell), {counts['changed_nothing']} to nothing recorded"
+    )
     if not counts["computed"]:
         lines = [f"  coverage: not computed — {counts['how'].removeprefix('not computed: ')}"]
     elif not counts["commits"]:
-        lines = ["  coverage: no commit was made inside its windows, so there is nothing to grade yet"]
+        lines = [under] if n else ["  coverage: nothing changed under this node yet, so nothing to grade"]
+        lines.append("    no commit was made inside its windows, so there is no commit to grade")
     else:
-        lines = [
-            f"  coverage: of the {counts['committed_files']} file{_s(counts['committed_files'])} in the "
+        lines = [under] if n else []
+        lines += [
+            f"  {'and' if n else 'coverage:'} of the {counts['committed_files']} "
+            f"file{_s(counts['committed_files'])} in the "
             f"{counts['commits']} commit{_s(counts['commits'])} inside its windows, {counts['write']} "
             f"trace{'s' if counts['write'] == 1 else ''} to a recorded write ({counts['edit']} edit, "
             f"{counts['shell']} shell), {counts['commit']} only to an agent's commit, "

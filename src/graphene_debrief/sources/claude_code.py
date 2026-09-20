@@ -503,7 +503,24 @@ def install_hooks(root: Path) -> list[str]:
     if added:
         path.parent.mkdir(exist_ok=True)
         _write_atomically(path, json.dumps(settings, indent=2) + "\n")
+        if path.name == Path(SETTINGS).name:
+            _exclude_locally(root, SETTINGS)
     return added
+
+
+def _exclude_locally(root: Path, rel: str) -> None:
+    """Keep the personal settings file out of `git add -A` through .git/info/exclude, which is this
+    clone's own and never committed, so the repo's .gitignore is still never edited."""
+    info = root / ".git" / "info"
+    if not info.is_dir():
+        return  # a worktree's .git is a file; its main checkout's exclude already covers it
+    exclude = info / "exclude"
+    with contextlib.suppress(OSError):
+        text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if rel not in text.splitlines():
+            exclude.write_text(
+                text + ("" if not text or text.endswith("\n") else "\n") + rel + "\n", encoding="utf-8"
+            )
 
 
 def _write_atomically(path: Path, text: str) -> None:

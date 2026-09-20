@@ -76,6 +76,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
         return [f"next: nothing is ready for you: {'; '.join(why)}.{tail}"]
 
+    def brief(text: str, node_id: str) -> str:
+        """A reason as one table cell: the whole of it is in `node show`."""
+        text = " ".join(text.split())
+        return text if len(text) <= 100 else f"{text[:97]}… (`graphene node show {node_id}` has all of it)"
+
     def holds(n: P.Node, who: P.Caller) -> bool:
         return n.session_id == who.session_id if who.session_id else n.executor == who.name
 
@@ -85,7 +90,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if n.state == P.REVIEW:
             return f"check passed; waits for a sign-off: `graphene node signoff {n.id}`"
         if n.state == P.PROPOSED:
-            return f"proposed by {n.proposed_by}; `graphene plan accept {n.id}`"
+            needs = f"would wait on {', '.join(n.needs)}; " if n.needs else ""
+            return f"proposed by {n.proposed_by}; {needs}`graphene plan accept {n.id}`"
         if n.state == P.OPEN:
             blockers = P.unmet(n, by_id)
             if blockers:
@@ -94,9 +100,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 )
             last = (store.node_log(n.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
             if last["kind"] == "released":
-                return f"ready · handed back: {last['detail'].get('why', '')}"
+                return f"ready · handed back: {brief(last['detail'].get('why', ''), n.id)}"
             if last["kind"] == "reopened":
-                return f"ready · sent back: {last['detail'].get('note', '')}"
+                return f"ready · sent back: {brief(last['detail'].get('note', ''), n.id)}"
             return "ready"
         return ""
 
@@ -104,10 +110,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         everything = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         if not everything:
             out(
-                "no plan yet. A person adds a node with `graphene node add 'title' --scope 'src/x/**' "
-                "--check 'pytest tests/x'`; an agent proposes some with `graphene plan propose -` and the "
-                'JSON on stdin: {"nodes": [{"title": …, "goal": …, "scope": ["glob"], "check": "command", '
-                '"needs": ["n1"], "owner": "agent"}]} (no file left behind in the repo)'
+                "no plan yet. `graphene node add 'title' --scope 'src/x/**' --check 'pytest tests/x' "
+                "[--needs n1] [--goal …]` adds a node: from a person it is in the plan at once, from an "
+                "agent it is a proposal a person accepts. `graphene plan propose FILE` adds several from JSON"
             )
             return
         by_id = {n.id: n for n in everything}
@@ -144,7 +149,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             for line in next_lines(store, who):
                 out(line)
 
-    def log_line(e: dict, with_node: bool = False) -> str:
+    def log_line(e: dict, with_node: int = 0) -> str:
         detail = e["detail"]
         changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
         fields = changed.items() if isinstance(changed, dict) else ()
@@ -160,7 +165,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             or ""
         )
         who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
-        node = f"{e['node_id'].ljust(6)}  " if with_node else ""
+        node = f"{e['node_id'].ljust(with_node)}  " if with_node else ""
         return f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(16)}  {said}"
 
     # -- graphene plan ----------------------------------------------------------------------------
@@ -187,8 +192,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             ..., help="A JSON file ('-' for stdin): {\"nodes\": [{title, scope, check, …}]}"
         ),
     ) -> None:
-        """Add nodes from JSON: a file, or '-' for stdin (nothing is left behind in the repo). From an
-        agent they are proposals until a person accepts them."""
+        """Add several nodes at once from JSON: a file, or '-' for stdin. From an agent they are
+        proposals until a person accepts them. One node at a time needs no JSON: `graphene node add`.
+
+        {"nodes": [{"id": "api", "title": "one line", "goal": "what it should achieve",
+        "scope": ["src/api/**", "!src/api/gen/**"], "check": "pytest tests/api", "needs": ["schema"],
+        "owner": "agent", "signoff": false}]}   (id, goal, needs, owner and signoff are optional)"""
         try:
             raw = json.loads(sys.stdin.read() if file == "-" else Path(file).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -227,7 +236,14 @@ def register(cli: typer.Typer, root, open_store, fail):
     @plan_cli.command("log")
     def log_() -> None:
         """Everything that happened on the plan, oldest first; `*` is what belonged to no node."""
-        run(lambda s: [out(log_line(e, with_node=True)) for e in s.node_log()])
+
+        def go(store):
+            entries = store.node_log()
+            wide = max((len(e["node_id"]) for e in entries), default=1)
+            for e in entries:
+                out(log_line(e, with_node=wide))
+
+        run(go)
 
     @plan_cli.command()
     def archive() -> None:
@@ -274,7 +290,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             run_plan(
                 store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, r / ".graphene/runs"
             )
-            for line in next_lines(store, P.Caller("agent", False)):
+            for line in next_lines(store, P.caller()):
                 out(line)
 
     # -- graphene node ----------------------------------------------------------------------------
@@ -328,8 +344,20 @@ def register(cli: typer.Typer, root, open_store, fail):
             fail(
                 "nothing to change: pass --scope, --check, --goal, --needs, --owner, --title or --signoff", 1
             )
-        n = run(lambda s: P.edit(s, node_id, edits, P.caller()))
-        out(f"{n.id} is now revision {n.rev}")
+
+        def go(store):
+            before = P.get(store, node_id).rev
+            node = P.edit(store, node_id, edits, P.caller())
+            last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
+            return node, last
+
+        n, last = run(go)
+        if last is None:
+            out(f"{n.id} is unchanged (revision {n.rev})")
+            return
+        out(f"{n.id} is now revision {n.rev}:")
+        for name, (before, after) in last["detail"]["changed"].items():
+            out(f"  {name}: {before!r} -> {after!r}")
         if n.state == P.RUNNING:
             out(
                 f"{n.id} is running: {n.executor} was told revision {n.told_rev}. Writes are checked against "
@@ -408,7 +436,11 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Not good enough: send a finished node back, with what is wrong."""
         run(lambda s: P.reopen(s, node_id, P.caller(), note))
-        out(f"{node_id} is open again")
+        out(
+            f"{node_id} is open again. Whoever takes it next is shown your note; the contract itself is "
+            "unchanged, so if the note changes what is wanted, say it there too: "
+            f"`graphene node set {node_id} --goal …`"
+        )
 
     @node_cli.command()
     def show(node_id: str = typer.Argument(...)) -> None:
@@ -421,9 +453,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(P.contract(n))
             for line in render(node_record(store, root(), n)):
                 out(line)
-            out("  log:")
-            for e in store.node_log(n.id):
-                out("  " + log_line(e))
+            entries = len(store.node_log(n.id))
+            out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
         run(go)
 

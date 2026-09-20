@@ -100,9 +100,10 @@ This adds Graphene's hook to the repo's `.claude/settings.local.json` (yours, no
 `settings.json`; if an earlier version put it in `settings.json`, it is upgraded there, and a repo
 set up before 0.3 gets the one new event, `PreToolUse`, added). The hook does two jobs: it holds
 agents to the plan, and it keeps the record. Each time it runs, before and after every tool call,
-the agent waits about 40 ms for it (measured in the test suite). `init` also prints the one line
-only you can add to your own `~/.claude/settings.json` so that Claude Code records which files each
-shell command changed.
+the agent waits about 40 ms for it (measured in the test suite). It keeps that file out of `git add` through
+`.git/info/exclude`, never through your `.gitignore`. When your own `~/.claude/settings.json` does
+not yet make Claude Code record which files each shell command changed, `init` prints the one line
+to add there; Graphene never edits that file.
 
 ## The first ten minutes
 
@@ -118,8 +119,9 @@ graphene                 # the plan
 graphene plan accept     # nothing to accept here, but it says what agents can reach without you
 ```
 
-Or ask your agent to draft the plan: *"propose a plan for this with `graphene plan propose`"*. What
-an agent proposes is a proposal. Read it with `graphene plan`, change it with
+Or ask your agent to draft the plan: *"propose a plan for this: one `graphene node add` per node,
+with a scope, a check and what it needs. Do not start it."* What an agent adds is a proposal, which
+binds nobody and which nobody can start. Read it with `graphene plan`, change it with
 `graphene node set n2 --scope … --check … --owner me`, drop what you do not want, then:
 
 ```
@@ -143,7 +145,9 @@ graphene plan log        # everything that happened, oldest first
 ```
 
 If a node is not what you wanted, `graphene node reopen n1 --note "return a dict, not a list"` sends
-it back with your words. A node that is yours you do like anyone else: `graphene node start rate`,
+it back with your words. The note is a comment to whoever takes it next; the contract is what binds,
+so when the note changes what is wanted, change the goal or the check too (`graphene node set n1
+--goal …`), or a careful agent will hand the node back over the contradiction. A node that is yours you do like anyone else: `graphene node start rate`,
 the work, `graphene node done rate`. A finished plan stays in force, so agents write nothing in the
 repo outside a node, until you add a node, `graphene plan archive`, or `graphene plan pause`.
 

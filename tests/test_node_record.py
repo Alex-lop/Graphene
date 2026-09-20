@@ -193,6 +193,24 @@ def test_work_that_was_never_committed_is_in_the_record_because_git_was_asked_wh
     assert w.changed == {"src/api/users.py": "git, when it ended"} and w.commits == []
 
 
+def test_a_node_nobody_committed_in_still_has_a_coverage_line_over_what_git_said_changed(store, repo):
+    """The second walkthrough: the README never commits, Graphene never commits, and every node's
+    coverage read zero of zero. What changed under a node is graded whether or not it was committed."""
+    session(store, repo, S1, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    wrote(store, repo, S1, "src/api/users.py", "def users():\n    return [1]\n", T(2), 1)
+    (repo / "src/api/helpers.py").write_text("# written through a shell nothing recorded\n")
+    plan.finish(store, "n1", BOT, now=T(3))
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(4))
+    counts = record.coverage
+    assert (counts["changed_files"], counts["changed_edit"], counts["changed_nothing"]) == (2, 1, 1)
+    assert (
+        "  coverage: of the 2 paths git said had changed under this node, 1 to a recorded write by the "
+        "session that held it (1 edit, 0 shell), 1 to nothing recorded"
+    ) in NR.render(record)
+
+
 def test_a_window_that_ended_before_that_was_logged_says_what_it_cannot_know(store, repo):
     plan.propose(store, [api_node()], ALEX, now=T(0))
     plan.start(store, "n1", BOT, repo, now=T(1))
@@ -375,7 +393,8 @@ def test_the_record_reads_as_plain_lines(store, repo):
         f"  window 1: claude:aaaa1111, session {S1}  {T(1)} -> {T(2)}  released: the schema has to change",
         f"    from {base[:7]}: what git said had changed when it ended",
         "    nothing changed",
-        "  coverage: no commit was made inside its windows, so there is nothing to grade yet",
+        "  coverage: nothing changed under this node yet, so nothing to grade",
+        "    no commit was made inside its windows, so there is no commit to grade",
         "  refused: 1 write denied",
         "    denied: src/db/schema.py",
         "  what people did to it:",

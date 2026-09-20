@@ -358,6 +358,11 @@ def contract(node: Node) -> str:
         f"{node.id} (revision {node.rev}): {node.title}",
         f"  goal:   {node.goal or node.title}",
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
+        *(
+            [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
+            if node.needs
+            else []
+        ),
         f"  done:   {done_means(node)}",
         f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
         f"  stuck:  graphene node release {node.id} --why '<what is in the way>'   (hands it back; say why)",
@@ -522,7 +527,7 @@ def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
         node = get(store, node_id)
         if not who.person and node.state != PROPOSED:
             _person_only(who, "dropping an accepted node")
-        if node.state == RUNNING:
+        if node.state == RUNNING and not who.person:
             raise Refused(f"{node.id} is running ({node.executor}); `graphene node release {node.id}` first")
         waiting = [n.id for n in nodes(store) if node.id in n.needs and n.state not in GONE]
         if waiting:
