@@ -41,8 +41,8 @@ Each has its reason, so you can tell when it no longer applies. Strike any of th
    fires the stop hook at all). What held every time was a check made out of process after the
    agent was gone. That check is decision 1, so the second route cost 125 lines.
 3. **The plan's surface is the command line, not an MCP server.** `graphene plan`, `graphene node
-   start|done|release`. *Why:* every executor has a shell, including Codex and you; four real agents
-   used it correctly without being taught. An MCP server would add typed tools for one vendor and no
+   start|done|release`. *Why:* every executor has a shell, including Codex and you; every real agent
+   tonight (Claude Code and Codex) used it correctly from its help and its refusals alone. An MCP server would add typed tools for one vendor and no
    binding power. Revisit if agents start fumbling the commands.
 4. **While a plan is in force, work happens inside nodes, and a finished plan stays in force** until
    you archive or pause it. A session that holds no node writes nothing in the repo. *Why:* the first
@@ -68,8 +68,8 @@ Each has its reason, so you can tell when it no longer applies. Strike any of th
    runs an agent" is replaced by that sentence.
 10. **Every hole is printed next to the control it weakens** (README, `docs/HOW_IT_WORKS.md`, the
     map). The known ones are in "What does not bind" below.
-11. **The name, the package and PyPI are yours.** Nothing was renamed or published. The import
-    package is still `graphene_debrief`.
+11. **The name, the package and PyPI are yours.** I renamed nothing and published nothing (0.2.0 on
+    PyPI is yours, from 2026-09-20). The import package is still `graphene_debrief`.
 12. **What was demoted.** `graphene why`, the session card, `graphene sessions` and the session map
     stay as commands because they are verified and useful; none of them is the product. The
     guess at "not what you asked for" from prompt text is deleted: scope is a fact of the node now.

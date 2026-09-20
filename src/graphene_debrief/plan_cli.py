@@ -150,7 +150,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             for line in next_lines(store, who):
                 out(line)
 
-    def log_line(e: dict, with_node: int = 0) -> str:
+    def log_line(e: dict, with_node: int = 0, who_wide: int = 16) -> str:
         detail = e["detail"]
         changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
         fields = changed.items() if isinstance(changed, dict) else ()
@@ -167,7 +167,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
         who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
         node = f"{e['node_id'].ljust(with_node)}  " if with_node else ""
-        return f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(16)}  {said}"
+        return (
+            f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
+        )
 
     # -- graphene plan ----------------------------------------------------------------------------
 
@@ -241,8 +243,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             entries = store.node_log()
             wide = max((len(e["node_id"]) for e in entries), default=1)
+            who_wide = max((len(e["actor"] or "") for e in entries), default=16)
             for e in entries:
-                out(log_line(e, with_node=wide))
+                out(log_line(e, with_node=wide, who_wide=max(who_wide, 16)))
 
         run(go)
 

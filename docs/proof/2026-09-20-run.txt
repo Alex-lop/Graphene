@@ -1,5 +1,5 @@
-# docs/proof/run.sh, run 2026-09-20 00:57 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim;
-# the only edit is the scratch directory's path. 27 s wall.
+# docs/proof/run.sh, run 2026-09-20 02:2x -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
+# code as merged; the only edit is the scratch directory's path. 21 s wall.
 slug  open  slug() turns a title into a url slug
 rate  open  set the rate
 price  open  price() uses the rate
@@ -8,7 +8,7 @@ left alone, agents can reach: slug
   rate will wait: rate is alexlopez's
   price will wait: rate is alexlopez's
 the plan: 3 nodes, 0 done, 0 running
-  slug   open      slug() turns a title into a url slug  agent      app/text.py  ·  ready
+  slug   open      slug() turns a title into a url slug  agent      app/text.py     ·  ready
   rate   open      set the rate                          alexlopez  app/pricing.py  ·  ready
   price  waiting   price() uses the rate                 agent      app/pricing.py  ·  waits on rate (alexlopez's)
 waiting on a person: rate (yours to do)
@@ -17,7 +17,7 @@ waiting on a person: rate (yours to do)
 slug started (revision 1): slug() turns a title into a url slug
 slug attempt 1: the executor ended (exit 0)
 slug is done
-next: nothing is ready for you: rate is alexlopez's; price waits on rate (open). You can stop: the rest waits for a person, and `graphene plan` shows them that
+next: rate, set the rate. `graphene node start rate` prints its contract as it stands now; it may have changed since you last saw it
 
 --- the person does theirs, by hand, through the same gate:
 rate is done (check passed, nothing outside its scope)
@@ -30,22 +30,22 @@ price is done
 next: nothing; every node is done
 
 the plan: 3 nodes, 3 done, 0 running · still in force: agents write nothing here until you add a node, archive or pause
-  slug   done      slug() turns a title into a url slug  agent      app/text.py  ·  
-  rate   done      set the rate                          alexlopez  app/pricing.py  ·  
-  price  done      price() uses the rate                 agent      app/pricing.py  ·  
+  slug   done      slug() turns a title into a url slug  agent      app/text.py     ·
+  rate   done      set the rate                          alexlopez  app/pricing.py  ·
+  price  done      price() uses the rate                 agent      app/pricing.py  ·
 
-  2026-09-20T04:57:02Z  slug    added         alexlopez         
-  2026-09-20T04:57:02Z  rate    added         alexlopez         
-  2026-09-20T04:57:02Z  price   added         alexlopez         
-  2026-09-20T04:57:02Z  slug    started       run:claude        
-  2026-09-20T04:57:11Z  slug    check_passed  claude:7ec680ef   python3 -m unittest -q tests.test_text
-  2026-09-20T04:57:11Z  slug    finished      claude:7ec680ef   
-  2026-09-20T04:57:15Z  rate    started       alexlopez         
-  2026-09-20T04:57:15Z  rate    check_passed  alexlopez         python3 -c 'from app.pricing import RATE; assert RATE'
-  2026-09-20T04:57:15Z  rate    finished      alexlopez         
-  2026-09-20T04:57:15Z  price   started       run:claude        
-  2026-09-20T04:57:25Z  price   check_passed  claude:89653db2   python3 -c 'from app.pricing import price, RATE; assert price(3) == 3 * RATE'
-  2026-09-20T04:57:25Z  price   finished      claude:89653db2   
+  2026-09-20T06:23:33Z  slug   added         alexlopez (no terminal)  
+  2026-09-20T06:23:33Z  rate   added         alexlopez (no terminal)  
+  2026-09-20T06:23:34Z  price  added         alexlopez (no terminal)  
+  2026-09-20T06:23:34Z  slug   started       run:claude        
+  2026-09-20T06:23:42Z  slug   check_passed  claude:bdc92fac   python3 -m unittest -q tests.test_text
+  2026-09-20T06:23:42Z  slug   finished      claude:bdc92fac   changed: app/text.py
+  2026-09-20T06:23:45Z  rate   started       alexlopez (no terminal)  
+  2026-09-20T06:23:46Z  rate   check_passed  alexlopez (no terminal)  python3 -c 'from app.pricing import RATE; assert RATE'
+  2026-09-20T06:23:45Z  rate   finished      alexlopez (no terminal)  changed: app/pricing.py
+  2026-09-20T06:23:46Z  price  started       run:claude        
+  2026-09-20T06:23:52Z  price  check_passed  claude:d4261be5   python3 -c 'from app.pricing import price, RATE; assert price(3) == 3 * RATE'
+  2026-09-20T06:23:52Z  price  finished      claude:d4261be5   changed: app/pricing.py
 
 --- what must be true:
   ok    slug is done, by Graphene's check
