@@ -100,6 +100,7 @@ class ViewEdge:
 @dataclass(slots=True)
 class PlanView:
     version: int = 1
+    repo: str = ""  # the checkout this plan belongs to, by name: a plan exists before any run does
     person: str = ""
     paused: bool = False
     width: float = 0.0
@@ -202,7 +203,9 @@ def build_plan_view(store) -> dict:
     live = [n for n in P.nodes(store) if n.state != P.DROPPED]
     by_id = {n.id: n for n in live}
     person = P.person_name()
-    view = PlanView(person=person, paused=P.paused(store))
+    # the store lives at <repo>/.graphene/graphene.db, and the page names the repo even when no
+    # session has been recorded in it yet, which is exactly when the graph cannot name it
+    view = PlanView(repo=store.path.parent.parent.name, person=person, paused=P.paused(store))
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
     view.waiting_on_person = waiting_on_person(live, person)
     runs, waiting = P.forecast(live)

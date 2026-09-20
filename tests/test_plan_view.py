@@ -139,8 +139,9 @@ def test_the_top_of_the_view_says_what_waits_on_the_person(store):
     assert [w["id"] for w in view["forecast"]["waits"]] == ["mine", "asked"]
 
 
-def test_every_hole_a_control_has_is_printed_with_it(store):
+def test_every_hole_a_control_has_is_printed_with_it(store, repo):
     view = build_plan_view(store)
+    assert view["repo"] == repo.name  # the page can name the repo before any session is recorded
     assert set(view["holes"]) == {"scope", "check", "stop", "person"}
     assert all(sentence and sentence[-1] == "." for sentence in view["holes"].values())
     assert view["holes"] == HOLES and view["nodes"] == [] and view["lanes"] == []

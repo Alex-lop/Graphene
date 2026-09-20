@@ -399,7 +399,14 @@ def build():
         from .server import export_html, make_server
 
         r = root()
-        with loaded_store(r) as store:
+        with open_store(r) as store:
+            planned = store.node_count() > 0
+        # The plan is the page's first screen, so a repo that has one opens even when no session has
+        # been recorded in it yet; `loaded_store` ends the command when there is nothing to look at.
+        with open_store(r) if planned else loaded_store(r) as store:
+            if planned:
+                report = backfill(store, r)  # the record fills in beside the plan, quietly
+                refresh_commits(store, r, report.added + report.refreshed)
             try:
                 ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
             except ValueError as exc:

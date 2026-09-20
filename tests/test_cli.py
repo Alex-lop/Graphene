@@ -365,3 +365,14 @@ def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tm
     (config / "settings.json").write_text('{"bashEditDiffEnabled": true}')
     assert "bashEditDiffEnabled" not in run("init").output
     assert (config / "settings.json").read_text() == '{"bashEditDiffEnabled": true}'  # read, never written
+
+
+def test_the_page_opens_on_the_plan_in_a_repo_where_no_session_was_recorded(repo, tmp_path, monkeypatch):
+    """The plan is the first screen, so a repo with a plan and no recorded run still has a page."""
+    monkeypatch.setenv("GRAPHENE_AS", "person:alex")
+    assert run("node", "add", "the users endpoint", "--scope", "src/api/**", "--check", "true").exit_code == 0
+    out = tmp_path / "plan.html"
+    result = run("ui", "--export", str(out))
+    assert result.exit_code == 0, one_line(result)
+    page = out.read_text(encoding="utf-8")
+    assert "the users endpoint" in page and '"waiting_on_person"' in page

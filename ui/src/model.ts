@@ -2,7 +2,7 @@
 // lane or a row, which marks the viewport shows, and what lights when something is selected. Every
 // number added here was already in the JSON; the page decides no order, no size and no position.
 
-import type { Graph, Grade, Link, Mark } from "./types";
+import type { Graph, Grade, Link, Mark, Plan, PlanNode, Shown } from "./types";
 
 export const LANE_H = 28;
 export const ROW_H = 22;
@@ -255,3 +255,60 @@ export const hue = (i: number | undefined): string => (i === undefined || i < 0 
 export const dash = (i: number | undefined): string | undefined => (i !== undefined && i >= 8 ? "5 3" : undefined);
 
 export const linksBy = (graph: Graph, kind: Link["kind"]): Link[] => graph.links.filter((l) => l.kind === kind);
+
+/** A label that has to fit a fixed width, cut with an ellipsis; the whole text stays in the title. */
+export const clip = (text: string, width: number, per: number): string => {
+  const room = Math.floor(width / per);
+  return text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`;
+};
+
+// -- the plan ------------------------------------------------------------------------------------
+
+/** The two things the page can show: what will happen, and what did. The plan is the default. */
+export type View = "plan" | "record";
+
+/** What a state is called on screen. It is printed as words beside the shape, never as colour alone. */
+export const STATE: Record<Shown, string> = {
+  proposed: "proposed",
+  open: "open",
+  waiting: "waiting",
+  ready: "ready",
+  running: "running",
+  review: "waiting on a sign-off",
+  done: "done",
+};
+
+export const STATE_COLOUR: Record<Shown, string> = {
+  proposed: "var(--ask)",
+  open: "var(--neutral)",
+  waiting: "var(--neutral)",
+  ready: "var(--accent)",
+  running: "var(--a1)",
+  review: "var(--ask)",
+  done: "var(--pass)",
+};
+
+export type Act = "accept" | "signoff" | "reopen" | "drop" | "edit";
+
+/** Why a control on a node is disabled, or null when it is not. These are the page's own reasons,
+ * shown before anything is sent; plan.py refuses for itself, and its sentence is what is printed
+ * when a request is actually made. Where the two could disagree, the server's is the one that ran. */
+export function why(node: PlanNode, plan: Plan): Record<Act, string | null> {
+  const readOnly = plan.writable ? null : "this page cannot change the plan; it is read-only";
+  const waiting = plan.nodes.filter((n) => n.needs.includes(node.id)).map((n) => n.id);
+  const finished = node.state === "review" || node.state === "done";
+  const is = `${node.id} is ${STATE[node.display_state]}`;
+  return {
+    accept: readOnly ?? (node.state === "proposed" ? null : `only a proposal is accepted, and ${is}`),
+    signoff: readOnly ?? (node.state === "review" ? null : `a sign-off comes after \`graphene node done\`, and ${is}`),
+    reopen: readOnly ?? (finished ? null : `only a finished node is sent back, and ${is}`),
+    drop:
+      readOnly ??
+      (node.state === "running"
+        ? `${node.id} is running (${node.executor ?? "someone holds it"}); it has to be handed back first`
+        : waiting.length > 0
+          ? `${waiting.join(", ")} waits on ${node.id}; change what they need first`
+          : null),
+    edit: readOnly ?? (node.state === "done" ? `${node.id} is done; send it back first to change its contract` : null),
+  };
+}
