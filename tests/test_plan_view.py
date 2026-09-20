@@ -122,21 +122,35 @@ def test_a_running_node_carries_who_holds_it_since_when_and_its_log(store, repo)
     assert shown["log"][0]["actor"] == "alex"
 
 
-def test_the_top_of_the_view_says_what_waits_on_the_person(store):
-    plan.propose(store, [node("a", signoff=True), node("mine", owner="alex")], ALEX)
+def test_the_top_of_the_view_says_what_waits_on_the_person(store, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    plan.propose(
+        store, [node("a", signoff=True), node("mine", owner="alex"), node("bobs", owner="bob")], ALEX
+    )
     plan.propose(store, [node("asked")], BOT)  # a proposal nobody has accepted
     plan.start(store, "a", BOT, store.path.parent.parent)
     plan.finish(store, "a", BOT)
     view = build_plan_view(store)
     waiting = {item["id"]: item["why"] for item in view["waiting_on_person"]}
-    assert set(waiting) == {"a", "mine", "asked"}
-    assert "sign" in waiting["a"] and "accept" in waiting["asked"] and "yours" in waiting["mine"]
+    assert set(waiting) == {"a", "mine", "asked"}  # bob's node waits on bob, not on the person looking
+    assert "sign" in waiting["a"] and "accept" in waiting["asked"] and waiting["mine"] == "yours to do"
     assert view["counts"]["review"] == 1 and view["counts"]["proposed"] == 1
     assert view["paused"] is False
-    # plan.forecast does not count a node's own sign-off against it, so a node already in review
-    # reads as reachable; the view prints it as it comes, and the strip above says the sign-off is due
-    assert view["forecast"]["runs"] == ["a"]
-    assert [w["id"] for w in view["forecast"]["waits"]] == ["mine", "asked"]
+    assert view["forecast"]["runs"] == []  # a node in review has been reached: it waits for the person
+    assert [w["id"] for w in view["forecast"]["waits"]] == ["a", "mine", "bobs", "asked"]
+
+
+def test_archived_nodes_are_not_drawn_and_a_finished_plan_says_it_is_still_in_force(store, repo):
+    plan.propose(store, [node("a")], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.finish(store, "a", BOT)
+    view = build_plan_view(store, checkout=repo)
+    assert view["all_done"] and view["loose"] == []
+    (repo / "loose.txt").write_text("after hours")
+    assert build_plan_view(store, checkout=repo)["loose"] == ["loose.txt"]
+    plan.archive(store, ALEX)
+    view = build_plan_view(store, checkout=repo)
+    assert view["nodes"] == [] and not view["all_done"]
 
 
 def test_every_hole_a_control_has_is_printed_with_it(store, repo):

@@ -291,6 +291,7 @@ def test_a_person_can_overrule_the_gate_with_a_reason_and_the_log_says_so(store,
     assert plan.finish(store, "n1", ALEX, override="the README edit was mine").state == DONE
     [entry] = store.node_log("n1", ("overruled",))
     assert entry["detail"] == {
+        "head": plan.head(repo),
         "override": "the README edit was mine",
         "outside": ["README.md"],
         "check_passed": False,

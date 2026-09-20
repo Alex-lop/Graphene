@@ -394,14 +394,18 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command()
     def show(node_id: str = typer.Argument(...)) -> None:
-        """A node's contract and everything recorded about it, oldest first."""
+        """A node's contract, then its record: who held it, what changed, what was refused, and how
+        much of it is verified."""
+        from .node_record import node_record, render
 
         def go(store):
             n = P.get(store, node_id)
             out(P.contract(n))
-            out(f"  state:  {n.state}" + (f" · {n.executor}" if n.executor else "") + f" · owner {n.owner}")
+            for line in render(node_record(store, root(), n)):
+                out(line)
+            out("  log:")
             for e in store.node_log(n.id):
-                out(log_line(e))
+                out("  " + log_line(e))
 
         run(go)
 

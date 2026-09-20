@@ -259,7 +259,7 @@ def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]
     for n in order(nodes):
         if n.state in (DONE, *GONE):
             continue
-        why = waits_on_person(n, by_id)
+        why = [f"{n.id} waits for a sign-off"] if n.state == REVIEW else waits_on_person(n, by_id)
         if why:
             waits.append((n, why))
         else:
@@ -710,9 +710,9 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
         node = get(store, node_id)
         node.state = REVIEW if node.signoff and override is None else DONE
         node.finished_at = now
-        detail = (
-            {"override": override, "outside": stray, "check_passed": passed} if override is not None else {}
-        )
+        detail = {"head": head(node.checkout or ".")}  # where it ended: what the node's record reads
+        if override is not None:
+            detail |= {"override": override, "outside": stray, "check_passed": passed}
         _save(
             store, node, "overruled" if override is not None else "finished", who, node.finished_at, **detail
         )

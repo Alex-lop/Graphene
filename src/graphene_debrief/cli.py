@@ -413,8 +413,10 @@ def build():
         from .server import export_html, make_server
 
         r = root()
-        with open_store(r) as store:
-            planned = store.node_count() > 0
+        planned = False
+        if (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
+            with open_store(r) as store:
+                planned = store.node_count() > 0
         # The plan is the page's first screen, so a repo that has one opens even when no session has
         # been recorded in it yet; `loaded_store` ends the command when there is nothing to look at.
         with open_store(r) if planned else loaded_store(r) as store:

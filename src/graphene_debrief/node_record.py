@@ -14,6 +14,7 @@ window says so and names what was read instead. A count that cannot be computed 
 
 from __future__ import annotations
 
+import subprocess
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -100,7 +101,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         P.done_means(node),
         at,
         windows,
-        _coverage(store, windows, inside),
+        _coverage(store, windows, inside, at),
         _refusals(log),
         _acts(log),
     )
@@ -163,7 +164,7 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
     checkout = node.checkout or str(root)
     try:
         paths = P.changed_since(checkout, node.base_sha, node.dirty_at_start)
-    except (P.Refused, OSError) as no:
+    except (P.Refused, OSError, subprocess.TimeoutExpired) as no:
         window.sources.append(f"the working tree could not be read, so what is uncommitted is missing: {no}")
         return
     for path in paths:
@@ -171,7 +172,7 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
     window.sources.append(f"and from the working tree of {checkout} as it stands at {at}, against {base}")
 
 
-def _coverage(store, windows: list[Window], commits: list) -> dict:
+def _coverage(store, windows: list[Window], commits: list, at: str) -> dict:
     """The three counts for this node: of the files in the commits inside its windows, how many
     trace to a recorded write by the session that held it, how many only to an agent's commit, how
     many to nothing.
@@ -180,6 +181,11 @@ def _coverage(store, windows: list[Window], commits: list) -> dict:
     afterwards, never the other way round: ``record.coverage`` grades a commit's path by the writes
     recorded since the previous commit of that path *in the list it is given*, so a list cut to the
     window would grade its first commit against everything before it and flatter the count.
+
+    And a write counts for this node only when it was recorded inside one of its windows. Grading
+    has no floor at the window's start, so a write recorded before the node was taken, with no
+    commit of that path in between, would otherwise verify a commit made inside it (the review of
+    this module found that with a probe; tests/test_node_record.py keeps it).
     """
     counts = {
         "commits": len(commits),
@@ -215,6 +221,12 @@ def _coverage(store, windows: list[Window], commits: list) -> dict:
             f"records of {'it' if len(ids) == 1 else 'them'}",
         )
     graded = {c.sha for c in run.commits}
+    held = [(seconds(w.started_at), seconds(w.ended_at or at)) for w in windows]
+    written_inside: dict[str, str] = {}  # path -> the best grade of a write recorded inside a window
+    for change in run.written:
+        if any(lo <= seconds(change.timestamp) <= hi for lo, hi in held):
+            best = written_inside.get(change.path, change.grade)
+            written_inside[change.path] = max(best, change.grade, key=RANK.__getitem__)
     selected, ungraded = Coverage(), set()
     for commit in commits:
         for path, _status in commit.files:
@@ -222,6 +234,13 @@ def _coverage(store, windows: list[Window], commits: list) -> dict:
             if grade is None:
                 ungraded.add(path)
                 continue
+            if grade in ("edit", "shell"):  # a write: only one recorded while the node was held counts
+                inside = written_inside.get(path)
+                grade = (
+                    min(grade, inside, key=RANK.__getitem__)
+                    if inside
+                    else ("commit" if commit.session_id else "window")
+                )
             selected.pairs[(commit.sha, path)] = grade
             selected.grades[path] = max(selected.grades.get(path, grade), grade, key=RANK.__getitem__)
     for grade in selected.grades.values():

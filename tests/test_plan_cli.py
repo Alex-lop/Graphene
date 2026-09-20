@@ -117,7 +117,9 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert "sent back with: return a dict, not a list" in agent("node", "start", "n1").stdout
     agent("node", "release", "n1", "--why", "needs schema.py, which is outside my scope")
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
-    kinds = [line.split()[1] for line in person("node", "show", "n1").stdout.splitlines() if "Z  " in line]
+    shown = person("node", "show", "n1").stdout
+    assert "window 2:" in shown and "released: needs schema.py" in shown  # the record, then the log
+    kinds = [line.split()[1] for line in shown.split("  log:")[1].splitlines() if line.strip()]
     assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
 
 

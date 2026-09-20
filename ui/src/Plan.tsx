@@ -100,11 +100,32 @@ export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: st
           </span>
         ))}
       </p>
+      {plan.all_done && !plan.paused && (
+        <p className="muted">
+          every node is done, and the plan is still in force: agents write nothing here until you add a node, archive it or
+          pause it.
+        </p>
+      )}
+      {plan.loose.length > 0 && (
+        <p className="error" data-testid="loose">
+          changed while no node owned it: {plan.loose.slice(0, 8).join(", ")}
+          {plan.loose.length > 8 ? ` and ${plan.loose.length - 8} more` : ""}. Agents cannot start a node over it; put it
+          back, or accept it as it is.
+        </p>
+      )}
       {plan.writable && (
         <p className="acts">
           <button type="button" onClick={async () => setSaid(await write(plan.paused ? "resume" : "pause", {}))}>
             {plan.paused ? "resume the plan" : "pause the plan"}
           </button>
+          <button type="button" onClick={async () => setSaid(await write("archive", {}))}>
+            archive finished nodes
+          </button>
+          {plan.loose.length > 0 && (
+            <button type="button" onClick={async () => setSaid(await write("ack", {}))}>
+              accept those changes as they are
+            </button>
+          )}
           {said && <span className="error">{said}</span>}
         </p>
       )}

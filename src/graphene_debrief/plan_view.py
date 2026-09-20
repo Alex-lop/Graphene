@@ -12,7 +12,9 @@ changes what an agent can do or says where the mechanism behind it stops; none o
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from . import plan as P
 
@@ -22,7 +24,7 @@ COL_GAP = 40  # between a node's right edge and the next column's left edge
 ROW_GAP = 12
 LANE_PAD = 26  # room above a lane's first row for the lane's name
 LANE_GAP = 20
-LOG_TAIL = 40  # log entries kept per node, newest last: what the inspector shows without scrolling forever
+LOG_TAIL = 12  # log entries kept per node, newest last; the page polls, so every entry is paid for every 2 s
 SAID_CAP = 400  # a check's output is up to 2000 characters; the inspector shows its head
 STATES = (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW, P.DONE)  # a dropped node is not drawn, as in the terminal
 
@@ -110,6 +112,8 @@ class PlanView:
     edges: list[ViewEdge] = field(default_factory=list)
     counts: dict = field(default_factory=dict)
     waiting_on_person: list[dict] = field(default_factory=list)
+    loose: list[str] = field(default_factory=list)  # changed while no node owned it
+    all_done: bool = False  # every node done: still in force until the person archives or pauses
     forecast: dict = field(default_factory=dict)
     holes: dict = field(default_factory=lambda: dict(HOLES))
 
@@ -192,15 +196,16 @@ def waiting_on_person(nodes: list[P.Node], person: str) -> list[dict]:
             out.append({"id": n.id, "title": n.title, "why": "sign it off"})
     ready = {n.id for n in P.ready(nodes)}
     for n in P.order(nodes):
-        if n.id in ready and n.owner != P.AGENT:
-            whose = "yours to do" if n.owner == person else f"yours to do ({n.owner}'s)"
-            out.append({"id": n.id, "title": n.title, "why": whose})
+        if n.id in ready and n.owner == person:  # another person's node waits on them, not on you
+            out.append({"id": n.id, "title": n.title, "why": "yours to do"})
     return out
 
 
-def build_plan_view(store) -> dict:
-    """Everything the plan screen draws, with every x, y and point computed here."""
-    live = [n for n in P.nodes(store) if n.state != P.DROPPED]
+def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> dict:
+    """Everything the plan screen draws, with every x, y and point computed here. ``logs`` is False
+    for a file that leaves the machine: a node's log can hold the output of its check, and the
+    export promises no tool output. ``checkout`` is where to ask git what changed between nodes."""
+    live = [n for n in P.nodes(store) if n.state not in P.GONE]
     by_id = {n.id: n for n in live}
     person = P.person_name()
     # the store lives at <repo>/.graphene/graphene.db, and the page names the repo even when no
@@ -208,6 +213,12 @@ def build_plan_view(store) -> dict:
     view = PlanView(repo=store.path.parent.parent.name, person=person, paused=P.paused(store))
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
     view.waiting_on_person = waiting_on_person(live, person)
+    view.all_done = bool(live) and all(n.state == P.DONE for n in live)
+    if checkout is not None and not any(n.state == P.RUNNING for n in live):
+        try:
+            view.loose = P.unowned(store, checkout)
+        except (P.Refused, OSError, subprocess.TimeoutExpired):
+            view.loose = []  # not a checkout git can read: nothing to compare
     runs, waiting = P.forecast(live)
     view.forecast = {
         "runs": [n.id for n in runs],
@@ -249,7 +260,7 @@ def build_plan_view(store) -> dict:
                 started_at=n.started_at,
                 finished_at=n.finished_at,
                 waits=waits(n, by_id),
-                log=node_log(store, n.id),
+                log=node_log(store, n.id) if logs else [],
                 lane=owner,
                 column=col,
                 row=row,

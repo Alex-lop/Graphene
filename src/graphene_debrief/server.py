@@ -55,6 +55,7 @@ OPS = {
     "pause": lambda store, root, body, who: P.set_paused(store, True, who),
     "resume": lambda store, root, body, who: P.set_paused(store, False, who),
     "ack": lambda store, root, body, who: P.acknowledge(store, root, who),
+    "archive": lambda store, root, body, who: P.archive(store, who),
 }
 
 
@@ -87,7 +88,12 @@ def runs(store: Store) -> list[dict]:
 
 
 def payload(
-    store: Store, session_ids: list[str], only: bool = False, token: str | None = None, writable: bool = False
+    store: Store,
+    session_ids: list[str],
+    only: bool = False,
+    token: str | None = None,
+    writable: bool = False,
+    checkout: Path | None = None,
 ) -> str:
     """What the page needs in one object: the plan, then the rail and the graph of the chosen
     sessions. ``only`` keeps the rail to those sessions, for a file that leaves the machine, which
@@ -96,7 +102,10 @@ def payload(
     known = {r["id"] for r in rail}
     ids = [i for i in session_ids if i in known] or [r["id"] for r in rail[:1]]
     rail = [r for r in rail if r["id"] in ids] if only else rail
-    plan_view = build_plan_view(store) | {"writable": writable, "token": token}
+    plan_view = build_plan_view(store, logs=not only, checkout=checkout) | {
+        "writable": writable,
+        "token": token,
+    }
     return (
         '{"runs": '
         + json.dumps(rail)
@@ -110,7 +119,8 @@ def payload(
 
 def export_html(store: Store, session_ids: list[str]) -> str:
     """One self-contained file: the built page with its assets and the data inlined. Paths, counts,
-    task text and prompts go in; no hunks and no tool output exist in the graph to leak."""
+    task text and prompts go in; no hunks and no tool output exist in the graph to leak, and the
+    plan goes in without its nodes' logs, which can hold the output of a check."""
     page = (STATIC / "index.html").read_text(encoding="utf-8")
 
     def inline(match: re.Match) -> str:
@@ -163,7 +173,9 @@ def make_server(root: Path, session_ids: list[str], writable: bool = False) -> T
                     with Store.open(root) as store:
                         report = backfill(store, root)  # a transcript that has not changed costs one stat
                         refresh_commits(store, root, report.added + report.refreshed + (asked or session_ids))
-                        body = payload(store, asked or session_ids, token=token, writable=writable)
+                        body = payload(
+                            store, asked or session_ids, token=token, writable=writable, checkout=root
+                        )
                 except sqlite3.OperationalError as busy:
                     if "locked" not in str(busy):
                         raise
@@ -187,8 +199,8 @@ def make_server(root: Path, session_ids: list[str], writable: bool = False) -> T
             operation = OPS.get(urlsplit(self.path).path.removeprefix("/api/plan/"))
             if operation is None:
                 return self._send(404, b"no such plan operation\n")
-            length = min(int(self.headers.get("Content-Length") or 0), BODY_CAP)
             try:
+                length = min(int(self.headers.get("Content-Length") or 0), BODY_CAP)
                 body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
                 return self._send(400, b"a plan edit is one JSON object\n")

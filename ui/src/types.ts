@@ -227,6 +227,8 @@ export interface Plan {
   edges: PlanEdge[];
   counts: Record<NodeState, number>;
   waiting_on_person: Waiting[];
+  loose: string[]; // changed while no node owned it
+  all_done: boolean; // every node done: still in force until the person archives or pauses
   forecast: { runs: string[]; waits: { id: string; why: string[] }[] };
   holes: Record<Hole, string>; // where the mechanism behind a control stops, printed beside it
   writable: boolean; // false for an exported file, and for a page opened from an agent's shell

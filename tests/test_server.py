@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -213,5 +214,39 @@ def test_the_token_never_leaves_the_machine_in_an_export(repo, served):
     assert '"plan"' in page and '"n1"' in page  # and the plan itself is there, to be read
 
 
+def test_what_a_check_printed_never_leaves_the_machine_in_an_export(repo):
+    """A node's log holds the tail of its check's output, and the export promises no tool output."""
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    alex, bot = P.Caller("alex", True), P.Caller("claude:x", False, "x")
+    with Store.open(repo) as store:
+        P.propose(store, [node(id="n1", check="echo TOKEN-sk-live-hunter2; exit 1")], alex)
+        P.start(store, "n1", bot, repo)
+        with pytest.raises(P.Refused):
+            P.finish(store, "n1", bot)
+        live = ui.payload(store, [SID])
+        page = ui.export_html(store, [SID])
+    assert "hunter2" in json.loads(live)["plan"]["nodes"][0]["log"][-1]["said"]  # the person sees it
+    assert "hunter2" not in page.replace("echo TOKEN-sk-live-hunter2; exit 1", "")  # the file does not
+    assert '"log": []' in page
+
+
+def test_a_malformed_request_is_answered_not_crashed(served):
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", served, timeout=5)
+    conn.putrequest("POST", "/api/plan/pause")
+    for name, value in {
+        "Host": f"127.0.0.1:{served}",
+        "Origin": f"http://127.0.0.1:{served}",
+        "X-Graphene-Token": token_of(served),
+        "Content-Length": "abc",
+    }.items():
+        conn.putheader(name, value)
+    conn.endheaders()
+    assert conn.getresponse().status == 400
+
+
 def test_every_operation_the_page_can_post_is_one_function_in_the_plan(served):
-    assert set(ui.OPS) == {"add", "set", "drop", "accept", "signoff", "reopen", "pause", "resume", "ack"}
+    assert set(ui.OPS) == {
+        "add", "set", "drop", "accept", "signoff", "reopen", "pause", "resume", "ack", "archive"
+    }  # fmt: skip

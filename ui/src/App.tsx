@@ -87,7 +87,7 @@ export function App(): ReactElement {
     [token, refresh],
   );
 
-  if (failed) return <p className="state">The server did not answer.</p>;
+  if (failed && !payload) return <p className="state">The server did not answer.</p>; // a failed poll keeps the last good plan
   if (!payload) return <p className="state">Reading this repo&rsquo;s plan and the records of its runs.</p>;
 
   const { graph, plan, runs } = payload;

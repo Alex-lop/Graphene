@@ -180,6 +180,18 @@ def test_a_closed_window_says_which_records_it_used_and_which_one_does_not_exist
     assert "the HEAD it ended at is not recorded" in w.sources[0]
 
 
+def test_a_path_two_records_attest_says_both_and_a_commit_at_the_very_start_is_inside(store, repo):
+    session(store, repo, S1, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    sha = committed(store, repo, S1, "at the very start", T(1), 1)  # the same second it was taken
+    (repo / "src/api/users.py").write_text("def users():\n    return [2]\n")  # and changed again since
+    [w] = NR.node_record(store, repo, plan.get(store, "n1"), at=T(2)).windows
+    assert w.commits == [sha]
+    assert w.changed["src/api/users.py"] == f"commit {sha[:7]} and the working tree"
+
+
 # -- coverage, scoped to the node ------------------------------------------------------------------
 
 
@@ -201,6 +213,31 @@ def test_coverage_is_graded_over_every_commit_and_this_nodes_are_selected_afterw
     assert (counts["commits"], counts["committed_files"]) == (1, 1)
     assert (counts["write"], counts["commit"], counts["nothing"]) == (0, 1, 0)
     assert counts["computed"] and "graded over all 2 commits" in counts["how"]
+
+
+def test_a_write_recorded_before_the_node_was_taken_verifies_nothing_inside_it(store, repo):
+    """The reviewer's probe: no commit of the path between the early write and the start, so grading
+    has no floor, and the node's commit read as traced to a recorded write it never had."""
+    session(store, repo, S1, T(0))
+    wrote(store, repo, S1, "src/api/users.py", "def users():\n    return [1]\n", T(1), 1)
+    plan.propose(store, [api_node()], ALEX, now=T(3))
+    plan.start(store, "n1", BOT, repo, now=T(4))
+    committed(store, repo, S1, "inside the window", T(5), 1)
+    counts = NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)).coverage
+    assert (counts["committed_files"], counts["write"], counts["commit"]) == (1, 0, 1)
+
+
+def test_a_commit_inside_the_window_by_a_session_that_did_not_hold_it_is_counted_apart(store, repo):
+    session(store, repo, S1, T(0))
+    session(store, repo, S2, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [9]\n")
+    committed(store, repo, S2, "someone else, inside the window", T(2), 1)
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
+    counts = record.coverage
+    assert counts["computed"] and (counts["not_graded_commits"], counts["not_graded_files"]) == (1, 1)
+    assert "not graded, and not counted above" in "\n".join(NR.render(record))
 
 
 def test_a_recorded_write_inside_the_window_is_what_verifies_the_commit(store, repo):
@@ -284,7 +321,9 @@ def test_the_persons_acts_are_kept_with_what_they_said(store, repo):
     plan.start(store, "n1", BOT, repo, now=T(6))
     (repo / "README.md").write_text("# changed\n")
     plan.finish(store, "n1", ALEX, now=T(7), override="the README edit was mine")
-    acts = NR.node_record(store, repo, plan.get(store, "n1"), at=T(8)).acts
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(8))
+    assert (record.windows[-1].ended_at, record.windows[-1].ended_by) == (T(7), "overruled")
+    acts = record.acts
     assert [(a.at, a.kind, a.actor) for a in acts] == [
         (T(1), "accepted", "alex"),
         (T(2), "edited", "alex"),
