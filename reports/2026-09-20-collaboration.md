@@ -57,7 +57,7 @@ wait for whom (`plan.forecast`). An agent with nothing ready is told it can stop
 
 ## 2. What was built
 
-15 commits on `plan` before the closing review (`git log --oneline fce92dc..plan`).
+`git log --oneline fce92dc..plan` has every commit; each message says what was shown and by which test.
 
 | Piece | File | Tests |
 | --- | --- | --- |
@@ -86,15 +86,9 @@ each. The two that mattered:
   without logs; the test plants a secret in a failing check.
 
 The closing review (three lenses, every finding re-verified by a skeptic) and the two walkthroughs
-are in section 6.
+are in section 6 below.
 
-## 4. The test
-
-Section written after the auditor finished: see `docs/test/results-2026-09-20.md` for the table and
-`docs/test/PROTOCOL.md` for how to run it yourself in ten minutes. The summary is in morning.md and
-in section 6 below.
-
-## 5. Verified on real executors, beyond the three proof scripts
+## 4. Verified on real executors, beyond the three proof scripts
 
 Each of these was one run in a scratch repo; the commands are in this session's record, the outputs
 below are the literal `graphene plan log` lines.
@@ -113,7 +107,7 @@ below are the literal `graphene plan log` lines.
   session was resumed with the refusal; attempt 2; `check_passed run:claude`, `finished`. This is
   the case the in-session route cannot handle at all: `--max-turns` never fires `Stop`.
 
-## 5a. Not verified
+## 4a. Not verified
 
 - The vendor's ceiling on refused stops with Graphene's own gate (seen with the spike's toy hook
   only). A shell write no parser reads being caught at `done` on a real agent (unit-tested, and seen
@@ -123,6 +117,80 @@ below are the literal `graphene plan log` lines.
 - Two executors at once in one checkout, on real agents. Git worktrees with `graphene run`.
 - Linux beyond CI.
 
-## 6. Closing review, walkthroughs, test results
+## 5. The test (summary; the whole of it is `docs/test/results-2026-09-20.md`)
 
-(filled in at the end of the night)
+Twelve runs, three tasks, two arms, two repetitions, a different sub-agent standing in for the
+person each time, real `claude -p --model sonnet` executors, every number from `tally.py` (git, the
+store, the run log), audited by an agent told to assume the plan arm had been favoured.
+
+| per run, median | paragraph | plan |
+| --- | --- | --- |
+| files outside intent, final | 0 | 0 |
+| writes refused | 0 | 0 |
+| restarts | 0 | 0 |
+| hidden acceptance checks passed | all | all |
+| person's actions | 4 | 9 |
+| person's characters typed | 896 | 1342 (a lower bound) |
+| executor cost | $0.18 | $0.26 (a lower bound) |
+| wall time | 133 s | 254 s |
+
+The paragraph arm won on effort, cost and time on every task and tied on everything the directive
+asked about. Enforcement never fired. The one thing the plan arm demonstrably did: in both `report`
+runs the agent's own proposal held two items the person's card rejects on sight, and the person
+removed them by editing the plan before any code existed. The auditor's threats to validity are in
+the results file; the three that matter most: the stand-ins are language models that wrote dense,
+precise paragraphs with the intent card in their context; the repos are toys sonnet gets right from
+a paragraph; n = 2 per cell. One unplanned data point outside the test: the harness builder's dry
+run used a deliberately sloppy one-line prompt, and that run edited two files outside intent and
+failed 3 of 9 hidden checks. It is n = 1 and was not part of the protocol.
+
+## 6. The closing review
+
+Three adversaries (break the binding; the truth of every sentence; packaging and CI), each finding
+re-verified from scratch by a skeptic, plus two new-user walkthroughs. 25 findings, all 25
+reproduced by the skeptics, 24 fixed with a test or a corrected sentence, 1 left as a printed hole.
+
+What held under attack (the reviewers' own lists, abridged): 20 of 20 races between two sessions
+starting one node had exactly one winner; 18 everyday shell commands were not falsely refused and 14
+out-of-scope spellings (`..`, `cd`, subshells, quotes) were all refused; stray files with newlines,
+unicode and spaces in their names were caught at `done`; malformed hook input of ten kinds exited 0
+and said nothing; a commit of a stray change, a `git mv`, and a stash popped later were all caught;
+a check that prints OK and exits 3 is refused; 5 MB of check output becomes a 2 KB log entry; the
+wheel holds every module and the page's assets; the suite passes on Python 3.12 and 3.13, with a
+scrubbed environment, inside an agent's environment, and with no git identity.
+
+What broke, and what was done (commits `5fb95c4`, `ca205bc`, `644d2b2`):
+
+| Finding (skeptic's severity) | Fix |
+| --- | --- |
+| an agent finished and handed back nodes it did not hold, the person's own running node included (blocker) | only the holder does either; a person always may |
+| `GRAPHENE_AS` spelled past the hook's text match bought every person-only act, and the log named the person (major) | an agent's own environment outranks the variable in `plan.caller`; an act made with no terminal is logged "(no terminal)" |
+| a symbolic link inside the scope pointing out of the repo (major) | resolved and refused by the hook, refused at `done` |
+| `git update-index --assume-unchanged` and `.git/info/exclude` made git blind and `done` passed (major) | `done` checks that what git cannot see is what it could not see at the start |
+| a file written into another worktree of the repo passed `done` (major) | every working tree of the repo is asked at `done`, the tree named |
+| `graphene run` reported done an executor that crashed at once, because the check already passed (major) | nothing changed inside the scope is not done |
+| with scope `**`, `rm -rf .graphene` passed the hook (major) | the store is refused before any scope is asked; commands that reach into it are refused |
+| a run is unbounded if the plan grows while it goes (major) | a run is the nodes that existed when it started |
+| a mis-cased scope: the hook allowed what `done` refused, blaming the agent (major) | refused when it is typed, with the path it nearly matched |
+| a 3 MB command: 234 s in the parser, past the vendor's timeout, which lets the call through (minor) | commands over 64k are not parsed |
+| an executor that is not installed: a traceback, and the node left running (major) | one line; the node is handed back |
+| "next: nothing; every node is done" printed beside a running node (major) | `next` knows what you hold and what others hold |
+| `src/*` covered the whole subtree, against the docs (major) | `*` stays in one level |
+| README install lines installed 0.2.0 and said PyPI was empty (blocker) | the lines say what each installs; true for GitHub once this is on `origin/main` |
+| six more false or stale sentences in README, HOW_IT_WORKS, RELEASING, CHANGELOG, the package docstring | corrected |
+| an unparsed script can rewrite the plan's store, and git ignores the store (major) | **not fixed**: printed in README, HOW_IT_WORKS and DIRECTION. A keyed digest over the rows is the fix |
+
+The walkthroughs. Fresh HOME, built wheel, README only, both parts played by hand: no blocker, 58 s
+from install to a first plan, 11 frictions, "would keep it". Real HOME, README only, a real agent
+through propose, shape, accept, run, a node of the person's own, a reopen and an archive: no blocker,
+137 s to a first plan, 13 frictions, "I would put it on my own repos this week, with the coverage line
+treated as broken until it stops reporting zero". Every number both walkers checked against git
+matched except that coverage line, which read 0 of 0 because nothing in the README commits; a node's
+coverage is now graded over what git says changed under it. All 24 frictions were fixed or answered
+in the README except two left on purpose: plain `graphene` still exits 1 in a repo with nothing in
+it (scripts rely on it), and a card piped to a file is still Markdown.
+
+After the fixes the three proof scripts were run again on real agents: 6 of 6, 2 of 2 and 4 of 4
+assertions hold (`docs/proof/2026-09-20-*.txt`), and the local gate (a clean clone; Python 3.12 and
+3.13; inside and outside an agent's environment; format; wheel built and smoked outside the tree;
+`npm ci`, typecheck, vitest, build; the committed page identical to its source) is green.
