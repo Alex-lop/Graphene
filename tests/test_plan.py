@@ -306,6 +306,21 @@ def test_a_node_beside_it_in_the_same_checkout_is_not_its_stray_change(store, re
     assert plan.finish(store, "a", BOT).state == DONE
 
 
+def test_archive_puts_finished_work_away_but_keeps_what_open_work_waits_on(store, repo):
+    plan.propose(
+        store,
+        [api_node(id="a"), api_node(id="b", scope=["README.md"]), api_node(id="c", needs=["b"], scope=["x"])],
+        ALEX,
+    )
+    for i, who in (("a", BOT), ("b", BOT2)):
+        plan.start(store, i, who, repo)
+        plan.finish(store, i, who)
+    assert [n.id for n in plan.archive(store, ALEX)] == ["a"]  # c still waits on b
+    assert plan.in_force(store)
+    with pytest.raises(Refused, match="not in the plan"):
+        plan.propose(store, [api_node(id="d", needs=["a"], scope=["y"])], ALEX)
+
+
 def test_a_paused_plan_binds_nobody_and_starts_nothing(store, repo):
     plan.propose(store, [api_node()], ALEX)
     assert plan.in_force(store)

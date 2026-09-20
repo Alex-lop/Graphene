@@ -95,10 +95,33 @@ def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     assert write(repo, "/tmp/elsewhere/notes.md") is None  # outside the repo is not the plan's business
     with Store.open(repo) as store:
         plan.edit(store, "n1", {"owner": "alex"}, ALEX)
-    assert "no node is ready for an agent to take:" in reason(write(repo, "src/api/users.py"))
+    said = reason(write(repo, "src/api/users.py"))
+    assert "no node is ready for an agent to take," in said and "propose a node for it" in said
     with Store.open(repo) as store:
         plan.set_paused(store, True, ALEX)
     assert write(repo, "src/api/users.py") is None  # paused: nothing is enforced
+
+
+def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo):
+    """The first real agent run waited for the last node to be done, then made the edit no node
+    allowed, and said so: "no node was open. Graphene accepted the write"."""
+    holding(repo)
+    with Store.open(repo) as store:
+        plan.finish(store, "n1", BOT)
+    assert "propose a node for it" in reason(write(repo, "src/db/schema.py"))
+    assert "propose a node for it" in reason(bash(repo, "echo x >> src/db/schema.py"))
+    assert hook(repo, "Stop") is None  # it holds nothing, so it may stop
+    with Store.open(repo) as store:
+        with pytest.raises(plan.Refused, match="person's to do"):
+            plan.archive(store, BOT)
+        assert [n.id for n in plan.archive(store, ALEX)] == ["n1"]
+    assert write(repo, "src/db/schema.py") is None  # nothing left in force
+
+
+def test_a_proposal_binds_nobody(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], BOT)
+    assert write(repo, "src/db/schema.py") is None
 
 
 def test_a_stop_is_refused_while_a_node_is_held_and_allowed_once_it_is_done_or_handed_back(repo):

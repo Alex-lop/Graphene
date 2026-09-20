@@ -1,0 +1,17 @@
+# docs/proof/stop.sh, run 2026-09-20 00:53 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim;
+# the only edit is the scratch directory's path. 15 s wall.
+n1  open  notes.md says ready
+stopping
+
+the plan: 1 nodes, 0 done, 0 running
+  n1  open      notes.md says ready  agent  notes.md  ·  ready · handed back: Only asked to start the node, not do the work; notes.md not edited
+
+  2026-09-20T04:53:10Z  n1      added         alexlopez         
+  2026-09-20T04:53:16Z  n1      started       claude:d5e274cf   
+  2026-09-20T04:53:18Z  n1      stop_refused  claude:d5e274cf   
+  2026-09-20T04:53:23Z  n1      released      claude:d5e274cf   Only asked to start the node, not do the work; notes.md not edited
+
+  ok    the stop was refused while the node was held
+  ok    and the node ended done (by Graphene's check) or handed back with a reason
+
+repo: <scratch>/toy

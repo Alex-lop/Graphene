@@ -80,27 +80,28 @@ def _claim_first(store) -> str:
     return (
         "This repo has a plan in force and no node is ready for an agent to take"
         + (f" ({'; '.join(running)})" if running else "")
-        + ": `graphene plan` says what each one waits for. Nothing here may be written until you hold "
-        "a node. Tell the person what you were about to do; they can add a node for it, or pause the plan"
+        + ", so nothing here may be written: work happens inside a node, and a plan stays in force "
+        "after its last node is done. If this change is worth making, propose a node for it: "
+        "`graphene node add '<what>' --scope '<paths it needs>' --check '<command that shows it is done>'`, "
+        "then tell the person; they accept it, change it, or say no. `graphene plan` shows what each "
+        "node waits for"
     )
 
 
 def _check_write(store, held: list[P.Node], rel: str, event: dict, how: str) -> dict | None:
     if rel.split("/", 1)[0] in OURS:
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
-    if not held:
+    agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+    if not held:  # "*" is the plan's own log: what happened that belongs to no node
+        store.log_node(
+            "*", P._now(), "denied", None, event.get("session_id"), agent_id, {"path": rel, "how": how}
+        )
         return _deny(_claim_first(store))
     if any(P.in_scope(rel, n.scope) for n in held):
         return None  # inside the scope: say nothing, so the person's own permission settings still apply
     n = held[0]
     store.log_node(
-        n.id,
-        P._now(),
-        "denied",
-        n.executor,
-        event.get("session_id"),
-        event.get("agent_id") if isinstance(event.get("agent_id"), str) else None,
-        {"path": rel, "how": how},
+        n.id, P._now(), "denied", n.executor, event.get("session_id"), agent_id, {"path": rel, "how": how}
     )
     scopes = "; ".join(f"{h.id}: {', '.join(h.scope)}" for h in held)
     return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {_how_out(held)}")

@@ -23,7 +23,12 @@ from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
-LIVE = (OPEN, RUNNING, REVIEW)  # a plan with a node in one of these is in force
+ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
+# A plan with a node in one of these is in force. Done counts: the first real agent run against this
+# waited until every node was done and then made the edit no node allowed ("no node was open"), so a
+# finished plan stays in force until the person pauses or archives it. A proposal binds nobody.
+LIVE = (OPEN, RUNNING, REVIEW, DONE)
+GONE = (DROPPED, ARCHIVED)
 CHECK_TIMEOUT = 1800  # seconds; ponytail: one fixed cap, a per-node value when a real check needs longer
 TAIL = 2000  # characters of a check's output kept in the log
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner")
@@ -155,7 +160,7 @@ def overlap(a: list[str], b: list[str], files: list[str]) -> list[str]:
 def validate(nodes: list[Node]) -> None:
     """Refuse a plan that cannot run: an unknown dependency, a cycle, a node with nothing to touch
     and nothing to pass."""
-    by_id = {n.id: n for n in nodes if n.state != DROPPED}
+    by_id = {n.id: n for n in nodes if n.state not in GONE}
     for n in by_id.values():
         if not n.title.strip():
             raise Refused(f"{n.id}: a node needs a title")
@@ -252,7 +257,7 @@ def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]
     by_id = {n.id: n for n in nodes}
     runs, waits = [], []
     for n in order(nodes):
-        if n.state in (DONE, DROPPED):
+        if n.state in (DONE, *GONE):
             continue
         why = waits_on_person(n, by_id)
         if why:
@@ -493,7 +498,7 @@ def edit(store, node_id: str, changes: dict, who: Caller, now: str | None = None
     now = now or _now()
     with store.claim():
         node = get(store, node_id)
-        if node.state in (DONE, DROPPED):
+        if node.state in (DONE, *GONE):
             raise Refused(f"{node.id} is {node.state}; `graphene node reopen {node.id}` first")
         fresh = from_dict({**{f: getattr(node, f) for f in EDITABLE}, **changes, "id": node.id}, node.id)
         if fresh.owner == "me":
@@ -518,7 +523,7 @@ def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
             _person_only(who, "dropping an accepted node")
         if node.state == RUNNING:
             raise Refused(f"{node.id} is running ({node.executor}); `graphene node release {node.id}` first")
-        waiting = [n.id for n in nodes(store) if node.id in n.needs and n.state != DROPPED]
+        waiting = [n.id for n in nodes(store) if node.id in n.needs and n.state not in GONE]
         if waiting:
             raise Refused(
                 f"{', '.join(waiting)} wait{'s' if len(waiting) == 1 else ''} on {node.id}; "
@@ -761,6 +766,20 @@ def notes(store, node_id: str) -> list[str]:
     return [
         e["detail"].get("note", "") for e in store.node_log(node_id, ("reopened",)) if e["detail"].get("note")
     ]
+
+
+def archive(store, who: Caller, now: str | None = None) -> list[Node]:
+    """Put finished work away. With nothing left but archived nodes the plan is no longer in force."""
+    _person_only(who, "archiving the plan")
+    now = now or _now()
+    with store.claim():
+        finished = nodes(store, (DONE, DROPPED))
+        kept = {need for n in nodes(store, (PROPOSED, OPEN, RUNNING, REVIEW)) for need in n.needs}
+        put_away = [n for n in finished if n.id not in kept]  # what unfinished work waits on stays
+        for node in put_away:
+            was, node.state = node.state, ARCHIVED
+            _save(store, node, "archived", who, now, was=was)
+    return put_away
 
 
 def set_paused(store, value: bool, who: Caller) -> None:

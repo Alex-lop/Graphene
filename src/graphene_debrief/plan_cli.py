@@ -86,7 +86,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         return ""
 
     def print_plan(store, who: P.Caller) -> None:
-        everything = [n for n in P.order(P.nodes(store)) if n.state != P.DROPPED]
+        everything = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         if not everything:
             out(
                 "no plan yet. A person adds a node with `graphene node add 'title' --scope 'src/x/**' "
@@ -96,7 +96,11 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         by_id = {n.id: n for n in everything}
         counts = {s: sum(1 for n in everything if n.state == s) for s in (P.RUNNING, P.DONE)}
         head = f"the plan: {len(everything)} nodes, {counts[P.DONE]} done, {counts[P.RUNNING]} running"
-        out(head + (" · PAUSED: nothing starts and nothing is enforced" if P.paused(store) else ""))
+        if P.paused(store):
+            head += " · PAUSED: nothing starts and nothing is enforced"
+        elif counts[P.DONE] == len(everything):
+            head += " · still in force: agents write nothing here until you add a node, archive or pause"
+        out(head)
         wid = max(len(n.id) for n in everything)
         wt = min(44, max(len(n.title) for n in everything))
         wo = max(len(n.owner) for n in everything)
@@ -106,6 +110,13 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 f"  {n.id.ljust(wid)}  {state.ljust(8)}  {n.title[:wt].ljust(wt)}  {n.owner.ljust(wo)}  "
                 f"{', '.join(n.scope)}  ·  {describe(store, n, by_id)}"
             )
+        try:
+            loose = P.unowned(store, checkout()) if not counts[P.RUNNING] else []
+        except P.Refused:
+            loose = []  # not a checkout git can read: nothing to compare
+        if loose:
+            listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
+            out(f"changed while no node owned it: {listed}  (yours? `graphene plan ack`; else put it back)")
         yours = [n for n in everything if n.state in (P.PROPOSED, P.REVIEW)]
         yours += [n for n in P.ready(everything) if n.owner != P.AGENT]
         if who.person and yours:
@@ -114,6 +125,22 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         if not who.person:
             for line in next_lines(store, who):
                 out(line)
+
+    def log_line(e: dict, with_node: bool = False) -> str:
+        detail = e["detail"]
+        said = (
+            detail.get("why")
+            or detail.get("note")
+            or detail.get("override")
+            or detail.get("path")
+            or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
+            or "; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in detail.get("changed", {}).items())
+            or detail.get("command")
+            or ""
+        )
+        who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
+        node = f"{e['node_id'].ljust(6)}  " if with_node else ""
+        return f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(16)}  {said}"
 
     # -- graphene plan ----------------------------------------------------------------------------
 
@@ -174,6 +201,23 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 out(f"  {n.id} will wait: {'; '.join(why)}")
 
         run(go)
+
+    @plan_cli.command("log")
+    def log_() -> None:
+        """Everything that happened on the plan, oldest first; `*` is what belonged to no node."""
+        run(lambda s: [out(log_line(e, with_node=True)) for e in s.node_log()])
+
+    @plan_cli.command()
+    def archive() -> None:
+        """Put finished nodes away. With nothing else left, the plan is no longer in force."""
+        gone = run(lambda s: P.archive(s, P.caller()))
+        out(f"archived {', '.join(n.id for n in gone)}" if gone else "nothing finished to archive")
+
+    @plan_cli.command()
+    def ack() -> None:
+        """Accept, as they are, the changes made while no node owned them (they are yours, or fine)."""
+        paths = run(lambda s: P.acknowledge(s, checkout(), P.caller()))
+        out(f"acknowledged: {', '.join(paths)}" if paths else "nothing had changed between nodes")
 
     @plan_cli.command()
     def pause() -> None:
@@ -333,19 +377,6 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
             out(P.contract(n))
             out(f"  state:  {n.state}" + (f" · {n.executor}" if n.executor else "") + f" · owner {n.owner}")
             for e in store.node_log(n.id):
-                detail = e["detail"]
-                said = (
-                    detail.get("why")
-                    or detail.get("note")
-                    or detail.get("override")
-                    or ", ".join(detail.get("outside", []))
-                    or detail.get("reason")
-                    or ("; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in detail.get("changed", {}).items()))
-                    or detail.get("command")
-                    or ""
-                )
-                out(
-                    f"  {e['timestamp'][:19]}Z  {e['kind'].ljust(12)}  {(e['actor'] or '').ljust(16)}  {said}"
-                )
+                out(log_line(e))
 
         run(go)
