@@ -377,17 +377,18 @@ def ours(events: list[str]) -> str:
     return json.dumps({"hooks": {event: list(handler) for event in events}}, indent=2)
 
 
-def test_init_adds_the_two_new_events_to_the_file_that_already_holds_ours(tmp_path):
+def test_init_adds_the_new_events_to_the_file_that_already_holds_ours(tmp_path):
     (tmp_path / ".claude").mkdir()
     team = tmp_path / ".claude" / "settings.json"
     team.write_text(ours(["SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop"]))
-    assert install_hooks(tmp_path) == ["SubagentStart", "SubagentStop"]
+    assert install_hooks(tmp_path) == ["PreToolUse", "SubagentStart", "SubagentStop"]
     assert list(json.loads(team.read_text())["hooks"]) == [
         "SessionStart",
         "UserPromptSubmit",
         "PostToolUse",
         "PostToolUseFailure",
         "Stop",
+        "PreToolUse",
         "SubagentStart",
         "SubagentStop",
     ]

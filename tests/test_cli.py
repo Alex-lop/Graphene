@@ -60,9 +60,13 @@ def transcript(repo, tmp_path, monkeypatch):
 
 
 def test_version_and_help_read_as_a_product():
-    assert "graphene 0.2.0" in run("--version").output
+    from graphene_debrief import __version__  # no literal here: a release bumps the package, not this test
+
+    assert f"graphene {__version__}" in run("--version").output
     text = run("--help").output
-    assert text.index("why") < text.index("init") < text.index("sessions")
+    listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
+    commands = [name for name in listed if not name.startswith("-")]
+    assert commands == ["plan", "node", "run", "init", "ui", "why", "sessions"]  # what will be, then what was
     assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
     assert "--session" in text and "--since" in text and "--json" in text
     assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it
@@ -93,6 +97,13 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
         assert project_dir_name(repo) in line  # the encoded project directory it searched
     assert run("ingest").exit_code == 1
     assert not (repo / ".graphene").exists()  # nothing to record, nothing written
+
+
+def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
+    result = run()
+    assert result.exit_code == 1 and result.stdout.startswith("no plan here yet. `graphene node add")
+    assert one_line(result).startswith("no Claude Code sessions")  # the record's line, as before
+    assert run("sessions").stdout == ""  # only the plain command speaks of the plan
 
 
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
@@ -365,3 +376,14 @@ def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tm
     (config / "settings.json").write_text('{"bashEditDiffEnabled": true}')
     assert "bashEditDiffEnabled" not in run("init").output
     assert (config / "settings.json").read_text() == '{"bashEditDiffEnabled": true}'  # read, never written
+
+
+def test_the_page_opens_on_the_plan_in_a_repo_where_no_session_was_recorded(repo, tmp_path, monkeypatch):
+    """The plan is the first screen, so a repo with a plan and no recorded run still has a page."""
+    monkeypatch.setenv("GRAPHENE_AS", "person:alex")
+    assert run("node", "add", "the users endpoint", "--scope", "src/api/**", "--check", "true").exit_code == 0
+    out = tmp_path / "plan.html"
+    result = run("ui", "--export", str(out))
+    assert result.exit_code == 0, one_line(result)
+    page = out.read_text(encoding="utf-8")
+    assert "the users endpoint" in page and '"waiting_on_person"' in page

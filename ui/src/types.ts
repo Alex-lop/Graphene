@@ -153,8 +153,91 @@ export interface Run {
   files: number;
 }
 
+// -- the plan: a mirror of src/graphene_debrief/plan_view.py, which computes every position ------
+
+export type NodeState = "proposed" | "open" | "running" | "review" | "done";
+export type Shown = NodeState | "waiting" | "ready";
+
+export interface Entry {
+  at: string;
+  kind: string;
+  actor: string;
+  said: string;
+}
+
+export interface PlanNode {
+  id: string;
+  title: string;
+  goal: string;
+  scope: string[];
+  check: string | null;
+  signoff: boolean;
+  needs: string[];
+  owner: string; // "agent", or a person's name
+  state: NodeState;
+  display_state: Shown; // an open node that cannot start yet is waiting, not ready
+  rev: number;
+  executor: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  waits: string[]; // why it is not moving, in sentences
+  log: Entry[];
+  lane: string;
+  column: number;
+  row: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PlanLane {
+  id: string;
+  label: string;
+  person: boolean;
+  y: number;
+  height: number;
+  nodes: number;
+}
+
+export interface PlanEdge {
+  id: string;
+  source: string; // the node that must finish
+  target: string; // the node that waits on it
+  points: number[][];
+}
+
+export interface Waiting {
+  id: string;
+  title: string;
+  why: string;
+}
+
+export type Hole = "scope" | "check" | "stop" | "person";
+
+export interface Plan {
+  version: number;
+  repo: string; // the checkout, by name: a plan exists before any run has been recorded in it
+  person: string;
+  paused: boolean;
+  width: number;
+  height: number;
+  nodes: PlanNode[];
+  lanes: PlanLane[];
+  edges: PlanEdge[];
+  counts: Record<NodeState, number>;
+  waiting_on_person: Waiting[];
+  loose: string[]; // changed while no node owned it
+  all_done: boolean; // every node done: still in force until the person archives or pauses
+  forecast: { runs: string[]; waits: { id: string; why: string[] }[] };
+  holes: Record<Hole, string>; // where the mechanism behind a control stops, printed beside it
+  writable: boolean; // false for an exported file, and for a page opened from an agent's shell
+  token: string | null; // this launch's, and never in an export
+}
+
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.
 export interface Payload {
   runs: Run[];
+  plan: Plan;
   graph: Graph;
 }

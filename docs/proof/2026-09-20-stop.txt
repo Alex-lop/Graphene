@@ -1,0 +1,19 @@
+# docs/proof/stop.sh, run 2026-09-20 02:22 -0400 on Claude Code 2.1.278 (--model sonnet), verbatim, on the
+# code as merged; the only edit is the scratch directory's path. 15 s wall.
+n1  open  notes.md says ready
+I released n1 without doing the work, so the stop hook no longer blocks. You had asked me only to start the node and stop. I left `notes.md` unchanged, and the node's check (`grep -q ready notes.md`) would still fail.
+
+The release reason I recorded says exactly that. To take the node again, run `graphene node start n1`.
+
+the plan: 1 node, 0 done, 0 running
+  n1  open      notes.md says ready  agent  notes.md  ·  ready · handed back: User asked only to start n1 and stop without doing the work; notes.md was not changed.
+
+  2026-09-20T06:23:18Z  n1  added         alexlopez (no terminal)  
+  2026-09-20T06:23:24Z  n1  started       claude:32b8c555   
+  2026-09-20T06:23:25Z  n1  stop_refused  claude:32b8c555   
+  2026-09-20T06:23:30Z  n1  released      claude:32b8c555   User asked only to start n1 and stop without doing the work; notes.md was not changed.
+
+  ok    the stop was refused while the node was held
+  ok    and the node ended done (by Graphene's check) or handed back with a reason
+
+repo: <scratch>/toy

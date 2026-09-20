@@ -264,3 +264,99 @@ svg [hidden] { display: none; }
 .evidence {
   display: block;
 }
+
+/* -- the plan ---------------------------------------------------------------------------------- */
+
+.app.plan { grid-template-columns: minmax(0, 1fr) 380px; }
+.app.plan .centre { grid-column: 1; }
+.app.plan .inspector { grid-column: 2; width: 380px; }
+
+.toggle { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.toggle button {
+  font: 12px/1.45 var(--ui);
+  color: var(--muted);
+  background: var(--panel);
+  border: 0;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.toggle button.on { background: var(--sunk); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.toggle button:disabled { cursor: default; opacity: 0.5; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.badge { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 12px; padding: 2px 10px; }
+.badge.warn { color: var(--ask); border-color: var(--ask); }
+
+.plan-strip { border-bottom: 1px solid var(--line); background: var(--panel); padding: 10px 20px 12px; }
+.plan-strip ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.plan-strip .chip { cursor: pointer; }
+.plan-strip .chip b { color: var(--text); }
+.plan-strip .forecast { margin: 8px 0 0; font-size: 12px; }
+.plan-strip .waits { display: block; }
+.plan-strip .acts { margin: 8px 0 0; }
+
+.plan-canvas { flex: 1; overflow: auto; background: var(--bg); padding: 0 0 16px; }
+.plan-canvas svg { display: block; }
+.plan-canvas text { fill: var(--text); font: 13px var(--ui); }
+
+.lane-band rect { fill: color-mix(in srgb, var(--text) 3%, transparent); }
+.lane-band.person rect { fill: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lane-band text { fill: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.edge { fill: none; stroke: var(--neutral); stroke-width: 1.4; opacity: 0.8; }
+
+.node { cursor: pointer; }
+.node .box { fill: var(--panel); stroke-width: 1.5; }
+.node.on .box { stroke-width: 2.5; }
+.node.on { filter: drop-shadow(0 1px 4px color-mix(in srgb, var(--text) 24%, transparent)); }
+.node .state { font-size: 11px; font-weight: 600; }
+.node .title { font-size: 13px; font-weight: 600; }
+.node .who, .node .says, .node .tag { font-size: 11px; fill: var(--muted); }
+.node .says { font-family: var(--mono); font-size: 10px; }
+.node .tag { fill: var(--ask); }
+
+/* a node's contract, edited in place: the same four sizes, nothing new */
+.inspector .waits { margin-top: 8px; }
+.inspector .waits li { color: var(--ask); }
+.edit label { display: block; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.edit label.tick { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.edit input, .edit textarea, .note {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  font: 13px/1.45 var(--ui);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.edit label.tick input { width: auto; margin: 0; }
+.edit textarea { font-family: var(--mono); font-size: 12px; resize: vertical; }
+/* one row a control: the button, and beside it the reason it is disabled, so the reasons line up
+   under one another instead of pushing the next button out of the row */
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
+.act { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; }
+.act button { justify-self: start; }
+.act .rule, .acts > .rule { margin: 0; }
+.acts button, .edit button {
+  font: 12px/1.45 var(--ui);
+  color: var(--text);
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.acts button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.acts button:disabled { color: var(--muted); cursor: default; }
+.act .error { grid-column: 1 / -1; }
+.error {
+  margin: 6px 0 0;
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--fail);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.log .said { overflow-wrap: anywhere; white-space: pre-wrap; }

@@ -10,3 +10,17 @@ export async function load(search: string = window.location.search): Promise<Pay
 }
 
 export const exported = (): boolean => document.getElementById("graphene-data") !== null;
+
+/** One plan edit, made by the person at this page. The token is this run of `graphene ui`'s, and
+ * what comes back when the server says no is its own sentence, thrown whole for the page to print. */
+export async function send(op: string, body: unknown, token: string | null): Promise<void> {
+  const response = await fetch(`./api/plan/${op}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { "X-Graphene-Token": token } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const said = (await response.text()).trim();
+    throw new Error(said || `the server answered ${response.status}`);
+  }
+}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +25,6 @@ class FileLine:
     effect: str
     added: int
     removed: int
-    unrequested: bool
     strategy: str
     explanation: str
     explained_by: str
@@ -53,7 +52,6 @@ class Debrief:
     removed: int = 0
     commits: list[str] = field(default_factory=list)
     prompts: list[PromptBlock] = field(default_factory=list)
-    unrequested: list[dict] = field(default_factory=list)
     reverted: list[dict] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)
     failure_summary: dict = field(default_factory=dict)  # total, by_tool, denials
@@ -249,7 +247,6 @@ def build_debrief(
                         change.effect,
                         change.added,
                         change.removed,
-                        False,
                         change.strategy,
                         template(change),
                         "none",
@@ -270,7 +267,6 @@ def build_debrief(
                         change.effect,
                         change.added,
                         change.removed,
-                        change.unrequested,
                         change.strategy,
                         template(change),
                         "none",
@@ -280,15 +276,6 @@ def build_debrief(
                 paths.add(change.path)
                 debrief.added += change.added
                 debrief.removed += change.removed
-                if change.unrequested:
-                    debrief.unrequested.append(
-                        {
-                            "path": change.path,
-                            "session_id": sid,
-                            "prompt_ordinal": prompt.ordinal,
-                            "prompt": preview(prompt.text, 1, 80),
-                        }
-                    )
             debrief.prompts.append(block)
         ordinal = {p.id: p.ordinal for p in prompts}
         debrief.reverted += [
@@ -457,13 +444,6 @@ def _abandoned_lines(d: Debrief, where) -> list[str]:
     return out
 
 
-def _unrequested_lines(d: Debrief, where) -> list[str]:
-    return [
-        f'`{u["path"]}` under {where(u["prompt_ordinal"], u["session_id"])} "{u["prompt"]}"'
-        for u in d.unrequested
-    ]
-
-
 def _failure_line(d: Debrief) -> str | None:
     """Every failed tool call as one line; `--json` carries them one by one."""
     total = d.failure_summary.get("total", 0)
@@ -548,9 +528,6 @@ def render_card(d: Debrief, limit: int = 30) -> str:
             out.append(f"- `{row['path']}` {row['effect']}{counts}")
         if len(rows) > limit:
             out.append(f"- … {len(rows) - limit} more; `graphene why <path>` for any of them")
-    if d.unrequested:
-        out += ["", "**Not what you asked for**"]
-        out += [f"- {line}" for line in _unrequested_lines(d, where)]
     abandoned = _abandoned_lines(d, where) + [line for line in [_failure_line(d)] if line]
     if abandoned:
         out += ["", "**Abandoned**", *[f"- {line}" for line in abandoned]]
@@ -728,7 +705,6 @@ def print_card(console, d: Debrief, files: int = CARD_FILES, commits: int = CARD
     def where(ordinal: int, session_id: str) -> str:
         return f"prompt {ordinal}" + (f" of {session_id[:8]}" if many else "")
 
-    _section(console, "Not what you asked for", _unrequested_lines(d, where), width)
     _section(
         console,
         "Abandoned",
@@ -834,9 +810,19 @@ def to_json(d: Debrief) -> str:
     return json.dumps(asdict(d), ensure_ascii=False, indent=2)
 
 
+def _known(raw: dict, cls) -> dict:
+    """Only the keys this version of the dataclass has. A record older Graphene wrote carries fields
+    that have since been dropped, and a record it cannot read is a record lost."""
+    names = {f.name for f in fields(cls)}
+    return {key: value for key, value in raw.items() if key in names}
+
+
 def from_json(text: str) -> Debrief:
-    data = json.loads(text)
+    data = _known(json.loads(text), Debrief)
     prompts = [
-        PromptBlock(**{**p, "files": [FileLine(**f) for f in p["files"]]}) for p in data.pop("prompts")
+        PromptBlock(
+            **{**_known(p, PromptBlock), "files": [FileLine(**_known(f, FileLine)) for f in p["files"]]}
+        )
+        for p in data.pop("prompts")
     ]
     return Debrief(**data, prompts=prompts)

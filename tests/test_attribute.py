@@ -11,8 +11,6 @@ from graphene_debrief.attribute import (
     bash_written_paths,
     check_segments,
     diff_hunks,
-    named_scopes,
-    unrequested_paths,
 )
 from graphene_debrief.model import Prompt, Session, ToolEvent
 
@@ -98,75 +96,7 @@ def test_file_edited_under_two_prompts(session, tmp_path):
     )
     assert (second.prompt_id, second.effect, second.added, second.removed) == ("p2", "modified", 1, 1)
     assert second.hunks[0].lines == [" def add(a, b):", "-    return a + b", "+    return b + a"]
-    assert not first.unrequested and not second.unrequested
     assert result.reverted == [] and result.failed == [] and result.reruns == []
-
-
-def test_unrequested_file_is_flagged_with_its_prompt(session, tmp_path):
-    p1 = prompt("p1", "fix the login bug in auth.py", 1)
-    events = [
-        edit("e1", "p1", "auth.py", "x\n", "y\n", 11),
-        edit("e2", "p1", "utils/helpers.py", "a\n", "b\n", 12),
-    ]
-    changes = run(session, [p1], events, tmp_path).changes
-    flagged = {c.path: c.unrequested for c in changes}
-    assert flagged == {"auth.py": False, "utils/helpers.py": True}
-
-
-def test_unrequested_only_when_a_named_scope_excludes_the_file():
-    auth = ["auth.py", "utils/helpers.py"]
-    assert unrequested_paths("fix the login bug in auth.py", auth) == {"utils/helpers.py"}
-    assert unrequested_paths("fix the login bug", auth) == set()  # no scope named: silence
-    hello = ["app/hello.py", "tests/test_hello.py"]
-    assert unrequested_paths("Add a greet function to app/hello.py and a test for it.", hello) == set()
-    assert (
-        unrequested_paths("Try making greet shout in hello.py, then put it back.", ["app/hello.py"]) == set()
-    )
-    rebuild = [
-        "src/graphene_debrief/cli.py",
-        "tests/test_cli.py",
-        "README.md",
-        "pyproject.toml",
-        ".gitignore",
-    ]
-    assert (
-        unrequested_paths("Please implement REBUILD_DIRECTIVE.md to the best of your abilities", rebuild)
-        == set()
-    )
-    assert (
-        unrequested_paths("Rename the title in README.md, then undo it", ["README.md", "notes.md"]) == set()
-    )
-    assert unrequested_paths("look in app", ["app/hello.py", "app/__init__.py", "lib/other.py"]) == {
-        "lib/other.py"
-    }
-    assert unrequested_paths(
-        "update docs/HOW_IT_WORKS.md for the new flag", ["docs/HOW_IT_WORKS.md", "src/x.py"]
-    ) == {"src/x.py"}
-    assert unrequested_paths(
-        "edit src/app/models.py", ["src/app/models.py", "src/app/__init__.py", "src/db.py"]
-    ) == {"src/db.py"}
-    env = ["config/settings.py", "config/__init__.py", ".env.example", "main.py"]
-    assert unrequested_paths("rewrite the .env loader in config/settings.py", env) == {"main.py"}
-    assert unrequested_paths("fix auth.py", ["README.md", "main.py"]) == {"README.md", "main.py"}
-    assert unrequested_paths("see https://example.com/a/b.py for context", ["x.py"]) == set()
-    assert unrequested_paths("make the happy path faster, e.g. in v1.2", ["web/app.py"]) == set()
-
-
-def test_a_document_the_prompt_names_is_never_flagged_even_though_it_sets_no_scope():
-    prompt = "Rewrite OVERVIEW.md for a stranger, and fix the parser in src/parse/."
-    paths = ["OVERVIEW.md", "src/parse/lexer.py", "docs/other.md"]
-    assert unrequested_paths(prompt, paths) == {"docs/other.md"}
-    assert unrequested_paths("Update OVERVIEW.md.", paths) == set()  # a document alone names no scope
-
-
-def test_a_slash_in_prose_is_not_a_directory_scope(tmp_path):
-    (tmp_path / "src" / "app").mkdir(parents=True)
-    prose = "That covers the broad/high level picture and/or the details; now write an overview of it."
-    assert named_scopes(prose, ["OVERVIEW.md"], root=tmp_path) == []
-    assert unrequested_paths(prose, ["OVERVIEW.md"], tmp_path) == set()
-    # a directory of the repo is still a scope when nothing under it changed, and so is one that did
-    assert unrequested_paths("tidy src/app and nothing else", ["docs/y.md"], tmp_path) == {"docs/y.md"}
-    assert "lib/gone/" in named_scopes("work in lib/gone", ["lib/gone/x.py"], root=tmp_path)
 
 
 def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():
@@ -179,20 +109,6 @@ def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():
         "uv run pytest -q tests/"
     ]
     assert check_segments("uv run ruff check; uv run pytest -q") == ["uv run ruff check", "uv run pytest -q"]
-
-
-def test_named_scopes():
-    assert named_scopes("fix auth.py and utils/", []) == ["auth.py", "utils/"]
-    assert named_scopes("read README.md and REBUILD_DIRECTIVE.md then go", []) == []
-    assert named_scopes("update docs/HOW_IT_WORKS.md", []) == ["docs/how_it_works.md"]
-    assert named_scopes("work under src/graphene_debrief", []) == ["src/graphene_debrief/"]
-    assert named_scopes("look in app, then under tests", ["app/x.py", "tests/y.py"]) == ["app/", "tests/"]
-    assert named_scopes("look in app", ["lib/x.py"]) == []  # not a directory of anything that changed
-    assert named_scopes("the (auth.py) file, `.env`, and `pyproject.toml`.", []) == [
-        "auth.py",
-        ".env",
-        "pyproject.toml",
-    ]
 
 
 def test_revert_across_prompts_is_abandoned_work(session, tmp_path):

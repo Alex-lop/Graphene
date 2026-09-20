@@ -4,8 +4,9 @@
 import type { ReactElement } from "react";
 
 import { Glyph } from "./Map";
+import { Toggle } from "./Plan";
 import { COUNTER, GRADE, between, duration, stamp, clock, zone } from "./model";
-import type { Counter } from "./model";
+import type { Counter, View } from "./model";
 import type { Grade, Graph, Mark, Run } from "./types";
 
 const COUNTERS: Counter[] = ["failed_checks", "rerun_green", "refused", "failures", "outside", "collisions"];
@@ -18,10 +19,16 @@ export function Header({
   graph,
   chip,
   onChip,
+  view,
+  onView,
+  planned,
 }: {
   graph: Graph;
   chip: Counter | null;
   onChip: (c: Counter | null) => void;
+  view: View;
+  onView: (v: View) => void;
+  planned: number;
 }): ReactElement {
   const { run, coverage } = graph;
   const ids = run.sessions.map((s) => s.id.slice(0, 8)).join(", ");
@@ -29,6 +36,7 @@ export function Header({
     <header className="header" data-testid="header">
       <div className="run">
         <h1>{run.repo || "this repo"}</h1>
+        <Toggle view={view} onView={onView} planned={planned} />
         <code className="ref">{ids || "no session"}</code>
         <span>
           {between(run.started ?? run.t0, run.ended ?? run.t1)} <span className="muted">{zone(run.t0)}</span>
