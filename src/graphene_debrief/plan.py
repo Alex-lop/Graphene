@@ -31,6 +31,7 @@ LIVE = (OPEN, RUNNING, REVIEW, DONE)
 GONE = (DROPPED, ARCHIVED)
 CHECK_TIMEOUT = 1800  # seconds; ponytail: one fixed cap, a per-node value when a real check needs longer
 TAIL = 2000  # characters of a check's output kept in the log
+KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner")
 
 
@@ -564,6 +565,20 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
     return [p for p in changed if not any(in_scope(p, n.scope) for n in since)]
 
 
+def accept_path(store, checkout: str | Path, path: str | Path) -> None:
+    """A file the person just had Graphene write inside the checkout (an exported page) is theirs as
+    it stands: it goes into the boundary, so the next start is not refused over Graphene's own output."""
+    checkout = str(Path(checkout).resolve())
+    mark = _boundary(store, checkout)
+    try:
+        rel = str(Path(path).resolve().relative_to(checkout))
+    except ValueError:
+        return  # written somewhere else: not this checkout's business
+    if mark is not None:
+        mark["dirty"][rel] = _hash(checkout, rel)
+        store.set_meta(f"boundary:{checkout}", json.dumps(mark))
+
+
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
     """The person says the tree is fine as it stands: what changed between nodes is theirs now."""
     _person_only(who, "accepting changes made while no node owned them")
@@ -602,7 +617,7 @@ def start(
             raise Refused(f"{node.id} is {node.state}")
         if not may_take(node, who):
             raise Refused(
-                f"{node.id} is {node.owner}'s node, not {'yours' if who.person else 'an agent’s'}; "
+                f"{node.id} is {node.owner}'s node, not {'yours' if who.person else "an agent's"}; "
                 "take another (`graphene plan`), or stop if everything left waits on it"
             )
         blockers = unmet(node, by_id)
@@ -644,7 +659,7 @@ def start(
     return node
 
 
-def outside_scope(store, node: Node) -> list[str]:
+def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[str]:
     """What changed since the node was started that its scope does not cover, leaving out what a
     node that ran beside it in the same checkout was entitled to change."""
     beside = [
@@ -656,7 +671,8 @@ def outside_scope(store, node: Node) -> list[str]:
         and (n.finished_at or "9") >= (node.started_at or "")
         and n.state in (RUNNING, REVIEW, DONE)
     ]
-    changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+    if changed is None:
+        changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
     return [
         p for p in changed if not in_scope(p, node.scope) and not any(in_scope(p, n.scope) for n in beside)
     ]
@@ -673,7 +689,8 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
         raise Refused(f"{node.id} is held by {node.executor}, not by this session")
     if override is not None:
         _person_only(who, "overruling a node's check or scope")
-    stray = outside_scope(store, node)
+    changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+    stray = outside_scope(store, node, changed)
     if stray and override is None:
         store.log_node(node.id, now, "refused", who.name, who.session_id, None, {"outside": stray})
         listed = ", ".join(stray[:8]) + (f" and {len(stray) - 8} more" if len(stray) > 8 else "")
@@ -710,7 +727,10 @@ def finish(store, node_id: str, who: Caller, now: str | None = None, override: s
         node = get(store, node_id)
         node.state = REVIEW if node.signoff and override is None else DONE
         node.finished_at = now
-        detail = {"head": head(node.checkout or ".")}  # where it ended: what the node's record reads
+        # where it ended and what git said had changed by then: what the node's record reads
+        detail = {"head": head(node.checkout or "."), "changed": changed[:KEPT_PATHS]}
+        if len(changed) > KEPT_PATHS:
+            detail["more_changed"] = len(changed) - KEPT_PATHS
         if override is not None:
             detail |= {"override": override, "outside": stray, "check_passed": passed}
         _save(
@@ -730,8 +750,12 @@ def release(store, node_id: str, who: Caller, why: str, now: str | None = None) 
         node = get(store, node_id)
         if node.state != RUNNING:
             raise Refused(f"{node.id} is {node.state}, not running")
+        try:
+            changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+        except (Refused, OSError, subprocess.TimeoutExpired):
+            changed = []  # a checkout git cannot read any more: the hand-back still stands
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
-        _save(store, node, "released", who, now, why=why)
+        _save(store, node, "released", who, now, why=why, changed=changed[:KEPT_PATHS])
     return node
 
 

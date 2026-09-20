@@ -176,8 +176,29 @@ def test_a_closed_window_says_which_records_it_used_and_which_one_does_not_exist
     plan.finish(store, "n1", BOT, now=T(4))
     [w] = NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)).windows
     assert w.commits == [sha]
-    assert w.changed == {"src/api/users.py": f"commit {sha[:7]}"}
-    assert "the HEAD it ended at is not recorded" in w.sources[0]
+    assert w.changed == {"src/api/users.py": f"commit {sha[:7]} and git, when it ended"}
+    assert w.sources == [f"from {w.base_sha[:7]} to {sha[:7]}: what git said had changed when it ended"]
+
+
+def test_work_that_was_never_committed_is_in_the_record_because_git_was_asked_when_the_node_ended(
+    store, repo
+):
+    """The first walkthrough: a node finished without a commit showed "no path is recorded as
+    changed", although `done` had just asked git and knew."""
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    plan.finish(store, "n1", BOT, now=T(2))
+    [w] = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3)).windows
+    assert w.changed == {"src/api/users.py": "git, when it ended"} and w.commits == []
+
+
+def test_a_window_that_ended_before_that_was_logged_says_what_it_cannot_know(store, repo):
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    store.log_node("n1", T(2), "finished", BOT.name, BOT.session_id)  # as 0.3's first builds logged it
+    [w] = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3)).windows
+    assert w.changed == {} and "not evidence that nothing else changed" in w.sources[0]
 
 
 def test_a_path_two_records_attest_says_both_and_a_commit_at_the_very_start_is_inside(store, repo):
@@ -270,12 +291,14 @@ def test_a_commit_no_recorded_session_accounts_for_is_counted_apart_and_never_gr
     assert "coverage: not computed" in printed and "1 commit inside its windows (1 file)" in printed
 
 
-def test_a_closed_window_with_no_commit_does_not_read_as_nothing_changed(store, repo):
+def test_a_node_handed_back_keeps_what_had_changed_by_then(store, repo):
     plan.propose(store, [api_node()], ALEX, now=T(0))
     plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "src/db/schema.py").write_text("half an idea\n")
     plan.release(store, "n1", BOT, "stuck", now=T(2))
-    [w] = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3)).windows
-    assert "this is not a record that nothing changed" in w.sources[1]
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
+    assert record.windows[0].changed == {"src/db/schema.py": "git, when it ended"}
+    assert "    outside the scope: src/db/schema.py  (git, when it ended)" in NR.render(record)
 
 
 # -- what was refused, and what a person decided -----------------------------------------------------
@@ -348,16 +371,11 @@ def test_the_record_reads_as_plain_lines(store, repo):
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
     assert NR.render(record) == [
         "n1  users endpoint",
-        "  state: open · owner agent · scope src/api/** · done when `true` passes",
+        "  state: open · owner agent",
         f"  window 1: claude:aaaa1111, session {S1}  {T(1)} -> {T(2)}  released: the schema has to change",
-        f"    started at {base[:7]}; the HEAD it ended at is not recorded, so what changed in this window is "
-        "read from the 0 commits whose commit time falls inside it",
-        "    and no commit in the store falls inside it: a commit made while no session was recorded is "
-        "in no record here, so this is not a record that nothing changed",
-        "    no path is recorded as changed inside this window",
-        "  coverage: of the 0 files in the 0 commits inside its windows, 0 trace to a recorded write "
-        "(0 edit, 0 shell), 0 only to an agent's commit, 0 to nothing",
-        "    graded over all 0 commits recorded for session aaaa1111, and this node's 0 selected afterwards",
+        f"    from {base[:7]}: what git said had changed when it ended",
+        "    nothing changed",
+        "  coverage: no commit was made inside its windows, so there is nothing to grade yet",
         "  refused: 1 write denied",
         "    denied: src/db/schema.py",
         "  what people did to it:",

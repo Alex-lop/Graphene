@@ -31,11 +31,19 @@ def register(cli: typer.Typer, root, open_store, fail):
             except P.Refused as no:
                 fail(str(no), 1)
 
-    def next_lines(store, who: P.Caller) -> list[str]:
-        """What the caller can do now, read from the plan as it stands at this moment."""
+    def next_lines(store, who: P.Caller, but: str | None = None) -> list[str]:
+        """What the caller can do now, read from the plan as it stands at this moment. ``but`` is a
+        node the caller has just handed back: it is not sent straight back to it."""
         everything = P.nodes(store)
         by_id = {n.id: n for n in everything}
-        mine = P.ready(everything, who)
+        held = [n for n in everything if n.state == P.RUNNING and holds(n, who)]
+        if held:
+            n = held[0]
+            return [
+                f"next: you hold {n.id} ({n.title}). Finish it with `graphene node done {n.id}`, or hand "
+                f"it back with `graphene node release {n.id} --why '…'`"
+            ]
+        mine = [n for n in P.ready(everything, who) if n.id != but]
         if mine:
             first = mine[0]
             also = f" (also ready: {', '.join(n.id for n in mine[1:])})" if mine[1:] else ""
@@ -43,13 +51,17 @@ def register(cli: typer.Typer, root, open_store, fail):
                 f"next: {first.id}, {first.title}{also}. `graphene node start {first.id}` prints its "
                 "contract as it stands now; it may have changed since you last saw it"
             ]
-        left = [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.REVIEW)]
+        left = [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
         if not left:
             return ["next: nothing; every node is done"]
         why = []
         for n in left:
             reasons = [f"{b.id} ({b.state})" for b in P.unmet(n, by_id)]
-            if n.state == P.REVIEW:
+            if n.id == but:
+                why.append(f"{n.id} is back with the person, who reads why you handed it back")
+            elif n.state == P.RUNNING:
+                why.append(f"{n.id} is held by {n.executor}")
+            elif n.state == P.REVIEW:
                 why.append(f"{n.id} waits for a sign-off")
             elif n.state == P.PROPOSED:
                 why.append(f"{n.id} is a proposal not yet accepted")
@@ -63,6 +75,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             else " You can stop: the rest waits for a person, and `graphene plan` shows them that"
         )
         return [f"next: nothing is ready for you: {'; '.join(why)}.{tail}"]
+
+    def holds(n: P.Node, who: P.Caller) -> bool:
+        return n.session_id == who.session_id if who.session_id else n.executor == who.name
 
     def describe(store, n: P.Node, by_id: dict[str, P.Node]) -> str:
         if n.state == P.RUNNING:
@@ -97,7 +112,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             return
         by_id = {n.id: n for n in everything}
         counts = {s: sum(1 for n in everything if n.state == s) for s in (P.RUNNING, P.DONE)}
-        head = f"the plan: {len(everything)} nodes, {counts[P.DONE]} done, {counts[P.RUNNING]} running"
+        nodes = f"{len(everything)} node{'' if len(everything) == 1 else 's'}"
+        head = f"the plan: {nodes}, {counts[P.DONE]} done, {counts[P.RUNNING]} running"
         if P.paused(store):
             head += " · PAUSED: nothing starts and nothing is enforced"
         elif counts[P.DONE] == len(everything):
@@ -130,13 +146,16 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def log_line(e: dict, with_node: bool = False) -> str:
         detail = e["detail"]
+        changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
+        fields = changed.items() if isinstance(changed, dict) else ()
         said = (
             detail.get("why")
             or detail.get("note")
             or detail.get("override")
             or detail.get("path")
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
-            or "; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in detail.get("changed", {}).items())
+            or "; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in fields)
+            or (f"changed: {', '.join(changed)}" if isinstance(changed, list) and changed else "")
             or detail.get("command")
             or ""
         )
@@ -346,11 +365,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             target = node_id
             if target is None:
-                held = [
-                    n
-                    for n in P.nodes(store, (P.RUNNING,))
-                    if (n.session_id == who.session_id if who.session_id else n.executor == who.name)
-                ]
+                held = [n for n in P.nodes(store, (P.RUNNING,)) if holds(n, who)]
                 if len(held) != 1:
                     raise P.Refused("which node? `graphene node done <id>`")
                 target = held[0].id
@@ -375,7 +390,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             P.release(store, node_id, who, why)
             out(f"{node_id} handed back: {why}")
-            for line in next_lines(store, who):
+            for line in next_lines(store, who, but=node_id):
                 out(line)
 
         run(go)

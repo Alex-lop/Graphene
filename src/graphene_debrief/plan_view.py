@@ -146,6 +146,19 @@ def display_state(node: P.Node, by_id: dict[str, P.Node]) -> str:
     return "waiting" if P.unmet(node, by_id) else "ready"
 
 
+def came_back(store, node: P.Node) -> list[str]:
+    """The words a node came back with: a person's when they sent it back, its executor's when it
+    was handed back. They are the plan's, not a log's, so an exported page carries them too."""
+    if node.state != P.OPEN:
+        return []
+    last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
+    if last["kind"] == "reopened":
+        return [f"sent back: {last['detail'].get('note', '')}"]
+    if last["kind"] == "released":
+        return [f"handed back: {last['detail'].get('why', '')}"]
+    return []
+
+
 def waits(node: P.Node, by_id: dict[str, P.Node]) -> list[str]:
     """Why this node is not moving, in plain sentences: what it needs from a person on its own
     account first, then what it waits on in the plan, then which person the rest of it waits for."""
@@ -164,13 +177,17 @@ def waits(node: P.Node, by_id: dict[str, P.Node]) -> list[str]:
 
 def _said(detail: dict) -> str:
     """The one thing a log entry has to say, in the order the terminal prints it."""
+    changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
+    fields = changed.items() if isinstance(changed, dict) else ()
+    paths = changed if isinstance(changed, list) else []
     said = (
         detail.get("why")
         or detail.get("note")
         or detail.get("override")
         or ", ".join(detail.get("outside") or detail.get("paths") or [])
         or detail.get("path")
-        or "; ".join(f"{k}: {a!r} → {b!r}" for k, (a, b) in (detail.get("changed") or {}).items())
+        or "; ".join(f"{k}: {a!r} → {b!r}" for k, (a, b) in fields)
+        or (f"changed: {', '.join(paths)}" if paths else "")
         or detail.get("output")
         or detail.get("command")
         or ""
@@ -259,7 +276,7 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
                 executor=n.executor,
                 started_at=n.started_at,
                 finished_at=n.finished_at,
-                waits=waits(n, by_id),
+                waits=came_back(store, n) + waits(n, by_id),
                 log=node_log(store, n.id) if logs else [],
                 lane=owner,
                 column=col,

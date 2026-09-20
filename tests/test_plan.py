@@ -292,6 +292,7 @@ def test_a_person_can_overrule_the_gate_with_a_reason_and_the_log_says_so(store,
     [entry] = store.node_log("n1", ("overruled",))
     assert entry["detail"] == {
         "head": plan.head(repo),
+        "changed": ["README.md"],
         "override": "the README edit was mine",
         "outside": ["README.md"],
         "check_passed": False,
@@ -365,6 +366,19 @@ def test_work_done_after_the_audited_window_closed_stops_the_next_start(store, r
         plan.acknowledge(store, repo, BOT)
     assert plan.acknowledge(store, repo, ALEX) == ["src/db/schema.py"]  # "that was me": theirs to say
     assert plan.start(store, "n2", BOT, repo).state == RUNNING
+
+
+def test_a_file_the_person_had_graphene_write_is_not_a_loose_change(store, repo):
+    """The first walkthrough: `graphene ui --export plan.html` in the repo, then the next node would
+    not start: "plan.html changed while no node owned it"."""
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.finish(store, "a", BOT)
+    (repo / "plan.html").write_text("<html>")
+    assert plan.unowned(store, repo) == ["plan.html"]
+    plan.accept_path(store, repo, repo / "plan.html")
+    assert plan.unowned(store, repo) == []
+    assert plan.start(store, "b", BOT2, repo).state == RUNNING
 
 
 def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_them(store, repo):

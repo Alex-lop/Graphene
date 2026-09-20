@@ -40,6 +40,8 @@ class Window:
     session_id: str | None = None
     base_sha: str | None = None  # HEAD when it was taken, from the 'started' entry
     checkout: str | None = None
+    ended_head: str | None = None  # HEAD when it ended, from the entry that ended it
+    at_end: list[str] | None = None  # what git said had changed when it ended; None when not logged
     commits: list[str] = field(default_factory=list)  # shas whose commit time falls inside the window
     changed: dict[str, str] = field(default_factory=dict)  # path -> the records it was read from
     sources: list[str] = field(default_factory=list)  # what was read, and what was not there to read
@@ -132,6 +134,7 @@ def _windows(log: list[dict]) -> list[Window]:
         elif entry["kind"] in ENDS and out and out[-1].ended_at is None:
             out[-1].ended_at, out[-1].ended_by = entry["timestamp"], entry["kind"]
             out[-1].said = detail.get("why") or detail.get("override") or ""
+            out[-1].ended_head, out[-1].at_end = detail.get("head"), detail.get("changed")
     return out
 
 
@@ -140,9 +143,10 @@ def _and(before: str | None, source: str) -> str:
 
 
 def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str) -> None:
-    """What changed in this window, from the records that exist. The HEAD a node finished at is not
-    one of them, so a closed window is read from the commits whose commit time falls inside it; an
-    open one is read from the working tree too, which is where work not yet committed shows up."""
+    """What changed in this window, from the records that exist: for a window that has ended, what
+    git said had changed at that moment (logged by ``plan.finish`` and ``plan.release``); for the
+    open window of a running node, the working tree now; and in both, the commits whose time falls
+    inside it. A window that ended before that was logged has only its commits, and says so."""
     start, end = seconds(window.started_at), seconds(window.ended_at or at)
     mine = [c for c in commits if start <= seconds(c.committed_at) <= end]
     window.commits = [c.sha for c in mine]
@@ -150,16 +154,18 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
         for path, _status in commit.files:
             window.changed[path] = _and(window.changed.get(path), f"commit {commit.sha[:7]}")
     base = window.base_sha[:7] if window.base_sha else "no commit"
-    window.sources.append(
-        f"started at {base}; the HEAD it ended at is not recorded, so what changed in this window is "
-        f"read from the {len(mine)} commit{'' if len(mine) == 1 else 's'} whose commit time falls inside it"
-    )
+    if window.at_end is not None:  # logged when it ended: git's own answer, however it was written
+        for path in window.at_end:
+            window.changed[path] = _and(window.changed.get(path), "git, when it ended")
+        end = f" to {window.ended_head[:7]}" if window.ended_head else ""
+        window.sources.append(f"from {base}{end}: what git said had changed when it ended")
+        return
     if window.ended_at is not None or node.state != P.RUNNING:
-        if not mine and window.ended_at is not None:
-            window.sources.append(
-                "and no commit in the store falls inside it: a commit made while no session was "
-                "recorded is in no record here, so this is not a record that nothing changed"
-            )
+        window.sources.append(
+            f"started at {base}; what git said when it ended was not logged (a store from before "
+            f"0.3), so this is read from the {len(mine)} commit{'' if len(mine) == 1 else 's'} whose "
+            "time falls inside it, which is not evidence that nothing else changed"
+        )
         return
     checkout = node.checkout or str(root)
     try:
@@ -169,7 +175,7 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
         return
     for path in paths:
         window.changed[path] = _and(window.changed.get(path), "the working tree")
-    window.sources.append(f"and from the working tree of {checkout} as it stands at {at}, against {base}")
+    window.sources.append(f"from {base}: the working tree of {checkout} as it stands at {at}")
 
 
 def _coverage(store, windows: list[Window], commits: list, at: str) -> dict:
@@ -322,8 +328,7 @@ def render(record: NodeRecord) -> list[str]:
     the node it holds, and a person greps them."""
     lines = [
         f"{record.node_id}  {record.title}",
-        f"  state: {record.state} · owner {record.owner} · scope {', '.join(record.scope)} "
-        f"· done when {record.done}",
+        f"  state: {record.state} · owner {record.owner}",
     ]
     lines += _window_lines(record)
     lines += _coverage_lines(record.coverage)
@@ -349,13 +354,15 @@ def _window_lines(record: NodeRecord) -> list[str]:
             where = "in scope" if P.in_scope(path, record.scope) else "outside the scope"
             lines.append(f"    {where}: {path}  ({source})")
         if not w.changed:
-            lines.append("    no path is recorded as changed inside this window")
+            lines.append("    nothing changed")
     return lines
 
 
 def _coverage_lines(counts: dict) -> list[str]:
     if not counts["computed"]:
         lines = [f"  coverage: not computed — {counts['how'].removeprefix('not computed: ')}"]
+    elif not counts["commits"]:
+        lines = ["  coverage: no commit was made inside its windows, so there is nothing to grade yet"]
     else:
         lines = [
             f"  coverage: of the {counts['committed_files']} file{_s(counts['committed_files'])} in the "

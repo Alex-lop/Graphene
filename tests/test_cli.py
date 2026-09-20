@@ -97,6 +97,13 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
     assert not (repo / ".graphene").exists()  # nothing to record, nothing written
 
 
+def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
+    result = run()
+    assert result.exit_code == 1 and result.stdout.startswith("no plan here yet. `graphene node add")
+    assert one_line(result).startswith("no Claude Code sessions")  # the record's line, as before
+    assert run("sessions").stdout == ""  # only the plain command speaks of the plan
+
+
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
     assert "`graphene init` records sessions live" in one_line(run())
     init = run("init")

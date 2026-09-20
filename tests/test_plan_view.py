@@ -153,6 +153,15 @@ def test_archived_nodes_are_not_drawn_and_a_finished_plan_says_it_is_still_in_fo
     assert view["nodes"] == [] and not view["all_done"]
 
 
+def test_a_finished_nodes_log_says_what_had_changed(store, repo):
+    plan.propose(store, [node("a", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    (repo / "README.md").write_text("# done\n")
+    plan.finish(store, "a", BOT)
+    [shown] = build_plan_view(store)["nodes"]
+    assert shown["log"][-1] == {**shown["log"][-1], "kind": "finished", "said": "changed: README.md"}
+
+
 def test_every_hole_a_control_has_is_printed_with_it(store, repo):
     view = build_plan_view(store)
     assert view["repo"] == repo.name  # the page can name the repo before any session is recorded

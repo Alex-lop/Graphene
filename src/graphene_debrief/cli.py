@@ -232,8 +232,17 @@ def build():
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
-            if not (session_id or since or as_json) and plan_or_nothing():
-                return
+            if not (session_id or since or as_json):
+                if plan_or_nothing():
+                    return
+                r = root()
+                if not (r / ".graphene" / "graphene.db").exists() and not transcripts_for(r):
+                    # a repo with nothing in it yet: the plan comes first here too, then the record's line
+                    say(
+                        "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check "
+                        "'<command>'` starts one, or ask your agent to propose one; `graphene plan "
+                        "--help` has the rest."
+                    )
             show(session_id, since, as_json=as_json)
 
     from .plan_cli import register
@@ -409,7 +418,7 @@ def build():
         import webbrowser
 
         from .graph import build_graph, to_json
-        from .plan import caller
+        from .plan import accept_path, caller
         from .server import export_html, make_server
 
         r = root()
@@ -436,6 +445,8 @@ def build():
                     export.write_text(export_html(store, ids), encoding="utf-8")
                 except OSError as exc:
                     fail(f"cannot write {export}: {exc.strerror or exc}", 1)
+                if caller().person:  # theirs as it stands, or the next node would not start over it
+                    accept_path(store, r, export)
                 errors.print(f"wrote {export}")
                 return
         # The plan is the person's to change, so the page may write only when a person opened it.

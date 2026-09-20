@@ -123,13 +123,22 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert kinds == ["added", "started", "check_passed", "finished", "reopened", "started", "released"]
 
 
+def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_handed_back(repo):
+    person("node", "add", "users", "--scope", "api.py", "--check", "true")
+    assert "the plan: 1 node, 0 done" in person("plan").stdout
+    agent("node", "start", "n1")
+    assert "next: you hold n1 (users). Finish it with `graphene node done n1`" in agent("plan").stdout
+    back = agent("node", "release", "n1", "--why", "the check and the goal disagree").stdout
+    assert "next: nothing is ready for you: n1 is back with the person" in back
+
+
 def test_plain_graphene_shows_the_plan_when_there_is_one(repo):
     nothing = person()
     assert "the plan:" not in nothing.stdout  # no plan: the card's own empty state, as before
     assert not (repo / ".graphene").exists()  # and looking did not create a store
     person("node", "add", "users", "--scope", "api.py", "--check", "true")
     shown = person()
-    assert shown.exit_code == 0 and "the plan: 1 nodes, 0 done, 0 running" in shown.stdout
+    assert shown.exit_code == 0 and "the plan: 1 node, 0 done, 0 running" in shown.stdout
     assert "the plan:" not in person("--json").stdout  # asking for a session's record still gives it
 
 

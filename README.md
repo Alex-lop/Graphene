@@ -114,7 +114,8 @@ graphene node add "emails() returns lower-case emails" \
     --check "python3 -m unittest -q tests.test_users"
 graphene node add "say what emails() returns" --scope docs/api.md --needs n1 \
     --check "grep -q lower-case docs/api.md"
-graphene
+graphene                 # the plan
+graphene plan accept     # nothing to accept here, but it says what agents can reach without you
 ```
 
 Or ask your agent to draft the plan: *"propose a plan for this with `graphene plan propose`"*. What
