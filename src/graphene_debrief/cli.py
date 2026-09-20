@@ -456,4 +456,7 @@ def build():
             n = len(quiet)
             note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")
 
+    from .plan_cli import register
+
+    register(cli, root, open_store, fail)
     return cli
