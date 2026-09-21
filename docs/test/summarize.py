@@ -5,7 +5,10 @@
     python3 docs/test/summarize.py --json runs-2026-09-21.json
 
 <runs-dir> holds one directory per run named <task>-<style>-<arm>-<rep>, each with repo/ and
-runlog.jsonl. `style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt` or
+runlog.jsonl. A run with a `void.txt` beside its runlog is printed in the per-run table with
+`valid` = NO and its reason, and is left out of every median.
+
+`style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt` or
 `graphene`. A run directory from the 20 September test, named <task>-<arm>-<rep>, still reads: its
 style is recorded as `dense`, which is what those stand-ins wrote.
 
@@ -145,8 +148,11 @@ def collect(runs_dir: Path) -> list[dict]:
             and (e.get("type") == "prompt" or (e.get("type") == "correction" and not e.get("mandated")))
             and str(e.get("text") or "").strip()
         )
+        void = run / "void.txt"
         tally.update(
             unforced_messages=unforced,
+            valid=not void.exists(),
+            void_reason=void.read_text().strip() if void.exists() else "",
             run=run.name,
             task=task,
             style=style,
@@ -188,6 +194,8 @@ def medians(runs: list[dict], by: str) -> str:
     numeric += [("accept_rate", "accept rate"), ("quality_rate", "held-out rate")]
     groups: dict[tuple[str, str], list[dict]] = {}
     for run in runs:
+        if not run.get("valid", True):
+            continue  # a void run is printed in the table above and never averaged into anything
         groups.setdefault((run[by], run["arm"]), []).append(run)
         groups.setdefault(("all", run["arm"]), []).append(run)
     head = [by, "arm", "n"] + [label for _, label in numeric]

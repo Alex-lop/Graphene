@@ -1,0 +1,2105 @@
+[
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-dense-graphene-1/repo",
+  "base": "df934c40d8552fbd64c617b2d48470259aac2ac2",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_existing_sources_unchanged.py",
+   "tests/test_rules.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 10,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [
+   ".northwind-plan.json"
+  ],
+  "files_written_outside_intent_ever_n": 1,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [
+    ".northwind-plan.json"
+   ],
+   "shell": [
+    ".northwind-plan.json"
+   ],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 2,
+  "rework_recorded_lines": 249,
+  "churn_naive_lines": 301,
+  "churn_double_counted_lines": 52,
+  "churn_by_file": {
+   ".northwind-plan.json": 56,
+   "README.md": 2,
+   "cli/main.py": 16,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 9,
+   "normalize/fields.py": 1,
+   "tests/test_existing_sources_unchanged.py": 39,
+   "tests/test_rules.py": 46,
+   "tests/test_xmlfeed.py": 74,
+   "validate/rules.py": 1
+  },
+  "transient_files": [
+   ".northwind-plan.json"
+  ],
+  "transient_churn_lines": 56,
+  "rework_from_edit_events": 235,
+  "rework_from_shell": 66,
+  "final_diff_lines": 191,
+  "recorded_write_events": 15,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 7,
+  "person_chars": 6008,
+  "executor_cost_usd": 1.550146,
+  "executor_cost_from_runlog_usd": 0.577254,
+  "executor_cost_from_graphene_runs_usd": 0.972892,
+  "executor_turns": 86,
+  "executor_calls": 10,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 745.1,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "unforced_messages": 1,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-dense-graphene-1",
+  "task": "feeds",
+  "style": "dense",
+  "rep": 1,
+  "spec_chars": 11470,
+  "handoff": 1638.6,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-dense-graphene-2/repo",
+  "base": "a933a6b96f81886399051758ab87e9cb0b264a75",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [
+   ".plan-tmp.json"
+  ],
+  "files_written_outside_intent_ever_n": 1,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [
+    ".plan-tmp.json"
+   ],
+   "shell": [
+    ".plan-tmp.json"
+   ],
+   "final_diff": []
+  },
+  "refused_writes": 4,
+  "refused_writes_by_kind": {
+   "refused": 4
+  },
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 96,
+  "rework_recorded_lines": 256,
+  "churn_naive_lines": 287,
+  "churn_double_counted_lines": 31,
+  "churn_by_file": {
+   ".plan-tmp.json": 29,
+   "README.md": 2,
+   "cli/main.py": 21,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 9,
+   "normalize/fields.py": 1,
+   "tests/test_xmlfeed.py": 188,
+   "validate/rules.py": 1
+  },
+  "transient_files": [
+   ".plan-tmp.json"
+  ],
+  "transient_churn_lines": 29,
+  "rework_from_edit_events": 225,
+  "rework_from_shell": 62,
+  "final_diff_lines": 131,
+  "recorded_write_events": 9,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 11,
+  "person_chars": 8798,
+  "executor_cost_usd": 0.921071,
+  "executor_cost_from_runlog_usd": 0.0,
+  "executor_cost_from_graphene_runs_usd": 0.921071,
+  "executor_turns": 50,
+  "executor_calls": 6,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 1378.4,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "unforced_messages": 1,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-dense-graphene-2",
+  "task": "feeds",
+  "style": "dense",
+  "rep": 2,
+  "spec_chars": 7259,
+  "handoff": 659.9,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-dense-prompt-1/repo",
+  "base": "a1d066d7f1c81c91f64a042056e9f65e07957066",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 1,
+  "restarts_unmandated": 0,
+  "rework_lines": 2,
+  "rework_recorded_lines": 111,
+  "churn_naive_lines": 113,
+  "churn_double_counted_lines": 2,
+  "churn_by_file": {
+   "README.md": 10,
+   "cli/main.py": 14,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 10,
+   "normalize/fields.py": 1,
+   "tests/test_xmlfeed.py": 70,
+   "validate/rules.py": 1
+  },
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 99,
+  "rework_from_shell": 14,
+  "final_diff_lines": 109,
+  "recorded_write_events": 10,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 4,
+  "person_chars": 5663,
+  "executor_cost_usd": 0.611354,
+  "executor_cost_from_runlog_usd": 0.611354,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 39,
+  "executor_calls": 2,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 310.8,
+  "notes": [],
+  "unforced_messages": 1,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-dense-prompt-1",
+  "task": "feeds",
+  "style": "dense",
+  "rep": 1,
+  "spec_chars": 5043,
+  "handoff": 1260.8,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-dense-prompt-2/repo",
+  "base": "a933a6b96f81886399051758ab87e9cb0b264a75",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 1,
+  "restarts_unmandated": 0,
+  "rework_lines": 2,
+  "rework_recorded_lines": 105,
+  "churn_naive_lines": 105,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {
+   "README.md": 7,
+   "cli/main.py": 15,
+   "config/defaults.py": 3,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 12,
+   "normalize/fields.py": 1,
+   "tests/test_xmlfeed.py": 63,
+   "validate/rules.py": 1
+  },
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 105,
+  "rework_from_shell": 0,
+  "final_diff_lines": 103,
+  "recorded_write_events": 14,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 4,
+  "person_chars": 6428,
+  "executor_cost_usd": 0.578437,
+  "executor_cost_from_runlog_usd": 0.578437,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 25,
+  "executor_calls": 2,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 284.0,
+  "notes": [],
+  "unforced_messages": 1,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-dense-prompt-2",
+  "task": "feeds",
+  "style": "dense",
+  "rep": 2,
+  "spec_chars": 4964,
+  "handoff": 1241.0,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-tuesday-graphene-1/repo",
+  "base": "866df679afd2032856441e5bd9a55d4087ddeb58",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [
+   ".plan-tmp.json"
+  ],
+  "files_written_outside_intent_ever_n": 1,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [
+    ".plan-tmp.json"
+   ],
+   "shell": [
+    ".plan-tmp.json"
+   ],
+   "final_diff": []
+  },
+  "refused_writes": 1,
+  "refused_writes_by_kind": {
+   "denied": 1
+  },
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 2,
+  "rework_recorded_lines": 159,
+  "churn_naive_lines": 188,
+  "churn_double_counted_lines": 29,
+  "churn_by_file": {
+   ".plan-tmp.json": 29,
+   "README.md": 2,
+   "cli/main.py": 20,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 9,
+   "normalize/fields.py": 1,
+   "tests/test_xmlfeed.py": 92,
+   "validate/rules.py": 1
+  },
+  "transient_files": [
+   ".plan-tmp.json"
+  ],
+  "transient_churn_lines": 29,
+  "rework_from_edit_events": 147,
+  "rework_from_shell": 41,
+  "final_diff_lines": 128,
+  "recorded_write_events": 12,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 8,
+  "person_chars": 2112,
+  "executor_cost_usd": 0.725922,
+  "executor_cost_from_runlog_usd": 0.0,
+  "executor_cost_from_graphene_runs_usd": 0.725922,
+  "executor_turns": 40,
+  "executor_calls": 6,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 616.6,
+  "notes": [
+   "1 recorded write events had no usable content and were not counted as rework"
+  ],
+  "unforced_messages": 1,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-tuesday-graphene-1",
+  "task": "feeds",
+  "style": "tuesday",
+  "rep": 1,
+  "spec_chars": 3922,
+  "handoff": 490.2,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "graphene",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-tuesday-graphene-2/repo",
+  "base": "4108fc4610486c946111c51f270c1594cabd6539",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 4,
+  "rework_recorded_lines": 70,
+  "churn_naive_lines": 70,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {
+   "README.md": 7,
+   "cli/main.py": 12,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 7,
+   "normalize/fields.py": 1,
+   "tests/test_xmlfeed.py": 37,
+   "validate/rules.py": 1
+  },
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 47,
+  "rework_from_shell": 23,
+  "final_diff_lines": 66,
+  "recorded_write_events": 5,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 19,
+  "person_chars": 6440,
+  "executor_cost_usd": 1.372412,
+  "executor_cost_from_runlog_usd": 0.917647,
+  "executor_cost_from_graphene_runs_usd": 0.454765,
+  "executor_turns": 44,
+  "executor_calls": 7,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 1171.8,
+  "notes": [],
+  "unforced_messages": 4,
+  "valid": false,
+  "void_reason": "The stand-in did not re-export PATH on several commands, so part of this run used the main checkout's editable graphene 0.4.0 instead of the 0.3.0 wheel under test. That upgraded this repo's own store schema, broke the venv binary against it, and the stand-in recovered by deleting .graphene and redoing goal, propose, shape and accept with the right binary. The files on disk, and therefore acceptance and held-out quality, are a real result of one person's work. Everything the store is the source of - churn, rework, refusals, write events, spec_chars, and the person actions before the restart - is a record of two half-runs stitched together, and is not comparable with the other seven.",
+  "run": "feeds-tuesday-graphene-2",
+  "task": "feeds",
+  "style": "tuesday",
+  "rep": 2,
+  "spec_chars": 2451,
+  "handoff": 129.0,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-tuesday-prompt-1/repo",
+  "base": "866df679afd2032856441e5bd9a55d4087ddeb58",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 3,
+  "restarts_unmandated": 1,
+  "rework_lines": 0,
+  "rework_recorded_lines": 57,
+  "churn_naive_lines": 57,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {
+   "README.md": 6,
+   "cli/main.py": 17,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 11,
+   "normalize/fields.py": 0,
+   "tests/test_xmlfeed.py": 15,
+   "validate/rules.py": 3
+  },
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 57,
+  "final_diff_lines": 74,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 5,
+  "person_chars": 729,
+  "executor_cost_usd": 0.643551,
+  "executor_cost_from_runlog_usd": 0.643551,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 15,
+  "executor_calls": 3,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 352.2,
+  "notes": [
+   "a Bash change list left out 2 further files",
+   "a Bash change list had no hunks to count; its lines are missing from rework"
+  ],
+  "unforced_messages": 2,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-tuesday-prompt-1",
+  "task": "feeds",
+  "style": "tuesday",
+  "rep": 1,
+  "spec_chars": 561,
+  "handoff": 112.2,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ },
+ {
+  "arm": "prompt",
+  "repo": "/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/46485d5b-5f57-4307-ba88-1ca42d6cf06b/scratchpad/t2/runs/feeds-tuesday-prompt-2/repo",
+  "base": "a933a6b96f81886399051758ab87e9cb0b264a75",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [
+   "README.md",
+   "cli/main.py",
+   "config/defaults.py",
+   "ingest/__init__.py",
+   "ingest/xmlfeed.py",
+   "normalize/fields.py",
+   "tests/test_xmlfeed.py",
+   "validate/rules.py"
+  ],
+  "files_changed_final_n": 8,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 1,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 48,
+  "churn_naive_lines": 48,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {
+   "README.md": 6,
+   "cli/main.py": 14,
+   "config/defaults.py": 2,
+   "ingest/__init__.py": 3,
+   "ingest/xmlfeed.py": 9,
+   "normalize/fields.py": 0,
+   "tests/test_xmlfeed.py": 12,
+   "validate/rules.py": 2
+  },
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 48,
+  "final_diff_lines": 62,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 20,
+   "failed": 0,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the README names the new source",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 12,
+   "failed": 0,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "person_actions": 6,
+  "person_chars": 656,
+  "executor_cost_usd": 0.611485,
+  "executor_cost_from_runlog_usd": 0.611485,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 15,
+  "executor_calls": 3,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 390.4,
+  "notes": [
+   "a Bash change list left out 2 further files",
+   "a Bash change list had no hunks to count; its lines are missing from rework"
+  ],
+  "unforced_messages": 2,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-tuesday-prompt-2",
+  "task": "feeds",
+  "style": "tuesday",
+  "rep": 2,
+  "spec_chars": 446,
+  "handoff": 74.3,
+  "cost_complete": true,
+  "checks_passed": "20/20",
+  "accept_rate": 1.0,
+  "quality_passed": "12/12",
+  "quality_rate": 1.0
+ }
+]
