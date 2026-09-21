@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
-"""Every number in results-2026-09-20.md, computed from the runs. Nothing here is typed by hand.
+"""Every number in results-2026-09-21.md, computed from the runs. Nothing here is typed by hand.
 
-    python3 docs/test/summarize.py <runs-dir>          # re-runs tally.py per run, writes the json
-    python3 docs/test/summarize.py --json runs.json    # tabulates a json written earlier
+    python3 docs/test/summarize.py <runs-dir> [--out runs-2026-09-21.json]
+    python3 docs/test/summarize.py --json runs-2026-09-21.json
 
-<runs-dir> holds one directory per run named <task>-<arm>-<rep>, each with repo/ and runlog.jsonl.
-Three numbers are computed here that tally.py does not print, and each says where it comes from:
+<runs-dir> holds one directory per run named <task>-<style>-<arm>-<rep>, each with repo/ and
+runlog.jsonl. A run with a `void.txt` beside its runlog is printed in the per-run table with
+`valid` = NO and its reason, and is left out of every median.
 
-  rework_code_only     rework_lines with the plan scratch files (.plan*.json, which an executor
-                       writes only to feed `graphene plan propose` and then deletes) left out of
-                       recorded churn. tally counts them twice - once for the write, once for the
-                       rm - and they are not the task's code.
+`style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt` or
+`graphene`. A run directory from the 20 September test, named <task>-<arm>-<rep>, still reads: its
+style is recorded as `dense`, which is what those stand-ins wrote.
+
+Two numbers are computed here that tally.py does not print, and each says where it comes from:
+
   spec_chars           how much of the person's specification reached an executor: the opening
                        prompt plus corrections in the paragraph arm; the opening prompt plus every
                        surviving node's title, goal, scope and check in the plan arm, which is what
                        `graphene run` hands the executor verbatim.
-  cost_complete        whether every executor call in the run log carried a cost. `graphene run`
-                       discards its executor's stdout, so some plan-arm runs report a lower bound.
+  handoff              spec_chars per person action: how much specification the person got in front
+                       of an executor for each thing they did. The directive's measure, as close as
+                       this harness can get to it.
+  unforced             how many times the person had to speak to an executor, other than the change
+                       of mind the card forces on them: every `prompt` plus every `correction` not
+                       marked `mandated`. `restarts` asks a stand-in to decide whether what they
+                       typed was a correction or a next step, and on 21 September two runs of the
+                       same cell called the identical event by the two different names. This one
+                       asks nobody anything: it counts messages.
+
+Everything else — including `quality`, the held-out checks, and both restart counts — comes
+straight out of tally.py.
 """
 
 from __future__ import annotations
@@ -29,65 +42,30 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+TASKS = ("feeds", "report", "inventory", "logs")
 COLUMNS = [
     ("files_changed_final_n", "files"),
     ("files_outside_intent_final_n", "outside (final)"),
     ("files_written_outside_intent_ever_n", "outside (ever)"),
     ("refused_writes", "refused"),
     ("restarts", "restarts"),
+    ("restarts_unmandated", "restarts (real)"),
+    ("unforced_messages", "unforced"),
     ("rework_lines", "rework"),
-    ("rework_code_only", "rework (code)"),
     ("rework_recorded_lines", "churn"),
+    ("churn_double_counted_lines", "double-counted"),
     ("final_diff_lines", "diff lines"),
     ("recorded_write_events", "write events"),
-    ("checks_passed", "checks"),
+    ("checks_passed", "accept"),
+    ("quality_passed", "held-out"),
     ("person_actions", "acts"),
     ("person_chars", "person chars"),
     ("spec_chars", "spec chars"),
+    ("handoff", "spec/act"),
     ("executor_cost_usd", "cost $"),
     ("executor_turns", "turns"),
     ("wall_seconds", "wall s"),
 ]
-SCRATCH = ".plan"  # a plan file an executor writes in the repo and deletes in the same command
-
-
-def churn_without_scratch(db: Path) -> int | None:
-    """Recorded churn with the plan scratch files taken out, or None when there is no store."""
-    if not db.exists():
-        return None
-    sys.path.insert(0, str(HERE.parents[1] / "src"))
-    import difflib
-
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    total = 0
-    for row in conn.execute(
-        "SELECT file_path, old_content, new_content FROM tool_events "
-        "WHERE tool IN ('Edit','Write','MultiEdit','NotebookEdit') AND new_content IS NOT NULL"
-    ):
-        name = Path(row["file_path"] or "").name
-        if name.startswith(SCRATCH) or (row["file_path"] or "").startswith("/"):
-            continue
-        diff = difflib.unified_diff(
-            (row["old_content"] or "").splitlines(), row["new_content"].splitlines(), n=0, lineterm=""
-        )
-        total += sum(1 for ln in diff if ln[:1] in "+-" and not ln.startswith(("+++", "---")))
-    for (raw,) in conn.execute("SELECT response FROM tool_events WHERE tool = 'Bash'"):
-        try:
-            entries = (json.loads(raw) or {}).get("bashEditDiff", {}).get("files") or []
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            continue
-        for entry in entries:
-            if Path(entry.get("filePath") or "").name.startswith(SCRATCH):
-                continue
-            total += sum(
-                1
-                for hunk in entry.get("hunks") or []
-                for ln in hunk.get("lines") or []
-                if str(ln)[:1] in "+-"
-            )
-    conn.close()
-    return total
 
 
 def spec_chars(db: Path, entries: list[dict], arm: str) -> int:
@@ -115,51 +93,77 @@ def spec_chars(db: Path, entries: list[dict], arm: str) -> int:
     return total
 
 
+def name_of(run: Path) -> tuple[str, str, str, int] | None:
+    """<task>-<style>-<arm>-<rep>, or the 20 September <task>-<arm>-<rep>."""
+    parts = run.name.split("-")
+    if len(parts) == 4:
+        task, style, arm, rep = parts
+    elif len(parts) == 3:
+        task, arm, rep = parts
+        style = "dense"
+    else:
+        return None
+    if arm not in ("prompt", "graphene") or not rep.isdigit():
+        return None
+    return task, style, arm, int(rep)
+
+
 def collect(runs_dir: Path) -> list[dict]:
     out = []
     for run in sorted(p for p in runs_dir.iterdir() if (p / "runlog.jsonl").exists()):
-        task, arm, rep = run.name.rsplit("-", 2)
-        if arm not in ("prompt", "graphene"):
+        named = name_of(run)
+        if named is None:
             continue
+        task, style, arm, rep = named
         repo = run / "repo"
-        base = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-        ).stdout.strip()
-        done = subprocess.run(
-            [
-                sys.executable,
-                str(HERE / "tally.py"),
-                str(repo),
-                "--base",
-                base,
-                "--intent",
-                str(HERE / "tasks" / task / "intent_globs.txt"),
-                "--accept",
-                str(HERE / "tasks" / task / "accept.py"),
-                "--arm",
-                arm,
-                "--runlog",
-                str(run / "runlog.jsonl"),
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        base = (run / "base.sha").read_text().strip()
+        quality = HERE / "tasks" / task / "quality.py"
+        argv = [
+            sys.executable,
+            str(HERE / "tally.py"),
+            str(repo),
+            "--base",
+            base,
+            "--intent",
+            str(HERE / "tasks" / task / "intent_globs.txt"),
+            "--accept",
+            str(HERE / "tasks" / task / "accept.py"),
+            "--arm",
+            arm,
+            "--runlog",
+            str(run / "runlog.jsonl"),
+        ]
+        if quality.exists():
+            argv += ["--quality", str(quality)]
+        done = subprocess.run(argv, capture_output=True, text=True, check=True)
         tally = json.loads(done.stdout)
         entries = [json.loads(ln) for ln in (run / "runlog.jsonl").read_text().splitlines() if ln.strip()]
-        results = [e for e in entries if e.get("type") == "result"]
         db = repo / ".graphene" / "graphene.db"
-        without = churn_without_scratch(db)
+        spec = spec_chars(db, entries, arm)
+        acc, qua = tally["acceptance"], tally.get("quality")
+        unforced = sum(
+            1
+            for e in entries
+            if e.get("who") == "person"
+            and (e.get("type") == "prompt" or (e.get("type") == "correction" and not e.get("mandated")))
+            and str(e.get("text") or "").strip()
+        )
+        void = run / "void.txt"
         tally.update(
+            unforced_messages=unforced,
+            valid=not void.exists(),
+            void_reason=void.read_text().strip() if void.exists() else "",
             run=run.name,
             task=task,
-            rep=int(rep),
-            rework_code_only=None if without is None else max(0, without - tally["final_diff_lines"]),
-            spec_chars=spec_chars(db, entries, arm),
-            cost_complete=bool(results) and all(e.get("cost_usd") for e in results),
-            executor_calls=len(results),
-            checks_passed=f"{tally['acceptance']['passed']}/"
-            f"{tally['acceptance']['passed'] + tally['acceptance']['failed']}",
+            style=style,
+            rep=rep,
+            spec_chars=spec,
+            handoff=round(spec / tally["person_actions"], 1) if tally["person_actions"] else None,
+            cost_complete=not tally["executor_calls_unpriced"],
+            checks_passed=f"{acc['passed']}/{acc['passed'] + acc['failed']}",
+            accept_rate=round(acc["passed"] / max(1, acc["passed"] + acc["failed"]), 3),
+            quality_passed=f"{qua['passed']}/{qua['passed'] + qua['failed']}" if qua else None,
+            quality_rate=round(qua["passed"] / max(1, qua["passed"] + qua["failed"]), 3) if qua else None,
         )
         out.append(tally)
     return out
@@ -170,7 +174,7 @@ def cell(run: dict, key: str) -> str:
     if value is None:
         return "-"
     if key == "executor_cost_usd":
-        return f"{value:.3f}" + ("" if run["cost_complete"] else "+")
+        return f"{value:.3f}" + ("" if run.get("cost_complete") else "+")
     return str(value)
 
 
@@ -184,22 +188,31 @@ def table(runs: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def medians(runs: list[dict]) -> str:
-    numeric = [(k, label) for k, label in COLUMNS if k != "checks_passed"]
-    groups = {}
+def medians(runs: list[dict], by: str) -> str:
+    """Medians per `by` per arm, plus every run of that arm. `by` is 'task' or 'style'."""
+    numeric = [(k, label) for k, label in COLUMNS if k not in ("checks_passed", "quality_passed")]
+    numeric += [("accept_rate", "accept rate"), ("quality_rate", "held-out rate")]
+    groups: dict[tuple[str, str], list[dict]] = {}
     for run in runs:
-        groups.setdefault((run["task"], run["arm"]), []).append(run)
+        if not run.get("valid", True):
+            continue  # a void run is printed in the table above and never averaged into anything
+        groups.setdefault((run[by], run["arm"]), []).append(run)
         groups.setdefault(("all", run["arm"]), []).append(run)
-    head = ["task", "arm", "n"] + [label for _, label in numeric]
+    head = [by, "arm", "n"] + [label for _, label in numeric]
     lines = ["| " + " | ".join(head) + " |", "|" + "|".join(["---"] * len(head)) + "|"]
-    for task in ("report", "inventory", "logs", "all"):
+    keys = [
+        k
+        for k in (TASKS if by == "task" else ("dense", "tuesday"))
+        if (k, "prompt") in groups or (k, "graphene") in groups
+    ]
+    for key in [*keys, "all"]:
         for arm in ("prompt", "graphene"):
-            group = groups.get((task, arm), [])
+            group = groups.get((key, arm), [])
             if not group:
                 continue
-            row = [task, arm, str(len(group))]
-            for key, _ in numeric:
-                values = [r[key] for r in group if r.get(key) is not None]
+            row = [key, arm, str(len(group))]
+            for name, _ in numeric:
+                values = [r[name] for r in group if r.get(name) is not None]
                 row.append(f"{statistics.median(values):g}" if values else "-")
             lines.append("| " + " | ".join(row) + " |")
     return "\n".join(lines)
@@ -210,13 +223,16 @@ def main(argv: list[str]) -> int:
         runs = json.loads(Path(argv[2]).read_text())
     elif len(argv) > 1:
         runs = collect(Path(argv[1]).expanduser().resolve())
-        Path(HERE / "runs-2026-09-20.json").write_text(json.dumps(runs, indent=1))
+        out = Path(argv[3]) if len(argv) > 3 and argv[2] == "--out" else HERE / "runs-2026-09-21.json"
+        out.write_text(json.dumps(runs, indent=1))
     else:
         print(__doc__)
         return 2
     print(table(runs))
     print()
-    print(medians(runs))
+    print(medians(runs, "task"))
+    print()
+    print(medians(runs, "style"))
     return 0
 
 
