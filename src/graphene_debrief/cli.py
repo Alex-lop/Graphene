@@ -16,6 +16,7 @@ def app() -> None:
 
 
 def build():
+    import json
     import os
     import shutil
     import sqlite3
@@ -28,24 +29,6 @@ def build():
 
     from . import __version__
     from .commits import refresh_commits
-    from .debrief import (
-        ACCENT,
-        SHELL_LISTS_HINT,
-        build_debrief,
-        coverage_cell,
-        offset,
-        print_card,
-        print_sessions,
-        print_why,
-        print_writes,
-        render_card,
-        select_sessions,
-        shell_lists_enabled,
-        stamp,
-        stamp_tz,
-        to_json,
-        write_line,
-    )
     from .sources.claude_code import (
         SETTINGS,
         backfill,
@@ -53,20 +36,25 @@ def build():
         hooks_installed,
         install_hooks,
         looked_in,
-        now_iso,
         repo_root,
         transcripts_for,
     )
     from .store import StaleStore, Store
-    from .why import (
-        candidates,
-        commits_of,
-        last_commit,
-        path_coverage,
-        recorded_writes,
-        why_line,
-        why_path,
+
+    SHELL_LISTS_HINT = (
+        'one line only you can add: "bashEditDiffEnabled": true in ~/.claude/settings.json makes Claude '
+        "Code record which files every shell command changed (a repo's settings cannot turn it on). "
+        "Without it those lists exist only when Claude Code itself routes edits through the shell, and a "
+        "file an agent writes with a heredoc or a script traces to its commit at best"
     )
+
+    def shell_lists_enabled() -> bool:
+        """Is the vendor's shell change list on in the person's own settings? Read, never written."""
+        config = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "settings.json"
+        try:
+            return json.loads(config.read_text(encoding="utf-8")).get("bashEditDiffEnabled") is True
+        except (OSError, ValueError, AttributeError):
+            return False
 
     LOCKED = (
         "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
@@ -126,8 +114,15 @@ def build():
         raise typer.Exit(code)
 
     def say(message: str) -> None:
-        """A plain line on stdout: wrapped at words on a terminal, one line when piped."""
-        write_line(console, Text(message), wrap=True)
+        """A plain line on stdout: wrapped at words on a terminal, one line (no escape codes) when
+        piped or redirected, so a script can grep it."""
+        text = Text(message)
+        if not (console.is_terminal and not console.no_color):
+            console.file.write(text.plain + "\n")
+            return
+        for line in text.wrap(console, max(20, console.width - 1)):
+            line.rstrip()
+            console.print(line, no_wrap=True, crop=False, overflow="ignore")
 
     def empty(message: str) -> None:
         """Nothing to show yet is not an error: plain text, exit 1 so scripts can tell."""
@@ -179,158 +174,27 @@ def build():
             note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
         return store
 
-    def hooks_hint(r: Path) -> None:
-        if not hooks_installed(r):
-            note("`graphene init` records sessions live; until then Graphene reads transcripts")
-
-    def show(
-        session_id: str | None,
-        since: str | None,
-        as_json: bool = False,
-    ) -> None:
-        r = root()
-        with loaded_store(r) as store:
-            try:
-                ids = select_sessions(store, session_id, since)
-            except ValueError as exc:
-                fail(str(exc))
-            if not ids:
-                empty(f"no session in that window; `graphene sessions` lists {len(store.sessions())}")
-            result = build_debrief(store, ids, r)
-            store.add_debrief_run(ids, now_iso())
-            others = sum(1 for s in store.sessions() if s.id not in ids and store.event_count(s.id))
-        if not as_json and not (result.files_changed or result.commits):
-            n, p = len(result.sessions), result.prompt_count
-            empty(
-                f"{n} session{'s' if n != 1 else ''}, {p} prompt{'s' if p != 1 else ''}, "
-                f"no file changes recorded; `graphene sessions` lists {'it' if n == 1 else 'them'}"
-            )
-        if as_json:
-            sys.stdout.write(to_json(result) + "\n")
-            return
-        if console.is_terminal:
-            print_card(console, result)
-        else:  # piped or redirected: the markdown text itself, unrendered
-            sys.stdout.write(render_card(result))
-        if others:
-            note(
-                f"{others} other session{'s' if others != 1 else ''} recorded; `graphene sessions` lists them"
-            )
-        hooks_hint(r)
-
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
-        session_id: str = typer.Option(None, "--session", help="A session id, or a unique prefix of one."),
-        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
-        as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command, `graphene` prints the plan and where the work stands; in a repo with no
-        plan (or with --session, --since or --json), the short card of the latest session."""
+        """With no command, `graphene` prints the plan and where the work stands. What was done for
+        one node is `graphene node show <id>`; the map of a recorded run is `graphene ui`."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
-            if not (session_id or since or as_json):
-                if plan_or_nothing():
-                    return
-                r = root()
-                if not (r / ".graphene" / "graphene.db").exists() and not transcripts_for(r):
-                    # a repo with nothing in it yet: the plan comes first here too, then the record's line
-                    say(
-                        "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check "
-                        "'<command>'` starts one, or ask your agent to propose one; `graphene plan "
-                        "--help` has the rest."
-                    )
-            show(session_id, since, as_json=as_json)
+            if plan_or_nothing():
+                return
+            empty(
+                "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check '<command>'` "
+                "starts one, or ask your agent to propose one; `graphene plan --help` has the rest."
+            )
 
     from .plan_cli import register
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
-
-    @cli.command()
-    def why(
-        target: str = typer.Argument(None, help="PATH for a file's history, or PATH:LINE for one line."),
-    ) -> None:
-        """Which prompts changed a file (newest first), or which one wrote a given line."""
-        r = root()
-        path, _, line = (target or "").rpartition(":")
-        with loaded_store(r) as store:
-            if target is None:
-                write_line(console, Text("files with recorded edits, newest first:", "dim"))
-                recent = store.recent_paths()
-                pad = max((len(path) for path, _ in recent), default=0)
-                for path, when in recent:
-                    row = Text()
-                    row.append(path.ljust(pad), ACCENT)
-                    row.append("  " + stamp_tz(when), "dim")
-                    write_line(console, row)
-                more = store.recorded_path_count() - len(recent)
-                if more > 0:
-                    write_line(console, Text(f"… {more} more; `graphene` lists a session's files", "dim"))
-                console.file.flush()  # the list before the usage line, whichever stream is captured
-                fail("usage: graphene why <path> | <path>:<line>")
-            if path and line.isdigit():
-                answer = why_line(store, r, path, int(line))
-                if answer.content is None:
-                    fail(answer.reason, 1)
-                where = (
-                    f"committed in {answer.commit[:7]} ({stamp_tz(answer.committed_at)})"
-                    if answer.commit
-                    else "not committed"
-                )
-                print_why(
-                    console,
-                    f"{answer.path}:{answer.line}",
-                    answer.content,
-                    f"{where} · {answer.reason}",
-                    answer.matches,
-                )
-            else:
-                entries = why_path(store, r, target)
-                rel = entries[0].change.path if entries else candidates(r, target)[-1]
-                covered = path_coverage(store, rel)
-                if not entries:
-                    writes = recorded_writes(store, rel)
-                    held = commits_of(store, rel)
-                    told = "; ".join(
-                        f"{len(shas)} commit{'s' if len(shas) != 1 else ''} "
-                        + (f"during session {sid[:8]}" if sid else "outside any recorded session")
-                        for sid, shas in held.items()
-                    )
-                    if writes:  # recorded, but no payload carries its diff: show the writes themselves
-                        n = len(writes)
-                        head = (
-                            f"{n} recorded write{'s' if n != 1 else ''}, newest first; no diff was recorded"
-                        )
-                        print_writes(console, rel, head + (f"\n{covered}" if covered else ""), writes)
-                        return
-                    if told:  # git knows the file changed, and that is the answer: no write was recorded
-                        say(f"{rel}: changed in {told}; no recorded write. {covered}")
-                        return
-                    known = last_commit(r, rel)
-                    if known:
-                        say(
-                            f"no recorded prompt changed {rel}; git last changed it in {known[0]} "
-                            f"({stamp_tz(known[1])}), outside every recorded session"
-                        )
-                        return
-                    if not (r / rel).exists():
-                        empty(f"{target}: no such file in this repo, on disk or in git's history")
-                    empty(f"no recorded prompt changed {rel}, and git has no commit of it yet")
-                n = len(entries)
-                subtitle = f"{n} prompt{'s' if n != 1 else ''}, newest first"
-                print_why(console, rel, "", subtitle + (f"\n{covered}" if covered else ""), entries)
-
-    @cli.command(hidden=True)
-    def debrief(
-        session_id: str = typer.Argument(None, help="A session id, or a unique prefix of one."),
-        since: str = typer.Option(None, "--since", help="6h, 2d, or a date like 2026-09-16."),
-        as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
-    ) -> None:
-        """The short session card: an alias of plain `graphene`, kept for scripts that call it."""
-        show(session_id, since, as_json=as_json)
 
     @cli.command()
     def init() -> None:
@@ -417,7 +281,7 @@ def build():
         """The plan on screen, and behind it the map of a run, drawn from the records."""
         import webbrowser
 
-        from .graph import build_graph, to_json
+        from .graph import build_graph, select_sessions, to_json
         from .plan import accept_path, caller
         from .server import export_html, make_server
 
@@ -465,34 +329,5 @@ def build():
             pass
         finally:
             server.server_close()
-
-    @cli.command()
-    def sessions(
-        everything: bool = typer.Option(False, "--all", help="Also list sessions that made no calls."),
-    ) -> None:
-        """List the recorded sessions, newest first."""
-        from .graph import coverage_counts, run_records
-
-        with loaded_store(root()) as store:
-            listed = list(reversed(store.sessions()))
-            listed = [(s, store.event_count(s.id)) for s in listed]
-            rows = [
-                (
-                    s.id[:8],
-                    s.source,
-                    stamp(s.started_at),
-                    stamp(s.ended_at) if s.ended_at else "running",
-                    calls,
-                    coverage_cell(coverage_counts(run_records(store, [s.id]).coverage)) if calls else "-",
-                )
-                for s, calls in listed
-                if calls or everything
-            ]
-        quiet = [s for s, calls in listed if not calls]
-        zone = next((offset(s.started_at) for s, _ in listed if s.started_at), "")
-        print_sessions(console, rows, zone)
-        if quiet and not everything:
-            n = len(quiet)
-            note(f"{n} session{'s' if n != 1 else ''} with no calls not listed; `graphene sessions --all`")
 
     return cli

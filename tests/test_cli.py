@@ -66,11 +66,9 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == ["plan", "node", "run", "init", "ui", "why", "sessions"]  # what will be, then what was
-    assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
-    assert "--session" in text and "--since" in text and "--json" in text
-    assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it
-    assert "PATH:LINE" in run("why", "--help").output
+    assert commands == ["plan", "node", "run", "init", "ui"]  # the plan, then the map
+    assert "ingest" not in text  # the hooks call it; nobody types it
+    assert "graphene node show" in text  # what was done for one node is where the record lives now
 
 
 def test_init_installs_hooks_and_ignores_the_store(repo):
@@ -89,7 +87,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
 
 
 def test_nothing_recorded_and_nothing_to_backfill(repo):
-    for args in ([], ["debrief"], ["sessions"], ["why", "x.py"]):
+    for args in (["ui"], ["ui", "--json"]):
         result = run(*args)
         assert result.exit_code == 1, args
         line = one_line(result)
@@ -101,124 +99,84 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
 
 def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
     result = run()
-    assert result.exit_code == 1 and result.stdout.startswith("no plan here yet. `graphene node add")
-    assert one_line(result).startswith("no Claude Code sessions")  # the record's line, as before
-    assert run("sessions").stdout == ""  # only the plain command speaks of the plan
+    assert result.exit_code == 1
+    assert one_line(result).startswith("no plan here yet. `graphene node add")
+    assert "graphene plan --help" in one_line(result)
 
 
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
-    assert "`graphene init` records sessions live" in one_line(run())
+    assert "`graphene init` records sessions live" in one_line(run("ui"))
     init = run("init")
     assert "next Claude Code session" in init.output and "settings.local.json is your personal" in init.output
-    line = one_line(run())
+    line = one_line(run("ui"))
     assert "hooks are installed" in line and "graphene init" not in line
 
 
 def test_the_empty_first_run_says_where_it_looked(repo, tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_CONFIG_DIR")
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
-    result = run()
+    result = run("ui")
     assert result.exit_code == 1
     line = one_line(result)
     assert line.startswith("no Claude Code sessions for this repo yet (looked in ~/.claude/projects/")
     assert "`graphene init` records sessions live" in line
 
 
-def test_first_run_backfills_from_transcripts(repo, tmp_path, monkeypatch):
+def test_the_map_backfills_from_transcripts_on_its_first_run(repo, tmp_path, monkeypatch):
     monkeypatch.setattr(fixture, "CWD", str(repo))
     target = tmp_path / "claude" / "projects" / project_dir_name(repo)
     for path, text in fixture.render().items():
         out = target / path.relative_to(fixture.OUT)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text)
-    card = run()
-    assert card.exit_code == 0, card.output + card.stderr
-    assert "loaded 1 session" in card.output + card.stderr
-    assert "Session 11111111" in card.output and "app/hello.py" in card.output
-    assert "graphene init" in card.output + card.stderr  # the one-line hint, since no hooks are installed
-    assert run("why", "README.md").exit_code == 0
-    assert "loaded" not in run("why", "README.md").output + run("why", "README.md").stderr  # only once
+    drawn = run("ui", "--json")
+    assert drawn.exit_code == 0, drawn.output + drawn.stderr
+    assert "loaded 1 session" in drawn.output + drawn.stderr
+    graph = json.loads(drawn.stdout)
+    assert graph["run"]["sessions"][0]["id"] == fixture.SID
+    assert "file:app/hello.py" in {row["id"] for row in graph["rows"]}
+    assert "loaded" not in run("ui", "--json").stderr  # read once; a transcript that has not changed is free
 
 
 def test_every_run_picks_up_new_transcripts_without_hooks(repo, tmp_path, monkeypatch):
-    """A second session appears in plain `graphene` even though `graphene init` was never run."""
+    """A second session reaches the map even though `graphene init` was never run."""
     monkeypatch.setattr(fixture, "CWD", str(repo))
     target = tmp_path / "claude" / "projects" / project_dir_name(repo)
     rendered = fixture.render()
     main = next(p for p in rendered if p.name == f"{fixture.SID}.jsonl")
     target.mkdir(parents=True)
     (target / main.name).write_text(rendered[main])
-    first = run()
+    first = run("ui", "--json")
     assert first.exit_code == 0 and "loaded 1 session" in first.stderr
     second_id = "22222222-2222-4333-8444-555555555555"
     later = rendered[main].replace(fixture.SID, second_id).replace("2026-03-01T", "2026-03-02T")
     (target / f"{second_id}.jsonl").write_text(later)
-    again = run()
+    again = run("ui", "--json")
     assert again.exit_code == 0, again.output + again.stderr
-    assert "loaded 1 session" in again.stderr and "Session 22222222" in again.stdout
-    third = run()
+    assert "loaded 1 session" in again.stderr
+    assert json.loads(again.stdout)["run"]["sessions"][0]["id"] == second_id  # the one that finished last
+    third = run("ui", "--json")
     assert "loaded" not in third.stderr  # nothing new: no parse, no notice
 
 
-def test_backfill_debrief_and_why(repo, transcript):
+def test_the_map_is_drawn_from_a_backfilled_transcript(repo, transcript):
     loaded = run("ingest", "--backfill", "--transcript", str(transcript))
     assert loaded.exit_code == 0, loaded.output
     assert "added 1" in loaded.output
-    assert fixture.SID[:8] in run("sessions").output
 
-    card = run()
-    assert card.exit_code == 0, card.output
-    assert "Files changed" in card.output and "app/hello.py" in card.output and "Abandoned" in card.output
-    assert "What you asked" not in card.output and "classifier" not in card.output
-    assert "1 tool failure" in card.output or "tool failures" in card.output
+    graph = json.loads(run("ui", "--json").stdout)
+    assert [lane["session"] for lane in graph["lanes"] if lane["kind"] == "main"] == [fixture.SID]
+    assert {row["path"] for row in graph["rows"] if row["kind"] == "file"} >= {
+        "app/hello.py",
+        "tests/test_hello.py",
+        "README.md",
+    }
+    assert graph["counters"]["failures"] + graph["counters"]["refused"] >= 1
 
-    as_json = run("--json")
-    assert as_json.exit_code == 0, as_json.output
-    data = json.loads(as_json.output)
-    assert [p["ordinal"] for p in data["prompts"]] == [1, 2, 3]
-    assert (
-        data["files_changed"] == 4
-    )  # README.md, app/hello.py, tests/test_hello.py, and the rm'd scratch.txt
-    assert [f["path"] for f in data["prompts"][0]["files"]] == ["app/hello.py", "tests/test_hello.py"]
-    assert [(f["path"], f["effect"]) for f in data["prompts"][2]["files"]] == [
-        ("README.md", "reverted"),
-        ("scratch.txt", "deleted"),
-    ]
-    assert data["reverted"] == [{"path": "README.md", "session_id": fixture.SID, "prompt_ordinal": 3}]
-    assert [r["rerun_passed"] for r in data["reruns"]] == [True]
-
-    one = run("--session", fixture.SID[:8], "--json")
+    one = run("ui", "--session", fixture.SID[:8], "--json")
     assert one.exit_code == 0, one.output
-    assert [s["id"] for s in json.loads(one.output)["sessions"]] == [fixture.SID]
-
-    plain = run("--since", "2026-01-01")
-    assert plain.exit_code == 0 and "Files changed" in plain.output and "What you asked" not in plain.output
-
-    assert run("--session", "zzz").exit_code == 2
-    assert run("--since", "soon").exit_code == 2
-
-    history = run("why", "README.md")
-    assert history.exit_code == 0, history.output
-    assert "1 prompt, newest first" in history.output and "reverted" in history.output
-    assert "+0/" not in history.output  # a reverted file has no net counts
-    gone = run("why", "scratch.txt")
-    assert gone.exit_code == 0 and "deleted (no diff available)" in gone.output and "+0/" not in gone.output
-    assert run("why", "nope.txt").exit_code == 1
-
-    (repo / "app").mkdir()
-    (repo / "app" / "hello.py").write_text(fixture.HELLO_V2)
-    line = run("why", "app/hello.py:2")
-    assert line.exit_code == 0, line.output
-    assert "not committed" in line.output and "prompt 1" in line.output
-    assert run("why", "app/hello.py:99").exit_code == 1
-
-
-def test_debrief_runs_are_recorded_so_the_next_one_is_incremental(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    first = json.loads(run("--json").output)
-    assert [s["id"] for s in first["sessions"]] == [fixture.SID]
-    again = json.loads(run("--json").output)
-    assert [s["id"] for s in again["sessions"]] == [fixture.SID]  # nothing newer: falls back to the latest
+    assert [s["id"] for s in json.loads(one.stdout)["run"]["sessions"]] == [fixture.SID]
+    assert run("ui", "--session", "zzz").exit_code == 2
 
 
 def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
@@ -228,7 +186,7 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
     assert one_line(result) == "run this inside a git repository (no .git found above the current directory)"
     assert run().exit_code == 2
     assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
-    assert run("sessions").exit_code == 2
+    assert run("ui").exit_code == 2
 
 
 def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkeypatch):
@@ -243,13 +201,6 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     assert result.exit_code == 2
     assert one_line(result).startswith("refusing to treat your home directory as a repo; cd into")
     assert not (home / ".graphene").exists()
-
-
-def test_empty_window_is_not_reported_as_an_empty_store(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run("--since", "1h")
-    assert result.exit_code == 1
-    assert "no session in that window" in result.output + result.stderr
 
 
 def quiet_transcript(repo, tmp_path, monkeypatch) -> Path:
@@ -268,23 +219,21 @@ def quiet_transcript(repo, tmp_path, monkeypatch) -> Path:
     return path
 
 
-def test_a_session_that_changed_nothing_is_one_line(repo, tmp_path, monkeypatch):
+def test_a_session_that_changed_nothing_is_still_drawn(repo, tmp_path, monkeypatch):
     path = quiet_transcript(repo, tmp_path, monkeypatch)
     assert run("ingest", "--backfill", "--transcript", str(path)).exit_code == 0
-    result = run()
-    assert result.exit_code == 1
-    assert one_line(result) == ("1 session, 1 prompt, no file changes recorded; `graphene sessions` lists it")
-    assert run("sessions").exit_code == 0  # and it does list it
-    assert json.loads(run("--json").stdout)["prompt_count"] == 1  # --json still answers
+    graph = json.loads(run("ui", "--json").stdout)
+    assert graph["run"]["prompts"] == 1 and graph["rows"] == []  # nothing changed, so no file row
 
 
 def test_a_store_another_process_is_writing_is_one_line(repo, transcript, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_AS", "person:alex")
     monkeypatch.setattr(store_module, "TIMEOUT", 0.2)
     run("ingest", "--backfill", "--transcript", str(transcript))
     other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
     other.execute("BEGIN EXCLUSIVE")  # a hook or a backfill, mid-write
     try:
-        result = run()  # the lock is hit late, while recording the debrief run
+        result = run("node", "add", "the users endpoint", "--scope", "src/**", "--check", "true")
         assert result.exit_code == 1
         assert one_line(result) == (
             "the store .graphene/graphene.db is locked by another graphene process "
@@ -300,72 +249,22 @@ def test_a_store_locked_before_it_is_even_opened_is_the_same_line(repo, monkeypa
     other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
     other.execute("BEGIN EXCLUSIVE")  # holds the lock before Graphene can create its tables
     try:
-        result = run("sessions")
+        result = run("ui")
         assert result.exit_code == 1
         assert one_line(result).startswith("the store .graphene/graphene.db is locked")
     finally:
         other.close()
 
 
-def test_why_with_no_path_suggests_the_files_that_changed_last(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run("why")
-    assert result.exit_code == 2
-    assert one_line(result) == "usage: graphene why <path> | <path>:<line>"
-    suggestions = [line.split("  ")[0] for line in result.stdout.strip().splitlines()]
-    assert 0 < len(suggestions) <= 5
-    assert "app/hello.py" in suggestions
-    assert not any(path.startswith("/") for path in suggestions)
-
-
-def test_why_on_a_path_nothing_touched_is_one_line(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run("why", "nope.txt")
-    assert result.exit_code == 1
-    assert one_line(result) == "nope.txt: no such file in this repo, on disk or in git's history"
-
-
-def test_the_card_is_plain_text_when_stdout_is_not_a_terminal(repo, transcript):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    result = run()
-    assert result.exit_code == 0
-    assert result.stdout.startswith("# Graphene\n")
-    assert "•" not in result.stdout
-    assert not any(char in result.stdout for char in "─│┌┐└┘━┃╭╮╯╰")
-
-
-def test_the_asset_script_renders_three_svgs(tmp_path):
-    script = Path(__file__).parents[1] / "docs" / "assets" / "render_assets.py"
-    done = subprocess.run(
-        [sys.executable, str(script), "--out", str(tmp_path)], capture_output=True, text=True
-    )
-    assert done.returncode == 0, done.stdout + done.stderr
-    for name in ("card.svg", "why-path.svg", "why-line.svg"):
-        assert (tmp_path / name).read_text().startswith("<svg")
-
-
 def test_a_corrupt_store_is_rebuilt(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
-    result = run("sessions")
+    result = run("ui")
     output = result.output + result.stderr
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
     assert "store rebuilt" in output and "Traceback" not in output
     assert result.exit_code == 1  # nothing to backfill from here: the usual one-line message
     assert "no Claude Code sessions for this repo" in output
-
-
-def test_why_accepts_the_paths_the_card_prints_from_a_subdirectory(repo, transcript, monkeypatch):
-    run("ingest", "--backfill", "--transcript", str(transcript))
-    (repo / "app").mkdir()
-    (repo / "app" / "hello.py").write_text(fixture.HELLO_V2)
-    monkeypatch.chdir(repo / "app")
-    assert run("why", "hello.py").exit_code == 0  # relative to where you stand
-    pasted = run("why", "app/hello.py")  # pasted from the card: relative to the repo root
-    assert pasted.exit_code == 0, pasted.stderr
-    assert "1 prompt, newest first" in pasted.stdout
-    assert run("why", "app/hello.py:2").exit_code == 0
-    assert run("why", "nope/hello.py").exit_code == 1
 
 
 def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tmp_path, monkeypatch):

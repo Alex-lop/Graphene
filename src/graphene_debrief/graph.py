@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import os
 import posixpath
+import re
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from .attribute import check_segments
-from .debrief import _denial
 from .model import Agent, Commit, Prompt, Session, ToolEvent
 from .record import Change, Coverage, Omitted, changes, coverage, seconds, window_commits
 from .store import Store
@@ -134,6 +135,72 @@ class Graph:
 
 def to_json(graph: Graph, indent: int | None = None) -> str:
     return json.dumps(asdict(graph), ensure_ascii=False, indent=indent)
+
+
+# -- which sessions the page draws ----------------------------------------------------------------
+
+_CLASSIFIER_REASON = re.compile(r"Reason: \[?([^\]\n.]+)")
+
+
+def _denial(error: str) -> tuple[bool, str]:
+    """Was this call refused before it ran (permission system, classifier, the user), and why?"""
+    if "denied by the Claude Code auto mode classifier" in error:
+        match = _CLASSIFIER_REASON.search(error)
+        return True, f"auto mode classifier: {match.group(1).strip() if match else 'unknown reason'}"
+    if "doesn't want to proceed" in error or "user declined" in error.lower():
+        return True, "rejected by the user"
+    if "permission" in error.lower() and "denied" in error.lower():
+        return True, "permission denied"
+    return False, ""
+
+
+def iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def parse_since(value: str, now: datetime) -> str:
+    """``6h`` / ``2d`` / ``30m`` / ``2026-09-16`` -> ISO timestamp cutoff."""
+    match = re.fullmatch(r"(\d+)([mhdw])", value.strip())
+    if match:
+        amount, unit = int(match.group(1)), match.group(2)
+        delta = {
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+            "d": timedelta(days=amount),
+            "w": timedelta(weeks=amount),
+        }[unit]
+        return iso(now - delta)
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise ValueError(f"cannot read --since {value!r}: use 6h, 2d, or a date like 2026-09-16") from None
+    if parsed.tzinfo is None:
+        parsed = parsed.astimezone()
+    return iso(parsed.astimezone(UTC))
+
+
+def select_sessions(
+    store: Store, session_id: str | None = None, since: str | None = None, now: datetime | None = None
+) -> list[str]:
+    """Which sessions the map draws: one by id (prefix ok), all since a cutoff, or the latest that
+    did something (a map of an empty session shows nothing)."""
+    now = now or datetime.now(UTC)
+    sessions = store.sessions()
+    if session_id:
+        matches = [s.id for s in sessions if s.id.startswith(session_id)]
+        if len(matches) != 1:
+            raise ValueError(f"{len(matches)} sessions match {session_id!r}")
+        return matches
+    if since:
+        cutoff = parse_since(since, now)
+        return [s.id for s in sessions if (s.ended_at or s.started_at or "") >= cutoff]
+    # latest is the one that finished last, which is the one a person comes back to
+    latest = sorted(sessions, key=lambda s: s.ended_at or s.started_at or "", reverse=True)
+    for wanted in (store.did_something, store.event_count):
+        for s in latest:
+            if wanted(s.id):
+                return [s.id]
+    return [sessions[-1].id] if sessions else []
 
 
 class Axis:

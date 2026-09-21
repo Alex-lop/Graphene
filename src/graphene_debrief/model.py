@@ -1,4 +1,4 @@
-"""Dataclasses shared by the store, the sources, attribution and rendering."""
+"""Dataclasses shared by the store, the sources, the map and a node's record."""
 
 from __future__ import annotations
 
@@ -79,30 +79,6 @@ class Commit:
     event_id: str | None = None  # the Bash call whose response names the SHA
     origin_sha: str | None = None  # the commit a recorded cherry-pick copied
     files: list[tuple[str, str | None]] = field(default_factory=list)  # (repo-relative path, status)
-
-
-@dataclass(slots=True)
-class Hunk:
-    old_start: int
-    old_lines: int
-    new_start: int
-    new_lines: int
-    lines: list[str]  # unified-diff body lines, each starting with ' ', '+' or '-'
-
-
-@dataclass(slots=True)
-class FileChange:
-    """Derived: what one prompt did to one file."""
-
-    path: str
-    session_id: str
-    prompt_id: str
-    effect: str  # created | modified | deleted | reverted
-    hunks: list[Hunk] = field(default_factory=list)
-    added: int = 0
-    removed: int = 0
-    strategy: str = "payload"  # payload | git | bridged | deferred | later | none
-    symbols: list[str] = field(default_factory=list)  # definitions enclosing the changed lines
 
 
 @dataclass(slots=True)

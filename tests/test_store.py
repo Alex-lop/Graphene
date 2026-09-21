@@ -258,7 +258,7 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
 
 def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):
     repo = repo_with_transcripts
-    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
+    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0  # any command that backfills
     with Store.open(repo) as store:
         (sid,) = [s.id for s in store.sessions()]
         assert store.transcript_stat(sid) is not None
@@ -267,7 +267,7 @@ def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_t
     with Store.open(repo) as store:
         assert store.transcript_stat(sid) is None  # migrated: the read is forgotten, the session is not
         assert [s.id for s in store.sessions()] == [sid]
-    assert CliRunner().invoke(build(), ["sessions"]).exit_code == 0
+    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0
     with Store.open(repo) as store:
         assert [a.id for a in store.agents(sid)] == [fixture.AGENT]  # read again, by the new parser
 
@@ -307,11 +307,11 @@ def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
     repo = repo_with_transcripts
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
-    result = CliRunner().invoke(build(), [])
+    result = CliRunner().invoke(build(), ["ui", "--json"])
     output = result.output + result.stderr
     assert result.exit_code == 0, output
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
-    assert "store rebuilt" in output and "Session 11111111" in result.output
+    assert "store rebuilt" in output and "11111111" in result.output
 
 
 def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
