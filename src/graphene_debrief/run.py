@@ -195,27 +195,26 @@ def land(
     who = P.Caller("graphene run", False)
     entry = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
     paths = entry.get("changed") or []
-    _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
     why = " > ".join(P.trail(store, node))
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
     ident = [] if _git(tree, "config", "user.email", ok=True).stdout.strip() else [
         "-c", "user.name=graphene", "-c", "user.email=graphene@localhost"]  # fmt: skip
-    _git(tree, *ident, "commit", "--quiet", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
-    merged = _git(
-        target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch, ok=True
-    )  # noqa: E501
-    if merged.returncode != 0:
+    try:
+        _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
+        _git(tree, *ident, "commit", "--quiet", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
+        _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch)
+    except P.Refused as no:
         _git(target, "merge", "--abort", ok=True)
-        said = (merged.stderr or merged.stdout).strip().splitlines()
+        said = str(no).splitlines()
         with store.claim():
             fresh = P.get(store, node.id)
             fresh.state = P.REVIEW
             P._save(store, fresh, "unlanded", who, P._now(), branch=branch, worktree=str(tree), why=said[:6])
         say(
-            f"{node.id} passed its boundary and did not land: git would not merge {branch} into "
-            f"{target} cleanly ({said[0] if said else 'no reason given'}). Nothing of yours was touched. "
-            f"`git merge {branch}` when the way is clear, then `graphene node signoff {node.id}`; or "
-            f"`graphene node reopen {node.id} --note …` to have it done again on top of what is there now"
+            f"{node.id} passed its boundary and did not land: {said[0]}. Nothing of yours was touched; its "
+            f"work is in {tree}, on {branch}. `git merge {branch}` when the way is clear, then `graphene "
+            f"node signoff {node.id}`; or `graphene node reopen {node.id} --note …` to have it done again "
+            "on top of what is there now"
         )
         return False
     store.log_node(node.id, P._now(), "landed", who.label, None, None,

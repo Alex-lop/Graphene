@@ -264,8 +264,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
                     "`graphene node start <id>` takes a leaf and tells you what it is for, from the goal "
                     "down. While you hold a leaf, writes outside its scope are refused. A leaf too big "
                     "to do well is split: propose children under it (`graphene node add … --parent "
-                    "<id>`) and hand it back. What the person asks for in this session outside any "
-                    "leaf is recorded as a leaf of its own."
+                    "<id>`) and hand it back. When the person asks you here for something no leaf "
+                    "covers, and you hold no leaf, just do it: Graphene makes a leaf from their prompt "
+                    "and records what you changed. Propose a node (`graphene node add`) only for work "
+                    "they did not ask for."
                 ),
             }
         }

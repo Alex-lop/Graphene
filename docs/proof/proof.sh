@@ -84,7 +84,7 @@ echo; echo "--- everything that happened on it:"; echo "$LOG"
 echo; echo "--- what must be true:"
 say "whatever became of the typo, it did not happen inside n1 or n2: neither record names the file" "$(grep -E ' n[12] +finished' <<<"$LOG" | grep -q 'src/db/seed.py' && echo no || echo yes)"
 if [ "$(git hash-object src/db/seed.py)" = "$BEFORE" ]; then
-  say "the typo is still there, because the write was refused while a node was held, and the log says so" "$(has "$LOG" 'denied.*src/db/seed.py')"
+  say "the typo is still there: the write was refused while a node was held, or the agent proposed a node for it instead" "$( { grep -q 'denied.*src/db/seed.py' <<<"$LOG" || grep -q ' proposed ' <<<"$PLAN"; } && echo yes || echo no)"
 else
   say "the typo is fixed under a leaf of its own, made from the person's prompt, and its record names the file" "$(has "$LOG" 'finished .*changed: .*src/db/seed.py')"
 fi

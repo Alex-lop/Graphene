@@ -372,7 +372,12 @@ def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]
 
 
 def _git(checkout: str | Path, *args: str) -> str:
-    out = subprocess.run(["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30)
+    # every call here is a read, and a read must not take the index lock: with leaves in worktrees of
+    # their own, one node's look at the other trees (`git status`) met another's commit and broke it
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    out = subprocess.run(
+        ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env
+    )
     if out.returncode != 0:
         raise Refused(f"git {' '.join(args)} failed in {checkout}: {out.stderr.strip()[:200]}")
     return out.stdout

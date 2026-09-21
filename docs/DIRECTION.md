@@ -74,6 +74,83 @@ Each has its reason, so you can tell when it no longer applies. Strike any of th
     stay as commands because they are verified and useful; none of them is the product. The
     guess at "not what you asked for" from prompt text is deleted: scope is a fact of the node now.
 
+## Decisions taken on 2026-09-21 (the tree directive)
+
+Taken by the agent that ran `docs/process/directives/TREE_DIRECTIVE.md`, each with its reason and,
+under it, the question I would otherwise have asked. Strike any of them. Where one changes a decision
+above, the old one is left as written and the change is named here.
+
+13. **The plan is a tree, and the root is a sentence of yours.** `graphene plan goal '…'` is the
+    root: why any of this is being done. A node's `parent` says what it helps achieve; a node with
+    children is a **sub-goal** and needs only a title; a node without is a **leaf**, with a scope
+    and a check exactly as before. A node from 0.3 has no parent and sits under the root; nothing
+    in the store was migrated, a node is a JSON document and gained two fields. *Why a sentence and
+    not a root node:* one goal a plan is what the directive describes, and a row nobody can take,
+    finish or drop would need an exception in every operation. *Question:* do you want several
+    goals in one repo at once? Today that is several sub-goals under one sentence.
+14. **Hierarchy is meaning, `needs` is order, and what a sub-goal needs its leaves wait on.** A
+    cycle through needs, through the tree, or through both is refused when the plan is edited.
+15. **Done rolls up, and a sub-goal's own check is where integration lives.** When the last leaf
+    under a sub-goal is done Graphene runs the sub-goal's check, if it has one, in the checkout
+    where the leaves' work is together. Failing, the sub-goal stays open, the plan says "its leaves
+    are done and its own check fails", what waits on it waits, and the way on is a leaf under it
+    for what is missing. A new or reopened child reopens a finished sub-goal.
+16. **A proposal is a subtree; you accept at any level.** `graphene plan propose` takes nested
+    `children`. Accepting a node accepts the proposals under it, and the proposals it sits under (a
+    leaf is never in the plan without its why). A leaf too big to do is split by proposing children
+    under it (`--parent`) and handing it back; dropping the children makes it a leaf again, which
+    is how a split is undone. Dropping a sub-goal drops what is under it.
+17. **Every executor is told the path from the goal to its leaf**, above its contract, as `why:`
+    lines, root first: `graphene node start`, `graphene node show`, and the prompt `graphene run`
+    hands over are the same words. The person reads the same lines in `graphene plan`.
+18. **A request you type into a session is a leaf. This changes decision 4.** With a plan in force
+    and no node held, the first write of a turn makes a leaf from your prompt, held by that session.
+    You run nothing. If you wrote `scope: …` or `check: …` in the prompt, they bind like any
+    leaf's; if you did not, it may touch anything, it ends when the turn ends, and its record is
+    git's list of what it changed. The scope is never guessed from the prose. No edit, no leaf.
+    A session that holds a planned leaf is still held to it. `graphene run`'s executors never get
+    one. `graphene plan prompts strict` gives decision 4 back as written. *Why:* the first night's
+    numbers: a plan in force cost a second terminal for a one-word fix, and people pause a plan that
+    taxes them and never unpause it. What you asked for in your own words is not scope creep; it is
+    now on the plan with a record instead of refused. Shown on a real agent:
+    `docs/proof/tuesday.sh`. *Question:* is "anything, until the turn ends" too loose a default for
+    you? The alternative I can defend is "anything no other open leaf claims".
+19. **A plain yes typed into the session accepts. This changes decision 5 in one place.** A short
+    prompt that starts with yes / ok / go ahead / accept (240 characters at most) accepts what that
+    session proposed, or the proposals it names, or everything when it says so, as you, and the log
+    says "by their prompt in the session". Everything else in decision 5 stands. *The hole:* an
+    agent that starts a second agent chooses its prompt. `graphene run` marks its executors so they
+    are never read this way; nothing marks an agent your agent starts by hand.
+20. **Whoever carries no agent's mark is the person, terminal or not. This changes decision 5's
+    last two sentences.** Claude Code, Codex and `graphene run`'s executors mark their shells, and a
+    mark outranks everything. No terminal (an editor task, a pipe) no longer turns your `add` into a
+    proposal you then cannot accept; the log says "(no terminal)" and that is all the terminal
+    decides. *The cost, said plainly:* an agent of a vendor Graphene has never heard of, which sets
+    none of the marks, is taken for you. It was refused before. The page's token is still the model
+    for the page.
+21. **`graphene run --parallel N` commits and merges, on branches of its own. This changes decision
+    9 for that one command.** Each ready leaf runs in `.graphene/worktrees/<id>` on `graphene/<id>`.
+    A leaf that passes its boundary is committed there by Graphene (your git identity; the message
+    is the title, the goal, the why path and `Graphene-Node: <id>`) and merged `--no-ff` into the
+    checkout you started the run from. Plain `graphene run` is unchanged and commits nothing.
+    Graphene still never pushes and never calls a model. *Why:* work in a worktree can only reach
+    your branch as a commit, and a commit a leaf with its why in the message is how `git log` reads
+    as the tree. Shown on two real agents at once: `docs/proof/parallel.sh`.
+22. **When a merge is not clean, nothing of yours is touched and the leaf waits for you.** Leaves
+    whose scopes overlap are never in flight together (the second starts when the first has
+    landed, on top of it), and a write outside a scope is refused, so two leaves cannot have
+    written one file. What is left is your own work in the way. Then the merge is aborted, the leaf
+    stops in `review` with its work on `graphene/<id>`, what needs it waits with it, and you are
+    told the two commands: `git merge graphene/<id>`, `graphene node signoff <id>`; or `reopen` it
+    to have it done again on top of what is there. An executor is never asked to resolve a conflict.
+23. **The live view is a refreshing print: `graphene watch`.** It redraws the lines `graphene plan`
+    prints, once a second, with the last few events under them; what waits on you is first. *Why not
+    a full-screen interface with keys:* I could verify a print tonight (it is the same function, and
+    it is tested) and not a key-driven interface; shaping is done with the commands, which agents
+    and you share. `graphene plan` folds finished work once the tree is longer than a dozen lines;
+    `--all` unfolds.
+24. **The banned-words test is gone**, and deliberate shortcuts in the code are marked `TODO:`.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -92,6 +169,15 @@ Each has its reason, so you can tell when it no longer applies. Strike any of th
   neither stopped nor noticed. What git ignores, nobody audits.
 - `graphene run` works in one checkout, one node at a time. Two agents at once in one checkout are
   kept off each other's paths by scope; they are not isolated from each other's half-written files.
+  (`graphene run --parallel N` gives each leaf a worktree of its own: decision 21.)
+- A prompt is taken as yours (decisions 18 and 19). An agent that starts another agent writes its
+  prompt. The log names every acceptance made "by their prompt", and every leaf made from one.
+- A leaf made from a prompt with no `scope:` may touch anything; it is a record, not a fence.
+- Whoever carries no agent's mark is taken for you (decision 20).
+- While a parallel run is going, a commit of your own on the branch it merges into can make a leaf
+  in another worktree look as if it changed your files, and its `done` is refused. It is sent back,
+  and says so; nothing is lost. Work in the same checkout through a session (a leaf made from your
+  prompt answers for it), or let the run finish.
 
 ## What comes next, in the order I would do it
 
