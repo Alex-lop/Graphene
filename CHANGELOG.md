@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+The plan becomes a tree, the terminal its first surface, and ready leaves run at once.
+- The root is a sentence of yours (`graphene plan goal`). A node with children is a sub-goal and needs only a title; a node without is a leaf with a scope and a check. `--parent` on `node add` and `node set`; nested `"children"` in `plan propose`. A 0.3 plan is a tree whose nodes all sit under the root.
+- Done rolls up: a sub-goal is done when its children are and its own check, if it has one, passes where their work is together. `needs` are inherited downward; cycles through needs, the tree or both are refused.
+- A proposal is a subtree: accepting a node accepts what is under it and what it sits under. A leaf too big to do is split by proposing children under it.
+- Every executor is told the path from the goal to its leaf (`why:` lines in `node start`, `node show` and the prompt `graphene run` hands over).
+- `graphene plan` prints the tree, what waits on you first, with finished work and sub-goals where nothing is moving folded (`--all` unfolds). `graphene watch` redraws it live. `graphene plan record` and `node show <sub-goal>` add up the records of the leaves.
+- With a plan in force, a request typed into a session is a leaf by itself (the CLI's `--scope` / `--check` flags typed in the prompt bind it; otherwise it is a record of what the turn changed), and a short plain yes accepts what the session proposed. `graphene plan prompts strict` restores the 0.3 rule.
+- `graphene run --parallel N`: a worktree and a branch a leaf, committed by Graphene and merged into your checkout when the merge is clean; otherwise the leaf waits for you in review, on its branch. Plain `graphene run` is unchanged and commits nothing.
+- Whoever carries no agent's mark is the person, terminal or not; `graphene run` marks its executors, and the check Graphene runs is never the person.
+- The store moves to schema 4 with no table change, so that 0.3 refuses it in words.
+
+The session product becomes a node's record, and that record works for whoever did the work.
+- `graphene node show <id>`'s coverage block is computed from the node's own log, from git and from the check Graphene ran, so a node done by Codex, by `graphene run --with <anything>` or by you at the terminal gets a real line instead of "not computed". The commits inside a node's windows are asked of git directly; the store only ever held those a recorded session's window covered. Claude Code's records, where they exist, still say which path traces to a write somebody recorded making; where they do not, the block says what it was read from and grades every path "to git alone".
+- The check Graphene ran is printed in the coverage block, with its command, result and time: it is what verifies the change set.
+- Removed: `graphene why` and `graphene why PATH:LINE`, the session card (plain `graphene` with no plan, `graphene debrief`, `graphene --session/--since/--json`) and `graphene sessions`, with the prompt→file→hunk reconstruction behind them. All of it could only answer for a Claude Code session, and none of it is what a node's record needs. The map (`graphene ui`) and its page are unchanged. In a repo with no plan, `graphene` now says how to start one; `graphene ui --session ID` still picks a session, and the page's rail lists them.
+
 ## 0.3.0 (unreleased)
 
 Graphene becomes the plan a person and their coding agents share; the record now hangs off it.

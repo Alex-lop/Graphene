@@ -295,6 +295,37 @@ svg [hidden] { display: none; }
 .plan-strip .waits { display: block; }
 .plan-strip .acts { margin: 8px 0 0; }
 
+/* the plan's goal: the root of the tree, in the person's words, beside the repo it belongs to */
+.goal { margin: 0; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* the tree: hierarchy is meaning, so it is read as an outline; the canvas below it draws the order */
+.tree { border-bottom: 1px solid var(--line); background: var(--panel); padding: 8px 20px 10px; max-height: 34vh; overflow: auto; }
+.tree ul { margin: 0; padding: 0; list-style: none; }
+.tree .row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  font: 12px/1.6 var(--ui);
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.tree .row:hover { background: var(--sunk); }
+.tree .row.on { background: var(--sunk); box-shadow: inset 2px 0 0 var(--accent); }
+.tree .row .state { padding: 0; width: 84px; flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tree .row b { flex: none; font: 12px var(--mono); }
+.tree .row .what { flex: none; max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .row .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .done-asides { margin: 6px 0 0 12px; font-size: 12px; }
+.why { margin: 0 0 12px; }
+.why li { border: 0; padding: 1px 0; color: var(--muted); }
+.why li:last-child { color: var(--text); }
+
 .plan-canvas { flex: 1; overflow: auto; background: var(--bg); padding: 0 0 16px; }
 .plan-canvas svg { display: block; }
 .plan-canvas text { fill: var(--text); font: 13px var(--ui); }

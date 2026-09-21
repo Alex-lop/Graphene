@@ -34,13 +34,83 @@ Who may do what. Anyone may propose and start a node they are allowed to take; o
 running node finishes it or hands it back (a Claude Code session is known by its session id, an
 executor `graphene run` started by the node it was given, anyone else by the name they took it
 under; a person always may). Only a person may accept a proposal, edit a contract, sign off, reopen, overrule
-the gate, pause, archive, or acknowledge loose changes. "A person" is a caller with a terminal and
-without an agent's environment: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and
-`CLAUDE_CODE_SESSION_ID`, and anything with no terminal at all is treated as an agent. A script that
+the gate, pause, archive, or acknowledge loose changes. "A person" is a caller without an agent's
+mark: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID`,
+`graphene run` gives every executor `GRAPHENE_NODE`, and a mark outranks everything. A caller with
+no mark and no terminal (an editor task, a pipe) is still the person, and the log says `(no
+terminal)`: a person's `add` must never turn into a proposal they cannot accept. An agent of a
+vendor that sets none of these marks is therefore taken for the person. A script that
 stands in for a person sets `GRAPHENE_AS=person:<name>`; inside an agent's environment that variable
 changes nothing, however it is spelled, and every act made through it is logged as made with no
 terminal (`alex (no terminal)`). `graphene ui` gives its page the person's rights only when a person
 started it.
+
+## P1a. The tree
+
+The plan is a tree. Its **root** is one sentence of the person's, `graphene plan goal '…'` (kept in
+the store's `meta`, not as a node): why any of this is being done. A node's `parent` names the node
+it helps achieve; no parent means directly under the root, which is what every node from 0.3 is.
+A node with children is a **sub-goal**: it needs only a title, nobody takes it, and its row shows
+`n/m done` over the leaves under it. A node without children is a **leaf**: the work, with a scope
+and a check as above. A title with nothing else is a sub-goal whose children are still to come.
+
+Hierarchy is meaning and `needs` is order, and both are kept. A leaf waits on what it needs *and*
+on what every node above it needs. A cycle through needs, through the tree, or through both (a leaf
+that needs its own sub-goal) is refused when the plan is edited.
+
+**Done rolls up** (`plan.roll_up`). When the last child of a sub-goal is done, the sub-goal's own
+check, if it has one, is run by Graphene in the checkout where the children's work is together; that
+is where integration lives. Passing (or having no check), the sub-goal is done, or in `review` if it
+asks for a sign-off, and what needs it can start. Failing, it stays open, the log has the output,
+`graphene plan` says "its leaves are done and its own check fails", and the way on is a leaf under
+it for what is missing; `graphene node done <sub-goal>` runs the check again. A child added or
+reopened under a finished sub-goal reopens it.
+
+**A proposal is a subtree.** `graphene plan propose` reads nested `"children"`, and `"parent"` puts
+a node under one already there. Accepting a node accepts every proposal under it and every proposal
+it sits under. A leaf too big to do is split by proposing children under it and handing it back
+(children cannot be accepted under a leaf someone holds); dropping the children makes it a leaf
+again; dropping a sub-goal drops what is under it, unless something outside waits on any of it.
+
+**The path to the root is told to every executor.** `plan.trail` is the goal and then each sub-goal
+above the leaf, with its own goal; `plan.contract` prints it as `why:` lines above the leaf's goal.
+`graphene node start`, `graphene node show` and the prompt `graphene run` hands over all use it.
+
+**In the terminal** (`plan_cli.plan_lines`): the goal, a count of leaves, what waits on a person
+(a proposed subtree is asked about once, at its top), then the tree indented by depth. Once it is
+longer than a dozen lines, finished nodes fold into one `✓ n done here` line per level; `--all`
+unfolds. `graphene watch` redraws the same lines once a second with the last six log entries under
+them. It reads the store and nothing else.
+
+## P1b. A request typed into a session
+
+With a plan in force, the `UserPromptSubmit` hook remembers the session's latest prompt. When that
+session holds no node and is about to write (`PreToolUse`), Graphene makes a leaf from the prompt
+and starts it for the session: title and goal are the person's words; its scope and check are what
+the CLI's own flags when they typed them into the prompt (`--scope 'src/db/**'`, repeatable, and a
+quoted `--check 'make test'`), and otherwise `**` and no check. (The first spelling was `scope:` and
+`check:` anywhere in the text; a review typed "double check: ./deploy.sh is never called" and the
+script ran.) A prompt that names a leaf that is ready makes no leaf: that one is there to be taken. A
+leaf made from a prompt never reaches `.graphene/` or the hooks' own settings file. Nothing is
+inferred from the prose. At `Stop` the leaf closes (`plan.close_aside`): git says what changed, the
+check runs if there is one (failing, the stop is refused with its output), and a leaf under which
+nothing changed is dropped. It is a record rather than a gate: it does not run the looks at other
+worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
+`graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
+
+A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
+and its record says the check failed. A session is never trapped by it.
+
+The same hook reads a short prompt (80 characters at most, with no question mark and none of but,
+except, not, no, drop, skip, instead, first, before, unless, wrong) that begins with yes, ok, sure, accept,
+go ahead, do it or lgtm as the person accepting proposals: the ones it names by id, all of them if
+it says "all" or "everything", else the ones this session proposed since the person's previous prompt. The log entry carries
+`by: prompt` and the words. The agent is told, as added context, what was accepted and what is
+ready. All of this rests on the vendor being the only caller of the hook, and any command an agent
+can run is also a caller: a Bash command that names `graphene … ingest` is refused, which stops the
+ordinary spelling and not a determined one; and an agent that starts a second agent writes its
+prompt. So these acts are logged with `(no terminal)`, `by: prompt` and the words, and
+`graphene plan prompts strict` turns the whole route off.
 
 ## P2. The boundary: what makes a node done
 
@@ -129,7 +199,25 @@ is given a session id on the first attempt, so the hooks hold it to the node fro
 and is resumed in that session afterwards; any other command gets the refusal in a fresh prompt).
 After `--attempts` (3) the node is handed back with the last refusal as the reason. A person's node
 is never handed to an executor. The run ends by saying what is waiting and for whom. Output of each
-attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you ran it from.
+attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you ran it from, and
+nothing is committed.
+
+`graphene run --parallel N` runs up to N ready leaves at once. Each gets a worktree,
+`.graphene/worktrees/<id>` on branch `graphene/<id>`, cut from where your checkout stands at that
+moment, so it holds everything that has already landed. The executor works there and meets the same
+boundary there. Then, one leaf at a time, Graphene commits the leaf's changed paths on its branch
+(your git identity; the message is the title, the goal, the why path and `Graphene-Node: <id>`) and
+merges it `--no-ff` into your checkout; the worktree and the branch are removed; sub-goals roll up
+*there*, after the merge, and never while a sibling that is done in its worktree has not landed.
+Two rules keep merges clean: a leaf does not start while something it needs has not landed, and a
+leaf whose scope overlaps that of a leaf in flight waits for it to land. Since a write outside a
+scope is refused, two leaves cannot have written one file. If git still will not merge (your own
+uncommitted work is in the way), the merge is aborted, your checkout is as it was, the leaf stops in
+`review` with a log entry `unlanded` naming its branch, and what needs it waits. `git merge
+graphene/<id>` and `graphene node signoff <id>` finish it by hand; `graphene node reopen` sends it
+round again. An executor is never asked to resolve a conflict. Your untracked Claude Code hook settings
+(`.claude/settings.local.json`, which git ignores in every worktree) are copied into each worktree,
+so the hooks hold a leaf there as they do in your checkout.
 
 ## P5. Where each mechanism ends
 
@@ -161,18 +249,34 @@ attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you
 ## P6. A node's record
 
 `graphene node show <id>` prints the contract, then, from records only: each **window** the node was
-held (who, from when to when, how it ended); what changed in it (the files of commits whose time
-falls inside the window, and for a running node the working tree, each path with the record it came
-from, and paths outside the scope called out); the **coverage** three-count for the node's commits;
-what was **refused** (denied writes, breaches, refused stops, refused `done` attempts with their
-stray paths, failed checks); and the person's acts on it with their words.
+held (who, from when to when, how it ended); what changed in it (git's own answer when the window
+ended, or the working tree for a node still running, plus the files of commits whose time falls
+inside the window, each path with the record it came from, and paths outside the scope called out);
+the **coverage** block; what was **refused** (denied writes, breaches, refused stops, refused
+`done` attempts with their stray paths, failed checks); and the person's acts on it with their
+words.
 
-The coverage line is graded over every commit the holding sessions are recorded for and the node's
-commits are selected afterwards, because grading a list cut to the window would flatter its first
-commit; and a write counts only when it was recorded inside one of the node's windows. Where a
-count cannot be supported (a person held the node, so there is no session to trace), it says
-"not computed" with the reason and how many commits and files it leaves out. It never prints a zero
-it cannot stand behind.
+The coverage block works for any executor, because the three things it stands on need no vendor:
+
+1. **The node's log.** `start` records the base sha and the checkout; `done` and `release` record
+   git's HEAD at that moment and the paths git said had changed since the base. That list is the
+   node's change set, and it is the denominator.
+2. **Git.** The commits whose committer time falls inside each window are asked of git directly,
+   not read out of the store: the store holds a commit only when a recorded session's window
+   covered it, so for Codex, `graphene run --with …` or a person there would be none, and a count
+   of zero would read as "nothing was committed".
+3. **The check Graphene ran itself**, with its command, its result and when — printed in the block,
+   because it is what verifies the change set.
+
+Claude Code's records, where a session held the node, add exactly one thing: which changed path
+traces to a write somebody recorded making (`edit`, or the vendor's shell change list). Where they
+do not exist, every path is graded `to git alone` and the block names what it was read from. The
+commit grading is the run's (see §3): it is computed over every commit the holding sessions are
+recorded for and the node's are selected afterwards, because grading a list cut to the window would
+flatter its first commit; and a write counts only when it was recorded inside one of the node's
+windows. Where a count cannot be supported at all — nobody has held the node, or a window ended
+before its change set was logged and none is open to read — it says "not computed" with the reason.
+It never prints a zero it cannot stand behind.
 
 # Part two: the record
 
@@ -216,8 +320,7 @@ keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session; calls made before any recorded prompt appear in the debrief under their own heading,
-"Before the first recorded prompt". Subagent calls carry `agent_id` and are grouped the same way.
+the session. Subagent calls carry `agent_id`, which is the lane they are drawn on.
 
 ### Transcript backfill
 
@@ -280,7 +383,7 @@ Graphene derives the content after the call. Both are stored (up to 2 MB each) s
 computed later without touching the working tree. A `Write` whose response says `create` counts
 as known with no prior content. For a file outside the repo (a dotfile in your home directory,
 say) only the path is kept, never the contents, not even inside the raw tool payload the store
-keeps for every call: the debrief lists such files by name and nothing else. A file inside another git checkout below the repo root (a worktree under
+keeps for every call: the map lists such files by name and nothing else. A file inside another git checkout below the repo root (a worktree under
 `.claude/worktrees/`, a vendored clone) counts as outside too: it belongs to that checkout.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
@@ -290,111 +393,58 @@ command; heredoc bodies are ignored so a `>` inside a script fed to `python` is 
 redirection. A script that rewrites files, a formatter, a `git checkout`, or a `python -c` that
 writes are all invisible to it.
 
-## 3. Attribution: prompt → file → hunks
 
-Per session and file, Graphene lines up the file-touching calls in time order and splits them by
-prompt.
+## 3. What a path traces to
 
-**Payload strategy** (used when every call on the file carries content): for each prompt, the
-diff is between the file before that prompt's first call and after its last call, computed with
-Python's `difflib` in unified form with three lines of context. Line counts and the enclosing
-definitions (`def`, `class`, `function`, `fn`, ...) of the changed lines come from that diff.
-Failure modes: a change made outside the tools between two calls (you, a formatter, a shell
-script) makes the next call's `originalFile` differ from the previous call's result; the diff for
-that prompt then includes the outside change. Across 19 consecutive edits checked on real
-transcripts, 17 chained exactly and 2 had such interference.
+There is no prompt-to-hunk reconstruction any more. What the record answers is narrower and can be
+checked: for a path, what is the best evidence that somebody's recorded write put it there?
 
-**Bridged strategy** (a shell write between two payload calls): whatever a shell command left
-in the file is exactly what the next `Edit` or `Write` reports as `originalFile`, so the
-shell-writing prompt gets the diff between the previous payload's result and that `originalFile`.
-No git involved, and the payload diffs of the other prompts are untouched.
+- **`edit`** — the payload of an `Edit`, `Write`, `MultiEdit` or `NotebookEdit` call.
+- **`shell`** — the file appears in Claude Code's `bashEditDiff` list for a `Bash` call. Turn the
+  lists on with `"bashEditDiffEnabled": true` in `~/.claude/settings.json`; a repo's settings
+  cannot. When the vendor marks a list as possibly a concurrent command's (`shared`) and another
+  agent's payload edit of that file falls inside the call's span, the payload edit is the better
+  record and the shared entry gives way to it.
+- **`commit`** — an agent is recorded making the commit that changed it, and no write is recorded.
+- **`window` / "to git alone"** — git says it changed and nothing else does.
 
-**Git strategy** (a shell write at the start or the end of the file's history in the session):
-the missing boundary comes from `git show <HEAD at session start>:<path>` at the start, or from
-the working tree now at the end. Several consecutive prompts writing a file through shell
-commands with no payload in between form one span credited to the last of them; the earlier ones
-are listed with no hunks. A deleted or moved directory is expanded to the files it held at the
-base revision, one change each. A file that is absent from the base revision reads as created;
-an untracked file that already existed and was then changed by a shell command therefore shows
-its whole content as added, while one whose modification time predates the session is dropped as
-untouched. Failure modes: changes made after the session by anything else are blamed on its last
-prompt; for backfilled sessions the base is the commit before the session's first record, which
-misses work committed within the same second.
+A commit's path is graded by the writes recorded since the previous commit of that path and no
+later than this one, so the grade depends only on records up to the commit and never changes
+afterwards. A recorded `git cherry-pick` copies its origin's grade. A path counts once, under the
+best grade any of its commits reached. Every path of every commit is graded: there are no
+exclusions, so the denominator is git's, not Graphene's.
 
-**Deferred**: a prompt inside such a span, other than the last, is listed as touching the file
-with no hunks and the sentence "its diff for this session is credited to a later prompt", never as
-having changed zero lines.
+The counts are never collapsed into one number, and where a session's records do not exist the
+grading is simply absent rather than being guessed at from something else (P6).
 
-**No strategy**: without git (or with git unavailable), a file a shell command wrote is listed as
-modified with no hunks, since created cannot be told from modified, and a file a shell command
-removed is listed as deleted with no content. In a repository with no commits yet, git's empty
-tree is the base, so files the agent wrote read as created.
+## 4. What you see
 
-The effect per prompt is `created` (no content before), `deleted` (no content after),
-`reverted` (before and after identical), otherwise `modified`.
+`graphene` with no command prints the plan when the repo has one, and otherwise one line saying how
+to start one. `graphene node show <id>` is a node's record (P6). `graphene ui` is the plan and, behind
+it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
 
-## 4. Tried and abandoned
+`graphene ui` first tops the store up from the repo's transcripts (a transcript that has not changed
+since it was last read costs one `stat`), so a session run without the hooks still reaches the map
+the next time you look; the plan's commands read only the store. `--session ID` picks a session by
+id or unique prefix and can be repeated to put several on one axis; with none, the session that
+finished last and did something is drawn. `--json` prints the graph the page draws.
 
-- **Reverted files**: the file's content at the end of the session equals its content at the
-  start (payload strategy), or the git diff against the session-start HEAD is empty (git
-  strategy), and at least one call changed it in between.
-- **Failed calls**: every tool call whose result was an error is recorded, but a failed call is
-  not abandoned work, so the default view shows only one line with their count by tool and how
-  many were refused before running (the permission system, the auto mode classifier, or the
-  user). `--json` carries every one.
-- **Checks that failed and were rerun**: a shell segment whose command word is a test or lint
-  runner (`pytest`, `npm test`, `cargo test`, `go test`, `make`, `ruff`, `mypy`, `tsc`, `jest`,
-  `vitest`, `eslint`, ...) that failed and whose check segment (`uv run pytest -q`, say) was run
-  again later, whatever surrounded it in the command, reporting the last rerun's outcome.
-
-## 4a. What you see
-
-The record's commands (`graphene` when it prints the card, `why`, `sessions`, `ui`) first top the
-store up from the repo's transcripts (a transcript that has not changed since it was last read
-costs one `stat`), so a session run without the hooks still shows up the next time you look; the
-plan's commands read only the store. Plain `graphene` prints the plan when the repo has one (part
-one). Otherwise, and always with `--session`, `--since` or `--json`, it prints a short card: the sessions covered,
-their span, wall time and prompt count; files changed with added and removed lines; the commits
-made during the sessions; a net list of files (created, modified, deleted or reverted over the
-whole span, biggest change first, capped at 30 rows); and then only the sections that have
-something in them: abandoned work (§4), a one-line failure count, files written outside the repo.
-`--session ID` picks one session and `--since 6h` a window; `--json` is the whole structure behind
-the card, prompt by prompt.
-
-In a terminal that card is drawn in columns: one bold header line, dim metadata, one accent
-colour for paths and commands, green for `+N`, red for `−N`, no boxes and no emoji. Rows never
-wrap — paths are shortened in the middle, commit subjects at the end — and the terminal card
-shows at most 5 commits and 20 files before "… N more", so a session fits in 40 rows at 80
-columns. `NO_COLOR` turns the colour off and keeps the layout. When stdout is not a terminal
-(`graphene > out.txt`, a pipe, CI) the markdown text is written as it is, with no rendering at
-all; `--json` is always plain. `graphene why` and `graphene sessions` follow the same rules.
+Output rules: plain text, never wrapped or cut, so an agent reads a contract as its contract and a
+person greps it. In a terminal a line is word-wrapped at the width; piped or redirected it is one
+line with no escape codes. `NO_COLOR` turns colour off and keeps the layout. Every dead end is one
+line on stderr and a non-zero exit (plain when it is merely empty, red when it is an error):
+outside a git repository, inside your home directory, no transcripts for this repo (naming the
+directory it searched), a store another Graphene process has locked, no plan in this repo yet.
 
 Graphene writes nothing until it has something to record: in a repo with neither a store nor a
 transcript the empty state is printed and `.graphene/` and `.gitignore` are left alone (`graphene
-init` creates them, and says so). Every dead end is one line on stderr and a non-zero exit (plain text when it is merely empty,
-red when it is an error; word-wrapped on a terminal, one line when piped): outside a git repository, inside your
-home directory, no transcripts for this repo (naming the directory it searched), a session that
-changed nothing, a store another Graphene process has locked, `why` on a path nothing touched,
-and `why` with no path at all, which first lists the five files that changed most recently.
-
-## 5. `graphene why`
-
-`graphene why PATH` runs the attribution for every session that touched the file and lists the
-prompts newest first, each with its diff summary and a sentence built from that diff: "Edited 2
-definitions in auth.py: login and refresh_token (+12/−4)."
-
-`graphene why PATH:LINE` reads the line from disk, asks `git blame` which commit last touched it,
-then looks for prompts whose recorded diff added a line with the same text, preferring an edit at
-the same line number and falling back to the same text elsewhere. If the line is committed, prompts
-that ran after the commit are excluded even when they added identical text. One match is reported
-as the answer; several are listed newest first; none is explained: committed before any recorded
-session, committed before any matching edit, or changed by something Graphene did not see.
+init` creates them, and says so).
 
 All commands except the hook refuse to run outside a git repository, and never treat your home
 directory as one, so `~/.claude/settings.json` (Claude Code's user-level settings) is never
 written.
 
-## 6. What Graphene never does
+## 5. What Graphene never does
 
 It never calls a model, never sends anything anywhere, and never commits, merges or pushes.
 `graphene run` starts the executor you name, with the permissions you give it, and nothing else in
@@ -402,7 +452,7 @@ Graphene starts an agent. Transcripts can contain secrets; the store stays in `.
 the repo, a directory that is made private to your user (`0700`, the database `0600`) and that
 ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
-## 7. The page
+## 6. The page
 
 `graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
 first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners

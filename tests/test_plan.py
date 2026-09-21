@@ -458,14 +458,18 @@ def test_a_scope_that_differs_from_gits_spelling_only_in_case_is_refused_when_it
 # -- who is asking ------------------------------------------------------------------------------------
 
 
-def test_a_person_is_someone_at_a_terminal_and_nothing_else_is():
+def test_an_agent_is_known_by_its_own_marks_and_whoever_carries_none_is_the_person():
     claude = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abcdef1234"}
     assert plan.caller(claude, tty=True) == Caller("claude:abcdef12", False, "abcdef1234")
     codex = {**claude, "CODEX_SESSION_ID": "01a0bd1a-32c4", "CODEX_SANDBOX": "seatbelt"}
     assert plan.caller(codex, tty=False) == Caller("codex:01a0bd1a", False, None)  # Codex inside Claude Code
     assert plan.caller({"AI_AGENT": "some-new-agent"}, tty=True).person is False
     assert plan.caller({"USER": "Alex"}, tty=True) == Caller("alex", True, None)
-    assert plan.caller({"USER": "Alex"}, tty=False) == Caller("a script", False, None)  # unknown executor
+    # no terminal (an editor task, a pipe) is still the person: their `add` must never become a
+    # proposal they then cannot accept. The log says "no terminal", and that is all the test decides
+    piped = plan.caller({"USER": "Alex"}, tty=False)
+    assert piped == Caller("alex", True, None, stand_in=True) and piped.label == "alex (no terminal)"
+    assert plan.caller({"USER": "Alex", "GRAPHENE_NODE": "n1"}, tty=True).person is False  # run's executor
     stand_in = plan.caller({"USER": "alex", "GRAPHENE_AS": "person:sam"}, tty=False)
     assert stand_in == Caller("sam", True, None, stand_in=True) and stand_in.label == "sam (no terminal)"
     assert plan.caller({"GRAPHENE_AS": "agent:codex"}, tty=True).person is False

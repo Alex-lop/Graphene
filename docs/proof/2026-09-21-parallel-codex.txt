@@ -1,0 +1,76 @@
+the plan: a toy service whose listings are safe to show to a customer
+--- the tree as the person left it:
+the plan: a toy service whose listings are safe to show to a customer
+3 leaves, 0 done, 0 running
+  clean     sub-goal  the listing functions return clean values  agent                 ·  0/2 done; then `python3 -m unittest -q tests.test_all`
+    emails  open      emails() returns lower-case emails         agent  src/emails.py  ·  ready
+    names   open      names() returns upper-case names           agent  src/names.py   ·  ready
+  readme    waiting   say what the two functions return          agent  README.md      ·  waits on clean
+
+--- graphene run --parallel 2, and the person does nothing else:
+emails started (revision 1): emails() returns lower-case emails
+names started (revision 1): names() returns upper-case names
+names attempt 1: the executor ended (exit 0)
+names is done
+emails attempt 1: the executor ended (exit 0)
+clean is done: everything under it is, and `python3 -m unittest -q tests.test_all` passes
+emails is done
+readme started (revision 1): say what the two functions return
+readme attempt 1: the executor ended (exit 0)
+readme is done
+next: nothing; every node is done
+(60 s)
+
+--- the tree afterwards:
+the plan: a toy service whose listings are safe to show to a customer
+3 leaves, 3 done, 0 running · finished; `graphene plan archive` puts it away
+  clean     done      the listing functions return clean values  agent                 ·  2/2 done
+    emails  done      emails() returns lower-case emails         agent  src/emails.py  ·
+    names   done      names() returns upper-case names           agent  src/names.py   ·
+  readme    done      say what the two functions return          agent  README.md      ·
+
+--- everything that happened on it:
+  2026-09-21T06:05:10Z  *       goal          alexlopez (no terminal)  a toy service whose listings are safe to show to a customer
+  2026-09-21T06:05:11Z  clean   added         alexlopez (no terminal)
+  2026-09-21T06:05:11Z  emails  added         alexlopez (no terminal)
+  2026-09-21T06:05:11Z  names   added         alexlopez (no terminal)
+  2026-09-21T06:05:11Z  readme  added         alexlopez (no terminal)
+  2026-09-21T06:05:11Z  emails  started       run:codex
+  2026-09-21T06:05:11Z  names   started       run:codex
+  2026-09-21T06:05:29Z  emails  check_passed  codex:01a0c291           python3 -c "from src.emails import emails; assert emails() == ['ada@example.com', 'lin@example.com']"
+  2026-09-21T06:05:28Z  emails  finished      codex:01a0c291           changed: src/emails.py
+  2026-09-21T06:05:30Z  names   check_passed  codex:01a0c291           python3 -c "from src.names import names; assert names() == ['ADA', 'LIN']"
+  2026-09-21T06:05:30Z  names   finished      codex:01a0c291           changed: src/names.py
+  2026-09-21T06:05:34Z  names   landed        graphene run
+  2026-09-21T06:05:37Z  emails  landed        graphene run
+  2026-09-21T06:05:37Z  clean   check_passed  graphene run             python3 -m unittest -q tests.test_all
+  2026-09-21T06:05:37Z  clean   rolled_up     graphene run
+  2026-09-21T06:05:37Z  readme  started       run:codex
+  2026-09-21T06:06:05Z  readme  check_passed  codex:01a0c291           grep -qi lower README.md && grep -qi upper README.md
+  2026-09-21T06:06:05Z  readme  finished      codex:01a0c291           changed: README.md
+  2026-09-21T06:06:11Z  readme  landed        graphene run
+
+--- what must be true:
+  ok    the two leaves were running at the same time
+  ok    each in its own worktree
+  ok    each leaf's contract carries the path from the goal down (what run hands over, word for word)
+  ok    both landed here as merges
+  ok    the worktrees and branches are gone
+  ok    the sub-goal is done by its own check, run here after both landed
+  ok    and the leaf that waited on it ran only then
+  ok    the integration check passes in the person's checkout now
+
+*   e0ffcf4 say what the two functions return (readme)
+|\  
+| * 468bb15 say what the two functions return
+|/  
+*   782e8ba emails() returns lower-case emails (emails)
+|\  
+| * 191353a emails() returns lower-case emails
+* |   27960ae names() returns upper-case names (names)
+|\ \  
+| |/  
+|/|   
+| * 0bc4c93 names() returns upper-case names
+
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.4F3344MEe6/toy

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Build one of the three test repos, fresh, from nothing.
+"""Build one of the four test repos, fresh, from nothing.
 
-    docs/test/make_task.py <report|inventory|logs> <dir>
+    docs/test/make_task.py <report|inventory|logs|feeds> <dir>
 
 Each repo is a small Python codebase that runs on the standard library alone. Each one hides the
 same three traps, because they are the ones a paragraph does not catch: something nearby that is
 worth fixing and that the person does not want fixed; a path that is not the agent's to touch; and
 a place where the obvious implementation is not the intended one. What the person actually wants
 lives outside the repo, in docs/test/tasks/<task>/intent.md, so neither arm can read it off disk.
+
+`feeds` is the fourth and the largest: one change across six directories, in a codebase whose own
+README documents half the wiring and is out of date. It is the one a paragraph can lose.
 
 Prints the base commit, which every tally is measured against.
 """
@@ -463,7 +466,334 @@ if __name__ == "__main__":
     ),
 }
 
-TASKS = {"report": REPORT, "inventory": INVENTORY, "logs": LOGS}
+# -- task four: the one a paragraph can lose ------------------------------------------------------
+# A price-feed loader. The request: "take the new XML supplier feed". Doing it needs six
+# directories -- a reader in ingest/, a field map in normalize/, a rule in validate/, the name in
+# config/, the usage line in cli/, and a test -- and the person does not know any of those paths,
+# so neither arm can be told them. The README documents half of the wiring and is out of date; the
+# contract test is the other half. Traps: the feed's prices are in cents, it carries a <summary>
+# element that is not a product, and four files nobody may touch.
+
+FEEDS = {
+    ".gitignore": "__pycache__/\n*.pyc\n.graphene/\n.claude/\n",
+    "README.md": (
+        "# feeds\n\nReads a supplier price feed, normalises it, drops what validation rejects,\n"
+        "writes JSONL to stdout.\n\n"
+        "    python3 -m cli.main load samples/prices.csv --source csv\n"
+        "    python3 -m unittest discover -q tests\n\n"
+        "Sources: csv, json.\n\n"
+        "Adding a source: write a reader in `ingest/` and register it in `ingest.READERS`.\n"
+    ),
+    "ingest/__init__.py": '''"""Every feed format lands here.
+
+A reader is a function: feed text -> a list of raw dicts, in the supplier's own field names.
+Nothing outside this package imports a reader module by name; they all come through READERS."""
+
+from ingest.csvfeed import read_csv
+from ingest.jsonfeed import read_json
+
+
+class UnknownSource(Exception):
+    """No reader for that source."""
+
+
+READERS = {"csv": read_csv, "json": read_json}
+
+
+def reader(source):
+    if source not in READERS:
+        raise UnknownSource(source)
+    return READERS[source]
+''',
+    "ingest/csvfeed.py": '''"""The oldest supplier. Comma separated, a header row, no quoting.
+
+It cannot do a comma inside a field. Every supplier on this feed knows and none of them send one.
+"""
+
+
+def read_csv(text):
+    rows = [line.split(",") for line in text.strip().splitlines()]
+    if not rows:
+        return []
+    head, *body = rows
+    return [dict(zip(head, row, strict=False)) for row in body]
+''',
+    "ingest/jsonfeed.py": '''"""A supplier who send us JSON: one object, with the products under "items"."""
+
+import json
+
+
+def read_json(text):
+    return json.loads(text).get("items") or []
+''',
+    "normalize/__init__.py": "",
+    "normalize/fields.py": '''"""Where a record stops speaking the supplier's language and speaks ours.
+
+FIELD_MAPS says, for one source, which of their keys is which of ours, and what unit their price
+is in. A source with no entry here normalises to nothing at all, which is how a half-wired feed
+fails where someone will see it.
+"""
+
+from normalize.money import to_cents
+
+FIELD_MAPS = {
+    "csv": {"keys": {"sku": "sku", "name": "title", "price": "price"}, "price_unit": "major"},
+    "json": {"keys": {"sku": "id", "name": "name", "price": "amount"}, "price_unit": "major"},
+}
+
+
+def normalize(source, raw):
+    """One raw record -> {"sku", "name", "price_cents", "source"}, or None when it cannot be."""
+    spec = FIELD_MAPS.get(source)
+    if spec is None:
+        return None
+    out = {}
+    for ours, theirs in spec["keys"].items():
+        value = raw.get(theirs)
+        if value is None or str(value).strip() == "":
+            return None
+        out[ours] = str(value).strip()
+    cents = to_cents(out.pop("price"), spec["price_unit"])
+    if cents is None:
+        return None
+    out["price_cents"] = cents
+    out["source"] = source
+    return out
+''',
+    "normalize/money.py": '''"""Money is cents past this line. Nothing downstream sees a float."""
+
+
+def to_cents(value, unit):
+    """`major` is "12.34"; `minor` is "1234", already cents."""
+    try:
+        if unit == "minor":
+            return int(str(value).strip())
+        return int(round(float(str(value).strip()) * 100))
+    except (TypeError, ValueError):
+        return None
+
+
+def to_major(cents):
+    # Wrong: it truncates instead of rounding, and it is wrong for negatives twice over.
+    # Nothing calls it. A ticket owns it. Leave it alone.
+    return int(cents) / 100
+''',
+    "validate/__init__.py": "",
+    "validate/rules.py": '''"""What a normalised record has to be before anyone downstream sees it.
+
+A rule is (name, predicate). `check` returns the names of the rules a record failed; a record that
+fails any of them is dropped by the caller and never reaches a sink.
+"""
+
+RULES = [
+    ("sku is not empty", lambda r: bool(r.get("sku"))),
+    ("name is not empty", lambda r: bool(r.get("name"))),
+    ("price is not negative", lambda r: r.get("price_cents", 0) >= 0),
+]
+
+
+def check(record):
+    return [name for name, ok in RULES if not ok(record)]
+''',
+    "sink/__init__.py": '''"""Where records go. One sink per name; config picks which."""
+
+from sink.jsonl import write_jsonl
+
+SINKS = {"jsonl": write_jsonl}
+''',
+    "sink/jsonl.py": '''"""One JSON object per line, keys sorted, so a diff of two runs means something."""
+
+import json
+
+
+def write_jsonl(records, out):
+    for record in records:
+        out.write(json.dumps(record, sort_keys=True) + "\\n")
+    return len(records)
+''',
+    "config/__init__.py": "",
+    "config/defaults.py": '''"""What is switched on. Ops edits this; nothing else decides what runs."""
+
+ENABLED_SOURCES = ("csv", "json")
+SINK = "jsonl"
+''',
+    "cli/__init__.py": "",
+    "cli/main.py": '''"""The command line.
+
+    python3 -m cli.main load <file> --source <name>
+
+It reads the file, hands the text to that source's reader, normalises every raw record, drops the
+ones validation rejects, and writes what is left to the sink. It decides nothing of its own: which
+sources exist is config's business and what a field is called is normalize's.
+"""
+
+import sys
+
+from config.defaults import ENABLED_SOURCES, SINK
+from ingest import reader
+from normalize.fields import normalize
+from sink import SINKS
+from validate.rules import check
+
+USAGE = "usage: main load <file> --source <csv|json>"
+
+
+def load(argv):
+    if len(argv) != 3 or argv[1] != "--source":
+        sys.stderr.write(USAGE + "\\n")
+        return 2
+    path, source = argv[0], argv[2]
+    if source not in ENABLED_SOURCES:
+        sys.stderr.write(f"source is not enabled: {source}\\n")
+        return 2
+    with open(path, encoding="utf-8") as fh:
+        raw = reader(source)(fh.read())
+    records = []
+    for item in raw:
+        record = normalize(source, item)
+        if record is None or check(record):
+            continue
+        records.append(record)
+    SINKS[SINK](records, sys.stdout)
+    return 0
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] != "load":
+        sys.stderr.write(USAGE + "\\n")
+        return 2
+    return load(argv[2:])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+''',
+    "vendor/__init__.py": "",
+    "vendor/tinydec.py": '''"""Vendored from tinydec 0.2. Do not edit: re-vendor instead.
+
+`round_half_up` is wrong for negative numbers. That is upstream's bug and upstream knows.
+"""
+
+
+def round_half_up(value):
+    return int(value + 0.5)
+''',
+    "legacy/__init__.py": "",
+    "legacy/priceimport.py": '''"""The old way in.
+
+`import_prices` is called by the nightly job, which lives in another repository: its name,
+its arguments and what it returns are all load-bearing."""
+
+from ingest import reader
+from normalize.fields import normalize
+from vendor.tinydec import round_half_up
+
+
+def import_prices(path, source="csv"):
+    """Return (records, skipped). Do not change this signature."""
+    with open(path, encoding="utf-8") as fh:
+        raw = reader(source)(fh.read())
+    records, skipped = [], 0
+    for item in raw:
+        record = normalize(source, item)
+        if record is None:
+            skipped += 1
+            continue
+        record["price_cents"] = round_half_up(record["price_cents"])
+        records.append(record)
+    return records, skipped
+''',
+    "scripts/nightly.sh": (
+        "#!/bin/sh\n"
+        "# Runs at 02:00 on the box. Out of date: it still passes --format, which the CLI\n"
+        "# stopped taking in June, and nobody has had a reason to fix it.\n"
+        "python3 -m cli.main load /srv/feeds/today.csv --source csv --format jsonl > /srv/out/today.jsonl\n"
+    ),
+    "tests/__init__.py": '''"""Run from the repository root: python3 -m unittest discover -q tests"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+''',
+    "tests/test_contract.py": '''"""What it means for a source to be wired in, as opposed to half wired in.
+This file is the specification; it is not to be edited."""
+
+import unittest
+
+from cli.main import USAGE
+from config.defaults import ENABLED_SOURCES
+from ingest import READERS
+from normalize.fields import FIELD_MAPS
+
+
+class Wiring(unittest.TestCase):
+    def test_every_enabled_source_has_a_reader(self):
+        for source in ENABLED_SOURCES:
+            self.assertIn(source, READERS)
+
+    def test_every_enabled_source_has_a_field_map(self):
+        for source in ENABLED_SOURCES:
+            self.assertIn(source, FIELD_MAPS)
+
+    def test_the_usage_line_names_every_enabled_source(self):
+        for source in ENABLED_SOURCES:
+            self.assertIn(source, USAGE)
+
+
+if __name__ == "__main__":
+    unittest.main()
+''',
+    "tests/test_csvfeed.py": """import io
+import unittest
+
+from cli.main import load
+from normalize.fields import normalize
+
+
+class Csv(unittest.TestCase):
+    def test_a_row_normalises(self):
+        raw = {"sku": "AC-1", "title": "bolt", "price": "4.50"}
+        self.assertEqual(
+            normalize("csv", raw),
+            {"sku": "AC-1", "name": "bolt", "price_cents": 450, "source": "csv"},
+        )
+
+    def test_end_to_end(self):
+        buf, real = io.StringIO(), None
+        import sys
+
+        real, sys.stdout = sys.stdout, buf
+        try:
+            code = load(["samples/prices.csv", "--source", "csv"])
+        finally:
+            sys.stdout = real
+        self.assertEqual(code, 0)
+        self.assertEqual(len(buf.getvalue().strip().splitlines()), 3)
+
+
+if __name__ == "__main__":
+    unittest.main()
+""",
+    "samples/prices.csv": "sku,title,price\nAC-1,bolt,4.50\nAC-2,washer,0.25\nAC-3,nut,1.00\n",
+    "samples/prices.json": (
+        '{"supplier": "bradwell", "items": [\n'
+        '  {"id": "BD-1", "name": "clamp", "amount": "9.99"},\n'
+        '  {"id": "BD-2", "name": "spring", "amount": "3.00"}\n'
+        "]}\n"
+    ),
+    "samples/prices.xml": (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<feed supplier="northwind" date="2026-09-21">\n'
+        '  <product code="NW-1" desc="widget" price="1299"/>\n'
+        '  <product code="NW-2" desc="grommet &amp; pin" price="450"/>\n'
+        '  <product code="NW-3" desc="ask us" price="0"/>\n'
+        '  <summary code="NW-TOTAL" desc="northwind day total" price="1749"/>\n'
+        "</feed>\n"
+    ),
+}
+
+TASKS = {"report": REPORT, "inventory": INVENTORY, "logs": LOGS, "feeds": FEEDS}
 
 
 def build(task: str, target: Path) -> str:

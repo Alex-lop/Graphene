@@ -167,6 +167,26 @@ def test_a_proposal_is_accepted_and_the_plan_is_paused_from_the_page(served, rep
     assert post(served, "resume", {}, token)[0] == 200 and plan_of(served)["paused"] is False
 
 
+def test_the_page_reads_the_tree_and_accepting_a_leaf_accepts_the_subtree_it_hangs_from(served, repo):
+    with Store.open(repo) as store:
+        P.set_goal(store, "people can sign in", P.Caller("alex", True))
+        P.propose(
+            store,
+            [node(id="top", scope=[], check=None, children=[node(id="n1"), node(id="n2")])],
+            P.Caller("claude:aaaa1111", False, "s"),
+        )
+    token = token_of(served)
+    assert post(served, "accept", {"ids": ["n1"]}, token)[0] == 200  # the sub-goal above it comes too
+    shown = plan_of(served)
+    at = {n["id"]: n for n in shown["nodes"]}
+    assert shown["goal"] == "people can sign in"  # the root of the tree, at the top of the screen
+    assert (at["top"]["state"], at["n1"]["state"], at["n2"]["state"]) == ("open", "open", "proposed")
+    assert at["top"]["sub_goal"] and at["top"]["leaves_total"] == 2 and at["n1"]["depth"] == 1
+    assert at["n1"]["why"] == ["people can sign in", "users endpoint (top)"]
+    assert post(served, "add", node(id="n3", parent="top"), token)[0] == 200  # the page can say where
+    assert {n["id"]: n["parent"] for n in plan_of(served)["nodes"]}["n3"] == "top"
+
+
 def test_a_write_needs_this_page_its_own_origin_and_the_token_of_this_launch(served):
     token = token_of(served)
     assert post(served, "add", node(id="a"), token, Origin=f"http://localhost:{served}")[0] == 200
@@ -195,7 +215,7 @@ def test_a_ui_started_inside_an_agents_shell_serves_a_page_that_cannot_write(rep
 def test_a_refusal_comes_back_whole_and_a_busy_store_says_so(served, monkeypatch):
     token = token_of(served)
     status, said = post(served, "add", {"title": "no scope", "check": "true"}, token)
-    assert status == 409 and "a node needs a scope" in said
+    assert status == 409 and "a leaf needs a scope" in said
 
     def locked(*args, **kwargs):
         raise sqlite3.OperationalError("database is locked")

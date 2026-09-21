@@ -156,7 +156,7 @@ export interface Run {
 // -- the plan: a mirror of src/graphene_debrief/plan_view.py, which computes every position ------
 
 export type NodeState = "proposed" | "open" | "running" | "review" | "done";
-export type Shown = NodeState | "waiting" | "ready";
+export type Shown = NodeState | "waiting" | "ready" | "sub-goal";
 
 export interface Entry {
   at: string;
@@ -174,6 +174,13 @@ export interface PlanNode {
   signoff: boolean;
   needs: string[];
   owner: string; // "agent", or a person's name
+  parent: string | null; // the node this one helps achieve; null is directly under the plan's goal
+  aside: boolean; // made from what the person typed into a session
+  sub_goal: boolean; // it has children: nobody takes it, and it is done when they are
+  depth: number; // how far below the root it sits: what the page indents by
+  why: string[]; // the path from the goal down to this node, root first
+  leaves_done: number; // a sub-goal's progress, in the leaves beneath it
+  leaves_total: number;
   state: NodeState;
   display_state: Shown; // an open node that cannot start yet is waiting, not ready
   rev: number;
@@ -218,6 +225,7 @@ export type Hole = "scope" | "check" | "stop" | "person";
 export interface Plan {
   version: number;
   repo: string; // the checkout, by name: a plan exists before any run has been recorded in it
+  goal: string; // the root of the tree: why any of this is being done, in the person's words
   person: string;
   paused: boolean;
   width: number;
