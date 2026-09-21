@@ -3,9 +3,20 @@
 
     python3 docs/test/test_tally.py       (or: cd docs/test && python3 -m unittest test_tally)
 
-The repo below is four changes against its base commit, the store is eight recorded write events
-of which three must not count, and the run log is five entries. The expected numbers are worked out
+The repo below is four changes against its base commit, the store is nine recorded write events
+of which three must not count, and the run log is six entries. The expected numbers are worked out
 in the comments, not read back off the code.
+
+Three of the cases here are the defects the 20 September run printed wrong numbers because of, and
+they are the reason this file grew:
+
+  `app/keep.py`       written once through a file tool and once through the shell. Counted twice,
+                      it is 4 lines of churn; it is one file that changed by 2.
+  `.plan-tmp.json`    a scratch file written and removed inside the run, in both records. 6 lines
+                      of "rework" for a file that is not in the base commit, is not on disk at the
+                      end, and was never anybody's code.
+  `.graphene/runs/`   where `graphene run` puts an executor's output and never looks again. With
+                      `--output-format json` the cost is in there; tally reads it out.
 """
 
 from __future__ import annotations
@@ -35,29 +46,49 @@ EVENTS = [
     ("Write", "app/new.py", None, "1\n2\n", None),  # 2 lines, a new file, success NULL = fine
     ("Write", "vendor/x.py", "p\nq\n", "p\nQ\n", 1),  # 2 lines, outside intent
     ("Write", "notes.md", None, "hi\n", 1),  # 1 line, outside intent
+    ("Write", ".plan-tmp.json", None, "a\nb\nc\n", 1),  # 3 lines, scratch, removed below
+    # a leaf run in its own worktree by `graphene run --parallel`: 2 lines, and the hook records it
+    # against the main repo's root, so it arrives looking like a write to .graphene/
+    ("Write", ".graphene/worktrees/n4/app/wt.py", None, "w\nx\n", 1),
     ("Write", "app/keep.py", "a\n", "zzzz\n", 0),  # failed: not counted at all
     ("Write", "app/keep.py", "a\n", None, 1),  # no content kept: skipped, and said so
     ("Write", "/etc/hosts", "a\n", "b\n", 1),  # outside the repo: skipped, and said so
 ]
-REWORK_FROM_EVENTS = 2 + 2 + 2 + 2 + 1  # = 9
+CHURN_FROM_EVENTS = 2 + 2 + 2 + 2 + 1 + 3 + 2  # = 14
 
-# One Bash call that edited two files through the shell, the way a real executor does: hunks under
-# `files`, and the same paths repeated as a bare `changedFiles` list. Two changed lines each; one
-# file is in intent, the other is not.
+# One Bash call that edited three files through the shell, the way a real executor does: hunks
+# under `files`, and the same paths repeated as a bare `changedFiles` list. `app/keep.py` is the
+# same change a file tool already recorded, and `.plan-tmp.json` is the scratch file being removed
+# again — the two double counts. `build/out.txt` is only here.
 SHELL_DIFF = {
     "files": [
         {"filePath": "app/keep.py", "hunks": [{"lines": [" ctx", "-b", "+B"]}]},
         {"filePath": "build/out.txt", "hunks": [{"lines": ["+a", "+b"]}]},
+        {"filePath": ".plan-tmp.json", "hunks": [{"lines": ["-a", "-b", "-c"]}]},
     ],
-    "changedFiles": ["app/keep.py", "build/out.txt"],
+    "changedFiles": ["app/keep.py", "build/out.txt", ".plan-tmp.json"],
 }
-REWORK_FROM_SHELL = 2 + 2  # = 4
-REWORK_RECORDED = REWORK_FROM_EVENTS + REWORK_FROM_SHELL  # = 13
+CHURN_FROM_SHELL = 2 + 2 + 3  # = 7
+CHURN_NAIVE = CHURN_FROM_EVENTS + CHURN_FROM_SHELL  # = 21, what adding the two records gives
+# Once per file: keep 2 (not 2+2), private 2, new 2, vendor 2, notes 1, build 2, scratch 3, wt 2
+CHURN_DEDUPED = 2 + 2 + 2 + 2 + 1 + 2 + 3 + 2  # = 16
+# Of that, the two files that are not in the base commit and are not on disk at the end
+TRANSIENT = 2 + 3  # build/out.txt and .plan-tmp.json = 5
+
+# Two executor calls `graphene run` started, in the files it leaves behind and never reads.
+RUNS = {
+    "n1-1.txt": json.dumps(
+        {"type": "result", "total_cost_usd": 0.31, "num_turns": 9, "session_id": "r1", "result": "done"}
+    ),
+    "n2-1.txt": "the executor printed prose, not json, so nobody can price this one\n",
+}
 
 LOG = [
     {"t": 1000, "who": "person", "type": "prompt", "text": "x" * 40, "chars": 40},
     {"t": 1005, "who": "executor", "type": "result", "cost_usd": 0.12, "turns": 7, "session_id": "s1"},
     {"t": 1010, "who": "person", "type": "correction", "text": "no, not that"},  # chars from the text
+    # The card's own change of mind: a correction the protocol makes both arms spend.
+    {"t": 1015, "who": "person", "type": "correction", "text": "by hour", "mandated": True},
     {"t": 1020, "who": "executor", "type": "result", "cost_usd": 0.08, "turns": 3, "session_id": "s1"},
     {"t": 1030, "who": "person", "type": "review", "text": "", "chars": 0},
 ]
@@ -89,7 +120,8 @@ class Tally(unittest.TestCase):
         (repo / "vendor" / "x.py").write_text("p\nQ\n", encoding="utf-8")  # 1 + 1 = 2 lines
         (repo / "app" / "new.py").write_text("1\n2\n", encoding="utf-8")  # 2 new lines
         (repo / "notes.md").write_text("hi\n", encoding="utf-8")  # 1 new line
-        cls.final_lines = 2 + 2 + 2 + 1  # = 7
+        (repo / "app" / "wt.py").write_text("w\nx\n", encoding="utf-8")  # 2 new lines, from a worktree
+        cls.final_lines = 2 + 2 + 2 + 1 + 2  # = 9
 
         db = repo / ".graphene" / "graphene.db"
         db.parent.mkdir()
@@ -119,6 +151,11 @@ class Tally(unittest.TestCase):
             conn.execute("INSERT INTO node_log (node_id, kind) VALUES ('n1', ?)", (kind,))
         conn.commit()
         conn.close()
+
+        runs = repo / ".graphene" / "runs"
+        runs.mkdir()
+        for name, text in RUNS.items():
+            (runs / name).write_text(text, encoding="utf-8")
 
         (cls.dir / "intent_globs.txt").write_text(INTENT, encoding="utf-8")
         (cls.dir / "accept.py").write_text(ACCEPT_STUB, encoding="utf-8")
@@ -157,9 +194,9 @@ class Tally(unittest.TestCase):
         # app/private.py was put back, so it is not here.
         self.assertEqual(
             self.out["files_changed_final"],
-            ["app/keep.py", "app/new.py", "notes.md", "vendor/x.py"],
+            ["app/keep.py", "app/new.py", "app/wt.py", "notes.md", "vendor/x.py"],
         )
-        self.assertEqual(self.out["files_changed_final_n"], 4)
+        self.assertEqual(self.out["files_changed_final_n"], 5)
 
     def test_files_outside_intent_final(self):
         # app/** is intent; notes.md and vendor/x.py are not under it.
@@ -173,17 +210,17 @@ class Tally(unittest.TestCase):
         self.assertNotIn("app/private.py", self.out["files_outside_intent_final"])
 
     def test_files_written_outside_intent_ever(self):
-        # the three the file tools and the diff know about, plus the one written through the shell
+        # the four the file tools and the diff know about, plus the one written through the shell
         self.assertEqual(
             self.out["files_written_outside_intent_ever"],
-            ["app/private.py", "build/out.txt", "notes.md", "vendor/x.py"],
+            [".plan-tmp.json", "app/private.py", "build/out.txt", "notes.md", "vendor/x.py"],
         )
-        self.assertEqual(self.out["files_written_outside_intent_ever_n"], 4)
+        self.assertEqual(self.out["files_written_outside_intent_ever_n"], 5)
 
     def test_each_source_is_kept_apart(self):
         by = self.out["files_written_outside_intent_by_source"]
-        self.assertEqual(by["edit_events"], ["app/private.py", "notes.md", "vendor/x.py"])
-        self.assertEqual(by["shell"], ["build/out.txt"])
+        self.assertEqual(by["edit_events"], [".plan-tmp.json", "app/private.py", "notes.md", "vendor/x.py"])
+        self.assertEqual(by["shell"], [".plan-tmp.json", "build/out.txt"])
         self.assertEqual(by["final_diff"], ["notes.md", "vendor/x.py"])
 
     def test_refused_writes(self):
@@ -195,14 +232,39 @@ class Tally(unittest.TestCase):
 
     def test_final_diff_lines(self):
         self.assertEqual(self.out["final_diff_lines"], self.final_lines)
-        self.assertEqual(self.final_lines, 7)
+        self.assertEqual(self.final_lines, 9)
+
+    def test_each_record_is_still_reported_on_its_own(self):
+        self.assertEqual(self.out["rework_from_edit_events"], CHURN_FROM_EVENTS)
+        self.assertEqual(self.out["rework_from_shell"], CHURN_FROM_SHELL)
+        self.assertEqual(self.out["churn_naive_lines"], CHURN_NAIVE)
+        self.assertEqual(CHURN_NAIVE, 21)
+
+    def test_a_file_in_both_records_is_counted_once(self):
+        # app/keep.py is one change of 2 lines that both a Write event and a Bash change list saw.
+        # Adding the records gives 4; the file changed by 2.
+        self.assertEqual(self.out["churn_by_file"]["app/keep.py"], 2)
+        self.assertEqual(self.out["rework_recorded_lines"], CHURN_DEDUPED)
+        self.assertEqual(CHURN_DEDUPED, 16)
+        self.assertEqual(self.out["churn_double_counted_lines"], CHURN_NAIVE - CHURN_DEDUPED)
+        self.assertEqual(CHURN_NAIVE - CHURN_DEDUPED, 5)  # 2 for app/keep.py, 3 for the scratch file
+
+    def test_a_write_inside_a_leafs_worktree_is_a_write_to_the_file_it_names(self):
+        # `graphene run --parallel` works in .graphene/worktrees/<node>/, and .graphene/ is the
+        # harness's own directory everywhere else. Left as recorded, every parallel write vanishes.
+        self.assertEqual(self.out["churn_by_file"]["app/wt.py"], 2)
+        self.assertNotIn(".graphene/worktrees/n4/app/wt.py", self.out["churn_by_file"])
+
+    def test_a_scratch_file_made_and_removed_in_the_run_is_not_rework(self):
+        # Not in the base commit, not on disk at the end: nobody rewrote any code.
+        self.assertEqual(self.out["transient_files"], [".plan-tmp.json", "build/out.txt"])
+        self.assertEqual(self.out["transient_churn_lines"], TRANSIENT)
+        self.assertEqual(TRANSIENT, 5)
 
     def test_rework_lines(self):
-        self.assertEqual(self.out["rework_from_edit_events"], REWORK_FROM_EVENTS)
-        self.assertEqual(self.out["rework_from_shell"], REWORK_FROM_SHELL)
-        self.assertEqual(self.out["rework_recorded_lines"], REWORK_RECORDED)
-        self.assertEqual(REWORK_RECORDED, 13)
-        self.assertEqual(self.out["rework_lines"], 13 - 7)
+        # deduplicated churn, less the transient files, less what the final diff still shows
+        self.assertEqual(self.out["rework_lines"], CHURN_DEDUPED - TRANSIENT - self.final_lines)
+        self.assertEqual(self.out["rework_lines"], 16 - 5 - 9)
 
     def test_the_skipped_events_are_named(self):
         self.assertTrue(
@@ -214,12 +276,26 @@ class Tally(unittest.TestCase):
         self.assertEqual([n for n in self.out["notes"] if "no hunks to count" in n], [])
 
     def test_the_run_log(self):
-        self.assertEqual(self.out["restarts"], 1)
-        self.assertEqual(self.out["person_actions"], 3)
-        self.assertEqual(self.out["person_chars"], 40 + len("no, not that") + 0)
-        self.assertEqual(self.out["executor_cost_usd"], 0.2)
-        self.assertEqual(self.out["executor_turns"], 10)
+        self.assertEqual(self.out["person_actions"], 4)
+        self.assertEqual(self.out["person_chars"], 40 + len("no, not that") + len("by hour") + 0)
         self.assertEqual(self.out["wall_seconds"], 30.0)
+
+    def test_restarts_are_reported_both_ways(self):
+        # two corrections, one of which the protocol makes both arms spend
+        self.assertEqual(self.out["restarts"], 2)
+        self.assertEqual(self.out["restarts_unmandated"], 1)
+
+    def test_executor_cost_comes_from_the_run_log_and_from_graphene_runs(self):
+        self.assertEqual(self.out["executor_cost_from_runlog_usd"], 0.2)
+        self.assertEqual(self.out["executor_cost_from_graphene_runs_usd"], 0.31)
+        self.assertEqual(self.out["executor_cost_usd"], 0.51)
+        self.assertEqual(self.out["executor_turns"], 7 + 3 + 9)
+        self.assertEqual(self.out["executor_calls"], 4)  # two in the log, two under .graphene/runs
+        self.assertEqual(self.out["executor_calls_unpriced"], 1)  # the one that printed prose
+        self.assertTrue(
+            any("n2-1.txt is not an --output-format json result" in n for n in self.out["notes"]),
+            self.out["notes"],
+        )
 
     def test_acceptance_comes_straight_from_accept_py(self):
         self.assertEqual(self.out["acceptance"]["passed"], 2)

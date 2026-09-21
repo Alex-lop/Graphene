@@ -1,0 +1,16 @@
+# The paths that may change in this task. Graphene glob syntax: ** crosses directories,
+# a leading ! takes paths back out, and the last line that matches decides.
+#
+# The person does not know the layout, so this list is the harness author's answer to "what does a
+# correct change touch": a reader anywhere under ingest/ (whatever it gets called), the field map,
+# the rules, the enabled list, the command line, a test of any name, and the README.
+ingest/**
+!ingest/csvfeed.py
+!ingest/jsonfeed.py
+normalize/fields.py
+validate/rules.py
+config/defaults.py
+cli/**
+tests/**
+!tests/test_contract.py
+README.md
