@@ -34,13 +34,71 @@ Who may do what. Anyone may propose and start a node they are allowed to take; o
 running node finishes it or hands it back (a Claude Code session is known by its session id, an
 executor `graphene run` started by the node it was given, anyone else by the name they took it
 under; a person always may). Only a person may accept a proposal, edit a contract, sign off, reopen, overrule
-the gate, pause, archive, or acknowledge loose changes. "A person" is a caller with a terminal and
-without an agent's environment: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and
-`CLAUDE_CODE_SESSION_ID`, and anything with no terminal at all is treated as an agent. A script that
+the gate, pause, archive, or acknowledge loose changes. "A person" is a caller without an agent's
+mark: Codex exports `CODEX_SESSION_ID`, Claude Code `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID`,
+`graphene run` gives every executor `GRAPHENE_NODE`, and a mark outranks everything. A caller with
+no mark and no terminal (an editor task, a pipe) is still the person, and the log says `(no
+terminal)`: a person's `add` must never turn into a proposal they cannot accept. An agent of a
+vendor that sets none of these marks is therefore taken for the person. A script that
 stands in for a person sets `GRAPHENE_AS=person:<name>`; inside an agent's environment that variable
 changes nothing, however it is spelled, and every act made through it is logged as made with no
 terminal (`alex (no terminal)`). `graphene ui` gives its page the person's rights only when a person
 started it.
+
+## P1a. The tree
+
+The plan is a tree. Its **root** is one sentence of the person's, `graphene plan goal '…'` (kept in
+the store's `meta`, not as a node): why any of this is being done. A node's `parent` names the node
+it helps achieve; no parent means directly under the root, which is what every node from 0.3 is.
+A node with children is a **sub-goal**: it needs only a title, nobody takes it, and its row shows
+`n/m done` over the leaves under it. A node without children is a **leaf**: the work, with a scope
+and a check as above. A title with nothing else is a sub-goal whose children are still to come.
+
+Hierarchy is meaning and `needs` is order, and both are kept. A leaf waits on what it needs *and*
+on what every node above it needs. A cycle through needs, through the tree, or through both (a leaf
+that needs its own sub-goal) is refused when the plan is edited.
+
+**Done rolls up** (`plan.roll_up`). When the last child of a sub-goal is done, the sub-goal's own
+check, if it has one, is run by Graphene in the checkout where the children's work is together; that
+is where integration lives. Passing (or having no check), the sub-goal is done, or in `review` if it
+asks for a sign-off, and what needs it can start. Failing, it stays open, the log has the output,
+`graphene plan` says "its leaves are done and its own check fails", and the way on is a leaf under
+it for what is missing; `graphene node done <sub-goal>` runs the check again. A child added or
+reopened under a finished sub-goal reopens it.
+
+**A proposal is a subtree.** `graphene plan propose` reads nested `"children"`, and `"parent"` puts
+a node under one already there. Accepting a node accepts every proposal under it and every proposal
+it sits under. A leaf too big to do is split by proposing children under it and handing it back
+(children cannot be accepted under a leaf someone holds); dropping the children makes it a leaf
+again; dropping a sub-goal drops what is under it, unless something outside waits on any of it.
+
+**The path to the root is told to every executor.** `plan.trail` is the goal and then each sub-goal
+above the leaf, with its own goal; `plan.contract` prints it as `why:` lines above the leaf's goal.
+`graphene node start`, `graphene node show` and the prompt `graphene run` hands over all use it.
+
+**In the terminal** (`plan_cli.plan_lines`): the goal, a count of leaves, what waits on a person
+(a proposed subtree is asked about once, at its top), then the tree indented by depth. Once it is
+longer than a dozen lines, finished nodes fold into one `✓ n done here` line per level; `--all`
+unfolds. `graphene watch` redraws the same lines once a second with the last six log entries under
+them. It reads the store and nothing else.
+
+## P1b. A request typed into a session
+
+With a plan in force, the `UserPromptSubmit` hook remembers the session's latest prompt. When that
+session holds no node and is about to write (`PreToolUse`), Graphene makes a leaf from the prompt
+and starts it for the session: title and goal are the person's words; its scope and check are what
+they wrote after `scope:` and `check:`, if anything, and otherwise `**` and no check. Nothing is
+inferred from the prose. At `Stop` the leaf closes (`plan.close_aside`): git says what changed, the
+check runs if there is one (failing, the stop is refused with its output), and a leaf under which
+nothing changed is dropped. It is a record rather than a gate: it does not run the looks at other
+worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
+`graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
+
+The same hook reads a short prompt (240 characters at most) that begins with yes, ok, sure, accept,
+go ahead, do it or lgtm as the person accepting proposals: the ones it names by id, all of them if
+it says "all" or "everything", else the ones this session proposed. The log entry carries
+`by: prompt` and the words. The agent is told, as added context, what was accepted and what is
+ready. An agent that starts a second agent writes that agent's prompt: that is the hole.
 
 ## P2. The boundary: what makes a node done
 
@@ -129,7 +187,24 @@ is given a session id on the first attempt, so the hooks hold it to the node fro
 and is resumed in that session afterwards; any other command gets the refusal in a fresh prompt).
 After `--attempts` (3) the node is handed back with the last refusal as the reason. A person's node
 is never handed to an executor. The run ends by saying what is waiting and for whom. Output of each
-attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you ran it from.
+attempt is kept under `.graphene/runs/`. One node at a time, in the checkout you ran it from, and
+nothing is committed.
+
+`graphene run --parallel N` runs up to N ready leaves at once. Each gets a worktree,
+`.graphene/worktrees/<id>` on branch `graphene/<id>`, cut from where your checkout stands at that
+moment, so it holds everything that has already landed. The executor works there and meets the same
+boundary there. Then, one leaf at a time, Graphene commits the leaf's changed paths on its branch
+(your git identity; the message is the title, the goal, the why path and `Graphene-Node: <id>`) and
+merges it `--no-ff` into your checkout; the worktree and the branch are removed; sub-goals roll up
+*there*, after the merge, and never while a sibling that is done in its worktree has not landed.
+Two rules keep merges clean: a leaf does not start while something it needs has not landed, and a
+leaf whose scope overlaps that of a leaf in flight waits for it to land. Since a write outside a
+scope is refused, two leaves cannot have written one file. If git still will not merge (your own
+uncommitted work is in the way), the merge is aborted, your checkout is as it was, the leaf stops in
+`review` with a log entry `unlanded` naming its branch, and what needs it waits. `git merge
+graphene/<id>` and `graphene node signoff <id>` finish it by hand; `graphene node reopen` sends it
+round again. An executor is never asked to resolve a conflict. If the worktree has no copy of your
+Claude Code hook settings (they are usually untracked), the hooks do not run there; the boundary does.
 
 ## P5. Where each mechanism ends
 
