@@ -593,7 +593,12 @@ def miscased(scope: list[str], files: list[str]) -> str | None:
 
 
 def propose(
-    store, raw: list[dict], who: Caller, now: str | None = None, files: list[str] | None = None
+    store,
+    raw: list[dict],
+    who: Caller,
+    now: str | None = None,
+    files: list[str] | None = None,
+    aside: bool = False,
 ) -> list[Node]:
     """Add nodes. From a person they are part of the plan at once; from an agent they are proposals,
     which nobody can start until a person accepts them."""
@@ -610,6 +615,7 @@ def propose(
                 k += 1
             node = from_dict(item, f"n{k}")
             node.parent = under or node.parent
+            node.aside = aside
             if isinstance(item.get("children"), list):
                 flat[:0] = [(child, node.id) for child in item["children"]]
             if node.id in taken:
@@ -790,9 +796,12 @@ def start(
     checkout: str | Path,
     now: str | None = None,
     agent_id: str | None = None,
+    attended: bool = False,
 ) -> Node:
     """Take a node. Refused unless it is open, everything it waits on is done, the caller may take
-    it, and no running node in the same checkout claims a path this one claims."""
+    it, and no running node in the same checkout claims a path this one claims. ``attended``: the
+    person is in the session and asked for this, so what changed between nodes is theirs to have
+    seen, as when they start a node themselves."""
     now = now or _now()
     checkout = str(Path(checkout).resolve())
     with store.claim():
@@ -833,7 +842,7 @@ def start(
         if _boundary(store, checkout) is None:
             mark_boundary(store, checkout, now)  # the first start in a checkout: the tree as it stands
         loose = unowned(store, checkout, but=node.id)
-        if loose and not who.person:
+        if loose and not (who.person or attended):
             listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
             raise Refused(
                 f"{node.id} cannot start: {listed} changed while no node owned "
@@ -856,8 +865,10 @@ def start(
             agent_id,
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, head(checkout), dirty(checkout)
-        node.unseen_at_start = unseen(checkout)
-        node.others_at_start = snapshot_others(checkout)
+        # a leaf made from a prompt is a record, not a gate (``close_aside``): it skips the two looks
+        # that only `finish` reads, which on a repo with thirty worktrees cost the hook over a second
+        node.unseen_at_start = {} if node.aside else unseen(checkout)
+        node.others_at_start = {} if node.aside else snapshot_others(checkout)
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
         extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
         _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)

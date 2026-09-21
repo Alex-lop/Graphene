@@ -110,15 +110,119 @@ def _claim_first(store) -> str:
         + ", so nothing here may be written: work happens inside a node, and a plan stays in force "
         "after its last node is done. If this change is worth making, propose a node for it: "
         "`graphene node add '<what>' --scope '<paths it needs>' --check '<command that shows it is done>'`, "
-        "then tell the person; they accept it, change it, or say no. `graphene plan` shows what each "
-        "node waits for"
+        "then tell the person; a plain yes typed here accepts it, or they change it or say no. "
+        "`graphene plan` shows what each node waits for"
     )
 
 
-def _check_write(store, held: list[P.Node], rel: str, event: dict, how: str) -> dict | None:
+_YES = re.compile(
+    r"^\W*(yes|yep|yeah|ok|okay|sure|accept|accepted|approve|approved|go|go ahead|do it|do that|do them|"
+    r"lgtm|sounds good|looks good)\b",
+    re.IGNORECASE,
+)
+_SCOPE = re.compile(r"(?is)\bscope:\s*(.+?)(?=\s+check:|$)")
+_CHECK = re.compile(r"(?is)\bcheck:\s*(.+?)(?=\s+scope:|$)")
+SHORT = 240  # a prompt longer than this is a request, not an answer
+
+
+def _me(sid: str) -> P.Caller:
+    """What the person types into their own session is the person's act: the vendor hands the hook
+    their prompt, and no agent's tool call can make that event. (The hole: an agent that starts a
+    second agent chooses its prompt. `graphene run` marks its executors, and the log says "by prompt".)"""
+    return P.Caller(P.person_name(), True, sid)
+
+
+def _on_prompt(store, sid: str, text: str) -> dict | None:
+    """A prompt is remembered (the next write may become a leaf made from it) and, when it is a short
+    yes, read as the acceptance of what this session proposed, or of the proposals it names."""
+    if os.environ.get("GRAPHENE_NODE"):
+        return None  # an executor `graphene run` started: its prompt is ours, not a person's
+    for n in _held(store, sid):
+        if n.aside:
+            _close(
+                store, n, sid
+            )  # the turn before ended without a Stop (interrupted): its record closes here
+    store.set_meta(f"prompt:{sid}", text)  # TODO: one row a session, never pruned
+    proposals = P.nodes(store, (P.PROPOSED,))
+    if not proposals or not _YES.match(text) or len(text) > SHORT:
+        return None
+    named = [n for n in proposals if re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", text)]
+    if not named and re.search(r"\b(all|everything|the plan)\b", text, re.IGNORECASE):
+        named = proposals
+    chosen = named or [n for n in proposals if n.proposed_by == f"claude:{sid[:8]}"]
+    if not chosen:
+        return None
+    try:
+        accepted = P.accept(store, [n.id for n in chosen], _me(sid), by="prompt", prompt=text[:SHORT])
+    except P.Refused as no:
+        return _context(
+            "UserPromptSubmit", f"Graphene read that as accepting a proposal, and could not: {no}"
+        )
+    ready = P.ready(P.nodes(store), P.Caller("agent", False))
+    told = ", ".join(f"{n.id} ({n.title})" for n in accepted)
+    return _context(
+        "UserPromptSubmit",
+        f"The person's answer accepted {told}: in the plan now, as they stand."
+        + (f" `graphene node start {ready[0].id}` takes the first that is ready." if ready else ""),
+    )
+
+
+def _context(event: str, text: str) -> dict:
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
+
+
+def _close(store, node: P.Node, sid: str) -> str | None:
+    """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails."""
+    try:
+        P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
+    except P.Refused as no:
+        return str(no)
+    except (OSError, subprocess.SubprocessError):
+        pass  # git could not answer: the leaf stays open on the plan, which is how it is seen
+    return None
+
+
+def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
+    """The person typed a request into a session that holds no node, and the agent is about to write
+    for it: that request becomes a leaf, held by this session, with nothing for the person to do.
+    Its scope and check are what they wrote after `scope:` and `check:`, when they wrote any; else it
+    may touch anything and is done when the turn ends, and its record says what it did touch. The
+    scope is never guessed from the prose."""
+    text = store.meta(f"prompt:{sid}")
+    if not text or os.environ.get("GRAPHENE_NODE") or store.meta("asides") == "off":
+        return None
+    scope, check = _SCOPE.search(text), _CHECK.search(text)
+    words = _SCOPE.sub("", _CHECK.sub("", text)).strip() or text
+    item = {
+        "title": " ".join(words.split())[:72],
+        "goal": words[:2000],
+        "scope": re.split(r"[,\s]+", scope.group(1).strip()) if scope else ["**"],
+        "check": check.group(1).strip() if check else None,
+    }
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd or str(root), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        [node] = P.propose(store, [item], _me(sid), aside=True)
+        return P.start(store, node.id, P.Caller(f"claude:{sid[:8]}", False, sid), top or root, attended=True)
+    except (P.Refused, OSError, subprocess.SubprocessError) as no:
+        store.log_node("*", P._now(), "denied", None, sid, None, {"note": f"no leaf from the prompt: {no}"})
+        return None
+
+
+def _check_write(
+    store, held: list[P.Node], rel: str, event: dict, how: str, root: Path | None = None
+) -> dict | None:
     if rel.split("/", 1)[0] in OURS:
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+    if not held and root is not None:
+        cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+        made = _aside(store, str(event.get("session_id")), cwd, root)
+        held = [made] if made else held
     if not held:  # "*" is the plan's own log: what happened that belongs to no node
         store.log_node(
             "*", P._now(), "denied", None, event.get("session_id"), agent_id, {"path": rel, "how": how}
@@ -138,8 +242,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
     """The hook's answer for this event, or None to say nothing."""
     name = event.get("hook_event_name")
     sid = event.get("session_id")
-    if not isinstance(sid, str) or name not in ("PreToolUse", "PostToolUse", "Stop", "SessionStart"):
+    events = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit")
+    if not isinstance(sid, str) or name not in events:
         return None
+    if name == "UserPromptSubmit":  # before "in force": a plan of nothing but proposals binds nobody yet
+        return _on_prompt(store, sid, str(event.get("prompt") or ""))
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")
@@ -161,6 +268,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
     if name == "Stop":
         held = _held(store, sid)
+        for n in [h for h in held if h.aside]:
+            wrong = _close(store, n, sid)  # the turn is over: the leaf made from the prompt is too
+            if wrong:
+                return {"decision": "block", "reason": f"{n.id} ({n.title}) is not done: {wrong}"}
+        held = [h for h in held if not h.aside]
         if not held:
             return None
         n = held[0]
@@ -183,7 +295,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if _leaves(path, root, cwd):
             return _link(_leaves(path, root, cwd))
         rel = _rel(path, root, cwd)
-        return None if rel is None else _check_write(store, _held(store, sid), rel, event, tool)
+        return None if rel is None else _check_write(store, _held(store, sid), rel, event, tool, root)
 
     if name == "PreToolUse" and tool == "Bash":
         command = str(tool_input.get("command") or "")
@@ -214,7 +326,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 continue
             if rel.split("/", 1)[0] not in OURS and _ignored(root, rel):
                 continue  # a build leftover git ignores is nobody's change
-            return _check_write(store, held, rel, event, "shell")
+            answer = _check_write(store, held, rel, event, "shell", root)
+            if answer is not None:
+                return answer
+            held = _held(store, sid)  # a leaf was just made from the prompt: it covers the rest
         return None
 
     if name == "PostToolUse" and tool == "Bash":
