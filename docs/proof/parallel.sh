@@ -2,6 +2,7 @@
 # Two real agents at once, a worktree each, on one tree. About two minutes, some cents.
 #
 #   docs/proof/parallel.sh [dir]        (needs: graphene, claude, git, python3)
+#   WITH='codex exec --sandbox workspace-write --skip-git-repo-check' docs/proof/parallel.sh    (any executor)
 #
 # The plan is a tree: a goal; under it a sub-goal with two leaves that touch different files and an
 # integration check of its own; and a leaf that waits on the sub-goal. `graphene run --parallel 2`
@@ -62,7 +63,8 @@ echo "--- the tree as the person left it:"; as_me graphene plan
 
 echo; echo "--- graphene run --parallel 2, and the person does nothing else:"
 START=$(date +%s)
-as_me graphene run --parallel 2 --with "claude -p --model sonnet --permission-mode acceptEdits --allowedTools Read Edit Write Glob Grep Bash(graphene:*) Bash(python3:*) Bash(git:*) Bash(ls:*) Bash(cat:*)" || true
+WITH="${WITH:-claude -p --model sonnet --permission-mode acceptEdits --allowedTools Read Edit Write Glob Grep Bash(graphene:*) Bash(python3:*) Bash(git:*) Bash(ls:*) Bash(cat:*)}"
+as_me graphene run --parallel 2 --with "$WITH" || true
 echo "($(( $(date +%s) - START )) s)"
 
 fail=0
@@ -82,7 +84,7 @@ PY
 say "the two leaves were running at the same time" "$both"
 say "each in its own worktree" "$(sqlite3 .graphene/graphene.db "select count(distinct json_extract(detail,'\$.checkout')) from node_log where kind='started' and node_id in ('emails','names')" | sed 's/^2$/yes/;s/^[0-9]*$/no/')"
 say "each leaf's contract carries the path from the goal down (what run hands over, word for word)" "$(has "$(as_me graphene node show emails)" 'why: *a toy service whose listings are safe')"
-say "the hooks ran inside the worktrees: both executor sessions are on record, from there" "$([ "$(sqlite3 .graphene/graphene.db "select count(distinct session_id) from tool_events where cwd like '%.graphene/worktrees/%'")" -ge 2 ] && echo yes || echo no)"
+[[ "$WITH" != claude* ]] || say "the hooks ran inside the worktrees: both executor sessions are on record, from there" "$([ "$(sqlite3 .graphene/graphene.db "select count(distinct session_id) from tool_events where cwd like '%.graphene/worktrees/%'")" -ge 2 ] && echo yes || echo no)"
 say "both landed here as merges" "$([ "$(git log --merges --format=%s | grep -c -e '(emails)' -e '(names)')" = 2 ] && echo yes || echo no)"
 say "the worktrees and branches are gone" "$([ -z "$(git branch --list 'graphene/*')" ] && [ ! -e .graphene/worktrees/emails ] && echo yes || echo no)"
 say "the sub-goal is done by its own check, run here after both landed" "$(has "$LOG" 'clean .*rolled_up')"
