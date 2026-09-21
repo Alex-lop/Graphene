@@ -19,7 +19,7 @@ readme started (revision 1): say what the two functions return
 readme attempt 1: the executor ended (exit 0)
 readme is done
 next: nothing; every node is done
-(26 s)
+(28 s)
 
 --- the tree afterwards:
 the plan: a toy service whose listings are safe to show to a customer
@@ -30,25 +30,25 @@ the plan: a toy service whose listings are safe to show to a customer
   readme    done      say what the two functions return          agent  README.md      ·
 
 --- everything that happened on it:
-  2026-09-21T06:01:52Z  *       goal          alexlopez (no terminal)  a toy service whose listings are safe to show to a customer
-  2026-09-21T06:01:52Z  clean   added         alexlopez (no terminal)
-  2026-09-21T06:01:52Z  emails  added         alexlopez (no terminal)
-  2026-09-21T06:01:52Z  names   added         alexlopez (no terminal)
-  2026-09-21T06:01:52Z  readme  added         alexlopez (no terminal)
-  2026-09-21T06:01:53Z  emails  started       run:claude
-  2026-09-21T06:01:53Z  names   started       run:claude
-  2026-09-21T06:02:02Z  emails  check_passed  claude:244affb8          python3 -c "from src.emails import emails; assert emails() == ['ada@example.com', 'lin@example.com']"
-  2026-09-21T06:02:02Z  emails  finished      claude:244affb8          changed: src/emails.py
-  2026-09-21T06:02:03Z  names   check_passed  claude:acd4917a          python3 -c "from src.names import names; assert names() == ['ADA', 'LIN']"
-  2026-09-21T06:02:03Z  names   finished      claude:acd4917a          changed: src/names.py
-  2026-09-21T06:02:05Z  emails  landed        graphene run
-  2026-09-21T06:02:07Z  names   landed        graphene run
-  2026-09-21T06:02:07Z  clean   check_passed  graphene run             python3 -m unittest -q tests.test_all
-  2026-09-21T06:02:07Z  clean   rolled_up     graphene run
-  2026-09-21T06:02:07Z  readme  started       run:claude
-  2026-09-21T06:02:16Z  readme  check_passed  claude:ca2056d2          grep -qi lower README.md && grep -qi upper README.md
-  2026-09-21T06:02:16Z  readme  finished      claude:ca2056d2          changed: README.md
-  2026-09-21T06:02:18Z  readme  landed        graphene run
+  2026-09-21T06:54:29Z  *       goal          alexlopez (no terminal)  a toy service whose listings are safe to show to a customer
+  2026-09-21T06:54:29Z  clean   added         alexlopez (no terminal)
+  2026-09-21T06:54:29Z  emails  added         alexlopez (no terminal)
+  2026-09-21T06:54:29Z  names   added         alexlopez (no terminal)
+  2026-09-21T06:54:29Z  readme  added         alexlopez (no terminal)
+  2026-09-21T06:54:29Z  emails  started       run:claude
+  2026-09-21T06:54:29Z  names   started       run:claude
+  2026-09-21T06:54:40Z  emails  check_passed  claude:7b94c712          python3 -c "from src.emails import emails; assert emails() == ['ada@example.com', 'lin@example.com']"
+  2026-09-21T06:54:39Z  emails  finished      claude:7b94c712          changed: src/emails.py
+  2026-09-21T06:54:42Z  emails  landed        graphene run
+  2026-09-21T06:54:43Z  names   check_passed  claude:224bcda5          python3 -c "from src.names import names; assert names() == ['ADA', 'LIN']"
+  2026-09-21T06:54:42Z  names   finished      claude:224bcda5          changed: src/names.py
+  2026-09-21T06:54:46Z  names   landed        graphene run
+  2026-09-21T06:54:46Z  clean   check_passed  graphene run             python3 -m unittest -q tests.test_all
+  2026-09-21T06:54:46Z  clean   rolled_up     graphene run
+  2026-09-21T06:54:46Z  readme  started       run:claude
+  2026-09-21T06:54:55Z  readme  check_passed  claude:c3b27917          grep -qi lower README.md && grep -qi upper README.md
+  2026-09-21T06:54:55Z  readme  finished      claude:c3b27917          changed: README.md
+  2026-09-21T06:54:57Z  readme  landed        graphene run
 
 --- what must be true:
   ok    the two leaves were running at the same time
@@ -61,17 +61,18 @@ the plan: a toy service whose listings are safe to show to a customer
   ok    and the leaf that waited on it ran only then
   ok    the integration check passes in the person's checkout now
 
-*   f1d018c say what the two functions return (readme)
+*   4c5ce84 say what the two functions return (readme)
 |\  
-| * d2531d7 say what the two functions return
+| * 961ebb1 say what the two functions return
 |/  
-*   5e5ce5e names() returns upper-case names (names)
+*   8d34d1a names() returns upper-case names (names)
 |\  
-| * 7c4171f names() returns upper-case names
-* |   476ac96 emails() returns lower-case emails (emails)
+| * fd91d92 names() returns upper-case names
+* |   5b9c0d2 emails() returns lower-case emails (emails)
 |\ \  
 | |/  
 |/|   
-| * f555304 emails() returns lower-case emails
+| * 102e53c emails() returns lower-case emails
 
-repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.yS28CW3mNT/toy
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.wfUrYLvPR5/toy
+exit 0
