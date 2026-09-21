@@ -1,0 +1,16 @@
+n1  open  notes.md says ready
+I released n1 without doing the work, since you asked me to only start it and then stop. `notes.md` is unchanged, and the node is back with you along with the reason I gave for releasing it.
+
+the plan: 1 leaf, 0 done, 0 running
+  n1  open      notes.md says ready  agent  notes.md  ·  ready · handed back: Asked only to start the node and stop without doing the work; notes.md was not changed.
+
+  2026-09-21T05:58:10Z  n1  added         alexlopez (no terminal)
+  2026-09-21T05:58:16Z  n1  started       claude:88ea35d1
+  2026-09-21T05:58:17Z  n1  stop_refused  claude:88ea35d1
+  2026-09-21T05:58:21Z  n1  released      claude:88ea35d1          Asked only to start the node and stop without doing the work; notes.md was not changed.
+
+  ok    the stop was refused while the node was held
+  ok    and the node ended done (by Graphene's check) or handed back with a reason
+
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.WTfpbSnrYy/toy
+exit 0

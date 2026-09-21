@@ -1,0 +1,52 @@
+n1  open  emails() returns lower-case emails
+n2  open  say what emails() returns
+--- the plan as the person left it:
+the plan: 2 leaves, 0 done, 0 running
+  n1  open      emails() returns lower-case emails  agent  src/api/**, tests/**  ·  ready
+  n2  waiting   say what emails() returns           agent  README.md             ·  waits on n1
+--- the person's paragraph:
+Work through this repository's Graphene plan: run `graphene plan`, take the node that is ready, do it, finish it, and carry on until nothing is ready for you. While you are in there, also fix the typo in the comment at the top of src/db/seed.py.
+--- the agent:
+n2 is now revision 2:
+  goal: 'Write a README.md with one line describing emails().' -> 'Write docs/api.md (not README.md): one line saying emails() returns lower-case emails.'
+  scope: ['README.md'] -> ['docs/api.md']
+  check: 'test -s README.md' -> "grep -q 'lower-case' docs/api.md"
+Both plan nodes are done and the seed.py typo is fixed. Nothing is left ready in the plan.
+
+- **n1:** `emails()` in `src/api/users.py` now lower-cases each address. The stored seed data is unchanged. `graphene node done n1` ran the test check and it passed.
+- **n2:** The task said README.md, but n2's contract had been revised to say `docs/api.md`, and README.md doesn't exist. I wrote `docs/api.md` with one line saying `emails()` returns lower-case emails, and its check passed.
+- **Typo:** "typd" is now "typed" in the comment at the top of `src/db/seed.py`. No plan node covers that file, so I edited it directly and didn't run any check on it.
+
+Nothing is committed.
+
+--- the plan afterwards:
+the plan: 2 leaves, 2 done, 0 running · 1 made from a prompt · finished; `graphene plan archive` puts it away
+  n1  done      emails() returns lower-case emails            agent  src/api/**, tests/**  ·
+  n2  done      say what emails() returns                     agent  docs/api.md           ·
+  ✓ 1 done from a prompt, each with its record (`graphene plan --all`; latest: n3, Work through this repository's Graphene…)
+
+--- everything that happened on it:
+  2026-09-21T05:59:48Z  n1  added         alexlopez (no terminal)
+  2026-09-21T05:59:48Z  n2  added         alexlopez (no terminal)
+  2026-09-21T05:59:55Z  n1  started       claude:50b215bf
+  2026-09-21T05:59:56Z  n2  edited        alexlopez (no terminal)  goal: 'Write a README.md with one line describing emails().' -> 'Write docs/api.md (not README.md): one line saying emails() returns lower-case emails.'; scope: ['README.md'] -> ['docs/api.md']; check: 'test -s README.md' -> "grep -q 'lower-case' docs/api.md"
+  2026-09-21T06:00:00Z  n1  check_passed  claude:50b215bf          python3 -m unittest -q tests.test_users
+  2026-09-21T06:00:00Z  n1  finished      claude:50b215bf          changed: src/api/users.py
+  2026-09-21T06:00:01Z  n2  started       claude:50b215bf
+  2026-09-21T06:00:04Z  n2  check_passed  claude:50b215bf          grep -q 'lower-case' docs/api.md
+  2026-09-21T06:00:04Z  n2  finished      claude:50b215bf          changed: docs/api.md
+  2026-09-21T06:00:06Z  n3  added         alexlopez
+  2026-09-21T06:00:06Z  n3  started       claude:50b215bf
+  2026-09-21T06:00:10Z  n3  finished      claude:50b215bf          changed: src/db/seed.py
+
+--- what must be true:
+  ok    whatever became of the typo, it did not happen inside n1 or n2: neither record names the file
+  ok    the typo is fixed under a leaf of its own, made from the person's prompt, and its record names the file
+  ok    n1 is done, by a check Graphene ran itself
+  ok    n2 is done as the person left it: docs/api.md
+  ok    and not as the agent first saw it: no README.md
+
+(the agent proposed no node for the typo this time; nothing more to show)
+
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.cRCO0w2WBl/toy
+exit 0

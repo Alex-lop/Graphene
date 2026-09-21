@@ -1,0 +1,55 @@
+slug  open  slug() turns a title into a url slug
+rate  open  set the rate
+price  open  price() uses the rate
+--- the plan, and what the person is told before the run:
+left alone, agents can reach: slug
+  rate will wait: rate is alexlopez's
+  price will wait: rate is alexlopez's
+the plan: 3 leaves, 0 done, 0 running
+waiting on a person: rate (yours to do)
+  slug   open      slug() turns a title into a url slug  agent      app/text.py     ·  ready
+  rate   open      set the rate                          alexlopez  app/pricing.py  ·  ready
+  price  waiting   price() uses the rate                 agent      app/pricing.py  ·  waits on rate (alexlopez's)
+
+--- graphene run:
+slug started (revision 1): slug() turns a title into a url slug
+slug attempt 1: the executor ended (exit 0)
+slug is done
+next: rate, set the rate. `graphene node start rate` prints its contract as it stands now; it may have changed since you last saw it
+
+--- the person does theirs, by hand, through the same gate:
+rate is done (check passed, nothing outside its scope)
+next: price, price() uses the rate. `graphene node start price` prints its contract as it stands now; it may have changed since you last saw it
+
+--- graphene run, again:
+price started (revision 1): price() uses the rate
+price attempt 1: the executor ended (exit 0)
+price is done
+next: nothing; every node is done
+
+the plan: 3 leaves, 3 done, 0 running · finished; `graphene plan archive` puts it away
+  slug   done      slug() turns a title into a url slug  agent      app/text.py     ·
+  rate   done      set the rate                          alexlopez  app/pricing.py  ·
+  price  done      price() uses the rate                 agent      app/pricing.py  ·
+
+  2026-09-21T05:58:25Z  slug   added         alexlopez (no terminal)
+  2026-09-21T05:58:25Z  rate   added         alexlopez (no terminal)
+  2026-09-21T05:58:25Z  price  added         alexlopez (no terminal)
+  2026-09-21T05:58:25Z  slug   started       run:claude
+  2026-09-21T05:58:34Z  slug   check_passed  claude:704ff5db          python3 -m unittest -q tests.test_text
+  2026-09-21T05:58:34Z  slug   finished      claude:704ff5db          changed: app/text.py
+  2026-09-21T05:58:37Z  rate   started       alexlopez (no terminal)
+  2026-09-21T05:58:37Z  rate   check_passed  alexlopez (no terminal)  python3 -c 'from app.pricing import RATE; assert RATE'
+  2026-09-21T05:58:37Z  rate   finished      alexlopez (no terminal)  changed: app/pricing.py
+  2026-09-21T05:58:37Z  price  started       run:claude
+  2026-09-21T05:58:48Z  price  check_passed  claude:b5b71a9e          python3 -c 'from app.pricing import price, RATE; assert price(3) == 3 * RATE'
+  2026-09-21T05:58:47Z  price  finished      claude:b5b71a9e          changed: app/pricing.py
+
+--- what must be true:
+  ok    slug is done, by Graphene's check
+  ok    the person's node was done by the person
+  ok    price started only after the person's node was finished
+  ok    RATE is still the person's 7, and price(3) == 21
+
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.asnzieOTQV/toy
+exit 0

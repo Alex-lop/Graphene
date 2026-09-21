@@ -203,8 +203,9 @@ scope is refused, two leaves cannot have written one file. If git still will not
 uncommitted work is in the way), the merge is aborted, your checkout is as it was, the leaf stops in
 `review` with a log entry `unlanded` naming its branch, and what needs it waits. `git merge
 graphene/<id>` and `graphene node signoff <id>` finish it by hand; `graphene node reopen` sends it
-round again. An executor is never asked to resolve a conflict. If the worktree has no copy of your
-Claude Code hook settings (they are usually untracked), the hooks do not run there; the boundary does.
+round again. An executor is never asked to resolve a conflict. Your untracked Claude Code hook settings
+(`.claude/settings.local.json`, which git ignores in every worktree) are copied into each worktree,
+so the hooks hold a leaf there as they do in your checkout.
 
 ## P5. Where each mechanism ends
 
