@@ -49,15 +49,21 @@ it in the terminal, which is the part that is supposed to be worth the tokens:
 
 ```sh
 as_me graphene plan --all                       # the tree: the goal, the sub-goals, the leaves
-as_me graphene node set n3 --scope 'normalize/fields.py' \
-      --check 'python3 -m unittest -q tests.test_contract' \
-      --goal 'their prices are in cents, not pounds'
-as_me graphene node add "drop nought prices, every source" --parent n1 \
-      --scope 'validate/rules.py' --check 'python3 -m unittest discover -q tests'
-as_me graphene node drop n6
+as_me graphene node set <id> --scope '<a path it may touch>' \
+      --check '<the command that must pass>' --goal '<what you actually meant>'
+as_me graphene node add "<the one it missed>" --parent <id> \
+      --scope '<paths>' --check '<command>'
+as_me graphene node drop <id>
 as_me graphene plan accept
 log accept "graphene plan accept"
 ```
+
+Those are placeholders on purpose. An earlier draft of this recipe filled them in with real paths
+and a real goal from the `feeds` card — `normalize/fields.py`, *"their prices are in cents, not
+pounds"*, `validate/rules.py` — while the paragraph arm's example said only *"whatever you would
+actually have typed"*. That is three of the answers handed to one arm by the protocol itself. The
+21 September auditor found it before anyone ran from it. **Write your own scopes, goals and
+checks, from the card and from what the agent proposed, in both arms.**
 
 Then let it go, and watch it or do not:
 
@@ -281,6 +287,14 @@ and were the things the card said not to touch left alone. It is the same shape 
 feeds the code was never shown, each one an instance of something the card states as a *rule*
 rather than as an example — only product elements are products, prices are in cents, nought means
 "ask us", a product missing a field is skipped and not a crash, entities and accents survive, an
-empty feed is a clean exit, order is the feed's order. Code that passes `accept.py` by
-pattern-matching the sample fails here. Both are run by tally, afterwards, and neither arm's
+empty feed is a clean exit, order is the feed's order.
+
+It used to say here that code passing `accept.py` by pattern-matching the sample fails this. It
+does not. The 21 September auditor built three readers and measured: a correct one scores 12 of 12,
+a lazy `el.tag != "summary"` scores 11, and a regex fitted to the literal shape of the sample's
+product line scores 11. Eleven of the twelve properties come free from any `ElementTree` call plus
+the repository's own `normalize()`, `to_cents(…, "minor")` and negative-price rule. **This suite
+separates a lazy reader from a careful one by one check in twelve.** Treat a 12 of 12 as weak
+evidence, and if you write a held-out suite for a new task, check what a deliberately lazy
+implementation scores on it before you trust it. Both are run by tally, afterwards, and neither arm's
 person ever sees either.
