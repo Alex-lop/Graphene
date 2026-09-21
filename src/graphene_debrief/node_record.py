@@ -571,7 +571,8 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         lines.append(
             f"    coverage: of the {len(paths)} path{_s(len(paths))} git said had changed under them, "
             f"{sum(paths.values())} inside the scope of the leaf that changed it; "
-            f"{total['changed_edit']} to a recorded edit, {total['changed_shell']} to a recorded shell command, {alone} to git alone"
+            f"{total['changed_edit']} to a recorded edit, {total['changed_shell']} to a recorded shell "
+            f"command, {alone} to git alone"
         )
     missing = [n.id for n in leaves if n not in [c for c, _ in counted]]
     if missing:
