@@ -19,7 +19,7 @@ In a repo of your own: `graphene plan goal "…"`, ask your agent to propose a t
 
 ## 2. What is waiting on you
 
-Nothing blocks the next step. One PR, `tree` into `main`, is yours to merge (link at the end).
+Nothing blocks the next step. One PR, `tree` into `main`, is yours to merge: https://github.com/Alex-lop/Graphene/pull/26
 Decisions 13 to 27 in `docs/DIRECTION.md` are tonight's, each with its reason and the question I would
 have asked. The four I would read first:
 
@@ -149,7 +149,7 @@ The second line is for a repo whose store 0.4 has opened (schema 4, no table cha
 ## State of every branch
 
 - `main`: untouched, `6cece1c`, as you left it. `origin/main` likewise.
-- `tree`: tonight's work, pushed to `origin/tree`. PENDING: final SHA, CI run, PR link.
+- `tree`: tonight's work, pushed to `origin/tree`, CI green; PR #26 into `main`, not merged (yours).
 - Left on the machine: five sub-agent worktrees under `.claude/worktrees/agent-*` with their
   branches (`worktree-agent-*`), merged or read-only; `git worktree remove` and `git branch -D` are
   yours, as before.
