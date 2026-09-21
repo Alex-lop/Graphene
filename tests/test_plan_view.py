@@ -101,6 +101,45 @@ def test_adding_a_node_moves_no_column_unless_its_depth_changed(store):
     assert after["c"] == 2 and after["d"] == 2
 
 
+# -- the tree ---------------------------------------------------------------------------------------
+
+
+def test_the_page_carries_the_goal_the_tree_and_every_nodes_why(store):
+    plan.set_goal(store, "people can sign in", ALEX)
+    plan.propose(
+        store,
+        [
+            node(
+                "top",
+                scope=[],
+                check=None,
+                goal="an endpoint they can call",
+                children=[node("a"), node("b")],
+            )
+        ],
+        ALEX,
+    )
+    view = build_plan_view(store)
+    at = {n["id"]: n for n in view["nodes"]}
+    assert view["goal"] == "people can sign in"
+    assert [n["id"] for n in view["nodes"]] == ["top", "a", "b"]  # a parent before its children
+    assert (at["top"]["depth"], at["a"]["depth"]) == (0, 1)
+    assert at["a"]["parent"] == "top" and at["top"]["parent"] is None
+    assert at["top"]["sub_goal"] and not at["a"]["sub_goal"]
+    assert at["top"]["display_state"] == "sub-goal"  # nobody takes it; its children are the work
+    assert (at["top"]["leaves_done"], at["top"]["leaves_total"]) == (0, 2)
+    assert at["a"]["why"] == ["people can sign in", "top (top): an endpoint they can call"]
+    assert at["top"]["why"] == ["people can sign in"] and not at["a"]["aside"]
+
+
+def test_a_sub_goal_counts_the_leaves_beneath_it_as_they_finish(store, repo, finish):
+    plan.propose(store, [node("top", scope=[], check=None, children=[node("a"), node("b")])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    at = {n["id"]: n for n in build_plan_view(store)["nodes"]}
+    assert (at["top"]["leaves_done"], at["top"]["leaves_total"]) == (1, 2)
+
+
 # -- what the page says about a node ---------------------------------------------------------------
 
 

@@ -21,5 +21,6 @@ export default defineConfig({
       },
     },
   },
-  test: { environment: "node", include: ["src/**/*.test.ts"] },
+  // a component test renders to a string with react-dom/server: no browser, no jsdom, no new dependency
+  test: { environment: "node", include: ["src/**/*.test.ts", "src/**/*.test.tsx"] },
 });

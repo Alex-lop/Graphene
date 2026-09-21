@@ -6,7 +6,7 @@ import type { ReactElement } from "react";
 import { Footer, Header, Rail } from "./Chrome";
 import { Inspector } from "./Inspector";
 import { MapView } from "./Map";
-import { PlanHeader, PlanInspector, PlanStrip, PlanView } from "./Plan";
+import { PlanHeader, PlanInspector, PlanStrip, PlanTree, PlanView } from "./Plan";
 import { exported, load, send } from "./data";
 import { chain, matching } from "./model";
 import type { Counter, Selection, View } from "./model";
@@ -100,6 +100,7 @@ export function App(): ReactElement {
         <PlanHeader plan={plan} view={shown} onView={setView} />
         <main className="centre">
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
+          <PlanTree plan={plan} picked={picked} onPick={setPicked} />
           <PlanView plan={plan} picked={picked} onPick={setPicked} />
         </main>
         <PlanInspector plan={plan} picked={picked} write={write} />
