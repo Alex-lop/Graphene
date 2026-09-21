@@ -18,6 +18,12 @@ Two numbers are computed here that tally.py does not print, and each says where 
   handoff              spec_chars per person action: how much specification the person got in front
                        of an executor for each thing they did. The directive's measure, as close as
                        this harness can get to it.
+  unforced             how many times the person had to speak to an executor, other than the change
+                       of mind the card forces on them: every `prompt` plus every `correction` not
+                       marked `mandated`. `restarts` asks a stand-in to decide whether what they
+                       typed was a correction or a next step, and on 21 September two runs of the
+                       same cell called the identical event by the two different names. This one
+                       asks nobody anything: it counts messages.
 
 Everything else — including `quality`, the held-out checks, and both restart counts — comes
 straight out of tally.py.
@@ -41,6 +47,7 @@ COLUMNS = [
     ("refused_writes", "refused"),
     ("restarts", "restarts"),
     ("restarts_unmandated", "restarts (real)"),
+    ("unforced_messages", "unforced"),
     ("rework_lines", "rework"),
     ("rework_recorded_lines", "churn"),
     ("churn_double_counted_lines", "double-counted"),
@@ -131,7 +138,15 @@ def collect(runs_dir: Path) -> list[dict]:
         db = repo / ".graphene" / "graphene.db"
         spec = spec_chars(db, entries, arm)
         acc, qua = tally["acceptance"], tally.get("quality")
+        unforced = sum(
+            1
+            for e in entries
+            if e.get("who") == "person"
+            and (e.get("type") == "prompt" or (e.get("type") == "correction" and not e.get("mandated")))
+            and str(e.get("text") or "").strip()
+        )
         tally.update(
+            unforced_messages=unforced,
             run=run.name,
             task=task,
             style=style,
