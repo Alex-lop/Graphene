@@ -232,8 +232,7 @@ keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session; calls made before any recorded prompt appear in the debrief under their own heading,
-"Before the first recorded prompt". Subagent calls carry `agent_id` and are grouped the same way.
+the session. Subagent calls carry `agent_id`, which is the lane they are drawn on.
 
 ### Transcript backfill
 
