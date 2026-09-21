@@ -9,7 +9,7 @@ of attempts, the node is handed back with the reason and the run moves on. Nothi
 exit code or a closing message, and no vendor's ceiling on refused stops applies: the loop is ours.
 
 One node at a time, in the checkout the command was started in.
-ponytail: no worktree per node and no parallel nodes; add them when two agents must run at once.
+TODO: no worktree per node and no parallel nodes; add them when two agents must run at once.
 """
 
 from __future__ import annotations

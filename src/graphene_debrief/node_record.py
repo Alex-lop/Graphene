@@ -87,7 +87,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
     at = at or P._now()
     log = store.node_log(node.id)
     windows = _windows(log)
-    # ponytail: every commit the store holds, then windowed here; a windowed query when one repo's
+    # TODO: every commit the store holds, then windowed here; a windowed query when one repo's
     # store holds a year of them. The store only holds commits git had inside a recorded session's
     # window, which is the hole `_fill` prints: one made while nothing was recorded is in neither.
     by_sha = {c.sha: c for c in store.commits_between("0000", "9999")}

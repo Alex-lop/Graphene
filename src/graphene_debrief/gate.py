@@ -198,7 +198,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
             )
         if len(command) > PARSED:
-            return None  # ponytail: too long to parse inside the hook's time; `done` asks git anyway
+            return None  # TODO: too long to parse inside the hook's time; `done` asks git anyway
         from .attribute import bash_written_paths
 
         held = _held(store, sid)

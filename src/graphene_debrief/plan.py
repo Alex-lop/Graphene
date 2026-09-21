@@ -29,7 +29,7 @@ ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer 
 # finished plan stays in force until the person pauses or archives it. A proposal binds nobody.
 LIVE = (OPEN, RUNNING, REVIEW, DONE)
 GONE = (DROPPED, ARCHIVED)
-CHECK_TIMEOUT = 1800  # seconds; ponytail: one fixed cap, a per-node value when a real check needs longer
+CHECK_TIMEOUT = 1800  # seconds; TODO: one fixed cap, a per-node value when a real check needs longer
 TAIL = 2000  # characters of a check's output kept in the log
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner")
@@ -158,7 +158,7 @@ def in_scope(path: str, scope: list[str]) -> bool:
 
 def overlap(a: list[str], b: list[str], files: list[str]) -> list[str]:
     """Paths both scopes claim: the tracked files either matches, and a glob one scope spells that
-    the other also covers. ponytail: a file neither scope names literally and that does not exist
+    the other also covers. TODO: a file neither scope names literally and that does not exist
     yet is not seen; the write-time refusal still holds for it, since no scope is ever widened."""
     both = [f for f in files if in_scope(f, a) and in_scope(f, b)]
     literal = [g for g in a if not g.startswith("!") and in_scope(g.rstrip("/*") or g, b)]
