@@ -216,3 +216,86 @@ def test_the_record_rolls_up_the_same_way_per_subtree_and_per_plan(store, repo):
     assert "1 of 1 passed" in lines
     whole = "\n".join(rolled_up(store, repo, plan.leaves(everything)))
     assert "the 3 leaves" in whole and "b, docs" in whole
+
+
+# -- what the closing review broke, each kept as a test -----------------------------------------------
+
+
+def test_a_proposal_binds_nobody_not_even_the_leaf_it_was_put_under(store, repo):
+    plan.propose(store, [{"id": "mine", "title": "t", "scope": ["README.md"], "check": "true"}], ALEX)
+    plan.start(store, "mine", BOT, repo)
+    plan.propose(
+        store, [{"id": "c1", "parent": "mine", "title": "c", "scope": ["src/**"], "check": "true"}], BOT
+    )
+    (repo / "README.md").write_text("done\n")
+    assert plan.finish(store, "mine", BOT).state == DONE  # still a leaf, and its holder can close it
+
+
+def test_a_running_leaf_cannot_be_made_a_sub_goal_by_moving_a_node_under_it(store, repo):
+    plan.propose(store, [{"id": "x", "title": "x", "scope": ["README.md"], "check": "false"}], ALEX)
+    plan.propose(store, [{"id": "y", "title": "y", "scope": ["src/**"], "check": "true"}], ALEX)
+    plan.start(store, "x", BOT, repo)
+    with pytest.raises(Refused, match="x is running"):
+        plan.edit(store, "y", {"parent": "x"}, ALEX)
+
+
+def test_archive_never_puts_a_parent_away_over_a_child_that_stays(store, repo):
+    plan.propose(store, TREE, ALEX)
+    do(store, repo, "a", "src/api/a.txt")
+    do(store, repo, "b", "src/api/b.txt")
+    plan.edit(store, "docs", {"needs": ["b"]}, ALEX)  # unfinished work waits on b, so b stays
+    gone = {n.id for n in plan.archive(store, ALEX)}
+    assert "api" not in gone and "b" not in gone
+    plan.propose(store, [{"title": "still editable", "scope": ["README.md"], "check": "true"}], ALEX)
+
+
+def test_what_a_sub_goals_check_leaves_behind_is_nobodys_change(store, repo):
+    tree = json.loads(json.dumps(TREE))
+    tree[0]["check"] = "touch coverage.xml"
+    plan.propose(store, tree, ALEX)
+    do(store, repo, "a", "src/api/a.txt")
+    do(store, repo, "b", "src/api/b.txt")
+    assert plan.get(store, "api").state == DONE
+    plan.start(store, "docs", BOT, repo)  # not refused over coverage.xml "changed while no node owned it"
+
+
+def test_a_person_can_overrule_a_sub_goals_check_with_a_reason(store, repo):
+    tree = json.loads(json.dumps(TREE))
+    tree[0]["check"] = "false"
+    plan.propose(store, tree, ALEX)
+    do(store, repo, "a", "src/api/a.txt")
+    do(store, repo, "b", "src/api/b.txt")
+    with pytest.raises(Refused):
+        plan.finish(store, "api", BOT, checkout=repo, override="nope")  # not an agent's
+    assert plan.finish(store, "api", ALEX, checkout=repo, override="checked by hand").state == DONE
+    assert store.node_log("api", ("overruled",))[-1]["detail"]["override"] == "checked by hand"
+
+
+def test_undoing_the_split_of_a_checked_sub_goal_does_not_brick_the_plan(store):
+    plan.propose(store, TREE, ALEX)
+    plan.edit(store, "docs", {"needs": []}, ALEX)
+    plan.edit(store, "b", {"needs": []}, ALEX)
+    plan.drop(store, "a", ALEX)
+    plan.drop(store, "b", ALEX)  # api now has a check and no scope and no children
+    plan.propose(store, [{"title": "later work", "scope": ["README.md"], "check": "true"}], ALEX)
+    plan.edit(store, "docs", {"title": "still editable"}, ALEX)
+    assert "api" not in [n.id for n in plan.ready(plan.nodes(store))]
+
+
+def test_an_id_git_would_not_take_as_a_branch_is_refused_when_it_is_made(store):
+    for bad in ("a..b", "x.lock", "n1."):
+        with pytest.raises(Refused, match="not a usable id"):
+            plan.propose(store, [{"id": bad, "title": "t", "scope": ["README.md"], "check": "true"}], ALEX)
+
+
+def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
+    """pytest takes the terminal away from the tests it runs, and with "no terminal is still the
+    person" a test file an executor wrote inside its own scope accepted proposals and widened scopes."""
+    for mark in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "CODEX_SESSION_ID", "GRAPHENE_NODE"):
+        monkeypatch.delenv(mark, raising=False)
+    who = (
+        "import os; from graphene_debrief.plan import caller as c; "
+        "raise SystemExit(c(dict(os.environ), False).person)"
+    )
+    ok, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)
+    assert ok  # exit 0: not a person

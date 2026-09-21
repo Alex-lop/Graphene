@@ -46,7 +46,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         mine = [n for n in P.ready(everything, who) if n.id != but]
         if mine:
             first = mine[0]
-            also = f" (also ready: {', '.join(n.id for n in mine[1:])})" if mine[1:] else ""
+            more = f" and {len(mine) - 9} more" if len(mine) > 9 else ""
+            also = f" (also ready: {', '.join(n.id for n in mine[1:9])}{more})" if mine[1:] else ""
             return [
                 f"next: {first.id}, {first.title}{also}. `graphene node start {first.id}` prints its "
                 "contract as it stands now; it may have changed since you last saw it"
@@ -74,7 +75,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             if who.person
             else " You can stop: the rest waits for a person, and `graphene plan` shows them that"
         )
-        return [f"next: nothing is ready for you: {'; '.join(why)}.{tail}"]
+        more = f"; and {len(why) - 8} more" if len(why) > 8 else ""
+        return [f"next: nothing is ready for you: {'; '.join(why[:8])}{more}.{tail}"]
 
     def brief(text: str, node_id: str) -> str:
         """A reason as one table cell: the whole of it is in `node show`."""
@@ -133,7 +135,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 "subtree from JSON"
             ]
         by_id = {n.id: n for n in alive}
-        under = P.kids(alive)
+        under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
         leaves = [n for n in P.leaves(alive) if not n.aside]
         asides = [n for n in alive if n.aside]
         count = {s: sum(1 for n in leaves if n.state == s) for s in (P.RUNNING, P.DONE)}
@@ -146,7 +148,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             head += f" · {len(asides)} made from a prompt"
         if P.paused(store):
             head += " · PAUSED: nothing starts and nothing is enforced"
-        elif leaves and count[P.DONE] == len(leaves):
+        stuck = [
+            n
+            for n in alive
+            if n.state == P.OPEN and under.get(n.id) and all(c.state == P.DONE for c in under[n.id])
+        ]
+        if not P.paused(store) and leaves and count[P.DONE] == len(leaves) and not stuck:
             head += " · finished; `graphene plan archive` puts it away"
         lines.append(head)
         yours = [n for n in alive if n.state == P.REVIEW]
@@ -156,11 +163,6 @@ def register(cli: typer.Typer, root, open_store, fail):
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
         yours += [n for n in P.ready(alive) if n.owner != P.AGENT]
-        stuck = [
-            n
-            for n in alive
-            if n.state == P.OPEN and under.get(n.id) and all(c.state == P.DONE for c in under[n.id])
-        ]
         if who.person and (yours or stuck):
             ask = {P.PROPOSED: "accept", P.REVIEW: "sign off", P.OPEN: "yours to do"}
             seen: list[str] = []
@@ -172,7 +174,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                 if n.id not in seen and not seen.append(n.id)
             ]
             told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
-            lines.append("waiting on a person: " + ", ".join(told))
+            more = (
+                f", and {len(told) - 8} more (`graphene plan --all`)"
+                if len(told) > 8 and not everything
+                else ""
+            )
+            lines.append("waiting on a person: " + ", ".join(told if everything else told[:8]) + more)
         wid = max(len(n.id) + 2 * len(P.above(n, by_id)) for n in alive)
         wt = min(44, max(len(n.title) for n in alive))
         wo = max(len(n.owner) for n in alive)
@@ -182,13 +189,19 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def row(n: P.Node, depth: int) -> str:
             mine = under.get(n.id, [])
-            if mine:
+            if not mine and not n.scope:
+                state, what = "sub-goal", f"no leaves yet: `graphene node add … --parent {n.id}`"
+            elif mine:
                 done = sum(1 for c in P.below(n.id, alive) if not under.get(c.id) and c.state == P.DONE)
                 of = sum(1 for c in P.below(n.id, alive) if not under.get(c.id))
                 state, what = (
                     ("done" if n.state == P.DONE else n.state if n.state != P.OPEN else "sub-goal"),
                     (f"{done}/{of} done" + (f"; then `{n.check}`" if n.check and n.state != P.DONE else "")),
                 )
+                if n.id in closed:
+                    inside = [c for c in P.below(n.id, alive) if c.id in ready_ids]
+                    what += f" · {len(inside)} ready" if inside else ""
+                    what += f" · {of} leaves folded (`graphene plan --all` unfolds)"
             else:
                 state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
                 what = describe(store, n, by_id)
@@ -196,8 +209,20 @@ def register(cli: typer.Typer, root, open_store, fail):
             cells = f"  {ident}  {state.ljust(8)}  {cut(n.title, wt).ljust(wt)}  {n.owner.ljust(wo)}  "
             return f"{cells}{scope_cell(n).ljust(ws)}  ·  {what}".rstrip()
 
+        # Folded, a sub-goal with nothing moving under it (nothing running, in review or proposed) is one
+        # line: a plan of sixty leaves just accepted is a dozen lines, not seventy-eight.
+        moving = (P.RUNNING, P.REVIEW, P.PROPOSED)
+        closed = {
+            n.id
+            for n in alive
+            if fold and under.get(n.id) and not any(c.state in moving for c in P.below(n.id, alive))
+        }
+        ready_ids = {n.id for n in P.ready(alive)}
+
         def walk(parent: str | None, depth: int) -> None:
             folded: list[P.Node] = []
+            if parent in closed:
+                return
             for n in under.get(parent, []):
                 if n.aside and n.state == P.DONE and not everything:
                     continue
@@ -324,14 +349,26 @@ def register(cli: typer.Typer, root, open_store, fail):
             return text
 
         console = Console()
+
+        def fitted() -> Text:
+            """The frame cut to the screen from the middle, never from the ends: what waits on the
+            person is at the top and what just happened at the bottom, and a live view has no scrollback."""
+            rows = frame().split("\n")
+            room = max(console.height - 1, 8)
+            if len(rows) <= room:
+                return Text("\n").join(rows)
+            tail = 8
+            cut = Text(f"  … {len(rows) - room + 1} lines not shown: `graphene plan` has them all", "dim")
+            return Text("\n").join([*rows[: room - tail - 1], cut, *rows[-tail:]])
+
         if once:
             console.print(frame())
             return
         try:
-            with Live(frame(), console=console, screen=True, auto_refresh=False) as live:
+            with Live(fitted(), console=console, screen=True, auto_refresh=False) as live:
                 while True:
                     time.sleep(every)
-                    live.update(frame(), refresh=True)
+                    live.update(fitted(), refresh=True)
         except KeyboardInterrupt:
             pass
 
@@ -647,8 +684,22 @@ def register(cli: typer.Typer, root, open_store, fail):
     @node_cli.command("signoff")
     def signoff_(node_id: str = typer.Argument(...)) -> None:
         """A person's say-so: the node is done."""
-        run(lambda s: P.signoff(s, node_id, P.caller(), checkout=checkout()))
+
+        def go(store):
+            P.signoff(store, node_id, P.caller(), checkout=checkout())
+            return (store.node_log(node_id, ("unlanded",)) or [{"detail": {}}])[-1]["detail"]
+
+        left = run(go)
         out(f"{node_id} is done (signed off)")
+        if left.get("branch"):  # the person merged it by hand: its worktree goes, and its branch if merged
+            where = ["git", "-C", str(checkout())]
+            subprocess.run([*where, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
+            gone = subprocess.run([*where, "branch", "-d", left["branch"]], capture_output=True)
+            if gone.returncode != 0:
+                out(
+                    f"{left['branch']} is not merged here, so it was kept: "
+                    f"`git branch -D {left['branch']}` drops it"
+                )
 
     @node_cli.command()
     def reopen(

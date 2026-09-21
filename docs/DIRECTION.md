@@ -105,7 +105,8 @@ above, the old one is left as written and the change is named here.
     hands over are the same words. The person reads the same lines in `graphene plan`.
 18. **A request you type into a session is a leaf. This changes decision 4.** With a plan in force
     and no node held, the first write of a turn makes a leaf from your prompt, held by that session.
-    You run nothing. If you wrote `scope: …` or `check: …` in the prompt, they bind like any
+    You run nothing. If you typed the CLI's flags in the prompt (`--scope 'src/db/**' --check 'make
+    test'`), they bind like any
     leaf's; if you did not, it may touch anything, it ends when the turn ends, and its record is
     git's list of what it changed. The scope is never guessed from the prose. No edit, no leaf.
     A session that holds a planned leaf is still held to it. `graphene run`'s executors never get
@@ -116,7 +117,8 @@ above, the old one is left as written and the change is named here.
     `docs/proof/tuesday.sh`. *Question:* is "anything, until the turn ends" too loose a default for
     you? The alternative I can defend is "anything no other open leaf claims".
 19. **A plain yes typed into the session accepts. This changes decision 5 in one place.** A short
-    prompt that starts with yes / ok / go ahead / accept (240 characters at most) accepts what that
+    prompt that starts with yes / ok / go ahead / accept (80 characters at most, no question mark, no
+    "but", "not", "drop" and the like) accepts what that
     session proposed, or the proposals it names, or everything when it says so, as you, and the log
     says "by their prompt in the session". Everything else in decision 5 stands. *The hole:* an
     agent that starts a second agent chooses its prompt. `graphene run` marks its executors so they
@@ -166,6 +168,19 @@ above, the old one is left as written and the change is named here.
     an indented outline above the unchanged canvas, a sub-goal shows `n/m done`, and a node's detail
     opens with the same `why:` lines an executor is told. Nothing else on the page changed.
 
+27. **What the closing review changed** (two adversaries, 47 findings, each reproduced twice; the
+    reports are in `local/reviews/`, untracked). The ones that changed a decision above: the check
+    Graphene runs is never the person (decision 20 had made a test file the person, because pytest
+    takes the terminal away); a proposal binds nobody, so a proposed child does not turn the leaf it
+    is under into a sub-goal (16); a leaf in a run's own worktree does not answer for what changes in
+    your checkout meanwhile, so you can work there during a run (21; this gives up noticing an
+    executor that writes into your checkout by absolute path from its worktree, which the hooks
+    still refuse when outside its scope); scopes that *could* meet are kept apart, not only scopes
+    that share a tracked file (22); a merge of your own in progress is never aborted; a run on a
+    detached HEAD, and a second run at once, are refused in words; a killed run's leaves are handed
+    back by the next one; you can overrule a sub-goal's check with a reason; and the terminal print
+    folds any sub-goal with nothing moving under it, so sixty leaves just accepted are a dozen lines.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -187,7 +202,14 @@ above, the old one is left as written and the change is named here.
   (`graphene run --parallel N` gives each leaf a worktree of its own: decision 21.)
 - A prompt is taken as yours (decisions 18 and 19). An agent that starts another agent writes its
   prompt. The log names every acceptance made "by their prompt", and every leaf made from one.
-- A leaf made from a prompt with no `scope:` may touch anything; it is a record, not a fence.
+- A leaf made from a prompt with no `--scope` may touch anything but the plan's store and the hooks'
+  settings; it is a record, not a fence. Its record lists what changed in the checkout during the
+  turn, which includes what you changed by hand meanwhile.
+- Both rest on the vendor being the only caller of the hook. An agent that pipes a hand-written
+  event into `graphene ingest hook` is refused by the ordinary spelling and not by a determined one.
+  Found by the closing review, which did it; the acts are logged "(no terminal) … by their prompt".
+- Every request that became a leaf is on the plan in your words, and `graphene ui --export` carries
+  the plan.
 - Whoever carries no agent's mark is taken for you (decision 20).
 - While a parallel run is going, a commit of your own on the branch it merges into can make a leaf
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,

@@ -87,18 +87,30 @@ them. It reads the store and nothing else.
 With a plan in force, the `UserPromptSubmit` hook remembers the session's latest prompt. When that
 session holds no node and is about to write (`PreToolUse`), Graphene makes a leaf from the prompt
 and starts it for the session: title and goal are the person's words; its scope and check are what
-they wrote after `scope:` and `check:`, if anything, and otherwise `**` and no check. Nothing is
+the CLI's own flags when they typed them into the prompt (`--scope 'src/db/**'`, repeatable, and a
+quoted `--check 'make test'`), and otherwise `**` and no check. (The first spelling was `scope:` and
+`check:` anywhere in the text; a review typed "double check: ./deploy.sh is never called" and the
+script ran.) A prompt that names a leaf that is ready makes no leaf: that one is there to be taken. A
+leaf made from a prompt never reaches `.graphene/` or the hooks' own settings file. Nothing is
 inferred from the prose. At `Stop` the leaf closes (`plan.close_aside`): git says what changed, the
 check runs if there is one (failing, the stop is refused with its output), and a leaf under which
 nothing changed is dropped. It is a record rather than a gate: it does not run the looks at other
 worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
 `graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
 
-The same hook reads a short prompt (240 characters at most) that begins with yes, ok, sure, accept,
+A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
+and its record says the check failed. A session is never trapped by it.
+
+The same hook reads a short prompt (80 characters at most, with no question mark and none of but,
+except, not, no, drop, skip, instead, first, before, unless, wrong) that begins with yes, ok, sure, accept,
 go ahead, do it or lgtm as the person accepting proposals: the ones it names by id, all of them if
-it says "all" or "everything", else the ones this session proposed. The log entry carries
+it says "all" or "everything", else the ones this session proposed since the person's previous prompt. The log entry carries
 `by: prompt` and the words. The agent is told, as added context, what was accepted and what is
-ready. An agent that starts a second agent writes that agent's prompt: that is the hole.
+ready. All of this rests on the vendor being the only caller of the hook, and any command an agent
+can run is also a caller: a Bash command that names `graphene … ingest` is refused, which stops the
+ordinary spelling and not a determined one; and an agent that starts a second agent writes its
+prompt. So these acts are logged with `(no terminal)`, `by: prompt` and the words, and
+`graphene plan prompts strict` turns the whole route off.
 
 ## P2. The boundary: what makes a node done
 

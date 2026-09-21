@@ -221,11 +221,19 @@ def test_the_tree_in_the_terminal_goal_first_sub_goals_counted_and_finished_work
         assert agent("node", "done", f"l{k}").exit_code == 0
     shown = person("plan").stdout.splitlines()
     assert shown[0] == "the plan: ship invoices by email" and shown[1].startswith("14 leaves, 3 done")
-    assert any(line.startswith("  api") and "sub-goal" in line and "3/14 done" in line for line in shown)
-    assert any("✓ 3 done here" in line and "l0, l1, l2" in line for line in shown)
-    assert not any(line.strip().startswith("l0 ") for line in shown)  # folded…
-    assert any(line.strip().startswith("l0 ") for line in person("plan", "--all").stdout.splitlines())
+    # nothing is moving under api, so it is one line: a plan just accepted fits a screen
+    [api] = [line for line in shown if line.startswith("  api")]
+    assert "sub-goal" in api and "3/14 done" in api and "11 ready" in api and "14 leaves folded" in api
+    assert len(shown) == 3 and any(
+        line.strip().startswith("l0 ") for line in person("plan", "--all").stdout.splitlines()
+    )
     started = agent("node", "start", "l3").stdout  # the same words for the agent, with the path to the root
     assert "why:    ship invoices by email" in started and "the HTTP surface (api)" in started
+    shown = person(
+        "plan"
+    ).stdout.splitlines()  # something is running under it now: it opens, done work folded
+    assert any("✓ 3 done here" in line and "l0, l1, l2" in line for line in shown)
+    assert any(line.strip().startswith("l3 ") and "running" in line for line in shown)
+    assert not any(line.strip().startswith("l0 ") for line in shown)
     frame = person("watch", "--once").stdout
     assert "ship invoices by email" in frame and "just now" in frame and "l3" in frame

@@ -47,7 +47,7 @@ scripts, which you can run, and what they printed.
 - **A plan in force costs nothing on a small job** (`docs/proof/tuesday.sh`). With a plan in force
   you type an ordinary request into your session, the same words you would have typed without
   Graphene. The agent does it. The request is on the plan as a leaf with a record of what it
-  touched, and you ran no command. Write `scope: src/db/** check: make test` in the request and
+  touched, and you ran no command. Write the CLI's own flags, `--scope 'src/db/**' --check 'make test'`, in the request and
   those bind it like any leaf. When an agent proposes something, "yes" in the session accepts it.
 - **A leaf is done only when Graphene says so.** `graphene node done` runs the leaf's check itself
   and asks git what changed since the leaf was started. A change outside the scope keeps it open
@@ -91,7 +91,7 @@ A control you cannot trust is worse than none, so here is where each one ends.
   from a vendor that sets none, passes for a person; the log marks every act made with no terminal.
 - A request typed into a session is taken as yours, and so is a "yes". An agent that starts another
   agent writes its prompt. The log names every leaf made from a prompt and every acceptance made by
-  one. A leaf made from a prompt with no `scope:` may touch anything: it is a record, not a fence.
+  one. A leaf made from a prompt with no `--scope` may touch anything (never the plan's store or the hooks' settings): it is a record, not a fence.
 - During `graphene run --parallel`, a change you make by hand in the checkout it merges into can
   make a leaf's `done` refuse (it sees a change it cannot account for) or keep it from landing. It
   is sent back or waits for you; nothing is lost.
@@ -203,7 +203,7 @@ were not, the line says so rather than reporting nothing.
 `graphene ui` opens the map in your browser, served to this machine only: the plan, and behind it
 the record of a run as lanes of agents over rows of files, with the files nothing accounts for drawn
 as such. `graphene ui --export FILE` writes the page as one file that opens offline; it carries
-paths, counts, commit subjects, your prompts, each agent's task, your user name, and the plan itself
+paths, counts, commit subjects, your prompts (every request that became a leaf is on the plan in your words, as its title and goal), each agent's task, your user name, and the plan itself
 (each node's goal, scope and check, without its log), and no file contents, diffs or tool output. Read it before you send it. The page's own rail lists the sessions that are recorded. How each number
 is computed, and where it can be wrong, is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 

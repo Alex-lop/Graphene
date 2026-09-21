@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
 import uuid
 from collections.abc import Callable
@@ -79,7 +80,7 @@ def run_node(
     try:
         node = P.start(store, node_id, who, checkout)
     except P.Refused as no:
-        say(f"{node_id} cannot start: {no}")
+        say(str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}")
         return None
     say(f"{node.id} started (revision {node.rev}): {node.title}")
     refusal: str | None = None
@@ -175,6 +176,7 @@ def worktree_for(store, root: Path, target: Path, node_id: str) -> Path:
     path = root / ".graphene" / WORKTREES / node_id
     _git(target, "worktree", "remove", "--force", str(path), ok=True)
     _git(target, "worktree", "prune", ok=True)
+    shutil.rmtree(path, ignore_errors=True)  # a directory git has lost track of (a killed run) goes too
     _git(target, "worktree", "add", "--quiet", "-B", f"graphene/{node_id}", str(path), "HEAD")
     # The person's hook settings are usually untracked (`graphene init` keeps them out of git through
     # .git/info/exclude, which every worktree shares), so a fresh worktree has none and the hooks
@@ -206,19 +208,25 @@ def land(
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
     ident = [] if _git(tree, "config", "user.email", ok=True).stdout.strip() else [
         "-c", "user.name=graphene", "-c", "user.email=graphene@localhost"]  # fmt: skip
+    # a merge of the person's own, half done: theirs to finish, and never ours to abort
+    theirs = _git(target, "rev-parse", "-q", "--verify", "MERGE_HEAD", ok=True).returncode == 0
     try:
+        if theirs:
+            raise P.Refused(f"a merge of your own is in progress in {target}; finish it or abort it first")
         _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
-        _git(tree, *ident, "commit", "--quiet", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
+        if _git(tree, "diff", "--cached", "--quiet", ok=True).returncode != 0:  # else it committed itself
+            _git(tree, *ident, "commit", "-q", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
         _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch)
     except P.Refused as no:
-        _git(target, "merge", "--abort", ok=True)
-        said = str(no).splitlines()
+        if not theirs:
+            _git(target, "merge", "--abort", ok=True)
+        said = [" ".join(str(no).split())]
         with store.claim():
             fresh = P.get(store, node.id)
             fresh.state = P.REVIEW
             P._save(store, fresh, "unlanded", who, P._now(), branch=branch, worktree=str(tree), why=said[:6])
         say(
-            f"{node.id} passed its boundary and did not land: {said[0]}. Nothing of yours was touched; its "
+            f"{node.id} passed its boundary and did not land: {said[0]}. Your checkout is as it was; its "
             f"work is in {tree}, on {branch}. `git merge {branch}` when the way is clear, then `graphene "
             f"node signoff {node.id}`; or `graphene node reopen {node.id} --note …` to have it done again "
             "on top of what is there now"
@@ -235,6 +243,38 @@ def land(
     return True
 
 
+def may_collide(a: list[str], b: list[str]) -> bool:
+    """Could two scopes ever claim one path? Asked of the globs themselves, not of the files that
+    exist: `**/*.py` and `src/**` share no tracked file in a repo with no Python under src/, and both
+    leaves then wrote src/new.py. Two globs may meet unless the directories they name before their
+    first wildcard are different branches of the tree. Exclusions are ignored: holding a leaf back
+    costs minutes, and a collision costs the person a merge."""
+
+    def fixed(glob: str) -> list[str]:
+        parts = glob.strip().removeprefix("./").rstrip("/").split("/")
+        upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
+        return parts[:upto]
+
+    pairs = [(fixed(x), fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
+    return any(x[: len(y)] == y[: len(x)] for x, y in pairs)
+
+
+def _only_run(root: Path):
+    """One parallel run a repo: a second one would clear the first one's worktrees from under it."""
+    lock = root / ".graphene" / "run.lock"
+    lock.parent.mkdir(exist_ok=True)
+    try:
+        other = int(lock.read_text())
+        os.kill(other, 0)
+        raise P.Refused(
+            f"another `graphene run --parallel` is going here (pid {other}); `graphene watch` shows it"
+        )
+    except (OSError, ValueError):
+        pass  # no lock, or the run that left it is gone
+    lock.write_text(str(os.getpid()))
+    return lock
+
+
 def run_parallel(
     open_store: Callable[[], object],
     root: Path,
@@ -249,7 +289,30 @@ def run_parallel(
     """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
+    if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
+        raise P.Refused(
+            f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
+            "and be lost at the next checkout. `git switch <branch>` first"
+        )
+    lock = _only_run(root)
+    try:
+        return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs) -> list[P.Node]:
     store = open_store()
+    # No other run is alive (the lock), so a leaf still held from inside a run's worktree was left
+    # by one that was killed: hand it back, or this run would find nothing ready and say nothing.
+    for n in P.nodes(store, (P.RUNNING,)):
+        if (n.executor or "").startswith("run:") and f"{os.sep}.graphene{os.sep}{WORKTREES}{os.sep}" in (
+            n.checkout or ""
+        ):
+            P.release(
+                store, n.id, P.Caller("graphene run", True), "the run that held it ended without finishing it"
+            )
+            say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
     tried: set[str] = set()
@@ -273,7 +336,14 @@ def run_parallel(
                     continue
                 if busy & set(P.all_needs(n, by_id)):
                     continue  # done in its worktree is not yet here
-                clash = next((o for o, _ in flying.values() if P.overlap(n.scope, o.scope, files)), None)
+                clash = next(
+                    (
+                        o
+                        for o, _ in flying.values()
+                        if may_collide(n.scope, o.scope) or P.overlap(n.scope, o.scope, files)
+                    ),
+                    None,
+                )
                 if clash is not None:
                     continue  # one writer a path: it starts when that one has landed, on top of it
                 tried.add(n.id)
@@ -283,8 +353,13 @@ def run_parallel(
                 return finished
             for future in wait(flying, return_when=FIRST_COMPLETED).done:
                 was, tree = flying.pop(future)
-                node = future.result()
+                try:
+                    node = future.result()
+                except P.Refused as no:  # one leaf's trouble (its executor would not start) is not the run's
+                    say(str(no))
+                    node = None
                 if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
+                    say(f"{was.id}: what it tried is kept in {tree} until the next run takes {was.id} again")
                     continue
                 elsewhere = {n.id for n, _ in flying.values()} | unlanded
                 if land(store, target, tree, node, say, elsewhere):

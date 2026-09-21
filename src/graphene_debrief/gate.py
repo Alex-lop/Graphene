@@ -116,20 +116,29 @@ def _claim_first(store) -> str:
 
 
 _YES = re.compile(
-    r"^\W*(yes|yep|yeah|ok|okay|sure|accept|accepted|approve|approved|go|go ahead|do it|do that|do them|"
+    r"^\W*(yes|yep|yeah|ok|okay|sure|accept|accepted|approve|approved|go ahead|do it|do that|do them|"
     r"lgtm|sounds good|looks good)\b",
     re.IGNORECASE,
 )
-_SCOPE = re.compile(r"(?is)\bscope:\s*(.+?)(?=\s+check:|$)")
-_CHECK = re.compile(r"(?is)\bcheck:\s*(.+?)(?=\s+scope:|$)")
-SHORT = 240  # a prompt longer than this is a request, not an answer
+# The CLI's own flags, typed into the prompt: `fix the header --scope README.md --check 'make lint'`.
+# A review ran prose through the first spelling (`scope:` / `check:` anywhere in the text): "double
+# check: ./scripts/deploy.sh is never called" executed the script. Nobody writes `--check` in prose.
+_SCOPE = re.compile(r"""(?<!\S)--scope[ =]+(?:'([^']+)'|"([^"]+)"|(\S+))""")
+_CHECK = re.compile(r"""(?<!\S)--check[ =]+(?:'([^']+)'|"([^"]+)")""")  # quoted, so its end is said
+_NOT_YES = re.compile(r"[?]|\b(but|except|not|no|don'?t|drop|skip|instead|first|before|unless|wrong)\b", re.I)
+_HOOK = re.compile(r"\bingest\b")
+SHORT = 80  # a prompt longer than this is a request, not an answer
+HOOKS = (".claude/settings.json", ".claude/settings.local.json")
 
 
 def _me(sid: str) -> P.Caller:
-    """What the person types into their own session is the person's act: the vendor hands the hook
-    their prompt, and no agent's tool call can make that event. (The hole: an agent that starts a
-    second agent chooses its prompt. `graphene run` marks its executors, and the log says "by prompt".)"""
-    return P.Caller(P.person_name(), True, sid)
+    """What the person types into their own session is taken as the person's act: the vendor hands
+    the hook their prompt. It rests on the vendor being the only caller of the hook, and any command
+    an agent can run is also a caller: `graphene ingest hook` fed a hand-written event is refused by
+    its ordinary spellings (``decide``) and not by a determined one, and an agent that starts a
+    second agent chooses its prompt. So every act made this way is logged as made with no terminal,
+    "by prompt", with the words; `graphene plan prompts strict` turns the whole route off."""
+    return P.Caller(P.person_name(), True, sid, stand_in=True)
 
 
 def _on_prompt(store, sid: str, text: str) -> dict | None:
@@ -142,14 +151,20 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
             _close(
                 store, n, sid
             )  # the turn before ended without a Stop (interrupted): its record closes here
-    store.set_meta(f"prompt:{sid}", text)  # TODO: one row a session, never pruned
+    before = store.meta(f"prompt_at:{sid}") or ""
+    store.set_meta(f"prompt:{sid}", text)  # TODO: two rows a session, never pruned
+    store.set_meta(f"prompt_at:{sid}", P._now())
     proposals = P.nodes(store, (P.PROPOSED,))
-    if not proposals or not _YES.match(text) or len(text) > SHORT:
+    if store.meta("asides") == "off" or not proposals or len(text) > SHORT:
         return None
+    if not _YES.match(text) or _NOT_YES.search(text) or text.lstrip().startswith("/"):
+        return None  # "sure, drop n1", "ok so what is n1?": a yes with a no in it accepts nothing
     named = [n for n in proposals if re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", text)]
     if not named and re.search(r"\b(all|everything|the plan)\b", text, re.IGNORECASE):
         named = proposals
-    chosen = named or [n for n in proposals if n.proposed_by == f"claude:{sid[:8]}"]
+    # an unnamed yes answers what this session proposed since the person last spoke, not hours ago
+    mine = [n for n in proposals if n.proposed_by == f"claude:{sid[:8]}" and (n.created_at or "") >= before]
+    chosen = named or mine
     if not chosen:
         return None
     try:
@@ -191,24 +206,27 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
     text = store.meta(f"prompt:{sid}")
     if not text or os.environ.get("GRAPHENE_NODE") or store.meta("asides") == "off":
         return None
-    scope, check = _SCOPE.search(text), _CHECK.search(text)
+    ready = P.ready(P.nodes(store), P.Caller("agent", False))
+    if any(re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", text) for n in ready):
+        return None  # "do n1": the leaf they named is there to be taken, with its own scope
+    scope = [next(g for g in m.groups() if g) for m in _SCOPE.finditer(text)]
+    check = _CHECK.search(text)
     words = _SCOPE.sub("", _CHECK.sub("", text)).strip() or text
     item = {
         "title": " ".join(words.split())[:72],
         "goal": words[:2000],
-        "scope": re.split(r"[,\s]+", scope.group(1).strip()) if scope else ["**"],
-        "check": check.group(1).strip() if check else None,
+        "scope": scope or ["**"],
+        "check": next(g for g in check.groups() if g) if check else None,
     }
+    made = None
     try:
-        top = subprocess.run(
-            ["git", "-C", cwd or str(root), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        ).stdout.strip()
-        [node] = P.propose(store, [item], _me(sid), aside=True)
-        return P.start(store, node.id, P.Caller(f"claude:{sid[:8]}", False, sid), top or root, attended=True)
+        argv = ["git", "-C", cwd or str(root), "rev-parse", "--show-toplevel"]
+        top = subprocess.run(argv, capture_output=True, text=True, timeout=5).stdout.strip() or str(root)
+        [made] = P.propose(store, [item], _me(sid), files=P.tracked(top), aside=True)
+        return P.start(store, made.id, P.Caller(f"claude:{sid[:8]}", False, sid), top, attended=True)
     except (P.Refused, OSError, subprocess.SubprocessError) as no:
+        if made is not None:  # it could not start: never leave a `**` leaf open for whoever comes next
+            P.drop(store, made.id, _me(sid))
         store.log_node("*", P._now(), "denied", None, sid, None, {"note": f"no leaf from the prompt: {no}"})
         return None
 
@@ -228,6 +246,11 @@ def _check_write(
             "*", P._now(), "denied", None, event.get("session_id"), agent_id, {"path": rel, "how": how}
         )
         return _deny(_claim_first(store))
+    if rel in HOOKS and all(n.aside for n in held):
+        return _deny(
+            f"{rel} holds the hooks that keep this plan; a leaf made from a prompt does not reach it. "
+            "The person edits it themselves, or plans a leaf whose scope names it"
+        )
     if any(P.in_scope(rel, n.scope) for n in held):
         return None  # inside the scope: say nothing, so the person's own permission settings still apply
     n = held[0]
@@ -310,6 +333,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 "GRAPHENE_AS is how a script says it speaks for a person; an agent's command may not "
                 "carry it. Say what you need, and the person decides"
             )
+        if _HOOK.search(command) and re.search(r"\bgraphene|hook_main\b", command):
+            return _deny(
+                "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
+                "not an agent's to run"
+            )
         if ".graphene" in command and not re.match(r"\s*graphene\s", command):
             return _deny(
                 "the plan's own store (.graphene/) is not an agent's to read around or write: use "
@@ -324,9 +352,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
             rel = _rel(written, root, cwd)
-            if (
-                rel is not None and rel.split("/", 1)[0] in OURS
-            ):  # before any scope is asked: `**` does not cover it
+            if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
+                # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
             if rel is None or (held and any(P.in_scope(rel, n.scope) for n in held)):
                 continue

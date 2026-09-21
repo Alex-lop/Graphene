@@ -160,7 +160,7 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
     """The tree as an outline: every node after its parent, with how far below the root it sits.
     Siblings keep the order they were added, as they do in the terminal. A node whose parent is not
     here (dropped, archived) hangs directly under the goal, so nothing falls out of the view."""
-    under = P.kids(nodes)
+    under = P.kids(nodes, drawn=True)
     here = {n.id for n in nodes}
     roots = [n for n in nodes if n.parent not in here]
     out: list[tuple[P.Node, int]] = []
@@ -291,7 +291,7 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
         return asdict(view)
 
     column = depths(live)
-    under = P.kids(live)
+    under = P.kids(live, drawn=True)
     tree = outline(live)  # the order the page prints, and the depth it indents by
     depth = {n.id: d for n, d in tree}
     owners = [P.AGENT] + sorted({n.owner for n in live if n.owner != P.AGENT})
