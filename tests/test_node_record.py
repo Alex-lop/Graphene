@@ -206,8 +206,8 @@ def test_a_node_nobody_committed_in_still_has_a_coverage_line_over_what_git_said
     counts = record.coverage
     assert (counts["changed_files"], counts["changed_edit"], counts["changed_nothing"]) == (2, 1, 1)
     assert (
-        "  coverage: of the 2 paths git said had changed under this node, 1 to a recorded write by the "
-        "session that held it (1 edit, 0 shell), 1 to nothing recorded"
+        "  coverage: of the 2 paths git said had changed under this node, 2 inside its scope; "
+        "1 to a recorded edit, 0 to a recorded shell command, 1 to git alone"
     ) in NR.render(record)
 
 
@@ -232,6 +232,42 @@ def test_a_path_two_records_attest_says_both_and_a_commit_at_the_very_start_is_i
 
 
 # -- coverage, scoped to the node ------------------------------------------------------------------
+
+
+def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(store, repo):
+    """Codex, `graphene run --with <anything>`, or a person at a terminal: nothing recorded a
+    session, an event or a transcript, so the store holds none. The record is still computed, from
+    the node's own log, from git, and from the check Graphene ran itself, and it says so: no count
+    is a misleading zero and no path is claimed to trace to a write nobody recorded."""
+    codex = Caller("codex:deadbeef", False, None)
+    plan.propose(store, [api_node(check="test -f src/api/users.py")], ALEX, now=T(0))
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the endpoint", at=T(2))
+    plan.finish(store, "n1", codex, now=T(3))
+    assert store.sessions() == [] and store.commits_between("0000", "9999") == []
+
+    counts = NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)).coverage
+    assert counts["changed_computed"]
+    assert (counts["changed_files"], counts["changed_in_scope"]) == (1, 1)  # git's own answer
+    assert (counts["changed_edit"], counts["changed_shell"]) == (0, 0)  # and nothing is claimed
+    assert counts["changed_nothing"] == 1
+    assert counts["commits"] == 1  # asked of git: the store never held this commit
+
+    printed = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    assert (
+        "  coverage: of the 1 path git said had changed under this node, 1 inside its scope; "
+        "0 to a recorded edit, 0 to a recorded shell command, 1 to git alone"
+    ) in printed
+    assert (
+        "    read from: the node's log and git. No vendor keeps records for codex:deadbeef, so "
+        in "\n".join(printed)
+    )
+    assert any(line.startswith("    check: `test -f src/api/users.py` passed at ") for line in printed)
+    assert any(line.endswith(", run by Graphene itself") for line in printed)
+    assert "1 commit inside its windows (1 file), not graded:" in "\n".join(printed)
+    assert "not computed" not in "\n".join(printed)  # every count here has evidence behind it
 
 
 def test_coverage_is_graded_over_every_commit_and_this_nodes_are_selected_afterwards(store, repo):
@@ -302,11 +338,13 @@ def test_a_commit_no_recorded_session_accounts_for_is_counted_apart_and_never_gr
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
     counts = record.coverage
     assert record.windows[0].commits == [head(repo)]
-    assert not counts["computed"] and counts["how"].startswith("not computed: no session is recorded")
+    assert not counts["computed"] and counts["how"].startswith("not computed: no session's records")
     assert (counts["committed_files"], counts["write"]) == (0, 0)  # nothing is graded, so nothing counts
     assert (counts["not_graded_commits"], counts["not_graded_files"]) == (1, 1)
     printed = "\n".join(NR.render(record))
-    assert "coverage: not computed" in printed and "1 commit inside its windows (1 file)" in printed
+    assert "1 commit inside its windows (1 file), not graded:" in printed
+    # what git said changed is still counted: only the grading is missing, and the line says which
+    assert counts["changed_computed"] and (counts["changed_files"], counts["changed_nothing"]) == (1, 1)
 
 
 def test_a_node_handed_back_keeps_what_had_changed_by_then(store, repo):
@@ -393,7 +431,8 @@ def test_the_record_reads_as_plain_lines(store, repo):
         f"  window 1: claude:aaaa1111, session {S1}  {T(1)} -> {T(2)}  released: the schema has to change",
         f"    from {base[:7]}: what git said had changed when it ended",
         "    nothing changed",
-        "  coverage: nothing changed under this node yet, so nothing to grade",
+        "  coverage: git says nothing changed under this node",
+        "    check: none has run for this node, so nothing here is verified by one",
         "    no commit was made inside its windows, so there is no commit to grade",
         "  refused: 1 write denied",
         "    denied: src/db/schema.py",
