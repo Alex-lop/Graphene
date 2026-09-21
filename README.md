@@ -182,25 +182,29 @@ writes nothing and has to propose.
 
 ## The record
 
-Everything Graphene built before the plan is still here, and from now on it serves it.
-
-`graphene why src/app/auth.py:42` names the prompt, the agent and the task that wrote a line, and
-how that is known.
-
-![graphene why PATH:LINE](docs/assets/why-line.svg)
-
-`graphene --session ID` prints the card of one session: what changed, what was tried and abandoned,
-what was written outside the repo, and a coverage line that is never one number:
+The record hangs off a node. `graphene node show n1` prints its contract and then what was really
+done for it: who held it and when, what git says changed under it and whether that was inside its
+scope, what was refused, what Graphene's own run of the check said, and the commits made inside its
+windows. Every line names the record it was read from, and a count nothing supports says `not
+computed` and why instead of showing a number.
 
 ```
-12 committed files · 9 traced to a recorded write (6 edit, 3 shell) · 2 only to an agent's commit · 1 to nothing
+coverage: of the 3 paths git said had changed under this node, 3 inside its scope; 2 to a recorded
+edit, 0 to a recorded shell command, 1 to git alone
+  read from: the node's log, git, and Claude Code's records for session 4f2a91c7
+  check: `uv run pytest -q` passed at 2026-09-21T02:14:08.112Z, run by Graphene itself
 ```
+
+None of that needs a vendor. A node done by Codex, by `graphene run --with <anything>` or by you at
+the terminal gets the same line, read from the node's log, git and the check; where Claude Code's
+hooks were running they add which path traces to a write somebody recorded making, and where they
+were not, the line says so rather than reporting nothing.
 
 `graphene ui` opens the map in your browser, served to this machine only: the plan, and behind it
 the record of a run as lanes of agents over rows of files, with the files nothing accounts for drawn
 as such. `graphene ui --export FILE` writes the page as one file that opens offline; it carries
 paths, counts, commit subjects, your prompts, each agent's task, your user name, and the plan itself
-(each node's goal, scope and check, without its log), and no file contents, diffs or tool output. Read it before you send it. `graphene sessions` lists what is recorded. How each number
+(each node's goal, scope and check, without its log), and no file contents, diffs or tool output. Read it before you send it. The page's own rail lists the sessions that are recorded. How each number
 is computed, and where it can be wrong, is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## Privacy
