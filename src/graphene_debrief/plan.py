@@ -908,10 +908,12 @@ def elsewhere(store, node: Node) -> list[str]:
     out = []
     for tree in other_checkouts(node.checkout or "."):
         was = node.others_at_start.get(tree) or {"head": node.base_sha, "dirty": {}}
+        # any node that ran meanwhile, in whichever tree: a leaf run in its own worktree lands in the
+        # person's checkout as a merge, and that change is the leaf's, not this node's
         theirs = [
             n
             for n in nodes(store)
-            if n.id != node.id and n.checkout == tree and (n.finished_at or "9") >= (node.started_at or "")
+            if n.id != node.id and n.started_at and (n.finished_at or "9") >= (node.started_at or "")
         ]
         try:
             changed = changed_since(tree, was["head"], was["dirty"])
@@ -1091,7 +1093,10 @@ def finish(
             store, node, "overruled" if override is not None else "finished", who, node.finished_at, **detail
         )
     mark_boundary(store, node.checkout or ".", now)
-    roll_up(store, who, node.checkout or ".", now)
+    if f"{os.sep}.graphene{os.sep}worktrees{os.sep}" not in (node.checkout or ""):
+        # in a run's own worktree the sub-goal's check would not see its sibling leaves: `run.land`
+        # rolls up after the merge, in the checkout where they are all together
+        roll_up(store, who, node.checkout or ".", now)
     return node
 
 

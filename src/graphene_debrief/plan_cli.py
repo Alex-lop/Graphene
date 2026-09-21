@@ -246,6 +246,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             detail.get("why")
             or detail.get("note")
             or detail.get("override")
+            or (f"by their prompt in the session: {detail.get('prompt', '')!r}" if detail.get("by") else "")
             or detail.get("path")
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
             or "; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in fields)
@@ -433,9 +434,15 @@ def register(cli: typer.Typer, root, open_store, fail):
         ),
         attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
+        parallel: int = typer.Option(
+            1,
+            "--parallel",
+            help="Leaves at once, each in its own worktree and branch, merged here when clean. "
+            "1 (default) works in this checkout and commits nothing.",
+        ),
     ) -> None:
-        """Run every node an agent can reach: one executor per node, and Graphene decides what is done."""
-        from .run import DEFAULT_WITH, run_plan
+        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done."""
+        from .run import DEFAULT_WITH, run_parallel, run_plan
 
         r = root()
         with open_store(r) as store:
@@ -443,7 +450,13 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
             logs = r / ".graphene" / "runs"
             try:
-                run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
+                if parallel > 1:
+                    run_parallel(
+                        lambda: open_store(r), r, checkout(), parallel, executor or DEFAULT_WITH,
+                        attempts, node or None, out, logs,
+                    )  # fmt: skip
+                else:
+                    run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
             for line in next_lines(store, P.caller()):

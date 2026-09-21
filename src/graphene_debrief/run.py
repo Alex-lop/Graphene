@@ -8,8 +8,13 @@ changed, the check says whether it works. Refused, the executor is sent back wit
 of attempts, the node is handed back with the reason and the run moves on. Nothing here trusts an
 exit code or a closing message, and no vendor's ceiling on refused stops applies: the loop is ours.
 
-One node at a time, in the checkout the command was started in.
-TODO: no worktree per node and no parallel nodes; add them when two agents must run at once.
+Alone (`graphene run`), one leaf at a time in the checkout the command was started in, and nothing
+is committed: the work is left in the tree for the person. In parallel (`graphene run --parallel N`),
+each leaf gets its own worktree on its own branch under .graphene/worktrees/, so executors never see
+each other's half-written files; a leaf that passes its boundary is committed there, by Graphene, and
+merged into the checkout the run was started from when the merge is clean. Leaves whose scopes overlap
+are never in flight together, so two leaves cannot have written one file: what is left that can make
+a merge unclean is the person's own work in the way, and that leaf waits for them, on its branch.
 """
 
 from __future__ import annotations
@@ -19,12 +24,14 @@ import shlex
 import subprocess
 import uuid
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from . import plan as P
 
 DEFAULT_WITH = "claude -p --permission-mode acceptEdits"
 ATTEMPTS = 3
+WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 
 
 def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None) -> str:
@@ -56,6 +63,70 @@ def command_for(template: str, prompt: str, session: str, again: bool) -> list[s
     return [*argv, prompt]
 
 
+def run_node(
+    store,
+    node_id: str,
+    checkout: Path,
+    template: str,
+    attempts: int,
+    say: Callable[[str], None],
+    logs: Path | None,
+) -> P.Node | None:
+    """One leaf, start to boundary, in ``checkout``. Returns it when it ended done (or in review);
+    None when it could not start, was handed back, or ran out of attempts."""
+    session = str(uuid.uuid4())
+    who = P.Caller(f"run:{shlex.split(template)[0]}", False, session)
+    try:
+        node = P.start(store, node_id, who, checkout)
+    except P.Refused as no:
+        say(f"{node_id} cannot start: {no}")
+        return None
+    say(f"{node.id} started (revision {node.rev}): {node.title}")
+    refusal: str | None = None
+    for attempt in range(1, attempts + 1):
+        argv = command_for(
+            template,
+            prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
+            session,
+            attempt > 1,
+        )
+        env = {**os.environ, "GRAPHENE_NODE": node.id}
+        env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
+        try:
+            done = subprocess.run(
+                argv, cwd=checkout, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL
+            )
+        except OSError as no:  # the executor is not installed, or not executable: nothing ran
+            P.release(store, node.id, who, f"the executor could not be started: {argv[0]}: {no.strerror}")
+            raise P.Refused(
+                f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
+                "another executor with --with"
+            ) from None
+        if logs is not None:
+            logs.mkdir(parents=True, exist_ok=True)
+            (logs / f"{node.id}-{attempt}.txt").write_text(done.stdout + done.stderr, encoding="utf-8")
+        say(f"{node.id} attempt {attempt}: the executor ended (exit {done.returncode})")
+        current = P.get(store, node.id)
+        if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
+            return current
+        if current.state != P.RUNNING:  # it handed the node back, and said why
+            why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
+            say(f"{node.id} handed back by the executor: {why}")
+            return None
+        try:
+            return P.finish(store, node.id, who)
+        except P.Refused as no:
+            refusal = str(no)
+            say(f"{node.id} attempt {attempt} refused: {refusal.splitlines()[0]}")
+    P.release(store, node.id, who, f"{attempts} attempts, the last one refused: {refusal}")
+    say(f"{node.id} handed back after {attempts} attempts")
+    return None
+
+
+def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
+    say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
+
+
 def run_plan(
     store,
     checkout: Path,
@@ -65,9 +136,9 @@ def run_plan(
     say: Callable[[str], None] = print,
     logs: Path | None = None,
 ) -> list[P.Node]:
-    """Run every node an agent can reach, in order. Returns the nodes that ended done (or in review)."""
+    """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     finished: list[P.Node] = []
-    gave_up: set[str] = set()
+    tried: set[str] = set()
     # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
     # proposal accepted, or an executor adding nodes) does not make an unattended run unbounded.
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
@@ -75,65 +146,136 @@ def run_plan(
         ready = [
             n
             for n in P.ready(P.nodes(store), P.Caller("agent", False))
-            if n.id in planned and n.id not in gave_up and (not only or n.id in only)
+            if n.id in planned and n.id not in tried and (not only or n.id in only)
         ]
         if not ready:
             return finished
-        session = str(uuid.uuid4())
-        who = P.Caller(f"run:{shlex.split(template)[0]}", False, session)
-        try:
-            node = P.start(store, ready[0].id, who, checkout)
-        except P.Refused as no:
-            say(f"{ready[0].id} cannot start: {no}")
-            gave_up.add(ready[0].id)
-            continue
-        say(f"{node.id} started (revision {node.rev}): {node.title}")
-        refusal: str | None = None
-        for attempt in range(1, attempts + 1):
-            argv = command_for(
-                template,
-                prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
-                session,
-                attempt > 1,
-            )
-            env = {**os.environ, "GRAPHENE_NODE": node.id}
-            env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
-            try:
-                done = subprocess.run(
-                    argv, cwd=checkout, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL
-                )
-            except OSError as no:  # the executor is not installed, or not executable: nothing ran
-                P.release(store, node.id, who, f"the executor could not be started: {argv[0]}: {no.strerror}")
-                raise P.Refused(
-                    f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
-                    "another executor with --with"
-                ) from None
-            if logs is not None:
-                logs.mkdir(parents=True, exist_ok=True)
-                (logs / f"{node.id}-{attempt}.txt").write_text(done.stdout + done.stderr, encoding="utf-8")
-            say(f"{node.id} attempt {attempt}: the executor ended (exit {done.returncode})")
-            current = P.get(store, node.id)
-            if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
-                finished.append(current)
-                break
-            if current.state != P.RUNNING:  # it handed the node back, and said why
-                why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get(
-                    "why", ""
-                )
-                say(f"{node.id} handed back by the executor: {why}")
-                gave_up.add(node.id)
-                break
-            try:
-                finished.append(P.finish(store, node.id, who))
-                break
-            except P.Refused as no:
-                refusal = str(no)
-                say(f"{node.id} attempt {attempt} refused: {refusal.splitlines()[0]}")
-        else:
-            P.release(store, node.id, who, f"{attempts} attempts, the last one refused: {refusal}")
-            say(f"{node.id} handed back after {attempts} attempts")
-            gave_up.add(node.id)
-            continue
-        if finished and finished[-1].id == node.id:
-            state = "done" if finished[-1].state == P.DONE else "finished; it waits for a sign-off"
-            say(f"{node.id} is {state}")
+        tried.add(ready[0].id)
+        node = run_node(store, ready[0].id, checkout, template, attempts, say, logs)
+        if node is not None:
+            finished.append(node)
+            _said_done(node, say)
+
+
+# -- in parallel, a worktree a leaf ---------------------------------------------------------------------
+
+
+def _git(where: Path, *args: str, ok: bool = False) -> subprocess.CompletedProcess:
+    out = subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True)
+    if out.returncode != 0 and not ok:
+        raise P.Refused(
+            f"git {' '.join(args[:3])} failed in {where}: {(out.stderr or out.stdout).strip()[:300]}"
+        )
+    return out
+
+
+def worktree_for(store, root: Path, target: Path, node_id: str) -> Path:
+    """A fresh worktree for one leaf, on branch graphene/<id>, cut from where the target stands now
+    (so it has everything that has landed). What an earlier run left under the same name goes."""
+    path = root / ".graphene" / WORKTREES / node_id
+    _git(target, "worktree", "remove", "--force", str(path), ok=True)
+    _git(target, "worktree", "prune", ok=True)
+    _git(target, "worktree", "add", "--quiet", "-B", f"graphene/{node_id}", str(path), "HEAD")
+    P.mark_boundary(store, path)  # a path used before starts clean: nothing here was "changed between nodes"
+    return path
+
+
+def land(store, target: Path, tree: Path, node: P.Node, say: Callable[[str], None]) -> bool:
+    """Commit the leaf's work on its branch and merge it into the checkout the run was started from.
+    True when it landed. When the merge is not clean nothing in the target is touched: the leaf waits
+    for the person in review, on its branch, and what needs it waits with it."""
+    branch = f"graphene/{node.id}"
+    who = P.Caller("graphene run", False)
+    entry = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
+    paths = entry.get("changed") or []
+    _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
+    why = " > ".join(P.trail(store, node))
+    message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
+    ident = [] if _git(tree, "config", "user.email", ok=True).stdout.strip() else [
+        "-c", "user.name=graphene", "-c", "user.email=graphene@localhost"]  # fmt: skip
+    _git(tree, *ident, "commit", "--quiet", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
+    merged = _git(
+        target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch, ok=True
+    )  # noqa: E501
+    if merged.returncode != 0:
+        _git(target, "merge", "--abort", ok=True)
+        said = (merged.stderr or merged.stdout).strip().splitlines()
+        with store.claim():
+            fresh = P.get(store, node.id)
+            fresh.state = P.REVIEW
+            P._save(store, fresh, "unlanded", who, P._now(), branch=branch, worktree=str(tree), why=said[:6])
+        say(
+            f"{node.id} passed its boundary and did not land: git would not merge {branch} into "
+            f"{target} cleanly ({said[0] if said else 'no reason given'}). Nothing of yours was touched. "
+            f"`git merge {branch}` when the way is clear, then `graphene node signoff {node.id}`; or "
+            f"`graphene node reopen {node.id} --note …` to have it done again on top of what is there now"
+        )
+        return False
+    store.log_node(node.id, P._now(), "landed", who.label, None, None,
+                   {"commit": P.head(target), "branch": branch})  # fmt: skip
+    _git(target, "worktree", "remove", "--force", str(tree), ok=True)
+    _git(target, "branch", "-D", branch, ok=True)
+    P.mark_boundary(store, target)
+    for up in P.roll_up(store, who, target):
+        say(f"{up.id} is {'done' if up.state == P.DONE else 'finished; it waits for a sign-off'}: "
+            "everything under it is" + (f", and `{up.check}` passes" if up.check else ""))  # fmt: skip
+    return True
+
+
+def run_parallel(
+    open_store: Callable[[], object],
+    root: Path,
+    target: Path,
+    workers: int,
+    template: str = DEFAULT_WITH,
+    attempts: int = ATTEMPTS,
+    only: list[str] | None = None,
+    say: Callable[[str], None] = print,
+    logs: Path | None = None,
+) -> list[P.Node]:
+    """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
+    at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
+    while a leaf whose scope overlaps its own is in flight."""
+    store = open_store()
+    planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
+    files = P.tracked(target)
+    tried: set[str] = set()
+    flying: dict[Future, tuple[P.Node, Path]] = {}
+    unlanded: set[str] = set()
+    finished: list[P.Node] = []
+
+    def work(node_id: str, tree: Path) -> P.Node | None:
+        with open_store() as mine:  # a thread, a connection
+            return run_node(mine, node_id, tree, template, attempts, say, logs)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while True:
+            everything = P.nodes(store)
+            by_id = {n.id: n for n in everything}
+            busy = {n.id for n, _ in flying.values()} | unlanded
+            for n in P.ready(everything, P.Caller("agent", False)):
+                if len(flying) >= workers:
+                    break
+                if n.id not in planned or n.id in tried or (only and n.id not in only):
+                    continue
+                if busy & set(P.all_needs(n, by_id)):
+                    continue  # done in its worktree is not yet here
+                clash = next((o for o, _ in flying.values() if P.overlap(n.scope, o.scope, files)), None)
+                if clash is not None:
+                    continue  # one writer a path: it starts when that one has landed, on top of it
+                tried.add(n.id)
+                tree = worktree_for(store, root, target, n.id)
+                flying[pool.submit(work, n.id, tree)] = (n, tree)
+            if not flying:
+                return finished
+            for future in wait(flying, return_when=FIRST_COMPLETED).done:
+                was, tree = flying.pop(future)
+                node = future.result()
+                if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
+                    continue
+                if land(store, target, tree, node, say):
+                    finished.append(P.get(store, node.id))
+                    _said_done(finished[-1], say)
+                    files = P.tracked(target)
+                else:
+                    unlanded.add(node.id)

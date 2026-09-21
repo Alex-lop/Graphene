@@ -1,0 +1,69 @@
+the plan: a toy service that lists its users' emails
+n1  open  emails() returns lower-case emails
+--- the plan in force:
+the plan: a toy service that lists its users' emails
+1 leaf, 0 done, 0 running
+  n1  open      emails() returns lower-case emails  agent  src/users.py  ·  ready
+
+--- the person types, and nothing else: fix the typo in the comment at the top of src/seed.py
+Fixed "typd" → "typed" in the comment at the top of `src/seed.py`.
+
+the plan: a toy service that lists its users' emails
+1 leaf, 0 done, 0 running · 1 made from a prompt
+  n1  open      emails() returns lower-case emails            agent  src/users.py  ·  ready
+  n2  done      fix the typo in the comment at the top of s…  agent  **            ·
+
+  2026-09-21T05:43:23Z  *   goal          alexlopez (no terminal)  a toy service that lists its users' emails
+  2026-09-21T05:43:23Z  n1  added         alexlopez (no terminal)
+  2026-09-21T05:43:29Z  n2  added         alexlopez
+  2026-09-21T05:43:29Z  n2  started       claude:62090bcb
+  2026-09-21T05:43:30Z  n2  finished      claude:62090bcb          changed: src/seed.py
+
+--- what must be true:
+  ok    the typo is fixed
+  ok    no write was refused on the way
+  ok    it is a leaf made from the prompt, and it is done
+  ok    and its record names the file it changed
+
+--- the person asks for a proposal:
+I proposed node `n3`, and it's waiting on your approval. I haven't written the README.
+
+- **Title:** README.md: one line saying what emails() returns
+- **Scope:** `README.md`
+- **Check:** `test -s README.md`
+- **Goal:** Add a README.md containing a single line stating what emails() returns.
+
+`emails()` in `src/users.py` currently returns `[]`. If you approve, the line would be something like: "`emails()` returns the list of user emails (currently always empty)."
+
+`n1` in the plan wants `emails()` to return lower-case emails. The README line may need to change once that lands.
+
+Should I go ahead with `n3`? If so, is that wording right?
+
+--- and answers in the same session, with one word: yes
+`README.md` now exists with one line: "`emails()` returns the list of user emails (currently always empty)." Node `n3` is done. Its check `test -s README.md` passed and nothing outside its scope changed. I haven't committed anything.
+
+`n1` (lower-case emails) is still open. If it lands, this line will need updating.
+
+the plan: a toy service that lists its users' emails
+2 leaves, 1 done, 0 running · 1 made from a prompt
+  n1  open      emails() returns lower-case emails            agent  src/users.py  ·  ready
+  n2  done      fix the typo in the comment at the top of s…  agent  **            ·
+  n3  done      README.md: one line saying what emails() re…  agent  README.md     ·
+
+  2026-09-21T05:43:23Z  *   goal          alexlopez (no terminal)  a toy service that lists its users' emails
+  2026-09-21T05:43:23Z  n1  added         alexlopez (no terminal)
+  2026-09-21T05:43:29Z  n2  added         alexlopez
+  2026-09-21T05:43:29Z  n2  started       claude:62090bcb
+  2026-09-21T05:43:30Z  n2  finished      claude:62090bcb          changed: src/seed.py
+  2026-09-21T05:43:41Z  n3  proposed      claude:50e317c4
+  2026-09-21T05:43:46Z  n3  accepted      alexlopez
+  2026-09-21T05:43:49Z  n3  started       claude:50e317c4
+  2026-09-21T05:43:51Z  n3  check_passed  claude:50e317c4          test -s README.md
+  2026-09-21T05:43:51Z  n3  finished      claude:50e317c4          changed: README.md
+
+--- what must be true:
+  ok    the proposal was accepted by the prompt, as the person
+  ok    the same session did it: README.md exists and its node is done
+
+repo: /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp.LxY3DOnZdB/toy
+exit 0
