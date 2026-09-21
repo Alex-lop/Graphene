@@ -91,7 +91,9 @@ counts as your yes is a judgement about how you talk, not a mechanism). What age
   file; then a proposal accepted by typing "yes" in the session and done by the same session: 6/6.
   **What that proof does not show:** its "yes" is fed by `claude -p`, not typed by a person; the
   mechanism cannot tell those apart, which is the printed hole in decisions 18/19.
-- **The three 0.3 proofs** re-run on this code: `proof.sh` 5/5 (the typo the person asked for is now
+- **All five scripts were run again after the review's fixes**, on the code as it stands: 6/6, 9/9,
+  5/5, 2/2, 4/4, every exit 0 (`docs/proof/2026-09-21-*.txt` are those runs).
+- **The three 0.3 proofs**: `proof.sh` 5/5 (the typo the person asked for is now
   fixed under a leaf made from the prompt, not refused), `stop.sh` 2/2, `run.sh` 4/4.
 - **The closing review.** Two adversaries told to assume I had cut corners: 47 findings, each
   reproduced twice, all collected before any was fixed (`local/reviews/`, untracked). The worst:
@@ -101,12 +103,14 @@ counts as your yes is a judgement about how you talk, not a mechanism). What age
   aborted a merge of the person's own and said "nothing of yours was touched"; `archive` could
   orphan a node and brick the plan. Every promise-breaking one is fixed with a test, except the forged
   hook event, which is refused by its ordinary spelling only and printed as a hole.
-- **The gate:** PENDING (clean clone, 3.12 and 3.13, ruff, wheel smoke, page build identical, CI).
+- **The gate**, on a clean clone of `tree`: 371 tests on Python 3.12 and on 3.13 outside an agent's
+  environment and again inside one; ruff check and format; the wheel built and smoked outside the
+  tree (`graphene 0.4.0`); `npm ci`, typecheck, 20 vitest tests, build, and the committed page
+  identical to what its source builds. CI on `origin/tree`: all five jobs green (run 35570546458).
 - **The rollback recipe** below was run against 0.3's code in a scratch repo.
 
 ## Not verified
 
-- PENDING: all five proof scripts re-run on the code as it stands after the review's fixes.
 - `graphene watch` on a real terminal by a person: tested through `--once`, and the full-screen loop
   was never looked at by eyes. The cut-to-fit logic is untested on a real 80x24.
 - The page in a browser beyond the sub-agent's two webkit screenshots; 50 nodes on screen.
