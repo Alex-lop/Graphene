@@ -109,7 +109,7 @@ uv tool install git+https://github.com/Alex-lop/Graphene
 ```
 
 `uv tool install graphene-map` installs the last release on PyPI. Today that is 0.2.0, which is the
-record only: no `plan`, no `node`, no `run`. They arrive there with 0.3.0.
+record only: no `plan`, no `node`, no `run`. They arrive there when 0.4.0 is released.
 
 Then, once per repo, inside it:
 
