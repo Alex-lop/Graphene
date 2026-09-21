@@ -32,6 +32,7 @@ A store this version has opened is version 4 (no table changed; a node's JSON ga
 ```
 sqlite3 .graphene/graphene.db "UPDATE nodes SET data = json_remove(data, '$.parent', '$.aside'); PRAGMA user_version = 3"
 ```
-(NOT YET RUN against 0.3's code; it is on the closing checklist.)
+(Run tonight against 0.3's code from `6cece1c` in a scratch repo: before it, 0.3 says "written by a newer
+graphene"; after it, 0.3 prints the plan. A sub-goal shows there as a node with no scope.)
 
 (Sections 3 and 4, the map of the code and what was verified, are written when the run closes.)
