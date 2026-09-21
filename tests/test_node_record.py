@@ -270,6 +270,45 @@ def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(
     assert "not computed" not in "\n".join(printed)  # every count here has evidence behind it
 
 
+def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
+    """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
+    commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made
+    in the node's first second, which is most of them when an agent commits and finishes at once:
+    the first dogfood run of this record said "no commit was made inside its windows" over one."""
+    codex = Caller("codex:deadbeef", False, None)
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", codex, repo, now="2026-01-05T01:01:00.400Z")  # as `_now` really writes it
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the endpoint", at=T(1))  # git stamps it …01:01:00, with no fraction
+    plan.finish(store, "n1", codex, now=T(2))
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
+    assert record.windows[0].commits == [head(repo)]
+    assert record.coverage["commits"] == 1
+
+
+def test_a_commit_the_node_started_from_is_not_counted_under_it(store, repo):
+    """The other half of the same second. The dogfood run's repo was set up and the node started
+    inside one second, and the base commit -- README.md and all -- was then reported as changed
+    under the node. Ancestry settles what the clock cannot: git already had it at the base."""
+    base = head(repo)
+    codex = Caller("codex:deadbeef", False, None)
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    (repo / "src/api/users.py").write_text("def users():\n    return [0]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "just before the node", at=T(1))  # …01:01:00, and HEAD at the start
+    before = head(repo)
+    plan.start(store, "n1", codex, repo, now="2026-01-05T01:01:00.900Z")  # the same second
+    assert plan.get(store, "n1").base_sha == before
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    plan.finish(store, "n1", codex, now=T(2))
+    record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(3))
+    assert record.windows[0].commits == []  # neither the base nor its parent
+    assert base not in record.windows[0].changed.values()
+    assert record.coverage["commits"] == 0
+    assert "no commit was made inside its windows" in "\n".join(NR.render(record))
+
+
 def test_coverage_is_graded_over_every_commit_and_this_nodes_are_selected_afterwards(store, repo):
     """The trap: `record.coverage` grades a commit's path by the writes recorded since the previous
     commit of that path *in the list it is given*. A list cut to the node's window first would grade

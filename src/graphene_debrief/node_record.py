@@ -170,12 +170,38 @@ def _commits(window: Window, root: str | Path, credited: dict, at: str) -> list:
     truth is that nobody recorded it. The store's own rows are merged in where they exist, because
     those carry the call that made the commit, which is what grades it.
     """
-    lo, hi = seconds(window.started_at), seconds(window.ended_at or at)
+    # Whole seconds on both sides: git keeps a committer time to the second and the log keeps
+    # milliseconds, so a node started at 12:00:00.400 and a commit stamped 12:00:00 cannot be put in
+    # order by time at all. Its second is inside the window, and ancestry settles the rest.
+    lo, hi = int(seconds(window.started_at)), int(seconds(window.ended_at or at))
     wide = (_shift(window.started_at, -2), _shift(window.ended_at or at, 2))
     found = {c.sha: c for c in commits_in(Path(root), *wide)}
     found |= credited  # the store's rows win: they name the session and the call
-    mine = [c for c in found.values() if lo <= seconds(c.committed_at) <= hi]
-    return sorted(mine, key=lambda c: (seconds(c.committed_at), c.sha))
+    mine = [c for c in found.values() if lo <= int(seconds(c.committed_at)) <= hi]
+    before = _already_there([c.sha for c in mine if int(seconds(c.committed_at)) == lo], window, root)
+    return sorted((c for c in mine if c.sha not in before), key=lambda c: (seconds(c.committed_at), c.sha))
+
+
+def _already_there(shas: list[str], window: Window, root: str | Path) -> set[str]:
+    """Of the commits stamped in the window's first second, the ones git already had at the
+    revision the node started from: they were made before it, whatever the clock says. Asked only
+    for that one second, so an ordinary window costs no extra call."""
+    base = window.base_sha
+    if not base:
+        return set()
+    out = set()
+    for sha in shas:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(root), "merge-base", "--is-ancestor", sha, base],
+                capture_output=True,
+                timeout=20,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue  # git cannot say; the second is all the evidence there is, and it stays
+        if done.returncode == 0:
+            out.add(sha)
+    return out
 
 
 def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str) -> None:
@@ -266,8 +292,9 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
         counts["why_not"] = "nobody has held this node, so there is no window for git to answer for"
     elif not counts["changed_computed"]:
         counts["why_not"] = (
-            f"what git said had changed was not logged when window{_s(len(blind))} "
-            f"{', '.join(str(n) for n in blind)} ended, and no window is open to read the tree of"
+            f"git's answer for window{_s(len(blind))} {', '.join(str(n) for n in blind)} could not be "
+            "had, and the window line above says why; counting the commits inside it as the whole of "
+            "what changed would not be the same claim"
         )
     ids = sorted({w.session_id for w in windows if w.session_id})
     held = ", ".join(dict.fromkeys(w.executor or "an executor the log does not name" for w in windows))
