@@ -68,6 +68,44 @@ def test_the_hook_stays_inside_its_time_budget(tmp_path, capsys):
     assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms (p95 {p95:.0f} ms)"
 
 
+def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
+    """The other hot path: with a plan in force every write is looked up against the node's scope
+    before it happens, and the agent waits for that answer too."""
+    from graphene_debrief import plan
+
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    node = plan.Node(
+        "n1", "users", scope=["src/api/**"], check="true", state=plan.RUNNING, session_id="budget"
+    )
+    with Store.open(repo) as store:
+        store.put_node(plan.to_dict(node))
+
+    def pre_tool_use(path: str) -> float:
+        event = {
+            "hook_event_name": "PreToolUse",
+            "session_id": "budget",
+            "cwd": str(repo),
+            "tool_name": "Edit",
+            "tool_input": {"file_path": str(repo / path)},
+        }
+        start = time.perf_counter()
+        done = subprocess.run(HOOK, input=json.dumps(event), cwd=repo, capture_output=True, text=True)
+        elapsed = (time.perf_counter() - start) * 1000
+        assert done.returncode == 0, done.stderr
+        assert ("deny" in done.stdout) is (not path.startswith("src/api/")), done.stdout
+        return elapsed
+
+    pre_tool_use("src/api/users.py")
+    times = sorted(pre_tool_use(("src/api/a.py", "src/db/b.py")[n % 2]) for n in range(RUNS))
+    median = statistics.median(times)
+    with capsys.disabled():
+        print(
+            f"\ngate: median {median:.0f} ms, p95 {times[math.ceil(0.95 * RUNS) - 1]:.0f} ms over {RUNS} runs"
+        )
+    assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms"
+
+
 def test_the_hook_path_imports_no_cli_library(tmp_path):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)

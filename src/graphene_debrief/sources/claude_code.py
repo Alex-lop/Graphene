@@ -52,6 +52,7 @@ from ..store import StaleStore, Store
 HOOK_EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",  # never recorded: it is where the plan refuses a write before it happens (gate.py)
     "PostToolUse",
     "PostToolUseFailure",
     "SubagentStart",
@@ -337,8 +338,8 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     ts = timestamp or now_iso()
     name = event.get("hook_event_name")
     sid = event.get("session_id")
-    if not isinstance(sid, str) or not sid or name not in HOOK_EVENTS:
-        return False
+    if not isinstance(sid, str) or not sid or name not in HOOK_EVENTS or name == "PreToolUse":
+        return False  # a call that has not happened yet is not a record; PostToolUse is
     if name == "SessionStart" or store.session(sid) is None:
         # A missing row on any other event means the hooks were installed mid-session: the
         # session started earlier, so its start HEAD is unknown (git resolves it by time later).
@@ -415,8 +416,12 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     return True
 
 
-def hook_main(stdin=None, cwd: Path | None = None) -> int:
-    """``graphene ingest hook``: never raises, never writes stdout, always returns 0."""
+def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
+    """``graphene ingest hook``: never raises, always returns 0, and writes stdout only when a plan in
+    force has something to say (a write refused, a stop refused: ``gate.decide``). Recording and
+    deciding fail apart: an event that cannot be recorded is still decided, and a decision that
+    cannot be made lets the call through and says so in the log, because ``plan.finish`` holds at
+    the boundary with or without this hook."""
     root = Path(cwd or os.getcwd())
     try:
         root = repo_root(root)  # before anything can fail: a log written from a worktree goes to the repo
@@ -426,7 +431,17 @@ def hook_main(stdin=None, cwd: Path | None = None) -> int:
             raise ValueError("hook input is not a JSON object")
         root = repo_root(Path(event.get("cwd") or root))
         with Store.open(root, quick=True) as store:
-            ingest_hook_event(store, event, root)
+            try:
+                ingest_hook_event(store, event, root)
+            except Exception:
+                _log_error(root)
+            answer = None
+            if store.node_count():  # no plan, nothing to decide: a repo without one pays nothing for it
+                from .. import gate
+
+                answer = gate.decide(store, event, root)
+        if answer is not None:
+            (stdout or sys.stdout).write(json.dumps(answer))
     except StaleStore as stale:
         # An unreadable file is the CLI's to move aside and backfill; a newer store is nobody's.
         _log(root, f"store is {stale.tag}: event skipped, run graphene")
@@ -488,7 +503,24 @@ def install_hooks(root: Path) -> list[str]:
     if added:
         path.parent.mkdir(exist_ok=True)
         _write_atomically(path, json.dumps(settings, indent=2) + "\n")
+        if path.name == Path(SETTINGS).name:
+            _exclude_locally(root, SETTINGS)
     return added
+
+
+def _exclude_locally(root: Path, rel: str) -> None:
+    """Keep the personal settings file out of `git add -A` through .git/info/exclude, which is this
+    clone's own and never committed, so the repo's .gitignore is still never edited."""
+    info = root / ".git" / "info"
+    if not info.is_dir():
+        return  # a worktree's .git is a file; its main checkout's exclude already covers it
+    exclude = info / "exclude"
+    with contextlib.suppress(OSError):
+        text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if rel not in text.splitlines():
+            exclude.write_text(
+                text + ("" if not text or text.endswith("\n") else "\n") + rel + "\n", encoding="utf-8"
+            )
 
 
 def _write_atomically(path: Path, text: str) -> None:

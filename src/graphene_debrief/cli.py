@@ -76,6 +76,12 @@ def build():
     class LockAware(TyperGroup):
         """One place where losing the race with a hook or a backfill is a line, not a traceback."""
 
+        def list_commands(self, ctx):
+            """The plan leads the help: what will be done comes before what was."""
+            first = ["plan", "node", "run", "init", "ui"]
+            names = super().list_commands(ctx)
+            return [n for n in first if n in names] + [n for n in names if n not in first]
+
         def invoke(self, ctx):
             try:
                 return super().invoke(ctx)
@@ -87,9 +93,10 @@ def build():
     cli = typer.Typer(
         cls=LockAware,
         help=(
-            "Why did your coding agent change this? `graphene why <path>` and `graphene why <path>:<line>` "
-            "answer that from Claude Code's own records; `graphene` alone prints the short card of the "
-            "latest session."
+            "The shared plan between you and your coding agents: a graph of nodes, each with a goal, the "
+            "paths it may touch and a check, which you shape and the agents are held to. `graphene` "
+            "alone shows the plan and where the work stands; `graphene node show <id>` is what was done "
+            "for one node."
         ),
         add_completion=False,
         no_args_is_help=False,
@@ -219,12 +226,28 @@ def build():
         as_json: bool = typer.Option(False, "--json", help="Print the full structure as JSON."),
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command, `graphene` prints the short card of the latest session."""
+        """With no command, `graphene` prints the plan and where the work stands; in a repo with no
+        plan (or with --session, --since or --json), the short card of the latest session."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
         if ctx.invoked_subcommand is None:
+            if not (session_id or since or as_json):
+                if plan_or_nothing():
+                    return
+                r = root()
+                if not (r / ".graphene" / "graphene.db").exists() and not transcripts_for(r):
+                    # a repo with nothing in it yet: the plan comes first here too, then the record's line
+                    say(
+                        "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check "
+                        "'<command>'` starts one, or ask your agent to propose one; `graphene plan "
+                        "--help` has the rest."
+                    )
             show(session_id, since, as_json=as_json)
+
+    from .plan_cli import register
+
+    plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 
     @cli.command()
     def why(
@@ -311,7 +334,7 @@ def build():
 
     @cli.command()
     def init() -> None:
-        """Install Claude Code hooks so this repo's sessions are recorded live."""
+        """Install the Claude Code hooks: they hold agents to the plan and keep the record."""
         r = root()
         try:
             added = install_hooks(r)
@@ -391,14 +414,24 @@ def build():
         no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
         as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
     ) -> None:
-        """The map of a run: agents, files, commits and checks, drawn from the records."""
+        """The plan on screen, and behind it the map of a run, drawn from the records."""
         import webbrowser
 
         from .graph import build_graph, to_json
+        from .plan import accept_path, caller
         from .server import export_html, make_server
 
         r = root()
-        with loaded_store(r) as store:
+        planned = False
+        if (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
+            with open_store(r) as store:
+                planned = store.node_count() > 0
+        # The plan is the page's first screen, so a repo that has one opens even when no session has
+        # been recorded in it yet; `loaded_store` ends the command when there is nothing to look at.
+        with open_store(r) if planned else loaded_store(r) as store:
+            if planned:
+                report = backfill(store, r)  # the record fills in beside the plan, quietly
+                refresh_commits(store, r, report.added + report.refreshed)
             try:
                 ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
             except ValueError as exc:
@@ -412,11 +445,17 @@ def build():
                     export.write_text(export_html(store, ids), encoding="utf-8")
                 except OSError as exc:
                     fail(f"cannot write {export}: {exc.strerror or exc}", 1)
+                if caller().person:  # theirs as it stands, or the next node would not start over it
+                    accept_path(store, r, export)
                 errors.print(f"wrote {export}")
                 return
-        server = make_server(r, ids)
+        # The plan is the person's to change, so the page may write only when a person opened it.
+        person = caller().person
+        server = make_server(r, ids, writable=person)
         url = f"http://127.0.0.1:{server.server_address[1]}/"
         say(f"{url}  (this machine only; Ctrl-C stops it)")
+        if not person:
+            say("the page is read-only: it was not opened from a person's terminal")
         console.file.flush()  # piped or redirected, the address must not sit in a buffer until the end
         if not no_open:
             webbrowser.open(url)

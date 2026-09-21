@@ -15,7 +15,7 @@ RESPONSE_CAP = 256 * 1024
 STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
 KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
-SCHEMA_VERSION = 2  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+SCHEMA_VERSION = 3  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -115,6 +115,30 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         # only that their transcripts were read, so the next command reads again those that still
         # exist; a session whose transcript is gone has no file to be re-read from and stays as it is.
         "UPDATE sessions SET transcript_size = NULL, transcript_mtime = NULL",
+    ),
+    # The plan. A node is one JSON document (plan.Node), so its contract can grow a field without a
+    # step here; the two columns beside it are the ones the hook asks for on every agent event.
+    3: (
+        """CREATE TABLE IF NOT EXISTS nodes (
+             id TEXT PRIMARY KEY,
+             seq INTEGER NOT NULL,
+             state TEXT NOT NULL,
+             session_id TEXT,
+             data TEXT NOT NULL
+           )""",
+        "CREATE INDEX IF NOT EXISTS nodes_by_state ON nodes (state)",
+        """CREATE TABLE IF NOT EXISTS node_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             node_id TEXT NOT NULL,
+             timestamp TEXT NOT NULL,
+             kind TEXT NOT NULL,
+             actor TEXT,
+             session_id TEXT,
+             agent_id TEXT,
+             detail TEXT
+           )""",
+        "CREATE INDEX IF NOT EXISTS node_log_by_node ON node_log (node_id, id)",
+        "CREATE TABLE IF NOT EXISTS plan_meta (key TEXT PRIMARY KEY, value TEXT)",
     ),
 }
 
@@ -490,6 +514,75 @@ class Store:
             )
             for r in rows
         ]
+
+    # -- the plan -----------------------------------------------------------------------------
+
+    @contextlib.contextmanager
+    def claim(self):
+        """A read-modify-write on the plan that two executors may race for: the write lock is taken
+        before the read, so the second one sees what the first one did."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        self.conn.execute("COMMIT")
+
+    def node_rows(self, states: tuple[str, ...] | None = None) -> list[dict]:
+        where = f"WHERE state IN ({', '.join('?' for _ in states)})" if states else ""
+        rows = self.conn.execute(f"SELECT data FROM nodes {where} ORDER BY seq", states or ()).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def node_row(self, node_id: str) -> dict | None:
+        row = self.conn.execute("SELECT data FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def put_node(self, node: dict) -> None:
+        self.conn.execute(
+            """INSERT INTO nodes (id, seq, state, session_id, data)
+               VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM nodes), ?2, ?3, ?4)
+               ON CONFLICT (id) DO UPDATE SET state = ?2, session_id = ?3, data = ?4""",
+            (node["id"], node["state"], node.get("session_id"), json.dumps(node, ensure_ascii=False)),
+        )
+
+    def node_count(self) -> int:
+        return int(self.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
+
+    def log_node(
+        self,
+        node_id: str,
+        timestamp: str,
+        kind: str,
+        actor: str | None = None,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        detail: dict | None = None,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO node_log (node_id, timestamp, kind, actor, session_id, agent_id, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (node_id, timestamp, kind, actor, session_id, agent_id, json.dumps(detail) if detail else None),
+        )
+
+    def node_log(self, node_id: str | None = None, kinds: tuple[str, ...] | None = None) -> list[dict]:
+        clauses, args = [], []
+        if node_id is not None:
+            clauses.append("node_id = ?")
+            args.append(node_id)
+        if kinds:
+            clauses.append(f"kind IN ({', '.join('?' for _ in kinds)})")
+            args.extend(kinds)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(f"SELECT * FROM node_log {where} ORDER BY id", args).fetchall()
+        return [{**dict(r), "detail": json.loads(r["detail"]) if r["detail"] else {}} for r in rows]
+
+    def meta(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT value FROM plan_meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str | None) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO plan_meta (key, value) VALUES (?, ?)", (key, value))
 
     # -- explanations -------------------------------------------------------------------------
 

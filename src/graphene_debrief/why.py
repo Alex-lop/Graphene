@@ -37,7 +37,6 @@ class WhyEntry:
             self.effect,
             self.added,
             self.removed,
-            self.change.unrequested,
             self.change.strategy,
             self.explanation,
             "none",

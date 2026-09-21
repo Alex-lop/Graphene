@@ -230,7 +230,7 @@ V1_TABLES = ("sessions", "prompts", "tool_events", "explanations", "debrief_runs
 def downgrade_to_v1(db: Path, version: int = 1) -> None:
     """Turn a current store back into what version 1 wrote: no agents, no commits, no cwd column."""
     conn = sqlite3.connect(db)
-    for table in ("agents", "commits", "commit_files"):
+    for table in ("agents", "commits", "commit_files", "nodes", "node_log", "plan_meta"):
         conn.execute(f"DROP TABLE {table}")
     conn.execute("ALTER TABLE tool_events DROP COLUMN cwd")
     conn.execute(f"PRAGMA user_version = {version}")
@@ -253,7 +253,7 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
         assert [s.id for s in store.sessions()] == ["hooked"]  # its transcript may be gone: never dropped
         assert [e.id for e in store.events("hooked")] == ["t1"] and store.events("hooked")[0].cwd is None
         tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        assert tables >= {*V1_TABLES, "agents", "commits", "commit_files"}
+        assert tables >= {*V1_TABLES, "agents", "commits", "commit_files", "nodes", "node_log", "plan_meta"}
 
 
 def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):

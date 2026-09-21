@@ -357,3 +357,17 @@ def test_slash_commands_are_not_prompts(repo):
         real = event("UserPromptSubmit", repo, prompt_id="p1", prompt="/tmp/x.py is broken, fix it")
         assert ingest_hook_event(store, real, repo, T1)
         assert [p.text for p in store.prompts("sess-1")] == ["/tmp/x.py is broken, fix it"]
+
+
+def test_init_keeps_the_personal_settings_file_out_of_git_add_without_touching_gitignore(tmp_path):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    install_hooks(tmp_path)
+    install_hooks(tmp_path)  # and only once
+    exclude = (tmp_path / ".git" / "info" / "exclude").read_text().splitlines()
+    assert exclude.count(".claude/settings.local.json") == 1 and not (tmp_path / ".gitignore").exists()
+    status = subprocess.run(
+        ["git", "-C", str(tmp_path), "status", "--porcelain"], capture_output=True, text=True
+    )
+    assert "settings.local.json" not in status.stdout and ".claude" not in status.stdout

@@ -3,8 +3,8 @@
 import { expect, test } from "vitest";
 
 import golden from "../../tests/fixtures/run_graph.json";
-import { chain, cull, hues, laneRegion, matching, rowRegion, spaced, span, LANE_H, ROW_H } from "./model";
-import type { Graph } from "./types";
+import { chain, clip, cull, hues, laneRegion, matching, rowRegion, spaced, span, why, LANE_H, ROW_H } from "./model";
+import type { Graph, Plan, PlanNode } from "./types";
 
 const graph = golden as unknown as Graph;
 
@@ -131,4 +131,70 @@ test("a label that would print over the one before it is skipped, and nothing mo
   expect(spaced(ticks, (t) => t.x, 56).map((t) => t.x)).toEqual([0, 60, 200]);
   expect(spaced(ticks, (t) => t.x * 100, 56)).toEqual(ticks); // zoomed in, every label has room
   expect(spaced([], (t: { x: number }) => t.x, 56)).toEqual([]);
+});
+
+// -- the plan's controls -------------------------------------------------------------------------
+
+const node = (over: Partial<PlanNode>): PlanNode =>
+  ({
+    id: "n1",
+    title: "the endpoint",
+    goal: "",
+    scope: ["src/api/**"],
+    check: "true",
+    signoff: false,
+    needs: [],
+    owner: "agent",
+    state: "open",
+    display_state: "ready",
+    rev: 1,
+    executor: null,
+    started_at: null,
+    finished_at: null,
+    waits: [],
+    log: [],
+    lane: "agent",
+    column: 0,
+    row: 0,
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 76,
+    ...over,
+  }) as PlanNode;
+
+const planOf = (nodes: PlanNode[], writable = true): Plan => ({ nodes, writable }) as Plan;
+
+test("a control the state does not allow is disabled, and says which state", () => {
+  const open = node({});
+  const only = (n: PlanNode, p: Plan) => Object.entries(why(n, p)).filter(([, no]) => no === null).map(([act]) => act);
+  expect(only(open, planOf([open]))).toEqual(["drop", "edit"]);
+  expect(why(open, planOf([open])).signoff).toContain("n1 is ready");
+  const proposed = node({ state: "proposed" });
+  expect(only(proposed, planOf([proposed]))).toEqual(["accept", "drop", "edit"]);
+  const review = node({ state: "review", signoff: true });
+  expect(only(review, planOf([review]))).toEqual(["signoff", "reopen", "drop", "edit"]);
+  const done = node({ state: "done" });
+  expect(only(done, planOf([done]))).toEqual(["reopen", "drop"]);
+  expect(why(done, planOf([done])).edit).toContain("send it back");
+});
+
+test("a running node cannot be dropped, nor one something else waits on", () => {
+  const running = node({ state: "running", executor: "claude:aa11" });
+  expect(why(running, planOf([running])).drop).toContain("claude:aa11");
+  const first = node({});
+  const second = node({ id: "n2", needs: ["n1"] });
+  expect(why(first, planOf([first, second])).drop).toBe("n2 waits on n1; change what they need first");
+  expect(why(second, planOf([first, second])).drop).toBe(null);
+});
+
+test("a read-only page disables every control, with the same reason", () => {
+  const one = node({ state: "review" });
+  const reasons = Object.values(why(one, planOf([one], false)));
+  expect(new Set(reasons)).toEqual(new Set(["this page cannot change the plan; it is read-only"]));
+});
+
+test("a label that has to fit is cut with an ellipsis, never mid-layout", () => {
+  expect(clip("users endpoint", 200, 6.4)).toBe("users endpoint");
+  expect(clip("a title far too long to fit in this box", 60, 6.4)).toBe("a title …"); // nine characters fit at 6.4 px each, and the last is the ellipsis
 });

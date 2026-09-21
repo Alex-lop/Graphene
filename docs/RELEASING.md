@@ -4,15 +4,16 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
 
 ## Every release
 
-1. Bump the version in two places, and keep them identical:
+1. Bump the version in three places, and keep them identical (then `uv lock`; no test pins the number):
    - `version` in `pyproject.toml`
    - `__version__` in `src/graphene_debrief/__init__.py`
+   - `"version"` in `ui/package.json`
 2. Write the release notes in `CHANGELOG.md`.
 3. Commit both, then tag and push the tag:
 
    ```sh
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 
 4. Watch the run:
