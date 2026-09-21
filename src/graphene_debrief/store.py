@@ -15,7 +15,7 @@ RESPONSE_CAP = 256 * 1024
 STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
 KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
-SCHEMA_VERSION = 3  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+SCHEMA_VERSION = 4  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -140,6 +140,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         "CREATE INDEX IF NOT EXISTS node_log_by_node ON node_log (node_id, id)",
         "CREATE TABLE IF NOT EXISTS plan_meta (key TEXT PRIMARY KEY, value TEXT)",
     ),
+    # 4: no table changes. A node is one JSON document and gained `parent` and `aside`; the number
+    # goes up so that a 0.3 graphene refuses the store in words instead of failing on a field it
+    # does not know.
+    4: (),
 }
 
 
