@@ -39,8 +39,23 @@ STYLES = {
   under a minute. You type in under thirty words, lower case, no bullet points, no file names, no
   list of constraints — the thing you want, the way you would say it to someone at the next desk,
   trusting them to ask if it matters. You do not write long anything. You come back later, look at
-  what happened, and if it is wrong you say so, briefly.""",
+  what happened, and if it is wrong you say so, briefly.
+
+  Take that literally. Your opening message is under thirty words. Count them before you send it.""",
 }
+
+# Two lines were added to every brief between repetition 1 and repetition 2 of the 21 September
+# run, because repetition 1 showed they were needed, and both arms of a repetition always got the
+# same brief:
+#
+#   "Take that literally … count them"  — the tuesday stand-ins were writing a thousand characters
+#                                          while being told to write thirty words.
+#   "log the FULL text …"               — stand-ins were logging `graphene run --with claude -p …`
+#                                          instead of the line they typed, understating their own
+#                                          person_chars, which flatters the plan arm.
+#
+# So repetition 1 and repetition 2 are not quite the same instrument. The results file says so,
+# and the per-repetition numbers are printed rather than only their median.
 
 ARMS = {
     "prompt": """There is no plan. You work the way you always have: you type a message into a
@@ -125,8 +140,9 @@ LOGGING — as you go, never afterwards from memory
   python3 {here}/logline.py {runlog} person correction "no, the other one" --mandated
   python3 {here}/logline.py {runlog} executor result --from-json "$TMPDIR/e1.json"
 
-  Log every command you run as the person, and every message you send, with the text you actually
-  typed. Pipe anything with quotes or newlines in it on stdin. Never log a `result` for an
+  IMPORTANT: log the FULL text of every command you run as the person and every message you send,
+  not an abbreviation of it. If you ran a long `graphene run --with "…"`, the logged text is that
+  whole line. Pipe anything with quotes or newlines in it on stdin. Never log a `result` for an
   executor that `graphene run` started: its cost is read out of `.graphene/runs/` and logging it
   as well would count it twice.
 
