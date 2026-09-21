@@ -276,6 +276,7 @@ export const STATE: Record<Shown, string> = {
   running: "running",
   review: "waiting on a sign-off",
   done: "done",
+  "sub-goal": "sub-goal",
 };
 
 export const STATE_COLOUR: Record<Shown, string> = {
@@ -286,6 +287,7 @@ export const STATE_COLOUR: Record<Shown, string> = {
   running: "var(--a1)",
   review: "var(--ask)",
   done: "var(--pass)",
+  "sub-goal": "var(--neutral)",
 };
 
 export type Act = "accept" | "signoff" | "reopen" | "drop" | "edit";

@@ -6,6 +6,15 @@ the agents' lane first and then each person, because whose node it is is the fir
 looks for. Rows inside a lane are stacked so that no two boxes touch. The page adds pan and scroll
 and decides no position of its own, exactly as it already does for the map.
 
+The plan is a tree, so every node also carries where it sits in it: its ``parent``, its ``depth``
+below the root, whether it is a ``sub_goal`` (it has children: nobody takes it, and its progress is
+the leaves beneath it), and ``why`` — the path from the plan's ``goal`` down to it, in the person's
+words, the same lines ``graphene node start`` prints to its executor. ``nodes`` come out parents
+first, so the page indents by ``depth`` and decides no order of its own. The columns, the lanes and
+every position are unchanged: hierarchy is meaning, and the edges here are still order.
+TODO: ``why`` asks the store for the whole plan once per node; one walk would do, and the page polls
+every two seconds. Not worth a second copy of ``plan.trail`` until a plan is large enough to feel it.
+
 ``holes`` are the sentences printed next to the controls they belong to. A control here either
 changes what an agent can do or says where the mechanism behind it stops; none of them is decoration.
 """
@@ -64,8 +73,15 @@ class ViewNode:
     signoff: bool
     needs: list[str]
     owner: str
+    parent: str | None  # the node this one helps achieve; None is directly under the plan's goal
+    aside: bool  # made from what the person typed into a session
+    sub_goal: bool  # it has children: nobody takes it, and it is done when they are
+    depth: int  # how far below the root it sits; the page indents by it and computes no order
+    why: list[str]  # the path from the goal down to this node, root first: plan.trail
+    leaves_done: int  # a sub-goal's own progress, in leaves, exactly as the terminal counts it
+    leaves_total: int
     state: str
-    display_state: str  # waiting | ready | the state itself
+    display_state: str  # waiting | ready | sub-goal | the state itself
     rev: int
     executor: str | None
     started_at: str | None
@@ -103,6 +119,7 @@ class ViewEdge:
 class PlanView:
     version: int = 1
     repo: str = ""  # the checkout this plan belongs to, by name: a plan exists before any run does
+    goal: str = ""  # the root of the tree: why any of this is being done, in the person's words
     person: str = ""
     paused: bool = False
     width: float = 0.0
@@ -139,8 +156,33 @@ def depths(nodes: list[P.Node]) -> dict[str, int]:
     return out
 
 
-def display_state(node: P.Node, by_id: dict[str, P.Node]) -> str:
-    """What the page labels the node: an open node that cannot start yet is waiting, not ready."""
+def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
+    """The tree as an outline: every node after its parent, with how far below the root it sits.
+    Siblings keep the order they were added, as they do in the terminal. A node whose parent is not
+    here (dropped, archived) hangs directly under the goal, so nothing falls out of the view."""
+    under = P.kids(nodes)
+    here = {n.id for n in nodes}
+    roots = [n for n in nodes if n.parent not in here]
+    out: list[tuple[P.Node, int]] = []
+    stack = [(n, 0) for n in reversed(roots)]
+    while stack:
+        node, depth = stack.pop()
+        out.append((node, depth))
+        stack += [(kid, depth + 1) for kid in reversed(under.get(node.id, []))]
+    return out
+
+
+def rolls_up(node: P.Node, nodes: list[P.Node], under: dict) -> tuple[int, int]:
+    """A sub-goal's progress in the leaves beneath it, done and in all, the terminal's own count."""
+    beneath = [n for n in P.below(node.id, nodes) if not under.get(n.id)]
+    return sum(1 for n in beneath if n.state == P.DONE), len(beneath)
+
+
+def display_state(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> str:
+    """What the page labels the node: an open node that cannot start yet is waiting, not ready, and
+    one with children is a sub-goal, which nobody takes and which is done when its children are."""
+    if under and under.get(node.id):
+        return "sub-goal" if node.state == P.OPEN else node.state
     if node.state != P.OPEN:
         return node.state
     return "waiting" if P.unmet(node, by_id) else "ready"
@@ -159,7 +201,7 @@ def came_back(store, node: P.Node) -> list[str]:
     return []
 
 
-def waits(node: P.Node, by_id: dict[str, P.Node]) -> list[str]:
+def waits(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> list[str]:
     """Why this node is not moving, in plain sentences: what it needs from a person on its own
     account first, then what it waits on in the plan, then which person the rest of it waits for."""
     reasons: list[str] = []
@@ -168,7 +210,9 @@ def waits(node: P.Node, by_id: dict[str, P.Node]) -> list[str]:
     elif node.state == P.REVIEW:
         reasons.append("waits for a person's sign-off")
     for blocker in P.unmet(node, by_id):
-        reasons.append(f"waits on {blocker.id} ({blocker.title}), which is {display_state(blocker, by_id)}")
+        reasons.append(
+            f"waits on {blocker.id} ({blocker.title}), which is {display_state(blocker, by_id, under)}"
+        )
     # waits_on_person walks the whole chain above this node; its line about the node itself says
     # nothing the state and the lane do not already say, so only the ones upstream are kept.
     reasons += [r for r in P.waits_on_person(node, by_id) if not r.startswith(f"{node.id} ")]
@@ -227,7 +271,9 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
     person = P.person_name()
     # the store lives at <repo>/.graphene/graphene.db, and the page names the repo even when no
     # session has been recorded in it yet, which is exactly when the graph cannot name it
-    view = PlanView(repo=store.path.parent.parent.name, person=person, paused=P.paused(store))
+    view = PlanView(
+        repo=store.path.parent.parent.name, goal=P.goal(store), person=person, paused=P.paused(store)
+    )
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
     view.waiting_on_person = waiting_on_person(live, person)
     view.all_done = bool(live) and all(n.state == P.DONE for n in live)
@@ -245,6 +291,9 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
         return asdict(view)
 
     column = depths(live)
+    under = P.kids(live)
+    tree = outline(live)  # the order the page prints, and the depth it indents by
+    depth = {n.id: d for n, d in tree}
     owners = [P.AGENT] + sorted({n.owner for n in live if n.owner != P.AGENT})
     ordered = P.order(live)  # a node after everything it waits on: rows read down the same way
     y = 0.0
@@ -261,6 +310,7 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
             row = next(r for r in range(len(mine) + 1) if r not in used)
             used.add(row)
             rows = max(rows, row + 1)
+            done, of = rolls_up(n, live, under) if under.get(n.id) else (0, 0)
             placed[n.id] = ViewNode(
                 id=n.id,
                 title=n.title,
@@ -270,13 +320,20 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
                 signoff=n.signoff,
                 needs=list(n.needs),
                 owner=n.owner,
+                parent=n.parent,
+                aside=n.aside,
+                sub_goal=bool(under.get(n.id)),
+                depth=depth[n.id],
+                why=P.trail(store, n),
+                leaves_done=done,
+                leaves_total=of,
                 state=n.state,
-                display_state=display_state(n, by_id),
+                display_state=display_state(n, by_id, under),
                 rev=n.rev,
                 executor=n.executor,
                 started_at=n.started_at,
                 finished_at=n.finished_at,
-                waits=came_back(store, n) + waits(n, by_id),
+                waits=came_back(store, n) + waits(n, by_id, under),
                 log=node_log(store, n.id) if logs else [],
                 lane=owner,
                 column=col,
@@ -297,7 +354,7 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
         )
         y += height + LANE_GAP
 
-    view.nodes = [placed[n.id] for n in ordered]
+    view.nodes = [placed[n.id] for n, _ in tree]  # parents before their children: the page indents
     for n in ordered:
         for need in n.needs:
             source, target = placed.get(need), placed[n.id]

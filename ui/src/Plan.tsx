@@ -24,8 +24,13 @@ const lines = (text: string): string[] =>
 
 const words = (text: string): string[] => text.split(/[\s,]+/).filter(Boolean);
 
+/** A sub-goal's progress, in the leaves beneath it: the same count the terminal prints. */
+const rolled = (node: PlanNode): string => `${node.leaves_done}/${node.leaves_total} done`;
+
 const Shape = ({ state, colour }: { state: Shown; colour: string }): ReactElement => {
   switch (state) {
+    case "sub-goal":
+      return <path d="M-4,-5.5V5.5M-4,-2H4.5M-4,3H4.5" fill="none" stroke={colour} strokeWidth={1.6} strokeLinecap="round" />;
     case "done":
       return <path d="M-5,0L-1.5,4L5,-4.5" fill="none" stroke={colour} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />;
     case "running":
@@ -66,6 +71,10 @@ export function PlanHeader({ plan, view, onView }: { plan: Plan; view: View; onV
           {counts.length > 0 ? ` · ${counts.map(([state, n]) => `${n} ${STATE[state as Shown]}`).join(" · ")}` : ""}
         </span>
       </div>
+      {/* the root of the tree, in the person's words: why any of the rest is being done */}
+      <p className="goal" data-testid="goal" title={plan.goal}>
+        {plan.goal || <span className="muted">no goal yet — `graphene plan goal &lsquo;why any of this is being done&rsquo;`</span>}
+      </p>
       <div className="badges">
         {plan.paused && <span className="badge warn">paused: nothing starts and no write is refused</span>}
         {!plan.writable && <span className="badge">read-only: this page cannot change the plan</span>}
@@ -133,6 +142,41 @@ export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: st
   );
 }
 
+/** The plan as a tree: a node under the one it helps achieve, indented by the depth Python computed.
+ * A sub-goal carries no scope and no check of its own, so it says how many of the leaves beneath it
+ * are done. Leaves made from a prompt and already finished fold into one line, as the terminal folds
+ * them: they are a record of what was typed, not work anyone is waiting on. */
+export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string) => void }): ReactElement {
+  const shown = plan.nodes.filter((n) => !(n.aside && n.state === "done"));
+  const folded = plan.nodes.length - shown.length;
+  return (
+    <section className="tree" data-testid="tree">
+      <ul>
+        {shown.map((node) => (
+          <li key={node.id} data-tree={node.id} data-depth={node.depth} style={{ paddingLeft: 12 + node.depth * 20 }}>
+            <button type="button" className={node.id === picked ? "row on" : "row"} onClick={() => onPick(node.id)}>
+              <span className="state" style={{ color: STATE_COLOUR[node.display_state] }}>
+                {STATE[node.display_state]}
+              </span>
+              <b>{node.id}</b>
+              <span className="what">{node.title}</span>
+              <span className="muted">
+                {node.sub_goal ? rolled(node) : node.scope.join(", ")}
+                {node.aside ? " · typed into a session" : ""}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {folded > 0 && (
+        <p className="muted done-asides">
+          ✓ {folded} done from a prompt, each with its record (`graphene plan --all` lists them)
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
   const width = PAD_X + plan.width + 24;
   return (
@@ -177,7 +221,7 @@ function Box({ node, on, onPick }: { node: PlanNode; on: boolean; onPick: (id: s
       ? `${node.executor} · since ${clock(node.started_at)}`
       : `${node.executor} · finished ${clock(node.finished_at)}`
     : null;
-  const says = held ?? node.waits[0] ?? node.scope.join(", ");
+  const says = node.sub_goal ? rolled(node) : (held ?? node.waits[0] ?? node.scope.join(", "));
   return (
     <g
       className={`node ${on ? "on" : ""}`}
@@ -315,6 +359,7 @@ function AddNode({ plan, write }: { plan: Plan; write: Write }): ReactElement {
   const [goal, setGoal] = useState("");
   const [needs, setNeeds] = useState("");
   const [owner, setOwner] = useState("agent");
+  const [parent, setParent] = useState("");
   const [signoff, setSignoff] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const add = async (event: FormEvent): Promise<void> => {
@@ -326,6 +371,7 @@ function AddNode({ plan, write }: { plan: Plan; write: Write }): ReactElement {
       check: check.trim() || null,
       needs: words(needs),
       owner: owner.trim() || "agent",
+      parent: parent.trim(),
       signoff,
     });
     setSaid(failed);
@@ -356,6 +402,10 @@ function AddNode({ plan, write }: { plan: Plan; write: Write }): ReactElement {
       <label>
         goal
         <textarea rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} />
+      </label>
+      <label>
+        under — the node it helps achieve, or blank for the goal
+        <input value={parent} onChange={(e) => setParent(e.target.value)} placeholder="n1" />
       </label>
       <label>
         waits on — node ids
@@ -434,12 +484,31 @@ export function PlanInspector({
       <p className="sub">
         {node.id} · {STATE[node.display_state]} · {node.owner === "agent" ? "any agent" : `${node.owner}'s`} · revision {node.rev}
       </p>
+      {/* why this is being done at all: the path from the plan's goal down to it, root first, the
+       * same lines `graphene node start` prints to whoever takes it */}
+      {node.why.length > 0 && (
+        <ol className="list why" data-testid="why">
+          {node.why.map((line, i) => (
+            <li key={line} style={{ paddingLeft: i * 12 }}>
+              {line}
+            </li>
+          ))}
+        </ol>
+      )}
       <dl className="facts">
         <Fact label="goal">{node.goal || node.title}</Fact>
-        <Fact label="may touch">{node.scope.join(", ") || "nothing"}</Fact>
-        <Fact label="done when">
-          {[node.check ? `${node.check} passes` : "", node.signoff ? "a person signs it off" : ""].filter(Boolean).join(", and ") || "—"}
-        </Fact>
+        {node.sub_goal ? (
+          <Fact label="done when">
+            {`its children are: ${rolled(node)}${node.check ? `, and then \`${node.check}\` passes` : ""}`}
+          </Fact>
+        ) : (
+          <>
+            <Fact label="may touch">{node.scope.join(", ") || "nothing"}</Fact>
+            <Fact label="done when">
+              {[node.check ? `${node.check} passes` : "", node.signoff ? "a person signs it off" : ""].filter(Boolean).join(", and ") || "—"}
+            </Fact>
+          </>
+        )}
         {node.needs.length > 0 && <Fact label="waits on">{node.needs.join(", ")}</Fact>}
         {node.executor && (
           <Fact label={node.state === "running" ? "held by" : "ran by"}>
