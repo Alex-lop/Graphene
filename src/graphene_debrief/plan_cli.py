@@ -401,6 +401,17 @@ def register(cli: typer.Typer, root, open_store, fail):
         run(go)
 
     @plan_cli.command()
+    def record() -> None:
+        """The record of the whole plan: every leaf's added up. One leaf's is `graphene node show`."""
+        from .node_record import rolled_up
+
+        def go(store):
+            for line in rolled_up(store, root(), P.leaves(P.nodes(store))):
+                out(line.replace("under it", "in the plan"))
+
+        run(go)
+
+    @plan_cli.command()
     def archive() -> None:
         """Put finished nodes away. With nothing else left, the plan is no longer in force."""
         gone = run(lambda s: P.archive(s, P.caller()))
@@ -656,12 +667,14 @@ def register(cli: typer.Typer, root, open_store, fail):
     def show(node_id: str = typer.Argument(...)) -> None:
         """A node's contract, then its record: who held it, what changed, what was refused, and how
         much of it is verified."""
-        from .node_record import node_record, render
+        from .node_record import node_record, render, rolled_up
 
         def go(store):
             n = P.get(store, node_id)
             out(P.contract(n, P.trail(store, n)))
-            for line in render(node_record(store, root(), n)):
+            everything = P.nodes(store)
+            under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
+            for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")

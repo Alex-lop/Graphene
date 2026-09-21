@@ -197,3 +197,22 @@ def test_a_sub_goal_with_a_sign_off_waits_for_the_person_after_its_leaves(store,
     assert [n.id for n, _ in waits] == ["docs"]
     plan.signoff(store, "api", ALEX)
     assert plan.get(store, "api").state == DONE
+
+
+def test_the_record_rolls_up_the_same_way_per_subtree_and_per_plan(store, repo):
+    from graphene_debrief.node_record import rolled_up
+
+    plan.propose(store, TREE, ALEX)
+    do(store, repo, "a", "src/api/a.txt")
+    everything = plan.nodes(store)
+    under = [n for n in plan.below("api", everything) if n in plan.leaves(everything)]
+    lines = "\n".join(rolled_up(store, repo, under))
+    assert "the 2 leaves under it (1 done" in lines
+    assert (
+        "of the 1 path git said had changed under them, 1 inside the scope" in lines
+        and "1 to git alone" in lines
+    )
+    assert "not counted (never held, or git's answer was not kept): b" in lines  # never a silent zero
+    assert "1 of 1 passed" in lines
+    whole = "\n".join(rolled_up(store, repo, plan.leaves(everything)))
+    assert "the 3 leaves" in whole and "b, docs" in whole

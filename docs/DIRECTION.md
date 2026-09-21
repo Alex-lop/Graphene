@@ -151,6 +151,21 @@ above, the old one is left as written and the change is named here.
     `--all` unfolds.
 24. **The banned-words test is gone**, and deliberate shortcuts in the code are marked `TODO:`.
 
+25. **The session product is cut down to a node's record. This replaces decision 12.** `graphene
+    why`, the session card and `graphene sessions` are gone, with `debrief.py` and `why.py` (the
+    three files the directive named went from 2,181 lines to 966). A leaf's coverage line is
+    computed for any executor from the node's log, git and the check Graphene ran; Claude Code's
+    records, where a session held the leaf, add which path traces to a recorded write. *Why cut
+    rather than keep:* both commands rested wholly on Claude Code's edit payloads, and could answer
+    nothing for Codex, `graphene run --with …` or you. The record rolls up the way done does:
+    `graphene node show <sub-goal>` adds up the leaves under it, `graphene plan record` the whole
+    plan, and a leaf that could not be counted is named, never counted as zero. *Left for a
+    follow-up:* four store methods only the card called (`add_debrief_run`, `last_debrief_run`,
+    `recent_paths`, `recorded_path_count`).
+26. **On the page, "why" is the path, in a node's detail.** The goal is in the header, the plan is
+    an indented outline above the unchanged canvas, a sub-goal shows `n/m done`, and a node's detail
+    opens with the same `why:` lines an executor is told. Nothing else on the page changed.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files

@@ -546,3 +546,42 @@ def _act_lines(acts: list[Act]) -> list[str]:
     for a in acts:
         lines.append(f"    {a.at}  {kinds[a.kind].ljust(wide)}  {(a.actor or '').ljust(who)}  {a.said}")
     return [line.rstrip() for line in lines]
+
+
+def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = None) -> list[str]:
+    """The record of a subtree, or of the whole plan: its leaves' records added up, and nothing else.
+    A path two leaves both changed counts once. A leaf whose own count could not be computed is
+    named rather than counted as zero, so the sum never claims more than its parts."""
+    held = [n for n in leaves if n.started_at]
+    records = [(n, node_record(store, root, n, at)) for n in held]
+    counted = [(n, r) for n, r in records if r.coverage.get("changed_computed")]
+    paths: dict[str, bool] = {}
+    for n, r in counted:
+        for w in r.windows:
+            for path in w.under or []:
+                paths[path] = paths.get(path, False) or P.in_scope(path, n.scope)
+    total = {k: sum(r.coverage[k] for _, r in counted) for k in ("changed_edit", "changed_shell")}
+    done = sum(1 for n in leaves if n.state == P.DONE)
+    lines = [
+        f"  the record of the {len(leaves)} lea{'f' if len(leaves) == 1 else 'ves'} under it "
+        f"({done} done; each has its own: `graphene node show <id>`):"
+    ]
+    if counted:
+        alone = max(len(paths) - total["changed_edit"] - total["changed_shell"], 0)
+        lines.append(
+            f"    coverage: of the {len(paths)} path{_s(len(paths))} git said had changed under them, "
+            f"{sum(paths.values())} inside the scope of the leaf that changed it; "
+            f"{total['changed_edit']} to a recorded edit, {total['changed_shell']} to a recorded shell command, {alone} to git alone"
+        )
+    missing = [n.id for n in leaves if n not in [c for c, _ in counted]]
+    if missing:
+        lines.append(f"    not counted (never held, or git's answer was not kept): {', '.join(missing)}")
+    checks = [r.refusals.last_check for _, r in records if r.refusals.last_check]
+    passed = sum(1 for c in checks if c["result"] == "passed")
+    refused = sum(len(r.refusals.denied) + len(r.refusals.breaches) for _, r in records)
+    lines.append(
+        f"    checks run by Graphene itself: {passed} of {len(checks)} passed at last run; "
+        f"{refused} write{_s(refused)} refused; "
+        f"{sum(len(r.refusals.done) for _, r in records)} `done` refused"
+    )
+    return lines
