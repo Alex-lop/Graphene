@@ -581,8 +581,9 @@ def goal(store) -> str:
 
 def set_goal(store, text: str, who: Caller, now: str | None = None) -> None:
     _person_only(who, "saying what the plan is for")
+    was = goal(store)  # kept in the log: a goal set in the wrong repo can be put back word for word
     store.set_meta("goal", text.strip())
-    store.log_node("*", now or _now(), "goal", who.label, None, None, {"note": text.strip()})
+    store.log_node("*", now or _now(), "goal", who.label, None, None, {"note": text.strip(), "was": was})
 
 
 def paused(store) -> bool:

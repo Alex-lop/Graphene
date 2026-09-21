@@ -349,6 +349,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
         held = _held(store, sid)
         for written, _kind in bash_written_paths(command, Path(cwd or root)):
+            if not written.strip():
+                continue  # `echo hi > "\n"`: the parser's artefact, not a path anyone can write
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
             rel = _rel(written, root, cwd)

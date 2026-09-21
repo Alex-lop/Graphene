@@ -310,8 +310,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         if text is None:
             out(run(P.goal) or "no goal yet: `graphene plan goal 'why any of this is being done'`")
             return
+        was = run(P.goal)
         run(lambda s: P.set_goal(s, text, P.caller()))
         out(f"the plan: {text.strip()}")
+        out(f"  (the plan of {root()}" + (f"; it said: {was}" if was else "") + ")")
 
     @cli.command()
     def watch(
@@ -552,7 +554,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         scope: list[str] = typer.Option(
             None, "--scope", help="A glob it may touch; repeat it. '!glob' excludes."
         ),
-        check: str = typer.Option(None, "--check", help="The command that must pass for it to be done."),
+        check: str = typer.Option(
+            None, "--check", help="The command that must pass for it to be done. Run with sh, not bash."
+        ),
         goal: str = typer.Option(None, "--goal", help="What the work should achieve, in a sentence or two."),
         needs: list[str] = typer.Option(None, "--needs", help="A node it waits on; repeat it."),
         owner: str = typer.Option(None, "--owner", help="'agent' (default), 'me', or a person's name."),

@@ -1,7 +1,6 @@
 # morning.md — 2026-09-21 — the tree directive
 
-(Kept current through the run. Yesterday's is `docs/process/morning-2026-09-20.md`. Sections marked
-PENDING are filled when the last sub-agent reports; everything else is final.)
+(Final for this run. Yesterday's is `docs/process/morning-2026-09-20.md`.)
 
 ## 1. What you can run in five minutes
 
@@ -19,7 +18,8 @@ In a repo of your own: `graphene plan goal "…"`, ask your agent to propose a t
 
 ## 2. What is waiting on you
 
-Nothing blocks the next step. One PR, `tree` into `main`, is yours to merge: https://github.com/Alex-lop/Graphene/pull/26
+One thing is yours to undo (this repo's plan goal was overwritten by a test stand-in: see "The test"
+below, one command). Nothing else blocks. One PR, `tree` into `main`, is yours to merge: https://github.com/Alex-lop/Graphene/pull/26
 Decisions 13 to 27 in `docs/DIRECTION.md` are tonight's, each with its reason and the question I would
 have asked. The four I would read first:
 
@@ -123,11 +123,47 @@ counts as your yes is a judgement about how you talk, not a mechanism). What age
   in one checkout (the second gets no leaf, and is not told why well); a leaf with a proposed child
   draws as a sub-goal on the page; non-English yes; `accept` works while paused.
 
-## The test a paragraph can lose
+## The test a paragraph can lose: it did not lose
 
-PENDING: the sub-agent running the second test has not reported. Its results will be
-`docs/test/results-2026-09-21.md`, with the refreshed ten-minute recipe at the top of
-`docs/test/PROTOCOL.md`.
+`docs/test/results-2026-09-21.md`, audited by an agent told to assume it was rigged; every number from
+`python3 docs/test/summarize.py <runs>`. Nine runs of a new six-directory task, two arms, a dense
+person and a Tuesday person. **Read this as it is:**
+
+- **Outcome separates nothing.** Every run, both arms, scored 20/20 on the hidden acceptance and 12/12
+  on inputs the code was never shown. The task was built to break that ceiling and did not.
+- **The paragraph arm won on effort:** median 4.5 person actions against 9, 3,196 typed characters
+  against 4,526, $0.61 against $1.15.
+- **Two claims that the plan arm won something were written and the auditor killed both**; they are
+  gone. Correcting everything the audit found makes the plan arm look worse, not better.
+- **Parallelism did not save time in the one truly concurrent run** (1,378 s against 745 s serial).
+  That run was on the build before the closing review's fix: a sibling's landing got a leaf refused
+  four times (finding 4 there, F1 in the review). It is fixed and tested; it has not been re-measured.
+- **The one clean result is the Tuesday claim:** with a plan in force, a one-file request cost the
+  person the same 1 action and 80 characters as with no plan, zero refusals, +1.3 s and +0.5 cents.
+  The auditor's caveat stands: that leaf's scope is `**`, so "free" and "fences nothing" are one
+  measurement.
+- What this means, in my words: on a task sonnet gets right from a paragraph, Graphene is still
+  overhead, as on the first night. Nothing tonight measured the case the product is for (too big to
+  watch, unattended, overnight) against a paragraph, because a stand-in harness that runs arms one at
+  a time cannot. Your ten minutes (`docs/test/PROTOCOL.md`, top) are still worth more than these runs.
+- The test ran on a wheel built from `563c1f6`, before the review's fixes and before the prompt
+  syntax became `--scope`/`--check`.
+
+**One thing it did to this repo, which is yours to undo.** A stand-in ran `graphene plan goal` from a
+shell that had not changed directory, and this repo's own plan goal is now a sentence from a test
+card ("northwind's new feed is xml…", logged 07:42:45Z as "alexlopez (no terminal)"). Nothing else
+changed: the five proposals are as they were. There was no goal before tonight. I did not overwrite
+it, because saying what the plan is for is a person's act and I will not pass for you to do it:
+```
+graphene plan goal "<what this repo's plan is for>"
+```
+It is also what decision 20 costs, seen once for real: a sub-agent's shell with no vendor mark was
+taken for you. `plan goal` now prints which repo it changed and what the goal said before, and the
+log keeps the old words. Eight product findings from the test are in
+`docs/test/findings/2026-09-21-bugs.md`; fixed from it tonight: the blank redirect target read as a
+write, the sibling-landing refusal, the goal's old value, `--check` saying it runs under sh. Left:
+`graphene run` does not record what an executor cost; a worktree is cut from `HEAD`, so uncommitted
+hand-work is not in it; agents still write a scratch plan file when told to use `propose -`.
 
 ## Questions (only what blocks the next step)
 
