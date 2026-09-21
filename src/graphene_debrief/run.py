@@ -27,12 +27,13 @@ DEFAULT_WITH = "claude -p --permission-mode acceptEdits"
 ATTEMPTS = 3
 
 
-def prompt_for(node: P.Node, notes: list[str], refusal: str | None) -> str:
+def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None) -> str:
     lines = [
-        "You are doing one node of a plan that a person and their agents share. This is the whole of "
-        "what you are asked to do; the rest of the plan is not yours.",
+        "You are doing one leaf of a plan that a person and their agents share. `why` is the path from "
+        "the plan's goal down to your leaf, in the person's words: it is what your work is for. The "
+        "leaf is the whole of what you are asked to do; the rest of the plan is not yours.",
         "",
-        P.contract(node),
+        P.contract(node, why),
         *(f"  sent back with: {note}" for note in notes),
         "",
         "Do the work inside the scope. Read anything you need; write only inside the scope. When you "
@@ -90,7 +91,10 @@ def run_plan(
         refusal: str | None = None
         for attempt in range(1, attempts + 1):
             argv = command_for(
-                template, prompt_for(node, P.notes(store, node.id), refusal), session, attempt > 1
+                template,
+                prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
+                session,
+                attempt > 1,
             )
             env = {**os.environ, "GRAPHENE_NODE": node.id}
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody

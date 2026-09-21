@@ -195,7 +195,7 @@ def test_a_ui_started_inside_an_agents_shell_serves_a_page_that_cannot_write(rep
 def test_a_refusal_comes_back_whole_and_a_busy_store_says_so(served, monkeypatch):
     token = token_of(served)
     status, said = post(served, "add", {"title": "no scope", "check": "true"}, token)
-    assert status == 409 and "a node needs a scope" in said
+    assert status == 409 and "a leaf needs a scope" in said
 
     def locked(*args, **kwargs):
         raise sqlite3.OperationalError("database is locked")

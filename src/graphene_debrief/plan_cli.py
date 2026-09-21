@@ -118,49 +118,125 @@ def register(cli: typer.Typer, root, open_store, fail):
             return "ready"
         return ""
 
-    def print_plan(store, who: P.Caller) -> None:
-        everything = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
-        if not everything:
-            out(
-                "no plan yet. `graphene node add 'title' --scope 'src/x/**' --check 'pytest tests/x' "
+    FOLD = 12  # lines of tree the plain print shows before finished leaves fold into their sub-goal
+
+    def plan_lines(store, who: P.Caller, everything: bool = False) -> list[str]:
+        """The plan as a tree, for a person and an agent alike: what waits on the person first, then
+        the goal, then the tree folded to what is still moving. ``everything`` unfolds it."""
+        alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
+        if not alive:
+            return [
+                "no plan yet. `graphene plan goal 'why any of this is being done'` names the root; "
+                "`graphene node add 'title' --scope 'src/x/**' --check 'pytest tests/x' [--parent n1] "
                 "[--needs n1] [--goal …]` adds a node: from a person it is in the plan at once, from an "
-                "agent it is a proposal a person accepts. `graphene plan propose FILE` adds several from JSON"
-            )
-            return
-        by_id = {n.id: n for n in everything}
-        counts = {s: sum(1 for n in everything if n.state == s) for s in (P.RUNNING, P.DONE)}
-        nodes = f"{len(everything)} node{'' if len(everything) == 1 else 's'}"
-        head = f"the plan: {nodes}, {counts[P.DONE]} done, {counts[P.RUNNING]} running"
+                "agent it is a proposal a person accepts. `graphene plan propose FILE` adds a whole "
+                "subtree from JSON"
+            ]
+        by_id = {n.id: n for n in alive}
+        under = P.kids(alive)
+        leaves = [n for n in P.leaves(alive) if not n.aside]
+        asides = [n for n in alive if n.aside]
+        count = {s: sum(1 for n in leaves if n.state == s) for s in (P.RUNNING, P.DONE)}
+        lines = [f"the plan: {P.goal(store)}"] if P.goal(store) else []
+        head = (
+            f"{'' if lines else 'the plan: '}{len(leaves)} lea{'f' if len(leaves) == 1 else 'ves'}, "
+            f"{count[P.DONE]} done, {count[P.RUNNING]} running"
+        )
+        if asides:
+            head += f" · {len(asides)} made from a prompt"
         if P.paused(store):
             head += " · PAUSED: nothing starts and nothing is enforced"
-        elif counts[P.DONE] == len(everything):
-            head += " · still in force: agents write nothing here until you add a node, archive or pause"
-        out(head)
-        wid = max(len(n.id) for n in everything)
-        wt = min(44, max(len(n.title) for n in everything))
-        wo = max(len(n.owner) for n in everything)
-        ws = max(len(scope_cell(n)) for n in everything)  # bounded by scope_cell itself
-        for n in everything:
-            state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
-            out(
-                f"  {n.id.ljust(wid)}  {state.ljust(8)}  {cut(n.title, wt).ljust(wt)}  {n.owner.ljust(wo)}  "
-                f"{scope_cell(n).ljust(ws)}  ·  {describe(store, n, by_id)}".rstrip()
+        elif leaves and count[P.DONE] == len(leaves):
+            head += " · finished; `graphene plan archive` puts it away"
+        lines.append(head)
+        yours = [n for n in alive if n.state == P.REVIEW]
+        yours += [  # a proposed subtree is asked about once, at its top
+            n
+            for n in alive
+            if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
+        ]
+        yours += [n for n in P.ready(alive) if n.owner != P.AGENT]
+        stuck = [
+            n
+            for n in alive
+            if n.state == P.OPEN and under.get(n.id) and all(c.state == P.DONE for c in under[n.id])
+        ]
+        if who.person and (yours or stuck):
+            ask = {P.PROPOSED: "accept", P.REVIEW: "sign off", P.OPEN: "yours to do"}
+            seen: list[str] = []
+            told = [
+                f"{n.id} ({ask[n.state]}"
+                + (f", with the {len(P.below(n.id, alive))} under it" if under.get(n.id) else "")
+                + ")"
+                for n in yours
+                if n.id not in seen and not seen.append(n.id)
+            ]
+            told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
+            lines.append("waiting on a person: " + ", ".join(told))
+        wid = max(len(n.id) + 2 * len(P.above(n, by_id)) for n in alive)
+        wt = min(44, max(len(n.title) for n in alive))
+        wo = max(len(n.owner) for n in alive)
+        ws = max(len(scope_cell(n)) for n in alive)
+        shown = [n for n in alive if not n.aside or n.state != P.DONE]
+        fold = not everything and len(shown) > FOLD
+
+        def row(n: P.Node, depth: int) -> str:
+            mine = under.get(n.id, [])
+            if mine:
+                done = sum(1 for c in P.below(n.id, alive) if not under.get(c.id) and c.state == P.DONE)
+                of = sum(1 for c in P.below(n.id, alive) if not under.get(c.id))
+                state, what = (
+                    ("done" if n.state == P.DONE else n.state if n.state != P.OPEN else "sub-goal"),
+                    (f"{done}/{of} done" + (f"; then `{n.check}`" if n.check and n.state != P.DONE else "")),
+                )
+            else:
+                state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
+                what = describe(store, n, by_id)
+            ident = ("  " * depth + n.id).ljust(wid)
+            cells = f"  {ident}  {state.ljust(8)}  {cut(n.title, wt).ljust(wt)}  {n.owner.ljust(wo)}  "
+            return f"{cells}{scope_cell(n).ljust(ws)}  ·  {what}".rstrip()
+
+        def walk(parent: str | None, depth: int) -> None:
+            folded: list[P.Node] = []
+            for n in under.get(parent, []):
+                if n.aside and n.state == P.DONE and not everything:
+                    continue
+                if fold and n.state == P.DONE:
+                    folded.append(n)
+                    continue
+                lines.append(row(n, depth))
+                walk(n.id, depth + 1)
+            if folded:
+                inside = sum(len(P.below(n.id, alive)) for n in folded)
+                lines.append(
+                    f"  {'  ' * depth}✓ {len(folded)} done here"
+                    + (f" (with {inside} under them)" if inside else "")
+                    + f": {cut(', '.join(n.id for n in folded), 60)}   (`graphene plan --all` unfolds)"
+                )
+
+        walk(None, 0)
+        done_asides = [n for n in asides if n.state == P.DONE]
+        if done_asides and not everything:
+            lines.append(
+                f"  ✓ {len(done_asides)} done from a prompt, each with its record "
+                f"(`graphene plan --all`; latest: {done_asides[-1].id}, {cut(done_asides[-1].title, 40)})"
             )
         try:
-            loose = P.unowned(store, checkout()) if not counts[P.RUNNING] else []
+            loose = P.unowned(store, checkout()) if not P.nodes(store, (P.RUNNING,)) else []
         except P.Refused:
             loose = []  # not a checkout git can read: nothing to compare
         if loose:
             listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
-            out(f"changed while no node owned it: {listed}  (yours? `graphene plan ack`; else put it back)")
-        yours = [n for n in everything if n.state in (P.PROPOSED, P.REVIEW)]
-        yours += [n for n in P.ready(everything) if n.owner != P.AGENT]
-        if who.person and yours:
-            ask = {P.PROPOSED: "accept", P.REVIEW: "sign off", P.OPEN: "yours to do"}
-            out("waiting on a person: " + ", ".join(f"{n.id} ({ask[n.state]})" for n in yours))
+            lines.append(
+                f"changed while no node owned it: {listed}  (yours? `graphene plan ack`; else put it back)"
+            )
         if not who.person:
-            for line in next_lines(store, who):
-                out(line)
+            lines += next_lines(store, who)
+        return lines
+
+    def print_plan(store, who: P.Caller, everything: bool = False) -> None:
+        for line in plan_lines(store, who, everything):
+            out(line)
 
     def log_line(e: dict, with_node: int = 0, who_wide: int = 16) -> str:
         detail = e["detail"]
@@ -194,12 +270,69 @@ def register(cli: typer.Typer, root, open_store, fail):
     def show_plan(
         ctx: typer.Context,
         as_json: bool = typer.Option(False, "--json", help="The plan as JSON, the shape `propose` reads."),
+        everything: bool = typer.Option(False, "--all", help="Unfold the tree: finished work included."),
     ) -> None:
-        """Print the plan and where the work stands."""
+        """Print the plan as a tree: what waits on you, then what is moving. Finished work is folded."""
         if ctx.invoked_subcommand is not None:
             return
         who = P.caller()
-        run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who))
+        run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who, everything))
+
+    @plan_cli.command("goal")
+    def goal_(text: str = typer.Argument(None, help="Why any of this is being done, in your words.")) -> None:
+        """Say (or read) the root of the tree. Every executor is told it, above its own node."""
+        if text is None:
+            out(run(P.goal) or "no goal yet: `graphene plan goal 'why any of this is being done'`")
+            return
+        run(lambda s: P.set_goal(s, text, P.caller()))
+        out(f"the plan: {text.strip()}")
+
+    @cli.command()
+    def watch(
+        everything: bool = typer.Option(False, "--all", help="Unfold the tree: finished work included."),
+        every: float = typer.Option(1.0, "--every", help="Seconds between looks at the plan."),
+        once: bool = typer.Option(False, "--once", help="Draw one frame and leave (for a script)."),
+    ) -> None:
+        """The plan, live: leaves light up as they start and finish, and what waits on you is first.
+        The same lines `graphene plan` prints, redrawn as the plan changes. Ctrl-C leaves."""
+        import time
+
+        from rich.console import Console
+        from rich.live import Live
+        from rich.text import Text
+
+        who = P.caller()
+        colours = {
+            "running": "bold yellow",
+            "done": "green",
+            "ready": "bold",
+            "waiting on a person": "bold magenta",
+        }  # noqa: E501
+
+        def frame() -> Text:
+            with open_store(root()) as store:
+                lines = plan_lines(store, who, everything)
+                recent = store.node_log()[-6:]
+            text = Text("\n".join(lines))
+            for word, style in colours.items():
+                text.highlight_regex(rf"(?m)^  \s*\S+\s+{word}\b|^{word}:", style)
+            text.highlight_regex(r"(?m)^\s+✓.*$", "dim")
+            if recent:
+                text.append("\n\njust now\n", "dim")
+                text.append("\n".join(log_line(e, with_node=8) for e in recent), "dim")
+            return text
+
+        console = Console()
+        if once:
+            console.print(frame())
+            return
+        try:
+            with Live(frame(), console=console, screen=True, auto_refresh=False) as live:
+                while True:
+                    time.sleep(every)
+                    live.update(frame(), refresh=True)
+        except KeyboardInterrupt:
+            pass
 
     @plan_cli.command()
     def propose(
@@ -212,7 +345,10 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         {"nodes": [{"id": "api", "title": "one line", "goal": "what it should achieve",
         "scope": ["src/api/**", "!src/api/gen/**"], "check": "pytest tests/api", "needs": ["schema"],
-        "owner": "agent", "signoff": false}]}   (id, goal, needs, owner and signoff are optional)"""
+        "owner": "agent", "signoff": false, "parent": "n3", "children": [ … ]}]}
+        (id, goal, needs, owner, signoff, parent and children are optional. A node with children is a
+        sub-goal and needs only a title; "parent" puts a node under one already in the plan, which
+        is how a leaf too big to do is split)"""
         try:
             raw = json.loads(sys.stdin.read() if file == "-" else Path(file).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -224,8 +360,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             added = P.propose(store, items, who, files=P.tracked(checkout()))
+            by_id = {n.id: n for n in P.nodes(store)}
             for n in added:
-                out(f"{n.id}  {n.state}  {n.title}")
+                out(f"{'  ' * len(P.above(n, by_id))}{n.id}  {n.state}  {n.title}")
             if not who.person:
                 out(
                     f"{len(added)} proposed. Nobody can start them until a person runs `graphene plan "
@@ -239,8 +376,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         """Accept proposals into the plan, and say what an unattended run will and will not reach."""
 
         def go(store):
+            by_id = {n.id: n for n in P.nodes(store)}
             for n in P.accept(store, ids or [], P.caller()):
-                out(f"{n.id}  accepted  {n.title}")
+                out(f"{'  ' * len(P.above(n, by_id))}{n.id}  accepted  {n.title}")
             runs, waits = P.forecast(P.nodes(store))
             out("left alone, agents can reach: " + (", ".join(n.id for n in runs) or "nothing"))
             for n, why in waits:
@@ -334,9 +472,23 @@ def register(cli: typer.Typer, root, open_store, fail):
         owner: str = typer.Option(None, "--owner", help="'agent' (default), 'me', or a person's name."),
         signoff: bool = typer.Option(False, "--signoff", help="A person must also sign it off."),
         node_id: str = typer.Option(None, "--id", help="An id of your choosing; else n1, n2, …"),
+        parent: str = typer.Option(
+            None, "--parent", help="The node this one helps achieve. Under a leaf, it splits the leaf."
+        ),
     ) -> None:
-        """Add a node. From a person it is in the plan at once; from an agent it is a proposal."""
-        item = changes(title=title, scope=scope, check=check, goal=goal, needs=needs, owner=owner, id=node_id)
+        """Add a node. From a person it is in the plan at once; from an agent it is a proposal.
+        With children to come it needs only a title: `graphene node add 'the API' --id api`, then
+        `graphene node add … --parent api`."""
+        item = changes(
+            title=title,
+            scope=scope,
+            check=check,
+            goal=goal,
+            needs=needs,
+            owner=owner,
+            id=node_id,
+            parent=parent,
+        )
         item["signoff"] = signoff
         [n] = run(lambda s: P.propose(s, [item], P.caller(), files=P.tracked(checkout())))
         out(f"{n.id}  {n.state}  {n.title}")
@@ -351,9 +503,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         needs: list[str] = typer.Option(None, "--needs", help="Replaces what it waits on; 'none' clears it."),
         owner: str = typer.Option(None, "--owner", help="'agent', 'me', or a person's name."),
         signoff: bool = typer.Option(None, "--signoff/--no-signoff"),
+        parent: str = typer.Option(None, "--parent", help="Move it under another node; 'none' is the top."),
     ) -> None:
         """Change a node's contract (a person only). It binds the very next write, and the next start."""
-        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner)
+        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, parent=parent)
         if needs:
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
@@ -384,7 +537,8 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command()
     def drop(node_id: str = typer.Argument(...)) -> None:
-        """Take a node out of the plan."""
+        """Take a node out of the plan, with everything under it. Dropping a sub-goal's children
+        makes it a leaf again: that is how a split is undone."""
         run(lambda s: P.drop(s, node_id, P.caller()))
         out(f"{node_id} dropped")
 
@@ -394,7 +548,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
-            out(P.contract(n))
+            out(P.contract(n, P.trail(store, n)))
             for note in P.notes(store, n.id):
                 out(f"  sent back with: {note}")
 
@@ -415,7 +569,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 if len(held) != 1:
                     raise P.Refused("which node? `graphene node done <id>`")
                 target = held[0].id
-            n = P.finish(store, target, who, override=override)
+            n = P.finish(store, target, who, override=override, checkout=checkout())
             how = (
                 "overruled by a person" if override is not None else "check passed, nothing outside its scope"
             )
@@ -444,7 +598,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     @node_cli.command("signoff")
     def signoff_(node_id: str = typer.Argument(...)) -> None:
         """A person's say-so: the node is done."""
-        run(lambda s: P.signoff(s, node_id, P.caller()))
+        run(lambda s: P.signoff(s, node_id, P.caller(), checkout=checkout()))
         out(f"{node_id} is done (signed off)")
 
     @node_cli.command()
@@ -468,7 +622,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.get(store, node_id)
-            out(P.contract(n))
+            out(P.contract(n, P.trail(store, n)))
             for line in render(node_record(store, root(), n)):
                 out(line)
             entries = len(store.node_log(n.id))

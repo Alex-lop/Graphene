@@ -66,7 +66,16 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == ["plan", "node", "run", "init", "ui", "why", "sessions"]  # what will be, then what was
+    assert commands == [
+        "plan",
+        "node",
+        "watch",
+        "run",
+        "init",
+        "ui",
+        "why",
+        "sessions",
+    ]  # what will be, then what was
     assert "debrief" not in text and "ingest" not in text  # the card is `graphene` itself now
     assert "--session" in text and "--since" in text and "--json" in text
     assert "debrief" in run("debrief", "--help").output  # still there for scripts that call it

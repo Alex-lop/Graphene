@@ -131,7 +131,7 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
 
 def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_handed_back(repo):
     person("node", "add", "users", "--scope", "api.py", "--check", "true")
-    assert "the plan: 1 node, 0 done" in person("plan").stdout
+    assert "the plan: 1 leaf, 0 done" in person("plan").stdout
     agent("node", "start", "n1")
     assert "next: you hold n1 (users). Finish it with `graphene node done n1`" in agent("plan").stdout
     back = agent("node", "release", "n1", "--why", "the check and the goal disagree").stdout
@@ -182,15 +182,22 @@ def test_plain_graphene_shows_the_plan_when_there_is_one(repo):
     assert not (repo / ".graphene").exists()  # and looking did not create a store
     person("node", "add", "users", "--scope", "api.py", "--check", "true")
     shown = person()
-    assert shown.exit_code == 0 and "the plan: 1 node, 0 done, 0 running" in shown.stdout
+    assert shown.exit_code == 0 and "the plan: 1 leaf, 0 done, 0 running" in shown.stdout
     assert "the plan:" not in person("--json").stdout  # asking for a session's record still gives it
 
 
-def test_without_a_terminal_nobody_is_a_person(repo):
+def test_without_a_terminal_a_person_is_still_the_person_and_a_runs_executor_is_not(repo, monkeypatch):
+    for mark in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT"):
+        monkeypatch.delenv(mark, raising=False)
     result = runner.invoke(build(), ["node", "add", "x", "--scope", "a", "--check", "true"])
-    assert "n1  proposed" in result.stdout  # taken as a proposal, not as the person's word
-    refused = runner.invoke(build(), ["plan", "accept"])
-    assert refused.exit_code == 1 and "at a terminal or in the map" in refused.stderr
+    assert "n1  open" in result.stdout  # never a proposal its own author cannot accept
+    assert "(no terminal)" in runner.invoke(build(), ["plan", "log"]).stdout  # and the log says how
+    theirs = runner.invoke(
+        build(), ["node", "add", "y", "--scope", "b", "--check", "true"], env={"GRAPHENE_NODE": "n1"}
+    )
+    assert "n2  proposed" in theirs.stdout
+    refused = runner.invoke(build(), ["plan", "accept"], env={"GRAPHENE_NODE": "n1"})
+    assert refused.exit_code == 1 and "the person's to do" in refused.stderr
 
 
 def test_plan_json_round_trips_through_propose(repo, tmp_path):
@@ -199,3 +206,26 @@ def test_plan_json_round_trips_through_propose(repo, tmp_path):
     assert dumped["nodes"][0]["scope"] == ["api.py", "!api_test.py"]
     assert person("node", "set", "n1").exit_code == 1  # nothing to change is said, not ignored
     assert "no node n9" in person("node", "show", "n9").stderr
+
+
+def test_the_tree_in_the_terminal_goal_first_sub_goals_counted_and_finished_work_folded(repo, tmp_path):
+    person("plan", "goal", "ship invoices by email")
+    person("node", "add", "the HTTP surface", "--id", "api")  # a sub-goal needs only a title…
+    tree = {"nodes": [{"id": f"l{k}", "parent": "api", "title": f"leaf {k}", "scope": [f"f{k}.txt"],
+                       "check": "true"} for k in range(14)]}  # fmt: skip
+    (tmp_path / "t.json").write_text(json.dumps(tree))
+    assert person("plan", "propose", str(tmp_path / "t.json")).exit_code == 0
+    for k in range(3):
+        agent("node", "start", f"l{k}")
+        (repo / f"f{k}.txt").write_text("x")
+        assert agent("node", "done", f"l{k}").exit_code == 0
+    shown = person("plan").stdout.splitlines()
+    assert shown[0] == "the plan: ship invoices by email" and shown[1].startswith("14 leaves, 3 done")
+    assert any(line.startswith("  api") and "sub-goal" in line and "3/14 done" in line for line in shown)
+    assert any("✓ 3 done here" in line and "l0, l1, l2" in line for line in shown)
+    assert not any(line.strip().startswith("l0 ") for line in shown)  # folded…
+    assert any(line.strip().startswith("l0 ") for line in person("plan", "--all").stdout.splitlines())
+    started = agent("node", "start", "l3").stdout  # the same words for the agent, with the path to the root
+    assert "why:    ship invoices by email" in started and "the HTTP surface (api)" in started
+    frame = person("watch", "--once").stdout
+    assert "ship invoices by email" in frame and "just now" in frame and "l3" in frame

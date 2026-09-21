@@ -78,7 +78,7 @@ def build():
 
         def list_commands(self, ctx):
             """The plan leads the help: what will be done comes before what was."""
-            first = ["plan", "node", "run", "init", "ui"]
+            first = ["plan", "node", "watch", "run", "init", "ui"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
