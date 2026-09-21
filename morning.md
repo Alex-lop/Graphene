@@ -27,6 +27,11 @@ branches).
 ```
 git checkout main && git reset --hard 6cece1c      # only if tree is ever merged and you want it out
 ```
-The store needs nothing: a node gained two JSON fields, and 0.3 reads rows that carry them? NOT CHECKED YET.
+A store this version has opened is version 4 (no table changed; a node's JSON gained `parent` and
+`aside`). 0.3 refuses it in words. To go back in a repo whose store 0.4 has touched:
+```
+sqlite3 .graphene/graphene.db "UPDATE nodes SET data = json_remove(data, '$.parent', '$.aside'); PRAGMA user_version = 3"
+```
+(NOT YET RUN against 0.3's code; it is on the closing checklist.)
 
 (Sections 3 and 4, the map of the code and what was verified, are written when the run closes.)
