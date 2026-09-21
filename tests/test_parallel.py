@@ -84,7 +84,9 @@ def test_leaves_run_at_once_in_their_own_worktrees_land_as_merges_and_done_rolls
     assert "a.txt" in (repo / "c.txt").read_text() and "b.txt" in (repo / "c.txt").read_text()
     with Store.open(repo) as store:
         assert {n.id: n.state for n in plan.nodes(store)} == dict.fromkeys(("both", "a", "b", "c"), DONE)
-        assert [e["kind"] for e in store.node_log("both")][-2:] == ["check_passed", "rolled_up"]
+        # the sub-goal's check ran once, after BOTH had landed: a real run found it running after the
+        # first landing, without the sibling that was done in its worktree and not yet here
+        assert [e["kind"] for e in store.node_log("both")] == ["added", "check_passed", "rolled_up"]
         assert store.node_log("a", ("landed",))
     log = git_in(repo, "log", "--format=%s%n%b")
     assert (

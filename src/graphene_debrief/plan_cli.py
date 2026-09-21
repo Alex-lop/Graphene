@@ -419,6 +419,31 @@ def register(cli: typer.Typer, root, open_store, fail):
         out("paused: nothing starts and nothing is enforced until `graphene plan resume`")
 
     @plan_cli.command()
+    def prompts(
+        how: str = typer.Argument(
+            None, help="'leaf' (default): a prompt you type is a leaf. 'strict': it is not."
+        ),
+    ) -> None:
+        """What a request typed into a session means while the plan is in force. 'leaf': the first
+        write of the turn makes a leaf from your prompt, held by that session, and its record says
+        what it touched. 'strict': a session that holds no node writes nothing, as in 0.3."""
+        if how not in (None, "leaf", "strict"):
+            fail("say 'leaf' or 'strict'", 1)
+
+        def go(store):
+            if how is not None:
+                P._person_only(P.caller(), "changing what a typed prompt means")
+                store.set_meta("asides", "off" if how == "strict" else "on")
+            return "strict" if store.meta("asides") == "off" else "leaf"
+
+        now = run(go)
+        out(
+            "strict: a session that holds no node writes nothing; it proposes, and you accept"
+            if now == "strict"
+            else "leaf: what you type into a session becomes a leaf when the agent first writes for it"
+        )
+
+    @plan_cli.command()
     def resume() -> None:
         """Put the plan back in force."""
         run(lambda s: P.set_paused(s, False, P.caller()))

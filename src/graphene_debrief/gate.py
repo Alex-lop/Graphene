@@ -258,10 +258,14 @@ def decide(store, event: dict, root: Path) -> dict | None:
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
                 "additionalContext": (
-                    "This repository has a Graphene plan in force: a graph of nodes, each with a goal, "
-                    "the paths it may touch, and a check. Work happens inside a node: `graphene plan` "
-                    "shows the plan and what is ready; `graphene node start <id>` takes a node and "
-                    "prints its contract. Writes outside the node you hold are refused."
+                    "This repository has a Graphene plan: a tree the person shapes and you work in. "
+                    "Its root is why the work is being done; its leaves are pieces of work, each with "
+                    "the paths it may touch and a check. `graphene plan` shows it and what is ready; "
+                    "`graphene node start <id>` takes a leaf and tells you what it is for, from the goal "
+                    "down. While you hold a leaf, writes outside its scope are refused. A leaf too big "
+                    "to do well is split: propose children under it (`graphene node add … --parent "
+                    "<id>`) and hand it back. What the person asks for in this session outside any "
+                    "leaf is recorded as a leaf of its own."
                 ),
             }
         }

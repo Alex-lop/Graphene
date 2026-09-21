@@ -180,7 +180,14 @@ def worktree_for(store, root: Path, target: Path, node_id: str) -> Path:
     return path
 
 
-def land(store, target: Path, tree: Path, node: P.Node, say: Callable[[str], None]) -> bool:
+def land(
+    store,
+    target: Path,
+    tree: Path,
+    node: P.Node,
+    say: Callable[[str], None],
+    not_here: set[str] = frozenset(),
+) -> bool:
     """Commit the leaf's work on its branch and merge it into the checkout the run was started from.
     True when it landed. When the merge is not clean nothing in the target is touched: the leaf waits
     for the person in review, on its branch, and what needs it waits with it."""
@@ -216,7 +223,7 @@ def land(store, target: Path, tree: Path, node: P.Node, say: Callable[[str], Non
     _git(target, "worktree", "remove", "--force", str(tree), ok=True)
     _git(target, "branch", "-D", branch, ok=True)
     P.mark_boundary(store, target)
-    for up in P.roll_up(store, who, target):
+    for up in P.roll_up(store, who, target, not_here=not_here):
         say(f"{up.id} is {'done' if up.state == P.DONE else 'finished; it waits for a sign-off'}: "
             "everything under it is" + (f", and `{up.check}` passes" if up.check else ""))  # fmt: skip
     return True
@@ -273,7 +280,8 @@ def run_parallel(
                 node = future.result()
                 if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
                     continue
-                if land(store, target, tree, node, say):
+                elsewhere = {n.id for n, _ in flying.values()} | unlanded
+                if land(store, target, tree, node, say, elsewhere):
                     finished.append(P.get(store, node.id))
                     _said_done(finished[-1], say)
                     files = P.tracked(target)

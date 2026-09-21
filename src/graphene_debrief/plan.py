@@ -1112,11 +1112,19 @@ def _settle(store, who: Caller, now: str) -> None:
             return _settle(store, who, now)
 
 
-def roll_up(store, who: Caller, checkout: str | Path | None, now: str | None = None) -> list[Node]:
+def roll_up(
+    store,
+    who: Caller,
+    checkout: str | Path | None,
+    now: str | None = None,
+    not_here: frozenset[str] | set[str] = frozenset(),
+) -> list[Node]:
     """Done rolls up: a sub-goal whose children are all done is done, once its own check (if it has
     one) passes in ``checkout``. That check is where integration lives: the leaves each passed
     theirs, and this one says they work together. A failing one leaves the sub-goal open, and the
-    plan says so; with no checkout to run it in, it waits for `graphene node done <id>`."""
+    plan says so; with no checkout to run it in, it waits for `graphene node done <id>`.
+    ``not_here``: leaves done in a worktree of their own whose work has not reached ``checkout``
+    yet; a sub-goal above one of them waits, or its check would run without them and fail."""
     now = now or _now()
     rolled: list[Node] = []
     tried: set[str] = set()
@@ -1130,6 +1138,7 @@ def roll_up(store, who: Caller, checkout: str | Path | None, now: str | None = N
             and n.id not in tried
             and under.get(n.id)
             and all(c.state == DONE for c in under[n.id])
+            and not_here.isdisjoint(c.id for c in below(n.id, everything))
         ]
         if not due:
             return rolled
