@@ -514,7 +514,8 @@ def contract(node: Node, why: list[str] | None = None) -> str:
         ),
         f"  done:   {done_means(node)}",
         f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
-        f"  stuck:  graphene node release {node.id} --why '<what is in the way>'   (hands it back; say why)",
+        f"  stuck:  graphene node release {node.id} --why '<what is in the way>' [--wants <paths it needs>]"
+        "   (hands it back; say why)",
     ]
     return "\n".join(lines)
 
@@ -674,7 +675,7 @@ def wanted(store, node: Node) -> list[str]:
         elif e["kind"] in ("refused", "breach"):
             found = [p.split(" (in the worktree ")[0] for p in d.get("outside") or d.get("paths") or []]
         elif e["kind"] == "released":
-            found = d.get("changed") or []
+            found = [*(d.get("wants") or []), *(d.get("changed") or [])]  # what it said it needs, first
         else:
             continue
         out += [
@@ -1541,9 +1542,12 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
     return node
 
 
-def release(store, node_id: str, who: Caller, why: str, now: str | None = None) -> Node:
+def release(
+    store, node_id: str, who: Caller, why: str, now: str | None = None, wants: list[str] | None = None
+) -> Node:
     """Hand a running node back, with the reason. The way out for an executor that cannot finish:
-    it may not stop silently, and it may not widen its own scope; it can say what is in the way."""
+    it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
+    name the paths it would need (``wants``), which the person is then offered in one key."""
     now = now or _now()
     if not why.strip():
         raise Refused("say why: --why 'what is in the way'; the person reads it to decide what to change")
@@ -1557,7 +1561,18 @@ def release(store, node_id: str, who: Caller, why: str, now: str | None = None) 
         except (Refused, OSError, subprocess.TimeoutExpired):
             changed = []  # a checkout git cannot read any more: the hand-back still stands
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
-        _save(store, node, "released", who, now, why=why, changed=changed[:KEPT_PATHS], person=who.person)
+        extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
+        _save(
+            store,
+            node,
+            "released",
+            who,
+            now,
+            why=why,
+            changed=changed[:KEPT_PATHS],
+            person=who.person,
+            **extra,
+        )
     return node
 
 

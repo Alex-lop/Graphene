@@ -90,8 +90,8 @@ def _how_out(held: list[P.Node]) -> str:
     n = held[0]
     return (
         f"If the work cannot be done inside that scope, do not work around it: "
-        f"`graphene node release {n.id} --why '<what you need and why>'` hands it back, and the person "
-        "decides whether the scope is wrong. Only they can widen it"
+        f"`graphene node release {n.id} --why '<what you need and why>' --wants <the paths you need>` "
+        "hands it back, and the person decides whether the scope is wrong. Only they can widen it"
     )
 
 

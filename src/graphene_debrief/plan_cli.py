@@ -829,12 +829,17 @@ def register(cli: typer.Typer, root, open_store, fail):
     def release(
         node_id: str = typer.Argument(...),
         why: str = typer.Option(..., "--why", help="What is in the way. The person reads this."),
+        wants: list[str] = typer.Option(
+            None,
+            "--wants",
+            help="A path outside the scope it would need; repeat it. The person is offered it.",
+        ),
     ) -> None:
         """Hand a running node back, saying why. The way out when it cannot be finished as written."""
         who = P.caller()
 
         def go(store):
-            P.release(store, node_id, who, why)
+            P.release(store, node_id, who, why, wants=wants or None)
             out(f"{node_id} handed back: {why}")
             for line in next_lines(store, who, but=node_id):
                 out(line)

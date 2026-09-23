@@ -261,3 +261,15 @@ def test_a_finished_leaf_the_run_was_stopped_before_it_landed_waits_in_review(re
         R.park(store, tree, node, said.append)
         assert plan.get(store, "a").state == REVIEW and "git merge graphene/a" in said[0]
         assert "a, in its worktree" in git(repo, "show", "graphene/a:a.txt")
+
+
+def test_a_hand_back_that_names_what_it_needs_is_offered_exactly_that(repo):
+    """The recorded scene: the executor never tried the write; it said which file it needed."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("w", "a.txt")], ALEX)
+        plan.start(store, "w", BOT, repo)
+        why = "USAGE lives in cli/main.py, outside my scope; test_contract must not change"
+        plan.release(store, "w", BOT, why, wants=["cli/main.py"])
+        [widen, _sibling] = plan.offers(store, plan.get(store, "w"))
+        assert widen[1] == "widen w's scope to cli/main.py"
+        assert plan.widen(store, "w", [], ALEX).scope == ["a.txt", "cli/main.py"]

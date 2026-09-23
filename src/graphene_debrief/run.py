@@ -143,7 +143,8 @@ def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[st
         "Do the work inside the scope. Read anything you need; write only inside the scope. When you "
         f"believe it is done run `graphene node done {node.id}`: it runs the check and asks git what "
         "changed, and tells you what is wrong if it refuses. If it cannot be done as written, run the "
-        "`release` command above and say why. Do not start any other node.",
+        "`release` command above and say why; when what it needs is paths outside the scope, name each "
+        "with --wants, and the person is offered them in one key. Do not start any other node.",
     ]
     if refusal:
         lines += ["", "Your last attempt was not accepted:", refusal]
