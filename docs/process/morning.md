@@ -24,7 +24,9 @@ pane offers `w` (widen to what it wanted) and `b` (a sibling for it). Press `w`,
 
 ## 2. What is waiting on you
 
-- **One PR, `terminal` into `main`:** (link below, under the branches). CI is green on every push.
+- **One PR, `terminal` into `main`:** https://github.com/Alex-lop/Graphene/pull/27. CI was green on
+  every push but one: `f10387e` failed a timing test on macOS (the hook with a locked store took 2.05 s
+  against 2.0), because the paragraph rule had made every prompt write; `c3003be` fixed the cause.
 - **Your working-tree edits** to `docs/DIRECTION.md` and `docs/process/morning.md` were formatting
   only: an editor renumbered decisions 13 to 27 as 1 to 15 and broke some code spans, and no word
   changed. A copy is in `local/alex-editor-2026-09-23/`. I worked from the committed text.
@@ -92,7 +94,10 @@ To change what a line of the text means, start at `plan_text.parse` and add a ca
   then a hunt for the rebuild's own regressions (12, all fixed). Each is guarded by a test.
 - **Ctrl-C**, in place and in parallel: real SIGINTs in `test_run_live.py`, which checks that no
   executor survives.
-- **Tests:** 505. Ruff clean. CI green on Linux and macOS, Python 3.12 and 3.13, on every push.
+- **The closing review:** six adversaries over the whole branch; 78 findings confirmed by a second
+  agent each (3 rejected), all collected before any fix, all fixed in `a384829` (the ones that broke
+  a promise are in its message). A recheck of each, with a regression test, is under way.
+- **Tests:** 514. Ruff clean. CI on Linux and macOS, Python 3.12 and 3.13 (see the one failure above).
 - **The third test:** see below.
 
 ## Not verified
@@ -132,7 +137,7 @@ git checkout main && git reset --hard ed010ca
 
 ## State of every branch
 
-- `terminal`: this run, pushed; one PR into `main`.
+- `terminal`: this run, pushed; one PR into `main` (#27).
 - `main` (GitHub): `ed010ca`, untouched. Local `main`: `6cece1c`, 43 behind GitHub, untouched.
 - `tree`: `9c21715`, merged into `main` by you (PR #26).
 - Everything else (`agent/*`, `codex/*`, `lane/*`, `n*`, `graph`, `plan`, `rebuild`) is as it was.
