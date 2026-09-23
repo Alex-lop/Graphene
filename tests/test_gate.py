@@ -419,3 +419,168 @@ def test_the_way_out_names_each_wanted_path_with_its_own_flag(repo):
     """Recheck hunt: `--wants <the paths you need>` led an agent to `--wants b.py c.py`, a usage error."""
     holding(repo)
     assert "--wants <a path> --wants <another>" in reason(write(repo, "src/db/schema.py"))
+
+
+# recheck 14
+def test_a_vendor_notice_does_not_end_a_paragraphs_wait(repo):
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    notice = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"
+    assert hook(repo, "UserPromptSubmit", prompt=notice) is None
+    refused = write(repo, "src/api/users.py")
+    assert refused and "becomes a tree before any code" in reason(refused)
+
+
+# recheck 15
+def test_a_follow_up_prompt_does_not_end_the_wait_while_the_tree_is_only_proposed(repo):
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(
+            store,
+            [
+                {"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"},
+                {"id": "zero", "title": "skip zero prices", "scope": ["src/db/**"], "check": "true"},
+            ],
+            BOT,
+        )
+    assert hook(repo, "UserPromptSubmit", prompt="drop zero, the rest is fine") is None
+    for refused in (
+        write(repo, "src/api/users.py"),
+        write(repo, "README.md"),
+        bash(repo, "echo hi > notes.txt"),
+    ):
+        assert refused and "waits for the person" in reason(refused)
+
+
+# recheck 16
+def test_a_yes_after_a_paragraph_accepts_its_tree_and_not_what_was_proposed_before_it(repo):
+    hook(repo, "UserPromptSubmit", prompt="what does the loader do with empty rows?")
+    with Store.open(repo) as store:
+        plan.propose(
+            store,
+            [{"id": "rm-csv", "title": "delete the csv loader", "scope": ["src/api/**"], "check": "true"}],
+            BOT,
+        )
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(
+            store,
+            [{"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"}],
+            BOT,
+        )
+    hook(repo, "UserPromptSubmit", prompt="yes")
+    with Store.open(repo) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {"rm-csv": "proposed", "xml": "open"}
+
+
+# recheck 17
+def test_after_a_yes_to_its_tree_the_session_writes_only_inside_a_leaf_it_takes(repo):
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(
+            store,
+            [
+                {"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"},
+                {"id": "zero", "title": "skip zero prices", "scope": ["src/db/**"], "check": "true"},
+            ],
+            BOT,
+        )
+    hook(repo, "UserPromptSubmit", prompt="yes")
+    refused = write(repo, "README.md")
+    assert refused and "graphene node start xml" in reason(refused)
+    with Store.open(repo) as store:
+        assert [n.id for n in plan.nodes(store)] == ["xml", "zero"]  # no `**` leaf made from "yes"
+        plan.start(store, "xml", BOT, repo)
+    assert write(repo, "src/api/users.py") is None
+    assert "outside the scope of the node you hold (xml" in reason(write(repo, "README.md"))
+
+
+# recheck 19
+def test_a_planner_is_refused_a_write_with_no_plan_and_with_only_proposals(repo, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PLANNER", "1")
+    for answer in (write(repo, "src/api/users.py", tool="Write"), bash(repo, "echo x > src/api/users.py")):
+        assert answer and "you are the planner" in reason(answer)
+    with Store.open(repo) as store:
+        plan.propose(
+            store,
+            [{"id": "p1", "title": "a proposal", "scope": ["src/**"], "check": "true"}],
+            Caller("claude:aaaaaaaa", False, "other"),
+        )
+    refused = write(repo, "src/api/users.py", tool="Write")
+    assert refused and "you are the planner" in reason(refused)
+
+
+# recheck 20
+def test_a_paragraph_after_an_interrupted_turn_is_still_a_tree(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
+    assert write(repo, "README.md") is None  # a leaf made from the prompt; then Esc, so no Stop
+    told = hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    assert told and "becomes a tree before any code" in told["hookSpecificOutput"]["additionalContext"]
+    refused = write(repo, "src/db/new.py")
+    assert refused and "becomes a tree before any code" in reason(refused)
+
+
+# recheck 21
+def test_a_waiting_paragraph_refuses_the_ordinary_spellings_that_lift_it_even_with_no_plan(repo):
+    """With no plan in force, a forged `graphene ingest hook` and sqlite3 on .graphene were let through."""
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    event = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": SID, "prompt": "ok"})
+    assert "not an agent's to run" in reason(bash(repo, f"echo '{event}' | graphene ingest hook"))
+    sql = "sqlite3 .graphene/graphene.db \"delete from plan_meta where key like 'tree:%'\""
+    assert "the plan's own store" in reason(bash(repo, sql))
+    assert "becomes a tree before any code" in reason(write(repo, "src/api/users.py"))
+
+
+# recheck 22
+@pytest.mark.parametrize(
+    "start", ["/Users/alex/proj/ingest is where csv loads. ", "[feature] ", "<Product> rows. "]
+)
+def test_a_paragraph_that_starts_with_a_path_or_a_bracket_is_still_the_persons(repo, start):
+    told = hook(repo, "UserPromptSubmit", prompt=start + PARAGRAPH)["hookSpecificOutput"]["additionalContext"]
+    assert "becomes a tree before any code" in told
+    assert "becomes a tree before any code" in reason(write(repo, "src/api/users.py"))
+
+
+# recheck 24
+def test_a_paragraph_that_names_a_ready_leaf_or_types_its_own_scope_is_a_request_to_do(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "xml", "title": "xml", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    take = "Take xml now, it is already in the plan with its scope and check. " + PARAGRAPH
+    assert hook(repo, "UserPromptSubmit", prompt=take) is None
+    assert "graphene node start xml" in reason(write(repo, "src/api/users.py"))
+    assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH + " --scope 'src/db/**' --check 'true'") is None
+    assert write(repo, "src/db/schema.py") is None  # inside the scope they typed
+    assert "outside the scope" in reason(write(repo, "README.md"))
+
+
+# recheck 48
+def test_undo_after_a_yes_in_the_session_takes_back_that_acceptance_not_an_older_act(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "zold", "title": "old", "scope": ["docs/**"], "check": "true"}], ALEX)
+        with plan.undoable(store, ALEX, "node drop zold"):
+            plan.drop(store, "zold", ALEX)
+        plan.propose(store, [{"id": "p1", "title": "agent's", "scope": ["src/**"], "check": "true"}], BOT)
+    said = hook(repo, "UserPromptSubmit", prompt="yes p1")["hookSpecificOutput"]["additionalContext"]
+    assert "accepted p1" in said
+    with Store.open(repo) as store:
+        assert plan.undo(store, ALEX).startswith("yes in the session")
+        assert (plan.get(store, "p1").state, plan.get(store, "zold").state) == ("proposed", "dropped")
+
+
+# recheck 68
+def test_a_question_about_the_tree_does_not_end_the_paragraphs_wait(repo):
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(
+            store, [{"id": "xml", "title": "the XML feed", "scope": ["ingest/**"], "check": "true"}], BOT
+        )
+    hook(repo, "UserPromptSubmit", prompt="why is legacy not in any scope?")
+    assert "waits for the person" in reason(write(repo, "legacy/importer.py"))
+    with Store.open(repo) as store:
+        plan.accept(store, ["xml"], ALEX)
+    assert "is accepted" in reason(write(repo, "legacy/importer.py"))  # accepted, and not yet taken
+    with Store.open(repo) as store:
+        plan.start(store, "xml", BOT, repo)
+    assert "outside the scope" in reason(write(repo, "legacy/importer.py"))
+    assert write(repo, "ingest/xmlfeed.py") is None
