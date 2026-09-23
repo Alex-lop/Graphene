@@ -375,8 +375,13 @@ def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(r
     from graphene_debrief import run as R
 
     # its own SIGINT handler: a CI step may start with SIGINT ignored, and a child inherits that
-    code = "import signal, time; signal.signal(signal.SIGINT, signal.default_int_handler); time.sleep(30)"
-    run = subprocess.Popen([sys.executable, "-c", code, "graphene", "run"])
+    # (and only after it says so: a SIGINT before that is ignored, which raced on Linux CI)
+    code = (
+        "import signal, time; signal.signal(signal.SIGINT, signal.default_int_handler); "
+        "print('up', flush=True); time.sleep(30)"
+    )
+    run = subprocess.Popen([sys.executable, "-c", code, "graphene", "run"], stdout=subprocess.PIPE, text=True)
+    assert run.stdout.readline().strip() == "up"
     try:
         (repo / ".graphene").mkdir(exist_ok=True)
         (repo / ".graphene" / "run.lock").write_text(f"{run.pid}\n{R._started(run.pid)}\n")
