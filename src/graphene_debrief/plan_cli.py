@@ -57,20 +57,17 @@ def register(cli: typer.Typer, root, open_store, fail):
         return f"  (the plan of {'~' + r[len(home) :] if r.startswith(home + os.sep) else r})"
 
     def warn_unreachable(ids, files: list[str] | None = None) -> None:
-        """A check that names a path no leaf can create and the repo does not have: said now, not
-        after a run. Asked after the act, outside the plan's write lock."""
+        """A check that names a path no leaf may create and the repo does not have: said now, not
+        after a run, as the guess it is. Asked after the act, outside the plan's write lock."""
         files, top = tracked() if files is None else files, checkout()
         with open_store(root()) as store:
             everything = [n for n in P.nodes(store) if n.state not in P.GONE]
             for node in [n for n in everything if n.id in set(ids)]:
-                covered = [g for n in everything if n.id != node.id for g in n.scope]
-                missing = P.unreachable(node, files, top, covered)
+                missing = P.unreachable(node, files, top, everything)
                 if missing:
+                    said = P.unreachable_said(missing)
                     typer.echo(
-                        f"warning: {node.id}'s check names {', '.join(missing)}: not in the repo, and no "
-                        f"leaf's scope may create it, so its check cannot pass as written "
-                        f"(`graphene node edit {node.id}`)",
-                        err=True,
+                        f"warning: {node.id}'s check {said} (`graphene node edit {node.id}`)", err=True
                     )
 
     def next_lines(store, who: P.Caller, but: str | None = None) -> list[str]:
@@ -660,6 +657,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
+            typer.echo(where(), err=True)  # first: a run changes the plan for as long as it goes
             logs = r / ".graphene" / "runs"
             try:
                 if parallel > 1:
@@ -813,11 +811,36 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
 
     @node_cli.command()
-    def drop(node_id: str = typer.Argument(...)) -> None:
+    def drop(
+        node_ids: list[str] = typer.Argument(..., help="The node; name several to drop them at once."),
+    ) -> None:
         """Take a node out of the plan, with everything under it. Dropping a sub-goal's children
-        makes it a leaf again: that is how a split is undone."""
-        write(f"node drop {node_id}", lambda s: P.drop(s, node_id, P.caller()))
-        out(f"{node_id} dropped (`graphene plan undo` puts it back)")
+        makes it a leaf again: that is how a split is undone. Several are one act, all or none, which
+        one `graphene plan undo` puts back; what waits on any of them is asked of them together."""
+        who = P.caller()
+
+        def go(store):
+            with store.claim():  # an agent's act too is all or none, though only a person's is kept
+                everything = P.nodes(store)
+                named = [P.get(store, i) for i in node_ids]
+                gone = {i for n in named for i in [n.id, *(c.id for c in P.below(n.id, everything))]}
+                left = [
+                    n
+                    for n in everything
+                    if n.id not in gone and n.state not in P.GONE and gone & set(n.needs)
+                ]
+                if left and len(named) > 1:
+                    told = "; ".join(
+                        f"{n.id} waits on {', '.join(sorted(gone & set(n.needs)))}" for n in left
+                    )
+                    raise P.Refused(f"{told}; change what it needs first, or drop it too")
+                for n in named:
+                    if P.get(store, n.id).state not in P.GONE:  # else it went with the one it was under
+                        P.drop(store, n.id, who, waiting=len(named) == 1)
+
+        write(f"node drop {' '.join(node_ids)}", go)
+        them = "it" if len(node_ids) == 1 else "them"
+        out(f"{', '.join(node_ids)} dropped (`graphene plan undo` puts {them} back)")
 
     @node_cli.command("edit")
     def node_edit(node_id: str = typer.Argument(...)) -> None:
@@ -836,6 +859,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(f"  sent back with: {note}")
 
         run(go)
+        typer.echo(where(), err=True)
 
     @node_cli.command()
     def done(
@@ -861,6 +885,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(line)
 
         run(go)
+        typer.echo(where(), err=True)
 
     @node_cli.command()
     def release(
@@ -894,10 +919,11 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         left = run(go)
         out(f"{node_id} is done (signed off)")
+        typer.echo(where(), err=True)
         if left.get("branch"):  # the person merged it by hand: its worktree goes, and its branch if merged
-            where = ["git", "-C", str(checkout())]
-            subprocess.run([*where, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
-            gone = subprocess.run([*where, "branch", "-d", left["branch"]], capture_output=True)
+            git = ["git", "-C", str(checkout())]
+            subprocess.run([*git, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
+            gone = subprocess.run([*git, "branch", "-d", left["branch"]], capture_output=True)
             if gone.returncode != 0:
                 out(
                     f"{left['branch']} is not merged here, so it was kept: "
@@ -911,6 +937,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Not good enough: send a finished node back, with what is wrong."""
         run(lambda s: P.reopen(s, node_id, P.caller(), note))
+        typer.echo(where(), err=True)
         out(
             f"{node_id} is open again. Whoever takes it next is shown your note; the contract itself is "
             "unchanged, so if the note changes what is wanted, say it there too: "

@@ -140,3 +140,28 @@ def test_the_proposal_is_found_in_what_a_model_prints(repo):
     assert A.proposal_in(fenced) == "- b  [b]\n"
     assert A.proposal_in("Here is the plan:\n\n- a  [a]\n    scope: x\n") == "- a  [a]\n    scope: x\n"
     assert A.proposal_in("nothing like a plan") == ""
+
+
+def test_ask_lists_the_repo_before_it_takes_the_write_lock(repo, tmp_path, monkeypatch):
+    """Recheck: `graphene ask` ran `git ls-files` inside the plan's write lock, and an agent's hook that
+    fired meanwhile gave up on 'database is locked' and let its write through."""
+    import sqlite3
+
+    real, locked = plan._git, []
+
+    def asked(checkout, *args):
+        db = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0, isolation_level=None)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("ROLLBACK")
+            locked.append(False)
+        except sqlite3.OperationalError:
+            locked.append(True)  # git is asked while the plan's write lock is held
+        finally:
+            db.close()
+        return real(checkout, *args)
+
+    monkeypatch.setattr(plan, "_git", asked)
+    said = person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch))
+    assert said.exit_code == 0, said.output
+    assert locked and not any(locked)

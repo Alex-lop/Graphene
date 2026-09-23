@@ -121,6 +121,9 @@ def ask(
     who = P.Caller(f"planner:{Path(argv0).name}", False, session)
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
     asked = prompt = prompt_for(store, sentence, about, split)
+    # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
+    # gives up after a quarter of a second, and lets the call through
+    files = P.tracked(root)
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
@@ -141,7 +144,7 @@ def ask(
         else:
             try:
                 with store.claim():
-                    said = T.apply(store, text, who, None, files=P.tracked(root))
+                    said = T.apply(store, text, who, None, files=files)
             except P.Refused as no:
                 refusal = f"Graphene could not read the proposal: {no}"
             else:

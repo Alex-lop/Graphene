@@ -474,12 +474,14 @@ def apply(
     if not lines and goal is None:
         raise P.Refused("the text has no node in it, so nothing was applied")
     everything = {n.id: n for n in P.nodes(store)}
-    _ids(lines, everything, opened)
+    renamed = _ids(lines, everything, opened)
     taken = set(everything) | {ln.id for ln in lines if ln.id}
     for line in lines:
         if line.id is None:
             line.id = slug(line.title, taken)
             taken.add(line.id)
+    for line in lines:  # a need of the same text follows its line's new id
+        line.needs = [renamed[i].id if i in renamed else i for i in line.needs]
     parent_of = {ln.id: (lines[ln.parent].id if ln.parent is not None else base_parent) for ln in lines}
     fresh = [ln for ln in lines if ln.id not in everything]
     kept = [ln for ln in lines if ln.id in everything]
@@ -516,8 +518,11 @@ def apply(
     return said
 
 
-def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) -> None:
+def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) -> dict[str, Line]:
+    """Refuse an [id] the text cannot use. Returns the lines of a proposal that reused a dropped or
+    archived id, by that id: they get a new one, and a need that names it follows."""
     seen: dict[str, int] = {}
+    renamed: dict[str, Line] = {}
     for line in lines:
         if line.id is None:
             continue
@@ -529,7 +534,7 @@ def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) 
         seen[line.id] = line.no
         known = everything.get(line.id)
         if known is not None and known.state in P.GONE and opened is None:
-            line.id = None  # a proposal that reuses a dropped id (the planner cannot see those): a new one
+            renamed[line.id], line.id = line, None  # the planner cannot see dropped ids: a new one
             continue
         if known is not None and known.state in P.GONE:
             since = opened is not None and line.id in opened
@@ -542,6 +547,7 @@ def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) 
                 f"line {line.no}: [{line.id}] is in the plan, but not in the part of it this text was "
                 "opened on; edit a part of the tree that holds both"
             )
+    return renamed
 
 
 def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
