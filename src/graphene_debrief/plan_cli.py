@@ -671,8 +671,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
-            except KeyboardInterrupt:
-                out("stopped. What was running is handed back and ready again; `graphene plan` shows it")
+            except KeyboardInterrupt as stopped:  # its args: the leaves that passed and wait in review
+                back = "stopped. What was running is handed back and ready again"
+                but = f", but {', '.join(stopped.args)}: passed, in review (above)" if stopped.args else ""
+                out(f"{back}{but}; `graphene plan` shows it")
                 raise typer.Exit(130) from None
             for line in next_lines(store, P.caller()):
                 out(line)

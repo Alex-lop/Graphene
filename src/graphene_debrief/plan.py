@@ -15,9 +15,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
-from contextlib import contextmanager
+import threading
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -477,27 +479,84 @@ def changed_since(
     return sorted(p for p in changed if p not in dirty_at_start or _hash(checkout, p) != dirty_at_start[p])
 
 
+@contextmanager
+def ctrl_c_on_hangup():
+    """A closed terminal (SIGHUP) or a `kill` (SIGTERM) is taken as Ctrl-C while this lasts, so what
+    must not be left behind (a check and what it started; a run's executors, leaves and lock) is
+    ended before the process goes: left to the defaults, it died where it stood, and they worked on
+    unattended. Once the terminal is gone, what is said goes nowhere rather than failing the
+    cleanup half done. Only the main thread is told of a signal; elsewhere this does nothing."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def hung_up(signum, _frame):
+        if signum == signal.SIGHUP:
+            nowhere = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(nowhere, 1)
+            os.dup2(nowhere, 2)
+        raise KeyboardInterrupt
+
+    was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM)}
+    try:
+        yield
+    finally:
+        for sig, handler in was.items():
+            signal.signal(sig, handler)
+
+
+_checks: set[subprocess.Popen] = set()  # the checks running now; a run that is stopped ends them
+
+
+@ctrl_c_on_hangup()
 def run_check(command: str, checkout: str | Path) -> tuple[bool, str]:
     """Run a node's check where the node ran. Graphene runs it, not the executor: "it passed" is
-    then a fact about the repo and not a sentence in somebody's summary."""
+    then a fact about the repo and not a sentence in somebody's summary. It runs in a session of its
+    own and is ended with everything it started: on a timeout, a Ctrl-C, a closed terminal or a
+    `kill`, and when a run is stopped (``end_checks``), which says nothing of the work, so it is
+    not taken as a result. Killing bash alone had left its `sleep` running; and a terminal's Ctrl-C
+    that reached the check itself had been recorded as the executor's failed check."""
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     env = {**os.environ, "GRAPHENE_AS": "agent:check"}
-    try:
-        out = subprocess.run(
-            command,
-            shell=True,
-            executable=BASH,  # people write bash (`[[ ]]`, `set -o pipefail`); sh when there is none
-            cwd=checkout,
-            capture_output=True,
-            text=True,
-            timeout=CHECK_TIMEOUT,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"timed out after {CHECK_TIMEOUT} s"
-    text = (out.stdout + out.stderr).strip()
-    return out.returncode == 0, (text[-TAIL:] if text else f"exit {out.returncode}, no output")
+    with subprocess.Popen(
+        command,
+        shell=True,
+        executable=BASH,  # people write bash (`[[ ]]`, `set -o pipefail`); sh when there is none
+        cwd=checkout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        _checks.add(proc)
+        try:
+            stdout, stderr = proc.communicate(timeout=CHECK_TIMEOUT)
+        except BaseException as why:
+            _end_check(proc)
+            if not isinstance(why, subprocess.TimeoutExpired):
+                raise
+            return False, f"timed out after {CHECK_TIMEOUT} s"
+        finally:
+            stopped = proc not in _checks
+            _checks.discard(proc)
+    if stopped:
+        raise KeyboardInterrupt
+    text = (stdout + stderr).strip()
+    return proc.returncode == 0, (text[-TAIL:] if text else f"exit {proc.returncode}, no output")
+
+
+def end_checks() -> None:
+    """End every check running in this process (a stopped parallel run's are in its worker threads,
+    where no Ctrl-C lands); each then says it was stopped instead of giving a result."""
+    while _checks:
+        _end_check(_checks.pop())
+
+
+def _end_check(proc: subprocess.Popen) -> None:
+    with suppress(OSError):  # the group outlives bash while anything it started is still running
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 # -- the operations -------------------------------------------------------------------------------

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from . import plan as P
 from . import plan_text as T
-from .run import command_for
+from .run import _splits, command_for
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
@@ -114,6 +114,7 @@ def ask(
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
     refusal, as a refused executor does."""
+    _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
     session = str(uuid.uuid4())
