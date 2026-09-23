@@ -703,7 +703,9 @@ class Watch(App):
         pids = [p.pid for p in self.runs if p.poll() is None]
         pid = R.run_holding(self.root_path)  # by pid and start time: a reused pid is no run
         if pid is not None:
-            shown = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+            shown = subprocess.run(
+                ["ps", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True
+            )
             if "graphene" in shown.stdout:
                 pids.append(pid)
         for pid in set(pids):
