@@ -365,62 +365,34 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @cli.command()
     def watch(
-        everything: bool = typer.Option(False, "--all", help="Unfold the tree: finished work included."),
+        everything: bool = typer.Option(
+            False, "--all", help="With --once: unfold the tree, finished work too."
+        ),
         every: float = typer.Option(1.0, "--every", help="Seconds between looks at the plan."),
-        once: bool = typer.Option(False, "--once", help="Draw one frame and leave (for a script)."),
+        once: bool = typer.Option(
+            False, "--once", help="Print the plan once, with what just happened, and leave."
+        ),
     ) -> None:
-        """The plan, live: leaves light up as they start and finish, and what waits on you is first.
-        The same lines `graphene plan` prints, redrawn as the plan changes. Ctrl-C leaves."""
-        import time
-
-        from rich.console import Console
-        from rich.live import Live
-        from rich.text import Text
-
+        """The plan on one screen, live, with vim keys: the tree, the node under the cursor, the
+        executors as they work. Every key is a command you could type (the bottom line says which);
+        `?` lists them, `q` leaves. `--once` prints the plan instead, for a script or a terminal you
+        do not want to give up."""
         who = P.caller()
-        colours = {
-            "running": "bold yellow",
-            "done": "green",
-            "ready": "bold",
-            "waiting on a person": "bold magenta",
-        }  # noqa: E501
-
-        def frame() -> Text:
+        if once or not sys.stdout.isatty():
             with open_store(root()) as store:
                 lines = plan_lines(store, who, everything)
                 recent = store.node_log()[-6:]
-            text = Text("\n".join(lines))
-            for word, style in colours.items():
-                text.highlight_regex(rf"(?m)^  \s*\S+\s+{word}\b|^{word}:", style)
-            text.highlight_regex(r"(?m)^\s+✓.*$", "dim")
+            for line in lines:
+                out(line)
             if recent:
-                text.append("\n\njust now\n", "dim")
-                text.append("\n".join(log_line(e, with_node=8) for e in recent), "dim")
-            return text
-
-        console = Console()
-
-        def fitted() -> Text:
-            """The frame cut to the screen from the middle, never from the ends: what waits on the
-            person is at the top and what just happened at the bottom, and a live view has no scrollback."""
-            rows = frame().split("\n")
-            room = max(console.height - 1, 8)
-            if len(rows) <= room:
-                return Text("\n").join(rows)
-            tail = 8
-            cut = Text(f"  … {len(rows) - room + 1} lines not shown: `graphene plan` has them all", "dim")
-            return Text("\n").join([*rows[: room - tail - 1], cut, *rows[-tail:]])
-
-        if once:
-            console.print(frame())
+                out("\njust now")
+                for e in recent:
+                    out(log_line(e, with_node=8))
             return
-        try:
-            with Live(fitted(), console=console, screen=True, auto_refresh=False) as live:
-                while True:
-                    time.sleep(every)
-                    live.update(fitted(), refresh=True)
-        except KeyboardInterrupt:
-            pass
+        from .tui import run as watch_tui
+
+        r = root()
+        watch_tui(r, lambda: open_store(r), every)
 
     @plan_cli.command()
     def propose(
@@ -505,7 +477,12 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def edit_in_editor(node_id: str | None, alone: bool) -> None:
         who = P.caller()
-        path = root() / ".graphene" / "PLAN_EDIT.txt"
+        if not who.person:
+            fail("an editor is for the person at a terminal; an agent proposes: `graphene plan propose -`", 1)
+        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+        if not editor and not sys.stdin.isatty():
+            fail("no terminal to open vi in, and no $EDITOR set; set $EDITOR, or run this in a terminal", 1)
+        path = T.edit_path(root(), node_id)
         try:
             said = T.edit_loop(
                 lambda: open_store(root()), node_id, alone, who, P.tracked(checkout()), path,
@@ -648,6 +625,40 @@ def register(cli: typer.Typer, root, open_store, fail):
                 raise typer.Exit(130) from None
             for line in next_lines(store, P.caller()):
                 out(line)
+
+    def planner(sentence: str, executor: str | None, about: str | None, split: bool) -> None:
+        from .ask import DEFAULT_PLANNER, ask
+
+        who = P.caller()
+        if not who.person:
+            fail(
+                "asking a planner is the person's: it starts an agent, and spends. Propose the tree yourself",
+                1,
+            )
+
+        def go(store):
+            said = ask(store, checkout(), sentence, executor or DEFAULT_PLANNER, about, split, out)
+            for line in said:
+                out(line)
+            if said:
+                out("prune it: `graphene watch` (y accepts, d drops), or `graphene plan edit`")
+
+        run(go)
+        typer.echo(where(), err=True)
+
+    @cli.command("ask")
+    def ask_(
+        sentence: str = typer.Argument(..., help="What you want, as you would say it."),
+        executor: str = typer.Option(
+            None,
+            "--with",
+            help="The planner: a command taking a prompt last. Default: 'claude -p --tools Read,Grep,Glob'.",
+        ),
+        about: str = typer.Option(None, "--about", help="A node the question is about (one that came back)."),
+    ) -> None:
+        """Ask a planner for a proposal: it reads the repo with read-only tools and prints the tree in
+        the plan's text, which is added as proposals for you to prune. Nothing runs."""
+        planner(sentence, executor, about, False)
 
     # -- graphene node ----------------------------------------------------------------------------
 
@@ -876,6 +887,16 @@ def register(cli: typer.Typer, root, open_store, fail):
         if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():
             lines.append(f"  its last attempt is kept in {n.checkout} (branch graphene/{n.id})")
         return lines
+
+    @node_cli.command()
+    def split(
+        node_id: str = typer.Argument(...),
+        executor: str = typer.Option(
+            None, "--with", help="The planner. Default: 'claude -p --tools Read,Grep,Glob'."
+        ),
+    ) -> None:
+        """Ask the planner to cut a leaf into smaller leaves under it, as proposals for you to prune."""
+        planner(f"split {node_id} into smaller leaves", executor, node_id, True)
 
     @node_cli.command()
     def widen(

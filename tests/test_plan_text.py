@@ -47,7 +47,7 @@ def test_a_person_writes_a_tree_and_it_reads_back_as_written(store):
     )
     assert template.state == OPEN  # a person's lines are in the plan at once
     text, opened = T.render(store)
-    assert set(opened) == {"pdf", "render", "template", "docs"}
+    assert set(opened) == {"*goal", "pdf", "render", "template", "docs"}  # and the goal, as it was shown
     # read back and applied again, it changes nothing: the text is the plan
     assert T.apply(store, text, ALEX, opened) == []
 
@@ -128,7 +128,7 @@ def test_reordering_lines_reorders_the_siblings(store):
     at = lines.index("@@")
     lines[at : at + 1] = [*docs_block, "- the PDF renderer  [pdf]"]
     T.apply(store, "\n".join(lines), ALEX, opened)
-    assert [n.id for n in plan.nodes(store)][:2] == ["docs", "pdf"]
+    assert [n.id for n in plan.kids(plan.nodes(store))[None]] == ["docs", "pdf"]
     assert [e["kind"] for e in store.node_log("*")][-1] == "reordered"
 
 

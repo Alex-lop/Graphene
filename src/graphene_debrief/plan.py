@@ -243,6 +243,8 @@ def validate(nodes: list[Node], fresh: set[str] | None = None) -> None:
     for n in by_id.values():
         if not n.title.strip():
             raise Refused(f"{n.id}: a node needs a title")
+        if (fresh is None or n.id in fresh) and any("\n" in g or "\r" in g for g in n.scope):
+            raise Refused(f"{n.id}: a scope glob has a line break in it; one glob a path, no line breaks")
         if n.parent is not None and n.parent not in by_id:
             raise Refused(f"{n.id} is under {n.parent}, which is not in the plan")
         if n.parent is not None and by_id[n.parent].aside:
@@ -527,6 +529,7 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
         )
     scope = raw.get("scope") or []
     needs = raw.get("needs") or []
+    owner = " ".join(str(raw.get("owner") or AGENT).split()) or AGENT  # one line, as the text writes it
     return Node(
         id=str(raw.get("id") or fallback_id),
         title=str(raw.get("title") or ""),
@@ -535,7 +538,7 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
         check=str(raw["check"]) if raw.get("check") else None,
         signoff=bool(raw.get("signoff")),
         needs=[needs] if isinstance(needs, str) else [str(n) for n in needs],
-        owner=str(raw.get("owner") or AGENT),
+        owner=owner,
         parent=str(raw["parent"]) if raw.get("parent") not in (None, "", "none") else None,
     )
 
@@ -759,6 +762,7 @@ def propose(
     files: list[str] | None = None,
     aside: bool = False,
     proposals: frozenset[str] | set[str] = frozenset(),
+    containers: frozenset[str] | set[str] = frozenset(),
 ) -> list[Node]:
     """Add nodes. From a person they are part of the plan at once; from an agent they are proposals,
     which nobody can start until a person accepts them. ``proposals``: ids a person wrote as
@@ -794,7 +798,9 @@ def propose(
             node.proposed_by = who.name
             node.created_at = now
             added.append(node)
-        validate(existing + added, {n.id for n in added})
+        # ``containers``: new nodes the same text gives children (existing nodes moved under them come
+        # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
+        validate(existing + added, {n.id for n in added} - set(containers))
         held = {n.id: n for n in existing if n.state == RUNNING}
         for node in added:
             if node.state == OPEN and node.parent in held:
@@ -849,7 +855,13 @@ def accept(
 
 
 def edit(
-    store, node_id: str, changes: dict, who: Caller, now: str | None = None, files: list[str] | None = None
+    store,
+    node_id: str,
+    changes: dict,
+    who: Caller,
+    now: str | None = None,
+    files: list[str] | None = None,
+    check: bool = True,
 ) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
     very next write, even on a node that is running; what waits to start is told the new contract."""
@@ -868,7 +880,8 @@ def edit(
         changed = {f: [before[f], getattr(node, f)] for f in EDITABLE if before[f] != getattr(node, f)}
         if not changed:
             return node
-        validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
+        if check:  # else the caller validates once every edit it makes is in (a text saved whole)
+            validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         target = next((n for n in nodes(store) if n.id == node.parent), None)
         if "parent" in changed and target is not None and target.state == RUNNING:
             raise Refused(
@@ -896,14 +909,10 @@ def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
         if held and not who.person:
             raise Refused(f"{held[0].id} is running ({held[0].executor}); `graphene node release` first")
         gone = {n.id for n in going}
-        waiting = [
-            n.id for n in everything if n.id not in gone and gone & set(n.needs) and n.state not in GONE
-        ]
+        waiting = [n for n in everything if n.id not in gone and gone & set(n.needs) and n.state not in GONE]
         if waiting:
-            raise Refused(
-                f"{', '.join(waiting)} wait{'s' if len(waiting) == 1 else ''} on {node.id}; "
-                "change what they need first"
-            )
+            told = "; ".join(f"{n.id} waits on {', '.join(sorted(gone & set(n.needs)))}" for n in waiting)
+            raise Refused(f"{told}; change what {'it needs' if len(waiting) == 1 else 'they need'} first")
         for n in going:
             n.state = DROPPED
             _save(store, n, "dropped", who, now)
@@ -1614,9 +1623,14 @@ def undoable(store, who: Caller, what: str):
     if not who.person:
         yield
         return
-    before = _shape(store)
-    yield
-    after = _shape(store)
+    with store.claim():  # one transaction: the act, and the record of it holds only the person's own changes
+        before = _shape(store)
+        yield
+        after = _shape(store)
+        _keep(store, what, before, after)
+
+
+def _keep(store, what: str, before: dict, after: dict) -> None:
     rows = {
         i: [before["rows"].get(i), row] for i, row in after["rows"].items() if before["rows"].get(i) != row
     }
@@ -1639,6 +1653,18 @@ def undo(store, who: Caller, now: str | None = None) -> str:
         act = stack.pop()
         current = _shape(store)
         moved = [i for i, (_, after) in act["rows"].items() if current["rows"].get(i) != after]
+        added = {i for i, (before, _) in act["rows"].items() if before is None}
+        hanging = [
+            row["id"]
+            for row in current["rows"].values()
+            if row["id"] not in act["rows"] and row["state"] not in GONE
+            and (row.get("parent") in added or added & set(row.get("needs") or []))
+        ]  # fmt: skip
+        if hanging:
+            raise Refused(
+                f"cannot undo {act['what']!r}: {', '.join(hanging)} was put under or made to wait on what it "
+                "added, since; drop that first"
+            )
         if moved:
             states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
             raise Refused(

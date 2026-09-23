@@ -68,7 +68,7 @@ def test_a_person_edits_the_plan_in_their_editor_and_the_save_is_applied(repo, m
     assert "accepted api" in edited.stdout and "docs: check changed" in edited.stdout
     assert "(the plan of" in edited.stderr  # which repository, on every write
     assert "- document it  [docs]" in person("plan", "--text").stdout
-    assert not (repo / ".graphene" / "PLAN_EDIT.txt").exists()
+    assert not list((repo / ".graphene" / "edits").iterdir())
     undone = person("plan", "undo")
     assert undone.exit_code == 0 and "undid: plan edit" in undone.stdout
     assert "? document it  [docs]" in person("plan", "--text").stdout
@@ -79,12 +79,13 @@ def test_a_refused_save_names_the_line_and_keeps_the_text(repo, monkeypatch, tmp
     editor(
         monkeypatch,
         tmp_path,
-        "text = text.replace('scope: README.md', 'scope: README.md\\n      signoff: maybe')",
+        "text = text.replace('scope: README.md', 'scope: README.md\\n    signoff: maybe')",
     )
     refused = person("plan", "edit", "docs")
     assert refused.exit_code == 1
     assert "signoff is yes or no, not 'maybe'. Nothing was applied" in refused.stderr
-    assert "signoff: maybe" in (repo / ".graphene" / "PLAN_EDIT.txt").read_text()
+    [kept] = (repo / ".graphene" / "edits").iterdir()
+    assert "signoff: maybe" in kept.read_text()
     assert "signoff: yes" not in person("plan", "--text").stdout
 
 
