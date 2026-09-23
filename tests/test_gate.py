@@ -308,3 +308,114 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons_paragraph(repo):
     assert hook(repo, "UserPromptSubmit", prompt=notice) is None
     assert hook(repo, "UserPromptSubmit", prompt="[SYSTEM NOTIFICATION] " + "y" * 300) is None
     assert write(repo, "ingest/xmlfeed.py") is None
+
+
+# -- the recheck of the closing review: what the paragraph's wait still got wrong --------------------------
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        PARAGRAPH + " Please don't just do it: I want to see the tree first.",
+        PARAGRAPH + " I don't want you to just do it.",
+        PARAGRAPH + " I can't do it now myself.",
+        "We have no plan for the Northwind feed yet. " + PARAGRAPH,
+        PARAGRAPH + " I don't plan to ship this before Friday, so take your time.",
+        PARAGRAPH + " There is no plan to keep the legacy importer.",
+        PARAGRAPH + " Legacy has no owner; don't plan around it.",
+    ],
+)
+def test_skipping_words_negated_or_said_in_passing_do_not_skip_the_tree(said):
+    """Recheck 18 and 71: can't, curly apostrophes and a negation further back switched the rule off."""
+    assert gate.paragraph(said)
+
+
+def test_skipping_words_that_mean_it_skip_the_tree():
+    assert not gate.paragraph(PARAGRAPH + " Don't worry about tests, just do it.")
+    assert not gate.paragraph(PARAGRAPH + " I don’t mind: skip the plan.")
+
+
+def test_a_question_paragraph_holds_its_writes_until_a_short_answer_says_no_plan(repo):
+    """Recheck hunt: after a paragraph that got no tree, only 'just do it' lifted the wait, and the
+    refusal did not say so. It says so now, and 'no plan' in a short answer lifts it."""
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    hook(repo, "UserPromptSubmit", prompt="thanks. fix the typo in README.md: 'hi' should be 'hello'")
+    said = reason(write(repo, "README.md"))
+    assert "'just do it' or 'no plan'" in said
+    hook(repo, "UserPromptSubmit", prompt="do it without a plan please")
+    assert write(repo, "README.md") is None
+
+
+def test_a_tree_made_by_the_planner_or_before_a_second_paragraph_is_the_paragraphs_tree(repo):
+    """Recheck hunt: a tree the session did not propose (:ask), or one proposed before the person's
+    feedback paragraph, left the session told to 'propose it' for ever, even once it was accepted."""
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "xml", "title": "xml", "scope": ["src/api/**"], "check": "true"}],
+                     Caller("planner", False))  # fmt: skip
+    hook(repo, "UserPromptSubmit", prompt="On the tree: " + PARAGRAPH)  # feedback, a paragraph too
+    assert "waits for the person" in reason(write(repo, "src/api/users.py"))
+    with Store.open(repo) as store:
+        plan.accept(store, ["xml"], ALEX)
+    said = reason(write(repo, "src/api/users.py"))
+    assert "graphene node start xml" in said and "propose it" not in said
+
+
+def test_another_sessions_proposal_is_not_this_paragraphs_tree(repo):
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        plan.propose(store, [{"title": "other", "scope": ["src/db/**"], "check": "true"}],
+                     Caller("claude:0badf00d", False, "0badf00d"))  # fmt: skip
+    assert "propose it" in reason(write(repo, "src/api/users.py"))
+
+
+def test_once_the_tree_is_accepted_and_a_leaf_done_the_refusal_names_the_next_leaf(repo, finish):
+    """Recheck 25."""
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    with Store.open(repo) as store:
+        leaves = [("xml", "src/api/**"), ("zero", "src/db/**")]
+        plan.propose(store, [{"id": i, "title": i, "scope": [s], "check": "true"} for i, s in leaves], BOT)
+        plan.accept(store, ["xml", "zero"], ALEX)
+        plan.start(store, "xml", BOT, repo)
+        finish(store, repo, "xml", BOT)
+    hook(repo, "UserPromptSubmit", prompt="Now the other one. " + PARAGRAPH)
+    said = reason(write(repo, "src/db/schema.py"))
+    assert "graphene node start zero" in said and "propose it" not in said
+
+
+def test_a_leaf_id_or_a_check_flag_in_prose_is_still_a_paragraph():
+    """Recheck hunt: 'the ids first' or 'ruff format --check' in a paragraph skipped the tree."""
+    assert gate.paragraph(PARAGRAPH + " Keep the same columns, the ids first.", ["ids", "schema"])
+    assert gate.paragraph(PARAGRAPH + " CI runs ruff format --check and mypy on every push.")
+    assert not gate.paragraph(PARAGRAPH + " So: do ids, carefully.", ["ids"])
+    assert not gate.paragraph(PARAGRAPH + " --scope src/api --check 'make test'")
+
+
+def test_a_command_with_many_ignored_redirects_asks_git_once(repo, monkeypatch):
+    """Recheck 27: 250 redirects into build/ asked git 250 times (7 s, past the vendor's 5 s); and
+    during the wait the 9th ignored path was refused as a write."""
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    asked, real = [], gate._ignored
+    monkeypatch.setattr(gate, "_ignored", lambda root, rels: asked.append(rels) or real(root, rels))
+    assert bash(repo, "".join(f"echo {i} > build/f{i}; " for i in range(250))) is None
+    assert "becomes a tree" in reason(bash(repo, "echo 1 > build/a; echo x > src/api/users.py"))
+    assert len(asked) == 2
+    holding(repo)
+    asked.clear()
+    assert bash(repo, "".join(f"echo {i} > build/f{i}; " for i in range(250))) is None
+    assert len(asked) == 1
+
+
+def test_a_hand_back_or_a_search_that_names_the_hook_is_not_running_it(repo):
+    """Recheck 26."""
+    holding(repo)
+    why = "graphene node release n1 --why 'the fix is in graphene ingest hook, outside my scope'"
+    assert bash(repo, why) is None
+    assert bash(repo, "rg 'graphene ingest' README.md") is None
+    assert "not an agent's to run" in reason(bash(repo, "rg x README.md; graphene ingest hook < e.json"))
+
+
+def test_the_way_out_names_each_wanted_path_with_its_own_flag(repo):
+    """Recheck hunt: `--wants <the paths you need>` led an agent to `--wants b.py c.py`, a usage error."""
+    holding(repo)
+    assert "--wants <a path> --wants <another>" in reason(write(repo, "src/db/schema.py"))
