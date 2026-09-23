@@ -4,6 +4,7 @@ hands the node back, finishes by itself."""
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -67,12 +68,14 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         done = run_plan(store, repo, executor(repo, SLOPPY), say=said.append, logs=repo / ".graphene/runs")
         assert [n.id for n in done] == ["n1"] and plan.get(store, "n1").state == DONE
         assert [e["kind"] for e in store.node_log("n1")] == [
-            "added", "started", "refused", "check_passed", "finished"
+            "added", "started", "attempt", "refused", "attempt", "check_passed", "finished"
         ]  # fmt: skip
+        tails = [e["detail"]["log"] for e in store.node_log("n1", ("attempt",))]
+        assert len(set(tails)) == 2 and all(Path(t).is_file() for t in tails)  # one tail an attempt, kept
         assert plan.get(store, "n2").state == OPEN  # a person's node is never handed to an executor
     assert "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py): schema.py" in said[2]
     assert said[-1] == "n1 is done"
-    assert (repo / ".graphene/runs/n1-2.txt").exists()
+    assert len(list((repo / ".graphene/runs").glob("n1-*-2.txt"))) == 1
 
 
 def test_out_of_attempts_the_node_is_handed_back_with_the_reason_and_the_run_moves_on(repo):

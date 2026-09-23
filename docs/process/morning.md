@@ -20,8 +20,15 @@ git checkout main && git reset --hard ed010ca   # local main was 6cece1c, 43 beh
   back your last act. A new Claude Code session is taught the text whether or not a plan exists yet.
   Proved by `tests/test_plan_text.py` and `tests/test_plan_text_cli.py` (26 tests; `propose -` on a
   real pseudo-terminal).
-- Next: the run (Ctrl-C, the tail, needs in flight, the lock), hand-backs with offers, the planner
-  (`graphene ask`), the TUI, the README, the third test.
+- **Milestone 2, the run and the hand-back: done.** Ctrl-C hands back what `graphene run` started, in
+  place and in worktrees, and stops the executors (exit 130); releasing a running leaf stops its
+  executor; a run that died is swept at the next one; a leaf whose need is done but not here (never
+  landed, or uncommitted) waits and says why; git is asked before the write lock; each attempt's output
+  streams to `.graphene/runs/<leaf>-<time>-<n>.txt`; a leaf that comes back offers `graphene node
+  widen <id>`, `graphene node sibling <id>`, or waiting on the nodes its reason names. The `ingest/`
+  refusal that bit three of your executors is gone. Proved by `tests/test_run_live.py` (13, with real
+  SIGINTs) and `tests/test_gate.py`.
+- Next: the planner (`graphene ask`, `s` to split), the TUI, the README, the third test.
 
 ## Your afternoon, read from the record
 

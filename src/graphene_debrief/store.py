@@ -458,6 +458,15 @@ class Store:
         ).fetchall()
         return [_event(r) for r in rows]
 
+    def last_events(self, session_id: str, count: int = 1) -> list[dict]:
+        """The session's latest tool calls, newest last: what a running executor did lately."""
+        rows = self.conn.execute(
+            "SELECT timestamp, tool, input, file_path, success FROM tool_events WHERE session_id = ? "
+            "ORDER BY timestamp DESC, rowid DESC LIMIT ?",
+            (session_id, count),
+        ).fetchall()
+        return [{**dict(r), "input": json.loads(r["input"])} for r in reversed(rows)]
+
     def event_count(self, session_id: str) -> int:
         return int(
             self.conn.execute(

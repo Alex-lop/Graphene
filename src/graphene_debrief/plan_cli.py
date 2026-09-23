@@ -197,7 +197,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
         yours += [n for n in P.ready(alive) if n.owner != P.AGENT]
-        if who.person and (yours or stuck):
+        back = [n for n in alive if P.offers(store, n)]  # it came back with a fix on offer: the person's
+        if who.person and (yours or stuck or back):
             ask = {P.PROPOSED: "accept", P.REVIEW: "sign off", P.OPEN: "yours to do"}
             seen: list[str] = []
             told = [
@@ -208,6 +209,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 if n.id not in seen and not seen.append(n.id)
             ]
             told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
+            told += [f"{n.id} (came back: `graphene node show {n.id}`)" for n in back]
             more = (
                 f", and {len(told) - 8} more (`graphene plan --all`)"
                 if len(told) > 8 and not everything
@@ -641,6 +643,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
+            except KeyboardInterrupt:
+                out("stopped. What was running is handed back and ready again; `graphene plan` shows it")
+                raise typer.Exit(130) from None
             for line in next_lines(store, P.caller()):
                 out(line)
 
@@ -847,6 +852,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             n = P.get(store, node_id)
             out(P.contract(n, P.trail(store, n)))
+            for line in came_back(store, n):
+                out(line)
             everything = P.nodes(store)
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
@@ -855,6 +862,47 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
         run(go)
+
+    def came_back(store, n: P.Node) -> list[str]:
+        """A leaf that came back: why, what it wanted, where its last attempt is, and the fixes on
+        offer, each a command."""
+        lines = []
+        offers = P.offers(store, n)
+        if offers:
+            why = (store.node_log(n.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
+            lines.append(f"  came back: {' '.join(str(why).split())}")
+            for _key, what, command in offers:
+                lines.append(f"    {what}: `graphene {' '.join(command)}`")
+        if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():
+            lines.append(f"  its last attempt is kept in {n.checkout} (branch graphene/{n.id})")
+        return lines
+
+    @node_cli.command()
+    def widen(
+        node_id: str = typer.Argument(...),
+        paths: list[str] = typer.Argument(None, help="Default: the paths it wanted outside its scope."),
+    ) -> None:
+        """A leaf came back needing paths outside its scope: widen the scope to them."""
+
+        def go(store):
+            n = P.widen(store, node_id, paths or [], P.caller(), files=P.tracked(checkout()))
+            out(f"{n.id}'s scope is now {', '.join(n.scope)} (revision {n.rev}); it is ready again")
+
+        write(f"node widen {node_id}", go)
+
+    @node_cli.command()
+    def sibling(
+        node_id: str = typer.Argument(...),
+        paths: list[str] = typer.Argument(None, help="Default: the paths it wanted outside its scope."),
+    ) -> None:
+        """A leaf came back needing paths outside its scope: a leaf beside it for them, which it waits on."""
+
+        def go(store):
+            made = P.sibling(store, node_id, paths or [], P.caller(), files=P.tracked(checkout()))
+            out(f"added {made.id} ({', '.join(made.scope)}); {node_id} waits on it")
+            out(f"  its check is `{made.check}`; {node_id}'s, run after it, says if they work together")
+
+        write(f"node sibling {node_id}", go)
 
     def plan_or_nothing() -> bool:
         """Plain `graphene`: where the work stands, when the repo has a plan. False when it has none."""
