@@ -100,7 +100,7 @@ To change what a line of the text means, start at `plan_text.parse` and add a ca
   fixed and merged, except the three named in decision 39. Every fix has a test that fails without it.
 - **Ctrl-C, a closed terminal, `kill`**: real signals in `test_run_live.py`, which checks that no
   executor or check survives.
-- **Tests:** 639 (612 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI on Linux and macOS, Python 3.12 and 3.13.
+- **Tests:** 639 (612 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI green on Linux and macOS, Python 3.12 and 3.13, at `905538b`, after three pushes that failed one Linux job each (a `ps` that cut the command line at 80 columns; the commit says which of my guesses were wrong).
 - **The third test:** eight stand-in runs, one at a time, and an independent audit that reproduced
   every figure from the raw runs.
 
@@ -113,8 +113,6 @@ To change what a line of the text means, start at `plan_text.parse` and add a ca
 - **The paragraph rule's 240 characters** against anyone but you.
 - **Codex as planner or executor:** `--with 'codex exec --sandbox read-only'` should work for `ask`,
   and was not run.
-- **The start-time check on Linux** when the wall clock steps between a run's start and a sweep. A
-  live run could then look gone: its leaf would be swept, though its executor is not killed.
 - **A stray line**, once, at the top of a 36-column pane of `graphene watch`. I could not reproduce
   it.
 
