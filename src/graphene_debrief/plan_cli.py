@@ -390,7 +390,15 @@ def register(cli: typer.Typer, root, open_store, fail):
                 for e in recent:
                     out(log_line(e, with_node=8))
             return
-        from .tui import run as watch_tui
+        try:
+            from .tui import run as watch_tui
+        except ImportError as missing:  # an install from before the screen: code new, dependencies old
+            fail(
+                f"graphene watch needs {missing.name or 'textual'}, which this install lacks: reinstall "
+                "(`uv tool install --force git+https://github.com/Alex-lop/Graphene`, or `--editable .` "
+                "from a checkout). `graphene watch --once` prints the plan meanwhile",
+                1,
+            )
 
         r = root()
         watch_tui(r, lambda: open_store(r), every)

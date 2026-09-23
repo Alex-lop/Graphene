@@ -2,81 +2,136 @@
 
 ![CI](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg?branch=main)
 
-A plan you and your coding agents share. You say why; they work out how, in parallel, while you do
-something else; and you still know why every piece was done.
+Paragraph in, tree out, prune, run.
 
-I let agents work on my repos for hours. The way I steered them was a paragraph at the start and a
-diff at the end. That is fine for a change I can watch. It stops working when the job is too big for
-a paragraph to name the files, when I am not there, or when it is Tuesday and the paragraph I type
-is not a careful one. Agent work gets cheaper and better every few months. My attention does not.
-So Graphene spends theirs to save mine.
+You tell your coding agent what you want, the way you always have: a paragraph. Before it writes a
+line of code it shows you what it understood, as a tree. The goal sits at the top, then the
+pieces of work under it, each with the files it may change and the command that shows it is done.
+You read that, cut what you did not mean, and press `R`. Agents do the leaves in parallel, each in a
+worktree of its own. A leaf that finds it needs more than you gave it comes back with the fix
+already written: one key to take it.
 
-The plan is a **tree**. The root is the goal, in your words. Under it are sub-goals, and under those
-the **leaves**: pieces of work someone will do, each with the paths it may touch and the command
-that shows it is done. You stay near the root. The agents propose the branches and fill in the
-leaves, and you prune: accept a subtree, split a leaf, drop what you do not want, change the next
-leaf while another runs. Every agent that takes a leaf is told the path from the goal down to it,
-which is the one thing a paragraph cannot carry past the first turn. Ready leaves run at the same
-time, each agent in its own worktree, and land on your branch as they pass. For every leaf there is
-a record of what was really done.
+I let agents work on my repos for hours. However many tokens you give an agent, it still has to
+guess what you meant, and I found out what it guessed from the diff at the end. Graphene is where I
+see the guess before anything is spent, and correct it with a keystroke instead of a restart.
+Agent work gets cheaper every few months. My attention does not.
+
+Two kinds of agent are involved. The **planner** is the session you talk to (or `graphene ask`); it
+proposes the tree and writes no code. The **executors** are what `graphene run` starts, one per leaf;
+each is held to its leaf's files and its check.
+
+![graphene watch, at 80 columns](docs/assets/watch.gif)
+
+## You are here
 
 ```
-$ graphene
-the plan: a toy service whose listings are safe to show to a customer
-3 leaves, 2 done, 1 running
-  clean     done      the listing functions return clean values  agent                 ·  2/2 done
-    emails  done      emails() returns lower-case emails         agent  src/emails.py  ·
-    names   done      names() returns upper-case names           agent  src/names.py   ·
-  readme    running   say what the two functions return          agent  README.md      ·  run:claude since 05:50Z
+graphene                     where the work stands in this repository, and what waits on you
+graphene watch               the tree on one screen: j k to move, y accept, d drop, R run, ? for the rest
+graphene run --parallel 4    what is ready, at once, a worktree each, landed here as each passes
+graphene node show <id>      why a leaf failed or came back, and what was really done for it
+graphene plan edit           the whole plan as text, in your editor
 ```
 
-`graphene watch` is that, live. `graphene ui` is the same plan in a browser.
+Graphene works on the repository you are standing in, and every command that changes the plan
+says which one.
 
-![The plan in `graphene ui`](docs/assets/plan.png)
+## The first ten minutes
+
+You need Claude Code, git, and a repository with some work to do in it: one of your own.
+Install and set up the repository, once:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+cd ~/src/your-repo
+graphene init
+```
+
+Open two panes in WezTerm: your agent on the left, the plan on the right (it reads best at 80
+columns or more, so give the window room). In the pane you are in:
+
+```
+wezterm cli split-pane --right --percent 50 --cwd "$PWD" -- graphene watch
+claude
+```
+
+(To have it on a key, add this to the `keys` in your `~/.wezterm.lua`:
+`{ key = 'g', mods = 'CMD|SHIFT', action = wezterm.action.SplitPane { direction = 'Right', size = { Percent = 50 }, command = { args = { 'graphene', 'watch' } } } }`.)
+
+Now say what you want, on the left, in a paragraph. On the 22nd I typed this about a small loader:
+
+> Look at this repo. I want the new Northwind XML feed to load the same way csv and json already
+> do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line
+> at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored
+> or legacy files that aren't ours this week.
+
+Graphene asks the agent to plan a paragraph before it writes anything. On the right, a tree
+appears, every line marked `?`: a proposal. The agent also says what it could not settle. That run
+flagged that the legacy importer skips the zero-price rule, which I had just told it not to touch.
+That is a misunderstanding caught before any code, and exactly what the tree is for. A single line
+("fix the typo in the header") is still just done, with a record of what it touched. And "just do it"
+in a paragraph skips the tree.
+
+Prune it on the right:
+
+- `j` `k` move, `za` folds, `Enter` shows everything about a node.
+- `d` drops a leaf you did not mean. `e` opens its contract in your editor. `E` opens a whole
+  subtree as text. `a` adds a line, and `s` asks the planner to split a leaf.
+- `y` accepts. `V`, a few `j`, then `y` accepts several.
+- `R` runs everything that is ready.
+
+Leaves light up as executors take them. The node pane shows which executor, in which worktree, what
+it did last and how many seconds ago; `l` shows its output. Each leaf lands on your branch as a merge
+when its check passes and it touched nothing outside its files. If a leaf comes back, the node pane
+says why and what it wanted outside its scope, and offers the fix:
+
+```
+it came back; one key fixes it:
+  w  widen xml-enable's scope to cli/main.py
+  b  a sibling leaf for cli/main.py; xml-enable waits on it
+  ?  ask the planner, when neither is right
+```
+
+Press one of them, then `R` again. When it is all done, `git log --graph` reads as the tree: one
+merge per leaf, with its why in the message.
+
+Everything the keys do is a command you can type yourself; the bottom line of the screen says which
+command each key just ran. Agents and scripts use the same commands. `graphene watch --once` prints
+the plan instead of taking the screen.
 
 ## What works today
 
-Each of these was shown on real agents, not only in tests. [docs/proof/](docs/proof/) has the
-scripts, which you can run, and what they printed.
+Each of these was run for real on the feeds task. The executors were Claude Code agents, not
+tests of Graphene's own:
 
-- **Two agents at once on one tree** (`docs/proof/parallel.sh`, about 30 seconds). `graphene run
-  --parallel 2` gave two leaves a worktree each, both agents worked at the same time, each leaf
-  landed on the branch as a merge with its why in the commit message, the sub-goal above them was
-  done only when its own check passed on the merged result, and the leaf that waited on it started
-  then.
-- **A plan in force costs nothing on a small job** (`docs/proof/tuesday.sh`). With a plan in force
-  you type an ordinary request into your session, the same words you would have typed without
-  Graphene. The agent does it. The request is on the plan as a leaf with a record of what it
-  touched, and you ran no command. Write the CLI's own flags, `--scope 'src/db/**' --check 'make test'`, in the request and
-  those bind it like any leaf. When an agent proposes something, "yes" in the session accepts it.
-- **A leaf is done only when Graphene says so.** `graphene node done` runs the leaf's check itself
-  and asks git what changed since the leaf was started. A change outside the scope keeps it open
-  however the file was written, and nothing that waits on it can start. This needs no vendor: it
-  held a Claude Code agent, a Codex agent and a person doing a leaf by hand.
-- **Done rolls up, and integration has a place to live.** A sub-goal can carry a check of its own.
-  It runs when the leaves under it are done and together, and until it passes, what waits on the
-  sub-goal waits.
-- **While an agent holds a leaf, a write outside its scope is refused before it happens**, with the
-  reason and the way out, in every permission mode and inside subagents. Its stop is refused until
-  the leaf is done or handed back with a reason you can read.
-- **You change the next leaf while this one runs, and the agent honours it.** A leaf's contract is
-  printed fresh when it is started.
-- **You are in the tree.** A leaf can be yours. Agents cannot take it, what waits on it waits, and
-  the plan says so first: "waiting on a person: rate (yours to do)". Before a run you are told what
-  agents can reach alone and what will wait for whom.
-- **A leaf too big to do gets split, by the agent.** It proposes children under the leaf and hands
-  it back; you accept the subtree or prune it. Agents propose. Only you accept, edit a contract,
-  sign off, reopen or overrule.
+- **A paragraph becomes a tree before any code.** The paragraph above, typed into a Claude Code
+  session in a fresh copy of that repository with the hooks installed: 35 seconds, four leaves under
+  three sub-goals, `needs` set between them, and no file touched. Before Graphene asked for the tree
+  at the prompt, the same paragraph got its code written straight away, in 48 seconds. (One run of
+  each, 23 September.)
+- **The tree runs in parallel and lands.** Accepted as proposed, `graphene run --parallel 4` did all
+  four leaves in 50 seconds, each a merge on the branch. The result passes 18 of the task's 20 hidden
+  acceptance checks (the 2 it misses want something the paragraph never said) and 12 of its 12
+  held-out checks, against 10 and 0 for the repository as it was. (One run.)
+- **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools, and
+  what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
+- **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors.
+  The next run takes those leaves again.
+- **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
+- **The plan as text round-trips.** `graphene plan edit` applies what you changed and nothing else,
+  in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
+  agents tried to break it: what they found is fixed, and each finding has a test.
 
-What it is not yet: the hooks exist for Claude Code only (the boundary, `graphene run` and the
-worktrees work for any executor with a shell); the live view is a print that redraws, not an
-interface with keys; the page shows the tree and is otherwise as it was.
+What it is not yet: the hooks are for Claude Code only (the plan, `run` and the worktrees work with
+any executor that has a shell); the page (`graphene ui`) shows the tree and is otherwise as it was.
 [docs/DIRECTION.md](docs/DIRECTION.md) has what was decided, why, and what comes next.
 
 ## What does not bind
 
 A control you cannot trust is worse than none, so here is where each one ends.
 
+- "A paragraph becomes a tree" is a rule about length (240 characters). A long request you meant to
+  have done at once needs "just do it" in it. A short one that deserved a plan is done at once, and
+  you see it on the plan as a leaf made from your prompt.
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
   itself). The hook refuses the forms it can parse (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`).
   The rest is caught at `done`, by git; until then the stray change is on disk.
@@ -87,147 +142,58 @@ A control you cannot trust is worse than none, so here is where each one ends.
 - A hook that crashes or times out lets the call through. That is the vendor's rule. The boundary
   does not depend on the hook.
 - "Only a person" rests on the environment: an agent's shell carries its vendor's marks, and whoever
-  carries none is taken for you, with or without a terminal. An agent that strips its marks, or one
-  from a vendor that sets none, passes for a person; the log marks every act made with no terminal.
+  carries none is taken for you. An agent that strips its marks, or one from a vendor that sets none,
+  passes for a person; the log marks every act made with no terminal.
 - A request typed into a session is taken as yours, and so is a "yes". An agent that starts another
   agent writes its prompt. The log names every leaf made from a prompt and every acceptance made by
-  one. A leaf made from a prompt with no `--scope` may touch anything (never the plan's store or the hooks' settings): it is a record, not a fence.
+  one. A leaf made from a one-line prompt with no `--scope` may touch anything (never the plan's
+  store or the hooks' settings): it is a record, not a fence.
 - During `graphene run --parallel`, a change you make by hand in the checkout it merges into can
-  make a leaf's `done` refuse (it sees a change it cannot account for) or keep it from landing. It
-  is sent back or waits for you; nothing is lost.
+  make a leaf wait or keep it from landing. It is sent back or waits for you; nothing is lost.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
-- What git ignores, nobody audits. The gate asks git about every working tree of the repo, not
-  about a copy of it somewhere else.
 
 ## Install
-
-From GitHub, which is where the plan is:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
 ```
 
-`uv tool install graphene-map` installs the last release on PyPI. Today that is 0.2.0, which is the
-record only: no `plan`, no `node`, no `run`. They arrive there when 0.4.0 is released.
-
-Then, once per repo, inside it:
-
-```
-graphene init
-```
-
-This adds Graphene's hook to the repo's `.claude/settings.local.json` (yours, not the team's
-`settings.json`; if an earlier version put it in `settings.json`, it is upgraded there, and a repo
-set up before 0.3 gets the one new event, `PreToolUse`, added). The hook does two jobs: it holds
-agents to the plan, and it keeps the record. Each time it runs, before and after every tool call,
-the agent waits about 40 ms for it (measured in the test suite). It keeps that file out of `git add` through
-`.git/info/exclude`, never through your `.gitignore`. When your own `~/.claude/settings.json` does
-not yet make Claude Code record which files each shell command changed, `init` prints the one line
-to add there; Graphene never edits that file.
-
-## The first ten minutes
-
-In a repo with some work to do, say what it is for and ask your agent for the tree:
-
-```
-graphene plan goal "customers can download their invoices as PDF"
-```
-
-Then, in your agent session: *"Propose a plan for this goal with `graphene plan propose -`: sub-goals
-with leaves under them, each leaf with a scope and a check. Do not start it."* What an agent adds is
-a proposal. It binds nobody and nobody can start it. Read it and prune it:
-
-```
-graphene                                  # the tree; what waits on you is first
-graphene node set pdf --scope 'src/pdf/**' --check 'pytest tests/pdf'
-graphene node add "the template" --parent pdf --scope 'templates/**' --check 'make lint' --owner me
-graphene node drop emailing               # with everything under it
-graphene plan accept                      # or one subtree: graphene plan accept pdf
-```
-
-`accept` answers with what agents can reach alone and what will wait for you. (Or type "yes" in the
-session.) You can also build the tree by hand: `graphene node add "the API" --id api` is a sub-goal,
-and `graphene node add … --parent api --scope … --check …` is a leaf under it.
-
-Now either tell the agent in your session to *work the plan*, or leave:
-
-```
-graphene run --parallel 3       # ready leaves at once, a worktree each, merged here as they pass
-graphene run                    # or one at a time in this checkout, committing nothing
-graphene watch                  # the tree, live, from another terminal
-```
-
-While a leaf runs you can still change any leaf that has not started; the change is what its
-executor is told. When you come back:
-
-```
-graphene                 # where the work stands, and what is waiting on you
-graphene node show pdf   # why it exists, its contract, who held it, what was refused, what the check said
-graphene plan log        # everything that happened, oldest first
-git log --graph          # with --parallel: one merge a leaf, its why in the message
-```
-
-If a leaf is not what you wanted, `graphene node reopen n1 --note "return a dict, not a list"` sends
-it back with your words. The note is a comment to whoever takes it next; the contract is what binds,
-so when the note changes what is wanted, change the goal or the check too (`graphene node set n1
---goal …`). A leaf that is yours you do like anyone else: `graphene node start rate`, the work,
-`graphene node done rate`. If a parallel leaf could not be merged because your own work was in the
-way, it waits in `review` on its branch and the plan tells you the two commands that finish it.
-
-A finished plan stays in force until you `graphene plan archive` or `graphene plan pause`. That no
-longer gets in your way: what you ask for in a session is done and recorded as a leaf of its own.
-`graphene plan prompts strict` brings back the older rule, under which a session that holds no leaf
-writes nothing and has to propose.
+`uv tool install graphene-map` installs the last release on PyPI, 0.2.0, which is the record only:
+no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
+Graphene's hook to `.claude/settings.local.json` (yours, not the team's `settings.json`) and keeps
+the file out of `git add` through `.git/info/exclude`. The hook holds agents to the plan and keeps
+the record; the agent waits about 40 ms for it on each tool call. Graphene never edits your own
+`~/.claude/settings.json`.
 
 ## The record
 
-The record hangs off a node. `graphene node show n1` prints its contract and then what was really
-done for it: who held it and when, what git says changed under it and whether that was inside its
-scope, what was refused, what Graphene's own run of the check said, and the commits made inside its
-windows. Every line names the record it was read from, and a count nothing supports says `not
-computed` and why instead of showing a number.
+`graphene node show <id>` prints a node's contract and then what was really done for it:
+- who held it and when;
+- what git says changed and whether that was inside its scope;
+- what was refused;
+- what Graphene's own run of the check said;
+- the commits made while it was held.
 
-```
-coverage: of the 3 paths git said had changed under this node, 3 inside its scope; 2 to a recorded
-edit, 0 to a recorded shell command, 1 to git alone
-  read from: the node's log, git, and Claude Code's records for session 4f2a91c7
-  check: `uv run pytest -q` passed at 2026-09-21T02:14:08.112Z, run by Graphene itself
-```
-
-None of that needs a vendor. A node done by Codex, by `graphene run --with <anything>` or by you at
-the terminal gets the same line, read from the node's log, git and the check; where Claude Code's
-hooks were running they add which path traces to a write somebody recorded making, and where they
-were not, the line says so rather than reporting nothing.
-
-`graphene ui` opens the map in your browser, served to this machine only: the plan, and behind it
-the record of a run as lanes of agents over rows of files, with the files nothing accounts for drawn
-as such. `graphene ui --export FILE` writes the page as one file that opens offline; it carries
-paths, counts, commit subjects, your prompts (every request that became a leaf is on the plan in your words, as its title and goal), each agent's task, your user name, and the plan itself
-(each node's goal, scope and check, without its log), and no file contents, diffs or tool output. Read it before you send it. The page's own rail lists the sessions that are recorded. How each number
-is computed, and where it can be wrong, is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
+Every line names the record it was read from. A count that nothing supports says `not computed`, and
+why. `graphene ui` is the plan and that record as a page in your browser, served to this machine
+only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## Privacy
 
-- Nothing leaves your machine. Graphene calls no model and sends nothing anywhere. `graphene run`
-  starts the executor you name, with the permissions you give it, and that is all.
-- The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git
-  (a `.gitignore` inside it), so your own `.gitignore` is never edited. On `init` Graphene also writes
-  `.claude/settings.local.json` (or the `.claude/settings.json` an earlier version already put its
-  hook in) and one line in `.git/info/exclude`. Graphene never pushes. It commits and merges in one
-  case only: `graphene run --parallel`, on `graphene/<leaf>` branches of its own, merged into the
-  checkout you started it from when the merge is clean.
-- Transcripts can contain secrets, so files outside the repo are recorded by path only, the content
-  a `Read` call returned is not stored, and any output or input string over 8 KB is kept as its
-  first and last 4 KB.
-- Delete `.graphene/` to forget everything, the plan included. Graphene rebuilds what the
-  transcripts still hold next time.
+- Nothing leaves your machine. Graphene itself calls no model and sends nothing anywhere. `graphene
+  run` and `graphene ask` start the executor or planner you name, with the permissions you give it.
+- The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git.
+  Graphene never pushes. It commits and merges only in `graphene run --parallel`, on
+  `graphene/<leaf>` branches of its own, merged into the checkout you started it from when the merge
+  is clean.
+- Delete `.graphene/` to forget everything, the plan included.
 
 ## Requirements
 
-macOS or Linux, [uv](https://docs.astral.sh/uv/) to install it, Python 3.12 or later (uv fetches it
-if needed), and git. The hooks are for Claude Code; the plan and its boundary work with any executor
-that has a shell.
+macOS or Linux, [uv](https://docs.astral.sh/uv/), Python 3.12 or later (uv fetches it), and git. The
+screen (`graphene watch`) is [Textual](https://textual.textualize.io/) and works in any modern
+terminal; it was checked in WezTerm at 80 columns. The hooks are for Claude Code.
 
 ## License
 
