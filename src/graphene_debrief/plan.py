@@ -664,15 +664,22 @@ def _owner(name: str) -> str:
 
 def propose_goal(store, text: str, who: Caller, now: str | None = None) -> bool:
     """A planner's one sentence for the root, from the person's paragraph. It is used only while
-    the plan has no goal of the person's in force (none yet, or nothing left alive under the old
-    one), and it becomes the goal when the person accepts any of the tree. True when it was taken."""
-    if goal(store):
-        return False  # the person's own words are never replaced by a sentence they did not see
+    the plan has no goal of the person's in force: none yet, or one whose tree is finished (something
+    was finished since it was set, and nothing is open, running or waiting for a sign-off; a goal with
+    nothing finished under it yet is the person's word for what is to come). A finished one is put
+    aside, kept in the log, so the sentence shows everywhere as the proposal it is; it becomes the
+    goal when the person accepts any of the tree. True when it was taken."""
+    was = goal(store)
+    if was:
+        said = (store.node_log("*", ("goal",)) or [{"timestamp": ""}])[-1]["timestamp"]
+        ended = store.node_log(kinds=("finished", "overruled", "rolled_up"))
+        if store.node_rows((OPEN, RUNNING, REVIEW)) or not any(e["timestamp"] > said for e in ended):
+            return False  # the person's own words are never replaced while anything under them is to do
+        store.set_meta("goal", None)
     store.set_meta("goal:proposed", text.strip())
     store.set_meta("goal:proposed:by", who.label)
-    store.log_node(
-        "*", now or _now(), "goal_proposed", who.label, who.session_id, None, {"note": text.strip()}
-    )
+    detail = {"note": text.strip(), **({"was": was} if was else {})}
+    store.log_node("*", now or _now(), "goal_proposed", who.label, who.session_id, None, detail)
     return True
 
 
@@ -978,7 +985,8 @@ def drop(store, node_id: str, who: Caller, now: str | None = None, waiting: bool
         for n in going:
             n.state = DROPPED
             _save(store, n, "dropped", who, now)
-        if store.meta("goal:proposed") and not nodes(store, (PROPOSED,)):
+        by = store.meta("goal:proposed:by")
+        if store.meta("goal:proposed") and not any(n.proposed_by == by for n in nodes(store, (PROPOSED,))):
             store.set_meta("goal:proposed", None)  # the planner's tree is gone, and its sentence with it
         _settle(store, who, now)
     return node
@@ -1009,9 +1017,18 @@ def _blobs(checkout: str | Path, paths: list[str]) -> dict[str, str]:
     return dict(zip(present, names, strict=False))
 
 
-def _reaches(checkout: str | Path, blobs: dict[str, str], worktree_too: bool) -> list[str]:
+def _reaches(
+    checkout: str | Path,
+    blobs: dict[str, str],
+    worktree_too: bool,
+    since: str | None = None,
+    base: str | None = None,
+) -> list[str]:
     """The paths whose content a finished leaf left that this checkout does not have: not in its
-    files (when ``worktree_too``), and never in its history."""
+    files (when ``worktree_too``), never in its history, and not committed after the leaf finished
+    (``since``) on top of the HEAD it finished on (``base``). A file built on before any commit (by
+    a later leaf, the person, a formatter) never reaches history as the leaf left it, and its
+    dependant waited for ever."""
     missing = []
     now = _blobs(checkout, list(blobs)) if worktree_too else {}
     for path, blob in blobs.items():
@@ -1021,6 +1038,9 @@ def _reaches(checkout: str | Path, blobs: dict[str, str], worktree_too: bool) ->
             seen = _git(
                 checkout, "log", "-1", "--format=%H", f"--find-object={blob}", "HEAD", "--", path
             ).strip()
+            if not seen and since:  # the range keeps out its own base, which may share that second
+                after = [f"--since={since}", f"{base}..HEAD" if base else "HEAD"]
+                seen = _git(checkout, "log", "-1", "--format=%H", *after, "--", path).strip()
         except (Refused, OSError, subprocess.TimeoutExpired):
             seen = "?"
         if not seen:
@@ -1228,7 +1248,9 @@ def not_here(store, node: Node, checkout: str | Path, committed: bool = False) -
                 continue
             ended = (store.node_log(leaf.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
             if ended.get("blobs"):
-                missing = _reaches(checkout, ended["blobs"], worktree_too=not committed)
+                missing = _reaches(
+                    checkout, ended["blobs"], not committed, leaf.finished_at, ended.get("head")
+                )
                 if missing:
                     why = "not committed where it was done" if where == checkout else f"done in {where}"
                     out.append(f"{leaf.id} ({why}, and {', '.join(missing[:3])} here does not have it yet)")
@@ -1247,14 +1269,16 @@ def not_here(store, node: Node, checkout: str | Path, committed: bool = False) -
 
 
 def other_checkouts(checkout: str | Path) -> list[str]:
-    """The repo's other working trees that still exist, as git lists them."""
+    """The repo's other working trees that still exist, as git lists them, but for the ones `graphene
+    run --parallel` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
+    for it (a leaf's leftover there was charged to a node the person held in their own checkout)."""
     here = os.path.realpath(checkout)
     try:
         listed = _git(checkout, "worktree", "list", "--porcelain")
     except (Refused, OSError, subprocess.TimeoutExpired):
         return []
     paths = [os.path.realpath(line[9:]) for line in listed.splitlines() if line.startswith("worktree ")]
-    return [p for p in paths if p != here and os.path.isdir(p)]
+    return [p for p in paths if p != here and os.path.isdir(p) and RUN_TREE not in p + os.sep]
 
 
 def snapshot_others(checkout: str | Path) -> dict[str, dict]:
@@ -1407,6 +1431,7 @@ def finish(
     (or waiting for its sign-off). A person may overrule either with a reason, and the log says so."""
     now = now or _now()
     node = get(store, node_id)
+    began = node.started_at  # the hold this `done` answers for: it may be let go, and taken again, meanwhile
     if kids(nodes(store)).get(node.id):
         if override is not None:
             _person_only(who, "overruling a node's check or scope")
@@ -1462,8 +1487,9 @@ def finish(
         if left:
             with store.claim():
                 node = get(store, node_id)
-                node.dirty_at_start.update(left)
-                store.put_node(to_dict(node))
+                if node.state == RUNNING and node.started_at == began:  # never into a later hold's record
+                    node.dirty_at_start.update(left)
+                    store.put_node(to_dict(node))
         store.log_node(
             node.id,
             _now(),
@@ -1481,19 +1507,21 @@ def finish(
             "it was started, so a passing check shows nothing. If there was nothing to do, hand it "
             f"back and say so: `graphene node release {node.id} --why '…'`"
         )
-    began = node.started_at
+    # where it ended and what git said had changed by then: what the node's record reads, asked of
+    # git before the write lock is taken (hundreds of files are hashed while every hook would wait)
+    detail = {"head": head(checkout), "changed": changed[:KEPT_PATHS]}
+    blobs = _blobs(checkout, [p for p in changed if in_scope(p, node.scope)][:KEPT_PATHS])
     with store.claim():
         node = get(store, node_id)
         if node.state != RUNNING or node.started_at != began:
-            # handed back or dropped while its check ran (a check can take minutes): that stands
+            # let go while its check ran (a check can take minutes): that stands
+            was = {OPEN: "handed back", DROPPED: "dropped", RUNNING: "handed back and taken again"}
             raise Refused(
-                f"{node.id} was {node.state} while its check ran, so it is not done; its work stays"
+                f"{node.id} was {was.get(node.state, node.state)} while its check ran, so it is not done; "
+                "its work stays"
             )
         node.state = REVIEW if node.signoff and override is None else DONE
         node.finished_at = now
-        # where it ended and what git said had changed by then: what the node's record reads
-        detail = {"head": head(node.checkout or "."), "changed": changed[:KEPT_PATHS]}
-        blobs = _blobs(node.checkout or ".", [p for p in changed if in_scope(p, node.scope)][:KEPT_PATHS])
         if blobs:  # the content it left: what a leaf that needs it asks for, wherever it starts
             detail["blobs"] = blobs
         if len(changed) > KEPT_PATHS:
@@ -1646,15 +1674,20 @@ def release(
     now = now or _now()
     if not why.strip():
         raise Refused("say why: --why 'what is in the way'; the person reads it to decide what to change")
+    node = get(store, node_id)
+    began, changed = node.started_at, []
+    if node.state == RUNNING:  # git is asked before the write lock is taken
+        try:
+            changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+        except (Refused, OSError, subprocess.TimeoutExpired):
+            pass  # a checkout git cannot read any more: the hand-back still stands
     with store.claim():
         node = get(store, node_id)
         if node.state != RUNNING:
             raise Refused(f"{node.id} is {node.state}, not running")
         _holder_only(node, who, "handing it back")
-        try:
-            changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
-        except (Refused, OSError, subprocess.TimeoutExpired):
-            changed = []  # a checkout git cannot read any more: the hand-back still stands
+        if node.started_at != began:
+            raise Refused(f"{node.id} changed hands just now; look again (`graphene plan`)")
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
         _save(
@@ -1674,8 +1707,21 @@ def release(
 def signoff(
     store, node_id: str, who: Caller, now: str | None = None, checkout: str | Path | None = None
 ) -> Node:
+    """A person's say-so: a node waiting in review is done. One that did not land was merged by hand,
+    as they were told, and where it landed is recorded, or what needs it waits for ever. ``checkout``:
+    where they merged it; the page passes none, and the repo the store belongs to is meant."""
     _person_only(who, "signing a node off")
     now = now or _now()
+    checkout = checkout if checkout is not None else store.path.parent.parent
+    unlanded = store.node_log(node_id, ("unlanded",))
+    landed = None
+    if unlanded:  # asked of git before the write lock is taken
+        branch = unlanded[-1]["detail"].get("branch", f"graphene/{node_id}")
+        try:
+            sha = _git(checkout, "rev-parse", "-q", "--verify", branch).strip()
+        except (Refused, OSError, subprocess.TimeoutExpired):
+            sha = ""  # the branch is gone: merged and deleted
+        landed = {"commit": sha or head(checkout), "branch": branch, "into": str(Path(checkout).resolve())}
     with store.claim():
         node = get(store, node_id)
         if node.state != REVIEW:
@@ -1684,21 +1730,10 @@ def signoff(
             )
         node.state = DONE
         _save(store, node, "signed_off", who, now)
-        unlanded = store.node_log(node.id, ("unlanded",))
-        if unlanded and checkout is not None:  # merged by hand, as it was told: record where it landed
-            branch = unlanded[-1]["detail"].get("branch", f"graphene/{node.id}")
-            try:
-                sha = _git(checkout, "rev-parse", "-q", "--verify", branch).strip()
-            except (Refused, OSError, subprocess.TimeoutExpired):
-                sha = ""
-            detail = {
-                "commit": sha or head(checkout),
-                "branch": branch,
-                "into": str(Path(checkout).resolve()),
-            }
-            store.log_node(node.id, now, "landed", who.label, None, None, detail)
+        if landed:
+            store.log_node(node.id, now, "landed", who.label, None, None, landed)
     roll_up(store, who, checkout, now)
-    if checkout is not None and store.node_log(node.id, ("unlanded",)):
+    if landed:
         mark_boundary(store, checkout, now)  # the person merged it by hand, as they were told to
     return node
 
@@ -1831,7 +1866,10 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             )
         for node_id, (before, after) in act["rows"].items():
             row = dict(before) if before is not None else {**after, "state": DROPPED}
-            if row["state"] == RUNNING:  # its executor was let go when this was undone's act was made
+            held = after is not None and all(
+                after.get(k) == row.get(k) for k in ("state", "session_id", "started_at")
+            )
+            if row["state"] == RUNNING and not held:  # its executor was let go by the act undone (a drop)
                 row.update(state=OPEN, executor=None, session_id=None, agent_id=None)
             row["rev"] = max(row.get("rev") or 1, (after or {}).get("rev") or 1) + (1 if before else 0)
             seq = row.pop("_seq", None)

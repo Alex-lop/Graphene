@@ -580,3 +580,77 @@ def test_the_contract_is_what_an_executor_is_told(store):
     assert "`true` passes and a person signs it off" in text
     assert "graphene node done n1" in text and "graphene node release n1" in text
     assert node.owner == AGENT
+
+
+@pytest.mark.parametrize("act", ["release", "retake"])
+def test_a_done_whose_leaf_was_let_go_during_its_check_is_refused_and_says_so(store, repo, monkeypatch, act):
+    """Recheck: a check that left a file outside the scope wrote it into the next holder's record, and
+    the stale `done` then finished the leaf the person had taken again; a release read "was open"."""
+    plan.propose(store, [api_node(check="touch cache.tmp")], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    real = plan.run_check
+
+    def person_acts_meanwhile(command, where):
+        plan.release(store, "n1", ALEX, "I will do it myself")
+        if act == "retake":
+            plan.start(store, "n1", ALEX, repo)
+        return real(command, where)
+
+    monkeypatch.setattr(plan, "run_check", person_acts_meanwhile)
+    said = "handed back and taken again" if act == "retake" else "handed back"
+    with pytest.raises(Refused, match=f"n1 was {said} while its check ran"):
+        plan.finish(store, "n1", BOT)
+    node = plan.get(store, "n1")
+    assert node.state == (RUNNING if act == "retake" else OPEN) and "cache.tmp" not in node.dirty_at_start
+
+
+def test_undoing_an_edit_to_a_running_leaf_leaves_it_with_its_holder(store, repo):
+    """Recheck: undo made every running row it put back open, so undoing the person's edit took the
+    leaf from the session holding it. Undoing the drop of a running leaf still hands it back."""
+    plan.propose(store, [api_node(), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    with plan.undoable(store, ALEX, "node set n1"):
+        plan.edit(store, "n1", {"title": "users endpoint, better named"}, ALEX)
+    assert plan.undo(store, ALEX) == "node set n1"
+    n1 = plan.get(store, "n1")
+    assert (n1.state, n1.session_id, n1.title) == (RUNNING, BOT.session_id, "users endpoint")
+    plan.start(store, "n2", BOT2, repo)
+    with plan.undoable(store, ALEX, "node drop n2"):
+        plan.drop(store, "n2", ALEX)
+    plan.undo(store, ALEX)
+    assert (plan.get(store, "n2").state, plan.get(store, "n2").session_id) == (OPEN, None)
+
+
+def test_a_leftover_in_a_runs_worktree_is_not_charged_to_a_node_held_in_the_persons_checkout(store, repo):
+    """Recheck: a `--parallel` leaf's stray file in its own worktree kept the person's node from being
+    done until that worktree was cleaned; the leaf's own boundary answers for it."""
+    plan.propose(store, [api_node(), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n2", ALEX, repo)
+    tree = repo / ".graphene" / "worktrees" / "n1"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/n1", str(tree), "HEAD")
+    (tree / "notes.tmp").write_text("scratch\n")
+    (repo / "README.md").write_text("# toy, by the person\n")
+    assert plan.finish(store, "n2", ALEX).state == DONE
+
+
+def test_done_release_and_signoff_ask_git_before_the_write_lock_is_taken(store, repo, monkeypatch):
+    """Recheck: `done` hashed up to 200 files, `release` diffed the checkout and `signoff` resolved a
+    branch while holding the plan's write lock; a hook waiting on it gives up after a quarter second."""
+    plan.propose(store, [api_node(signoff=True), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    plan.start(store, "n2", BOT2, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "README.md").write_text("# toy, again\n")
+    store.log_node("n1", plan._now(), "unlanded", "graphene run", None, None, {"branch": "graphene/n1"})
+    seen, real = [], plan._git
+
+    def asked(checkout, *args):
+        seen.append((args[0], store.conn.in_transaction))
+        return real(checkout, *args)
+
+    monkeypatch.setattr(plan, "_git", asked)
+    assert plan.finish(store, "n1", BOT).state == REVIEW
+    plan.release(store, "n2", BOT2, "not now")
+    assert plan.signoff(store, "n1", ALEX).state == DONE
+    assert seen and [command for command, locked in seen if locked] == []

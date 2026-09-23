@@ -898,7 +898,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             where = ["git", "-C", str(checkout())]
             subprocess.run([*where, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
             gone = subprocess.run([*where, "branch", "-d", left["branch"]], capture_output=True)
-            if gone.returncode != 0:
+            kept = subprocess.run(
+                [*where, "rev-parse", "-q", "--verify", left["branch"]], capture_output=True
+            )
+            if gone.returncode != 0 and kept.returncode == 0:  # not when it was gone already
                 out(
                     f"{left['branch']} is not merged here, so it was kept: "
                     f"`git branch -D {left['branch']}` drops it"
