@@ -43,12 +43,14 @@ DEFAULT_WITH = (
 ATTEMPTS = 3
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
+GRACE = 10  # seconds an executor is given to end after TERM, before KILL
 
 
 class Stop:
-    """What a Ctrl-C reaches: the flag every worker reads, and each executor this run started. They
-    run in sessions of their own, so the terminal's Ctrl-C reaches Graphene alone, which hands each
-    leaf back before it stops its executor."""
+    """What a Ctrl-C reaches (or a closed terminal, or a `kill`): the flag every worker reads, each
+    executor this run started, and each check it runs. They run in sessions of their own, so the
+    terminal's Ctrl-C reaches Graphene alone, which hands each leaf back before it stops its
+    executor."""
 
     def __init__(self) -> None:
         self.event = threading.Event()
@@ -69,21 +71,27 @@ class Stop:
             procs = list(self._procs.values())
         for proc in procs:
             _end(proc)
+        P.end_checks()
 
 
 def _end(proc: subprocess.Popen) -> None:
-    """Stop an executor and whatever it started: TERM to its process group, then KILL."""
-    for sig, grace in ((signal.SIGTERM, 10), (signal.SIGKILL, 5)):
-        if proc.poll() is not None:
+    """Stop an executor this run started, and whatever it started."""
+    _end_group(proc.pid, lambda: proc.poll() is not None)
+
+
+def _end_group(pid: int, gone: Callable[[], bool]) -> None:
+    """TERM to a process group, then KILL, each given its time: nothing is handed on while the old
+    executor may still write."""
+    for sig, grace in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 5)):
+        if gone():
             return
         try:
-            os.killpg(proc.pid, sig)
+            os.killpg(pid, sig)
         except OSError:
             return
-        try:
-            proc.wait(timeout=grace)
-        except subprocess.TimeoutExpired:
-            continue
+        until = time.monotonic() + grace
+        while not gone() and time.monotonic() < until:
+            time.sleep(0.05)
 
 
 def _alive(pid: int) -> bool:
@@ -96,41 +104,71 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def _started(pid: int) -> str | None:
+    """When the process with this pid began, to the second, or None when there is none. A pid is a
+    number the system hands out again (a `.graphene` left `running` by a power cut names, after the
+    reboot, whoever has that pid now); beside its start time it names one process. `ps` says it on
+    macOS and Linux alike, in one spelling whatever the person's locale and zone."""
+    try:
+        said = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                              env={**os.environ, "LC_ALL": "C", "TZ": "UTC"})  # fmt: skip
+    except OSError:  # no ps (a bare container): no process can be told apart from another
+        return None
+    return said.stdout.strip() or None
+
+
+def _still(pid: int, began: str | None) -> bool:
+    """Is the process written down as ``pid``, begun at ``began``, still running? What was written
+    with no start time is known by its pid alone."""
+    return _started(pid) == began if began else _alive(pid)
+
+
 def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     """A leaf still held by a run that is gone (killed, or its terminal closed) is handed back, so the
     next run does not find it `running` for ever: on 22 September a Ctrl-C left one so, and the
-    leaves that needed it could not start. A run is known by the pid it wrote beside each attempt."""
+    leaves that needed it could not start. A run is known by the pid and start time it wrote beside
+    each attempt, and only an attempt of the start that holds the leaf now counts: a live run that
+    has just taken the leaf again has not written one yet. The dead run's executor, if it still
+    works, is stopped first (TERM, then KILL, and waited for), and only while its pid still names
+    the process that was started. The hand-back is not a person's: a live run's executor is not
+    stopped for it."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
         last = (store.node_log(n.id, ("attempt",)) or [None])[-1]
-        run_pid = last["detail"].get("run_pid") if last else None
-        if run_pid:
-            gone = not _alive(run_pid)
+        this = last["detail"] if last and last["session_id"] == n.session_id else {}
+        if this.get("run_pid"):
+            gone = not _still(this["run_pid"], this.get("run_start"))
         else:  # started, and no attempt written yet: dead only if no parallel run holds the lock
             gone = P.RUN_TREE in (n.checkout or "") and not _locked(root)
-        if gone and run_pid != os.getpid():
-            pid = last["detail"].get("pid") if last else None
-            if pid and _alive(pid):  # the dead run's executor, still working: stopped before the leaf goes
-                try:
-                    os.killpg(pid, signal.SIGTERM)
-                except OSError:
-                    pass
-            P.release(
-                store, n.id, P.Caller("graphene run", True), "the run that held it ended without finishing it"
-            )
-            say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
+        if not gone:
+            continue
+        pid, began = this.get("pid"), this.get("pid_start")
+        if pid and began and _started(pid) == began:  # the dead run's executor, still working
+            _end_group(pid, lambda p=pid: not _alive(p))
+        try:
+            P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
+                      "the run that held it ended without finishing it")  # fmt: skip
+        except P.Refused:
+            continue  # handed back or finished meanwhile
+        say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
+
+
+def run_holding(root: Path) -> int | None:
+    """The pid of the `graphene run --parallel` alive in this repository, or None. Its lock names
+    the run by pid and start time, so a pid the system has handed to another process since is no
+    run: not one to wait for, nor one to interrupt."""
+    try:
+        first, _, began = (root / ".graphene" / "run.lock").read_text().partition("\n")
+        pid = int(first)
+    except (OSError, ValueError):
+        return None
+    return pid if _still(pid, began.strip()) else None
 
 
 def _locked(root: Path | None) -> bool:
-    """Is a `graphene run --parallel` alive in this repository?"""
-    if root is None:
-        return False
-    try:
-        pid = int((root / ".graphene" / "run.lock").read_text())
-    except (OSError, ValueError):
-        return False
-    return pid != os.getpid() and _alive(pid)  # this run's own lock is not another run
+    """Is a `graphene run --parallel` other than this one alive in this repository?"""
+    return root is not None and run_holding(root) not in (None, os.getpid())
 
 
 def _waited(proc: subprocess.Popen, store, node_id: str, stop: Stop) -> int:
@@ -212,6 +250,8 @@ def run_node(
     proc: subprocess.Popen | None = None
     try:
         for attempt in range(1, attempts + 1):
+            if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
+                raise KeyboardInterrupt
             argv = command_for(
                 template,
                 prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
@@ -241,7 +281,8 @@ def run_node(
                     sink.close()
             stop.add(node.id, proc)
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
-                           {"attempt": attempt, "pid": proc.pid, "run_pid": os.getpid(),
+                           {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
+                            "run_pid": os.getpid(), "run_start": _started(os.getpid()),
                             "log": str(log) if log else None, "checkout": str(checkout)})  # fmt: skip
             try:
                 code = _waited(proc, store, node.id, stop)
@@ -285,15 +326,17 @@ def run_node(
 
 @contextlib.contextmanager
 def _no_interrupt():
-    """Ctrl-C held off while a stop is being cleaned up (main thread only; elsewhere it cannot land)."""
+    """Ctrl-C (and a hangup or a `kill`) held off while a stop is being cleaned up (main thread only;
+    elsewhere it cannot land)."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    was = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)}
     try:
         yield
     finally:
-        signal.signal(signal.SIGINT, was)
+        for sig, handler in was.items():
+            signal.signal(sig, handler)
 
 
 def _splits(template: str) -> None:
@@ -379,6 +422,7 @@ def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
     say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
 
 
+@P.ctrl_c_on_hangup()
 def run_plan(
     store,
     checkout: Path,
@@ -390,7 +434,7 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
-    sweep(store, say, checkout)
+    sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     only = leaves_of(store, only)
     finished: list[P.Node] = []
     tried: set[str] = set()
@@ -478,14 +522,33 @@ def land(
     # a merge of the person's own, half done: theirs to finish, and never ours to abort
     theirs = _git(target, "rev-parse", "-q", "--verify", "MERGE_HEAD", ok=True).returncode == 0
     paths: list[str] = []
+
+    def landed() -> None:
+        store.log_node(node.id, P._now(), "landed", who.label, None, None,
+                       {"commit": P.head(target), "branch": branch, "into": str(target.resolve()),
+                        "paths": paths[: P.KEPT_PATHS]})  # fmt: skip
+        _git(target, "worktree", "remove", "--force", str(tree), ok=True)
+        _git(target, "branch", "-D", branch, ok=True)
+        P.mark_boundary(store, target)
+
     try:
         if theirs:
             raise P.Refused(f"a merge of your own is in progress in {target}; finish it or abort it first")
         paths = _commit(store, tree, node)
-        _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch)
+        before = P.head(target)
+        clean = _git(target, "diff", "--cached", "--quiet", ok=True).returncode == 0
+        try:
+            _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch)
+        except KeyboardInterrupt:  # stopped while git merged: a hook of the person's was running
+            with _no_interrupt():
+                made = P.head(target) != before  # the merge commit (a post-merge hook was cut short)
+                _unmerge(target, branch, clean and not made)  # what git left half done
+                if made:
+                    landed()  # else the caller parks the leaf
+            raise
     except P.Refused as no:
         if not theirs:
-            _git(target, "merge", "--abort", ok=True)
+            _unmerge(target, branch)
         said = [" ".join(str(no).split())]
         with store.claim():
             fresh = P.get(store, node.id)
@@ -498,16 +561,27 @@ def land(
             "on top of what is there now"
         )
         return False
-    store.log_node(node.id, P._now(), "landed", who.label, None, None,
-                   {"commit": P.head(target), "branch": branch, "into": str(target.resolve()),
-                    "paths": paths[: P.KEPT_PATHS]})  # fmt: skip
-    _git(target, "worktree", "remove", "--force", str(tree), ok=True)
-    _git(target, "branch", "-D", branch, ok=True)
-    P.mark_boundary(store, target)
+    landed()
     for up in P.roll_up(store, who, target, not_here=not_here):
         say(f"{up.id} is {'done' if up.state == P.DONE else 'finished; it waits for a sign-off'}: "
             "everything under it is" + (f", and `{up.check}` passes" if up.check else ""))  # fmt: skip
     return True
+
+
+def _unmerge(target: Path, branch: str, staged_ours: bool = False) -> None:
+    """Undo this run's merge of ``branch`` that did not finish, and nothing of the person's. A merge
+    git paused (a conflict, a hook that refused, a post-merge hook cut short after the commit, which
+    `--abort` leaves as it is) has MERGE_HEAD at the branch, and is aborted; a MERGE_HEAD at
+    anything else is the person's own merge. One stopped while a hook ran, before git
+    wrote MERGE_HEAD, left the leaf's files staged on a HEAD that did not move: `reset --merge` puts
+    them back and keeps what is not staged, and only when nothing was staged before the merge began
+    (``staged_ours``: git merges onto a clean index only, so all that is staged is the run's)."""
+    merging = _git(target, "rev-parse", "-q", "--verify", "MERGE_HEAD", ok=True).stdout.strip()
+    if merging:
+        if merging == _git(target, "rev-parse", "-q", "--verify", branch, ok=True).stdout.strip():
+            _git(target, "merge", "--abort", ok=True)
+    elif staged_ours:
+        _git(target, "reset", "-q", "--merge", ok=True)
 
 
 def may_collide(a: list[str], b: list[str]) -> bool:
@@ -530,18 +604,16 @@ def _only_run(root: Path):
     """One parallel run a repo: a second one would clear the first one's worktrees from under it."""
     lock = root / ".graphene" / "run.lock"
     lock.parent.mkdir(exist_ok=True)
-    try:
-        other = int(lock.read_text())
-        os.kill(other, 0)
+    other = run_holding(root)  # None: no lock, or the run that left it is gone
+    if other is not None:
         raise P.Refused(
             f"another `graphene run --parallel` is going here (pid {other}); `graphene watch` shows it"
         )
-    except (OSError, ValueError):
-        pass  # no lock, or the run that left it is gone
-    lock.write_text(str(os.getpid()))
+    lock.write_text(f"{os.getpid()}\n{_started(os.getpid()) or ''}\n")  # the pid, and when it began
     return lock
 
 
+@P.ctrl_c_on_hangup()
 def run_parallel(
     open_store: Callable[[], object],
     root: Path,
@@ -580,6 +652,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     unlanded: set[str] = set()
     finished: list[P.Node] = []
     waiting: dict[str, str] = {}  # a leaf whose needs are done elsewhere and not here yet: said once
+    parked: list[str] = []  # stopped after it passed and before it landed: in review
     stop = Stop()
 
     def work(node_id: str, tree: Path) -> P.Node | None:
@@ -626,9 +699,10 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         try:
             landed = land(store, target, tree, node, say, {n.id for n, _ in flying.values()} | unlanded)
         except KeyboardInterrupt:
-            with _no_interrupt():
-                _git(target, "merge", "--abort", ok=True)
-                park(store, tree, P.get(store, node.id), say)
+            with _no_interrupt():  # after it landed (a sub-goal's check ran) it stays done and landed
+                if (store.node_log(node.id, ("started", "landed")) or [{}])[-1].get("kind") != "landed":
+                    park(store, tree, P.get(store, node.id), say)
+                    parked.append(node.id)
             raise
         if landed:
             finished.append(P.get(store, node.id))
@@ -652,7 +726,8 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
                 node = P.get(store, was.id)
                 if future.done() and not future.cancelled() and node.state in (P.DONE, P.REVIEW):
                     park(store, tree, node, say)
-            raise
+                    parked.append(node.id)
+            raise KeyboardInterrupt(*parked) from None  # which leaves wait in review, not handed back
 
 
 def park(store, tree: Path, node: P.Node, say: Callable[[str], None]) -> None:
