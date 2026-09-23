@@ -276,6 +276,51 @@ names, and never holds a key.**
     (task notifications, reminders) are now never the person's. Two of my edits went in before I knew
     the session was held, by scripts the hook cannot read (the hole this file names); once I knew, I
     made none that way, and waited for the next prompt to clear it.
+39. **What the closing review and its recheck changed.** Six adversaries over the whole branch, 78
+    findings confirmed by a second agent each, all collected before any was fixed (`a384829`); then
+    a recheck of every one with a regression test: 46 held, 25 partly, 4 not, 3 only documented, and
+    11 regressions the fixes had caused. Those were fixed by three agents in worktrees and me, and
+    merged. The ones that change a decision above, each with its reason:
+    - *The paragraph's wait (28).* Its tree is what that session, the planner or you proposed
+      after it, never another agent's session. A second paragraph while the first waits keeps the
+      first one's start. A short answer that says "no plan" lifts it. The refusal says what lifts it.
+      *Why:* the recheck found sessions refused for good after a question, and told to "propose it"
+      with an accepted tree in front of them.
+    - *The run (33).* A dead run is known by pid and start time, and its executor is stopped TERM
+      then KILL before the leaf goes back. A closed terminal or a `kill` is a Ctrl-C. A stop ends
+      the checks at once, with everything they started; a leaf that had passed and not landed still
+      waits in review, and one that had landed stays done. A merge is aborted only if it is the
+      run's own. *Why:* a pid recorded days ago can belong to a stranger by now, and a sweep killed
+      one in the recheck.
+    - *A need done elsewhere (33).* It counts as here when its files were committed after it
+      finished, even when the content was edited again before that commit. *Why:* the exact-content
+      rule kept a dependant waiting for ever after a formatter touched the file.
+    - *Offers (32).* `w` and `b` take exactly the paths they showed. A second `b` for the same paths
+      is refused.
+    - *Undo (35).* Undoing an edit to a running leaf leaves its holder alone. Only an act that let
+      the executor go is undone into `open`.
+    - *The goal.* An agent's proposed sentence may replace a goal only when nothing under that goal
+      is left to do. It then sets the old goal aside (its text stays in the log) until you accept or
+      decline the new one; if you decline, the plan has no goal. *Question:* is setting it aside
+      right, or should a finished goal stay until you replace it?
+    - *The terminal mark (20).* What you type in `graphene watch` is logged as typed at a terminal
+      (`GRAPHENE_WATCH`). The hook refuses that variable in an agent's command, as it refuses
+      `GRAPHENE_AS`.
+    - *A visual `d`* is one act: all of the selection or none, and one `u` puts it back.
+    Still open, by choice: a need committed on another branch of the same checkout still counts as
+    here after a branch switch; a held node's committed stray edit is excused when a landing merges
+    into the same file; and some phrases said in passing still skip the tree.
+40. **The hold, and what it showed.** At 09:15Z a subagent's report reached this session as a
+    prompt, and the hook read it as your paragraph. Every agent I started carries this session's id,
+    so for an hour nothing could write. I did not route around it: no writes the hook could not read,
+    no clone to write from, nothing in the store. What was committed before the hold was pushed.
+    Another report, which quoted "just do it", lifted the wait for a few minutes, in your name. I
+    wrote nothing in that window, and I would not have counted it as yours. You lifted the hold
+    with "just do it". The harness's report prompt is now the vendor's (`_NOT_A_PROMPT`), so it can
+    neither arm the wait nor speak for you. *What it says about the product:* a wait armed by
+    mistake has one way out, and that way is you. That is the promise working. A command to lift a
+    session's wait from outside it (from `watch`) would have cost you less than resuming this
+    session; it is not built.
 
 ## What does not bind (say it wherever you sell it)
 
