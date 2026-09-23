@@ -888,3 +888,30 @@ def test_an_orphaned_description_deeper_than_its_node_is_refused_in_an_edit(stor
     with pytest.raises(Refused, match="deeper than \\[api\\]'s other lines"):
         T.apply(store, "\n".join(line for line in text.splitlines() if "[users]" not in line
                                  and "scope: u/**" not in line and "check: true" not in line), ALEX, opened)  # fmt: skip
+
+
+def test_a_dropped_id_given_a_new_one_takes_the_needs_that_name_it_along(store):
+    """Recheck: asking again after a drop gave the reused [csv] a new id, but `needs: csv` on another
+    line kept the dropped one, so the whole proposal was refused, twice, and nothing was added."""
+    text = (
+        "goal: csv export\n- the export  [export]\n  - csv writer  [csv]\n      scope: export.py\n"
+        "      check: true\n  - document csv  [csv-docs]\n      scope: README.md\n      check: true\n"
+        "      needs: csv\n"
+    )
+    T.apply(store, text, BOT, None)
+    plan.drop(store, "export", ALEX)
+    T.apply(store, text, BOT, None)  # the planner cannot see dropped ids, and proposes the same text
+    alive = {n.id: n for n in plan.nodes(store) if n.state == PROPOSED}
+    assert alive["document-csv"].needs == ["csv-writer"] and alive["csv-writer"].parent == "export-2"
+
+
+def test_a_check_that_changes_directory_by_pushd_prefix_or_dash_c_is_not_judged(repo):
+    """Recheck: only `cd` counted as a change of directory; these valid checks were said to name
+    missing files."""
+    for check in (
+        "(pushd web; npx jest src/App.test.js)",
+        "npm --prefix web test -- src/App.test.js",
+        "make -C web test FILE=src/App.test.js",
+    ):
+        node = plan.Node("n", "t", scope=["lib/**"], check=check)
+        assert plan.unreachable(node, ["web/src/App.test.js"], repo) == [], check

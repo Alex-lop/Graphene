@@ -99,7 +99,12 @@ def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller
     an editor task or a pipe must never turn into a proposal they then cannot accept. It is logged
     as made with no terminal, for ever, and that is the whole of what the terminal test decides.
     An agent that strips its own marks passes for a person: no command line can rule that out, the
-    log shows it, and the hole is printed wherever a person-only control is described."""
+    log shows it, and the hole is printed wherever a person-only control is described.
+    GRAPHENE_WATCH=1 is `graphene watch`'s, on a command the person typed there that it runs as a
+    process of its own (with no terminal): it was typed at the watch's terminal. It is read after
+    every agent's mark and after GRAPHENE_AS, so it makes nobody a person who was not one; what it
+    lets through is a caller with no terminal and no mark (a script, or an agent that stripped its
+    own) that sets it: logged as at a terminal, without "(no terminal)"."""
     env = os.environ if env is None else env
     if env.get("CODEX_SESSION_ID") or env.get("CODEX_SANDBOX"):  # first: Codex may run inside Claude Code
         return Caller(f"codex:{env.get('CODEX_SESSION_ID', '?')[:8]}", False, None)
@@ -116,7 +121,7 @@ def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller
     if forced:
         kind, _, name = forced.partition(":")
         return Caller(name or kind, kind == "person", None, stand_in=True)
-    at_terminal = sys.stdin.isatty() if tty is None else tty
+    at_terminal = (sys.stdin.isatty() or env.get("GRAPHENE_WATCH") == "1") if tty is None else tty
     return Caller(person_name(env), True, None, stand_in=not at_terminal)
 
 
@@ -688,14 +693,27 @@ _EXTENSIONS = tuple(f".{e}" for e in _KINDS.split())
 _BUILT = ("dist/", "build/", "out/", "target/", "node_modules/", ".venv/", "coverage/")
 
 
-def unreachable(node: Node, files: list[str], root: str | Path, covered: list[str] | tuple = ()) -> list[str]:
-    """Paths a leaf's check names that are neither in the repo nor inside its scope or the scope of
-    any other node (``covered``), so no executor can make it pass as written (a person typed
-    `test/test_csvfeed.py` for `tests/`). A path on disk that git does not track comes back marked,
-    because a worktree cut for `--parallel` will not have it. A check that changes directory, and
-    what a build makes, are not judged. Said when the leaf is written, before anything is spent."""
-    if not node.check or not node.scope or re.search(r"(^|[;&|(\s])cd\s", node.check):
+def unreachable(
+    node: Node, files: list[str], root: str | Path, everything: list[Node] | tuple = ()
+) -> list[str]:
+    """Paths a leaf's check names that are neither in the repo nor inside a scope that may still write
+    them: its own, its needs', or that of a node in ``everything`` (the plan) that is open, running or
+    proposed. A finished leaf writes nothing more, and the `**` of a leaf made from a prompt would
+    cover every typo. It is a guess (a person typed `test/test_csvfeed.py` for `tests/`), said when the
+    leaf is written, before anything is spent. A path on disk that git does not track comes back
+    marked, because a worktree cut for `--parallel` will not have it. A check that changes directory
+    (cd, pushd, `--prefix`, `-C <dir>`), and what a build makes, are not judged."""
+    moves = r"(^|[;&|(\s])(cd|pushd)\s|--prefix[\s=]|(^|\s)-C\s"
+    if not node.check or not node.scope or re.search(moves, node.check):
         return []
+    live = (OPEN, RUNNING, PROPOSED)
+    covered = [
+        g
+        for n in everything
+        if n.id != node.id and (n.id in node.needs or n.state in live)
+        for g in n.scope
+        if g != "**"
+    ]
     out: list[str] = []
     for word in re.findall(r"[\w./-]+", node.check):
         word = word.removeprefix("./").rstrip(".")
@@ -712,6 +730,15 @@ def unreachable(node: Node, files: list[str], root: str | Path, covered: list[st
             continue  # part of an address (host:8000/api)
         out.append(word)
     return out
+
+
+def unreachable_said(missing: list[str]) -> str:
+    """What ``unreachable`` found, said as the guess it is, the same at the command line and on screen."""
+    one = len(missing) == 1
+    return (
+        f"names {', '.join(missing)}, which {'is' if one else 'are'} not in the repo and no leaf's scope may "
+        f"create {'it' if one else 'them'}: check the spelling"
+    )
 
 
 def _owner(name: str) -> str:

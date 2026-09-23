@@ -237,3 +237,19 @@ def test_the_tree_in_the_terminal_goal_first_sub_goals_counted_and_finished_work
     assert not any(line.strip().startswith("l0 ") for line in shown)
     frame = person("watch", "--once").stdout
     assert "ship invoices by email" in frame and "just now" in frame and "l3" in frame
+
+
+def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
+    """Recheck: node reopen and node signoff (and start, done and run) changed the plan and said
+    nothing of which repository's plan they changed."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true", "--signoff")
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    acts = [person("node", "start", "l1")]
+    (repo / "api.py").write_text("def users():\n    return [1]\n")
+    acts += [person("node", "done", "l1"), person("node", "signoff", "l1")]
+    acts += [
+        person("node", "reopen", "l1", "--note", "not yet"),
+        person("run", "--with", "true", "--node", "l2"),
+    ]
+    assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
+    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]

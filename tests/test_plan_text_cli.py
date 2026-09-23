@@ -167,3 +167,24 @@ def test_the_log_keeps_what_a_goal_said_before(repo):
     person("plan", "goal", "the first aim")
     person("plan", "goal", "the second aim")
     assert "the second aim  (it said: the first aim)" in person("plan", "log").stdout
+
+
+def test_a_prompts_leaf_or_a_finished_leaf_does_not_hide_a_typo_in_a_check(repo, finish):
+    """Recheck: once a leaf made from a prompt (scope **) was in the plan, every path counted as one a
+    leaf may create, and the warning went silent for the whole plan until it was archived. A finished
+    leaf's scope creates nothing more either. The warning said "cannot pass" of what is a guess."""
+    from graphene_debrief import plan
+    from graphene_debrief.store import Store
+
+    alex, old = plan.Caller("alex", True), {"id": "old", "title": "old tests", "scope": ["test/**"]}
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "typed", "title": "fix the typo", "scope": ["**"]}], alex, aside=True)
+        plan.propose(store, [{**old, "check": "true"}], alex)
+        plan.start(store, "old", alex, repo)
+        finish(store, repo, "old", alex, checkout=repo)
+    check = "python -m pytest test/test_csvfeed.py"
+    added = person("node", "add", "csv feed", "--scope", "feeds/csv.py", "--check", check)
+    assert added.exit_code == 0, added.output
+    said = " ".join(added.stderr.split())
+    assert "names test/test_csvfeed.py, which is not in the repo and no leaf's scope may create it" in said
+    assert "check the spelling" in said

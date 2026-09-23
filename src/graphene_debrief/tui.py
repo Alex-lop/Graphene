@@ -20,6 +20,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from collections.abc import Callable
@@ -110,7 +111,7 @@ class Help(ModalScreen[None]):
     DEFAULT_CSS = """
     Help { align: center middle; }
     Help > VerticalScroll { width: auto; max-width: 100%; height: auto; max-height: 100%; }
-    Help Static { width: auto; padding: 1 2; border: round $primary; background: $surface; }
+    Help Static { width: auto; max-width: 100%; padding: 1 2; border: round $primary; background: $surface; }
     """
 
     def compose(self) -> ComposeResult:
@@ -317,12 +318,13 @@ class Watch(App):
             live = {n.id: R.live(store, n) for n in nodes if n.state == P.RUNNING}
             shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in back) for n in nodes]
             if shape != self.shape:
-                self.rebuild(nodes, under, back)
+                with self.prevent(Tree.NodeHighlighted):  # the tree moved, not the person
+                    self.rebuild(nodes, under, back)
                 if self.shape is not None and self.view == "said":
                     self.view = "contract"  # the plan moved: what a `:` command printed is old news
                 self.shape = shape
             self.relabel(by_id, under, back, live)
-            self.say_where(goal, proposed, nodes, store)
+            self.say_where(goal, proposed, nodes, back)
             self.show_detail(store)
 
     def label(self, node: P.Node, under: dict, back: set[str], live: dict) -> Text:
@@ -372,7 +374,7 @@ class Watch(App):
             if node.data in by_id:
                 node.set_label(self.label(by_id[node.data], under, back, live))
 
-    def say_where(self, goal: str, proposed: str | None, nodes: list[P.Node], store) -> None:
+    def say_where(self, goal: str, proposed: str | None, nodes: list[P.Node], back: set[str]) -> None:
         home = str(Path.home())
         where = str(self.root_path)
         where = "~" + where[len(home) :] if where.startswith(home + os.sep) else where
@@ -396,7 +398,10 @@ class Watch(App):
         )
         counts = f"{done}/{len(leaves)} done"
         mode = "VISUAL · " if self.anchor is not None else ""
-        said = self.message or "? help · : command · y accept · R run · q quit"
+        idle = "? help · : command · y accept · R run · q quit"
+        if self.selected() in back:  # there ? is no help: it starts a planner, which spends
+            idle = f"? asks the planner about {self.selected()} (an agent, which spends) · : command · q quit"
+        said = self.message or idle
         room = max(self.size.width - 2, 20)
         first, second = f"{mode}{planner} · {executors} · {counts}", " ".join(said.split())
         cut = [line if len(line) <= room else line[: room - 1] + "…" for line in (first, second)]
@@ -425,7 +430,8 @@ class Watch(App):
             return  # what a `:` command printed stays until the cursor moves
         if time.monotonic() - self.files_at > 10:
             self.files, self.files_at = P.tracked(self.root_path), time.monotonic()
-        pane.update(detail(store, node, self.root_path, self.files))
+        side = self.query_one("#side", VerticalScroll).content_region  # less a scrollbar's two columns
+        pane.update(detail(store, node, self.root_path, self.files, (side.width - 2, side.height)))
 
     # -- keys ------------------------------------------------------------------------------------
 
@@ -445,8 +451,7 @@ class Watch(App):
         if self.view == "said":
             self.view = "contract"
         if self.shape is not None:
-            with self.open_store() as store:
-                self.show_detail(store)
+            self.refresh_plan()  # the bottom line too: what ? does depends on the node under the cursor
 
     def action_help_or_ask(self) -> None:
         node_id = self.selected()
@@ -479,20 +484,25 @@ class Watch(App):
         words = text[1:].strip().removeprefix("graphene ").strip()
         if not words:
             return
-        if re.match(r"ask\s+[^-\s]", words):  # `:ask what you want`: one sentence, as typed
-            return self.background(["ask", words[3:].strip()])
         try:
             argv = shlex.split(words)
         except ValueError as no:
+            if re.match(r"ask\s", words):  # `:ask don't …`: not the shell's, so the sentence as typed
+                return self.background(["ask", words[3:].strip()])
             self.message = f"✗ {no}"
             return
+        if argv[:1] == ["ask"]:
+            argv = _sentence(argv)
         if argv[:1] == ["stop"]:
             return self.stop_runs()
         if argv[:1] in (["ui"], ["watch"], ["ingest"], ["init"]):
             self.message = f"✗ `graphene {argv[0]}` takes a terminal of its own: run it outside this screen"
             return
-        if argv[:1] in (["run"], ["ask"]) or argv[:2] in (["node", "split"], ["node", "done"]):
-            return self.background(argv)  # it can take minutes (a check, an agent): the screen stays yours
+        slow = argv[:1] in (["run"], ["ask"]) or argv[:2] in (
+            ["node", n] for n in ("split", "done", "signoff")
+        )
+        if slow:  # it can take minutes (a check, an agent): the screen stays yours
+            return self.background(argv)
         if argv[:2] in (["plan", "edit"], ["node", "edit"]):
             return self.edit_with(argv)
         said = self.did(argv, keep=True)
@@ -577,15 +587,11 @@ class Watch(App):
         ids = self.chosen()
         if what == "accept":
             with self.open_store() as store:  # what is accepted already (as one above another) is left
-                ids = [i for i in ids if store.node_row(i) and store.node_row(i)["state"] == P.PROPOSED]
-            if ids:
-                self.did(["plan", "accept", *ids], quiet=True)  # one act: u undoes all of it
-        else:
-            refused = [i for i in ids if self.did(["node", "drop", i], quiet=True)]
-            if len(ids) > 1:
-                self.message = f"dropped {len(ids) - len(refused)} of {len(ids)}" + (
-                    f"; refused: {', '.join(refused)} (`:node drop <id>` says why)" if refused else ""
-                ) + " · u undoes one at a time"  # fmt: skip
+                fresh = [i for i in ids if store.node_row(i) and store.node_row(i)["state"] == P.PROPOSED]
+            if ids:  # none a proposal: the command runs as chosen, and its refusal says why
+                self.did(["plan", "accept", *(fresh or ids)], quiet=True)  # one act: u undoes all of it
+        elif ids:
+            self.did(["node", "drop", *ids], quiet=True)  # one act too, all or none
         self.anchor = None
         self.refresh_plan()
 
@@ -650,15 +656,17 @@ class Watch(App):
 
     def background(self, argv: list[str]) -> None:
         """A run or a planner: its own process, with its output in .graphene/runs/, so it goes on
-        whatever happens to this screen."""
+        whatever happens to this screen. It has no terminal; what the person typed here was typed at
+        this screen's, and GRAPHENE_WATCH says so to the log (`plan.caller`)."""
         logs = self.root_path / ".graphene" / "runs"
         logs.mkdir(parents=True, exist_ok=True)
         log = logs / f"{argv[0]}-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{len(self.runs)}.txt"
         cli = "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()"
+        env = {**os.environ, "GRAPHENE_WATCH": "1" if sys.stdin.isatty() else ""}
         with open(log, "w", encoding="utf-8") as sink:
             proc = subprocess.Popen(
                 [sys.executable, "-c", cli, *argv], cwd=self.root_path, stdin=subprocess.DEVNULL,
-                stdout=sink, stderr=subprocess.STDOUT, start_new_session=True,
+                stdout=sink, stderr=subprocess.STDOUT, start_new_session=True, env=env,
             )  # fmt: skip
         self.runs.append(proc)
         self.message = f"graphene {shlex.join(argv)}: started (its output: {log.relative_to(self.root_path)})"
@@ -666,27 +674,35 @@ class Watch(App):
 
     def follow(self, proc: subprocess.Popen, argv: list[str], log: Path) -> None:
         """On a thread of its own that never keeps the screen from closing (q leaves at once; the
-        run goes on)."""
+        run goes on). The bottom line gets the line that says what happened: a command's first (a
+        check's output and what is next come after it), a planner's first after its last try (what
+        it says, else what it proposed), a run's last; the side pane gets all of it."""
         code = proc.wait()
-        said = [line for line in R.tail(log, 6) if line.strip() and "(the plan of " not in line]
-        gist = said[-1] if said else ""
+        said = R.tail(log, 400)
+        tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
+        news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
+        gist = (news[-1] if argv[0] == "run" else news[0]) if news else ""
+        named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
+        mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
+        whole = [f"{mark}graphene {shlex.join(argv)} ended (exit {code}); all it said, kept in "
+                 f"{log.relative_to(self.root_path)}:", "", *said]  # fmt: skip
         with contextlib.suppress(Exception):  # the screen may be gone by now
             self.call_from_thread(
-                self.finished, f"{'✗ ' if code else ''}graphene {shlex.join(argv)} ended: {gist}"
+                self.finished, f"{mark}graphene {shlex.join(named)} ended: {gist}", "\n".join(whole)
             )
 
-    def finished(self, message: str) -> None:
+    def finished(self, message: str, whole: str) -> None:
         self.message = message
-        self.view = "contract" if self.view == "said" else self.view
-        self.refresh_plan()
+        self.refresh_plan()  # first: what it did moved the plan, which puts the side pane back
+        self.view = "said"  # then all it said is there, until the cursor moves
+        self.query_one("#detail", Static).update(Text(whole))
 
     def stop_runs(self) -> None:
         """`:stop`: Ctrl-C to a run started here (or to the parallel run this repo has going): it hands
         back what it holds, and stops its executors."""
         pids = [p.pid for p in self.runs if p.poll() is None]
-        lock = self.root_path / ".graphene" / "run.lock"
-        with contextlib.suppress(OSError, ValueError):
-            pid = int(lock.read_text())
+        pid = R.run_holding(self.root_path)  # by pid and start time: a reused pid is no run
+        if pid is not None:
             shown = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
             if "graphene" in shown.stdout:
                 pids.append(pid)
@@ -694,7 +710,9 @@ class Watch(App):
             with contextlib.suppress(OSError):
                 os.kill(pid, signal.SIGINT)
         self.message = (
-            f"stopping {len(set(pids))} run(s): what they hold is handed back" if pids else "no run to stop"
+            f"stopping {len(set(pids))} run(s): what they hold goes back to the plan"
+            if pids
+            else "no run to stop"
         )
 
 
@@ -704,9 +722,26 @@ def _walk(node):
         yield from _walk(child)
 
 
-def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> Text:
+def _sentence(argv: list[str]) -> list[str]:
+    """`:ask` as the shell reads it, its words one sentence: `:ask --about ids fix it` is `graphene ask
+    'fix it' --about ids`, what `?` builds; `:ask add a login page` needs no quotes."""
+    words, options, rest = [], [], iter(argv[1:])
+    for word in rest:
+        if word in ("--with", "--about"):
+            options += [word, next(rest, "")]
+        elif word.startswith("-"):
+            options.append(word)
+        else:
+            words.append(word)
+    return ["ask", *([" ".join(words)] if words else []), *options]
+
+
+def detail(
+    store, node: P.Node, root: Path, files: list[str] | None = None, room: tuple[int, int] = (0, 0)
+) -> Text:
     """The selected node, for the person: what it is for, its contract, what is true of it now, and,
-    when it came back, the fixes it offers, each with its key."""
+    when it came back, the fixes it offers, each with its key. ``room``: the pane's width and height,
+    which the came-back block is fitted to, so every key stays in sight at 80×24 (0: nothing is cut)."""
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
     by_id = {n.id: n for n in everything}
     under = P.kids(everything, drawn=True)
@@ -727,14 +762,29 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
     offers = P.offers(store, node)
     if offers:  # it came back: why, and the keys that fix it, before anything else
         why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
+        why, (wide, high) = " ".join(str(why).split()), room
+        short = wide > 20 and high < 5 + 2 * len(offers)  # 80×24: every key in sight comes first
+        if wide > 20:  # an executor pastes its refusal: the lines the keys leave; the rest is in its record
+            lines = max(2, high - 3 - len(offers) * (1 if short else 2))
+            fit = textwrap.wrap(
+                f"came back: {why}",
+                wide,
+                max_lines=lines,
+                placeholder=" … (Enter: all of it)",
+                break_on_hyphens=False,
+            )
+            why = " ".join(fit).removeprefix("came back: ")
         out.append("came back: ", "bold red")
-        out.append(" ".join(str(why).split()) + "\n")
+        out.append(why + "\n")
         for key, what, argv in offers:
             out.append(f"  {key}  ", "bold")
             out.append(f"{what}", "")
-            out.append(f"   graphene {shlex.join(argv)}\n", "dim")
+            command = f"   graphene {shlex.join(argv)}"
+            if not short or len(f"  {key}  {what}{command}") <= wide:  # else it wraps, and hides a key
+                out.append(command, "dim")
+            out.append("\n")
         out.append("  ?  ", "bold")
-        out.append("ask the planner, when neither is right\n")
+        out.append("ask the planner, when none of these is right (an agent, which spends)\n")
     trail = P.trail(store, node)[1 if P.goal(store) else 0 :]  # the goal itself is on the top line
     for depth, line in enumerate(trail):
         out.append(f"{'under: ' if depth == 0 else '       '}{'  ' * depth}{line}\n", "dim")
@@ -746,9 +796,11 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
         )
         out.append("\ncheck  ", "bold")
         out.append(node.check or "(none)")
-        missing = P.unreachable(node, P.tracked(root) if files is None else files, root)
+        missing = P.unreachable(node, P.tracked(root) if files is None else files, root, everything)
         if missing:
-            out.append(f"\n       ⚠ names {', '.join(missing)}: not in the repo, not in its scope", "yellow")
+            out.append(
+                f"\n       ⚠ {P.unreachable_said(missing)}", "yellow"
+            )  # as `graphene node add` says it
     elif node.check:
         out.append("check  ", "bold")
         out.append(f"{node.check}  (when its leaves are done: where they meet)")

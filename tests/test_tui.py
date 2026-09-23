@@ -49,9 +49,16 @@ def watch(repo, keys, size=(80, 24), before=None):
                 "cursor": app.selected(),
                 "classes": list(app.screen.classes),
                 "screen": type(app.screen).__name__,
+                "side": shown(app, app.query_one("#side").region),
             }
 
     return asyncio.run(go()), app
+
+
+def shown(app, region):
+    """What the screen shows inside a region, row by row, as the person sees it: wrapped and cut."""
+    rows = app.screen._compositor.render_strips()[region.y : region.bottom]
+    return [row.text[region.x : region.right] for row in rows]
 
 
 def states(repo):
@@ -189,3 +196,190 @@ def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):
 
     seen, _ = watch(repo, [], before=before)
     assert "came back: the column needs a migration" in seen["detail"]
+
+
+class Tty:
+    """The watch's stdin, at a real terminal (under pytest it is not one)."""
+
+    def isatty(self):
+        return True
+
+
+def test_y_on_a_node_that_is_not_a_proposal_says_so(repo):
+    """Recheck: y on an accepted node ran nothing and said nothing: the bottom line kept its hint."""
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["y"])
+    assert "✗ graphene plan accept api: api is open, not a proposal" in seen["status"]
+
+
+def test_u_after_a_visual_d_puts_the_whole_selection_back(repo):
+    """Recheck: a visual d was one undo entry per node, so u put back the last node only, and a
+    selection of more than 20 pushed every earlier act out of the undo history."""
+    proposed(repo)
+    seen, _ = watch(repo, ["V", "G", "d"])
+    assert set(states(repo).values()) == {"dropped"}
+    assert "graphene node drop api ids docs schema" in seen["status"]  # one command
+    watch(repo, ["u"])
+    assert set(states(repo).values()) == {"proposed"}  # one act, one undo
+
+
+def test_colon_node_done_is_logged_as_typed_at_a_terminal_and_ends_saying_what_happened(repo, monkeypatch):
+    """Recheck: `:node done` runs as a process of its own with no terminal, so the log kept the person's
+    act as 'alex (no terminal)'; and its ended line showed its last line ('next: …'), not the first,
+    which says what happened. The whole of its output is in the side pane."""
+    monkeypatch.setattr(sys, "stdin", Tty())
+    proposed(repo)
+    person("plan", "accept")
+
+    async def before(app, pilot):
+        for key in ["colon", *"node start schema", "enter"]:
+            await pilot.press(key)
+        (repo / "schema.py").write_text("TABLES = ['users']\n")
+        for key in ["colon", *"node done schema", "enter"]:
+            await pilot.press(key)
+        await asyncio.to_thread(app.runs[0].wait, 60)
+        await pilot.pause(0.3)
+
+    seen, _ = watch(repo, [], before=before)
+    assert "graphene node done schema ended: schema is done (check passed" in seen["status"]
+    assert "schema is done" in seen["detail"] and "next:" in seen["detail"]
+    with Store.open(repo) as store:
+        actors = {e["kind"]: e["actor"] for e in store.node_log("schema")}
+    assert (actors["started"], actors["finished"]) == ("alex", "alex")
+    assert plan.caller({"CLAUDECODE": "1", "GRAPHENE_WATCH": "1"}).person is False  # an agent stays one
+
+
+def test_colon_node_signoff_runs_the_roll_up_check_off_the_screen(repo):
+    """Recheck: `:node signoff` ran the parent's roll-up check on the screen's own thread: it froze for
+    as long as that check took (up to half an hour)."""
+    with Store.open(repo) as store:
+        alex, bot = plan.Caller("alex", True), plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        leaf = {"id": "leaf", "title": "users", "parent": "top", "scope": ["api.py"], "check": "true"}
+        plan.propose(
+            store, [{"id": "top", "title": "the API", "check": "true"}, {**leaf, "signoff": True}], alex
+        )
+        plan.start(store, "leaf", bot, repo)
+        (repo / "api.py").write_text("def users():\n    return [1]\n")
+        plan.finish(store, "leaf", bot, checkout=repo)
+
+    async def before(app, pilot):
+        for key in ["colon", *"node signoff leaf", "enter"]:
+            await pilot.press(key)
+        assert [p.args[3:] for p in app.runs] == [["node", "signoff", "leaf"]]  # its own process
+        await asyncio.to_thread(app.runs[0].wait, 60)
+        await pilot.pause(0.3)
+
+    seen, _ = watch(repo, [], before=before)
+    assert states(repo) == {"top": "done", "leaf": "done"}
+    assert "graphene node signoff leaf ended: leaf is done (signed off)" in seen["status"]
+
+
+LONG = (
+    "Graphene refused the write to migrations/001.sql: it is outside schema's scope (schema.py). The column "
+    "needs a migration, and the migration lives in migrations/, which I may not write; the ids leaf names it "
+    "too. Widen the scope, or add a leaf for it."
+)
+
+
+def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_line_says_what_q_does(repo):
+    """Recheck: executors paste their refusal as the reason, and at 80×24 it pushed b, n and ? below the
+    fold; on that leaf the bottom line said '? help', where ? starts a planner, which spends."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, LONG, wants=["migrations/001.sql"])
+    seen, _ = watch(repo, ["G"])
+    side = "\n".join(seen["side"])
+    for key in ("w  widen schema's", "b  a sibling leaf", "n  make schema wait on ids", "?  ask the planner"):
+        assert key in side, side
+    assert "? asks the planner" in seen["status"]
+    seen, _ = watch(repo, ["G", "enter"])
+    assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
+
+
+def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
+    """Recheck: at 80 columns the help was 106 wide from x=0, and its last 26 columns were cut off with
+    no way to scroll to them."""
+    proposed(repo)
+    for size in ((80, 24), (120, 40)):
+
+        async def before(app, pilot, width=size[0]):
+            await pilot.press("question_mark")
+            await pilot.pause()
+            text, box = app.screen.query_one("#help").region, app.screen.query_one("VerticalScroll").region
+            assert text.right <= width and abs(box.x - (width - box.right)) <= 1, (width, text, box)
+            assert "zM all closed" in "\n".join(shown(app, text))
+
+        watch(repo, [], size=size, before=before)
+
+
+def test_what_the_planner_said_after_its_block_reaches_the_screen_that_asked(repo, tmp_path, monkeypatch):
+    """Recheck: the planner's sentence after its block ('the planner says: …'), its only way to suggest a
+    change to a node already there, and what it proposed never reached the screen that asked."""
+    from test_ask import GOOD, planner
+
+    command = planner(tmp_path, GOOD, monkeypatch)
+
+    async def before(app, pilot):
+        app.background(["ask", "users come back with their ids", "--with", command])
+        await asyncio.to_thread(app.runs[0].wait, 60)
+        await pilot.pause(0.3)
+
+    seen, _ = watch(repo, [], before=before)
+    assert "graphene ask 'users come back with their ids' ended: the planner says: I read" in seen["status"]
+    assert "the planner says: I read api.py and schema.py" in seen["detail"]
+    assert "proposed ids: users returns ids" in seen["detail"]
+
+
+def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
+    """Recheck: `:ask "add a login page"` gave the planner (and the plan's log) the quotes too, and
+    `:ask --about ids fix it` passed several sentences, which `graphene ask` refused."""
+    proposed(repo)
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    for line in ('ask "add a login page"', "ask --about ids fix it", "ask don't break it"):
+        watch(repo, ["colon", *line, "enter"])
+    assert asked == [
+        ["ask", "add a login page"],
+        ["ask", "fix it", "--about", "ids"],
+        ["ask", "don't break it"],
+    ]
+
+
+def test_the_side_pane_judges_a_check_as_graphene_node_add_does(repo):
+    """Recheck: the pane called a path that the leaf's need will write missing ('⚠ … not in its scope'),
+    where the command line said nothing of the same check."""
+    with Store.open(repo) as store:
+        plan.propose(store, [
+            {"id": "render", "title": "render", "scope": ["tests/pdf/**"], "check": "true"},
+            {"id": "use", "title": "use it", "scope": ["api.py"], "needs": ["render"],
+             "check": "python3 -m pytest tests/pdf/test_render.py -q"},
+            {"id": "typo", "title": "csv", "scope": ["feeds/csv.py"], "check": "pytest test/test_csv.py"},
+        ], plan.Caller("alex", True))  # fmt: skip
+    seen, _ = watch(repo, ["G", "k"])
+    assert seen["cursor"] == "use" and "⚠" not in seen["detail"]
+    seen, _ = watch(repo, ["G"])
+    assert (
+        "names test/test_csv.py, which is not in the repo and no leaf's scope may create it" in seen["detail"]
+    )
+
+
+def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(repo):
+    """The run's lock became two lines (pid, start time) and :stop still read one: it stopped
+    reaching a parallel run started from another terminal."""
+    import subprocess
+
+    from graphene_debrief import run as R
+
+    run = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "graphene", "run"])
+    try:
+        (repo / ".graphene").mkdir(exist_ok=True)
+        (repo / ".graphene" / "run.lock").write_text(f"{run.pid}\n{R._started(run.pid)}\n")
+        app = Watch(repo, lambda: Store.open(repo), every=60)
+        app.stop_runs()
+        assert run.wait(timeout=10) != 0 and "stopping 1 run" in app.message
+    finally:
+        run.kill()
