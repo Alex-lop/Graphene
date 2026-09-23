@@ -28,7 +28,19 @@ git checkout main && git reset --hard ed010ca   # local main was 6cece1c, 43 beh
   widen <id>`, `graphene node sibling <id>`, or waiting on the nodes its reason names. The `ingest/`
   refusal that bit three of your executors is gone. Proved by `tests/test_run_live.py` (13, with real
   SIGINTs) and `tests/test_gate.py`.
-- Next: the planner (`graphene ask`, `s` to split), the TUI, the README, the third test.
+- **Milestone 3, the planner: done.** `graphene ask "<what you want>"` starts a planner with read-only
+  tools (default `claude -p --tools Read,Grep,Glob`); what it prints is read as the plan's text and
+  added as its proposals; `graphene node split <id>` asks it to cut a leaf. Run for real on the feeds
+  task with your paragraph: 44 s, seven nodes with needs between them, first try, and a note that the
+  zero-price rule would miss the legacy importer you said not to touch. `tests/test_ask.py`.
+- **Milestone 4, `graphene watch` is the TUI: done.** Textual, one screen, vim keys (the list in the
+  directive, all of it), every key a command it names on the bottom line. Checked in a real WezTerm
+  mux at 80×24 (reading the screen back with `wezterm cli get-text`) and headless in
+  `tests/test_tui.py`. `graphene watch --once` prints.
+- **The text form, attacked:** 54 adversarial agents confirmed 49 findings against milestone 1; the
+  parser was rebuilt (a line belongs to the node just above it, at one column, or it is refused with
+  what to do), and a second pass is checking each finding against the rebuilt code.
+- Next: the README and DIRECTION, the two-pane recipe and its recording, the third test.
 
 ## Your afternoon, read from the record
 
