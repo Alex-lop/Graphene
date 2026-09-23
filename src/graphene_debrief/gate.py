@@ -265,6 +265,11 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     said = text.strip()
     if _vendor_made(said):
         return None
+    planned = store.node_count() > 0
+    ready = [n.id for n in P.ready(P.nodes(store))] if planned else []
+    routed = paragraph(said, ready)
+    if not planned and not routed and not store.meta(f"tree:{sid}"):
+        return None  # no plan, no paragraph, nothing waiting: a repo without a plan pays one read
     for n in _held(store, sid):
         if n.aside:  # the turn before ended without a Stop (interrupted): its record closes here
             _close(store, n, sid)
@@ -272,8 +277,7 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     store.set_meta(f"prompt_at:{sid}", P._now())
     if just_do_it(said):
         store.set_meta(f"tree:{sid}", None)  # the person lifts the wait
-    ready = [n.id for n in P.ready(P.nodes(store))]
-    if paragraph(said, ready) and not _held(store, sid):
+    if routed and not _held(store, sid):
         store.set_meta(f"tree:{sid}", P._now())
         store.set_meta(f"prompt:{sid}", None)  # no leaf is made from it: it becomes a tree instead
         return _context("UserPromptSubmit", TREE_ASK)
