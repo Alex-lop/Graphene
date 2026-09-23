@@ -288,6 +288,43 @@ def test_an_id_git_would_not_take_as_a_branch_is_refused_when_it_is_made(store):
             plan.propose(store, [{"id": bad, "title": "t", "scope": ["README.md"], "check": "true"}], ALEX)
 
 
+def test_a_new_trees_goal_is_proposed_once_the_old_goal_has_nothing_left_to_do(store, repo):
+    """Recheck: after the first tree was finished and archived, every later planner's sentence was
+    refused, and the old goal stayed every executor's why for good. A goal still being worked on,
+    and one the person has just set, still stay."""
+    plan.propose_goal(store, "users come back with their ids", BOT)
+    plan.propose(store, [{"id": "ids", "title": "ids", "scope": ["src/api/**"], "check": "true"}], BOT)
+    plan.accept(store, [], ALEX)
+    plan.start(store, "ids", BOT, repo)
+    assert not plan.propose_goal(store, "something else", BOT)
+    (repo / "src/api/users.py").write_text("ids\n")
+    plan.finish(store, "ids", BOT)
+    plan.archive(store, ALEX)
+    assert plan.propose_goal(store, "the export writes CSV as well as JSON", BOT)
+    assert (plan.goal(store), store.meta("goal:proposed")) == ("", "the export writes CSV as well as JSON")
+    assert store.node_log("*", ("goal_proposed",))[-1]["detail"]["was"] == "users come back with their ids"
+    plan.propose(store, [{"id": "csv", "title": "csv", "scope": ["README.md"], "check": "true"}], BOT)
+    plan.accept(store, [], ALEX)
+    assert plan.trail(store, plan.get(store, "csv")) == ["the export writes CSV as well as JSON"]
+    plan.start(store, "csv", BOT, repo)
+    (repo / "README.md").write_text("csv\n")
+    plan.finish(store, "csv", BOT)
+    plan.archive(store, ALEX)
+    plan.set_goal(store, "invoices as PDF", ALEX)
+    assert not plan.propose_goal(store, "something else", BOT)
+
+
+def test_a_dropped_trees_proposed_goal_goes_with_it_while_another_planners_proposal_is_left(store):
+    """Recheck: the proposed sentence was cleared only when no proposal at all was left, so with its
+    tree dropped `graphene plan` kept showing it, and a later tree from its planner adopted it."""
+    one, two = Caller("planner:one", False, "s-one"), Caller("planner:two", False, "s-two")
+    plan.propose_goal(store, "rewrite the importer in Rust", one)
+    plan.propose(store, [{"id": "port", "title": "port", "scope": ["src/**"], "check": "true"}], one)
+    plan.propose(store, [{"id": "datefix", "title": "datefix", "scope": ["README.md"], "check": "true"}], two)
+    plan.drop(store, "port", ALEX)
+    assert store.meta("goal:proposed") is None
+
+
 def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
     """pytest takes the terminal away from the tests it runs, and with "no terminal is still the
     person" a test file an executor wrote inside its own scope accepted proposals and widened scopes."""

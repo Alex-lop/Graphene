@@ -273,3 +273,58 @@ def test_a_hand_back_that_names_what_it_needs_is_offered_exactly_that(repo):
         [widen, _sibling] = plan.offers(store, plan.get(store, "w"))
         assert widen[1] == "widen w's scope to cli/main.py"
         assert plan.widen(store, "w", [], ALEX).scope == ["a.txt", "cli/main.py"]
+
+
+def test_a_need_built_on_before_it_was_committed_lets_its_dependant_start(repo):
+    """Recheck: a need's file changed again after it finished (by a later leaf, the person, a
+    formatter) never reaches history as the exact content the need left, and R kept its dependant
+    waiting for ever although everything was committed."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", ALEX, repo)
+        (repo / "a.txt").write_text("a, done in place\n")
+        plan.finish(store, "a", ALEX)
+        (repo / "a.txt").write_text("a, done in place, and touched up by the person\n")
+        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) != []
+        git(repo, "commit", "-qam", "a, touched up")
+        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) == []
+
+
+def parked(repo, store):
+    """Leaf a, done in its worktree and parked before it landed; b needs it."""
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+    plan.start(store, "a", BOT, tree)
+    (tree / "a.txt").write_text("a, in its worktree\n")
+    R.park(store, tree, plan.finish(store, "a", BOT), lambda _: None)
+    return tree
+
+
+def test_a_parked_leaf_merged_by_hand_and_signed_off_on_the_page_lets_its_dependant_start(repo):
+    """Recheck: the page's sign-off passed no checkout, so where the hand merge landed was never
+    recorded and what needs the leaf waited for ever."""
+    from graphene_debrief.server import OPS
+
+    with Store.open(repo) as store:
+        parked(repo, store)
+        git(repo, "merge", "-q", "graphene/a")
+        OPS["signoff"](store, repo, {"id": "a"}, ALEX)
+        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) == []
+        assert plan.start(store, "b", BOT, repo).state == RUNNING
+
+
+def test_signing_off_a_parked_leaf_whose_branch_is_gone_does_not_say_it_was_kept(repo):
+    """Recheck: the branch was merged and deleted (by the person, or by a landing stopped late), and
+    the sign-off said "graphene/a is not merged here, so it was kept"."""
+    from typer.testing import CliRunner
+
+    from graphene_debrief.cli import build
+
+    with Store.open(repo) as store:
+        tree = parked(repo, store)
+    git(repo, "merge", "-q", "graphene/a")
+    git(repo, "worktree", "remove", "--force", str(tree))
+    git(repo, "branch", "-D", "graphene/a")
+    said = CliRunner().invoke(build(), ["node", "signoff", "a"], env={"GRAPHENE_AS": "person:alex"})
+    assert said.exit_code == 0 and "a is done" in said.stdout and "kept" not in said.stdout
