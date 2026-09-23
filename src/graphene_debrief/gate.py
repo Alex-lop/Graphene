@@ -7,6 +7,7 @@ the vendor's documented JSON (code.claude.com/docs/en/hooks), printed by ``hook_
 
 The holes, which the README and the map print beside the controls:
 - a hook that crashes or times out lets the call through (the vendor's rule); ``finish`` still holds;
+- a write through an MCP server's tool (a filesystem server's included) is not seen here at all;
 - a shell command can write a file in a way no parser reads (a script that opens files itself);
   when the vendor reports what a command changed it is refused after the fact, and ``finish`` asks
   git, which sees every write however it was made;

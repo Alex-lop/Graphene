@@ -41,7 +41,8 @@ pane offers `w` (widen to what it wanted) and `b` (a sibling for it). Press `w`,
   - **31**: the planner prints its proposal and holds no write tool.
 - **This repository's own store** still has the goal "why this repo's plan exists, in your words"
   (you typed the placeholder from an old morning.md on the 21st) and five proposals from the 20th.
-  It is yours; I left it. `graphene plan goal '…'` or `graphene plan archive` clears it.
+  It is yours; I left it. `graphene plan goal '<yours>'` replaces the goal, and `graphene node drop
+  <id>` removes each proposal (`plan archive` touches only what is done or dropped).
 
 ## 3. The map of the code
 

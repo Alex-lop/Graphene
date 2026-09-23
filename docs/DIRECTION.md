@@ -311,9 +311,10 @@ names, and never holds a key.**
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,
   and says so; nothing is lost. Work in the same checkout through a session (a leaf made from your
   prompt answers for it), or let the run finish.
-- "A paragraph becomes a tree" is a rule about length (decision 28). A long request meant to be done
-  at once needs "just do it"; a short one that deserved a plan is done at once, as a leaf from the
-  prompt, and you see it on the plan.
+- "A paragraph becomes a tree" is a rule about length and a few words (decision 28). A long request
+  meant to be done at once needs "just do it", and those words said in passing skip the tree too. A
+  short one that deserved a plan is done at once: with a plan in force, as a leaf from the prompt that
+  you see on the plan; with none (only proposals, or nothing), it leaves no trace.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 

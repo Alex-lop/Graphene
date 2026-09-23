@@ -121,12 +121,17 @@ worktrees that `done` runs. A session that holds a planned leaf is held to it as
 **A paragraph is a tree first.** A prompt of 240 characters or more, in a session that holds no leaf,
 is not made into a leaf: the hook asks the agent, beside the prompt, to propose the tree in the
 plan's text and stop, and refuses that session's writes (and the commands that reach round
-`graphene`) until a leaf of the tree it proposed is accepted and taken; the refusal says which step
-the tree is at (`gate._tree_wait`). The wait ends when the session holds a leaf, when the tree is all
-done or dropped, or when the person says "just do it"; a clarifying prompt does not end it. This holds
-with no plan at all. "just do it", "do it now", "skip the plan" (not after "don't"), a ready leaf's
-id, or the CLI's `--scope`/`--check` in the prompt skip the tree. What the vendor sends as a prompt on
-its own (a finished background task, a reminder, a slash command) neither starts nor ends a wait.
+`graphene`) until a leaf of its tree is accepted and taken; the refusal says which step the tree is
+at (`gate._tree_wait`). Its tree is what was proposed after it by that session, by the planner
+(`:ask`) or by the person, never by another agent's session. The wait ends when the session holds a
+leaf, when the tree is all done or dropped, or when the person says "just do it" (or, in a prompt
+shorter than a paragraph, "no plan" or "without a plan"); a clarifying prompt does not end it, and
+the refusal says so, for the agent to relay. A second paragraph while the first waits keeps the
+first one's start. This holds with no plan at all. "just do it", "do it now", "skip the plan" (not
+negated in their own clause: "don't", "can't", "I don't want you to"), a request for a leaf on the
+plan ("do ids"), or the CLI's `--scope` with a quoted `--check` skip the tree; a leaf's id or a flag
+said in passing does not. What the vendor sends as a prompt on its own (a finished background task,
+a reminder, a slash command) neither starts nor ends a wait.
 
 A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
 and its record says the check failed. A session is never trapped by it.
@@ -284,7 +289,9 @@ a leaf; `--about <id>` asks it about a leaf that came back.
   on 2.1.278), and a headless run that hits `--max-turns` never fires `Stop`. The node then stays
   `running` on the plan. `graphene run` does not depend on `Stop` at all.
 - A hook that crashes or times out lets the call through. That is the vendor's rule.
-- Writes through an MCP server's tools are not seen by the hooks at all.
+- Writes through an MCP server's tools are not seen by the hooks at all, a filesystem server's
+  included: under a held leaf `done` asks git and catches them; during a paragraph's wait, or in a
+  session that holds no leaf, nothing does.
 - `:stop` in `graphene watch` (a Ctrl-C to the run) lands during a check: the check finishes first,
   in parallel runs, and its result is then set aside.
 - The person-only rule rests on the environment, and no command line can do better. Inside an

@@ -71,7 +71,10 @@ flagged that the legacy importer skips the zero-price rule, which I had just tol
 That is a misunderstanding caught before any code, and exactly what the tree is for. A single line
 ("fix the typo in the header") is still just done (with a plan in force, it is on the plan as a leaf
 with a record of what it touched). "just do it", "do it now" or "skip the plan" in a paragraph skip
-the tree, and so does a paragraph that names a ready leaf or carries the CLI's `--scope`.
+the tree, and so does one that asks for a leaf already on the plan ("do ids") or carries the CLI's
+`--scope` and a quoted `--check`. If the agent answers your paragraph with a question and you then
+ask for something else, its writes still wait, and the refusal it relays says how out: answer "just
+do it" or "no plan".
 
 Prune it on the right:
 
@@ -132,11 +135,15 @@ any executor that has a shell); the page (`graphene ui`) shows the tree and is o
 
 A control you cannot trust is worse than none, so here is where each one ends.
 
-- "A paragraph becomes a tree" is a rule about length (240 characters). A long request you meant to
-  have done at once needs "just do it" in it. A short one that deserved a plan is done at once; with
-  a plan in force it is on the plan as a leaf made from your prompt, and with none it leaves no trace.
-- Tools that write through an MCP server (a document, a ticket, a message) are seen neither by the
-  paragraph's wait nor by a leaf's scope: the hooks read Claude Code's own write tools and the shell.
+- "A paragraph becomes a tree" is a rule about length (240 characters) and a few words. A long
+  request you meant to have done at once needs "just do it" in it; the same words said in passing
+  ("so do it now if you can") skip the tree too. A short one that deserved a plan is done at once;
+  with a plan in force (any node accepted and not archived) it is on the plan as a leaf made from
+  your prompt, and with none it leaves no trace.
+- Tools that write through an MCP server are seen neither by the paragraph's wait nor by a leaf's
+  scope: the hooks read Claude Code's own write tools and the shell. That includes a filesystem MCP
+  server writing files in this repository; `done` asks git, so under a held leaf such a write is
+  caught there, and during the wait or with no leaf held nothing catches it.
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
   itself). The hook refuses the forms it can parse (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`).
   The rest is caught at `done`, by git; until then the stray change is on disk.
