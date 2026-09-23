@@ -152,7 +152,7 @@ def test_a_leaf_whose_need_is_done_but_not_committed_waits_until_it_is(repo):
         plan.finish(store, "a", ALEX)
         b = plan.get(store, "b")
         [away] = plan.not_here(store, b, repo, committed=True)
-        assert "a (its work is not committed in" in away and "a.txt" in away
+        assert "a (not committed where it was done" in away and "a.txt" in away
         assert plan.not_here(store, b, repo) == []  # in the same checkout it is there
         git(repo, "commit", "-qam", "a")
         assert plan.not_here(store, b, repo, committed=True) == []

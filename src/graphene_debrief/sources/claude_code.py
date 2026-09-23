@@ -442,7 +442,8 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             name = event.get("hook_event_name")
             sid = event.get("session_id")
             waiting = isinstance(sid, str) and bool(store.meta(f"tree:{sid}"))
-            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or waiting:
+            planner = bool(os.environ.get("GRAPHENE_PLANNER"))  # refused a write, plan or no plan
+            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or waiting or planner:
                 from .. import gate
 
                 answer = gate.decide(store, event, root)

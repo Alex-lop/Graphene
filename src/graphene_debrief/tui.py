@@ -15,16 +15,18 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from rich.text import Text
-from textual import on, work
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -107,12 +109,13 @@ class Help(ModalScreen[None]):
     BINDINGS = [Binding("escape,q,question_mark", "app.pop_screen", show=False)]
     DEFAULT_CSS = """
     Help { align: center middle; }
-    Help > Static { width: auto; max-width: 100%; padding: 1 2; border: round $primary; }
-    Help > Static { background: $surface; }
+    Help > VerticalScroll { width: auto; max-width: 100%; height: auto; max-height: 100%; }
+    Help Static { width: auto; padding: 1 2; border: round $primary; background: $surface; }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static(Text(HELP), id="help")
+        with VerticalScroll():
+            yield Static(Text(HELP), id="help")
 
 
 class PlanTree(Tree[str]):
@@ -127,7 +130,7 @@ class PlanTree(Tree[str]):
     ]
     CHORDS = {
         "gg": "top",
-        "za": "toggle_node",
+        "za": "toggle_here",
         "zo": "open",
         "zc": "close",
         "zR": "open_all",
@@ -161,15 +164,32 @@ class PlanTree(Tree[str]):
         if self.cursor_node is not None:
             self.cursor_node.expand()
 
-    def action_close(self) -> None:
+    def _fold_of(self):
+        """The node a fold key acts on: itself when it has children, else the branch it sits in."""
         node = self.cursor_node
         if (
             node is not None
-            and not node.is_expanded
+            and not node.children
             and node.parent is not None
             and node.parent is not self.root
         ):
-            node = node.parent  # closing a leaf closes what it is in, as vim's zc does in a fold
+            return node.parent
+        return node
+
+    def action_toggle_here(self) -> None:
+        node = self._fold_of()
+        if node is not None:
+            node.toggle()
+            self.move_cursor(node)
+
+    def action_close(self) -> None:
+        node = self.cursor_node
+        if node is not None and (not node.children or not node.is_expanded):
+            node = (
+                self._fold_of()
+                if not node.children
+                else (node.parent if node.parent is not self.root else node)
+            )
         if node is not None:
             node.collapse()
             self.move_cursor(node)
@@ -330,12 +350,16 @@ class Watch(App):
         cursor = self.selected()
         tree.clear()
         placed = {None: tree.root}
-        for node in nodes:
-            parent = placed.get(node.parent) or tree.root
+        by_id = {n.id: n for n in nodes}
+        queue = [n for n in nodes if n.parent not in by_id]  # the tops, then each one's children
+        while queue:
+            node = queue.pop(0)
+            parent = placed.get(node.parent) if node.parent in by_id else tree.root
             has_kids = bool(under.get(node.id))
             finished = has_kids and all(c.state == P.DONE for c in P.below(node.id, nodes))
             opened = (not finished) if self.first else node.id in was_open or node.id not in self.known
             placed[node.id] = parent.add(Text(node.title), data=node.id, expand=opened, allow_expand=has_kids)
+            queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
         self.known = {n.id for n in nodes}
         self.first = False
         if cursor in placed:
@@ -373,7 +397,10 @@ class Watch(App):
         counts = f"{done}/{len(leaves)} done"
         mode = "VISUAL · " if self.anchor is not None else ""
         said = self.message or "? help · : command · y accept · R run · q quit"
-        self.query_one("#status", Static).update(f"{mode}{planner} · {executors} · {counts}\n{said}")
+        room = max(self.size.width - 2, 20)
+        first, second = f"{mode}{planner} · {executors} · {counts}", " ".join(said.split())
+        cut = [line if len(line) <= room else line[: room - 1] + "…" for line in (first, second)]
+        self.query_one("#status", Static).update("\n".join(cut))
 
     def show_detail(self, store) -> None:
         node_id = self.selected()
@@ -406,7 +433,7 @@ class Watch(App):
         """Run one command, and say on the bottom line which it was and the gist of what it said.
         Returns its exit code, or with ``keep`` all it said."""
         code, said = _cli(argv)
-        lines = [line for line in said.splitlines() if line.strip() and not line.startswith("  (the plan")]
+        lines = [line for line in said.splitlines() if line.strip() and "(the plan of " not in line]
         first = lines[0].strip() if lines else ""
         self.message = f"{'✗ ' if code else ''}graphene {shlex.join(argv)}" + (f": {first}" if first else "")
         if not quiet:
@@ -449,23 +476,23 @@ class Watch(App):
             self.search = text[1:].strip().lower()
             self.find(self.search)
             return
-        words = text[1:].strip()
+        words = text[1:].strip().removeprefix("graphene ").strip()
         if not words:
             return
+        if re.match(r"ask\s+[^-\s]", words):  # `:ask what you want`: one sentence, as typed
+            return self.background(["ask", words[3:].strip()])
         try:
             argv = shlex.split(words)
         except ValueError as no:
             self.message = f"✗ {no}"
             return
-        if argv[0] == "graphene":
-            argv = argv[1:]
         if argv[:1] == ["stop"]:
             return self.stop_runs()
-        if argv[:1] == ["ask"]:  # `:ask words, as typed`: one sentence, whatever it holds
-            sentence = words.split(None, 1)[1] if len(argv) > 1 and not argv[1].startswith("-") else None
-            return self.background(["ask", sentence] if sentence else argv)
-        if argv[:1] in (["run"], ["ask"]) or argv[:2] == ["node", "split"]:
-            return self.background(argv)
+        if argv[:1] in (["ui"], ["watch"], ["ingest"], ["init"]):
+            self.message = f"✗ `graphene {argv[0]}` takes a terminal of its own: run it outside this screen"
+            return
+        if argv[:1] in (["run"], ["ask"]) or argv[:2] in (["node", "split"], ["node", "done"]):
+            return self.background(argv)  # it can take minutes (a check, an agent): the screen stays yours
         if argv[:2] in (["plan", "edit"], ["node", "edit"]):
             return self.edit_with(argv)
         said = self.did(argv, keep=True)
@@ -479,6 +506,7 @@ class Watch(App):
             line.remove_class("-open")
             self.tree.focus()
         self.anchor = None
+        self.search = ""
         self.view = "contract"
         self.refresh_plan()
 
@@ -486,8 +514,9 @@ class Watch(App):
         if not text:
             return
         with self.open_store() as store:
-            nodes = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
-        hits = [n.id for n in nodes if text in n.title.lower() or text in n.id.lower()]
+            titles = {n.id: n.title for n in P.nodes(store)}
+        shown = [n.data for n in _walk(self.tree.root) if n.data in titles]
+        hits = [i for i in shown if text in titles[i].lower() or text in i.lower()]
         if not hits:
             self.message = f"✗ nothing matches {text!r}"
             return
@@ -502,7 +531,7 @@ class Watch(App):
                     parent = parent.parent
                 _ = self.tree.last_line
                 self.tree.move_cursor(node)
-        self.message = f"/{text}: {hits.index(target) + 1} of {len(hits)}"
+        self.message = f"/{text}: {hits.index(target) + 1} of {len(hits)} (n next · Esc ends the search)"
         self.refresh_plan()
 
     def action_next_or_needs(self) -> None:
@@ -517,7 +546,7 @@ class Watch(App):
 
         def added(title: str | None) -> None:
             if title:
-                self.did(["node", "add", title, *(["--parent", parent] if parent else [])])
+                self.did(["node", "add", *(["--parent", parent] if parent else []), "--", title])
 
         where = f"under {parent}" if parent else "at the top"
         self.push_screen(
@@ -546,12 +575,17 @@ class Watch(App):
 
     def action_each(self, what: str) -> None:
         ids = self.chosen()
-        for node_id in ids:
-            self.did(
-                ["plan", "accept", node_id] if what == "accept" else ["node", "drop", node_id], quiet=True
-            )
-        if len(ids) > 1:
-            self.message = f"{what} {', '.join(ids)}: " + self.message
+        if what == "accept":
+            with self.open_store() as store:  # what is accepted already (as one above another) is left
+                ids = [i for i in ids if store.node_row(i) and store.node_row(i)["state"] == P.PROPOSED]
+            if ids:
+                self.did(["plan", "accept", *ids], quiet=True)  # one act: u undoes all of it
+        else:
+            refused = [i for i in ids if self.did(["node", "drop", i], quiet=True)]
+            if len(ids) > 1:
+                self.message = f"dropped {len(ids) - len(refused)} of {len(ids)}" + (
+                    f"; refused: {', '.join(refused)} (`:node drop <id>` says why)" if refused else ""
+                ) + " · u undoes one at a time"  # fmt: skip
         self.anchor = None
         self.refresh_plan()
 
@@ -619,7 +653,7 @@ class Watch(App):
         whatever happens to this screen."""
         logs = self.root_path / ".graphene" / "runs"
         logs.mkdir(parents=True, exist_ok=True)
-        log = logs / f"{argv[0]}-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        log = logs / f"{argv[0]}-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{len(self.runs)}.txt"
         cli = "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()"
         with open(log, "w", encoding="utf-8") as sink:
             proc = subprocess.Popen(
@@ -628,16 +662,18 @@ class Watch(App):
             )  # fmt: skip
         self.runs.append(proc)
         self.message = f"graphene {shlex.join(argv)}: started (its output: {log.relative_to(self.root_path)})"
-        self.follow(proc, argv, log)
+        threading.Thread(target=self.follow, args=(proc, argv, log), daemon=True).start()
 
-    @work(thread=True)
     def follow(self, proc: subprocess.Popen, argv: list[str], log: Path) -> None:
+        """On a thread of its own that never keeps the screen from closing (q leaves at once; the
+        run goes on)."""
         code = proc.wait()
-        said = R.tail(log, 3)
-        gist = next((line for line in reversed(said) if line.strip()), "")
-        self.call_from_thread(
-            self.finished, f"{'✗ ' if code else ''}graphene {shlex.join(argv)} ended: {gist}"
-        )
+        said = [line for line in R.tail(log, 6) if line.strip() and "(the plan of " not in line]
+        gist = said[-1] if said else ""
+        with contextlib.suppress(Exception):  # the screen may be gone by now
+            self.call_from_thread(
+                self.finished, f"{'✗ ' if code else ''}graphene {shlex.join(argv)} ended: {gist}"
+            )
 
     def finished(self, message: str) -> None:
         self.message = message
@@ -650,7 +686,10 @@ class Watch(App):
         pids = [p.pid for p in self.runs if p.poll() is None]
         lock = self.root_path / ".graphene" / "run.lock"
         with contextlib.suppress(OSError, ValueError):
-            pids.append(int(lock.read_text()))
+            pid = int(lock.read_text())
+            shown = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+            if "graphene" in shown.stdout:
+                pids.append(pid)
         for pid in set(pids):
             with contextlib.suppress(OSError):
                 os.kill(pid, signal.SIGINT)

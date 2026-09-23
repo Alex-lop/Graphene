@@ -64,12 +64,14 @@ Now say what you want, on the left, in a paragraph. On the 22nd I typed this abo
 > at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored
 > or legacy files that aren't ours this week.
 
-Graphene asks the agent to plan a paragraph before it writes anything. On the right, a tree
+Graphene asks the agent to plan a paragraph before it writes anything, and holds its writes until
+you have accepted the tree and a leaf of it is taken. On the right, a tree
 appears, every line marked `?`: a proposal. The agent also says what it could not settle. That run
 flagged that the legacy importer skips the zero-price rule, which I had just told it not to touch.
 That is a misunderstanding caught before any code, and exactly what the tree is for. A single line
-("fix the typo in the header") is still just done, with a record of what it touched. And "just do it"
-in a paragraph skips the tree.
+("fix the typo in the header") is still just done (with a plan in force, it is on the plan as a leaf
+with a record of what it touched). "just do it", "do it now" or "skip the plan" in a paragraph skip
+the tree, and so does a paragraph that names a ready leaf or carries the CLI's `--scope`.
 
 Prune it on the right:
 
@@ -113,8 +115,8 @@ tests of Graphene's own:
   four leaves in 50 seconds, each a merge on the branch. The result passes 18 of the task's 20 hidden
   acceptance checks (the 2 it misses want something the paragraph never said) and 12 of its 12
   held-out checks, against 10 and 0 for the repository as it was. (One run.)
-- **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools, and
-  what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
+- **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools and
+  none of your MCP servers, and what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
 - **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors.
   The next run takes those leaves again.
 - **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
@@ -131,8 +133,10 @@ any executor that has a shell); the page (`graphene ui`) shows the tree and is o
 A control you cannot trust is worse than none, so here is where each one ends.
 
 - "A paragraph becomes a tree" is a rule about length (240 characters). A long request you meant to
-  have done at once needs "just do it" in it. A short one that deserved a plan is done at once, and
-  you see it on the plan as a leaf made from your prompt.
+  have done at once needs "just do it" in it. A short one that deserved a plan is done at once; with
+  a plan in force it is on the plan as a leaf made from your prompt, and with none it leaves no trace.
+- Tools that write through an MCP server (a document, a ticket, a message) are seen neither by the
+  paragraph's wait nor by a leaf's scope: the hooks read Claude Code's own write tools and the shell.
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
   itself). The hook refuses the forms it can parse (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`).
   The rest is caught at `done`, by git; until then the stray change is on disk.

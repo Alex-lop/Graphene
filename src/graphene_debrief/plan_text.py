@@ -528,6 +528,9 @@ def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) 
             )
         seen[line.id] = line.no
         known = everything.get(line.id)
+        if known is not None and known.state in P.GONE and opened is None:
+            line.id = None  # a proposal that reuses a dropped id (the planner cannot see those): a new one
+            continue
         if known is not None and known.state in P.GONE:
             since = opened is not None and line.id in opened
             raise P.Refused(
@@ -636,6 +639,10 @@ def _goal(store, goal: str | None, who: P.Caller, now: str, opened: dict | None)
     planner's sentence stays a proposal until a node is accepted, and one set elsewhere meanwhile is
     never written over."""
     if goal is None:
+        shown = (opened or {}).get("*goal", {}).get("goal")
+        if shown and not P.goal(store) and store.meta("goal:proposed"):
+            store.set_meta("goal:proposed", None)  # its line deleted: the planner's sentence is dropped
+            return ["the proposed goal was dropped"]
         return []
     goal = "\n".join(_norm_goal(goal))
     if opened is not None and "*goal" not in opened:

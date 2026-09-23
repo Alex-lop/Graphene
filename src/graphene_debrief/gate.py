@@ -130,14 +130,15 @@ IN_FORCE = (
 # reads the agent's understanding of it, prunes it, and runs it. One line is a Tuesday request, done
 # at once (a leaf made from the prompt, decision 18). "just do it" in a paragraph skips the tree.
 PARAGRAPH = 240  # characters: Alex's paragraph on 22 September was 330; his one-line asks, under 100
-_JUST = re.compile(r"\b(just do it|do it now|no plan|without a plan|skip the plan|don'?t plan)\b", re.I)
+_JUST = re.compile(r"\b(just do it|do it now|skip the plan|no need (?:for a|to) plan)\b", re.I)
+_NEGATED = re.compile(r"\b(don'?t|do not|not|never)\s+$", re.I)
 TREE_ASK = (
     "Graphene: the person wrote a paragraph, so this becomes a tree before any code. Read what you need, "
     "then propose the tree with `graphene plan propose -` in the plan's text (the form shown when this "
     "session started: sub-goals, leaves with scope: and check:, needs: between leaves that build on each "
     "other), and stop: tell them it is ready to prune in `graphene watch`, where y accepts and R runs it. "
-    "Writing files waits until they accept (had they wanted it done at once they would have said "
-    "'just do it')."
+    "Writing files waits until they accept it and a leaf of it is taken (had they wanted it done at once "
+    "they would have said 'just do it')."
 )
 TREE_WAIT = (
     "The person's paragraph becomes a tree before any code: propose it with `graphene plan propose - "
@@ -147,14 +148,58 @@ TREE_WAIT = (
 )
 
 
-def paragraph(text: str) -> bool:
-    """A piece of work as people write one: a paragraph, not a line, not a slash command, and not
-    what the vendor sends as a prompt on its own (a finished background task, a reminder)."""
-    from .sources.claude_code import _NOT_A_PROMPT
+def _vendor_made(said: str) -> bool:
+    """What the vendor sends as a prompt on its own (a finished background task, a reminder, a slash
+    command): never the person's words, so it neither starts nor ends anything."""
+    from .sources.claude_code import _NOT_A_PROMPT, _SLASH_COMMAND
 
+    return said.startswith((*_NOT_A_PROMPT, "[SYSTEM NOTIFICATION")) or bool(_SLASH_COMMAND.match(said))
+
+
+def just_do_it(said: str) -> bool:
+    """The person's way to skip the tree: "just do it", and not "don't just do it"."""
+    return any(not _NEGATED.search(said[max(0, m.start() - 12) : m.start()]) for m in _JUST.finditer(said))
+
+
+def paragraph(text: str, ready: tuple[str, ...] | list[str] = ()) -> bool:
+    """A piece of work as people write one: a paragraph, not a line. Not what the vendor sends, not
+    one that says "just do it", and not one that names its own leaf (a ready leaf's id, or the
+    CLI's --scope and --check): those are requests to do."""
     said = text.strip()
-    made = said.startswith(("/", "<", "[")) or any(tag in said[:200] for tag in _NOT_A_PROMPT)
-    return len(said) >= PARAGRAPH and not _JUST.search(said) and not made
+    if len(said) < PARAGRAPH or _vendor_made(said) or just_do_it(said):
+        return False
+    if re.search(r"(?<!\S)--(scope|check)\b", said):
+        return False
+    return not any(re.search(rf"(?<![\w.-]){re.escape(i)}(?![\w-])", said) for i in ready)
+
+
+def _tree_wait(store, sid: str) -> str | None:
+    """What this session is told while its paragraph waits for its tree, or None when it no longer
+    waits: it holds a leaf (whose scope binds), or the tree it proposed is all done or dropped."""
+    since = store.meta(f"tree:{sid}")
+    if not since or _held(store, sid):
+        return None
+    everything = P.nodes(store)
+    mine = [n for n in everything if n.proposed_by == f"claude:{sid[:8]}" and (n.created_at or "") >= since]
+    if not mine:
+        return TREE_WAIT
+    if all(n.state in (P.DONE, *P.GONE) for n in mine):
+        store.set_meta(f"tree:{sid}", None)  # the paragraph is answered
+        return None
+    ours = {n.id for n in mine}
+    ready = [n for n in P.ready(everything, P.Caller("agent", False)) if n.id in ours]
+    if ready:
+        return (
+            "The tree you proposed is accepted; its leaves are worked one at a time, inside their "
+            f"scopes. `graphene node start {ready[0].id}` takes the first that is ready (or the person runs "
+            "them with R in `graphene watch`). Nothing is written outside a leaf you hold"
+        )
+    if any(n.state == P.PROPOSED for n in mine):
+        return (
+            "The tree you proposed waits for the person: they prune and accept it in `graphene watch` (y). "
+            "Nothing is written before a leaf of it is accepted and taken"
+        )
+    return "The tree you proposed is being worked; nothing is written outside a leaf you hold"
 
 
 def _session_start(store) -> dict | None:
@@ -197,7 +242,7 @@ _CHECK = re.compile(r"""(?<!\S)--check[ =]+(?:'([^']+)'|"([^"]+)")""")  # quoted
 _NOT_YES = re.compile(r"[?]|\b(but|except|not|no|don'?t|drop|skip|instead|first|before|unless|wrong)\b", re.I)
 # `graphene ingest …` as a command, not the word: a repo with an ingest/ package had three hand-backs
 # refused for naming ingest/__init__.py in their reason
-_HOOK = re.compile(r"\bgraphene\s+ingest\b|\bingest\s+hook\b|\bhook_main\b")
+_HOOK = re.compile(r"\bgraphene\s+ingest\b|\bingest\s+hook\b|\bhook_main\s*\(")
 SHORT = 80  # a prompt longer than this is a request, not an answer
 HOOKS = (".claude/settings.json", ".claude/settings.local.json")
 
@@ -213,23 +258,26 @@ def _me(sid: str) -> P.Caller:
 
 
 def _on_prompt(store, sid: str, text: str) -> dict | None:
-    """A prompt is remembered (the next write may become a leaf made from it) and, when it is a short
-    yes, read as the acceptance of what this session proposed, or of the proposals it names."""
+    """A prompt is remembered (the next write may become a leaf made from it); a paragraph becomes a
+    tree first; and a short yes accepts what this session proposed, or the proposals it names."""
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # an executor or a planner Graphene started: its prompt is ours, not a person's
-    routed = paragraph(text) and not _held(store, sid)
-    store.set_meta(f"tree:{sid}", P._now() if routed else None)
-    if routed:
+    said = text.strip()
+    if _vendor_made(said):
+        return None
+    for n in _held(store, sid):
+        if n.aside:  # the turn before ended without a Stop (interrupted): its record closes here
+            _close(store, n, sid)
+    before = store.meta(f"prompt_at:{sid}") or ""
+    store.set_meta(f"prompt_at:{sid}", P._now())
+    if just_do_it(said):
+        store.set_meta(f"tree:{sid}", None)  # the person lifts the wait
+    ready = [n.id for n in P.ready(P.nodes(store))]
+    if paragraph(said, ready) and not _held(store, sid):
+        store.set_meta(f"tree:{sid}", P._now())
         store.set_meta(f"prompt:{sid}", None)  # no leaf is made from it: it becomes a tree instead
         return _context("UserPromptSubmit", TREE_ASK)
-    for n in _held(store, sid):
-        if n.aside:
-            _close(
-                store, n, sid
-            )  # the turn before ended without a Stop (interrupted): its record closes here
-    before = store.meta(f"prompt_at:{sid}") or ""
     store.set_meta(f"prompt:{sid}", text)  # TODO: two rows a session, never pruned
-    store.set_meta(f"prompt_at:{sid}", P._now())
     proposals = P.nodes(store, (P.PROPOSED,))
     if store.meta("asides") == "off" or not proposals or len(text) > SHORT:
         return None
@@ -244,7 +292,8 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     if not chosen:
         return None
     try:
-        accepted = P.accept(store, [n.id for n in chosen], _me(sid), by="prompt", prompt=text[:SHORT])
+        with P.undoable(store, _me(sid), f"yes in the session: {text[:40]}"):
+            accepted = P.accept(store, [n.id for n in chosen], _me(sid), by="prompt", prompt=text[:SHORT])
     except P.Refused as no:
         return _context(
             "UserPromptSubmit", f"Graphene read that as accepting a proposal, and could not: {no}"
@@ -339,6 +388,31 @@ def _check_write(
     return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {_how_out(held)}")
 
 
+def _guard_command(event: dict) -> dict | None:
+    """The shell commands refused whatever the scope: speaking for the person, feeding the hook by
+    hand, reaching round `graphene` into its store."""
+    if event.get("tool_name") != "Bash":
+        return None
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    command = str(tool_input.get("command") or "")
+    if _AS_PERSON.search(command):
+        return _deny(
+            "GRAPHENE_AS is how a script says it speaks for a person; an agent's command may not "
+            "carry it. Say what you need, and the person decides"
+        )
+    if _HOOK.search(command):
+        return _deny(
+            "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
+            "not an agent's to run"
+        )
+    if ".graphene" in command and not re.match(r"\s*graphene\s", command):
+        return _deny(
+            "the plan's own store (.graphene/) is not an agent's to read around or write: use "
+            "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
+        )
+    return None
+
+
 def _first_write(event: dict, root: Path) -> str | None:
     """The first repo path a tool call would write, as the hook can tell before it runs; None for a
     call that writes nothing here (a read, `graphene plan propose -`, a path outside the repo)."""
@@ -354,9 +428,13 @@ def _first_write(event: dict, root: Path) -> str | None:
         command = str(tool_input.get("command") or "")
         if len(command) > PARSED:
             return None
+        asked = 0
         for written, _kind in bash_written_paths(command, Path(cwd or root)):
             rel = _rel(written, root, cwd) if written.strip() else None
-            if rel is not None and not _ignored(root, rel):
+            if rel is None:
+                continue
+            asked += 1
+            if asked > 8 or not _ignored(root, rel):  # git is asked a few times, not once a path
                 return rel
     return None
 
@@ -372,11 +450,19 @@ def decide(store, event: dict, root: Path) -> dict | None:
         return _on_prompt(store, sid, str(event.get("prompt") or ""))
     if name == "SessionStart":  # with or without a plan: this is where a paragraph learns to be a tree
         return _session_start(store)
-    if name == "PreToolUse" and store.meta(f"tree:{sid}") and not _held(store, sid):
+    planner = bool(os.environ.get("GRAPHENE_PLANNER"))
+    waiting = name == "PreToolUse" and _tree_wait(store, sid)
+    if name == "PreToolUse" and (planner or waiting or P.in_force(store)):
+        guarded = _guard_command(event)  # the store and the hooks are nobody's to reach round
+        if guarded is not None:
+            return guarded
+    if name == "PreToolUse" and (planner or waiting):
         written = _first_write(event, root)
         if written is not None:
-            store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": "paragraph"})
-            return _deny(TREE_WAIT)
+            how = "planner" if planner else "paragraph"
+            store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
+            return _deny("you are the planner: your only output is the proposal you print. Write no file"
+                         if planner else waiting)  # fmt: skip
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")
@@ -416,21 +502,6 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
     if name == "PreToolUse" and tool == "Bash":
         command = str(tool_input.get("command") or "")
-        if _AS_PERSON.search(command):
-            return _deny(
-                "GRAPHENE_AS is how a script says it speaks for a person; an agent's command may not "
-                "carry it. Say what you need, and the person decides"
-            )
-        if _HOOK.search(command):
-            return _deny(
-                "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
-                "not an agent's to run"
-            )
-        if ".graphene" in command and not re.match(r"\s*graphene\s", command):
-            return _deny(
-                "the plan's own store (.graphene/) is not an agent's to read around or write: use "
-                "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
-            )
         if len(command) > PARSED:
             return None  # TODO: too long to parse inside the hook's time; `done` asks git anyway
         from .attribute import bash_written_paths

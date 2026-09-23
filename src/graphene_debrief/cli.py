@@ -199,6 +199,8 @@ def build():
     @cli.command()
     def init() -> None:
         """Install the Claude Code hooks: they hold agents to the plan and keep the record."""
+        if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
+            fail("an executor or a planner does not install hooks; that is the person's", 1)
         r = root()
         try:
             added = install_hooks(r)

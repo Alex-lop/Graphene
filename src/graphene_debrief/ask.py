@@ -24,11 +24,13 @@ from . import plan as P
 from . import plan_text as T
 from .run import command_for
 
-# Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), so its only way to
-# say anything is what it prints. Codex is `codex exec --sandbox read-only`.
-DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob"
+# Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
+# servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
+# write documents), so its only way to say anything is what it prints. Codex: `codex exec --sandbox
+# read-only`.
+DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config"
 ATTEMPTS = 2
-_FENCE = re.compile(r"^```[ \t]*(?:plan|text|graphene)?[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+_FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 _START = re.compile(r"^(?:goal:|[-*+?][ \t])", re.MULTILINE)
 
 RULES = """\
@@ -90,8 +92,12 @@ def proposal_in(said: str) -> str:
     """The proposal in what the planner printed: its last fenced block, or else everything from the
     first line that reads as the plan's text."""
     blocks = _FENCE.findall(said)
-    if blocks:
-        return blocks[-1]
+    marked = [body for label, body in blocks if label.lower() == "plan"]
+    plain = [
+        body for label, body in blocks if label.lower() in ("", "text", "graphene") and _START.search(body)
+    ]
+    if marked or plain:  # the block it was asked for, else the last one that reads as the plan
+        return (marked or plain)[-1]
     start = _START.search(said)
     return said[start.start() :] if start else ""
 
