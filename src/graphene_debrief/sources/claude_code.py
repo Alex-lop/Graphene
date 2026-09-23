@@ -73,6 +73,8 @@ _NOT_A_PROMPT = (
     "<task-notification>",
     "<system-reminder>",
     "[Request interrupted",
+    "Another Claude session sent a message",  # a subagent's hand-back, delivered as a prompt
+    "<agent-message",
 )
 _SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 

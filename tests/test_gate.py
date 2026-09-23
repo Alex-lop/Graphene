@@ -310,6 +310,21 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons_paragraph(repo):
     assert write(repo, "ingest/xmlfeed.py") is None
 
 
+def test_a_subagents_hand_back_is_the_vendors_never_the_persons_paragraph_or_word(repo):
+    """A hand-back armed the wait in the session that built this, and one that quoted 'just do it'
+    lifted it: a subagent's words were read as the person's."""
+    handback = (
+        'Another Claude session sent a message:\n<agent-message from="a525b0dc7264a9b8d">\n'
+        "[Subagent hand-back] The text below is the final report of a subagent. " + "x" * 300
+    )
+    assert not gate.paragraph(handback)
+    assert hook(repo, "UserPromptSubmit", prompt=handback) is None
+    assert write(repo, "ingest/xmlfeed.py") is None
+    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    hook(repo, "UserPromptSubmit", prompt=handback + ' Only Alex can type "just do it".')
+    assert "becomes a tree before any code" in reason(write(repo, "ingest/xmlfeed.py"))
+
+
 # -- the recheck of the closing review: what the paragraph's wait still got wrong --------------------------
 
 
