@@ -654,3 +654,40 @@ def test_done_release_and_signoff_ask_git_before_the_write_lock_is_taken(store, 
     plan.release(store, "n2", BOT2, "not now")
     assert plan.signoff(store, "n1", ALEX).state == DONE
     assert seen and [command for command, locked in seen if locked] == []
+
+
+def test_an_offer_takes_only_the_paths_it_showed(tmp_path):
+    """Recheck 52: the offer hid a brace path and a path its need already writes, and `node widen`
+    then took them all and was refused."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    alex, bot = Caller("alex", True), Caller("claude:aaaa1111", False, "s1")
+    with Store.open(tmp_path) as store:
+        plan.propose(store, [{"id": "n", "title": "n", "scope": ["lib/n.py"], "check": "true"},
+                             {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}],
+                     alex)  # fmt: skip
+        plan.start(store, "x", bot, tmp_path)
+        for path in ("lib/b.py", "{{cookiecutter.slug}}/setup.py", "lib/n.py"):
+            store.log_node("x", plan._now(), "denied", None, "s1", None, {"path": path})
+        plan.release(store, "x", bot, "it needs lib/b.py")
+        plan.edit(store, "x", {"needs": ["n"]}, alex)
+        assert plan.offerable(store, plan.get(store, "x")) == ["lib/b.py"]
+        assert plan.widen(store, "x", [], alex).scope == ["x.py", "lib/b.py"]
+
+
+def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
+    """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    alex, bot = Caller("alex", True), Caller("claude:aaaa1111", False, "s1")
+    with Store.open(tmp_path) as store:
+        items = [{"id": f"m{i}", "title": f"m{i}", "scope": [f"m{i}.py"], "check": "true"} for i in range(40)]
+        plan.propose(store, [*items, {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}], alex)
+        plan.start(store, "x", bot, tmp_path)
+        plan.release(store, "x", bot, "waits on " + " ".join(f"m{i}" for i in range(40)))
+        calls, real = [], plan.validate
+        monkeypatch.setattr(plan, "validate", lambda *a: calls.append(1) or real(*a))
+        [(key, _, argv)] = plan.offers(store, plan.get(store, "x"))
+        assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1

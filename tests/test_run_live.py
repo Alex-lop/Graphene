@@ -231,7 +231,11 @@ def test_a_leaf_that_came_back_offers_to_widen_or_to_add_a_sibling(repo):
         assert plan.offers(store, plan.get(store, "a"))[2][2] == ["node", "set", "a", "--needs", "c"]
         made = plan.sibling(store, "a", [], ALEX)
         assert made.scope == ["src/util.py"] and plan.get(store, "a").needs == [made.id]
-        assert plan.widen(store, "a", [], ALEX).scope == ["a.txt", "src/util.py"]
+        with pytest.raises(Refused, match="nothing a wanted"):  # its sibling has it now
+            plan.widen(store, "a", [], ALEX)
+        with pytest.raises(Refused, match="nothing a wanted"):  # recheck 58: asked twice, one sibling
+            plan.sibling(store, "a", [], ALEX)
+        assert plan.widen(store, "a", ["src/util.py"], ALEX).scope == ["a.txt", "src/util.py"]
         with pytest.raises(Refused, match="adding a sibling leaf is the person's"):
             plan.sibling(store, "a", ["x.txt"], BOT)
 
