@@ -85,9 +85,10 @@ when its check passes and it touched nothing outside its files. If a leaf comes 
 says why and what it wanted outside its scope, and offers the fix:
 
 ```
-it came back; one key fixes it:
-  w  widen xml-enable's scope to cli/main.py
-  b  a sibling leaf for cli/main.py; xml-enable waits on it
+came back: USAGE lives in cli/main.py (line 18), outside scope. Enabling xml in config makes
+tests/test_contract.py fail until USAGE names xml, so the done check cannot pass without cli/main.py.
+  w  widen wire-xml's scope to cli/main.py   graphene node widen wire-xml
+  b  a sibling leaf for cli/main.py; wire-xml waits on it   graphene node sibling wire-xml
   ?  ask the planner, when neither is right
 ```
 

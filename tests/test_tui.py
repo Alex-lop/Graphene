@@ -149,7 +149,7 @@ def test_a_leaf_that_came_back_shows_its_fixes_and_w_takes_one(repo):
         )
         plan.release(store, "schema", bot, "the column needs a migration too")
     seen, _ = watch(repo, ["G"])
-    assert "it came back; one key fixes it" in seen["detail"]
+    assert "came back: the column needs a migration too" in seen["detail"]
     assert "w  widen schema's scope to migrations/001.sql" in seen["detail"]
     watch(repo, ["G", "w"])
     with Store.open(repo) as store:
@@ -170,3 +170,22 @@ def test_question_mark_is_help_and_l_is_the_executors_output(repo):
     assert seen["screen"] == "Help"
     seen, _ = watch(repo, ["j", "l"])
     assert "ids: the executor's output" in seen["detail"] and "(nothing yet)" in seen["detail"]
+
+
+def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):
+    """A recorded run: after `:plan accept`, a leaf came back and its offers were hidden under the
+    accept's output until the cursor moved."""
+    proposed(repo)
+
+    async def before(app, pilot):
+        for key in ["G", "colon", *"plan accept", "enter"]:
+            await pilot.press(key)
+            await pilot.pause()
+        assert app.view == "said"
+        with Store.open(repo) as store:
+            bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+            plan.start(store, "schema", bot, repo)
+            plan.release(store, "schema", bot, "the column needs a migration", wants=["migrations/001.sql"])
+
+    seen, _ = watch(repo, [], before=before)
+    assert "came back: the column needs a migration" in seen["detail"]

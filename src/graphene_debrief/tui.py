@@ -298,6 +298,8 @@ class Watch(App):
             shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in back) for n in nodes]
             if shape != self.shape:
                 self.rebuild(nodes, under, back)
+                if self.shape is not None and self.view == "said":
+                    self.view = "contract"  # the plan moved: what a `:` command printed is old news
                 self.shape = shape
             self.relabel(by_id, under, back, live)
             self.say_where(goal, proposed, nodes, store)
@@ -639,6 +641,7 @@ class Watch(App):
 
     def finished(self, message: str) -> None:
         self.message = message
+        self.view = "contract" if self.view == "said" else self.view
         self.refresh_plan()
 
     def stop_runs(self) -> None:
@@ -682,6 +685,17 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
         if seen.get("last"):
             out.append(f"\n  last: {seen['last']}")
         out.append("\n  l its output · x release it\n", "dim")
+    offers = P.offers(store, node)
+    if offers:  # it came back: why, and the keys that fix it, before anything else
+        why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
+        out.append("came back: ", "bold red")
+        out.append(" ".join(str(why).split()) + "\n")
+        for key, what, argv in offers:
+            out.append(f"  {key}  ", "bold")
+            out.append(f"{what}", "")
+            out.append(f"   graphene {shlex.join(argv)}\n", "dim")
+        out.append("  ?  ", "bold")
+        out.append("ask the planner, when neither is right\n")
     trail = P.trail(store, node)[1 if P.goal(store) else 0 :]  # the goal itself is on the top line
     for depth, line in enumerate(trail):
         out.append(f"{'under: ' if depth == 0 else '       '}{'  ' * depth}{line}\n", "dim")
@@ -711,16 +725,9 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
     if node.goal and node.goal != node.title:
         out.append(f"\n{node.goal}\n")
     for note in T.notes(store, node, by_id, under):
+        if offers and note.startswith(("handed back", "it wanted")):
+            continue  # said at the top, with its keys
         out.append(f"\n{note}", "magenta" if note.startswith(("handed back", "it wanted")) else "")
-    offers = P.offers(store, node)
-    if offers:
-        out.append("\n\nit came back; one key fixes it:\n", "bold red")
-        for key, what, argv in offers:
-            out.append(f"  {key}  ", "bold")
-            out.append(f"{what}\n")
-            out.append(f"     graphene {shlex.join(argv)}\n", "dim")
-        out.append("  ?  ", "bold")
-        out.append("ask the planner, when neither is right\n")
     if node.state == P.PROPOSED:
         out.append("\n\ny accept · d drop · e edit its contract · E edit it with what is under it", "dim")
     return out

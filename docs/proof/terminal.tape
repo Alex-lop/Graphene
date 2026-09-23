@@ -17,14 +17,14 @@ Set TypingSpeed 18ms
 Set WindowBar Colorful
 
 Hide
-Type "unset CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT AI_AGENT GRAPHENE_AS; export PS1='$ '" Enter
+Type "unset CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT AI_AGENT GRAPHENE_AS; export PS1='$ ' BASH_SILENCE_DEPRECATION_WARNING=1" Enter
 # this checkout's graphene, with its dependencies, first on PATH (the hooks find it there too)
 Type "export PATH=$PWD/.venv/bin:$PATH" Enter
 # the prune, scripted: e on the last leaf takes cli/main.py out of its scope (a person would type it)
 Type `export EDITOR="sed -i.bak -e 's#, cli/main.py##' -e 's#cli/main.py, ##'"` Enter
 Type "D=${TMPDIR:-/tmp}/graphene-demo; rm -rf $D; bash docs/proof/try.sh $D/feeds > /dev/null && cd $D/feeds && clear" Enter
 Sleep 4s
-Type `G=$(command -v graphene); tmux -L graphene-demo -f /dev/null new-session -s demo -x 180 -y 48 \; set -g status off \; split-window -h -l 48% -c "$PWD" "$G watch" \; select-pane -L` Enter
+Type `G=$(command -v graphene); tmux -L graphene-demo -f /dev/null new-session -s demo -x 180 -y 48 "bash --norc --noprofile" \; set -g status off \; split-window -h -l 48% -c "$PWD" "$G watch" \; select-pane -L` Enter
 Sleep 4s
 Show
 
