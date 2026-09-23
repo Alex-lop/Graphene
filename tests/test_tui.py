@@ -383,3 +383,248 @@ def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(r
         assert run.wait(timeout=10) != 0 and "stopping 1 run" in app.message
     finally:
         run.kill()
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 28 (fixed)
+def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
+    import os
+    import signal
+    import subprocess
+    import time
+
+    proposed(repo)
+    child = (
+        "import asyncio, subprocess, types\n"
+        "from graphene_debrief import tui\n"
+        "from graphene_debrief.store import Store\n"
+        f"repo = {str(repo)!r}\n"
+        "real = subprocess.Popen\n"  # the run is a sleep, so the screen's own git calls stay real
+        "tui.subprocess = types.SimpleNamespace(Popen=lambda argv, **kw: real(['sleep', '20'], **kw),\n"
+        "    DEVNULL=subprocess.DEVNULL, STDOUT=subprocess.STDOUT, run=subprocess.run)\n"
+        "app = tui.Watch(tui.Path(repo), lambda: Store.open(tui.Path(repo)), every=60)\n"
+        "async def go():\n"
+        "    async with app.run_test() as pilot:\n"
+        "        app.background(['run'])\n"
+        "        print(app.runs[0].pid, flush=True)\n"
+        "        await pilot.press('q')\n"
+        "asyncio.run(go())\n"
+    )
+    began = time.monotonic()
+    ran = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=12)
+    assert ran.returncode == 0, ran.stderr
+    assert time.monotonic() - began < 10  # not the run's 20 s
+    os.kill(int(ran.stdout.split()[0]), signal.SIGKILL)  # the run went on: it is still there to stop
+
+
+# Recheck 29 (fixed)
+def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, monkeypatch):
+    from graphene_debrief import server
+
+    served = []
+    monkeypatch.setattr(server, "make_server", lambda *a, **k: served.append(a))
+    proposed(repo)
+    for typed in ("ui --no-open", "ingest hook"):
+        seen, _ = watch(repo, ["colon", *typed, "enter"], size=(120, 30))
+        assert f"`graphene {typed.split()[0]}` takes a terminal of its own" in seen["status"]
+    assert served == []  # no server was started on the screen's own thread
+
+
+# Recheck 30 (fixed)
+def test_a_node_moved_under_a_later_one_is_drawn_under_it(repo):
+    from graphene_debrief.tui import _walk
+
+    proposed(repo)
+    person("plan", "accept")
+    assert person("node", "set", "api", "--parent", "schema").exit_code == 0
+    drawn = {}
+
+    async def before(app, pilot):
+        drawn.update({n.data: n.parent.data for n in _walk(app.tree.root)})
+
+    watch(repo, [], before=before)
+    assert drawn == {"schema": None, "api": "schema", "ids": "api", "docs": "api"}  # as plan --text
+
+
+# Recheck 32 (fixed)
+def test_search_skips_a_hidden_done_aside_and_lands_on_what_is_drawn(repo):
+    bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+    with Store.open(repo) as store:  # a leaf made from a typed prompt, closed: not drawn
+        [made] = plan.propose(
+            store, [{"title": "rename the schema table", "scope": ["schema.py"]}], plan.Caller("alex", True),
+            aside=True,
+        )  # fmt: skip
+        plan.start(store, made.id, bot, str(repo), attended=True)
+        (repo / "schema.py").write_text("TABLES = ['users']\n")
+        assert plan.close_aside(store, made.id, bot).state == "done"
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["slash", *"schema", "enter", "n"])
+    assert seen["cursor"] == "schema" and "/schema: 1 of 1" in seen["status"]
+
+
+# Recheck 33 (fixed)
+def test_escape_ends_a_search_so_n_takes_the_offer_again(repo):
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "the column must wait until ids is in")
+    watch(repo, ["slash", *"schema", "enter", "escape", "n"])
+    with Store.open(repo) as store:
+        assert plan.get(store, "schema").needs == ["ids"]
+
+
+# Recheck 35 (fixed)
+def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
+    from test_plan_cli import runner
+
+    from graphene_debrief.cli import build
+
+    person_proposes = runner.invoke(  # the person's own tree: no planner named, the longest top line
+        build(), ["plan", "propose", "-"], env={"GRAPHENE_AS": "person:alex"}, input=TREE
+    )
+    assert person_proposes.exit_code == 0, person_proposes.output
+    with Store.open(repo) as store:
+        plan.start(store, "schema", plan.Caller("claude:aaaa1111", False, "aaaa1111-session"), repo)
+    seen, _ = watch(repo, ["j", "d"])
+    top, bottom = seen["status"].splitlines()
+    assert len(top) <= 78  # 80 columns less the padding: it does not wrap onto the message's row
+    assert bottom.startswith("✗ graphene node drop ids: docs waits on ids")
+
+
+# Recheck 36 (fixed)
+def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, monkeypatch):
+    proposed(repo)
+    monkeypatch.setattr("graphene_debrief.tui.time.strftime", lambda _: "20260923-040553")  # one second
+
+    async def before(app, pilot):
+        app.background(["node", "show", "docs"])
+        app.background(["node", "show", "ids"])
+        for proc in app.runs:
+            proc.wait()
+
+    watch(repo, [], before=before)
+    assert len(list((repo / ".graphene" / "runs").iterdir())) == 2
+
+
+# Recheck 37 (partly)
+def test_u_after_a_visual_y_puts_the_whole_selection_back(repo):
+    proposed(repo)
+    watch(repo, ["j", "V", "j", "j", "y"])
+    assert set(states(repo).values()) == {"open"}
+    watch(repo, ["u"])
+    assert set(states(repo).values()) == {"proposed"}  # one act, one undo
+
+
+# Recheck 38 (fixed)
+def test_zc_or_za_on_a_leaf_closes_the_branch_it_sits_in(repo):
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "z", "c", "j"])  # api closed: the next line is the next sub-goal
+    assert seen["cursor"] == "schema"
+    seen, _ = watch(repo, ["j", "z", "a", "j"])
+    assert seen["cursor"] == "schema"
+
+
+# Recheck 39 (fixed)
+def test_the_bottom_line_gives_what_the_command_said_not_where_the_plan_is(repo):
+    proposed(repo)
+    seen, _ = watch(repo, ["G", "d"])
+    assert "graphene node drop schema: schema dropped" in seen["status"]
+    assert "(the plan of" not in seen["status"]
+
+
+# Recheck 40 (partly)
+def test_stop_leaves_alone_a_process_a_stale_run_lock_names(repo):
+    import subprocess
+
+    import pytest
+
+    proposed(repo)
+    bystander = subprocess.Popen(["sleep", "30"])  # the pid a SIGKILLed run left, now someone else's
+    (repo / ".graphene" / "run.lock").write_text(str(bystander.pid))
+    try:
+        seen, _ = watch(repo, ["colon", *"stop", "enter"])
+        assert "no run to stop" in seen["status"]
+        with pytest.raises(subprocess.TimeoutExpired):
+            bystander.wait(timeout=0.5)
+    finally:
+        bystander.kill()
+        bystander.wait()
+
+
+# Recheck 41 (partly)
+def test_colon_graphene_ask_gives_the_planner_the_sentence_alone(repo, monkeypatch):
+    proposed(repo)
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    watch(repo, ["colon", *"graphene ask add a login page", "enter"])
+    assert asked == [["ask", "add a login page"]]
+
+
+# Recheck 42 (fixed)
+def test_a_title_that_starts_with_a_dash_is_a_title_not_an_option(repo):
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["j", "a", *"--dry-run for deploys", "enter"])
+    with Store.open(repo) as store:
+        [new] = [n for n in plan.nodes(store) if n.title == "--dry-run for deploys"]
+    assert new.parent == "api" and "✗" not in seen["status"]
+
+
+# Recheck 43 (partly)
+def test_at_80_columns_a_leaf_that_came_back_says_why_and_its_keys_before_its_contract(repo):
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        wanted = {"path": "migrations/001.sql"}
+        store.log_node("schema", plan._now(), "denied", None, bot.session_id, None, wanted)
+        plan.release(store, "schema", bot, "the column needs a migration")
+    seen, _ = watch(repo, ["G"])
+    top = [line.strip() for line in seen["detail"].splitlines()[2:6]]
+    assert top[0] == "came back: the column needs a migration" and top[1].startswith("w  widen schema's")
+
+
+# Recheck 70 (fixed)
+def test_colon_ui_is_refused_and_the_screen_still_answers(repo, monkeypatch):
+    """`:ui` ran the page's server on the screen's own thread: no key was read again."""
+    import socketserver
+    import webbrowser
+
+    served = []
+    monkeypatch.setattr(socketserver.BaseServer, "serve_forever", lambda self, *a, **k: served.append(self))
+    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: True)
+    proposed(repo)
+    seen, _ = watch(repo, ["colon", *"ui", "enter", "j"])
+    assert not served and "`graphene ui` takes a terminal of its own" in seen["status"]
+    assert seen["cursor"] == "ids"  # j after it was taken
+
+
+# Recheck 76 (fixed)
+def test_visual_from_a_sub_goal_accepts_it_and_its_leaves_with_no_refusal(repo):
+    """`V j j y` on api: accepting api accepted ids and docs, and then their own accepts said ✗."""
+    proposed(repo)
+    seen, _ = watch(repo, ["V", "j", "j", "y"])
+    assert [states(repo)[i] for i in ("api", "ids", "docs", "schema")] == ["open", "open", "open", "proposed"]
+    assert "✗" not in seen["status"] and "graphene plan accept api ids docs" in seen["status"]
+
+
+# Recheck 77 (partly)
+def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
+    """Review finding 77: the README embedded docs/assets/watch.gif, which no commit held."""
+    import re
+    import subprocess
+    from pathlib import Path
+
+    import graphene_debrief
+
+    root = Path(graphene_debrief.__file__).resolve().parents[2]
+    listed = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True)
+    held = set(listed.stdout.split())
+    links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)", (root / "README.md").read_text(encoding="utf-8"))
+    assert "docs/assets/watch.gif" in links and not [p for p in links if p not in held]

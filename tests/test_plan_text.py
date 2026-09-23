@@ -303,3 +303,26 @@ def test_done_leaves_are_written_with_when(store, repo):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 53 (partly)
+def test_a_check_that_can_pass_is_not_called_unreachable(repo):
+    need = plan.Node("pdf", "the renderer", scope=["tests/pdf/**"])
+    for check, everything in (
+        ("python3 -m pytest tests/pdf/test_render.py -q", [need]),  # what a need writes
+        ("curl -sf localhost:8000/api/health", []),
+        ("cd web && npx jest src/App.test.js", []),
+        ("make build && test -f dist/app.js", []),
+    ):
+        node = plan.Node("n", "t", scope=["lib/**"], check=check, needs=["pdf"])
+        assert plan.unreachable(node, ["web/src/App.test.js"], repo, everything) == [], check
+
+
+# Recheck 55 (fixed)
+def test_a_sub_goal_whose_children_are_all_proposals_is_not_asked_the_leaf_rule(store):
+    T.apply(store, "- the API  [api]\n    check: true\n  ? endpoint  [ep]\n      scope: src/**\n"
+                   "      check: true\n", ALEX, None)  # fmt: skip
+    assert plan.edit(store, "api", {"title": "the public API"}, ALEX).title == "the public API"

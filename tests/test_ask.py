@@ -165,3 +165,83 @@ def test_ask_lists_the_repo_before_it_takes_the_write_lock(repo, tmp_path, monke
     said = person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch))
     assert said.exit_code == 0, said.output
     assert locked and not any(locked)
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 54 (fixed)
+def test_a_planners_check_naming_a_path_nothing_can_make_is_warned_about_on_ask_and_accept(
+    repo, tmp_path, monkeypatch
+):
+    source = GOOD.replace("grep -q ids api.py", "python3 -m pytest test/test_ids.py -q")
+    said = person("ask", "ids", "--with", planner(tmp_path, source, monkeypatch))
+    assert said.exit_code == 0 and "warning: ids's check names test/test_ids.py" in said.stderr
+    assert "warning: ids's check names test/test_ids.py" in person("plan", "accept").stderr
+
+
+# Recheck 61 (fixed)
+def test_a_planner_with_no_vendor_mark_is_an_agent_and_not_the_person(repo):
+    """With only GRAPHENE_PLANNER in its shell, a planner took a leaf and added one straight into the
+    plan, and the log said the person had."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    planner_env = {"GRAPHENE_PLANNER": "1"}
+    said = runner.invoke(build(), ["node", "start", "ids"], env=planner_env)
+    assert said.exit_code == 1 and "you are the planner" in said.stderr
+    text = "- divide  [div]\n    scope: api.py\n    check: true\n"
+    assert runner.invoke(build(), ["plan", "propose", "-"], env=planner_env, input=text).exit_code == 0
+    with Store.open(repo) as store:
+        assert plan.get(store, "ids").state == "open"
+        div = plan.get(store, "div")
+        assert div.state == PROPOSED and div.proposed_by == "planner"
+
+
+# Recheck 63 (fixed)
+def test_the_default_planner_reads_and_has_none_of_the_persons_mcp_servers():
+    argv = A.command_for(A.DEFAULT_PLANNER, "the prompt", "s1", False)
+    assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob" and "--strict-mcp-config" in argv
+
+
+# Recheck 64 (fixed)
+def test_a_plan_block_is_found_among_the_other_blocks_a_model_prints(repo):
+    block = "```plan\n? subtract  [sub]\n    scope: calc.py\n```"
+    typed_first = (
+        "I read calc.py:\n```python\ndef add(a, b):\n    return a + b\n```\nHere is the plan:\n" + block
+    )
+    untyped_after = block + "\nPrune it with:\n```\ngraphene watch\n```\n"
+    for said in (typed_first, untyped_after):
+        assert A.proposal_in(said) == "? subtract  [sub]\n    scope: calc.py\n"
+
+
+# Recheck 66 (partly)
+def test_asking_again_after_a_drop_gives_a_reused_id_a_new_one(repo, tmp_path, monkeypatch):
+    assert person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    person("node", "drop", "users-api")  # with ids under it; the prompt shows neither again
+    again = person("ask", "ids, again", "--with", planner(tmp_path, GOOD, monkeypatch))
+    assert again.exit_code == 0, again.output
+    with Store.open(repo) as store:
+        alive = [n for n in plan.nodes(store) if n.state == PROPOSED]
+    assert sorted(n.title for n in alive) == ["the users API", "users returns ids"]
+    assert not {"ids", "users-api"} & {n.id for n in alive}
+
+
+# Recheck 73 (fixed)
+def test_the_planner_is_refused_a_write_before_anything_is_accepted(repo, monkeypatch):
+    """`ask` is first used on an empty plan, and there the hooks let a planner with write tools write."""
+    import io
+
+    from graphene_debrief.sources.claude_code import hook_main
+
+    def told(command):
+        monkeypatch.setenv("GRAPHENE_PLANNER", "1")
+        event = {"session_id": "p1", "cwd": str(repo), "hook_event_name": "PreToolUse", "tool_name": "Bash",
+                 "tool_input": {"command": command}}  # fmt: skip
+        out = io.StringIO()
+        hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=out)
+        monkeypatch.delenv("GRAPHENE_PLANNER")
+        return out.getvalue()
+
+    assert "you are the planner" in told("echo x > api.py")  # nothing planned yet
+    proposal = "- ids  [ids]\n    scope: api.py\n    check: true\n"
+    assert runner.invoke(build(), ["plan", "propose", "-"], env=AGENT_ENV, input=proposal).exit_code == 0
+    assert "you are the planner" in told("echo x > api.py")  # a proposal only: nothing in force

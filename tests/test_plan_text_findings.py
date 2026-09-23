@@ -915,3 +915,74 @@ def test_a_check_that_changes_directory_by_pushd_prefix_or_dash_c_is_not_judged(
     ):
         node = plan.Node("n", "t", scope=["lib/**"], check=check)
         assert plan.unreachable(node, ["web/src/App.test.js"], repo) == [], check
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 45 (fixed)
+def test_accepting_a_planners_tree_never_replaces_the_persons_own_goal(store):
+    plan.set_goal(store, "my own goal: invoices as PDF", ALEX)
+    T.apply(
+        store,
+        "goal: the planner's sentence\n- render one invoice  [render]\n    scope: src/**\n    check: true\n",
+        BOT,
+        None,
+    )
+    text, opened = T.render(store)
+    assert T.apply(store, text.replace("? render", "- render"), ALEX, opened) == ["accepted render"]
+    assert (plan.goal(store), store.meta("goal:proposed")) == ("my own goal: invoices as PDF", None)
+
+
+# Recheck 46 (fixed)
+def test_deleting_the_proposed_goal_line_declines_it_when_the_tree_is_accepted(store):
+    T.apply(
+        store,
+        "goal: rewrite everything in Rust\n- render one invoice  [render]\n    scope: src/**\n    check: true\n",
+        BOT,
+        None,
+    )
+    text, opened = T.render(store)
+    saved = "\n".join(line for line in text.splitlines() if not line.startswith("goal:")).replace(
+        "? render", "- render"
+    )
+    assert T.apply(store, saved, ALEX, opened) == ["the proposed goal was dropped", "accepted render"]
+    assert (plan.goal(store), store.meta("goal:proposed")) == ("", None)
+
+
+# Recheck 47 (partly)
+def test_a_dropped_trees_goal_is_not_adopted_when_another_planners_leaf_is_accepted(store):
+    one, two = Caller("planner:one", False, "s-one"), Caller("planner:two", False, "s-two")
+    T.apply(
+        store,
+        "goal: rewrite the importer in Rust\n- port the importer  [port]\n    scope: src/**\n    check: true\n",
+        one,
+        None,
+    )
+    T.apply(store, "- fix the date bug  [datefix]\n    scope: lib/**\n    check: true\n", two, None)
+    plan.drop(store, "port", ALEX)
+    plan.accept(store, ["datefix"], ALEX)
+    assert plan.goal(store) == ""
+
+
+# Recheck 57 (fixed)
+def test_a_scope_written_from_the_root_of_the_disk_is_refused_when_it_is_written(store, repo):
+    for glob in ("/src/**", f"{repo}/src/**", "!/src/api/x.py", "../src/**"):
+        with pytest.raises(Refused, match="a scope is a path inside the repo"):
+            plan.propose(store, [{"id": "x", "title": "x", "scope": ["src/**", glob], "check": "true"}], ALEX)
+    with pytest.raises(Refused, match="a scope is a path inside the repo"):  # a planner's, from its Glob tool
+        T.apply(store, f"? fix a  [fixa]\n    scope: {repo}/src/**\n    check: true\n", BOT, None)
+    assert plan.nodes(store) == []
+
+
+# Recheck 60 (fixed)
+def test_an_undo_and_an_edit_meanwhile_are_not_written_over_by_a_text_left_open(store):
+    plan.propose(store, [{"id": "x", "title": "x", "scope": ["src/**"], "check": "true"}], ALEX)
+    with plan.undoable(store, ALEX, "node set x"):
+        plan.edit(store, "x", {"scope": ["src/a/**"]}, ALEX)
+    text, opened = T.render(store)  # opened at revision 2
+    plan.undo(store, ALEX)  # another terminal: undo, then an edit of its own
+    plan.edit(store, "x", {"scope": ["lib/**"]}, ALEX)
+    with pytest.raises(Refused, match="changed by someone else"):
+        T.apply(store, text.replace("scope: src/a/**", "scope: src/a/**, docs/**"), ALEX, opened)
+    assert plan.get(store, "x").scope == ["lib/**"]

@@ -598,3 +598,316 @@ def test_a_planners_with_that_cannot_be_read_is_refused_in_one_line(repo, words)
     said, _ = asked.communicate(timeout=30)
     assert asked.returncode == 1 and "cannot be read as a command: No closing quotation" in said, said
     assert "Traceback" not in said and "ValueError" not in said
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 0 (fixed)
+@pytest.mark.parametrize("act", ["drop", "release"])
+def test_a_leaf_let_go_while_its_check_runs_is_not_made_done(repo, monkeypatch, act):
+    """Review finding 0: `d` or `x` during a check was overwritten by `done` seconds later."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        (repo / "a.txt").write_text("a, by its executor\n")
+        real = plan.run_check
+
+        def person_acts_meanwhile(command, where):
+            plan.drop(store, "a", ALEX) if act == "drop" else plan.release(store, "a", ALEX, "stop")
+            return real(command, where)
+
+        monkeypatch.setattr(plan, "run_check", person_acts_meanwhile)
+        with pytest.raises(Refused, match="while its check ran"):
+            plan.finish(store, "a", BOT)
+        assert plan.get(store, "a").state == (plan.DROPPED if act == "drop" else OPEN)
+
+
+# Recheck 1 (partly)
+def test_a_dead_runs_executor_is_stopped_by_the_sweep_and_cannot_finish_the_leaf_later(repo, monkeypatch):
+    """Review finding 1: a closed terminal left the executor working; the next run gave the leaf to a
+    second one, and the orphan's `graphene node done` finished it."""
+    orphan = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    try:
+        with Store.open(repo) as store:
+            plan.propose(store, [leaf("a", "a.txt")], ALEX)
+            plan.start(store, "a", Caller("run:claude", False, "s1"), repo)
+            began = R._started(orphan.pid)  # recorded beside the pid, as a run does
+            recorded = {"run_pid": dead.pid, "pid": orphan.pid, "pid_start": began, "attempt": 1}
+            store.log_node("a", plan._now(), "attempt", "run:claude", "s1", None, recorded)
+            R.sweep(store, lambda _: None)
+            orphan.wait(timeout=10)  # stopped before the leaf was handed back
+            plan.start(store, "a", Caller("run:claude", False, "s2"), repo)
+            (repo / "a.txt").write_text("the orphan's work\n")
+            monkeypatch.setenv("GRAPHENE_NODE", "a")
+            monkeypatch.setenv("GRAPHENE_ATTEMPT", "s1")
+            with pytest.raises(Refused, match="is held by"):
+                plan.finish(store, "a", plan.caller())
+    finally:
+        orphan.kill()
+
+
+# Recheck 2 (partly)
+def test_ctrl_c_while_a_leaf_lands_aborts_the_merge_and_parks_the_leaf(repo, monkeypatch):
+    """Review finding 2: the leaf stayed `done`, neither landed nor parked, the checkout mid-merge."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+    real = R._git
+
+    def interrupted(where, *args, ok=False):
+        if "merge" in args and args[-1] == "graphene/a":  # Ctrl-C lands while git merges (a hook runs)
+            real(where, "merge", "--no-ff", "--no-commit", "graphene/a")
+            raise KeyboardInterrupt
+        return real(where, *args, ok=ok)
+
+    monkeypatch.setattr(R, "_git", interrupted)
+    writes_a = executor(repo, "import pathlib; pathlib.Path('a.txt').write_text('a, by its executor\\n')\n")
+    with pytest.raises(KeyboardInterrupt):
+        R.run_parallel(lambda: Store.open(repo), repo, repo, 2, writes_a, say=lambda _: None)
+    assert not (repo / ".git" / "MERGE_HEAD").exists() and git(repo, "status", "--porcelain") == ""
+    assert states(repo) == {"a": REVIEW, "b": OPEN}
+    assert "a, by its executor" in git(repo, "show", "graphene/a:a.txt")
+
+
+# Recheck 3 (partly)
+def test_a_need_done_and_committed_on_another_branch_is_not_here(repo):
+    """Review finding 3: a need committed in another working tree counted as here, and b ran without it."""
+    other = repo.parent / "feature"
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(other), "HEAD")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", ALEX, other)
+        (other / "a.txt").write_text("A IS DONE\n")
+        plan.finish(store, "a", ALEX)
+        git(other, "commit", "-qam", "a, on feature")
+        b = plan.get(store, "b")
+        [away] = plan.not_here(store, b, repo, committed=True)
+        assert away.startswith(f"a (done in {os.path.realpath(other)}") and "a.txt" in away
+        git(repo, "merge", "-q", "feature")
+        assert plan.not_here(store, b, repo, committed=True) == []
+
+
+# Recheck 4 (partly)
+def test_a_landed_leaf_does_not_excuse_a_held_nodes_own_edit_to_the_same_file(repo):
+    """Review finding 4: any path a leaf landed was excused by name, whoever else changed it."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("p", "p.txt"), leaf("a", "a.txt")], ALEX)
+        plan.start(store, "p", BOT, repo)
+        (repo / "a.txt").write_text("landed by a run\n")
+        git(repo, "commit", "-qam", "a landed")
+        store.log_node("a", plan._now(), "landed", "graphene run", None, None,
+                       {"commit": plan.head(repo), "into": str(repo), "paths": ["a.txt"]})  # fmt: skip
+        (repo / "p.txt").write_text("p\n")
+        (repo / "a.txt").write_text("landed by a run\nand p's agent, outside its scope\n")
+        with pytest.raises(Refused, match=r"changed outside its scope \(p.txt\): a.txt"):
+            plan.finish(store, "p", BOT)
+
+
+# Recheck 5 (partly)
+@pytest.mark.parametrize("parallel", ["1", "2"])
+def test_a_with_that_cannot_be_read_is_refused_before_anything_starts(repo, parallel):
+    """Review finding 5: bad quoting in --with was a traceback, and --parallel had cut a worktree."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    run = graphene_run(repo, "--with", "my-agent --system \"it's fine", "--parallel", parallel)
+    said, _ = run.communicate(timeout=30)
+    assert run.returncode == 1 and "cannot be read as a command: No closing quotation" in said
+    assert "ValueError" not in said and states(repo) == {"a": OPEN}
+    assert len(git(repo, "worktree", "list").splitlines()) == 1
+
+
+# Recheck 6 (partly)
+def test_a_parked_leaf_merged_by_hand_and_signed_off_lets_its_dependant_start(repo):
+    """Review finding 6: the printed recipe (`git merge graphene/a`, then signoff) left b waiting for ever."""
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", BOT, tree)
+        (tree / "a.txt").write_text("a, in its worktree\n")
+        R.park(store, tree, plan.finish(store, "a", BOT), lambda _: None)
+        git(repo, "merge", "-q", "graphene/a")
+        plan.signoff(store, "a", ALEX, checkout=repo)
+        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) == []
+        assert plan.start(store, "b", BOT, repo).state == RUNNING
+
+
+# Recheck 7 (partly)
+def test_a_leaf_a_live_parallel_run_has_just_started_is_not_swept(repo):
+    """Finding 7: another run's sweep took a leaf started in its worktree before its attempt was logged."""
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", Caller("run:claude", False, "s1"), tree)
+        lock = repo / ".graphene" / "run.lock"
+        lock.write_text(str(os.getppid()))  # a live `graphene run --parallel` holds the repo
+        said = []
+        R.sweep(store, said.append, repo)
+        assert plan.get(store, "a").state == RUNNING and said == []
+        lock.unlink()  # its run gone: now it is swept
+        R.sweep(store, said.append, repo)
+        assert plan.get(store, "a").state == OPEN and "handed back" in said[0]
+
+
+# Recheck 8 (fixed)
+def test_a_second_ctrl_c_while_the_executor_takes_its_term_still_hands_the_leaf_back(repo):
+    """Finding 8: in place, a second Ctrl-C during the wait for the executor escaped the hand-back."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    stubborn = (
+        "import os, pathlib, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, lambda *a: (time.sleep(3), sys.exit(0)))  # it ends its turn first\n"
+        "pathlib.Path('pid.txt').write_text(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    run = graphene_run(repo, "--with", executor(repo, stubborn))
+    assert wait_for(lambda: (repo / "pid.txt").exists() and len(R_attempts(repo)) == 1)
+    pid = int((repo / "pid.txt").read_text())
+    run.send_signal(signal.SIGINT)
+    time.sleep(1)
+    run.send_signal(signal.SIGINT)  # impatient: the executor has not stopped yet
+    said, _ = run.communicate(timeout=30)
+    assert run.returncode == 130 and states(repo) == {"a": OPEN}, said
+    assert "a handed back: the run was stopped" in said
+    assert wait_for(lambda: not R._alive(pid), 15)
+
+
+# Recheck 10 (fixed)
+def test_a_need_committed_here_is_here_while_the_person_edits_the_same_file(repo):
+    """Finding 10: a dirty path the need touched was read as the need's own work, uncommitted."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", ALEX, repo)
+        (repo / "a.txt").write_text("a, done in place\n")
+        plan.finish(store, "a", ALEX)
+        git(repo, "commit", "-qam", "a")
+        with open(repo / "a.txt", "a") as f:
+            f.write("the person, typing on\n")
+        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) == []
+
+
+# Recheck 13 (fixed)
+def test_two_runs_of_one_leaf_in_the_same_second_keep_both_logs(repo, monkeypatch):
+    """Finding 13: the log was named to the second, so the second run overwrote the first's."""
+    monkeypatch.setattr(plan, "_now", lambda: "2026-09-23T07:43:29.000Z")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        quiet = executor(repo, "import os; print('executor', os.getpid())")
+        for _ in range(2):
+            R.run_plan(store, repo, quiet, 1, None, lambda _: None, repo / ".graphene" / "runs")
+        logs = [e["detail"]["log"] for e in store.node_log("a", ("attempt",))]
+    assert len(logs) == 2 and len(set(logs)) == 2
+    assert len({Path(p).read_text() for p in logs}) == 2
+
+
+# Recheck 50 (fixed)
+def test_a_leaf_widened_after_a_hand_back_starts_again_over_its_own_first_attempt(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        (repo / "a.txt").write_text("tried\n")
+        (repo / "b.txt").write_text("tried too\n")
+        plan.release(store, "a", BOT, "it needs b.txt too")
+        plan.widen(store, "a", [], ALEX)  # the offer, taken
+        assert plan.start(store, "a", BOT, repo).state == RUNNING
+
+
+# Recheck 51 (fixed)
+def test_the_wait_on_offer_never_names_a_node_that_already_waits_on_the_leaf(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("client", "a.txt"), leaf("server", "b.txt", needs=["client"]),
+                             leaf("c", "c.txt")], ALEX)  # fmt: skip
+        plan.start(store, "client", BOT, repo)
+        plan.release(store, "client", BOT, "the endpoint lives in server, and c must land first")
+        [(key, _, argv)] = plan.offers(store, plan.get(store, "client"))
+        assert (key, argv) == ("n", ["node", "set", "client", "--needs", "c"])
+        assert plan.edit(store, "client", {"needs": ["c"]}, ALEX).needs == ["c"]  # taken, not refused
+
+
+# Recheck 52 (partly)
+def test_a_path_with_braces_is_not_offered_to_a_scope_that_would_refuse_it(repo):
+    (repo / "{{slug}}").mkdir()
+    (repo / "{{slug}}" / "setup.py").write_text("x\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a cookiecutter template")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("x", "a.txt")], ALEX)
+        plan.start(store, "x", BOT, repo)
+        (repo / "{{slug}}" / "setup.py").write_text("y\n")
+        plan.release(store, "x", BOT, "the template's setup.py had to change")
+        assert plan.offers(store, plan.get(store, "x")) == []
+
+
+# Recheck 56 (partly)
+def test_a_persons_edit_asks_git_before_the_write_lock_is_taken(repo, monkeypatch):
+    """node add/set and plan propose listed the repo's files under the lock, and an agent's hook that
+    came meanwhile gave up after a quarter of a second and let its out-of-scope write through."""
+    import sqlite3
+
+    from typer.testing import CliRunner
+
+    from graphene_debrief.cli import build
+
+    def person(*args, input=None):
+        return CliRunner().invoke(build(), list(args), env={"GRAPHENE_AS": "person:alex"}, input=input)
+
+    assert person("node", "add", "a", "--id", "a", "--scope", "a.txt", "--check", "true").exit_code == 0
+    real, seen = plan._git, []
+
+    def asked(checkout, *args):
+        db = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0, isolation_level=None)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("ROLLBACK")
+            seen.append(False)
+        except sqlite3.OperationalError:
+            seen.append(True)  # the plan's write lock is held while git is asked
+        finally:
+            db.close()
+        return real(checkout, *args)
+
+    monkeypatch.setattr(plan, "_git", asked)
+    assert person("node", "add", "b", "--id", "b", "--scope", "b.txt", "--check", "true").exit_code == 0
+    assert person("node", "set", "b", "--scope", "b.txt", "--scope", "c.txt").exit_code == 0
+    text = "- c  [c]\n    scope: c.txt\n    check: true\n"
+    assert person("plan", "propose", "-", input=text).exit_code == 0
+    assert seen and not any(seen)
+
+
+# Recheck 58 (partly)
+def test_a_sibling_once_taken_is_offered_no_more(repo):
+    """After `b` the leaf still offered w and b, and the plan said it waited on the person."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        store.log_node("a", plan._now(), "denied", None, BOT.session_id, None, {"path": "src/util.py"})
+        plan.release(store, "a", BOT, "it needs src/util.py")
+        assert [k for k, _, _ in plan.offers(store, plan.get(store, "a"))] == ["w", "b"]
+        plan.sibling(store, "a", [], ALEX)
+        assert plan.offers(store, plan.get(store, "a")) == []
+
+
+# Recheck 59 (fixed)
+def test_a_check_naming_a_file_git_does_not_track_is_warned_about(repo):
+    """A worktree cut for --parallel has no untracked file, so that check could never pass there."""
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_new.py").write_text("")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("new", "src/**", check="python3 -m pytest -q tests/test_new.py")], ALEX)
+        node = plan.get(store, "new")
+    assert plan.unreachable(node, plan.tracked(repo), repo) == ["tests/test_new.py (on disk, not committed)"]
+
+
+# Recheck 69 (fixed)
+def test_an_executor_does_not_start_a_run_whose_executor_would_be_any_command(repo):
+    assert "Bash(graphene *)" not in R.DEFAULT_WITH and "Bash(graphene node *)" in R.DEFAULT_WITH
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("x", "a.txt")], ALEX)
+    marker = repo.parent / "marker"
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID")}
+    said = subprocess.run([*CLI, "run", "--attempts", "1", "--with", f"sh -c 'touch {marker}'"], cwd=repo,
+                          env={**env, "GRAPHENE_NODE": "x"}, capture_output=True, text=True)  # fmt: skip
+    assert said.returncode == 1 and "does not start runs" in said.stderr and not marker.exists()
