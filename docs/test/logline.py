@@ -3,11 +3,18 @@
 
     docs/test/logline.py <runlog.jsonl> <person|executor> <type> [text] [--mandated]
     docs/test/logline.py <runlog.jsonl> executor result --from-json <claude-output.json>
+    docs/test/logline.py <runlog.jsonl> person edit --edit <before.txt> <after.txt>
 
-`type` is one of prompt, correction, shape, accept, run, review, handwork, result. `--mandated`
-marks a correction the card itself forces on both arms, so restarts can be reported both with it
-and without. `--from-json` reads a `claude -p --output-format json` result and takes its cost,
-turns and session id, so nobody transcribes a number.
+`type` is one of prompt, correction, shape, accept, run, review, handwork, result, and (added 23
+September, for the tree arm) drop, edit, widen, sibling, reopen, and read. `read` is not an act:
+its text is what the person was shown, and only its words are counted. `--mandated` marks a
+correction the card itself forces on both arms, so restarts can be reported both with it and
+without. `--from-json` reads a `claude -p --output-format json` result and takes its cost, turns
+and session id, so nobody transcribes a number.
+
+`--edit` is a text edit of the plan (`E` in `graphene watch`): the logged text is the diff, and
+`typed` is the characters the after-text has that the before-text did not (a character-level diff),
+so a person is counted for what they wrote, not for the lines their editor rewrapped.
 
 With no text and no --from-json, the text is read from standard input, which is how a paragraph
 with quotes and newlines in it gets recorded as it was actually typed.
@@ -15,12 +22,16 @@ with quotes and newlines in it gets recorded as it was actually typed.
 
 from __future__ import annotations
 
+import difflib
 import json
 import sys
 import time
 from pathlib import Path
 
-TYPES = ("prompt", "correction", "shape", "accept", "run", "review", "handwork", "result")
+TYPES = (
+    "prompt", "correction", "shape", "accept", "run", "review", "handwork", "result",
+    "drop", "edit", "widen", "sibling", "reopen", "read",
+)  # fmt: skip
 
 
 def main(argv: list[str]) -> int:
@@ -43,10 +54,17 @@ def main(argv: list[str]) -> int:
             turns=data.get("num_turns", data.get("turns")),
             session_id=data.get("session_id"),
         )
+    elif rest[:1] == ["--edit"]:
+        before, after = (Path(f).read_text(encoding="utf-8") for f in rest[1:3])
+        ops = difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+        entry["typed"] = sum(j2 - j1 for tag, _, _, j1, j2 in ops if tag in ("insert", "replace"))
+        entry["deleted"] = sum(i2 - i1 for tag, i1, i2, _, _ in ops if tag in ("delete", "replace"))
+        diff = difflib.unified_diff(before.splitlines(), after.splitlines(), "before", "after", lineterm="")
+        entry["text"] = "\n".join(diff)
     else:
         text = " ".join(rest) if rest else sys.stdin.read()
         entry["text"] = text
-    entry["chars"] = len(str(entry.get("text") or ""))
+    entry["chars"] = entry.get("typed", len(str(entry.get("text") or "")))
     with runlog.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
     print(f"logged {who} {kind} ({entry['chars']} chars)")
