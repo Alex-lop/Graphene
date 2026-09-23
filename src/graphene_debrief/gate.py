@@ -126,6 +126,37 @@ IN_FORCE = (
 )
 
 
+# A paragraph is a piece of work, and a piece of work becomes a tree before any code: the person
+# reads the agent's understanding of it, prunes it, and runs it. One line is a Tuesday request, done
+# at once (a leaf made from the prompt, decision 18). "just do it" in a paragraph skips the tree.
+PARAGRAPH = 240  # characters: Alex's paragraph on 22 September was 330; his one-line asks, under 100
+_JUST = re.compile(r"\b(just do it|do it now|no plan|without a plan|skip the plan|don'?t plan)\b", re.I)
+TREE_ASK = (
+    "Graphene: the person wrote a paragraph, so this becomes a tree before any code. Read what you need, "
+    "then propose the tree with `graphene plan propose -` in the plan's text (the form shown when this "
+    "session started: sub-goals, leaves with scope: and check:, needs: between leaves that build on each "
+    "other), and stop: tell them it is ready to prune in `graphene watch`, where y accepts and R runs it. "
+    "Writing files waits until they accept (had they wanted it done at once they would have said "
+    "'just do it')."
+)
+TREE_WAIT = (
+    "The person's paragraph becomes a tree before any code: propose it with `graphene plan propose - "
+    "<<'EOF' … EOF` and stop. They prune and accept it in `graphene watch`; its leaves are worked after "
+    "that (`graphene node start <id>`, or R there). Had they wanted it done at once they would have said "
+    "'just do it'"
+)
+
+
+def paragraph(text: str) -> bool:
+    """A piece of work as people write one: a paragraph, not a line, not a slash command, and not
+    what the vendor sends as a prompt on its own (a finished background task, a reminder)."""
+    from .sources.claude_code import _NOT_A_PROMPT
+
+    said = text.strip()
+    made = said.startswith(("/", "<", "[")) or any(tag in said[:200] for tag in _NOT_A_PROMPT)
+    return len(said) >= PARAGRAPH and not _JUST.search(said) and not made
+
+
 def _session_start(store) -> dict | None:
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # started by `graphene run` or `graphene ask`: its prompt is the whole of its task
@@ -184,8 +215,13 @@ def _me(sid: str) -> P.Caller:
 def _on_prompt(store, sid: str, text: str) -> dict | None:
     """A prompt is remembered (the next write may become a leaf made from it) and, when it is a short
     yes, read as the acceptance of what this session proposed, or of the proposals it names."""
-    if os.environ.get("GRAPHENE_NODE"):
-        return None  # an executor `graphene run` started: its prompt is ours, not a person's
+    if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
+        return None  # an executor or a planner Graphene started: its prompt is ours, not a person's
+    routed = paragraph(text) and not _held(store, sid)
+    store.set_meta(f"tree:{sid}", P._now() if routed else None)
+    if routed:
+        store.set_meta(f"prompt:{sid}", None)  # no leaf is made from it: it becomes a tree instead
+        return _context("UserPromptSubmit", TREE_ASK)
     for n in _held(store, sid):
         if n.aside:
             _close(
@@ -303,6 +339,28 @@ def _check_write(
     return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {_how_out(held)}")
 
 
+def _first_write(event: dict, root: Path) -> str | None:
+    """The first repo path a tool call would write, as the hook can tell before it runs; None for a
+    call that writes nothing here (a read, `graphene plan propose -`, a path outside the repo)."""
+    tool = event.get("tool_name")
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+    if tool in WRITE_TOOLS:
+        path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        return _rel(path, root, cwd) if isinstance(path, str) and path else None
+    if tool == "Bash":
+        from .attribute import bash_written_paths
+
+        command = str(tool_input.get("command") or "")
+        if len(command) > PARSED:
+            return None
+        for written, _kind in bash_written_paths(command, Path(cwd or root)):
+            rel = _rel(written, root, cwd) if written.strip() else None
+            if rel is not None and not _ignored(root, rel):
+                return rel
+    return None
+
+
 def decide(store, event: dict, root: Path) -> dict | None:
     """The hook's answer for this event, or None to say nothing."""
     name = event.get("hook_event_name")
@@ -314,6 +372,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
         return _on_prompt(store, sid, str(event.get("prompt") or ""))
     if name == "SessionStart":  # with or without a plan: this is where a paragraph learns to be a tree
         return _session_start(store)
+    if name == "PreToolUse" and store.meta(f"tree:{sid}") and not _held(store, sid):
+        written = _first_write(event, root)
+        if written is not None:
+            store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": "paragraph"})
+            return _deny(TREE_WAIT)
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")

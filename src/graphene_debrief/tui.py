@@ -38,7 +38,7 @@ from . import run as R
 GLYPH = {
     P.PROPOSED: ("?", "bold cyan"),
     P.OPEN: ("○", ""),
-    P.RUNNING: ("▶", "bold yellow"),
+    P.RUNNING: ("●", "bold yellow"),  # not ▶: the tree draws that for a folded branch
     P.REVIEW: ("◆", "bold magenta"),
     P.DONE: ("✓", "green"),
 }
@@ -366,11 +366,9 @@ class Watch(App):
         planner = f"planner: {proposer}" if proposer else "planner: none yet (a session, or :ask)"
         names = sorted({n.executor or "?" for n in running})
         executors = (
-            f"executors: {len(running)} running ({', '.join(names)})"
-            if running
-            else "executors: none running"
+            f"executors: {len(running)} running ({', '.join(names)})" if running else "executors: none"
         )
-        counts = f"{len(leaves)} leaves, {done} done"
+        counts = f"{done}/{len(leaves)} done"
         mode = "VISUAL · " if self.anchor is not None else ""
         said = self.message or "? help · : command · y accept · R run · q quit"
         self.query_one("#status", Static).update(f"{mode}{planner} · {executors} · {counts}\n{said}")
@@ -674,8 +672,19 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
     out.append(f"{node.title}\n", "bold")
     out.append(f"[{node.id}] {node.state}, revision {node.rev}", "dim")
     out.append(f"   {'proposed by ' + node.proposed_by if node.state == P.PROPOSED else ''}\n", "cyan")
-    for depth, line in enumerate(P.trail(store, node)):
-        out.append(f"{'why: ' if depth == 0 else '     '}{'  ' * depth}{line}\n", "dim")
+    if node.state == P.RUNNING:  # while it runs, this is what the person is looking for: first
+        seen = R.live(store, node)
+        out.append(f"running: {seen['executor']}, attempt {seen.get('attempt') or 1}", "bold yellow")
+        if seen.get("idle") is not None:
+            out.append(f", {seen['idle']} s since it did anything", "red" if seen["idle"] > 120 else "")
+        if seen.get("checkout") and ".graphene" in seen["checkout"]:
+            out.append(f"\n  in {seen['checkout'][seen['checkout'].index('.graphene') :]}")
+        if seen.get("last"):
+            out.append(f"\n  last: {seen['last']}")
+        out.append("\n  l its output · x release it\n", "dim")
+    trail = P.trail(store, node)[1 if P.goal(store) else 0 :]  # the goal itself is on the top line
+    for depth, line in enumerate(trail):
+        out.append(f"{'under: ' if depth == 0 else '       '}{'  ' * depth}{line}\n", "dim")
     out.append("\n")
     if not under.get(node.id):
         out.append("scope  ", "bold")
@@ -703,17 +712,6 @@ def detail(store, node: P.Node, root: Path, files: list[str] | None = None) -> T
         out.append(f"\n{node.goal}\n")
     for note in T.notes(store, node, by_id, under):
         out.append(f"\n{note}", "magenta" if note.startswith(("handed back", "it wanted")) else "")
-    if node.state == P.RUNNING:
-        seen = R.live(store, node)
-        out.append("\n\nrunning", "bold yellow")
-        out.append(f"  {seen['executor']}, attempt {seen.get('attempt') or 1}")
-        if seen.get("checkout") and ".graphene" in seen["checkout"]:
-            out.append(f"\n  in {seen['checkout'][seen['checkout'].index('.graphene') :]}")
-        if seen.get("last"):
-            out.append(f"\n  last: {seen['last']}")
-        if seen.get("idle") is not None:
-            out.append(f"\n  {seen['idle']} s since it did anything", "red" if seen["idle"] > 120 else "")
-        out.append("\n  l its output · x release it", "dim")
     offers = P.offers(store, node)
     if offers:
         out.append("\n\nit came back; one key fixes it:\n", "bold red")

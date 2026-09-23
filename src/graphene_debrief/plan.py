@@ -243,8 +243,10 @@ def validate(nodes: list[Node], fresh: set[str] | None = None) -> None:
     for n in by_id.values():
         if not n.title.strip():
             raise Refused(f"{n.id}: a node needs a title")
-        if (fresh is None or n.id in fresh) and any("\n" in g or "\r" in g for g in n.scope):
-            raise Refused(f"{n.id}: a scope glob has a line break in it; one glob a path, no line breaks")
+        if fresh is None or n.id in fresh:
+            _globs_ok(n)
+            if "#" in n.owner:  # a name; the text reads what follows a # as a note
+                raise Refused(f"{n.id}: an owner is a name ({n.owner!r} has a # in it)")
         if n.parent is not None and n.parent not in by_id:
             raise Refused(f"{n.id} is under {n.parent}, which is not in the plan")
         if n.parent is not None and by_id[n.parent].aside:
@@ -286,6 +288,22 @@ def validate(nodes: list[Node], fresh: set[str] | None = None) -> None:
             raise Refused(f"the plan has a cycle: {n.id} is under itself")
     for i in by_id:
         visit(i, ())
+
+
+def _globs_ok(node: Node) -> None:
+    """A glob is refused when it is written if it could not be read back from the plan's text as it
+    is, or if it means nothing to the matcher (braces, a word for none)."""
+    for glob in node.scope:
+        if not glob.strip() or len(glob.splitlines()) > 1 or any(ord(c) < 32 for c in glob):
+            raise Refused(
+                f"{node.id}: a scope glob is empty or has a line break or a control character in it"
+            )
+        if "{" in glob or "}" in glob:
+            raise Refused(f"{node.id}: braces are not read in a scope ({glob}); list each glob instead")
+        if "`" in glob or glob.strip().lower() in ("none", "n/a", "-"):
+            raise Refused(
+                f"{node.id}: {glob!r} is not a path; a leaf with nothing to write has no leaf's work"
+            )
 
 
 def order(nodes: list[Node]) -> list[Node]:
@@ -535,7 +553,7 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
         title=str(raw.get("title") or ""),
         goal=str(raw.get("goal") or ""),
         scope=[scope] if isinstance(scope, str) else [str(s) for s in scope],
-        check=str(raw["check"]) if raw.get("check") else None,
+        check=str(raw["check"]).strip() or None if raw.get("check") else None,  # blank is no check
         signoff=bool(raw.get("signoff")),
         needs=[needs] if isinstance(needs, str) else [str(n) for n in needs],
         owner=owner,
@@ -620,6 +638,13 @@ def unreachable(node: Node, files: list[str], root: str | Path) -> list[str]:
             continue
         out.append(word)
     return out
+
+
+def _owner(name: str) -> str:
+    """An owner as the one it names: 'Agent' is the agent, 'Me' is me, and the person's own name in
+    any case is the person; else as written."""
+    low = name.lower()
+    return low if low in (AGENT, "me", person_name()) else name
 
 
 def propose_goal(store, text: str, who: Caller, now: str | None = None) -> bool:
@@ -792,6 +817,12 @@ def propose(
                     "no '..', and not ending in '.' or '.lock'"
                 )
             taken.add(node.id)
+            node.owner = _owner(node.owner)
+            if not who.person and node.owner not in (AGENT, "me", person_name()):
+                raise Refused(
+                    f"{node.id}: its owner is a person's name, and {node.owner!r} is not the person here. An "
+                    "agent's node has no owner; owner 'me' is the person"
+                )
             if node.owner == "me":
                 node.owner = who.name if who.person else person_name()
             node.state = OPEN if who.person and node.id not in proposals else PROPOSED
@@ -872,6 +903,7 @@ def edit(
         if node.state in (DONE, *GONE):
             raise Refused(f"{node.id} is {node.state}; `graphene node reopen {node.id}` first")
         fresh = from_dict({**{f: getattr(node, f) for f in EDITABLE}, **changes, "id": node.id}, node.id)
+        fresh.owner = _owner(fresh.owner)
         if fresh.owner == "me":
             fresh.owner = who.name
         before = {f: getattr(node, f) for f in EDITABLE}
@@ -897,7 +929,9 @@ def edit(
     return node
 
 
-def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
+def drop(store, node_id: str, who: Caller, now: str | None = None, waiting: bool = True) -> Node:
+    """Take a node out of the plan, with everything under it. ``waiting``: refuse when a node left in
+    the plan waits on it (a caller dropping several at once asks that of all of them together)."""
     now = now or _now()
     with store.claim():
         node = get(store, node_id)
@@ -909,13 +943,15 @@ def drop(store, node_id: str, who: Caller, now: str | None = None) -> Node:
         if held and not who.person:
             raise Refused(f"{held[0].id} is running ({held[0].executor}); `graphene node release` first")
         gone = {n.id for n in going}
-        waiting = [n for n in everything if n.id not in gone and gone & set(n.needs) and n.state not in GONE]
-        if waiting:
-            told = "; ".join(f"{n.id} waits on {', '.join(sorted(gone & set(n.needs)))}" for n in waiting)
-            raise Refused(f"{told}; change what {'it needs' if len(waiting) == 1 else 'they need'} first")
+        left = [n for n in everything if n.id not in gone and gone & set(n.needs) and n.state not in GONE]
+        if left and waiting:
+            told = "; ".join(f"{n.id} waits on {', '.join(sorted(gone & set(n.needs)))}" for n in left)
+            raise Refused(f"{told}; change what {'it needs' if len(left) == 1 else 'they need'} first")
         for n in going:
             n.state = DROPPED
             _save(store, n, "dropped", who, now)
+        if store.meta("goal:proposed") and not nodes(store, (PROPOSED,)):
+            store.set_meta("goal:proposed", None)  # the planner's tree is gone, and its sentence with it
         _settle(store, who, now)
     return node
 
@@ -1679,6 +1715,12 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
         for key, (before, _) in act["meta"].items():
             store.set_meta(key, before)
+        try:
+            # never put back a node whose parent or need is gone since; a state the plan was just in
+            # is not asked the rules for a new node
+            validate(nodes(store), set())
+        except Refused as no:
+            raise Refused(f"cannot undo {act['what']!r}: {no}") from None
         if "goal" in act["meta"]:
             back, was = act["meta"]["goal"]
             store.log_node("*", now, "goal", who.label, None, None, {"note": back or "", "was": was or ""})

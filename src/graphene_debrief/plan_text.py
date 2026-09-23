@@ -37,28 +37,31 @@ from pathlib import Path
 from . import plan as P
 
 KEYS = ("scope", "check", "needs", "owner", "signoff", "goal")
-# Other spellings of a key that are read as it: they say nothing else (and a needs: value that is not
-# an id is refused anyway, so prose read as one does not pass).
+# Other spellings of a key that are read as it (compared lower case, with "_" and "-" as spaces): they
+# say nothing else, and a needs: value that is not an id is refused by its line anyway.
 _SAME = {
-    "sign-off": "signoff", "sign off": "signoff", "sign_off": "signoff", "need": "needs",
-    "depends on": "needs", "depends_on": "needs", "depends": "needs", "requires": "needs",
-    "after": "needs", "blocked by": "needs", "description": "goal",
+    "sign off": "signoff", "need": "needs", "depends on": "needs", "depends": "needs",
+    "requires": "needs", "after": "needs", "blocked by": "needs", "waits on": "needs",
+    "wait on": "needs", "prerequisites": "needs", "prereqs": "needs", "description": "goal",
 }  # fmt: skip
 # Spellings that are refused with the key they probably mean: their values are paths or commands, and
 # a guess would widen a scope or run a sentence as a check.
 _NEAR = {
     "paths": "scope", "path": "scope", "files": "scope", "file": "scope", "writes": "scope",
-    "checks": "check", "test": "check", "tests": "check", "verify": "check", "done when": "check",
-    "done": "check", "acceptance": "check", "deps": "needs", "dependencies": "needs", "assignee": "owner",
+    "scopes": "scope", "allowed paths": "scope", "checks": "check", "test": "check", "tests": "check",
+    "verify": "check", "done when": "check", "done": "check", "acceptance": "check",
+    "test command": "check", "deps": "needs", "dependencies": "needs", "assignee": "owner",
 }  # fmt: skip
-_MARK = re.compile(r"(?P<mark>[-*+?]|\d{1,3}[.)]|•)\s+(?P<rest>.*)")
-_ID_AT_END = re.compile(r"\s+\[(?P<id>[^\[\]]{1,40})\](?P<after>\s*(?::|\([^()]*\))?)\s*$")
-_ID_FIRST = re.compile(r"\[(?P<id>[A-Za-z0-9][\w.-]{0,31})\]\s+(?P<title>.+)")
+_MARK = re.compile(r"(?P<mark>[-*+?•])\s+(?P<rest>.*)")
+_NUMBERED = re.compile(r"\d{1,3}[.)]\s+\S.*")
+_ID_AT_END = re.compile(r"\s+\[(?P<id>[^\[\]]{1,40})\](?P<after>\s*:|\s+\([^()]*\))?\s*$")
 _VALID_ID = re.compile(r"[A-Za-z0-9][\w.-]{0,31}")
 _KEY = re.compile(
-    r"(?:\*\*|__)?(?P<key>[A-Za-z][A-Za-z _-]{0,15}?)(?:\*\*|__)?\s*[:=](?:\*\*|__)?(?:\s+|$)(?P<value>.*)"
+    r"(?:\*\*|__|`|_)?(?P<key>[A-Za-z][A-Za-z _-]{0,15}?)(?:\*\*|__|`|_)?\s*[:=](?:\*\*|__)?(?:\s+|$)"
+    r"(?P<value>.*)"
 )
 _BOX = re.compile(r"\[[ xX]\]\s+")
+_FENCE = ("```", "~~~")
 _YES, _NO = ("yes", "y", "true", "on"), ("no", "n", "false", "off", "")
 _NONE = ("none", "n/a", "-", "")
 _SMALL = {"the", "a", "an", "of", "to", "for", "and", "in", "on", "with", "as", "is", "be"}
@@ -90,16 +93,31 @@ class Line:
     goal: list[str] = field(default_factory=list)
     said: set[str] = field(default_factory=set)  # which keys the text wrote at all
     column: int | None = None  # where its own lines start: they all start there
+    at: dict[str, int] = field(default_factory=dict)  # the line each key was written on
+
+
+def _uncomment(value: str) -> str:
+    """A value with a `# note` after it, without the note. A # inside a word (src/c#/) or inside
+    quotes ('docs/#1 notes') stays."""
+    quote = ""
+    for k, char in enumerate(value):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (k == 0 or value[k - 1].isspace()):
+            return value[:k].strip()
+    return value.strip()
 
 
 def _words(value: str, no: int) -> list[str]:
-    """Paths or ids, separated by commas or spaces, quoted when they hold either; `# …` ends them."""
-    lex = shlex.shlex(value, posix=True)
+    """Paths or ids, separated by commas or spaces, quoted when they hold either."""
+    lex = shlex.shlex(_uncomment(value), posix=True)
     lex.whitespace += ","
     lex.whitespace_split = True
-    lex.commenters = "#"
+    lex.commenters = ""
     try:
-        return [w.strip("`") for w in lex if w.strip("`")]
+        return [w for w in lex if w]
     except ValueError as exc:
         raise P.Refused(
             f"line {no}: {exc} (quote a path with a space or a comma in it, and close it)"
@@ -112,47 +130,48 @@ def _key(body: str, near: bool = True) -> tuple[str, str] | None:
     found = _KEY.fullmatch(body)
     if not found:
         return None
-    word = " ".join(found["key"].lower().split())
+    word = " ".join(found["key"].lower().replace("_", " ").replace("-", " ").split())
     if word in KEYS or word in _SAME:
         return _SAME.get(word, word), found["value"].strip()
+    if word == "signoff" or word == "sign off":
+        return "signoff", found["value"].strip()
     if near and word in _NEAR:
         return "?", word
     return None
 
 
 def _node(body: str, no: int) -> tuple[str, str | None, bool] | None:
-    """A node's line: its title, its [id], whether it is a proposal. None when it is not one. A
-    numbered line is a node only when it ends in an [id]; otherwise it says what its node is for."""
+    """A node's line: its title, its [id], whether it is a proposal; None when it is not one. The id
+    is a bracket at the very end of the line; a bracket anywhere else is part of the title."""
     marked = _MARK.fullmatch(body)
     if not marked:
         return None
-    mark, rest = marked["mark"], _BOX.sub("", marked["rest"], count=1)
+    mark, rest = marked["mark"], marked["rest"]
+    box = _BOX.match(rest)  # "- [ ] title": a markdown checkbox, not an id
+    rest = rest[box.end() :] if box else rest
     ident, title = None, rest.strip()
     at_end = _ID_AT_END.search(" " + rest)
-    first = _ID_FIRST.fullmatch(rest)
-    if at_end:
-        if not _VALID_ID.fullmatch(at_end["id"]):
-            raise P.Refused(
-                f"line {no}: [{at_end['id']}] is not an id: letters, digits, '-', '_' and '.', at most 32, "
-                "at the very end of the line"
-            )
-        ident, title = at_end["id"], ((" " + rest)[: at_end.start()] + at_end["after"].lstrip(":")).strip()
-    elif first:
-        ident, title = first["id"], first["title"].strip()
-    if not mark.startswith(("-", "*", "+", "?")):
-        if ident is None:
-            return None  # "1. read the file": a step of what its node should achieve
-        mark = "-"
+    bare = at_end["id"].strip("`*#_ ") if at_end else ""
+    if at_end and _VALID_ID.fullmatch(bare):
+        after = (at_end["after"] or "").strip().removeprefix(":").strip()
+        ident, title = bare, " ".join(filter(None, [(" " + rest)[: at_end.start()].strip(), after]))
+    elif at_end and re.fullmatch(r"[\w./-]+", at_end["id"]):
+        raise P.Refused(
+            f"line {no}: [{at_end['id']}] is not an id: letters, digits, '-', '_' and '.', at most 32, "
+            "at the very end of the line"
+        )
     if not title:
         raise P.Refused(f"line {no}: a node needs a title after its '{mark}'")
     return title, ident, mark == "?"
 
 
-def parse(text: str) -> tuple[str | None, list[Line]]:
+def parse(text: str, strict: bool = False) -> tuple[str | None, list[Line]]:
     """The plan's goal and the node lines, in order. A node's own lines (its contract, and what it
     should achieve) are the lines right under its line, before the next node's, all at one column.
     A line that fits nowhere is refused, by its number, with what to do; it is never given to a node
-    it was not written under."""
+    it was not written under. ``strict``: a text Graphene wrote and a person edited, where a node's
+    lines come once each and in order: a key written twice, or words after the keys, are what a
+    deleted node line leaves behind, and are refused rather than given to the node above."""
     goal: list[str] | None = None
     lines: list[Line] = []
     stack: list[int] = []  # indexes into lines, the node lines still open for children
@@ -160,16 +179,17 @@ def parse(text: str) -> tuple[str | None, list[Line]]:
     for no, raw in enumerate(text.lstrip("﻿").splitlines(), 1):
         body = raw.lstrip(" \t").rstrip()
         indent = len(raw[: len(raw) - len(raw.lstrip(" \t"))].expandtabs(4))  # tabs only where they indent
-        if not body or (body.startswith("#") and not body.startswith("##")) or body.startswith("```"):
+        if not body or (body.startswith("#") and not body.startswith("##")) or body.startswith(_FENCE):
             continue
         if body.startswith("##"):
             raise P.Refused(
                 f"line {no}: a heading is not read; a sub-goal is a '- ' line, its leaves under it"
             )
         marked = _MARK.fullmatch(body)
-        if pending and indent > pending[2] and marked and not _ID_AT_END.search(" " + body):
-            _set(pending[0], pending[1], marked["rest"], no)  # `scope:`, then its paths as a list
-            continue
+        if pending and indent >= pending[2] and not _ID_AT_END.search(" " + body) and not _key(body):
+            if marked or (indent > pending[2] and pending[1] != "check"):
+                _set(pending[0], pending[1], marked["rest"] if marked else body, no)  # its values, listed
+                continue
         pending = None
         as_key = _key(marked["rest"], near=False) if marked else None  # "- scope: src/**" is a key
         node = None if as_key and not _ID_AT_END.search(" " + body) else _node(body, no)
@@ -184,7 +204,7 @@ def parse(text: str) -> tuple[str | None, list[Line]]:
             goal = [*(goal or []), keyed[1]]  # the plan's goal: before any node, or at the left edge
             continue
         if not lines:
-            if goal is not None and indent > 0:
+            if goal is not None and indent > 0 and not keyed and not marked and not _NUMBERED.fullmatch(body):
                 goal.append(body)  # the goal, carried on to the next line
                 continue
             raise P.Refused(
@@ -192,61 +212,97 @@ def parse(text: str) -> tuple[str | None, list[Line]]:
                 "a proposal); its scope:, check: and what it should achieve go indented under it"
             )
         last = lines[-1]
+        name = last.id or last.title
         if indent <= last.indent:
             raise P.Refused(
-                f"line {no}: {body[:40]!r} is not indented under [{last.id or last.title}], the node just "
-                "above it. A node's own lines go right under its line, before its children"
+                f"line {no}: {body[:40]!r} is not indented under [{name}], the node just above it (a Tab "
+                "counts as 4 columns). A node's own lines go right under its line, before its children"
             )
         if last.column is None and indent > last.indent + 4:
             raise P.Refused(
-                f"line {no}: {body[:40]!r} is indented as if under a node whose line is gone: deeper than "
-                f"[{last.id or last.title}]'s own lines would be. Delete it with that node's line, or put "
-                "a node's line above it"
+                f"line {no}: {body[:40]!r} is {indent - last.indent} columns in from [{name}]; a node's own "
+                "lines go 2 to 4 in (a Tab counts as 4). If they were a node's whose line you deleted, "
+                "delete them too"
             )
         last.column = last.column if last.column is not None else indent
         if indent < last.column or (keyed and indent != last.column):
             raise P.Refused(
-                f"line {no}: {body[:40]!r} does not line up with [{last.id or last.title}]'s other lines; "
-                "a node's own lines start at one column"
+                f"line {no}: {body[:40]!r} does not line up with [{name}]'s other lines; a node's own lines "
+                "start at one column (a numbered line is not a node: a node's line starts with '- ')"
             )
         if not keyed:
+            if strict and indent > last.column:
+                raise P.Refused(
+                    f"line {no}: {body[:40]!r} is deeper than [{name}]'s other lines, where Graphene never "
+                    "writes. If you deleted a node's line above it, delete the lines under that line too"
+                )
+            if strict and last.at:
+                raise P.Refused(
+                    f"line {no}: {body[:40]!r} comes after [{name}]'s {', '.join(last.at)}, where Graphene "
+                    "never writes what a node should achieve. If you deleted a node's line above it, delete "
+                    "the lines under that line too; else move this one up"
+                )
             last.goal.append(body)
             continue
-        name, value = keyed
-        if name == "?":
+        key, value = keyed
+        if key == "?":
             raise P.Refused(f"line {no}: '{value}:' is not read; say it with {_NEAR[value]}:")
-        if not value and name in ("scope", "needs", "check"):
-            pending = (last, name, indent)
-        _set(last, name, value, no)
+        if strict and key in last.at and key != "goal":
+            raise P.Refused(
+                f"line {no}: [{name}] has its {key}: on line {last.at[key]} already. If you deleted a node's "
+                "line above it, delete the lines under that line too"
+            )
+        if key != "goal":  # a description written after goal: is still description
+            last.at.setdefault(key, no)
+        if not value and key in ("scope", "needs", "check"):
+            pending = (last, key, indent)
+        _set(last, key, value, no)
     return ("\n".join(goal) if goal is not None else None), lines
 
 
 def _set(line: Line, name: str, value: str, no: int) -> None:
     if name == "scope":
-        words = [w for w in _words(value, no) if w.lower() not in _NONE]
-        braced = next((w for w in words if "{" in w or "}" in w), None)
+        line.scope += [w.strip("`") for w in _words(value, no) if w.strip("`").lower() not in _NONE]
+        braced = next((w for w in line.scope if "{" in w or "}" in w), None)
         if braced:
-            raise P.Refused(f"line {no}: braces are not read in a scope ({braced}); list each glob instead")
-        line.scope += words
+            raise P.Refused(
+                f"line {no}: braces are not read in a scope ({value.strip()}); list each glob instead"
+            )
     elif name == "needs":
-        line.needs += [w for w in _words(value, no) if w.lower() not in _NONE]
+        line.needs += [w.strip("[]") for w in _words(value, no) if w.strip("[]").lower() not in _NONE]
     elif name == "check":
-        if len(value) > 1 and value[0] == value[-1] and value[0] in "`'\"":
-            value = value[1:-1].strip()  # a command quoted as a whole is still the command
+        value = _unquoted(value)
         if value.lower() in _NONE:
             value = ""
         if value and line.check is not None:
             raise P.Refused(f"line {no}: [{line.id or line.title}] has a check already; join them with &&")
         line.check = value or line.check
     elif name == "owner":
-        line.owner = value or P.AGENT
+        line.owner = " ".join(_uncomment(value).split()) or P.AGENT
     elif name == "signoff":
+        value = _uncomment(value)
         if value.lower() not in (*_YES, *_NO):
             raise P.Refused(f"line {no}: signoff is yes or no, not {value!r}")
         line.signoff = value.lower() in _YES
     else:
         line.goal.append(value)
     line.said.add(name)
+
+
+def _unquoted(value: str) -> str:
+    """A command quoted as a whole (`pytest -q`, 'pytest -q') is still the command; one whose first
+    and last words are each quoted ("$PY" -m pytest "tests") is left exactly as written."""
+    value = value.strip()
+    if len(value) > 1 and value[0] == value[-1] == "`" and "`" not in value[1:-1]:
+        return value[1:-1].strip()
+    if len(value) > 1 and value[0] == value[-1] and value[0] in "'\"":
+        try:
+            words = shlex.split(value)
+        except ValueError:
+            return value
+        if len(words) == 1 and words[0] == value[1:-1]:
+            return value[1:-1].strip()
+    return value
 
 
 # -- the plan, written as text ------------------------------------------------------------------------
@@ -275,7 +331,7 @@ def _plain(said: str) -> bool:
     """Would this line, under a node, be read back as what the node should achieve? Else it is
     written after a `goal:`, which reads back as that whatever follows it."""
     marked = _MARK.fullmatch(said)
-    if said.startswith(("#", "```")) or _key(said) or (marked and _key(marked["rest"], near=False)):
+    if said.startswith(("#", *_FENCE)) or _key(said) or (marked and _key(marked["rest"], near=False)):
         return False
     try:
         return _node(said, 0) is None
@@ -352,13 +408,17 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
     else:
         tops = [P.get(store, root)]
         if tops[0].state in P.GONE:
-            raise P.Refused(f"{root} is {tops[0].state}; there is nothing of it to edit")
+            raise P.Refused(
+                f"{root} is {tops[0].state}; there is nothing of it to edit (`graphene plan undo` brings "
+                "back what you dropped last)"
+            )
         lines += [f"# the plan: {line}" for line in _norm_goal(goal)] + ([""] if goal else [])
 
     def emit(n: P.Node, depth: int) -> None:
         pad, inner = "  " * depth, "  " * depth + "    "
         lines.append(f"{pad}{'?' if n.state == P.PROPOSED else '-'} {' '.join(n.title.split())}  [{n.id}]")
-        written[n.id] = {"rev": n.rev, "parent": n.parent, "proposal": n.state == P.PROPOSED, **_stored(n)}
+        shown = {"rev": n.rev, "parent": n.parent, "state": n.state, "proposal": n.state == P.PROPOSED}
+        written[n.id] = {**shown, **_stored(n)}
         lines.extend(f"{inner}# {note}" for note in notes(store, n, by_id, under))
         for said in _norm_goal(n.goal if n.goal != n.title else ""):
             lines.append(f"{inner}{said}" if _plain(said) else f"{inner}goal: {said}")
@@ -369,7 +429,7 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
         if n.needs:
             lines.append(f"{inner}needs: {', '.join(n.needs)}")
         if n.owner != P.AGENT:
-            lines.append(f"{inner}owner: {n.owner}")
+            lines.append(f"{inner}owner: {' '.join(n.owner.split())}")
         if n.signoff:
             lines.append(f"{inner}signoff: yes")
         if not alone:
@@ -410,7 +470,7 @@ def apply(
     a line with the id of a node already in the plan is where the new ones hang). ``alone``: the text
     held one node without its children. Returns one line per change made, for whoever applied it."""
     now = now or P._now()
-    goal, lines = parse(text)
+    goal, lines = parse(text, strict=opened is not None)
     if not lines and goal is None:
         raise P.Refused("the text has no node in it, so nothing was applied")
     everything = {n.id: n for n in P.nodes(store)}
@@ -483,26 +543,49 @@ def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) 
 
 def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
     """What a text says that it probably did not mean, refused with how to say it."""
-    by_index = {id(ln): k for k, ln in enumerate(lines)}
-    for ln in fresh:
+    ids = {ln.id for ln in lines} | set(everything)
+    for k, ln in enumerate(lines):
+        has_kids = any(other.parent == k for other in lines)
+        for need in ln.needs:
+            if need not in ids:
+                raise P.Refused(
+                    f"line {ln.at.get('needs', ln.no)}: needs: {need!r} is not the id of a node (the line "
+                    "was read as needs:, which names the [id]s it waits on)"
+                )
+        if ln not in fresh:
+            continue
         parent = lines[ln.parent] if ln.parent is not None else None
-        has_kids = any(other.parent == by_index[id(ln)] for other in lines)
-        if parent and (parent.scope or parent.check) and not (ln.scope or ln.check or ln.signoff or has_kids):
+        stored = everything.get(parent.id) if parent is not None else None
+        contract = parent is not None and bool(
+            parent.scope or parent.check or (stored is not None and (stored.scope or stored.check))
+        )
+        empty = not (ln.scope or ln.check or ln.signoff or has_kids)
+        if empty and (contract or not who.person):
+            unread = next((g for g in ln.goal if re.match(r"[`*_]*\w[\w ]{0,20}[`*_]*\s*[:=]", g)), None)
             raise P.Refused(
-                f"line {ln.no}: '{ln.title}' is a new node under [{parent.id}] with nothing to do: no scope "
-                f"and no check. If it says what [{parent.id}] should achieve, write it without its '- '"
+                f"line {ln.no}: '{ln.title}' is a new leaf with no scope and no check"
+                + (
+                    f" ('{unread[:30]}' was read as what it should achieve; the keys are scope: and check:)"
+                    if unread
+                    else ""
+                )
+                + (
+                    f". If it says what [{parent.id}] should achieve, write it without its '- '"
+                    if contract
+                    else ""
+                )
             )
-        if not who.person and ln.owner not in (P.AGENT, "me", P.person_name()):
+        if not who.person and P._owner(ln.owner) not in (P.AGENT, "me", P.person_name()):
             raise P.Refused(
                 f"line {ln.no}: owner: names a person, and '{ln.owner}' is not the person here. An agent's "
                 "leaf has no owner: line; owner: me is the person"
             )
     if opened is None:
-        for ln in lines:
+        for k, ln in enumerate(lines):
             node = everything.get(ln.id)
             if node is None:
                 continue
-            differ = [k for k in ln.said if _fields(ln)[k] != _stored(node)[k]]
+            differ = [key for key in ln.said if _fields(ln)[key] != _stored(node)[key]]
             if differ:
                 raise P.Refused(
                     f"line {ln.no}: [{ln.id}] is in the plan already, and this text changes its "
@@ -514,21 +597,26 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
                     f"line {ln.no}: [{ln.id}] sits under {node.parent or 'the goal'} in the plan, not under "
                     f"{parent_of[ln.id]}; only the person moves a node"
                 )
+            if not any(other.parent == k for other in lines) and ln.title != _stored(node)["title"]:
+                raise P.Refused(
+                    f"line {ln.no}: [{ln.id}] is already a node ({_stored(node)['title']!r}); give this line "
+                    "another id, or none"
+                )
         return
     present = {ln.id for ln in lines}
     for k, ln in enumerate(lines):
         base = opened.get(ln.id)
         nxt = lines[k + 1] if k + 1 < len(lines) else None
-        if base and nxt is not None and nxt.parent == k and nxt.id not in everything:
-            # a new line typed right under an existing node's line takes the lines that were the
-            # node's own when they sit where the node's own lines are written (four spaces in)
+        moved_in = nxt is not None and (nxt.id not in opened or opened[nxt.id]["parent"] != ln.id)
+        if base and nxt is not None and nxt.parent == k and moved_in:
+            # a line put right under an existing node's line takes the lines that were the node's own
+            # when they sit where the node's own lines are written (four columns in from its line)
             empty = not (ln.scope or ln.check or ln.goal or ln.needs or ln.signoff or ln.owner != P.AGENT)
             was = base["scope"] or base["check"] or base["goal"] or base["needs"] or base["signoff"]
-            if empty and was and nxt.column == ln.indent + 4:
+            if empty and (was or base["owner"] != P.AGENT) and nxt.column == ln.indent + 4:
                 raise P.Refused(
-                    f"line {nxt.no}: the new line sits between [{ln.id}] and [{ln.id}]'s own lines, so they "
-                    "would become the new line's. Put it after them: a child goes after its parent's scope:, "
-                    "check: and the rest"
+                    f"line {nxt.no}: the line sits between [{ln.id}] and [{ln.id}]'s own lines, so they "
+                    "would become its. Put it after them: a child goes after its parent's own lines"
                 )
         if (
             base
@@ -550,8 +638,12 @@ def _goal(store, goal: str | None, who: P.Caller, now: str, opened: dict | None)
     if goal is None:
         return []
     goal = "\n".join(_norm_goal(goal))
+    if opened is not None and "*goal" not in opened:
+        raise P.Refused(
+            "the plan's goal is edited with the whole plan (`graphene plan edit`), not in a part of it"
+        )
     if opened is not None:
-        was = opened.get("*goal", {}).get("goal", "")
+        was = opened["*goal"]["goal"]
         if goal == was:
             return []
         now_shown = "\n".join(_norm_goal(P.goal(store) or store.meta("goal:proposed") or ""))
@@ -614,7 +706,7 @@ def _stored(node: P.Node) -> dict:
         "scope": list(node.scope),
         "check": _norm_check(node.check),
         "needs": list(node.needs),
-        "owner": node.owner,
+        "owner": " ".join(node.owner.split()),
         "signoff": node.signoff,
     }
 
@@ -669,9 +761,9 @@ def _accepts(store, kept, opened, who, now) -> list[str]:
 
 
 def _drops(store, lines, opened, who, now, alone: bool) -> list[str]:
-    """The nodes whose lines were deleted, dropped: what needs another is dropped first, so deleting
-    both is one save; a node that moved on since the text was opened, or that has nodes under it the
-    text did not show, is refused rather than dropped from under whoever holds it."""
+    """The nodes whose lines were deleted, dropped together: what waits on any of them is asked of
+    the whole set once; a node that moved on since the text was opened, or that has nodes under it
+    the text did not show, is refused rather than dropped from under whoever holds it."""
     present = {ln.id for ln in lines}
     going = [i for i in opened if i != "*goal" and i not in present]
     everything = P.nodes(store)
@@ -680,32 +772,29 @@ def _drops(store, lines, opened, who, now, alone: bool) -> list[str]:
         node, base = by_id[node_id], opened[node_id]
         if node.state in P.GONE:
             continue
-        unseen = [c.id for c in P.below(node_id, everything) if c.id not in opened and c.state not in P.GONE]
-        if (
-            node.rev != base["rev"]
-            or (node.state == P.PROPOSED) != base["proposal"]
-            or node.state == P.RUNNING
-        ):
+        if node.rev != base["rev"] or node.state != base["state"]:
             raise P.Refused(
-                f"[{node_id}], whose lines were deleted, changed since this text was opened (it is "
-                f"{node.state} now); open it again"
+                f"[{node_id}], whose lines were deleted, was changed by someone else since this text was "
+                f"opened (it was {base['state']}, it is {node.state} now)"
             )
+        unseen = [c.id for c in P.below(node_id, everything) if c.id not in opened and c.state not in P.GONE]
         if unseen:
             where = "the node you opened" if alone else "this text"
             raise P.Refused(
                 f"[{node_id}], whose lines were deleted, has {', '.join(unseen[:5])} under it, which {where} "
                 f"did not show; `graphene plan edit {node_id}` shows them, or `graphene node drop {node_id}`"
             )
-    order = [n.id for n in reversed(P.order([by_id[i] for i in going]))]  # what needs another goes first
+    gone = {i for node_id in going for i in [node_id, *(c.id for c in P.below(node_id, everything))]}
+    waiting = [n for n in everything if n.id not in gone and n.state not in P.GONE and gone & set(n.needs)]
+    if waiting:
+        told = "; ".join(f"{n.id} waits on {', '.join(sorted(gone & set(n.needs)))}" for n in waiting)
+        raise P.Refused(f"deleted lines: {told}; change what it needs first, or delete it too")
     said = []
-    for node_id in order:
+    for node_id in going:
         node = P.get(store, node_id)
         if node.state in P.GONE:
             continue  # it went with the node it was under
-        try:
-            P.drop(store, node_id, who, now)
-        except P.Refused as no:
-            raise P.Refused(f"[{node_id}], whose lines were deleted: {no}") from None
+        P.drop(store, node_id, who, now, waiting=False)
         said.append(f"dropped {node_id}: {node.title}")
     return said
 
@@ -762,10 +851,13 @@ def _annotated(text: str, refusal: str) -> str:
 def edit_path(root: Path, node: str | None) -> Path:
     """A file of its own for each edit: two at once never read each other's, and a text kept after a
     refusal is never written over by the next edit."""
-    from datetime import datetime
+    import tempfile
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return root / ".graphene" / "edits" / f"{node or 'plan'}-{stamp}-{os.getpid()}.txt"
+    folder = root / ".graphene" / "edits"
+    folder.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(prefix=f"{node or 'plan'}-", suffix=".txt", dir=folder)
+    os.close(handle)
+    return Path(name)
 
 
 def edit_loop(
@@ -814,11 +906,23 @@ def edit_loop(
                 raise P.Refused(f"{no}. Nothing was applied; your text is kept in {path}") from None
             refusal = str(no)
             if "changed by someone else" in refusal:
-                with open_store() as store:  # the next save is made on the plan as it is now
-                    opened = render(store, root, alone)[1]
-                refusal += (
-                    " (it now says what `graphene plan --text` shows; save again to make your change on that)"
-                )
+                # the next save is made on what that node (or the goal) says now; every other line is
+                # still compared with the text as it was opened, so nobody else's change is written over
+                with open_store() as store:
+                    now_opened = render(store, root, alone)[1]
+                moved = re.findall(r"\[([\w.-]+)\]", refusal)[:1] or (["*goal"] if "goal" in refusal else [])
+                for key in moved:
+                    if key not in now_opened:
+                        opened.pop(key, None)  # gone since: its line is refused on the next save
+                    elif key == "*goal":
+                        opened[key] = now_opened[key]
+                    else:  # what the person changed is still told from what they were shown
+                        opened[key] = {
+                            **opened[key],
+                            "rev": now_opened[key]["rev"],
+                            "state": now_opened[key]["state"],
+                        }
+                refusal += " (delete this line and save to make your change over it)"
             shown = _annotated(saved, refusal)
             path.write_text(shown, encoding="utf-8")
             first = False

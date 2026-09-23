@@ -287,9 +287,7 @@ def test_a_child_put_between_a_node_and_its_own_lines_is_refused_not_given_them(
     text, opened = shaped(store)
     wedged = text.replace("  - the invoice template  [template]\n", "  - the invoice template  [template]\n"
                           "    - a step inside it\n")  # fmt: skip
-    with pytest.raises(
-        Refused, match=r"line \d+: the new line sits between \[template\] and \[template\]'s own"
-    ):
+    with pytest.raises(Refused, match=r"line \d+: the line sits between \[template\] and \[template\]'s own"):
         T.apply(store, wedged, ALEX, opened)
 
 

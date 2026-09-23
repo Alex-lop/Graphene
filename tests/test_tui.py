@@ -70,7 +70,7 @@ def test_it_says_where_it_is_which_plan_and_names_the_two_agents(repo):
     assert (
         repo.name in seen["where"] and "the plan (proposed): users come back with their ids" in seen["where"]
     )
-    assert "planner: claude:5e55105e" in seen["status"] and "executors: none running" in seen["status"]
+    assert "planner: claude:5e55105e" in seen["status"] and "executors: none" in seen["status"]
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
     assert wide["classes"] == ["-wide"]

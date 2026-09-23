@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -479,9 +480,14 @@ def register(cli: typer.Typer, root, open_store, fail):
         who = P.caller()
         if not who.person:
             fail("an editor is for the person at a terminal; an agent proposes: `graphene plan propose -`", 1)
-        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-        if not editor and not sys.stdin.isatty():
-            fail("no terminal to open vi in, and no $EDITOR set; set $EDITOR, or run this in a terminal", 1)
+        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+        try:
+            name = Path(shlex.split(editor)[0]).name
+        except (ValueError, IndexError):
+            name = editor
+        if not sys.stdin.isatty() and name in ("vi", "vim", "nvim", "nano", "emacs", "micro", "hx", "kak"):
+            fail(f"{name} needs a terminal, and there is none here; run this in one, or set $EDITOR", 1)
+        kept = sorted((root() / ".graphene" / "edits").glob("*.txt"))
         path = T.edit_path(root(), node_id)
         try:
             said = T.edit_loop(
@@ -492,6 +498,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             fail(str(no), 1)
         for line in said or ["nothing changed"]:
             out(line)
+        if kept:
+            typer.echo(
+                f"an edit you did not finish is kept in {kept[-1]}"
+                + (f" (and {len(kept) - 1} before it)" if len(kept) > 1 else ""),
+                err=True,
+            )
         if said:
             with open_store(root()) as store:
                 warn_unreachable(store, [i for i in said.ids if store.node_row(i)])
@@ -591,7 +603,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             None,
             "--with",
             help="The executor: a command that takes a prompt as its last argument. Default: "
-            "'claude -p --permission-mode acceptEdits'; e.g. 'codex exec --sandbox workspace-write'.",
+            "claude that may edit files and run graphene; e.g. 'codex exec --sandbox workspace-write'.",
         ),
         attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),

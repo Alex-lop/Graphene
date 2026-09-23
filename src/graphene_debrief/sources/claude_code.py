@@ -436,9 +436,13 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             except Exception:
                 _log_error(root)
             answer = None
-            # no plan, nothing to decide: a repo without one pays nothing for it, but for one line of
-            # teaching when a session starts (that is where the person's paragraph becomes a tree)
-            if store.node_count() or event.get("hook_event_name") == "SessionStart":
+            # no plan, nearly nothing to decide: a repo without one pays one read an event. A session
+            # is taught the tree when it starts, a paragraph becomes one when it is typed, and a
+            # write waits while this session's paragraph has no tree yet
+            name = event.get("hook_event_name")
+            sid = event.get("session_id")
+            waiting = isinstance(sid, str) and bool(store.meta(f"tree:{sid}"))
+            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or waiting:
                 from .. import gate
 
                 answer = gate.decide(store, event, root)

@@ -274,3 +274,37 @@ def test_a_command_too_long_to_parse_in_time_is_let_through_at_once(repo):
     start = time.perf_counter()
     assert bash(repo, "echo " + "x" * 400_000 + " > src/db/schema.py") is None
     assert time.perf_counter() - start < 1.0  # parsed, this took 1.4 s, and 3 MB took 234 s
+
+
+# -- a paragraph becomes a tree before any code ----------------------------------------------------------
+
+PARAGRAPH = (
+    "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: "
+    "same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the "
+    "end is not a product. A price of 0 means skip it, for every supplier."
+)
+
+
+def test_a_paragraph_is_asked_for_a_tree_and_its_writes_wait_even_with_no_plan_yet(repo):
+    told = hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)["hookSpecificOutput"]["additionalContext"]
+    assert "becomes a tree before any code" in told and "graphene plan propose -" in told
+    refused = write(repo, "ingest/xmlfeed.py")
+    assert "becomes a tree before any code" in refused["hookSpecificOutput"]["permissionDecisionReason"]
+    heredoc = "graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
+    assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": heredoc}) is None
+    assert hook(repo, "PreToolUse", tool_name="Read", tool_input={"file_path": str(repo / "x")}) is None
+
+
+def test_a_line_and_a_paragraph_that_says_just_do_it_are_done_at_once(repo):
+    assert hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header") is None
+    assert write(repo, "README.md") is None
+    assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH + " Just do it, no plan.") is None
+    assert write(repo, "ingest/xmlfeed.py") is None
+
+
+def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons_paragraph(repo):
+    """A long background-task notification was read as a paragraph in the session that built this."""
+    notice = "<task-notification>\n<task-id>b3a0</task-id>\n<status>completed</status>\n" + "x" * 300
+    assert hook(repo, "UserPromptSubmit", prompt=notice) is None
+    assert hook(repo, "UserPromptSubmit", prompt="[SYSTEM NOTIFICATION] " + "y" * 300) is None
+    assert write(repo, "ingest/xmlfeed.py") is None

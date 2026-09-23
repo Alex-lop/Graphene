@@ -33,7 +33,9 @@ from pathlib import Path
 
 from . import plan as P
 
-DEFAULT_WITH = "claude -p --permission-mode acceptEdits"
+# An executor may edit files and run `graphene` (its `done` and `release`), and nothing else unless the
+# person says so with --with: on 22 September executors that could not run a command handed back less.
+DEFAULT_WITH = "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene *)'"
 ATTEMPTS = 3
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
@@ -115,8 +117,18 @@ def _waited(proc: subprocess.Popen, store, node_id: str, stop: Stop) -> int:
             return proc.wait(timeout=POLL)
         except subprocess.TimeoutExpired:
             pass
-        if stop.event.is_set() or P.get(store, node_id).state != P.RUNNING:
+        if stop.event.is_set() or _let_go(store, node_id):
             _end(proc)
+
+
+def _let_go(store, node_id: str) -> bool:
+    """Did a person hand this leaf back, or drop it, while its executor worked? Its own `done` or
+    `release` is not that: it is left to end by itself, and say its last word."""
+    state = P.get(store, node_id).state
+    if state in (P.RUNNING, P.DONE, P.REVIEW):
+        return False
+    last = (store.node_log(node_id, ("released", "dropped")) or [None])[-1]
+    return last is not None and (last["kind"] == "dropped" or bool(last["detail"].get("person")))
 
 
 def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None) -> str:
