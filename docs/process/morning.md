@@ -100,7 +100,7 @@ To change what a line of the text means, start at `plan_text.parse` and add a ca
   fixed and merged, except the three named in decision 39. Every fix has a test that fails without it.
 - **Ctrl-C, a closed terminal, `kill`**: real signals in `test_run_live.py`, which checks that no
   executor or check survives.
-- **Tests:** 638 (611 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI on Linux and macOS, Python 3.12 and 3.13.
+- **Tests:** 639 (612 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI on Linux and macOS, Python 3.12 and 3.13.
 - **The third test:** eight stand-in runs, one at a time, and an independent audit that reproduced
   every figure from the raw runs.
 
