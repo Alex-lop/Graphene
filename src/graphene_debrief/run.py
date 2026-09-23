@@ -108,7 +108,13 @@ def _started(pid: int) -> str | None:
     """When the process with this pid began, to the second, or None when there is none. A pid is a
     number the system hands out again (a `.graphene` left `running` by a power cut names, after the
     reboot, whoever has that pid now); beside its start time it names one process. `ps` says it on
-    macOS and Linux alike, in one spelling whatever the person's locale and zone."""
+    macOS and Linux alike, in one spelling whatever the person's locale and zone. On Linux it is read
+    from /proc instead: there `ps` works the time out from the boot time, which can move a second
+    between two asks, and a live run then looked gone (CI caught it)."""
+    try:  # field 22, the start in clock ticks since boot; the name (field 2) may hold spaces and ")"
+        return "ticks " + Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        pass
     try:
         said = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
                               env={**os.environ, "LC_ALL": "C", "TZ": "UTC"})  # fmt: skip
