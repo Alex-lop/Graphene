@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -583,7 +584,69 @@ def set_goal(store, text: str, who: Caller, now: str | None = None) -> None:
     _person_only(who, "saying what the plan is for")
     was = goal(store)  # kept in the log: a goal set in the wrong repo can be put back word for word
     store.set_meta("goal", text.strip())
+    store.set_meta("goal:proposed", None)  # the person's own words replace a planner's
     store.log_node("*", now or _now(), "goal", who.label, None, None, {"note": text.strip(), "was": was})
+
+
+_KINDS = "py js ts tsx json toml yaml yml md txt sh xml csv html css rs go rb java c h cfg ini sql"
+_EXTENSIONS = tuple(f".{e}" for e in _KINDS.split())
+
+
+def unreachable(node: Node, files: list[str], root: str | Path) -> list[str]:
+    """Paths a leaf's check names that are neither in the repo nor inside its scope, so no executor
+    can make it pass as written (a person typed `test/test_csvfeed.py` for `tests/`, and a check
+    named a file no leaf could create). Said when the leaf is written, before anything is spent."""
+    if not node.check or not node.scope:
+        return []
+    out: list[str] = []
+    for word in re.findall(r"[\w./-]+", node.check):
+        word = word.removeprefix("./").rstrip(".")
+        if word.startswith(("/", "-", ".")) or ("/" not in word and not word.endswith(_EXTENSIONS)):
+            continue
+        if word in out or in_scope(word, node.scope) or os.path.exists(os.path.join(root, word)):
+            continue
+        if any(f == word or f.startswith(word.rstrip("/") + "/") for f in files):
+            continue
+        out.append(word)
+    return out
+
+
+def propose_goal(store, text: str, who: Caller, now: str | None = None) -> bool:
+    """A planner's one sentence for the root, from the person's paragraph. It is used only while
+    the plan has no goal of the person's in force (none yet, or nothing left alive under the old
+    one), and it becomes the goal when the person accepts any of the tree. True when it was taken."""
+    if goal(store) and store.node_rows((PROPOSED, *LIVE)):
+        return False
+    store.set_meta("goal:proposed", text.strip())
+    store.log_node(
+        "*", now or _now(), "goal_proposed", who.label, who.session_id, None, {"note": text.strip()}
+    )
+    return True
+
+
+def wanted(store, node: Node) -> list[str]:
+    """The paths outside its scope that the node's last holder tried to write, as Graphene saw them:
+    a write the hook refused, a change `done` refused, or what was changed when it was handed back.
+    The hand-back's offers are made of these: widen the scope to them, or a sibling leaf for them."""
+    log = store.node_log(node.id)
+    last = max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1)
+    out: list[str] = []
+    for e in log[last + 1 :]:
+        d = e["detail"]
+        if e["kind"] == "denied" and d.get("path"):
+            found = [d["path"]]
+        elif e["kind"] in ("refused", "breach"):
+            found = [p.split(" (in the worktree ")[0] for p in d.get("outside") or d.get("paths") or []]
+        elif e["kind"] == "released":
+            found = d.get("changed") or []
+        else:
+            continue
+        out += [
+            p
+            for p in found
+            if p not in out and not in_scope(p, node.scope) and p.split("/")[0] not in (".graphene",)
+        ]
+    return out
 
 
 def paused(store) -> bool:
@@ -618,9 +681,11 @@ def propose(
     now: str | None = None,
     files: list[str] | None = None,
     aside: bool = False,
+    proposals: frozenset[str] | set[str] = frozenset(),
 ) -> list[Node]:
     """Add nodes. From a person they are part of the plan at once; from an agent they are proposals,
-    which nobody can start until a person accepts them."""
+    which nobody can start until a person accepts them. ``proposals``: ids a person wrote as
+    proposals themselves (a "?" line in the text), which stay proposals."""
     now = now or _now()
     with store.claim():
         existing = nodes(store)
@@ -648,7 +713,7 @@ def propose(
             taken.add(node.id)
             if node.owner == "me":
                 node.owner = who.name if who.person else person_name()
-            node.state = OPEN if who.person else PROPOSED
+            node.state = OPEN if who.person and node.id not in proposals else PROPOSED
             node.proposed_by = who.name
             node.created_at = now
             added.append(node)
@@ -670,7 +735,11 @@ def propose(
     return added
 
 
-def accept(store, ids: list[str], who: Caller, now: str | None = None, **detail) -> list[Node]:
+def accept(
+    store, ids: list[str], who: Caller, now: str | None = None, exact: bool = False, **detail
+) -> list[Node]:
+    """``exact``: the nodes named and the proposals above them, not the ones under them (the text
+    form says each node's mark, so a child left as a proposal stays one)."""
     _person_only(who, "accepting a proposal")
     now = now or _now()
     with store.claim():
@@ -681,7 +750,7 @@ def accept(store, ids: list[str], who: Caller, now: str | None = None, **detail)
         for node in named:
             # accepting a node accepts the proposals under it, and the proposals it sits under: a
             # subtree is accepted as one, and a leaf is never in the plan without its why
-            family = [*reversed(above(node, by_id)), node, *below(node.id, everything)]
+            family = [*reversed(above(node, by_id)), node, *([] if exact else below(node.id, everything))]
             fresh = [by_id[n.id] for n in family if n.state == PROPOSED and n not in chosen]
             if not fresh and node not in chosen:
                 raise Refused(f"{node.id} is {node.state}, not a proposal")
@@ -695,6 +764,9 @@ def accept(store, ids: list[str], who: Caller, now: str | None = None, **detail)
                 )
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
+        proposed_goal = store.meta("goal:proposed")
+        if chosen and proposed_goal:  # the planner's echo of the paragraph, accepted with its tree
+            set_goal(store, proposed_goal, who, now)
         _settle(store, who, now)
     return chosen
 
@@ -1361,3 +1433,71 @@ def archive(store, who: Caller, now: str | None = None) -> list[Node]:
 def set_paused(store, value: bool, who: Caller) -> None:
     _person_only(who, "pausing or resuming the plan")
     store.set_meta("paused", "1" if value else "0")
+
+
+# -- undo: the person's last act on the plan's shape, put back ----------------------------------------
+
+UNDO_KEPT = 20
+_GOALS = ("goal", "goal:proposed")
+
+
+def _shape(store) -> dict:
+    seqs = store.node_seqs()
+    return {
+        "rows": {row["id"]: {**row, "_seq": seqs.get(row["id"])} for row in store.node_rows()},
+        "meta": {k: store.meta(k) for k in _GOALS},
+    }
+
+
+@contextmanager
+def undoable(store, who: Caller, what: str):
+    """Around one act of the person's on the plan (an edit, an add, a drop, an acceptance, a text
+    saved from the editor): what it changed is kept, so `graphene plan undo` can put it back. An
+    agent's acts are not kept: an agent's proposal is dropped, not undone."""
+    if not who.person:
+        yield
+        return
+    before = _shape(store)
+    yield
+    after = _shape(store)
+    rows = {
+        i: [before["rows"].get(i), row] for i, row in after["rows"].items() if before["rows"].get(i) != row
+    }
+    meta = {k: [before["meta"][k], after["meta"][k]] for k in _GOALS if before["meta"][k] != after["meta"][k]}
+    if rows or meta:
+        stack = json.loads(store.meta("undo") or "[]")[-(UNDO_KEPT - 1) :]
+        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta})
+        store.set_meta("undo", json.dumps(stack))
+
+
+def undo(store, who: Caller, now: str | None = None) -> str:
+    """Put back the person's last act, if nothing it touched has moved on since (a node an executor
+    started since is not taken from under it). Returns what was undone."""
+    _person_only(who, "undoing an act on the plan")
+    now = now or _now()
+    with store.claim():
+        stack = json.loads(store.meta("undo") or "[]")
+        if not stack:
+            raise Refused("nothing to undo: no act of yours on the plan is kept")
+        act = stack.pop()
+        current = _shape(store)
+        moved = [i for i, (_, after) in act["rows"].items() if current["rows"].get(i) != after]
+        if moved:
+            states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
+            raise Refused(
+                f"cannot undo {act['what']!r}: {states} changed since, and undoing it would lose that"
+            )
+        for node_id, (before, after) in act["rows"].items():
+            row = dict(before) if before is not None else {**after, "state": DROPPED}
+            seq = row.pop("_seq", None)
+            store.put_node(row)
+            if seq is not None:
+                store.set_seq(node_id, seq)
+            store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
+        for key, (before, _) in act["meta"].items():
+            store.set_meta(key, before)
+        if "goal" in act["meta"]:
+            back, was = act["meta"]["goal"]
+            store.log_node("*", now, "goal", who.label, None, None, {"note": back or "", "was": was or ""})
+        store.set_meta("undo", json.dumps(stack))
+    return act["what"]

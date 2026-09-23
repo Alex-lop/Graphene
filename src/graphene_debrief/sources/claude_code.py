@@ -436,7 +436,9 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             except Exception:
                 _log_error(root)
             answer = None
-            if store.node_count():  # no plan, nothing to decide: a repo without one pays nothing for it
+            # no plan, nothing to decide: a repo without one pays nothing for it, but for one line of
+            # teaching when a session starts (that is where the person's paragraph becomes a tree)
+            if store.node_count() or event.get("hook_event_name") == "SessionStart":
                 from .. import gate
 
                 answer = gate.decide(store, event, root)

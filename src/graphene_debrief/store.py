@@ -524,7 +524,11 @@ class Store:
     @contextlib.contextmanager
     def claim(self):
         """A read-modify-write on the plan that two executors may race for: the write lock is taken
-        before the read, so the second one sees what the first one did."""
+        before the read, so the second one sees what the first one did. Inside a claim already (a
+        text edit is many operations, applied all or none) it joins that one."""
+        if self.conn.in_transaction:
+            yield
+            return
         self.conn.execute("BEGIN IMMEDIATE")
         try:
             yield
@@ -549,6 +553,13 @@ class Store:
                ON CONFLICT (id) DO UPDATE SET state = ?2, session_id = ?3, data = ?4""",
             (node["id"], node["state"], node.get("session_id"), json.dumps(node, ensure_ascii=False)),
         )
+
+    def node_seqs(self) -> dict[str, int]:
+        """Each node's place in the plan's order: siblings are drawn, and run, in this order."""
+        return {r[0]: r[1] for r in self.conn.execute("SELECT id, seq FROM nodes")}
+
+    def set_seq(self, node_id: str, seq: int) -> None:
+        self.conn.execute("UPDATE nodes SET seq = ? WHERE id = ?", (seq, node_id))
 
     def node_count(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])

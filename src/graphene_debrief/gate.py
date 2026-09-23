@@ -95,6 +95,44 @@ def _how_out(held: list[P.Node]) -> str:
     )
 
 
+# What a session is told when it starts, plan or no plan: how the person's paragraph becomes a tree.
+# The person never types the tree; the agent proposes it in the text the person prunes. A few lines,
+# because every session in a repo with Graphene's hooks reads them.
+TEACH = (
+    "This repository uses Graphene: a plan the person and their coding agents share, as a tree. When the "
+    "person describes work bigger than one quick change, or asks for a plan, do not start it: read what "
+    "you need, propose the tree, then stop and tell them it is ready to prune (they see it at once in "
+    "`graphene watch`):\n"
+    "graphene plan propose - <<'EOF'\n"
+    "goal: their aim, in one sentence\n"
+    "- a sub-goal  [short-id]\n"
+    "  - a leaf: one piece of work  [leaf-id]\n"
+    "      what it should achieve, in a line\n"
+    "      scope: src/pdf/**, tests/pdf/**\n"
+    "      check: python3 -m pytest tests/pdf -q\n"
+    "      needs: other-leaf-id\n"
+    "EOF\n"
+    "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
+    "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
+    "`needs` orders leaves that build on each other. A quick change they want done now, just do."
+)
+IN_FORCE = (
+    "A plan is in force here: `graphene plan` shows it and what is ready; `graphene node start <id>` takes "
+    "a leaf and tells you what it is for, from the goal down. While you hold a leaf, writes outside its "
+    "scope are refused. A leaf too big to do well is split: propose its children in the same text (its "
+    "line, with theirs under it) and hand it back. When the person asks you here for something no leaf "
+    "covers, and you hold no leaf, just do it: Graphene makes a leaf from their prompt and records what "
+    "you changed."
+)
+
+
+def _session_start(store) -> dict | None:
+    if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
+        return None  # started by `graphene run` or `graphene ask`: its prompt is the whole of its task
+    said = TEACH + ("\n\n" + IN_FORCE if P.in_force(store) else "")
+    return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": said}}
+
+
 def _claim_first(store) -> str:
     ready = P.ready(P.nodes(store), P.Caller("agent", False))
     if ready:
@@ -126,7 +164,9 @@ _YES = re.compile(
 _SCOPE = re.compile(r"""(?<!\S)--scope[ =]+(?:'([^']+)'|"([^"]+)"|(\S+))""")
 _CHECK = re.compile(r"""(?<!\S)--check[ =]+(?:'([^']+)'|"([^"]+)")""")  # quoted, so its end is said
 _NOT_YES = re.compile(r"[?]|\b(but|except|not|no|don'?t|drop|skip|instead|first|before|unless|wrong)\b", re.I)
-_HOOK = re.compile(r"\bingest\b")
+# `graphene ingest …` as a command, not the word: a repo with an ingest/ package had three hand-backs
+# refused for naming ingest/__init__.py in their reason
+_HOOK = re.compile(r"\bgraphene\s+ingest\b|\bingest\s+hook\b|\bhook_main\b")
 SHORT = 80  # a prompt longer than this is a request, not an answer
 HOOKS = (".claude/settings.json", ".claude/settings.local.json")
 
@@ -245,6 +285,8 @@ def _check_write(
         store.log_node(
             "*", P._now(), "denied", None, event.get("session_id"), agent_id, {"path": rel, "how": how}
         )
+        if os.environ.get("GRAPHENE_PLANNER"):
+            return _deny("you are the planner: your only output is the proposal you print. Write no file")
         return _deny(_claim_first(store))
     if rel in HOOKS and all(n.aside for n in held):
         return _deny(
@@ -270,30 +312,13 @@ def decide(store, event: dict, root: Path) -> dict | None:
         return None
     if name == "UserPromptSubmit":  # before "in force": a plan of nothing but proposals binds nobody yet
         return _on_prompt(store, sid, str(event.get("prompt") or ""))
+    if name == "SessionStart":  # with or without a plan: this is where a paragraph learns to be a tree
+        return _session_start(store)
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
     cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
-
-    if name == "SessionStart":
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": (
-                    "This repository has a Graphene plan: a tree the person shapes and you work in. "
-                    "Its root is why the work is being done; its leaves are pieces of work, each with "
-                    "the paths it may touch and a check. `graphene plan` shows it and what is ready; "
-                    "`graphene node start <id>` takes a leaf and tells you what it is for, from the goal "
-                    "down. While you hold a leaf, writes outside its scope are refused. A leaf too big "
-                    "to do well is split: propose children under it (`graphene node add … --parent "
-                    "<id>`) and hand it back. When the person asks you here for something no leaf "
-                    "covers, and you hold no leaf, just do it: Graphene makes a leaf from their prompt "
-                    "and records what you changed. Propose a node (`graphene node add`) only for work "
-                    "they did not ask for."
-                ),
-            }
-        }
 
     if name == "Stop":
         held = _held(store, sid)
@@ -333,7 +358,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 "GRAPHENE_AS is how a script says it speaks for a person; an agent's command may not "
                 "carry it. Say what you need, and the person decides"
             )
-        if _HOOK.search(command) and re.search(r"\bgraphene|hook_main\b", command):
+        if _HOOK.search(command):
             return _deny(
                 "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
                 "not an agent's to run"

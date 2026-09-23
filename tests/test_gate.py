@@ -59,10 +59,26 @@ def holding(repo, **node):
         plan.start(store, "n1", BOT, repo)
 
 
-def test_without_a_plan_the_hook_says_nothing(repo):
+def test_without_a_plan_the_hook_refuses_nothing_and_a_new_session_learns_the_text(repo):
     assert write(repo, "src/db/schema.py") is None
     assert hook(repo, "Stop") is None
-    assert hook(repo, "SessionStart", source="startup") is None
+    taught = hook(repo, "SessionStart", source="startup")["hookSpecificOutput"]["additionalContext"]
+    assert "graphene plan propose - <<'EOF'" in taught and "scope:" in taught
+    assert "A plan is in force here" not in taught
+
+
+def test_the_word_ingest_in_a_reason_is_not_running_the_hook(repo):
+    """Three hand-backs on 22 September were refused for naming ingest/__init__.py in their reason."""
+    holding(repo)
+    reason = "graphene node release n1 --why 'READERS lives in ingest/__init__.py, outside my scope'"
+    assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": reason}) is None
+    for forged in (
+        "graphene ingest hook < e.json",
+        "echo {} | graphene  ingest hook",
+        "python -m graphene_debrief.cli ingest hook",
+    ):
+        refused = hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": forged})
+        assert "not an agent's to run" in refused["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_a_write_inside_the_scope_passes_in_silence_and_one_outside_is_refused_with_the_way_out(repo):

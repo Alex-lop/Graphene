@@ -55,7 +55,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     }
     proposed = agent("plan", "propose", "-", input=json.dumps(proposal))
     assert proposed.exit_code == 0 and "n1  proposed" in proposed.stdout
-    assert "Nobody can start them until a person" in proposed.stdout
+    assert "nobody can start them before that" in proposed.stdout
 
     refused = agent("node", "start", "n1")
     assert refused.exit_code == 1 and "n1 is a proposal" in refused.stderr
