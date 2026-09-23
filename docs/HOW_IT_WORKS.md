@@ -42,7 +42,9 @@ terminal)`: a person's `add` must never turn into a proposal they cannot accept.
 vendor that sets none of these marks is therefore taken for the person. A script that
 stands in for a person sets `GRAPHENE_AS=person:<name>`; inside an agent's environment that variable
 changes nothing, however it is spelled, and every act made through it is logged as made with no
-terminal (`alex (no terminal)`). `graphene ui` gives its page the person's rights only when a person
+terminal (`alex (no terminal)`). The one exception is `graphene watch`, which sets `GRAPHENE_WATCH=1`
+on the commands the person types there when its own input is a terminal; an agent's command that
+carries it is refused by the hook, the same way `GRAPHENE_AS` is. `graphene ui` gives its page the person's rights only when a person
 started it.
 
 ## P1a. The tree
@@ -81,7 +83,8 @@ above the leaf, with its own goal; `plan.contract` prints it as `why:` lines abo
 then the tree indented by depth. Once it is longer than a dozen lines, finished nodes fold into one
 `✓ n done here` line per level; `--all` unfolds. `graphene watch` is the same plan on one screen
 (`tui.py`, Textual): the tree, the node under the cursor, the executors as they work, vim keys, every
-key a `graphene` command run in the same process as the person, which the bottom line names. It
+key a `graphene` command, which the bottom line names: run in its process, or, for what takes
+time (`run`, `ask`, `node split`, `node done`, `node signoff`), in a process of its own. It
 polls the store once a second; `--once` prints `plan_lines` instead.
 
 ## P1c. The plan as text
@@ -168,7 +171,8 @@ read the plan an hour ago.
 2. Any path left that the scope does not cover: refused, with the list. So is a changed path that
    is a symbolic link out of the repo, and so is a path changed in any *other* working tree of the
    repo since the node was started (a worktree made later is compared with the commit the node
-   started from). The node stays `running`.
+   started from). The worktrees of `graphene run --parallel` are not asked: each one's leaf answers
+   for it at its own `done`. The node stays `running`.
 3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
    log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
    as it is, so a second `done` is not refused over it.
@@ -239,12 +243,16 @@ After `--attempts` (3) the node is handed back with the last refusal as the reas
 is never handed to an executor. The run ends by saying what is waiting and for whom. Each attempt's
 output streams to `.graphene/runs/<leaf>-<time>-<n>.txt`, and an `attempt` entry in the log names it
 with the executor's pid and the run's; `graphene watch` reads its tail, and a Claude Code executor's
-last tool call from the hooks' record. Executors run in sessions of their own: Ctrl-C reaches the run,
-which hands back every leaf it started and stops the executors (exit 130). A leaf the person releases
-or drops stops its executor within half a second. A leaf still held by a run whose pid is gone is
-handed back by the next run. A leaf whose need is done but whose work is not in the checkout it would
-start in (never landed, landed out of its history, uncommitted where it was done) waits, and says
-why (`plan.not_here`). One node at a time, in the checkout you ran it from, and nothing is committed.
+last tool call from the hooks' record. Executors and checks run in sessions of their own: Ctrl-C
+reaches the run (and so do a closed terminal and a `kill`), which ends the checks it started, hands
+back every leaf it started that had not passed, and stops the executors (exit 130); a leaf that had
+passed and not yet landed waits in `review`, and says so. A leaf the person releases or drops stops
+its executor within half a second. A leaf still held by a run that is gone (its pid ended, or names
+a process that began at another time) is handed back by the next run, after its executor is stopped,
+TERM then KILL. A leaf whose need is done but whose work is not in the checkout it would start in
+(never landed, landed out of its history, uncommitted where it was done) waits, and says why
+(`plan.not_here`); a need whose files were committed after it finished counts as here, even when
+the content was edited again before that commit. One node at a time, in the checkout you ran it from, and nothing is committed.
 
 A leaf that comes back offers its fix (`plan.offers`), from what it tried to write outside its scope
 (`plan.wanted`: refused writes, a refused `done`, what it changed): `graphene node widen <id>`,
@@ -263,7 +271,7 @@ leaf whose scope overlaps that of a leaf in flight waits for it to land. Since a
 scope is refused, two leaves cannot have written one file. If git still will not merge (your own
 uncommitted work is in the way), the merge is aborted, your checkout is as it was, the leaf stops in
 `review` with a log entry `unlanded` naming its branch, and what needs it waits. `git merge
-graphene/<id>` and `graphene node signoff <id>` finish it by hand; `graphene node reopen` sends it
+graphene/<id>` and `graphene node signoff <id>` (or the page's sign-off) finish it by hand; `graphene node reopen` sends it
 round again. An executor is never asked to resolve a conflict. Your untracked Claude Code hook settings
 (`.claude/settings.local.json`, which git ignores in every worktree) are copied into each worktree,
 so the hooks hold a leaf there as they do in your checkout.
@@ -292,18 +300,19 @@ a leaf; `--about <id>` asks it about a leaf that came back.
 - Writes through an MCP server's tools are not seen by the hooks at all, a filesystem server's
   included: under a held leaf `done` asks git and catches them; during a paragraph's wait, or in a
   session that holds no leaf, nothing does.
-- `:stop` in `graphene watch` (a Ctrl-C to the run) lands during a check: the check finishes first,
-  in parallel runs, and its result is then set aside.
 - The person-only rule rests on the environment, and no command line can do better. Inside an
   agent's environment `GRAPHENE_AS` changes nothing; an agent that first strips its own markers
   (`env -u CLAUDECODE …`) and then sets it passes for a person. The log shows such an act as made
-  with no terminal, which a person's own acts at a terminal never are.
+  with no terminal, which a person's own acts at a terminal never are, unless it also set
+  `GRAPHENE_WATCH=1` in a way the hook cannot read.
 - The plan's store is a file in the repo that git ignores. The hook refuses the commands that
   name it; a script that opens it directly is neither stopped nor noticed. Nothing here defends
   the store against an executor that sets out to rewrite it.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
 - The boundary asks git about every working tree of the repo that exists when the node ends (a
-  path changed in another worktree is refused with the tree named), not about clones or copies of
+  path changed in another worktree is refused with the tree named), except the worktrees of
+  `graphene run --parallel`, whose own leaves answer for them; a node in your checkout that writes
+  into one of those by absolute path is not seen. Nor does it ask about clones or copies of
   the repo somewhere else on the disk.
 - Scope overlap between two running nodes is checked against tracked files and the globs as
   spelled; two globs that would both match a file that does not exist yet are not seen until one

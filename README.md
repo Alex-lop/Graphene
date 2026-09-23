@@ -94,7 +94,7 @@ came back: USAGE lives in cli/main.py (line 18), outside scope. Enabling xml in 
 tests/test_contract.py fail until USAGE names xml, so the done check cannot pass without cli/main.py.
   w  widen wire-xml's scope to cli/main.py   graphene node widen wire-xml
   b  a sibling leaf for cli/main.py; wire-xml waits on it   graphene node sibling wire-xml
-  ?  ask the planner, when neither is right
+  ?  ask the planner, when none of these is right (an agent, which spends)
 ```
 
 Press one of them, then `R` again. When it is all done, `git log --graph` reads as the tree: one
@@ -120,8 +120,9 @@ tests of Graphene's own:
   held-out checks, against 10 and 0 for the repository as it was. (One run.)
 - **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools and
   none of your MCP servers, and what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
-- **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors.
-  The next run takes those leaves again.
+- **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors
+  and their checks; a leaf that had already passed waits in review, and says so. A closed terminal
+  does the same. The next run takes those leaves again.
 - **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
 - **The plan as text round-trips.** `graphene plan edit` applies what you changed and nothing else,
   in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
@@ -155,7 +156,8 @@ A control you cannot trust is worse than none, so here is where each one ends.
   does not depend on the hook.
 - "Only a person" rests on the environment: an agent's shell carries its vendor's marks, and whoever
   carries none is taken for you. An agent that strips its marks, or one from a vendor that sets none,
-  passes for a person; the log marks every act made with no terminal.
+  passes for a person; the log marks every act made with no terminal (except the commands you type
+  in `graphene watch`, which it vouches for).
 - A request typed into a session is taken as yours, and so is a "yes". An agent that starts another
   agent writes its prompt. The log names every leaf made from a prompt and every acceptance made by
   one. A leaf made from a one-line prompt with no `--scope` may touch anything (never the plan's

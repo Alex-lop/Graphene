@@ -8,8 +8,8 @@ Paragraph in, tree out, prune, run.
 - `graphene watch` is a full screen (Textual) with vim keys: the tree, the node under the cursor, the executors as they work (which, where, their last tool call, seconds since), `:` for any command, `?` for the keys. `--once` prints.
 - `graphene ask "<what you want>"` and `graphene node split <id>`: a planner with read-only tools, whose printed proposal is added for you to prune.
 - A leaf that comes back offers its fix: `graphene node widen <id>`, `graphene node sibling <id>`, or waiting on the nodes its reason names.
-- `graphene run`: Ctrl-C hands back what it started and stops the executors; releasing a running leaf stops its executor; a run that died is swept; a leaf whose need is not here yet waits; each attempt's output is kept as it streams; git is asked before the plan's write lock. The default executor may run `graphene` (its `done` and `release`).
-- A check that names a path in neither the repo nor its scope is warned about when it is written; checks run under bash; every write says which repository it went to.
+- `graphene run`: Ctrl-C (or a closed terminal) hands back what it started and stops the executors and their checks; releasing a running leaf stops its executor; a run that died is swept; a leaf whose need is not here yet waits; each attempt's output is kept as it streams; git is asked before the plan's write lock. The default executor may run `graphene` (its `done` and `release`).
+- A check that names a path in neither the repo nor a scope that may still write it is warned about when it is written ("check the spelling"); checks run under bash; every write says which repository it went to.
 - New dependency: Textual.
 
 ## 0.4.0 (unreleased)
