@@ -29,7 +29,7 @@ from . import plan as P
 
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 OURS = (".graphene",)  # the plan's own store: never inside any scope
-_AS_PERSON = re.compile(r"\bGRAPHENE_AS\b")
+_AS_PERSON = re.compile(r"\bGRAPHENE_(AS|WATCH)\b")
 PARSED = 64_000  # characters of a shell command the hook will parse: the parser is superlinear, and the
 # vendor lets a call through when a hook runs out of time (3 MB took 234 s in the closing review)
 
@@ -436,8 +436,8 @@ def _guard_command(event: dict) -> dict | None:
     command = str(tool_input.get("command") or "")
     if _AS_PERSON.search(command):
         return _deny(
-            "GRAPHENE_AS is how a script says it speaks for a person; an agent's command may not "
-            "carry it. Say what you need, and the person decides"
+            "GRAPHENE_AS and GRAPHENE_WATCH are how a script says it speaks for a person at their "
+            "terminal; an agent's command may not carry them. Say what you need, and the person decides"
         )
     # a search for the words, or a hand-back that names them in its reason, is not running the hook
     parts = [c for c in re.split(r"[;&|\n]+", command) if not _READS.match(c)]

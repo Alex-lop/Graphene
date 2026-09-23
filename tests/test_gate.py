@@ -192,7 +192,7 @@ def test_a_shell_write_inside_the_scope_or_to_an_ignored_path_or_outside_the_rep
 
 def test_an_agent_may_not_speak_as_a_person_or_touch_the_plans_store(repo):
     holding(repo)
-    assert "may not carry it" in reason(
+    assert "may not carry them" in reason(
         bash(repo, "GRAPHENE_AS=person:alex graphene node set n1 --scope '**'")
     )
     assert "the plan's own store" in reason(bash(repo, "rm .graphene/graphene.db"))
@@ -599,3 +599,10 @@ def test_a_question_about_the_tree_does_not_end_the_paragraphs_wait(repo):
         plan.start(store, "xml", BOT, repo)
     assert "outside the scope" in reason(write(repo, "legacy/importer.py"))
     assert write(repo, "ingest/xmlfeed.py") is None
+
+
+def test_an_agents_command_may_not_say_it_is_the_person_at_watch(repo):
+    """GRAPHENE_WATCH=1 leaves "(no terminal)" off the log for what the person types at watch; an
+    agent that set it would hide that trace, so its ordinary spelling is refused like GRAPHENE_AS."""
+    holding(repo)
+    assert "may not carry them" in reason(bash(repo, "GRAPHENE_WATCH=1 graphene node done n1"))
