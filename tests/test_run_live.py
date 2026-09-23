@@ -911,3 +911,20 @@ def test_an_executor_does_not_start_a_run_whose_executor_would_be_any_command(re
     said = subprocess.run([*CLI, "run", "--attempts", "1", "--with", f"sh -c 'touch {marker}'"], cwd=repo,
                           env={**env, "GRAPHENE_NODE": "x"}, capture_output=True, text=True)  # fmt: skip
     assert said.returncode == 1 and "does not start runs" in said.stderr and not marker.exists()
+
+
+def test_a_run_started_where_ctrl_c_is_ignored_still_stops_on_it(repo):
+    """A run started from a shell that ignores SIGINT inherited that, and `:stop` never reached it
+    (found by CI, where a step starts that way)."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID")}
+    env["GRAPHENE_AS"] = "person:alex"
+    run = subprocess.Popen([*CLI, "run", "--with", executor(repo, SLOW)], cwd=repo, env=env, text=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN))  # fmt: skip
+    assert wait_for(lambda: len(R_attempts(repo)) == 1), run.stdout
+    run.send_signal(signal.SIGINT)
+    said, _ = run.communicate(timeout=30)
+    assert run.returncode == 130, said
+    assert states(repo) == {"a": OPEN}

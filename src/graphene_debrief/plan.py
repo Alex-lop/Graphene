@@ -502,7 +502,9 @@ def ctrl_c_on_hangup():
             os.dup2(nowhere, 2)
         raise KeyboardInterrupt
 
-    was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM)}
+    # SIGINT too: started from a shell that ignores it (a job in the background, a CI step), the
+    # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it
+    was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)}
     try:
         yield
     finally:
