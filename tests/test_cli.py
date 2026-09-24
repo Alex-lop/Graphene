@@ -105,6 +105,40 @@ def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
     assert "graphene plan --help" in one_line(result)
 
 
+def test_a_missing_argument_or_option_anywhere_is_one_plain_line(repo):
+    """`graphene node reopen x` without --note was Click's usage box, five lines of frame around one
+    that said what was missing. One handler where the CLI starts says it, everywhere, in one line."""
+    for args, line in [
+        (["node", "start"], "graphene node start needs <node_id>"),
+        (["ask"], "graphene ask needs <sentence>: what you want, as you would say it"),
+        (["node"], "graphene node: missing command (`graphene node --help` says what it takes)"),
+        (["bogus"], "graphene: no such command 'bogus' (`graphene --help` says what it takes)"),
+        (["--bogus"], "graphene: no such option: --bogus (`graphene --help` says what it takes)"),
+        (["run", "--parallel", "x"], "graphene run: invalid value for '--parallel': 'x' is not a valid int"),
+        (["node", "release", "x", "--wants"], "graphene: option '--wants' requires an argument"),
+    ]:
+        result = run(*args)
+        assert result.exit_code == 2, args
+        assert one_line(result).startswith(line) and "Usage:" not in result.output
+
+
+def test_every_commands_help_reads_as_paragraphs():
+    """Typer's list of commands kept a docstring's hard line breaks (`graphene --help` broke the watch
+    and ask lines mid-sentence), and Rich read the text form's `[id]` as markup and dropped it."""
+    import typer.main
+
+    def walk(command):
+        for sub in getattr(command, "commands", {}).values():
+            yield sub
+            yield from walk(sub)
+
+    for command in walk(typer.main.get_command(build())):
+        for paragraph in (command.help or "").split("\n\n"):
+            assert paragraph.startswith("\b") or "\n" not in paragraph, (command.name, paragraph)
+    helped = run("plan", "propose", "--help").output
+    assert "with the [id] of a node" in " ".join(helped.split()) and "[short-id]" in helped
+
+
 def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
     assert "`graphene init` records sessions live" in one_line(run("ui"))
     init = run("init")
