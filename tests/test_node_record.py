@@ -425,7 +425,9 @@ def test_what_was_refused_is_counted_from_the_log(store, repo):
     refused = NR.node_record(store, repo, plan.get(store, "n1"), at=T(5)).refusals
     assert refused.denied == ["src/db/schema.py"]
     assert refused.breaches == ["src/db/schema.py"]
-    assert (refused.stops, refused.done, refused.checks_failed) == (1, [["notes.txt"]], 1)
+    # the first `done` ran the check too: notes.txt, a file git does not track, was set aside in case
+    # the check made it, and the check failed there as well
+    assert (refused.stops, refused.done, refused.checks_failed) == (1, [["notes.txt"]], 2)
     assert refused.last_check["result"] == "passed"
 
 

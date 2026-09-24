@@ -315,7 +315,8 @@ def run_node(
                     say(f"{node.id} handed back while its check ran: {no}")
                     return None
                 refusal = str(no)
-                say(f"{node.id} attempt {attempt} refused: {refusal.splitlines()[0]}")
+                said = " · ".join(line.strip() for line in refusal.splitlines()[:2])  # the paths are line 2
+                say(f"{node.id} attempt {attempt} refused: {said}")
         P.release(store, node.id, who, f"{attempts} attempts, the last one refused: {refusal}")
         say(f"{node.id} handed back after {attempts} attempts")
         return None

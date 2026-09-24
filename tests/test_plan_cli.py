@@ -75,7 +75,8 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     (repo / "api.py").write_text("def users():\n    return ids\n")
     (repo / "schema.py").write_text("TABLES = ['sneaky']\n")
     not_done = agent("node", "done")
-    assert not_done.exit_code == 1 and "changed outside its scope (api.py): schema.py" in not_done.stderr
+    assert not_done.exit_code == 1
+    assert "outside its scope (api.py), which only the person widens\n  schema.py\n" in not_done.stderr
     subprocess.run(["git", "checkout", "--", "schema.py"], cwd=repo, check=True)
     done = agent("node", "done")
     assert "n1 is done (check passed, nothing outside its scope)" in done.stdout
