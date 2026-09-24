@@ -206,6 +206,6 @@ git checkout main && git reset --hard 2c86399
 
 - `polish`: this run, pushed, CI green. One PR into `main`: #28.
 - `main` (GitHub): `2c86399`, untouched. Local `main`: `6cece1c`, behind GitHub, untouched.
-- `worktree-wf_6c44769e-477-1` … `-4`: this run's four build branches, all merged into `polish`.
-  Their worktrees are under `.claude/worktrees/` and can go (`git worktree remove`).
+- `worktree-wf_6c44769e-477-1` … `-4`: this run's four build branches, merged into `polish`; their
+  worktrees are removed, the branches kept (`git branch -d` drops them).
 - Everything else (`terminal`, `tree`, `agent/*`, `codex/*`, `lane/*`, `n*`, …) is as it was.
