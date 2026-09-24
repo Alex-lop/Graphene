@@ -1998,3 +1998,86 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.log_node("*", now, "goal", who.label, None, None, {"note": back or "", "was": was or ""})
         store.set_meta("undo", json.dumps(stack))
     return act["what"]
+
+
+# -- how a node reads to a person -------------------------------------------------------------------
+# One word, one glyph and one colour for each state, the same on the screen, in `graphene plan` and in
+# the text form's notes. The colour says who has the move: cyan, the agent's guess, yours to prune;
+# magenta, it waits on you; yellow, an agent is on it; green, done; plain, an agent can take it; dim,
+# nothing to do yet. Red is kept for a command that failed. A sub-goal reads as "2/3 done".
+LOOK = {
+    "proposed": ("?", "cyan"),
+    "ready": ("○", ""),
+    "waiting": ("◌", "dim"),
+    "running": ("●", "yellow"),
+    "came back": ("↩", "magenta"),
+    "review": ("◆", "magenta"),
+    "yours": ("◇", "magenta"),
+    "to fill in": ("·", "dim"),
+    "done": ("✓", "green"),
+}
+
+
+def came_back(store, node: Node) -> bool:
+    """Open, and its last hold ended with its executor handing it back, and the person has not
+    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again)."""
+    if node.state != OPEN:
+        return False
+    last = (store.node_log(node.id, ("started", "released", "reopened", "edited")) or [{"kind": ""}])[-1]
+    return last["kind"] == "released" and not last["detail"].get("person")
+
+
+def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = frozenset()) -> str:
+    """The word a node's state reads as, for a person: proposed, ready, waiting, running, came back
+    (``back``: the ids `came_back` says so of), review, done, yours (a person's), to fill in (no
+    leaves and no scope yet), or a sub-goal's "2/3 done"."""
+    by_id = {n.id: n for n in everything}
+    if node.state == PROPOSED or any(a.state == PROPOSED for a in above(node, by_id)):
+        return "proposed"
+    if node.state in (DONE, REVIEW, RUNNING):
+        return {DONE: "done", REVIEW: "review", RUNNING: "running"}[node.state]
+    under = kids(everything)
+    if under.get(node.id):
+        mine = [c for c in below(node.id, everything) if not under.get(c.id) and c.state != PROPOSED]
+        return f"{sum(c.state == DONE for c in mine)}/{len(mine)} done"
+    if node.id in back:
+        return "came back"
+    if unmet(node, by_id):
+        return "waiting"
+    if node.owner != AGENT:
+        return "yours"
+    return "ready" if node.scope else "to fill in"
+
+
+def look(word: str) -> tuple[str, str]:
+    """The glyph and the colour (a Rich style) of a word `reads` returns."""
+    return LOOK.get(word, ("○", ""))
+
+
+def said_by(label: str | None) -> str:
+    """Who an actor on the plan is, in a person's words: `run:claude` is claude started by `graphene
+    run`, `claude:5940…` a Claude Code session, `planner` the planner `graphene ask` started."""
+    if not label:
+        return "nobody on record"
+    if label.startswith("run:"):
+        return f"{label[4:]}, started by graphene run"
+    if label.startswith("planner"):
+        return "the planner (graphene ask)"
+    kind, _, rest = label.partition(":")
+    if kind in ("claude", "codex") and rest:
+        return f"a {'Claude Code' if kind == 'claude' else 'Codex'} session ({rest})"
+    return label
+
+
+def where(root: str | Path) -> str:
+    """The repository as the screen's top line and every write's last line name it."""
+    path, home = str(root), str(Path.home())
+    return "~" + path[len(home) :] if path.startswith(home + os.sep) else path
+
+
+def plan_first(store) -> bool:
+    """Plan first: what a person asks for in a session is proposed as a tree before any code. The
+    person's setting (`graphene plan first on|off`, `P` in graphene watch); never set, it is on while
+    a plan is in force. `graphene init` sets it on in a repository it sets up."""
+    said = store.meta("plan_first")
+    return said == "on" if said in ("on", "off") else in_force(store)

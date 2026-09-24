@@ -336,3 +336,28 @@ def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
     )
     ok, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)
     assert ok  # exit 0: not a person
+
+
+def test_one_word_for_each_state_as_a_person_reads_it(store, repo):
+    """The screen, `graphene plan` and the text form's notes read a node's state from one place."""
+    plan.propose(store, TREE, ALEX)
+    plan.propose(store, [{"id": "mine", "title": "read it over", "owner": "alex"}], ALEX)
+    plan.propose(store, [{"id": "later", "title": "the rest, to be split"}], ALEX)
+    plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x"], "check": "true"}], BOT)
+    everything = plan.nodes(store)
+    said = {n.id: plan.reads(n, everything) for n in everything}
+    assert said == {
+        "api": "0/2 done", "a": "ready", "b": "waiting", "docs": "waiting",
+        "mine": "yours", "later": "to fill in", "idea": "proposed",
+    }  # fmt: skip
+    plan.start(store, "a", BOT, repo)
+    plan.release(store, "a", BOT, "it needs src/other.txt", wants=["src/other.txt"])
+    back = {n.id for n in plan.nodes(store) if plan.came_back(store, n)}
+    assert back == {"a"} and plan.reads(plan.get(store, "a"), plan.nodes(store), back) == "came back"
+    plan.widen(store, "a", [], ALEX)  # the person took the offer: it is ready again, not "came back"
+    assert not plan.came_back(store, plan.get(store, "a"))
+    assert {w: plan.look(w)[0] for w in ("proposed", "running", "came back", "done")} == {
+        "proposed": "?", "running": "●", "came back": "↩", "done": "✓"
+    }
+    assert plan.said_by("run:claude") == "claude, started by graphene run"
+    assert plan.said_by("claude:59409a10") == "a Claude Code session (59409a10)"
