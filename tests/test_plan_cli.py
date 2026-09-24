@@ -1,13 +1,19 @@
 """`graphene plan` and `graphene node`, end to end: a person shapes, an agent executes, and the
 boundary is where the person's change to the next node takes hold."""
 
+import io
 import json
+import os
+import pty
+import select
 import subprocess
+import sys
 
 import pytest
 from typer.testing import CliRunner
 
 from graphene_debrief.cli import build
+from graphene_debrief.tui import _cli
 
 runner = CliRunner()
 AGENT_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "5e55105e-0000-4000-8000-000000000001"}
@@ -41,9 +47,16 @@ def agent(*args, input=None):
     return runner.invoke(build(), list(args), env=AGENT_ENV, input=input)
 
 
-def test_no_plan_says_how_to_make_one(repo):
-    result = person("plan")
-    assert result.exit_code == 0 and "no plan yet" in result.stdout
+def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
+    """`graphene plan` and plain `graphene`, with nothing planned: say it to your agent in a paragraph,
+    or `graphene ask`. Both taught typing the tree with `node add` flags, each in its own words."""
+    shown, plain = person("plan"), person()
+    assert shown.exit_code == 0 and plain.exit_code == 1  # plain `graphene` has nothing to show
+    for said in (shown.stdout, plain.stderr):
+        assert said.startswith("nothing is planned here yet. Say what you want to your agent, in a paragraph")
+        assert "graphene ask '<what you want>'" in said and "graphene watch" in said
+        assert "--scope" not in said and "node add" not in said
+    assert shown.stdout == plain.stderr  # said once, the same way
 
 
 def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the_change(repo):
@@ -55,7 +68,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     }
     proposed = agent("plan", "propose", "-", input=json.dumps(proposal))
     assert proposed.exit_code == 0 and "n1  proposed" in proposed.stdout
-    assert "nobody can start them before that" in proposed.stdout
+    assert "2 proposed: nobody can start them until the person accepts" in proposed.stdout
 
     refused = agent("node", "start", "n1")
     assert refused.exit_code == 1 and "n1 is a proposal" in refused.stderr
@@ -79,7 +92,10 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     subprocess.run(["git", "checkout", "--", "schema.py"], cwd=repo, check=True)
     done = agent("node", "done")
     assert "n1 is done (check passed, nothing outside its scope)" in done.stdout
-    assert "next: n2, document it" in done.stdout and "may have changed since you last saw it" in done.stdout
+    assert done.stdout.splitlines()[-1] == (
+        "next: n2 (document it) is ready: `graphene node start n2` takes it, with its contract as it "
+        "stands now"
+    )
 
     told = agent("node", "start", "n2")  # the contract at the boundary is the person's, not the proposal's
     assert "n2 (revision 2)" in told.stdout and "scope:  docs/api.md" in told.stdout
@@ -97,15 +113,17 @@ def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
     person("node", "add", "the migration", "--scope", "schema.py", "--check", "true", "--owner", "me")
     person("node", "add", "use the new table", "--scope", "api.py", "--check", "true", "--needs", "n1")
     shown = agent("plan")
-    assert "next: nothing is ready for you: n1 is alex's; n2 waits on n1 (open). You can stop" in shown.stdout
+    # the plan is printed right above it, so the line does not point at it
+    assert shown.stdout.splitlines()[-1] == "next: nothing is ready for you, so you can stop"
     assert agent("node", "start", "n1").exit_code == 1
     mine = person("plan")
     assert "waiting on a person: n1 (yours to do)" in mine.stdout
     assert "n2  waiting" in mine.stdout and "waits on n1 (alex's)" in mine.stdout
     person("node", "start", "n1")
     (repo / "schema.py").write_text("TABLES = ['users']\n")
-    person("node", "done", "n1")
-    assert "next: n2, use the new table" in agent("plan").stdout
+    done = person("node", "done", "n1")  # the person is told what `graphene run` would take
+    assert "next: n2 (use the new table) is ready: `graphene run` runs it" in done.stdout
+    assert "next: n2 (use the new table) is ready: `graphene node start n2` takes it" in agent("plan").stdout
 
 
 def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo):
@@ -135,7 +153,9 @@ def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_h
     agent("node", "start", "n1")
     assert "next: you hold n1 (users). Finish it with `graphene node done n1`" in agent("plan").stdout
     back = agent("node", "release", "n1", "--why", "the check and the goal disagree").stdout
-    assert "next: nothing is ready for you: n1 is back with the person" in back
+    assert back.splitlines()[-1] == (
+        "next: nothing is ready for you, so you can stop (graphene plan says what each leaf waits on)"
+    )
 
 
 def test_a_proposal_shows_what_it_would_wait_on_and_an_edit_says_what_it_changed(repo):
@@ -253,6 +273,8 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     ]
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+    # a run names it first (it runs for long), and ends with what it did, for the person
+    assert acts[-1].stdout.splitlines()[-1] == "run: 1 came back (l2)"
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -287,3 +309,109 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
 def test_init_sets_plan_first_on(repo):
     assert person("init").exit_code == 0
     assert "plan first: on" in person("plan", "first").stdout
+
+
+# -- the messages, read as whoever receives them --------------------------------------------------
+
+CLI = [
+    sys.executable,
+    "-c",
+    "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()",
+]
+
+
+class Tty(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def at_terminal(repo, args, answer: str) -> str:
+    """The CLI as the person runs it at a terminal (a pty), answering the one question it asks."""
+    main, tty = pty.openpty()
+    proc = subprocess.Popen([*CLI, *args], cwd=repo, stdin=tty, stdout=tty, stderr=tty)
+    os.close(tty)
+    said, answered = b"", False
+    while select.select([main], [], [], 60)[0]:
+        try:
+            chunk = os.read(main, 4096)
+        except OSError:  # the terminal's other side is closed (Linux says it so)
+            break
+        if not chunk:
+            break
+        said += chunk
+        if not answered and said.rstrip().endswith(b":"):
+            os.write(main, answer.encode() + b"\n")
+            answered = True
+    os.close(main)
+    assert proc.wait(timeout=60) == 0, said
+    return said.decode().replace("\r\n", "\n")
+
+
+def test_next_is_one_line_in_the_words_of_whoever_reads_it(repo):
+    """A release printed a 500-character `next:` naming every leaf and why it was not ready, and a
+    person was told, of themselves, that "the person" reads it and that they "can stop"."""
+    for k in range(1, 5):
+        person("node", "add", f"leaf {k}", "--scope", f"f{k}.txt", "--check", "true")
+    agent("node", "start", "n1")
+    (repo / "f1.txt").write_text("x")
+    assert agent("node", "done").stdout.splitlines()[-1] == (
+        "next: n2 (leaf 2) is ready, and 2 more: `graphene node start n2` takes it, with its contract as it "
+        "stands now"
+    )
+    person("node", "start", "n2")
+    (repo / "f2.txt").write_text("x")
+    said = person("node", "done", "n2").stdout.splitlines()
+    assert said[-1] == "next: n3 (leaf 3) is ready, and 1 more: `graphene run` runs them"
+    person("node", "set", "n4", "--needs", "n3")
+    agent("node", "start", "n3")
+    said = person("node", "release", "n3", "--why", "not this one yet").stdout.splitlines()
+    assert said[-1] == "next: nothing is ready to run (graphene plan says what each leaf waits on)"
+    assert len([line for line in said if line.startswith("next:")]) == 1
+
+
+def test_reopen_and_release_ask_at_a_terminal_and_refuse_in_one_line_without_one(repo, monkeypatch):
+    """`reopen` without --note was Click's usage box; `release` without --why the same."""
+    person("node", "add", "users", "--scope", "api.py", "--check", "true")
+    agent("node", "start", "n1")
+    refused = agent("node", "release", "n1")
+    assert (
+        refused.exit_code == 2
+        and refused.stderr == "graphene node release n1 needs --why: what is in the way\n"
+    )
+    (repo / "api.py").write_text("def users():\n    return {}\n")
+    agent("node", "done")
+    refused = person("node", "reopen", "n1")
+    assert (refused.exit_code, refused.stderr) == (2, "graphene node reopen n1 needs --note: what is wrong\n")
+    monkeypatch.setattr(sys, "stdin", Tty())  # typed at graphene watch's `:`: refused, never asked
+    assert _cli(["node", "reopen", "n1"]) == (2, "graphene node reopen n1 needs --note: what is wrong")
+    said = at_terminal(repo, ["node", "reopen", "n1"], "return a dict")
+    assert said.startswith("what is wrong: return a dict\nn1 is open again")  # asked in one line
+    assert "sent back with: return a dict" in agent("node", "start", "n1").stdout
+    said = at_terminal(repo, ["node", "release", "n1"], "the schema is in the way")
+    assert said.startswith("what is in the way: the schema is in the way\nn1 handed back: the schema")
+    refused = person("node", "release", "n1")  # nothing to hand back: that is said, and nothing asked
+    assert (refused.exit_code, refused.stderr) == (1, "n1 is open, not running\n")
+
+
+def test_every_write_ends_with_which_repository_the_same_way(repo):
+    """The repository came first on some writes, last on others, and between a hand-back and its
+    `next:` on a release. The screen's top line says it in the same words."""
+    acts = [
+        person("plan", "goal", "users come back with their ids"),
+        person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true"),
+        person("node", "set", "l1", "--goal", "ids, not rows"),
+        agent("node", "start", "l1"),
+        agent("node", "release", "l1", "--why", "needs schema.py", "--wants", "schema.py"),
+        person("node", "widen", "l1"),
+        person("node", "drop", "l1"),
+        person("plan", "undo"),
+        person("plan", "prompts", "strict"),
+        person("plan", "first", "off"),
+        person("plan", "pause"),
+        person("plan", "resume"),
+    ]
+    for act in acts:
+        assert act.exit_code == 0, act.output
+        last = act.output.splitlines()[-1]
+        assert last.startswith("  (the plan of ") and last == act.stderr.splitlines()[-1], act.output
+    assert all(act.output.count("(the plan of ") == 1 for act in acts)

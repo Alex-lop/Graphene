@@ -101,8 +101,7 @@ def test_nothing_recorded_and_nothing_to_backfill(repo):
 def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
     result = run()
     assert result.exit_code == 1
-    assert one_line(result).startswith("no plan here yet. `graphene node add")
-    assert "graphene plan --help" in one_line(result)
+    assert one_line(result).startswith("nothing is planned here yet. Say what you want to your agent")
 
 
 def test_a_missing_argument_or_option_anywhere_is_one_plain_line(repo):

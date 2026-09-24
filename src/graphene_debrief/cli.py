@@ -229,12 +229,9 @@ def build():
         if ctx.invoked_subcommand is None:
             if plan_or_nothing():
                 return
-            empty(
-                "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check '<command>'` "
-                "starts one, or ask your agent to propose one; `graphene plan --help` has the rest."
-            )
+            empty(NO_PLAN)
 
-    from .plan_cli import register
+    from .plan_cli import NO_PLAN, register
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 

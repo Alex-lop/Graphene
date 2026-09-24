@@ -48,7 +48,7 @@ def test_an_agent_proposes_in_text_and_the_person_reads_it_back(repo):
     proposed = agent("plan", "propose", "-", input=TEXT)
     assert proposed.exit_code == 0, proposed.output
     assert "proposed ids: users returns ids" in proposed.stdout
-    assert "3 proposed. The person sees them now" in proposed.stdout
+    assert "3 proposed: nobody can start them until the person accepts" in proposed.stdout
     shown = person("plan", "--text")
     assert (
         "? users returns ids  [ids]" in shown.stdout
