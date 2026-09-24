@@ -324,6 +324,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             return "yes" if v else "no"
         return " ".join(str(v).split())
 
+    def one_row(store, n: P.Node, depth: int = 0) -> str:
+        """A node the command just made or moved, in the row grammar `graphene plan` and the screen
+        use: glyph, title, id, the word its state reads as."""
+        everything = P.nodes(store)
+        word = P.reads(P.get(store, n.id), everything)
+        return f"{'  ' * depth}{P.look(word)[0]} {n.title}  {n.id}  {word}"
+
     def log_line(e: dict, with_node: int = 0, who_wide: int = 16) -> str:
         detail = e["detail"]
         changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
@@ -470,7 +477,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             added = P.propose(store, items, who, files=files)
             by_id = {n.id: n for n in P.nodes(store)}
             for n in added:
-                out(f"{'  ' * len(P.above(n, by_id))}{n.id}  {n.state}  {n.title}")
+                out(one_row(store, n, len(P.above(n, by_id))))
             return added
 
         def as_text(store) -> list[P.Node]:
@@ -554,7 +561,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             if accepted:  # first, in a line: what the screen's bottom line gives of it
                 out(f"accepted {', '.join(n.id for n in accepted)}")
             for n in accepted:
-                out(f"{'  ' * len(P.above(n, by_id))}{n.id}  accepted  {n.title}")
+                out(one_row(store, n, len(P.above(n, by_id))))
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
             runs, waits = P.forecast(P.nodes(store))
@@ -793,7 +800,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             [n] = P.propose(store, [item], P.caller(), files=files)
-            out(f"{n.id}  {n.state}  {n.title}")
+            out(one_row(store, n))
             return [n.id]
 
         warn_unreachable(write(f"node add {title!r}", go), files)
@@ -836,7 +843,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             return
         out(f"{n.id} is now revision {n.rev}:")
         for name, (before, after) in last["detail"]["changed"].items():
-            out(f"  {name}: {before!r} -> {after!r}")
+            out(f"  {name}: {value(before)} → {value(after)}")
         if n.state == P.RUNNING:
             out(f"{n.id} is running on revision {n.told_rev}: its next write is held to the new scope, and "
                 "its `done` to the new check")  # fmt: skip

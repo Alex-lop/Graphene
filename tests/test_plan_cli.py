@@ -167,7 +167,7 @@ def test_a_proposal_shows_what_it_would_wait_on_and_an_edit_says_what_it_changed
     assert "n2  proposed  · README.md · would wait on n1 · `graphene plan accept n2`" in person("plan").stdout
     assert "  needs:  n1   (it cannot start until they are done)" in person("node", "show", "n2").stdout
     edited = person("node", "set", "n2", "--scope", "docs/api.md").stdout
-    assert "n2 is now revision 2:" in edited and "scope: ['README.md'] -> ['docs/api.md']" in edited
+    assert "n2 is now revision 2:" in edited and "scope: README.md → docs/api.md" in edited
     assert "n2 is unchanged (revision 2)" in person("node", "set", "n2", "--scope", "docs/api.md").stdout
 
 
@@ -211,7 +211,7 @@ def test_without_a_terminal_a_person_is_still_the_person_and_a_runs_executor_is_
     for mark in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT"):
         monkeypatch.delenv(mark, raising=False)
     result = runner.invoke(build(), ["node", "add", "x", "--scope", "a", "--check", "true"])
-    assert "n1  open" in result.stdout  # never a proposal its own author cannot accept
+    assert "n1  ready" in result.stdout  # never a proposal its own author cannot accept
     assert "(no terminal)" in runner.invoke(build(), ["plan", "log"]).stdout  # and the log says how
     theirs = runner.invoke(
         build(), ["node", "add", "y", "--scope", "b", "--check", "true"], env={"GRAPHENE_NODE": "n1"}
