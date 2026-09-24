@@ -18,6 +18,12 @@ from . import gate as G
 from . import plan as P
 from . import plan_text as T
 
+# What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
+NO_PLAN = (
+    "nothing is planned here yet. Say what you want to your agent, in a paragraph: it proposes the "
+    "tree, and you prune it in `graphene watch`. Or `graphene ask '<what you want>'`"
+)
+
 
 def register(cli: typer.Typer, root, open_store, fail):
     out = typer.echo
@@ -36,26 +42,37 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(str(no), 1)
 
     def write(what: str, operation):
-        """A person's act on the plan's shape: kept for `graphene plan undo`, and said which
-        repository it went to, so a stray `cd` cannot fool anyone. What git tracks is asked before
-        the plan's write lock is taken (``tracked``), never under it: a hook waiting on the lock
-        gives up after a quarter of a second, and lets the call through."""
+        """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
+        before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
+        lock gives up after a quarter of a second, and lets the call through."""
         who = P.caller()
 
         def go(store):
             with P.undoable(store, who, what):
                 return operation(store)
 
-        done = run(go)
-        typer.echo(where(), err=True)
-        return done
+        return run(go)
 
     def tracked() -> list[str]:
         return P.tracked(checkout())
 
     def where() -> str:
-        r, home = str(root()), str(Path.home())
-        return f"  (the plan of {'~' + r[len(home) :] if r.startswith(home + os.sep) else r})"
+        return f"  (the plan of {P.where(root())})"
+
+    def said_where() -> None:
+        """The last line of every command that changes the plan, the words the screen's top line
+        uses: which repository's plan it changed, so a stray `cd` cannot fool anyone."""
+        typer.echo(where(), err=True)
+
+    def asked(command: str, option: str, what: str) -> str:
+        """An option a person at a terminal may leave out: asked for, in one line. With no terminal
+        its absence is refused in one line, in the words of any missing option (`cli.usage`). A
+        command typed at `graphene watch`'s `:` runs with the screen's terminal as its stdin and its
+        output captured: it is refused too, never left reading keys the screen is waiting for."""
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            return typer.prompt(what)
+        fail(f"{command} needs {option}: {what}", 2)
+        raise AssertionError  # unreachable: fail() exits
 
     def warn_unreachable(ids, files: list[str] | None = None) -> None:
         """A check that names a path no leaf may create and the repo does not have: said now, not
@@ -71,11 +88,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                         f"warning: {node.id}'s check {said} (`graphene node edit {node.id}`)", err=True
                     )
 
-    def next_lines(store, who: P.Caller, but: str | None = None) -> list[str]:
-        """What the caller can do now, read from the plan as it stands at this moment. ``but`` is a
-        node the caller has just handed back: it is not sent straight back to it."""
+    def next_lines(store, who: P.Caller, but: str | None = None, shown: bool = False) -> list[str]:
+        """What the caller can do now, in one line, read from the plan as it stands at this moment:
+        what is ready and its command, or that nothing is; `graphene plan` has the rest (``shown``:
+        the plan is printed right above, so it is not pointed at). An agent is told what it may take;
+        the person, what `graphene run` would. ``but`` is a node the caller has just handed back: it
+        is not sent straight back to it."""
         everything = P.nodes(store)
-        by_id = {n.id: n for n in everything}
+        rest = "" if shown else " (graphene plan says what each leaf waits on)"
         if os.environ.get("GRAPHENE_NODE") and not who.person:
             return ["next: stop here. `graphene run` started you for one leaf, and it decides what runs next"]
         held = [n for n in everything if n.state == P.RUNNING and holds(n, who)]
@@ -85,40 +105,27 @@ def register(cli: typer.Typer, root, open_store, fail):
                 f"next: you hold {n.id} ({n.title}). Finish it with `graphene node done {n.id}`, or hand "
                 f"it back with `graphene node release {n.id} --why '…'`"
             ]
-        mine = [n for n in P.ready(everything, who) if n.id != but]
-        if mine:
-            first = mine[0]
-            more = f" and {len(mine) - 9} more" if len(mine) > 9 else ""
-            also = f" (also ready: {', '.join(n.id for n in mine[1:9])}{more})" if mine[1:] else ""
-            return [
-                f"next: {first.id}, {first.title}{also}. `graphene node start {first.id}` prints its "
-                "contract as it stands now; it may have changed since you last saw it"
-            ]
-        left = [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
-        if not left:
+        if not [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]:
             return ["next: nothing; every node is done"]
-        why = []
-        for n in left:
-            reasons = [f"{b.id} ({b.state})" for b in P.unmet(n, by_id)]
-            if n.id == but:
-                why.append(f"{n.id} is back with the person, who reads why you handed it back")
-            elif n.state == P.RUNNING:
-                why.append(f"{n.id} is held by {n.executor}")
-            elif n.state == P.REVIEW:
-                why.append(f"{n.id} waits for a sign-off")
-            elif n.state == P.PROPOSED:
-                why.append(f"{n.id} is a proposal not yet accepted")
-            elif not P.may_take(n, who):
-                why.append(f"{n.id} is {n.owner}'s")
-            elif reasons:
-                why.append(f"{n.id} waits on {', '.join(reasons)}")
-        tail = (
-            ""
-            if who.person
-            else " You can stop: the rest waits for a person, and `graphene plan` shows them that"
-        )
-        more = f"; and {len(why) - 8} more" if len(why) > 8 else ""
-        return [f"next: nothing is ready for you: {'; '.join(why[:8])}{more}.{tail}"]
+        agents = [n for n in P.ready(everything, P.Caller("agent", False)) if n.id != but]
+        mine = [n for n in P.ready(everything, who) if n.id != but]
+        if who.person:
+            if agents:
+                first, more = agents[0], len(agents) - 1
+                also = f", and {more} more" if more else ""
+                return [f"next: {first.id} ({first.title}) is ready{also}: `graphene run` runs "
+                        f"{'them' if more else 'it'}"]  # fmt: skip
+            if mine:
+                return [f"next: {mine[0].id} ({mine[0].title}) is yours to do"]
+            return [f"next: nothing is ready to run{rest}"]
+        if mine:
+            first, more = mine[0], len(mine) - 1
+            also = f", and {more} more" if more else ""
+            return [
+                f"next: {first.id} ({first.title}) is ready{also}: `graphene node start {first.id}` takes "
+                "it, with its contract as it stands now"
+            ]
+        return [f"next: nothing is ready for you, so you can stop{rest}"]
 
     def brief(text: str, node_id: str) -> str:
         """A reason as one table cell: the whole of it is in `node show`."""
@@ -169,12 +176,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         the goal, then the tree folded to what is still moving. ``everything`` unfolds it."""
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         if not alive:
-            return [
-                "no plan yet. Tell your agent what you want, in a paragraph: it proposes the tree "
-                "(`graphene plan propose -`, in the text `graphene plan --text` prints), and you prune it "
-                "(`graphene watch`, or `graphene plan edit` in your editor). `graphene node add 'title' "
-                "--scope 'src/x/**' --check 'pytest tests/x'` adds one node by hand"
-            ]
+            return [NO_PLAN]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
         leaves = [n for n in P.leaves(alive) if not n.aside]
@@ -307,7 +309,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 "or commit them; else put them back)"
             )
         if not who.person:
-            lines += next_lines(store, who)
+            lines += next_lines(store, who, shown=True)
         return lines
 
     def print_plan(store, who: P.Caller, everything: bool = False) -> None:
@@ -377,6 +379,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         out(f"the plan: {text.strip()}")
         if was:
             out(f"  (it said: {was})")
+        said_where()
 
     @cli.command()
     def watch(
@@ -408,9 +411,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             from .tui import run as watch_tui
         except ImportError as missing:  # an install from before the screen: code new, dependencies old
             fail(
-                f"graphene watch needs {missing.name or 'textual'}, which this install lacks: reinstall "
-                "(`uv tool install --force git+https://github.com/Alex-lop/Graphene`, or `--editable .` "
-                "from a checkout). `graphene watch --once` prints the plan meanwhile",
+                f"graphene watch needs {missing.name or 'textual'}, which this install lacks\n"
+                "  `uv tool install --force git+https://github.com/Alex-lop/Graphene` (`--editable .` in a "
+                "checkout); `graphene watch --once` prints the plan meanwhile",
                 1,
             )
 
@@ -437,9 +440,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         EOF"""
         if file == "-" and sys.stdin.isatty():
             fail(
-                "`propose -` reads the plan from a pipe, and nothing is piped here, so nothing was read. An "
-                "agent pipes it (graphene plan propose - <<'EOF' … EOF); at a terminal, `graphene plan edit` "
-                "opens the plan in your editor",
+                "`graphene plan propose -` reads a pipe, and nothing is piped here\n"
+                "  graphene plan propose - <<'EOF' … EOF; at a terminal, `graphene plan edit`",
                 1,
             )
         try:
@@ -474,13 +476,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             if not who.person and added:
                 out(
                     G.one_line_ask(store, added, who)  # one leaf for the person's own ask is theirs at once
-                    or f"{len(added)} proposed. The person sees them now (`graphene watch`, `graphene plan`) "
-                    "and accepts or prunes them; nobody can start them before that. Tell them the tree is "
-                    "ready, and stop"
+                    or f"{len(added)} proposed: nobody can start {'it' if len(added) == 1 else 'them'} until "
+                    "the person accepts, in `graphene watch`. Tell them the tree is ready, and stop"
                 )
             return [n.id for n in added]
 
         warn_unreachable(write("plan propose", go) or [], files)
+        said_where()
 
     @plan_cli.command("edit")
     def edit_(
@@ -497,7 +499,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         """Put back your last act on the plan (an edit, an add, a drop, an acceptance, a saved text)."""
         what = run(lambda s: P.undo(s, P.caller()))
         out(f"undid: {what}")
-        typer.echo(where(), err=True)
+        said_where()
 
     def edit_in_editor(node_id: str | None, alone: bool) -> None:
         who = P.caller()
@@ -531,7 +533,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             with open_store(root()) as store:
                 ids = [i for i in said.ids if store.node_row(i)]
             warn_unreachable(ids)
-            typer.echo(where(), err=True)
+            said_where()
 
     @plan_cli.command()
     def accept(ids: list[str] = typer.Argument(None, help="Node ids; none means every proposal.")) -> None:
@@ -552,6 +554,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             return [n.id for n in accepted]
 
         warn_unreachable(write("plan accept" + (f" {' '.join(ids)}" if ids else ""), go) or [])
+        said_where()
 
     @plan_cli.command("log")
     def log_() -> None:
@@ -582,21 +585,21 @@ def register(cli: typer.Typer, root, open_store, fail):
         """Put finished nodes away. With nothing else left, the plan is no longer in force."""
         gone = run(lambda s: P.archive(s, P.caller()))
         out(f"archived {', '.join(n.id for n in gone)}" if gone else "nothing finished to archive")
-        typer.echo(where(), err=True)
+        said_where()
 
     @plan_cli.command()
     def ack() -> None:
         """Accept, as they are, the changes made while no node owned them (they are yours, or fine)."""
         paths = run(lambda s: P.acknowledge(s, checkout(), P.caller()))
         out(f"acknowledged: {', '.join(paths)}" if paths else "nothing had changed between nodes")
-        typer.echo(where(), err=True)
+        said_where()
 
     @plan_cli.command()
     def pause() -> None:
         """Suspend the plan: nothing starts, and no write is refused, until `graphene plan resume`."""
         run(lambda s: P.set_paused(s, True, P.caller()))
         out("paused: nothing starts and nothing is enforced until `graphene plan resume`")
-        typer.echo(where(), err=True)
+        said_where()
 
     @plan_cli.command()
     def prompts(
@@ -608,7 +611,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         write of the turn makes a leaf from your prompt, held by that session, and its record says
         what it touched. 'strict': a session that holds no node writes nothing, as in 0.3."""
         if how not in (None, "leaf", "strict"):
-            fail("say 'leaf' or 'strict'", 1)
+            fail(f"graphene plan prompts takes leaf or strict, not {how!r}", 1)
 
         def go(store):
             if how is not None:
@@ -617,13 +620,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             return "strict" if store.meta("asides") == "off" else "leaf"
 
         now = run(go)
-        if how is not None:
-            typer.echo(where(), err=True)
         out(
             "strict: a session that holds no node writes nothing; it proposes, and you accept"
             if now == "strict"
             else "leaf: what you type into a session becomes a leaf when the agent first writes for it"
         )
+        if how is not None:
+            said_where()
 
     @plan_cli.command()
     def first(
@@ -633,7 +636,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         agent writes nothing until a leaf of it is accepted and taken (a one-line ask is proposed as
         one leaf, which is yours at once). `P` in graphene watch turns it on and off."""
         if how not in (None, "on", "off"):
-            fail("say 'on' or 'off'", 1)
+            fail(f"graphene plan first takes on or off, not {how!r}", 1)
         if how is not None:
             run(lambda s: P.set_plan_first(s, how == "on", P.caller()))
         on = run(P.plan_first)
@@ -643,14 +646,14 @@ def register(cli: typer.Typer, root, open_store, fail):
             else "plan first: off. What you ask for in a session is done at once, as a leaf of its own"
         )
         if how is not None:
-            typer.echo(where(), err=True)
+            said_where()
 
     @plan_cli.command()
     def resume() -> None:
         """Put the plan back in force."""
         run(lambda s: P.set_paused(s, False, P.caller()))
         out("the plan is in force")
-        typer.echo(where(), err=True)
+        said_where()
 
     @cli.command("run")
     def run_(
@@ -669,19 +672,19 @@ def register(cli: typer.Typer, root, open_store, fail):
             "1 (default) works in this checkout and commits nothing.",
         ),
     ) -> None:
-        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done."""
+        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done.
+        The last line says what the run did; `graphene watch` shows it when the run ends."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
-            fail(
-                "an executor or a planner does not start runs (through --with that is any command at all)", 1
-            )
-        from .run import DEFAULT_WITH, run_parallel, run_plan
+            fail("an executor or a planner does not start runs: through --with a run is any command", 1)
+        from .run import DEFAULT_WITH, run_parallel, run_plan, summary
 
         r = root()
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
-                fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
-            typer.echo(where(), err=True)  # first: a run changes the plan for as long as it goes
+                fail("nothing to run: the plan has no open leaf", 1)
+            said_where()  # first: a run changes the plan for as long as it goes
             logs = r / ".graphene" / "runs"
+            since = len(store.node_log())  # what this run did is what the log says after this
             try:
                 if parallel > 1:
                     run_parallel(
@@ -692,23 +695,18 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
-            except KeyboardInterrupt as stopped:  # its args: the leaves that passed and wait in review
-                back = "stopped. What was running is handed back and ready again"
-                but = f", but {', '.join(stopped.args)}: passed, in review (above)" if stopped.args else ""
-                out(f"{back}{but}; `graphene plan` shows it")
+            except KeyboardInterrupt:
+                out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
-            for line in next_lines(store, P.caller()):
-                out(line)
+            out(summary(store, since))
 
     def planner(sentence: str, executor: str | None, about: str | None, split: bool) -> None:
         from .ask import DEFAULT_PLANNER, ask
 
         who = P.caller()
         if not who.person:
-            fail(
-                "asking a planner is the person's: it starts an agent, and spends. Propose the tree yourself",
-                1,
-            )
+            fail("asking a planner is the person's: it starts an agent, and spends\n"
+                 "  propose the tree yourself: graphene plan propose - <<'EOF' … EOF", 1)  # fmt: skip
 
         def go(store):
             said = ask(store, checkout(), sentence, executor or DEFAULT_PLANNER, about, split, out)
@@ -719,8 +717,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             return list(getattr(said, "ids", []))
 
         proposed = run(go)
-        typer.echo(where(), err=True)
         warn_unreachable(proposed or [])
+        said_where()
 
     @cli.command("ask")
     def ask_(
@@ -788,6 +786,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             return [n.id]
 
         warn_unreachable(write(f"node add {title!r}", go), files)
+        said_where()
 
     @node_cli.command("set")
     def set_(
@@ -808,9 +807,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if signoff is not None:
             edits["signoff"] = signoff
         if not edits:
-            fail(
-                "nothing to change: pass --scope, --check, --goal, --needs, --owner, --title or --signoff", 1
-            )
+            fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
+                 "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
 
         files = tracked()
 
@@ -821,19 +819,18 @@ def register(cli: typer.Typer, root, open_store, fail):
             return node, last
 
         n, last = write(f"node set {node_id}", go)
-        if last is not None:
-            warn_unreachable([node_id], files)
         if last is None:
             out(f"{n.id} is unchanged (revision {n.rev})")
+            said_where()
             return
         out(f"{n.id} is now revision {n.rev}:")
         for name, (before, after) in last["detail"]["changed"].items():
             out(f"  {name}: {before!r} -> {after!r}")
         if n.state == P.RUNNING:
-            out(
-                f"{n.id} is running: {n.executor} was told revision {n.told_rev}. Writes are checked against "
-                "the new scope from now on, and `done` against the new check"
-            )
+            out(f"{n.id} is running on revision {n.told_rev}: its next write is held to the new scope, and "
+                "its `done` to the new check")  # fmt: skip
+        warn_unreachable([node_id], files)
+        said_where()
 
     @node_cli.command()
     def drop(
@@ -866,6 +863,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         write(f"node drop {' '.join(node_ids)}", go)
         them = "it" if len(node_ids) == 1 else "them"
         out(f"{', '.join(node_ids)} dropped (`graphene plan undo` puts {them} back)")
+        said_where()
 
     @node_cli.command("edit")
     def node_edit(node_id: str = typer.Argument(...)) -> None:
@@ -884,7 +882,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(f"  sent back with: {note}")
 
         run(go)
-        typer.echo(where(), err=True)
+        said_where()
 
     @node_cli.command()
     def done(
@@ -899,7 +897,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             if target is None:
                 held = [n for n in P.nodes(store, (P.RUNNING,)) if holds(n, who)]
                 if len(held) != 1:
-                    raise P.Refused("which node? `graphene node done <id>`")
+                    them = f"{len(held)} nodes ({', '.join(n.id for n in held)})" if held else "no node"
+                    raise P.Refused(f"you hold {them}: `graphene node done <id>` names one")
                 target = held[0].id
             n = P.finish(store, target, who, override=override, checkout=checkout())
             how = (
@@ -912,12 +911,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(line)
 
         run(go)
-        typer.echo(where(), err=True)
+        said_where()
 
     @node_cli.command()
     def release(
         node_id: str = typer.Argument(...),
-        why: str = typer.Option(..., "--why", help="What is in the way. The person reads this."),
+        why: str = typer.Option(
+            None, "--why", help="What is in the way; the person reads it. Asked for at a terminal."
+        ),
         wants: list[str] = typer.Option(
             None,
             "--wants",
@@ -926,15 +927,20 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Hand a running node back, saying why. The way out when it cannot be finished as written."""
         who = P.caller()
+        if why is None:  # asked for only when there is something to hand back
+            state = run(lambda s: P.get(s, node_id).state)
+            if state != P.RUNNING:
+                fail(f"{node_id} is {state}, not running", 1)
+            why = asked(f"graphene node release {node_id}", "--why", "what is in the way")
 
         def go(store):
-            P.release(store, node_id, who, why, wants=wants or None)
+            P.release(store, node_id, who, why or "", wants=wants or None)
             out(f"{node_id} handed back: {why}")
-            typer.echo(where(), err=True)
             for line in next_lines(store, who, but=node_id):
                 out(line)
 
         run(go)
+        said_where()
 
     @node_cli.command("signoff")
     def signoff_(node_id: str = typer.Argument(...)) -> None:
@@ -946,7 +952,6 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         left = run(go)
         out(f"{node_id} is done (signed off)")
-        typer.echo(where(), err=True)
         if left.get("branch"):  # the person merged it by hand: its worktree goes, and its branch if merged
             git = ["git", "-C", str(checkout())]
             subprocess.run([*git, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
@@ -957,20 +962,22 @@ def register(cli: typer.Typer, root, open_store, fail):
                     f"{left['branch']} is not merged here, so it was kept: "
                     f"`git branch -D {left['branch']}` drops it"
                 )
+        said_where()
 
     @node_cli.command()
     def reopen(
         node_id: str = typer.Argument(...),
-        note: str = typer.Option(..., "--note", help="What is wrong; whoever takes it next is told."),
+        note: str = typer.Option(
+            None, "--note", help="What is wrong; whoever takes it next is told. Asked for at a terminal."
+        ),
     ) -> None:
         """Not good enough: send a finished node back, with what is wrong."""
-        run(lambda s: P.reopen(s, node_id, P.caller(), note))
-        typer.echo(where(), err=True)
-        out(
-            f"{node_id} is open again. Whoever takes it next is shown your note; the contract itself is "
-            "unchanged, so if the note changes what is wanted, say it there too: "
-            f"`graphene node set {node_id} --goal …`"
-        )
+        if note is None and run(lambda s: P.get(s, node_id).state in (P.DONE, P.REVIEW)):  # else its refusal
+            note = asked(f"graphene node reopen {node_id}", "--note", "what is wrong")
+        run(lambda s: P.reopen(s, node_id, P.caller(), note or ""))
+        out(f"{node_id} is open again; whoever takes it next is shown your note (its contract is as it was: "
+            f"`graphene node edit {node_id}` changes it)")  # fmt: skip
+        said_where()
 
     @node_cli.command()
     def show(node_id: str = typer.Argument(...)) -> None:
@@ -1027,9 +1034,10 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.widen(store, node_id, paths or [], P.caller(), files=files)
-            out(f"{n.id}'s scope is now {', '.join(n.scope)} (revision {n.rev}); it is ready again")
+            out(f"{n.id}'s scope is now {', '.join(n.scope)}; it is ready again")
 
         write(f"node widen {node_id}", go)
+        said_where()
 
     @node_cli.command()
     def sibling(
@@ -1046,6 +1054,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(f"  its check is `{made.check}`; {node_id}'s, run after it, says if they work together")
 
         write(f"node sibling {node_id}", go)
+        said_where()
 
     def plan_or_nothing() -> bool:
         """Plain `graphene`: where the work stands, when the repo has a plan. False when it has none."""

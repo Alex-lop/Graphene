@@ -16,6 +16,7 @@ def app() -> None:
 
 
 def build():
+    import inspect
     import json
     import os
     import shutil
@@ -26,6 +27,11 @@ def build():
     from rich.console import Console
     from rich.text import Text
     from typer.core import TyperGroup
+
+    try:  # typer carries its own click in recent releases, and used click's before
+        from typer._click.exceptions import MissingParameter, UsageError
+    except ImportError:  # pragma: no cover
+        from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
     from .commits import refresh_commits
@@ -61,14 +67,48 @@ def build():
         "try again in a moment"
     )
 
+    def usage(error) -> str:
+        """What Click would put in its usage box, as one plain line: what to add, or what was wrong."""
+        path = " ".join(["graphene", *(error.ctx.command_path.split()[1:] if error.ctx else [])])
+        if isinstance(error, MissingParameter) and error.param is not None:
+            param = error.param
+            name = param.opts[0] if param.param_type_name == "option" else f"<{param.name}>"
+            what = (getattr(param, "help", None) or "").strip().rstrip(".")
+            return f"{path} needs {name}" + (f": {what[:1].lower()}{what[1:]}" if what else "")
+        said = error.format_message().strip().rstrip(".")
+        helped = f" (`{path} --help` says what it takes)" if error.ctx else ""  # the parser names none
+        return f"{path}: {said[:1].lower()}{said[1:]}{helped}"
+
+    def paragraphs(command, rich: bool) -> None:
+        """Every command's help reads as paragraphs: Typer's list of commands shows a docstring's hard
+        line breaks as they are. A "[" is a bracket, not Rich markup (the text form's `[id]` vanished).
+        A paragraph that starts with a \\b is printed as it is written."""
+        for sub in getattr(command, "commands", {}).values():
+            if sub.help:
+                said = inspect.cleandoc(sub.help).split("\n\n")
+                sub.help = "\n\n".join(p if p.startswith("\b") else " ".join(p.split()) for p in said)
+                sub.help = sub.help.replace("[", "\\[") if rich else sub.help
+            paragraphs(sub, rich)
+
     class LockAware(TyperGroup):
-        """One place where losing the race with a hook or a backfill is a line, not a traceback."""
+        """One place where losing the race with a hook or a backfill is a line, not a traceback; and
+        where a missing option or argument, anywhere, is a line and not Click's usage box."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            paragraphs(self, self.rich_markup_mode == "rich")
 
         def list_commands(self, ctx):
             """The plan leads the help: what will be done comes before what was."""
             first = ["plan", "node", "watch", "ask", "run", "init", "ui"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
+
+        def parse_args(self, ctx, args):
+            try:
+                return super().parse_args(ctx, args)
+            except UsageError as no:  # `graphene --bogus`: the only one raised before `invoke`
+                fail(usage(no))
 
         def invoke(self, ctx):
             try:
@@ -77,6 +117,8 @@ def build():
                 if "locked" not in str(exc):
                     raise
                 fail(LOCKED, 1)
+            except UsageError as no:
+                fail(usage(no))
 
     cli = typer.Typer(
         cls=LockAware,
@@ -187,12 +229,9 @@ def build():
         if ctx.invoked_subcommand is None:
             if plan_or_nothing():
                 return
-            empty(
-                "no plan here yet. `graphene node add '<what>' --scope '<paths>' --check '<command>'` "
-                "starts one, or ask your agent to propose one; `graphene plan --help` has the rest."
-            )
+            empty(NO_PLAN)
 
-    from .plan_cli import register
+    from .plan_cli import NO_PLAN, register
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 

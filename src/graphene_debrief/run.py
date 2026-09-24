@@ -203,16 +203,15 @@ def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[st
     lines = [
         "You are doing one leaf of a plan that a person and their agents share. `why` is the path from "
         "the plan's goal down to your leaf, in the person's words: it is what your work is for. The "
-        "leaf is the whole of what you are asked to do; the rest of the plan is not yours.",
+        "leaf is the whole of what you are asked to do.",
         "",
         P.contract(node, why),
         *(f"  sent back with: {note}" for note in notes),
         "",
-        "Do the work inside the scope. Read anything you need; write only inside the scope. When you "
-        f"believe it is done run `graphene node done {node.id}`: it runs the check and asks git what "
-        "changed, and tells you what is wrong if it refuses. If it cannot be done as written, run the "
-        "`release` command above and say why; when what it needs is paths outside the scope, name each "
-        "with --wants, and the person is offered them in one key. Do not start any other node.",
+        "Read anything you need; write only inside the scope. When it is done, run "
+        f"`graphene node done {node.id}`; if it refuses, it says what is wrong. If the leaf cannot be done "
+        "as written, run the `release` command above and say why, naming with --wants each path outside "
+        "the scope it needs. Do not start any other node.",
     ]
     if refusal:
         lines += ["", "Your last attempt was not accepted:", refusal]
@@ -250,7 +249,7 @@ def run_node(
     except P.Refused as no:
         say(str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}")
         return None
-    say(f"{node.id} started (revision {node.rev}): {node.title}")
+    say(f"{node.id} started: {node.title}")
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
@@ -315,10 +314,11 @@ def run_node(
                     say(f"{node.id} handed back while its check ran: {no}")
                     return None
                 refusal = str(no)
-                said = " · ".join(line.strip() for line in refusal.splitlines()[:2])  # the paths are line 2
+                said = " · ".join(ln.strip().rstrip(":") for ln in refusal.splitlines()[:2])  # the paths: line 2
                 say(f"{node.id} attempt {attempt} refused: {said}")
-        P.release(store, node.id, who, f"{attempts} attempts, the last one refused: {refusal}")
-        say(f"{node.id} handed back after {attempts} attempts")
+        tries = f"{attempts} attempt{'s' if attempts != 1 else ''}"
+        P.release(store, node.id, who, f"{tries}, the last one refused: {refusal}")
+        say(f"{node.id} came back after {tries}")
         return None
     except KeyboardInterrupt:
         with _no_interrupt():  # a second Ctrl-C must not leave the leaf running and its executor alive
@@ -326,9 +326,40 @@ def run_node(
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
             if P.get(store, node.id).state == P.RUNNING:
-                P.release(store, node.id, who, "the run was stopped (Ctrl-C) before this leaf was finished")
+                P.release(store, node.id, who, STOPPED)
                 say(f"{node.id} handed back: the run was stopped")
         raise
+
+
+STOPPED = "the run was stopped (Ctrl-C) before this leaf was finished"
+
+
+def summary(store, since: int, stopped: bool = False) -> str:
+    """What a run did, in one line for the person, read from what the plan logged after entry
+    ``since``: what it finished, what came back to them, what waits in review. `graphene watch` shows
+    this line when the run ends, so it is the run's last."""
+    log = store.node_log()[since:]
+    started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
+    let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
+    ran = [n for n in P.order(P.nodes(store)) if n.id in started]  # in the plan's order, not the race's
+    done = [n.id for n in ran if n.state == P.DONE]
+    review = [n.id for n in ran if n.state == P.REVIEW]
+    back = [n.id for n in ran if n.state == P.OPEN and n.id in let_go and not let_go[n.id].get("person")]
+    handed = [i for i in back if let_go[i].get("why") == STOPPED]
+    back = [i for i in back if i not in handed]
+
+    def named(ids: list[str]) -> str:
+        return ", ".join(ids[:3]) + (f" and {len(ids) - 3} more" if len(ids) > 3 else "")
+
+    said = [f"{len(done)} done"] if done else []
+    said += [f"{len(back)} came back ({named(back)})"] if back else []
+    said += [f"{len(review)} in review ({named(review)})"] if review else []
+    said += [f"{named(handed)} handed back, ready again"] if handed else []
+    if stopped:
+        return "run stopped: " + (", ".join(said) or "nothing was finished")
+    if not ran:
+        return "run: nothing started (graphene plan says what each leaf waits on)"
+    return "run: " + (", ".join(said) or "nothing finished")
 
 
 @contextlib.contextmanager
@@ -562,10 +593,10 @@ def land(
             fresh.state = P.REVIEW
             P._save(store, fresh, "unlanded", who, P._now(), branch=branch, worktree=str(tree), why=said[:6])
         say(
-            f"{node.id} passed its boundary and did not land: {said[0]}. Your checkout is as it was; its "
-            f"work is in {tree}, on {branch}. `git merge {branch}` when the way is clear, then `graphene "
-            f"node signoff {node.id}`; or `graphene node reopen {node.id} --note …` to have it done again "
-            "on top of what is there now"
+            f"{node.id} passed and did not land: {said[0]}. Your checkout is as it was\n"
+            f"  its work: {branch}, in {tree}\n"
+            f"  `git merge {branch}`, then `graphene node signoff {node.id}`; or `graphene node reopen "
+            f"{node.id}` to have it done again on top of what is here now"
         )
         return False
     landed()
@@ -659,7 +690,6 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     unlanded: set[str] = set()
     finished: list[P.Node] = []
     waiting: dict[str, str] = {}  # a leaf whose needs are done elsewhere and not here yet: said once
-    parked: list[str] = []  # stopped after it passed and before it landed: in review
     stop = Stop()
 
     def work(node_id: str, tree: Path) -> P.Node | None:
@@ -709,7 +739,6 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             with _no_interrupt():  # after it landed (a sub-goal's check ran) it stays done and landed
                 if (store.node_log(node.id, ("started", "landed")) or [{}])[-1].get("kind") != "landed":
                     park(store, tree, P.get(store, node.id), say)
-                    parked.append(node.id)
             raise
         if landed:
             finished.append(P.get(store, node.id))
@@ -732,9 +761,8 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             for future, (was, tree) in flying.items():
                 node = P.get(store, was.id)
                 if future.done() and not future.cancelled() and node.state in (P.DONE, P.REVIEW):
-                    park(store, tree, node, say)
-                    parked.append(node.id)
-            raise KeyboardInterrupt(*parked) from None  # which leaves wait in review, not handed back
+                    park(store, tree, node, say)  # stopped after it passed, before it landed: in review
+            raise
 
 
 def park(store, tree: Path, node: P.Node, say: Callable[[str], None]) -> None:
@@ -752,4 +780,4 @@ def park(store, tree: Path, node: P.Node, say: Callable[[str], None]) -> None:
         fresh.state = P.REVIEW
         P._save(store, fresh, "unlanded", P.Caller("graphene run", False), P._now(), branch=branch,
                 worktree=str(tree), why=[why])  # fmt: skip
-    say(f"{node.id} passed its boundary; {why}. `git merge {branch}`, then `graphene node signoff {node.id}`")
+    say(f"{node.id} passed; {why}\n  `git merge {branch}`, then `graphene node signoff {node.id}`")
