@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -91,8 +92,16 @@ def _link(rel: str) -> dict:
     return _deny(f"{rel} is a symbolic link that leaves the repo; no scope covers where it points")
 
 
-def _how_out(held: list[P.Node]) -> str:
+def _how_out(store, sid: object, held: list[P.Node], paths: list[str]) -> str:
+    """The way out of a scope refusal. Why (do not work around it; only the person widens a scope) is
+    said the first time a session meets it in a hold of that node, and a short line after that: the
+    same lecture read twice is noise. TODO: one row a hold that met a refusal, never pruned."""
     n = held[0]
+    told = f"told:{sid}:{n.id}:{n.started_at}:scope"
+    if store.meta(told):
+        wants = " ".join(f"--wants {shlex.quote(p)}" for p in paths[:3])
+        return f"`graphene node release {n.id} --why '…' {wants}` hands it back"
+    store.set_meta(told, "1")
     return (
         f"If the work cannot be done inside that scope, do not work around it: "
         f"`graphene node release {n.id} --why '<what you need and why>' --wants <a path> --wants <another>` "
@@ -386,7 +395,8 @@ def _check_write(
         n.id, P._now(), "denied", n.executor, event.get("session_id"), agent_id, {"path": rel, "how": how}
     )
     scopes = "; ".join(f"{h.id}: {', '.join(h.scope)}" for h in held)
-    return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {_how_out(held)}")
+    way_out = _how_out(store, event.get("session_id"), held, [rel])
+    return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}")
 
 
 def _guard_command(event: dict) -> dict | None:
@@ -551,7 +561,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
             "reason": (
                 f"That command changed {', '.join(stray)}, outside the scope of the node you hold "
                 f"({n.id}: {', '.join(n.scope)}). Put it back as it was now; `graphene node done` asks "
-                f"git and will refuse while it differs. {_how_out(held)}"
+                f"git and will refuse while it differs. {_how_out(store, sid, held, stray)}"
             ),
         }
     return None

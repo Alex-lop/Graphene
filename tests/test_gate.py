@@ -459,6 +459,31 @@ def test_the_way_out_names_each_wanted_path_with_its_own_flag(repo):
     assert "--wants <a path> --wants <another>" in reason(write(repo, "src/db/schema.py"))
 
 
+def test_the_scope_lecture_is_said_once_a_hold_and_a_short_line_after(repo):
+    holding(repo)
+    assert "Only they can widen it" in reason(write(repo, "src/db/schema.py"))
+    assert reason(write(repo, "README.md")) == (
+        "README.md is outside the scope of the node you hold (n1: src/api/**). "
+        "`graphene node release n1 --why '…' --wants README.md` hands it back"
+    )
+    breach = hook(
+        repo,
+        "PostToolUse",
+        tool_name="Bash",
+        tool_use_id="toolu_1",
+        tool_input={"command": "python rewrite.py"},
+        tool_response={"stdout": "", "bashEditDiff": {"changedFiles": [str(repo / "src/db/schema.py")]}},
+    )
+    assert "Only they can widen it" not in breach["reason"]
+    assert breach["reason"].endswith(
+        "`graphene node release n1 --why '…' --wants src/db/schema.py` hands it back"
+    )
+    with Store.open(repo) as store:
+        plan.release(store, "n1", BOT, "the schema is outside")
+        plan.start(store, "n1", BOT, repo)
+    assert "Only they can widen it" in reason(write(repo, "README.md"))  # a new hold: said once again
+
+
 # recheck 19
 def test_a_planner_is_refused_a_write_with_no_plan_and_with_only_proposals(repo, monkeypatch):
     monkeypatch.setenv("GRAPHENE_PLANNER", "1")
