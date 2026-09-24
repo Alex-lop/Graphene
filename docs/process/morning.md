@@ -114,8 +114,8 @@ claude                                   # then a one-line ask, then the paragra
 
 ## 3. What is waiting on you
 
-- **One PR, `polish` into `main`.** I open it last, and its link will be here. CI was green on every
-  push.
+- **One PR, `polish` into `main`:** https://github.com/Alex-lop/Graphene/pull/28. CI was green on
+  every push.
 - **The decisions to strike: 41 to 52** in `docs/DIRECTION.md`. Read these first:
   - **46, plan first.** It replaces the 240-character rule, and it withdraws decision 19's "a plain
     yes accepts".
@@ -204,7 +204,7 @@ git checkout main && git reset --hard 2c86399
 
 ## State of every branch
 
-- `polish`: this run, pushed, CI green. One PR into `main` (link above once opened).
+- `polish`: this run, pushed, CI green. One PR into `main`: #28.
 - `main` (GitHub): `2c86399`, untouched. Local `main`: `6cece1c`, behind GitHub, untouched.
 - `worktree-wf_6c44769e-477-1` … `-4`: this run's four build branches, all merged into `polish`.
   Their worktrees are under `.claude/worktrees/` and can go (`git worktree remove`).
