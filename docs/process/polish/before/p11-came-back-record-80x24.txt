@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same   
+▶ ✓ zero price is skipped for every supplier  [zero-price]                      
+▼ ○ the xml source is wired in  [xml-source]                                    
+├ ✓ an xml reader  [xml-reader]                                                 
+├ ↩ xml enabled end to end  [xml-wiring]  came back                             
+└ ○ read the new README section for xml  [n6]                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ xml-wiring (revision 2): xml enabled end to end                                
+   why:    Load the Northwind XML feed through the same `load` command and   ▆▆ 
+ JSONL sink as csv and json, skipping the summary line and any zero-priced      
+ product.                                                                       
+             the xml source is wired in (xml-source)                            
+   goal:   FIELD_MAPS "xml": code->sku, desc->name, price->price with           
+ price_unit "minor"; "xml" in ENABLED_SOURCES, the USAGE line and README;       
+ samples/prices.xml loads to exactly NW-1 and NW-2                              
+ planner: claude:59409a10 · executors: none · 2/4 done                          
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                             

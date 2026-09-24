@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ○ Load the Northwind XML feed through the same `load`…     3/4 done │ record · it scrolls                             
+├ ▼ ✓ zero price is skipped for every supplier   zero-price  done     │ a price of 0 fails validation                   
+│ └   ✓ a price of 0 fails validation            zero-rule   done     │ zero-rule · done                                
+└ ▼ ○ the xml source is wired in                 xml-source  2/3 done │                                                 
+  ├   ✓ an xml reader                            xml-reader  done     │ contract                                        
+  ├   ✓ xml enabled end to end                   xml-wiring  done     │ why       Load the Northwind XML feed through…  
+  └   ◇ read the new README section for xml      n6          yours    │             zero price is skipped…  zero-price  
+                                                                      │ goal      validate/rules.py gets a rule         
+                                                                      │           rejecting price_cents == 0, so the    
+                                                                      │           load command drops it for csv, json   
+                                                                      │           and xml alike                         
+                                                                      │ scope     validate/rules.py,                    
+                                                                      │           tests/test_rules.py                   
+                                                                      │ check     python3 -m unittest -q                
+                                                                      │           tests.test_rules                      
+                                                                      │ signoff   a person signs it off after its       
+                                                                      │           check passes                          
+                                                                      │                                                 
+                                                                      │ holds                                           
+                                                                      │   1  claude, started by graphene run            
+                                                                      │      when      00:01 → 00:01, done              
+                                                                      │      where     .graphene/worktrees/zero-rule    
+                                                                      │      in scope  tests/test_rules.py,             
+                                                                      │                validate/rules.py              ▆ 
+                                                                      │                                                 
+                                                                      │ the check                                       
+                                                                      │ command   python3 -m unittest -q                
+                                                                      │           tests.test_rules                      
+                                                                      │ result    passed at 00:01, run by Graphene      
+                                                                      │                                                 
+                                                                      │ refused   nothing                               
+                                                                      │ coverage  of the 2 paths git said had changed   
+                                                                      │           under this node, 2 inside its scope;  
+ waiting on you: 1 · executors: none · nothing ready to run · 3/4 done · plan first: on (P)                             
+ ctrl-d ctrl-u scroll · Enter back · ? help · q quit                                                                    

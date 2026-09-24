@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same `load` command and JSONL sink as csv and  
+▶ ✓ zero price is skipped for every supplier  [zero-price]  │ xml enabled end to end                                    
+▼ ○ the xml source is wired in  [xml-source]                │ [xml-wiring] open, revision 2                             
+├ ✓ an xml reader  [xml-reader]                             │ came back: The goal needs "xml" in the USAGE line, which  
+├ ↩ xml enabled end to end  [xml-wiring]  came back         │ is in cli/main.py (USAGE = "usage: main load <file>       
+└ ○ read the new README section for xml  [n6]               │ --source <csv|json>"), not in scope.                      
+                                                            │ tests/test_contract.py requires every enabled source to   
+                                                            │ appear in USAGE, so adding "xml" to ENABLED_SOURCES       
+                                                            │ without editing cli/main.py fails the done-check.         
+                                                            │   w  widen xml-wiring's scope to cli/main.py   graphene   
+                                                            │ node widen xml-wiring                                     
+                                                            │   b  a sibling leaf for cli/main.py; xml-wiring waits on  
+                                                            │ it   graphene node sibling xml-wiring                     
+                                                            │   ?  ask the planner, when none of these is right (an     
+                                                            │ agent, which spends)                                      
+                                                            │ under: the xml source is wired in (xml-source)            
+                                                            │                                                           
+                                                            │ scope  normalize/fields.py, config/defaults.py,           
+                                                            │ README.md, tests/test_xmlfeed.py                          
+                                                            │ check  python3 -m unittest discover -q tests              
+                                                            │ needs  xml-reader, zero-rule                              
+                                                            │                                                           
+                                                            │ FIELD_MAPS "xml": code->sku, desc->name, price->price     
+                                                            │ with price_unit "minor"; "xml" in ENABLED_SOURCES, the    
+                                                            │ USAGE line and README; samples/prices.xml loads to        
+                                                            │ exactly NW-1 and NW-2                                     
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: none · 2/4 done                                                                  
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                                                                     

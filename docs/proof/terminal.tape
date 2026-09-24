@@ -4,9 +4,10 @@
 #
 #   vhs docs/proof/terminal.tape        (writes docs/assets/watch.gif; ~3 minutes, some cents)
 #
-# Needs vhs, tmux, claude, and graphene on PATH. The repository is made fresh at ~/graphene-demo (a
-# directory of its own, deleted first: the screen names it, so it is one a person recognises), and
-# tmux runs a server of its own (-L graphene-demo), never yours.
+# Needs vhs, tmux, claude, and graphene on PATH. The session gets none of your MCP servers
+# (--strict-mcp-config): what it says about them would be in the recording. The repository is made
+# fresh at ~/graphene-demo (a directory of its own, deleted first: the screen names it, so it is one
+# a person recognises), and tmux runs a server of its own (-L graphene-demo), never yours.
 
 Output docs/assets/watch.gif
 Set Shell "bash"
@@ -30,7 +31,7 @@ Type `G=$(command -v graphene); tmux -L graphene-demo -f /dev/null new-session -
 Sleep 4s
 Show
 
-Type `claude -p "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week." --allowedTools "Bash(graphene *)" Read Grep Glob`
+Type `claude -p "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week." --allowedTools "Bash(graphene *)" Read Grep Glob --strict-mcp-config`
 Sleep 1s
 Enter
 Sleep 3s
