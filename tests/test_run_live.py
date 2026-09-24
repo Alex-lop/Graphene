@@ -701,7 +701,7 @@ def test_a_landed_leaf_does_not_excuse_a_held_nodes_own_edit_to_the_same_file(re
                        {"commit": plan.head(repo), "into": str(repo), "paths": ["a.txt"]})  # fmt: skip
         (repo / "p.txt").write_text("p\n")
         (repo / "a.txt").write_text("landed by a run\nand p's agent, outside its scope\n")
-        with pytest.raises(Refused, match=r"changed outside its scope \(p.txt\): a.txt"):
+        with pytest.raises(Refused, match=r"changed outside its scope \(p.txt\)[^\n]*\n  a.txt\n"):
             plan.finish(store, "p", BOT)
 
 

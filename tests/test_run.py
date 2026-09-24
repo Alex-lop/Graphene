@@ -73,7 +73,10 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         tails = [e["detail"]["log"] for e in store.node_log("n1", ("attempt",))]
         assert len(set(tails)) == 2 and all(Path(t).is_file() for t in tails)  # one tail an attempt, kept
         assert plan.get(store, "n2").state == OPEN  # a person's node is never handed to an executor
-    assert "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py): schema.py" in said[2]
+    assert (
+        "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py), which only the person "
+        "widens · schema.py" in said[2]
+    )
     assert said[-1] == "n1 is done"
     assert len(list((repo / ".graphene/runs").glob("n1-*-2.txt"))) == 1
 
@@ -87,7 +90,8 @@ def test_out_of_attempts_the_node_is_handed_back_with_the_reason_and_the_run_mov
         [released] = store.node_log("n1", ("released",))
         assert released["detail"]["why"].startswith("2 attempts, the last one refused: n1 is not done")
         # n2 could not start either: what n1's executor left behind belongs to no node
-        assert "n2 cannot start: schema.py changed while no node owned it" in " ".join(said)
+        said = " ".join(said)
+        assert "n2 cannot start: the checkout has an uncommitted change no node made\n  schema.py\n" in said
 
 
 def test_an_executor_that_hands_the_node_back_is_believed(repo):

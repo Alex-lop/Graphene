@@ -302,7 +302,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if loose:
             listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
             lines.append(
-                f"changed while no node owned it: {listed}  (yours? `graphene plan ack`; else put it back)"
+                f"uncommitted changes no node made: {listed}  (yours as they stand? `graphene plan ack`, "
+                "or commit them; else put them back)"
             )
         if not who.person:
             lines += next_lines(store, who)
@@ -900,8 +901,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                 target = held[0].id
             n = P.finish(store, target, who, override=override, checkout=checkout())
             how = (
-                "overruled by a person" if override is not None else "check passed, nothing outside its scope"
-            )
+                "overruled by a person" if override is not None
+                else "by hand: yours, with no check to run" if not n.scope
+                else "check passed, nothing outside its scope"
+            )  # fmt: skip
             out(f"{n.id} is {'done' if n.state == P.DONE else 'finished and waits for a sign-off'} ({how})")
             for line in next_lines(store, who):
                 out(line)
