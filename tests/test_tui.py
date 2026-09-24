@@ -820,12 +820,26 @@ def test_the_node_pane_has_a_section_for_each_kind_and_nothing_blank_or_twice(re
 
 
 def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
+    """Each offer keeps its command, at 80 and at 120 (where the pane is narrow and the commands had
+    gone): on its row, at the pane's edge, when every one fits whole; else under it, for all alike."""
     every_state(repo)
-    seen, _ = at(repo, "docs", (80, 24))
-    rows = [ln.rstrip() for ln in seen["detail"].splitlines() if re.match(r"  [wbn?]  ", ln)]
-    assert [r[2] for r in rows] == ["w", "b", "n", "?"]
-    assert len({len(r) for r in rows}) == 1 and all("graphene " in r for r in rows)  # commands at one edge
-    assert rows[0].endswith("graphene node widen docs") and rows[3].endswith("graphene ask … --about docs")
+    commands = ["graphene node widen docs", "graphene node sibling docs",
+                "graphene node set docs --needs ids", "graphene ask … --about docs"]  # fmt: skip
+    for size in [*SIZES, (220, 40)]:
+        seen, _ = at(repo, "docs", size)
+        lines = [ln.rstrip() for ln in seen["detail"].splitlines()]
+        keys = [k for k, ln in enumerate(lines) if re.match(r"  [wbn?]  ", ln)]
+        assert [lines[k][2] for k in keys] == ["w", "b", "n", "?"], size
+        on_row = [any(lines[k].endswith(c) for c in commands) for k in keys]
+        if all(on_row):
+            assert len({len(lines[k]) for k in keys}) == 1  # the commands at one edge
+        else:
+            assert not any(on_row), size  # never some one way and some the other
+            for k, c, end in zip(keys, commands, [*keys[1:], None], strict=True):
+                under = [ln.strip() for ln in lines[k + 1 : end] if ln.strip().startswith("graphene ")]
+                cut = under[0].removesuffix("…") if under else ""
+                assert cut and (cut.startswith(c) or c.startswith(cut)), (size, lines[k:end])
+    assert all(on_row)  # at 220 columns every one fits on its row
 
 
 def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
@@ -833,7 +847,7 @@ def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
     for size in SIZES:
         seen, _ = at(repo, "docs", size, keys=["enter"])
         record = seen["detail"]
-        assert record.splitlines()[0].startswith("record · ctrl-d ctrl-u scroll")
+        assert record.splitlines()[0] == "record · it scrolls"  # its keys are on the status line
         for section in (
             "contract",
             "came back",
@@ -888,7 +902,7 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     assert bottom == "y sign off · x send back · Enter record · ? help · q quit"
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first"
+    assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first: on"
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -904,10 +918,11 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
 def test_an_empty_plan_says_what_to_do_in_two_lines(repo):
     for size in SIZES:
         seen, _ = watch(repo, [], size=size)
-        assert seen["detail"].splitlines() == [
-            "Nothing is planned here yet. Tell your agent what you want, in a paragraph;",
-            "it proposes the tree here. Or :ask <what you want>.  ? lists the keys.",
-        ]
+        said = seen["detail"].splitlines()
+        assert len(said) <= 2 and " ".join(ln.strip() for ln in said) == (
+            "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the "
+            "tree here. Or :ask <what you want>. ? lists the keys."
+        )  # one paragraph wrapped to the pane, which has the whole width: there is no tree to show
 
 
 def test_y_signs_off_a_leaf_in_review_and_marks_your_own_leaf_done(repo, monkeypatch):
@@ -1008,3 +1023,54 @@ def test_a_busy_store_never_crashes_the_screen(repo):
             assert "did not open" in str(fresh.query_one("#status").render())
 
     asyncio.run(go())
+
+
+def burst(*typed: str):
+    """Keys as a terminal sends a fast typist's or a paste's: all queued at once, before the screen
+    has acted on the first (pilot.press waits after each, which hid what a burst does)."""
+    from textual import events
+
+    names = {":": "colon", "/": "slash", " ": "space", "\r": "enter"}
+
+    async def go(app, pilot):
+        for text in typed:
+            for ch in text:
+                app.post_message(events.Key(names.get(ch, ch), None if ch == "\r" else ch))
+        await pilot.pause()
+        await pilot.pause()
+
+    return go
+
+
+def test_a_burst_after_colon_is_the_lines_not_the_trees(repo, monkeypatch):
+    """Recorded in WezTerm: `:plan lo` typed fast opened the add prompt (the a of plan) and the
+    executor's output (the l): the colon's action ran after the keys sent with it."""
+    every_state(repo)
+    was = states(repo)
+    seen, app = watch(repo, [], before=burst(":plan log\r"))
+    assert seen["screen"] != "Ask" and states(repo) == was
+    assert "graphene plan log" in seen["status"] and app.view == "said"
+
+
+def test_a_title_typed_at_once_after_a_goes_into_the_prompt(repo):
+    """Recorded: `A` and a title typed in one burst opened the prompt empty and lost the words."""
+    every_state(repo)
+    watch(repo, [], before=burst("A", "tidy the tests\r"))
+    with Store.open(repo) as store:
+        assert any(n.title == "tidy the tests" for n in plan.nodes(store))
+
+
+def test_a_leaf_in_review_that_did_not_land_says_why_and_what_lands_it(repo):
+    """Recorded: the pane said "its check passed; it waits for your sign-off" and y, of a leaf whose
+    work was on its branch only, because the person's README edit was uncommitted."""
+    every_state(repo)
+    why = ("git merge --no-ff --no-edit failed in /x: error: Your local changes to the following files "
+           "would be overwritten by merge: README.md Please commit your changes or stash them")  # fmt: skip
+    with Store.open(repo) as store:
+        store.log_node("rule", plan._now(), "unlanded", "graphene run", None, None,
+                       {"branch": "graphene/rule", "worktree": "/x", "why": [why]})  # fmt: skip
+    for size in SIZES:
+        seen, _ = at(repo, "rule", size)
+        said = " ".join(seen["detail"].split())
+        assert "did not land here: README.md has uncommitted changes in your checkout" in said
+        assert "git merge graphene/rule, and y signs it off" in said and "waits for your sign-off" not in said

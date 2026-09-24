@@ -218,3 +218,25 @@ def test_a_detached_head_and_a_second_run_are_refused_in_words(repo):
     git_in(repo, "checkout", "-q", "--detach")
     with pytest.raises(plan.Refused, match="on no branch"):
         go(repo)
+
+
+def test_a_leaf_that_did_not_land_is_signed_off_only_once_its_branch_is_merged_here(repo):
+    """Recorded in the feeds run: a leaf that passed and did not land (the person's README edit was
+    uncommitted) was signed off mid-merge, with a conflict open, and read as landed."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a"), leaf("after", needs=["a"])], ALEX)
+    (repo / "a.txt").write_text("mine, uncommitted\n")
+    go(repo)
+    with Store.open(repo) as store:
+        with pytest.raises(plan.Refused, match="not in this checkout yet") as no:
+            plan.signoff(store, "a", ALEX, checkout=repo)
+        assert "git merge graphene/a" in str(no.value) and plan.get(store, "a").state == REVIEW
+    git_in(repo, "add", "a.txt")
+    git_in(repo, "commit", "-qm", "mine")
+    subprocess.run(["git", "-C", str(repo), "merge", "graphene/a"], capture_output=True)  # a conflict
+    with Store.open(repo) as store, pytest.raises(plan.Refused, match="not in this checkout yet"):
+        plan.signoff(store, "a", ALEX, checkout=repo)  # a merge still open is not a merge
+    (repo / "a.txt").write_text("both\n")
+    git_in(repo, "commit", "-qam", "merged")
+    with Store.open(repo) as store:
+        assert plan.signoff(store, "a", ALEX, checkout=repo).state == DONE

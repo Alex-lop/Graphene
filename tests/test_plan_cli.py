@@ -463,3 +463,15 @@ def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
         "n1 is open again; whoever takes it next is shown your note (its contract is as it was: "
         "`graphene node edit n1` changes it)\n"
     )
+
+
+def test_the_log_says_values_in_words_not_python(repo):
+    """Seen at the screen: `scope: ['a.py', 'b.py'] -> ['a.py']` and a hand-back's why as a list."""
+    person("node", "add", "a leaf", "--id", "a", "--scope", "api.py", "--check", "true")
+    person("node", "set", "a", "--scope", "api.py", "--scope", "schema.py", "--signoff")
+    said = person("plan", "log").stdout
+    assert "scope: api.py → api.py, schema.py" in said and "signoff: no → yes" in said
+    assert "['" not in said and "->" not in said
+    accepted = agent("plan", "propose", "-", input="- b  [b]\n    scope: schema.py\n    check: true\n")
+    assert accepted.exit_code == 0
+    assert person("plan", "accept").stdout.splitlines()[0] == "accepted b"

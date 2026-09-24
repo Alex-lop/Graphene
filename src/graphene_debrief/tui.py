@@ -84,8 +84,8 @@ HELP_END = (
     "the planner proposes the tree (a session, or :ask), the executors do its leaves (R, r)."
 )
 EMPTY = (
-    "Nothing is planned here yet. Tell your agent what you want, in a paragraph;\n"
-    "it proposes the tree here. Or :ask <what you want>.  ? lists the keys."
+    "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the tree "
+    "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
     "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
@@ -137,6 +137,19 @@ def row(glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, wo
         out.append(f"  {node_id.ljust(ids)}", "dim")
     out.append(f"  {word.ljust(words)}", colour)
     return out
+
+
+def hanging(said: str, wide: int) -> Text:
+    """What a command printed, as the pane shows it: each line wrapped at words to the pane, its
+    continuation indented under it, so a table's rows and a git error read as lines, not a paste."""
+    out = []
+    for line in said.splitlines():
+        lead = len(line) - len(line.lstrip())
+        pieces = textwrap.wrap(
+            line.strip(), max(wide - lead, 12), subsequent_indent="    ", break_on_hyphens=False
+        )
+        out += [" " * lead + piece for piece in pieces] or [""]
+    return Text("\n".join(out))
 
 
 def ago(seconds: int | None) -> tuple[str, str]:
@@ -235,6 +248,33 @@ class Ask(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         yield Input(value=self.value, placeholder=self.prompt, id="ask")
+
+    ended: str | None = None  # Enter or Esc typed before the line was up: said once it is
+
+    def typed(self, event) -> None:
+        """A key typed at once after the one that opened this (a terminal sends `Atidy the tests` in
+        one burst): it was queued for the tree before this screen was up, and the tree hands it here,
+        to the line, or to what the line will start with when it is not drawn yet."""
+        event.stop()
+        event.prevent_default()
+        boxes = self.query("#ask")
+        text = boxes.first(Input).value if boxes else self.value
+        if event.key in ("enter", "escape"):
+            self.ended = event.key
+        elif event.key == "backspace":
+            text = text[:-1]
+        elif event.is_printable and event.character:
+            text += event.character
+        if not boxes:
+            self.value = text
+        else:
+            boxes.first(Input).value, boxes.first(Input).cursor_position = text, len(text)
+        if self.ended and boxes:
+            self.dismiss(text.strip() or None if self.ended == "enter" else None)
+
+    def on_mount(self) -> None:
+        if self.ended:  # the whole line was typed, Enter too, before it was drawn
+            self.dismiss(self.value.strip() or None if self.ended == "enter" else None)
 
     @on(Input.Submitted)
     def done(self, event: Input.Submitted) -> None:
@@ -346,6 +386,8 @@ class PlanTree(Tree[str]):
         return self._room(node)  # never wider than the tree: no row scrolls sideways
 
     async def on_key(self, event) -> None:
+        if isinstance(self.app.screen, Ask):  # queued here before the prompt a key opened was up
+            return self.app.screen.typed(event)
         line = self.app.query_one("#line", Input)
         if line.has_class("-open") and not line.has_focus:  # typed after : or /, before the line took focus
             event.stop()
@@ -361,6 +403,17 @@ class PlanTree(Tree[str]):
             line.cursor_position = len(line.value)
             return
         char = event.character or ""
+        if char in (":", "/", "a", "A", "x") and not self.pending:
+            # opened here, at once: an app binding's action runs after the keys a terminal sent with
+            # it, and `:plan log` typed in one burst ran l and a on the tree before the line opened;
+            # `A` and a title typed at once ran the title's d and y. A key that asks for words acts now
+            event.stop()
+            event.prevent_default()
+            opens = {":": lambda: self.app.action_line(":"), "/": lambda: self.app.action_line("/"),
+                     "a": lambda: self.app.action_add(False), "A": lambda: self.app.action_add(True),
+                     "x": self.app.action_release_or_reopen}  # fmt: skip
+            opens[char]()
+            return
         if self.pending:
             sequence, self.pending = self.pending + char, ""
             event.stop()
@@ -597,6 +650,7 @@ class Watch(App):
             show = bool(nodes or goal or proposed)
             if tree.show_root != show:
                 tree.show_root = show
+            tree.display = show  # no plan yet: the pane says so, across the screen
             if shape != self.shape:
                 self.rebuild(nodes, under)
                 if self.shape is not None and self.view == "said":
@@ -632,6 +686,8 @@ class Watch(App):
         if not width:
             return
         by_id = {n.id: n for n in nodes}
+        if not tree.display:
+            return
         if width >= WIDE:
             need = max(
                 (2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes), default=30
@@ -707,7 +763,7 @@ class Watch(App):
             (f"{c['running']} running", busy),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
-            ("plan first" if c["first"] else "plan first off", ""),
+            (f"plan first: {first}", ""),
         ]
         whole = " · ".join(text for text, _ in long)
         top = fit(long if len(whole) <= room else short, room)
@@ -754,7 +810,9 @@ class Watch(App):
         pane = self.query_one("#detail", Static)
         wide, high = self.pane_room()
         if not self.nodes and not self.tree.show_root:
-            pane.update(Text(EMPTY))
+            empty = Pane(wide)
+            empty.text(EMPTY)
+            pane.update(empty.render())
             return
         if self.view == "said":
             return  # what a `:` command printed stays until the cursor moves
@@ -866,9 +924,11 @@ class Watch(App):
         if argv[:2] in (["plan", "edit"], ["node", "edit"]):
             return self.edit_with(argv)
         said = self.did(argv, keep=True)
-        if said.count("\n") > 0:  # more than a line (a record, the log): it gets the side pane
+        lines = [line for line in said.splitlines() if "(the plan of " not in line]
+        if len(lines) > 1:  # more than a line (a record, the log): it gets the side pane
             self.view = "said"
-            self.query_one("#detail", Static).update(Text(said))
+            self.query_one("#detail", Static).update(hanging("\n".join(lines), self.pane_room()[0]))
+            self.message = f"graphene {shlex.join(argv)}: {len(lines)} lines, in the pane"
             self.say_status()
 
     def action_escape(self) -> None:
@@ -903,6 +963,8 @@ class Watch(App):
                 _ = self.tree.last_line
                 with self.prevent(Tree.NodeHighlighted):  # the search moved it: its line stays said
                     self.tree.move_cursor(node)
+        if self.view == "said":
+            self.view = "contract"  # the search moved the cursor: the node's pane, not the output
         self.message = f"/{text}: {hits.index(target) + 1} of {len(hits)} (n next · Esc ends the search)"
         self.refresh_plan()
 
@@ -920,8 +982,9 @@ class Watch(App):
                 self.did(["node", "add", *(["--parent", parent] if parent else []), "--", title])
 
         where = f"under {parent}" if parent else "at the top"
+        kind = "child" if child else "sibling"
         self.push_screen(
-            Ask(f"a new {'child' if child else 'sibling'} {where}: its title (s then fills it in)"),
+            Ask(f"a new {kind} {where}: its title (then e fills in the rest, or s the planner)"),
             added,
         )
 
@@ -1086,7 +1149,7 @@ class Watch(App):
         self.message = message
         self.refresh_plan()  # first: what it did moved the plan, which puts the side pane back
         self.view = "said"  # then all it said is there, until the cursor moves
-        self.query_one("#detail", Static).update(Text(whole))
+        self.query_one("#detail", Static).update(hanging(whole, self.pane_room()[0]))
         self.say_status()
 
     def stop_runs(self) -> None:
@@ -1205,13 +1268,15 @@ def _contract(pane: Pane, store, node: P.Node, s, root: Path | None, files: list
         pane.field("needs", said)
     if node.owner != P.AGENT:
         pane.field("owner", node.owner)
-    if node.signoff:
+    if node.signoff and s.words.get(node.id) != "review":  # in review, the line above says it
         pane.field("signoff", "a person signs it off after its check passes")
 
 
 def _rows(pane: Pane, children: list[P.Node], words: dict[str, str], under: dict) -> None:
     ids = max((len(c.id) for c in children), default=0)
     width = max((len(words.get(c.id, "")) for c in children), default=0)
+    if pane.wide - 4 - (2 + ids) - (2 + width) < 20:  # a narrow pane: the title, not the id, is read
+        ids = 0
     for c in children:
         word = words.get(c.id, c.state)
         pane.line(row(P.look(word)[0], word, c.title, c.id, pane.wide, ids, width, bool(under.get(c.id))))
@@ -1220,7 +1285,7 @@ def _rows(pane: Pane, children: list[P.Node], words: dict[str, str], under: dict
 def _waiting(pane: Pane, below: list[P.Node], s) -> None:
     """One line: what under it is waiting, and on what; what came back, is in review, is proposed or
     is the person's own."""
-    said, how = [], {"yours": "is yours", "came back": "came back", "review": "is in review"}
+    said, proposed, how = [], [], {"yours": "is yours", "came back": "came back", "review": "is in review"}
     for n in below:
         word = s.words.get(n.id, "")
         if word == "waiting":
@@ -1229,7 +1294,10 @@ def _waiting(pane: Pane, below: list[P.Node], s) -> None:
         elif word in how:
             said.append(f"{n.id} {how[word]}")
         elif n.state == P.PROPOSED and (n.parent not in s.by_id or s.by_id[n.parent].state != P.PROPOSED):
-            said.append(f"{n.id} is proposed")  # a proposed subtree, once, at its top
+            proposed.append(n.id)  # a proposed subtree, once, at its top
+    if proposed:
+        ids = ", ".join(proposed[:-1]) + (" and " if len(proposed) > 1 else "") + proposed[-1]
+        said.append(f"{ids} {'is' if len(proposed) == 1 else 'are'} proposed, for you to accept or prune")
     if said:
         pane.field("waiting", " · ".join(said))
 
@@ -1283,6 +1351,10 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         _came_back(pane, store, node, high)
     elif word == "running":
         _running(pane, store, node, s)
+    elif word == "review" and P.unlanded(store, node.id) is not None:
+        left = P.unlanded(store, node.id) or {}
+        pane.text(f"it passed its check, and did not land here: {_unmerged(left)}", "magenta")
+        pane.field("then", f"git merge {left.get('branch', 'graphene/' + node.id)}, and y signs it off")
     elif word == "review":
         pane.text("its check passed; it waits for your sign-off", "magenta")
     elif word == "yours":
@@ -1311,22 +1383,42 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
     offers = [*P.offers(store, node), ("?", "ask the planner", ["ask", "…", "--about", node.id])]
+    rows = [(key, _its(does, node.id), f"graphene {' '.join(argv)}") for key, does, argv in offers]
+    # one line each when every one fits whole; else two each, all alike: what the key does, then the
+    # command under it (at 120 columns the pane is narrow, and the commands had gone)
+    one = all(5 + len(does) + 2 + len(command) <= pane.wide for _, does, command in rows)
+    shaped = []
+    for key, does, command in rows:
+        if one:
+            line = Text.assemble("  ", (key, "bold"), "  ", does)
+            line.append(" " * (pane.wide - 5 - len(does) - len(command)) + command, "dim")
+            shaped.append(line)
+            continue
+        for k, piece in enumerate(textwrap.wrap(does, pane.wide - 5, break_on_hyphens=False) or [""]):
+            shaped.append(Text.assemble("  ", (key if k == 0 else " ", "bold"), "  ", piece))
+        shaped.append(Text("     " + T.elide(command, pane.wide - 5), "dim"))
     used = sum(len(item[1].wrap(WRAP, pane.wide)) for item in pane.items if item[0] == "text")
-    lines = max(1, high - used - len(offers)) if high else 99
+    lines = max(1, high - used - len(shaped)) if high else 99
     wrapped = textwrap.wrap(" ".join(str(why).split()), pane.wide, max_lines=lines,
                             placeholder=" … (Enter: all of it)", break_on_hyphens=False)  # fmt: skip
     for line in wrapped:
         pane.text(line)
-    for key, does, argv in offers:
-        does, command = _its(does, node.id), f"graphene {' '.join(argv)}"
-        room = pane.wide - 5 - 2 - len(command)
-        if room < 16:  # too narrow for both: what the key does is what the person needs
-            room, command = pane.wide - 5, ""
-        does = T.elide(does, room)
-        line = Text.assemble("  ", (key, "bold"), "  ", does)
-        if command:  # the command, dim, at the pane's right edge
-            line.append(" " * (pane.wide - 5 - len(does) - len(command)) + command, "dim")
+    for line in shaped:
         pane.line(line)
+
+
+def _unmerged(left: dict) -> str:
+    """Why a leaf that passed did not land, in a line: what git said, as a person would say it."""
+    said = " ".join(str(w) for w in left.get("why") or [])
+    stale = re.search(r"would be overwritten by merge:\s*(.+?)\s+(?:Please|Aborting)", said)
+    if stale:
+        paths = stale.group(1).split()
+        has = "has" if len(paths) == 1 else "have"
+        return f"{', '.join(paths)} {has} uncommitted changes in your checkout"
+    conflict = re.findall(r"Merge conflict in (\S+)", said)
+    if conflict:
+        return f"its change to {', '.join(conflict)} conflicts with what is here"
+    return said or "the merge did not go through"
 
 
 def _its(does: str, node_id: str) -> str:
@@ -1400,7 +1492,7 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
     from .node_record import _coverage_lines, node_record, rolled_up
 
     pane = Pane(wide)
-    pane.line(fit([("record", "dim"), ("ctrl-d ctrl-u scroll", "dim"), ("Enter closes", "dim")], wide))
+    pane.line(fit([("record", "dim"), ("it scrolls", "dim")], wide))
     word = s.words.get(node.id) or P.reads(node, s.nodes)
     _header(pane, node, word)
     pane.gap()
@@ -1424,6 +1516,10 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
         )
         pane.field("offers", offers)
     record = node_record(store, s.root_path, node)
+    if not record.windows and not record.acts and not record.refusals.last_check:
+        pane.gap()
+        pane.text("nothing has happened to it yet: nobody has held it, and no check has run", "dim")
+        return pane.render()
     pane.gap()
     pane.text("holds", "bold")
     if not record.windows:

@@ -2012,6 +2012,13 @@ def release(
     return node
 
 
+def unlanded(store, node_id: str) -> dict | None:
+    """What the last hold of a leaf left when it passed and could not be merged here (its branch, its
+    worktree, and why): None once it landed, or when it was taken again since."""
+    log = store.node_log(node_id, ("started", "landed", "unlanded"))
+    return log[-1]["detail"] if log and log[-1]["kind"] == "unlanded" else None
+
+
 def signoff(
     store, node_id: str, who: Caller, now: str | None = None, checkout: str | Path | None = None
 ) -> Node:
@@ -2021,14 +2028,23 @@ def signoff(
     _person_only(who, "signing a node off")
     now = now or _now()
     checkout = checkout if checkout is not None else store.path.parent.parent
-    unlanded = store.node_log(node_id, ("unlanded",))
+    left = unlanded(store, node_id)
     landed = None
-    if unlanded:  # asked of git before the write lock is taken
-        branch = unlanded[-1]["detail"].get("branch", f"graphene/{node_id}")
+    if left:  # asked of git before the write lock is taken
+        branch = left.get("branch", f"graphene/{node_id}")
         try:
             sha = _git(checkout, "rev-parse", "-q", "--verify", branch).strip()
         except (Refused, OSError, subprocess.TimeoutExpired):
             sha = ""  # the branch is gone: merged and deleted
+        merged = not sha or subprocess.run(
+            ["git", "-C", str(checkout), "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True
+        ).returncode == 0  # fmt: skip
+        if not merged:  # signed off unmerged, it read as landed and what needed it went ahead without it
+            raise refusal(
+                f"{node_id}'s work is on {branch} and not in this checkout yet",
+                do=f"git merge {branch} (commit or stash first what git says is in the way), "
+                f"then graphene node signoff {node_id}",
+            )
         landed = {"commit": sha or head(checkout), "branch": branch, "into": str(Path(checkout).resolve())}
     with store.claim():
         node = get(store, node_id)

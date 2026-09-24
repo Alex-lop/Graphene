@@ -314,23 +314,33 @@ def register(cli: typer.Typer, root, open_store, fail):
         for line in plan_lines(store, who, everything):
             out(line)
 
+    def value(v) -> str:
+        """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
+        if isinstance(v, list | tuple):
+            return ", ".join(value(x) for x in v) or "none"
+        if v is None or v == "":
+            return "none"
+        if isinstance(v, bool):
+            return "yes" if v else "no"
+        return " ".join(str(v).split())
+
     def log_line(e: dict, with_node: int = 0, who_wide: int = 16) -> str:
         detail = e["detail"]
         changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
         fields = changed.items() if isinstance(changed, dict) else ()
         said = (
-            detail.get("why")
+            (value(detail["why"]) if detail.get("why") else "")
             or (
                 f"{detail['note']}  (it said: {detail['was']})"
                 if detail.get("was") and detail.get("note")
                 else ""
             )
-            or detail.get("note")
+            or (value(detail["note"]) if detail.get("note") else "")
             or detail.get("override")
             or (f"by their prompt in the session: {detail.get('prompt', '')!r}" if detail.get("by") else "")
             or detail.get("path")
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
-            or "; ".join(f"{k}: {a!r} -> {b!r}" for k, (a, b) in fields)
+            or "; ".join(f"{k}: {value(a)} → {value(b)}" for k, (a, b) in fields)
             or (f"changed: {', '.join(changed)}" if isinstance(changed, list) and changed else "")
             or detail.get("command")
             or ""
@@ -541,6 +551,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             by_id = {n.id: n for n in P.nodes(store)}
             goal_was = P.goal(store)
             accepted = P.accept(store, ids or [], P.caller())
+            if accepted:  # first, in a line: what the screen's bottom line gives of it
+                out(f"accepted {', '.join(n.id for n in accepted)}")
             for n in accepted:
                 out(f"{'  ' * len(P.above(n, by_id))}{n.id}  accepted  {n.title}")
             if P.goal(store) != goal_was:
