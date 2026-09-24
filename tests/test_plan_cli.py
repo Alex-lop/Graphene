@@ -100,7 +100,7 @@ def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
     assert "next: nothing is ready for you: n1 is alex's; n2 waits on n1 (open). You can stop" in shown.stdout
     assert agent("node", "start", "n1").exit_code == 1
     mine = person("plan")
-    assert "waiting on a person: n1 (yours to do)" in mine.stdout
+    assert "waiting on you: n1 (yours)" in mine.stdout
     assert "n2  waiting" in mine.stdout and "waits on n1 (alex's)" in mine.stdout
     person("node", "start", "n1")
     (repo / "schema.py").write_text("TABLES = ['users']\n")
@@ -115,7 +115,7 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     (repo / "api.py").write_text("def users():\n    return {}\n")
     assert "finished and waits for a sign-off" in agent("node", "done").stdout
     assert agent("node", "signoff", "n1").exit_code == 1
-    assert "n1 (sign off)" in person("plan").stdout
+    assert "n1 (review)" in person("plan").stdout
     person("node", "reopen", "n1", "--note", "return a dict, not a list")
     assert "sent back with: return a dict, not a list" in agent("node", "start", "n1").stdout
     agent("node", "release", "n1", "--why", "needs schema.py, which is outside my scope")
@@ -143,7 +143,7 @@ def test_a_proposal_shows_what_it_would_wait_on_and_an_edit_says_what_it_changed
     seen, and `node set` answered only 'revision 2'."""
     person("node", "add", "users", "--scope", "api.py", "--check", "true")
     agent("node", "add", "docs", "--scope", "README.md", "--check", "true", "--needs", "n1")
-    assert "proposed by claude:5e55105e; would wait on n1; `graphene plan accept n2`" in person("plan").stdout
+    assert "n2  proposed  · README.md · would wait on n1 · `graphene plan accept n2`" in person("plan").stdout
     assert "  needs:  n1   (it cannot start until they are done)" in person("node", "show", "n2").stdout
     edited = person("node", "set", "n2", "--scope", "docs/api.md").stdout
     assert "n2 is now revision 2:" in edited and "scope: ['README.md'] -> ['docs/api.md']" in edited
@@ -158,7 +158,7 @@ def test_a_person_can_drop_a_node_that_is_running_and_a_long_reason_is_cut_in_th
     assert person("node", "drop", "n1").exit_code == 0
     agent("node", "start", "n2")
     agent("node", "release", "n2", "--why", "because " + "the schema is not what the goal says " * 5)
-    row = [line for line in person("plan").stdout.splitlines() if line.startswith("  n2")][0]
+    row = [line for line in person("plan").stdout.splitlines() if "  n2  " in line][0]
     assert row.endswith("… (`graphene node show n2` has all of it)") and len(row) < 260
 
 
@@ -170,8 +170,8 @@ def test_a_long_scope_and_a_long_title_stay_inside_their_columns(repo):
     person(
         "node", "add", "cut the session card down to a view of one node's record", *args, "--check", "true"
     )
-    [row] = [line for line in person("plan").stdout.splitlines() if line.startswith("  n1")]
-    assert "src/graphene_debrief/module_0.py, +6 more" in row and "a view of one …" in row
+    [row] = [line for line in person("plan").stdout.splitlines() if "  n1  " in line]
+    assert "src/graphene_debrief/module_0.py, +6 more" in row and "a view of one…" in row  # cut at a word
     assert len(row) < 140
     assert all(g in person("node", "show", "n1").stdout for g in globs)  # the whole of it is one command away
 
@@ -222,21 +222,47 @@ def test_the_tree_in_the_terminal_goal_first_sub_goals_counted_and_finished_work
     shown = person("plan").stdout.splitlines()
     assert shown[0] == "the plan: ship invoices by email" and shown[1].startswith("14 leaves, 3 done")
     # nothing is moving under api, so it is one line: a plan just accepted fits a screen
-    [api] = [line for line in shown if line.startswith("  api")]
-    assert "sub-goal" in api and "3/14 done" in api and "11 ready" in api and "14 leaves folded" in api
-    assert len(shown) == 3 and any(
-        line.strip().startswith("l0 ") for line in person("plan", "--all").stdout.splitlines()
-    )
+    [api] = [line for line in shown if "  api  " in line]
+    assert "3/14 done" in api and "11 ready" in api and "14 leaves folded" in api
+    assert len(shown) == 3 and any("  l0  " in line for line in person("plan", "--all").stdout.splitlines())
     started = agent("node", "start", "l3").stdout  # the same words for the agent, with the path to the root
     assert "why:    ship invoices by email" in started and "the HTTP surface (api)" in started
     shown = person(
         "plan"
     ).stdout.splitlines()  # something is running under it now: it opens, done work folded
     assert any("✓ 3 done here" in line and "l0, l1, l2" in line for line in shown)
-    assert any(line.strip().startswith("l3 ") and "running" in line for line in shown)
-    assert not any(line.strip().startswith("l0 ") for line in shown)
+    assert any("  l3  " in line and "running" in line for line in shown)
+    assert not any("  l0  " in line for line in shown)
     frame = person("watch", "--once").stdout
     assert "ship invoices by email" in frame and "just now" in frame and "l3" in frame
+
+
+def test_graphene_plan_reads_its_rows_as_the_screen_does(repo):
+    """`graphene plan` put the id first and the title after it, where the screen put the title first:
+    now one row everywhere. Glyph and title cut at a word, the id, the state word, in fixed columns at
+    any depth, then what the print adds: the scope, what it waits on, the command for the person's move."""
+    person("plan", "goal", "users come back with their ids")
+    person("node", "add", "the API", "--id", "api")
+    long = "users returns ids from the one endpoint that every client calls first"
+    person("node", "add", long, "--id", "ids", "--parent", "api", "--scope", "api.py", "--check", "true")
+    person("node", "add", "document it", "--id", "docs", "--parent", "api", "--scope", "README.md",
+           "--check", "true", "--needs", "ids")  # fmt: skip
+    person("node", "add", "read it over", "--id", "mine", "--owner", "bob")
+    agent("node", "add", "an idea", "--id", "idea", "--scope", "x.py", "--check", "true")
+    assert agent("node", "start", "ids").exit_code == 0
+    shown = person("plan").stdout.splitlines()
+    rows = {i: next(r for r in shown if f"  {i}  " in r) for i in ("api", "ids", "docs", "mine", "idea")}
+    assert rows["api"].startswith("  ○ the API") and rows["ids"].startswith("    ● users returns ids from")
+    assert len({r.index(f"  {i}  ") for i, r in rows.items()}) == 1  # one column of ids, whatever the depth
+    words = {"api": "0/2 done", "ids": "running", "docs": "waiting", "mine": "yours", "idea": "proposed"}
+    assert len({r.index(f"  {words[i]}", r.index(f"  {i}  ") + 1) for i, r in rows.items()}) == 1
+    title = rows["ids"].split("● ", 1)[1].split("…")[0]
+    assert long.startswith(title) and long[len(title)] == " "  # cut at a word
+    assert rows["ids"].endswith("· api.py · a Claude Code session (5e55105e), since " + rows["ids"][-5:])
+    assert rows["docs"].endswith("· README.md · waits on ids (running)")
+    assert rows["mine"].endswith("  yours     · bob's")
+    assert rows["idea"].endswith("· x.py · `graphene plan accept idea`")
+    assert "waiting on you: idea (proposed), mine (yours)" in shown
 
 
 def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
