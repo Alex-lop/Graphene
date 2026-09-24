@@ -268,3 +268,22 @@ def test_pause_resume_prompts_ack_archive_and_release_name_the_repository(repo):
         acts.append(person("plan", *args.split()))
     assert [a.exit_code for a in acts] == [0] * 6
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+
+
+def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
+    """Never set, plan first is on while a plan is in force; `graphene init` sets it on; the person
+    turns it off and on, and an agent may not."""
+    assert "plan first: off" in person("plan", "first").stdout  # no plan in force here yet
+    person("node", "add", "a leaf", "--scope", "api.py", "--check", "true")
+    assert "plan first: on" in person("plan", "first").stdout  # now there is one
+    turned = person("plan", "first", "off")
+    assert turned.exit_code == 0 and "plan first: off" in turned.stdout
+    assert "(the plan of" in turned.stderr
+    assert agent("plan", "first", "on").exit_code == 1
+    assert "plan first: off" in person("plan", "first").stdout
+    assert person("plan", "first", "sideways").exit_code == 1
+
+
+def test_init_sets_plan_first_on(repo):
+    assert person("init").exit_code == 0
+    assert "plan first: on" in person("plan", "first").stdout

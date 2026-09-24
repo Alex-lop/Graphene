@@ -623,6 +623,26 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
 
     @plan_cli.command()
+    def first(
+        how: str = typer.Argument(None, help="'on' or 'off'; nothing prints what it is now."),
+    ) -> None:
+        """Plan first: what you ask for in a session is proposed as a tree before any code, and the
+        agent writes nothing until a leaf of it is accepted and taken (a one-line ask is proposed as
+        one leaf, which is yours at once). `P` in graphene watch turns it on and off."""
+        if how not in (None, "on", "off"):
+            fail("say 'on' or 'off'", 1)
+        if how is not None:
+            run(lambda s: P.set_plan_first(s, how == "on", P.caller()))
+        on = run(P.plan_first)
+        out(
+            "plan first: on. What you ask for in a session is proposed as a tree before any code"
+            if on
+            else "plan first: off. What you ask for in a session is done at once, as a leaf of its own"
+        )
+        if how is not None:
+            typer.echo(where(), err=True)
+
+    @plan_cli.command()
     def resume() -> None:
         """Put the plan back in force."""
         run(lambda s: P.set_paused(s, False, P.caller()))

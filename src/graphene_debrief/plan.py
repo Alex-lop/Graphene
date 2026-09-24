@@ -2081,3 +2081,10 @@ def plan_first(store) -> bool:
     a plan is in force. `graphene init` sets it on in a repository it sets up."""
     said = store.meta("plan_first")
     return said == "on" if said in ("on", "off") else in_force(store)
+
+
+def set_plan_first(store, on: bool, who: Caller) -> None:
+    """The person turns plan first on or off; it is theirs, like the plan's other settings."""
+    _person_only(who, "turning plan first on or off")
+    store.set_meta("plan_first", "on" if on else "off")
+    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": "on" if on else "off"})

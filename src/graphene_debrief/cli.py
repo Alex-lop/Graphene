@@ -211,10 +211,15 @@ def build():
             say(f"hooks added to {settings}: {', '.join(added)}")
         else:
             say("hooks already installed")
+        with open_store(r) as store:  # a repository set up for Graphene plans first (`plan first off`)
+            if store.meta("plan_first") is None:
+                store.set_meta("plan_first", "on")
+        say("plan first is on: what you ask for in a session becomes a tree before any code "
+            "(`graphene plan first off` turns it off)")  # fmt: skip
         if settings.name == Path(SETTINGS).name:
             say(
                 f"{settings} is your personal settings file (if your team shares .claude/, add that "
-                "file to .gitignore); nothing else is written until a session is recorded"
+                "file to .gitignore)"
             )
         say(
             "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
