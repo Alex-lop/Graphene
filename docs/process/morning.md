@@ -4,7 +4,7 @@
 
 **State: done, green, one PR.** Branch `polish`, cut from `origin/main` at `2c86399` (your merge of
 PR #27). No mechanism was added except where a rough edge needed one, and each of those is named
-below and in `docs/DIRECTION.md` (41 to 52). 695 tests, ruff clean, CI green on every push.
+below and in `docs/DIRECTION.md` (41 to 52). 695 tests, ruff clean, CI green at `3e25762`.
 
 ## 1. Before and after
 
@@ -114,8 +114,9 @@ claude                                   # then a one-line ask, then the paragra
 
 ## 3. What is waiting on you
 
-- **One PR, `polish` into `main`:** https://github.com/Alex-lop/Graphene/pull/28. CI was green on
-  every push.
+- **One PR, `polish` into `main`:** https://github.com/Alex-lop/Graphene/pull/28. CI is green at
+  `3e25762`. Four pushes before it failed CI at ruff, over the harness script in `docs/process/polish/`:
+  I had linted `src` and `tests`, and CI lints the whole repository.
 - **The decisions to strike: 41 to 52** in `docs/DIRECTION.md`. Read these first:
   - **46, plan first.** It replaces the 240-character rule, and it withdraws decision 19's "a plain
     yes accepts".
@@ -175,7 +176,8 @@ matters.
 - **Verified.**
   - Everything in section 1: the screens and messages are captures, and the plan-first runs are
     real sessions.
-  - 695 tests and ruff, on every commit I pushed. CI green on Linux and macOS, Python 3.12 and 3.13.
+  - 695 tests on the last commit, ruff over the whole repository, and CI green on Linux and macOS,
+    Python 3.12 and 3.13, at `3e25762`.
   - The recording, on real agents.
 - **Not verified.**
   - **You, at the keys, in WezTerm's own window.** I drove its mux, not the GUI: fonts, the width
