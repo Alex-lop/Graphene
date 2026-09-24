@@ -351,8 +351,9 @@ def test_what_the_planner_said_after_its_block_reaches_the_screen_that_asked(rep
         await pilot.pause(0.3)
 
     seen, _ = watch(repo, [], before=before)
-    assert "graphene ask 'users come back with their ids' ended: the planner says: I read" in seen["status"]
-    assert "the planner says: I read api.py and schema.py" in seen["detail"]
+    # what it proposed, on the bottom line (its sentence was there when it began); what it said, in the pane
+    assert "the planner proposed users-api, ids; what it said is in the pane" in seen["status"]
+    assert "I read api.py and schema.py" in seen["detail"]
     assert "proposed ids: users returns ids" in seen["detail"]
 
 
@@ -362,12 +363,15 @@ def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
     proposed(repo)
     asked = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
-    for line in ('ask "add a login page"', "ask --about ids fix it", "ask don't break it"):
+    lines = ('ask "add a login page"', "ask --about ids fix it", "ask don't break it",
+             "ask add a --dry-run flag to load")  # fmt: skip
+    for line in lines:
         watch(repo, ["colon", *line, "enter"])
     assert asked == [
         ["ask", "add a login page"],
         ["ask", "fix it", "--about", "ids"],
         ["ask", "don't break it"],
+        ["ask", "add a --dry-run flag to load"],  # seen at the screen: the flag was taken for ask's
     ]
 
 

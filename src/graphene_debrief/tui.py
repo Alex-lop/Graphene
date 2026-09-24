@@ -1142,6 +1142,10 @@ class Watch(App):
         told = f"{mark}{gist}" if re.match(rf"{re.escape(argv[0])}\b", gist) else (
             f"{mark}graphene {shlex.join(named)} ended: {gist}"
         )  # fmt: skip
+        made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
+        if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
+            told = mark + (f"the planner proposed {', '.join(made)}" if made else f"the planner: {gist}")
+            told += "; what it said is in the pane"
         with contextlib.suppress(Exception):  # the screen may be gone by now
             self.call_from_thread(self.finished, told, "\n".join(whole))
 
@@ -1182,13 +1186,12 @@ def _walk(node):
 
 def _sentence(argv: list[str]) -> list[str]:
     """`:ask` as the shell reads it, its words one sentence: `:ask --about ids fix it` is `graphene ask
-    'fix it' --about ids`, what `?` builds; `:ask add a login page` needs no quotes."""
+    'fix it' --about ids`, what `?` builds; `:ask add a login page` needs no quotes. Only ask's own
+    options are options: `:ask add a --dry-run flag` asks for a --dry-run flag."""
     words, options, rest = [], [], iter(argv[1:])
     for word in rest:
         if word in ("--with", "--about"):
             options += [word, next(rest, "")]
-        elif word.startswith("-"):
-            options.append(word)
         else:
             words.append(word)
     return ["ask", *([" ".join(words)] if words else []), *options]
