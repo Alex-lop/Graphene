@@ -666,19 +666,19 @@ def register(cli: typer.Typer, root, open_store, fail):
             "1 (default) works in this checkout and commits nothing.",
         ),
     ) -> None:
-        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done."""
+        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done.
+        The last line says what the run did; `graphene watch` shows it when the run ends."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
-            fail(
-                "an executor or a planner does not start runs (through --with that is any command at all)", 1
-            )
-        from .run import DEFAULT_WITH, run_parallel, run_plan
+            fail("an executor or a planner does not start runs: through --with a run is any command", 1)
+        from .run import DEFAULT_WITH, run_parallel, run_plan, summary
 
         r = root()
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
-                fail("nothing to run: the plan has no open node (`graphene plan`)", 1)
+                fail("nothing to run: the plan has no open leaf", 1)
             typer.echo(where(), err=True)  # first: a run changes the plan for as long as it goes
             logs = r / ".graphene" / "runs"
+            since = len(store.node_log())  # what this run did is what the log says after this
             try:
                 if parallel > 1:
                     run_parallel(
@@ -689,13 +689,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
-            except KeyboardInterrupt as stopped:  # its args: the leaves that passed and wait in review
-                back = "stopped. What was running is handed back and ready again"
-                but = f", but {', '.join(stopped.args)}: passed, in review (above)" if stopped.args else ""
-                out(f"{back}{but}; `graphene plan` shows it")
+            except KeyboardInterrupt:
+                out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
-            for line in next_lines(store, P.caller()):
-                out(line)
+            out(summary(store, since))
 
     def planner(sentence: str, executor: str | None, about: str | None, split: bool) -> None:
         from .ask import DEFAULT_PLANNER, ask

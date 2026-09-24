@@ -10,7 +10,7 @@ import pytest
 
 from graphene_debrief import plan
 from graphene_debrief.plan import DONE, OPEN, Caller
-from graphene_debrief.run import command_for, run_plan
+from graphene_debrief.run import command_for, run_plan, summary
 from graphene_debrief.store import Store
 
 ALEX = Caller("alex", True)
@@ -137,3 +137,27 @@ def test_a_plan_that_grows_while_the_run_is_going_does_not_make_the_run_unbounde
         done = run_plan(store, repo, executor(repo, GROWER), say=lambda _: None)
         assert [n.id for n in done] == ["n1"]
         assert [n.state for n in plan.nodes(store)] == [DONE, OPEN]  # the new node waits for the next run
+
+
+ONLY_N1 = """
+import os, pathlib
+if os.environ["GRAPHENE_NODE"] == "n1":
+    pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
+"""
+
+
+def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
+    """A run ended with an agent's `next:` ("mine, mine. `graphene node start mine` prints its
+    contract…"), about the person's own leaf, and `graphene watch` showed that when the run ended."""
+    said = []
+    with Store.open(repo) as store:
+        docs = users_node(title="docs", scope=["docs.md"], check="test -s docs.md")
+        plan.propose(store, [users_node(), docs], ALEX)
+        since = len(store.node_log())
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
+        assert summary(store, since) == "run: 1 done, 1 came back (n2)"
+        assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
+                             "n2 came back after 1 attempt"]  # fmt: skip
+        again = len(store.node_log())
+        assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
+        assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)"
