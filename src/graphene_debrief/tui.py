@@ -489,7 +489,7 @@ class Watch(App):
     Screen.-narrow #main { layout: vertical; }
     Screen.-narrow #tree { height: 3fr; width: 100%; }
     Screen.-narrow #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
-    #side.-alone { border-left: none; border-top: none; }
+    #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
     #status { height: 2; background: $boost; padding: 0 1; }
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
     #line.-open { display: block; }

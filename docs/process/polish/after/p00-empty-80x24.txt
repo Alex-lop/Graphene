@@ -1,7 +1,7 @@
  the plan of ~/graphene-polish                                                  
-────────────────────────────────────────────────────────────────────────────────
  Nothing is planned here yet. Tell your agent what you want, in a paragraph:    
  it proposes the tree here. Or :ask <what you want>. ? lists the keys.          
+                                                                                
                                                                                 
                                                                                 
                                                                                 
