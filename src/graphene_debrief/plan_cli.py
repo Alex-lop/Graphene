@@ -589,9 +589,10 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command()
     def ack() -> None:
-        """Accept, as they are, the changes made while no node owned them (they are yours, or fine)."""
+        """The uncommitted changes in the checkout that no leaf made are yours, as they stand (committing
+        them does the same: a commit is the repository moving, and the plan follows it)."""
         paths = run(lambda s: P.acknowledge(s, checkout(), P.caller()))
-        out(f"acknowledged: {', '.join(paths)}" if paths else "nothing had changed between nodes")
+        out(f"yours as they stand: {', '.join(paths)}" if paths else "no uncommitted change is left unowned")
         said_where()
 
     @plan_cli.command()
