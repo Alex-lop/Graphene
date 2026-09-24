@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same `load` command and JSONL sink as csv and  
+▶ ✓ zero price is skipped for every supplier  [zero-price]  │ read the new README section for xml                       
+▼ ○ the xml source is wired in  [xml-source]                │ [n6] review, revision 3                                   
+├ ✓ an xml reader  [xml-reader]                             │ under: the xml source is wired in (xml-source)            
+├ ○ xml enabled end to end  [xml-wiring]                    │                                                           
+└ ◆ read the new README section for xml  [n6]               │ scope  README.md                                          
+                                                            │ check  grep -qi xml README.md                             
+                                                            │ owner  alexlopez                                          
+                                                            │        and a person signs it off                          
+                                                            │                                                           
+                                                            │ its check passed; it waits for your sign-off (graphene    
+                                                            │ node signoff n6)                                          
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: none · 2/4 done                                                                  
+ /n6: 1 of 1 (n next · Esc ends the search)                                                                             

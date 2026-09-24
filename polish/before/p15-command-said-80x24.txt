@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same   
+▶ ✓ zero price is skipped for every supplier  [zero-price]                      
+▼ ○ the xml source is wired in  [xml-source]                                    
+├ ✓ an xml reader  [xml-reader]                                                 
+├ ○ xml enabled end to end  [xml-wiring]                                        
+└ ○ read the new README section for xml  [n6]                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ 2026-09-24T03:58:33Z  *               goal_proposed  claude:59409a10   Load    
+ the Northwind XML feed through the same `load` command and JSONL sink as csv▅▅ 
+ and json, skipping the summary line and any zero-priced product.               
+   2026-09-24T03:58:33Z  zero-price      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  zero-rule       proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-source      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-reader      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-wiring      proposed      claude:59409a10          
+ planner: claude:59409a10 · executors: none · 2/4 done                          
+ graphene plan log: 2026-09-24T03:58:33Z * goal_proposed claude:59409a10 Load … 

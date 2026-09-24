@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan: no goal yet                                    
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ Nothing planned yet. Say what you want to your agent (it proposes the tree),   
+ or :ask what you want.                                                         
+                                                                             ▄▄ 
+ move     j k   gg G   / search   n next      fold  za zo zc   zR all open      
+ zM all closed                                                                  
+ shape    a sibling   A child   e edit this contract   E edit this subtree as   
+ text                                                                           
+          d drop   s split (the planner)   y accept   u undo   V select         
+ planner: none yet (a session, or :ask) · executors: none · 0/0 done            
+ ? help · : command · y accept · R run · q quit                                 

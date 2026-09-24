@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same `load` command and JSONL sink as csv and  
+▶ ✓ zero price is skipped for every supplier  [zero-price]  │ xml enabled end to end                                    
+▼ ○ the xml source is wired in  [xml-source]                │ [xml-wiring] running, revision 3                          
+├ ✓ an xml reader  [xml-reader]                             │ running: run:claude, attempt 1, 4821 s since it did       
+├ ● xml enabled end to end  [xml-wiring]  run:claude · 4821s│ anything                                                  
+└ ○ read the new README section for xml  [n6]               │   in .graphene/worktrees/xml-wiring                       
+                                                            │   last: Bash cat ingest/__init__.py ingest/xmlfeed.py     
+                                                            │ normalize/money.py validate/rules.py                      
+                                                            │ tests/test_xmlreader.py tests/test_contract.py            
+                                                            │   l its output · x release it                             
+                                                            │ under: the xml source is wired in (xml-source)            
+                                                            │                                                           
+                                                            │ scope  normalize/fields.py, config/defaults.py,           
+                                                            │ cli/main.py, README.md, tests/test_xmlfeed.py             
+                                                            │ check  python3 -m unittest discover -q tests              
+                                                            │ needs  xml-reader, zero-rule                              
+                                                            │                                                           
+                                                            │ FIELD_MAPS "xml": code->sku, desc->name, price->price     
+                                                            │ with price_unit "minor"; "xml" in ENABLED_SOURCES, the    
+                                                            │ USAGE line and README; samples/prices.xml loads to        
+                                                            │ exactly NW-1 and NW-2                                     
+                                                            │                                                           
+                                                            │ running: run:claude since 00:24 in                        
+                                                            │ .graphene/worktrees/xml-wiring                            
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: 1 running (run:claude) · 2/4 done                                                
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                                                                     

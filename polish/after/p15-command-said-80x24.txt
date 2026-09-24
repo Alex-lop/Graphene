@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ○ Load the Northwind XML feed through the same `load` command and…   2/4 done 
+├ ▶ ✓ zero price is skipped for every supplier             zero-price  done     
+└ ▼ ○ the xml source is wired in                           xml-source  1/3 done 
+  ├   ✓ an xml reader                                      xml-reader  done     
+  ├   ○ xml enabled end to end                             xml-wiring  ready    
+  └   ◇ read the new README section for xml                n6          yours    
+────────────────────────────────────────────────────────────────────────────────
+ 2026-09-24T03:58:33Z  *               goal_proposed  claude:59409a10   Load    
+     the Northwind XML feed through the same `load` command and JSONL sink as   
+     csv and json, skipping the summary line and any zero-priced product.       
+   2026-09-24T03:58:33Z  zero-price      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  zero-rule       proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-source      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-reader      proposed      claude:59409a10          
+   2026-09-24T03:58:33Z  xml-wiring      proposed      claude:59409a10          
+   2026-09-24T03:59:35Z  xml-wiring      edited        alexlopez                
+       scope: normalize/fields.py, config/defaults.py, cli/main.py, README.md,  
+       tests/test_xmlfeed.py → normalize/fields.py, config/defaults.py,         
+       README.md, tests/test_xmlfeed.py                                         
+   2026-09-24T03:59:47Z  n6              added         alexlopez                
+   2026-09-24T04:00:04Z  n6              edited        alexlopez                
+ you: 1 · 0 running · R: 1 ready · 2/4 done · plan first: on                    
+ graphene plan log: 33 lines, in the pane                                       

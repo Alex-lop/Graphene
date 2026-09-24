@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same   
+▶ ✓ zero price is skipped for every supplier  [zero-price]                      
+▼ ○ the xml source is wired in  [xml-source]                                    
+├ ✓ an xml reader  [xml-reader]                                                 
+├ ✓ xml enabled end to end  [xml-wiring]                                        
+└ ○ read the new README section for xml  [n6]                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ xml enabled end to end                                                         
+ [xml-wiring] done, revision 3                                                  
+ under: the xml source is wired in (xml-source)                                 
+                                                                                
+ scope  normalize/fields.py, config/defaults.py, README.md,                  ▃▃ 
+ tests/test_xmlfeed.py, cli/main.py                                             
+ check  python3 -m unittest discover -q tests                                   
+ needs  xml-reader, zero-rule                                                   
+ planner: claude:59409a10 · executors: none · 3/4 done                          
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                             
