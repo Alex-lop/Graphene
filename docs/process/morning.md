@@ -1,191 +1,146 @@
-# morning.md — 2026-09-21 — the tree directive
+# morning.md — 2026-09-23 — the terminal directive
 
-(Final for this run. Yesterday's is `docs/process/morning-2026-09-20.md`.)
+(Current at every milestone of this run. Last night's is `docs/process/morning-2026-09-21.md`.)
 
 ## 1. What you can run in five minutes
 
+Paragraph in, tree out, prune, run, on real agents, in WezTerm:
+
 ```
-cd ~/Desktop/AllThingsAgenticHackathon && git checkout tree
-docs/proof/parallel.sh     # two real agents at once, a worktree each, on a tree. ~30 s, some cents. ok/FALSE lines
-docs/proof/tuesday.sh      # a plan in force; an ordinary typed request; no refusal, no command; then "yes" accepts
-graphene watch             # in the repo either script prints at the end (`cd` there): the tree, live. Ctrl-C leaves
-WITH='codex exec --sandbox workspace-write --skip-git-repo-check' docs/proof/parallel.sh   # the same, two Codex agents
+cd ~/Desktop/AllThingsAgenticHackathon && git checkout terminal && uv tool install --editable . --force
+docs/proof/try.sh                        # builds ~/graphene-try (the feeds task) and prints the rest
+cd ~/graphene-try
+wezterm cli split-pane --right --percent 50 --cwd "$PWD" -- graphene watch
+claude                                   # then paste the paragraph try.sh printed, or write your own
 ```
 
-In a repo of your own: `graphene plan goal "…"`, ask your agent to propose a tree with
-`graphene plan propose -`, prune it (`graphene`, `node set`, `node drop`, `plan accept <subtree>`), then
-`graphene run --parallel 3` and `graphene watch` beside it. The README's "first ten minutes" is that.
+On the right the tree appears, every line `?` (about 35 seconds). `j` `k` to read it, `Enter` on a
+leaf for all of it. Prune one thing: `e` on a leaf opens its contract in your editor. Try taking a
+path out of a scope, so that it comes back. `y` on each sub-goal accepts it, or `:plan accept`
+accepts all. `R` runs. Leaves go `●`, then `✓`; the node pane says which executor, where, what it did
+last and how many seconds ago (`l` is its output). The leaf you starved comes back `↩`, and the node
+pane offers `w` (widen to what it wanted) and `b` (a sibling for it). Press `w`, then `R`.
+`git log --graph --oneline` reads as the tree. `docs/assets/watch.gif` is that scene, recorded.
 
 ## 2. What is waiting on you
 
-One thing is yours to undo (this repo's plan goal was overwritten by a test stand-in: see "The test"
-below, one command). Nothing else blocks. One PR, `tree` into `main`, is yours to merge: https://github.com/Alex-lop/Graphene/pull/26
-Decisions 13 to 27 in `docs/DIRECTION.md` are tonight's, each with its reason and the question I would
-have asked. The four I would read first:
+- **One PR, `terminal` into `main`:** https://github.com/Alex-lop/Graphene/pull/27. CI is green on
+  every push but one: `f10387e` failed a timing test on macOS (the hook with a locked store took
+  2.05 s against 2.0), because the paragraph rule had made every prompt write. `c3003be` fixed it.
+- **The hold (decision 40).** From 09:15Z until you typed "just do it", this session and every
+  agent it started could not write. The hook had read a subagent's report as your paragraph. I did
+  not route around it. The cause is fixed (`bf82b47`). A report that quoted "just do it" also lifted
+  the wait once, in your name. That is closed too, and it is the finding I would read first.
+- **The third test says the tree did not save attention** (`docs/test/results-2026-09-23.md`,
+  audited). Where a tree existed, the paragraph arm won on every attention measure, and both arms
+  got the same outcome. Misunderstandings caught before code: 0 or 1 of 3. The possible one is you
+  putting back a line of your own paragraph that the proposal had dropped. These are stand-ins and
+  modelled seconds, two runs an arm. Your own ten-minute run (the recipe is in
+  `docs/test/PROTOCOL.md`) outranks it. Without a paragraph run of the same card beside it, that run
+  shows no saving either way.
+- **The decisions to strike** are 28 to 40 in `docs/DIRECTION.md`, each with its reason. Read these
+  first:
+  - **28**: a paragraph (240 characters or more) becomes a tree before any code, and the session's
+    writes wait.
+  - **39**: what the closing review and its recheck changed. It holds one question about your goal.
+  - **40**: the hold.
+  - **31**: the planner prints its proposal and holds no write tool.
+- **This repository's own store** still has the goal "why this repo's plan exists, in your words"
+  (you typed the placeholder from an old morning.md on the 21st) and five proposals from the 20th.
+  It is yours; I left it. `graphene plan goal '<yours>'` replaces the goal, and `graphene node drop
+  <id>` removes each proposal (`plan archive` touches only what is done or dropped).
 
-- **18** A request typed into a session is a leaf that may touch anything unless you type `--scope`.
-  This is what makes a plan in force free on a Tuesday, and it loosens decision 4.
-- **20** Whoever carries no agent's mark is you, terminal or not. An agent of a vendor that sets no
-  mark is now taken for you. (The check Graphene runs never is.)
-- **21** `graphene run --parallel` commits and merges, on `graphene/<leaf>` branches of its own.
-- **25** `graphene why`, the session card and `graphene sessions` are gone.
+## 3. The map of the code
 
-## 3. A map of the code, for working in it every day
+`src/graphene_debrief/`, 11,000 lines. Read in this order; each line ends with where its tests are.
 
-`src/graphene_debrief/` is 7,500 lines. Read in this order; each line ends with where its tests are.
+- `plan.py` (2,000): what the product means. Standard library only, because the hook imports it.
+  Node, `caller()` (who is a person), scope globs, the tree (`kids`, `above`, `below`, `validate`,
+  `ready`), git reads, the operations (`propose`, `accept`, `edit`, `drop`, `start`, `finish`,
+  `release`), `not_here` (a need done elsewhere), `offers`/`offerable`/`widen`/`sibling` (a
+  hand-back's fixes), `undoable`/`undo`, `run_check`. Tests: `test_plan.py`, `test_tree.py`,
+  `test_run_live.py`.
+- `plan_text.py` (940): the plan as text. `parse` (a line belongs to the node line just above it,
+  at one column, or is refused by number), `render`, `apply` (three-way, one transaction),
+  `edit_loop` (the editor, refusals written under their line). Tests: `test_plan_text.py`,
+  `test_plan_text_cli.py`, `test_plan_text_findings.py`.
+- `gate.py` (590): what the Claude Code hooks answer, including `paragraph()`, `_tree_wait` and the
+  session-start teaching. Tests: `test_gate.py`, `test_hooks.py`.
+- `run.py` (750): `graphene run`, in place and `--parallel`. `run_node`, `sweep` (by pid and start
+  time), `land`/`park`, `live`/`tail`. Tests: `test_run.py`, `test_parallel.py`, `test_run_live.py`
+  (real signals).
+- `ask.py` (160): the planner. Tests: `test_ask.py`.
+- `tui.py` (830): `graphene watch`. `Watch` is the app; `PlanTree` reads the two-key sequences;
+  `detail()` is the node pane; `_cli()` runs a key's command in-process, `background()` in a process
+  of its own. Tests: `test_tui.py` (Textual's pilot, at 80 and 120 columns).
+- `plan_cli.py` (1,040): the `plan`, `node`, `watch`, `ask` and `run` commands; `write()` wraps
+  every act of yours (undo, and which repository). Tests: `test_plan_cli.py`, `test_plan_text_cli.py`.
+- Barely touched tonight: `node_record.py`, `store.py` (`claim()` now joins an outer one),
+  `sources/claude_code.py` (hook entry, transcripts), `graph.py`/`plan_view.py`/`server.py` (the
+  page), `attribute.py`, `commits.py`, `record.py`.
 
-**The plan (start here).**
-- `plan.py` (1,360): everything the product means. Standard library only, because the hook imports
-  it. Top to bottom: `Node`, `caller()` (who is a person), scope globs, **the tree** (`kids`, `above`,
-  `below`, `leaves`, `validate`, `ready`, `forecast`), git reads, `contract`/`trail` (what an executor
-  is told), then one function an operation: `propose`, `accept`, `edit`, `drop`, `start`, `finish`
-  (the boundary), `roll_up`, `close_aside`, `release`, `signoff`, `reopen`, `archive`. Every
-  operation is "change a row, write a log line". → `tests/test_plan.py` (the boundary),
-  `tests/test_tree.py` (the tree, and every tree finding of the closing review).
-- `plan_cli.py` (750): `graphene plan …`, `graphene node …`, `graphene run`, `graphene watch`. No
-  logic of its own except `plan_lines`, the tree print that `plan` and `watch` share.
-  → `tests/test_plan_cli.py`.
-- `gate.py` (390): what the Claude Code hooks answer: a write refused, a stop refused, a prompt
-  read as a leaf or as a yes (`_on_prompt`, `_aside`). → `tests/test_gate.py`, `tests/test_tuesday.py`.
-- `run.py` (370): `run_node` (one leaf to its boundary), `run_plan` (one at a time, in place),
-  `run_parallel` + `worktree_for` + `land` (worktrees, commit, merge). → `tests/test_run.py`,
-  `tests/test_parallel.py`.
-
-**The record.**
-- `node_record.py` (590): a leaf's record and `rolled_up` for a subtree or the plan.
-  → `tests/test_node_record.py`. `record.py` (220) and `commits.py` (190) grade commits for it.
-- `store.py` (680): SQLite. Nodes are JSON documents in one table, so a new node field needs no
-  migration. → `tests/test_store.py`.
-- `sources/claude_code.py` (1,000): the hook entry point `hook_main`, `graphene init`, transcript
-  backfill. The biggest file and the least related to the plan. → `tests/test_hooks.py`,
-  `test_backfill.py`, `test_ingest_run.py`.
-- `attribute.py` (250): what is left is the shell-command parser the gate uses
-  (`bash_written_paths`). → `tests/test_attribute.py`.
-
-**The page.** `plan_view.py` (375) and `graph.py` (715) build JSON; `server.py` (225) serves it;
-`ui/` is the React source, and its build is committed under `src/graphene_debrief/ui/static` (CI
-fails if they differ: `npm --prefix ui run build`). → `tests/test_plan_view.py`, `test_graph.py`,
-`test_server.py`, `ui/src/*.test.ts(x)`.
-
-**To make a change and know where its test goes:** a rule of the plan → `plan.py` +
-`tests/test_tree.py` or `test_plan.py`, using the `store`/`repo` fixtures and the `do()` helper (a
-real git repo every time; git is the mechanism, never mocked). Words a person or agent reads →
-`plan_cli.py` or `gate.py`, asserted through the CLI runner or `hook_main`. The gate before a commit:
-`uv run ruff check && uv run ruff format --check && uv run pytest -q` (90 s).
-
-**What I think a person should own from here:** `plan.py`'s words (every `Refused` message and
-`contract` is the product's voice), `docs/DIRECTION.md`, the README, and `gate._YES`/`_NOT_YES` (what
-counts as your yes is a judgement about how you talk, not a mechanism). What agents can keep:
-`sources/claude_code.py`, `graph.py`, the page.
+To change what a line of the text means, start at `plan_text.parse` and add a case to
+`test_plan_text_findings.py`. To change a key, it's `Watch.BINDINGS` and a test in `test_tui.py`.
 
 ## 4. What was verified, and how
 
-- **The tree, on real agents.** `docs/proof/parallel.sh`: two Claude agents at once, a worktree each,
-  each told the why path, each landed as a merge, the sub-goal done by its own check after both
-  landed, the dependent leaf only then, hooks running inside the worktrees: 9/9, 26 s
-  (`docs/proof/2026-09-21-parallel.txt`). The same with two Codex agents: 8/8, 60 s
-  (`-parallel-codex.txt`). The first real run found a bug tests had not (the sub-goal's check ran
-  before the sibling had landed); fixed, tested.
-- **Free on a Tuesday, on a real agent.** `docs/proof/tuesday.sh`: a plan in force, an ordinary typed
-  request, zero graphene commands by the person, no refusal, a done leaf whose record names the
-  file; then a proposal accepted by typing "yes" in the session and done by the same session: 6/6.
-  **What that proof does not show:** its "yes" is fed by `claude -p`, not typed by a person; the
-  mechanism cannot tell those apart, which is the printed hole in decisions 18/19.
-- **All five scripts were run again after the review's fixes**, on the code as it stands: 6/6, 9/9,
-  5/5, 2/2, 4/4, every exit 0 (`docs/proof/2026-09-21-*.txt` are those runs).
-- **The three 0.3 proofs**: `proof.sh` 5/5 (the typo the person asked for is now
-  fixed under a leaf made from the prompt, not refused), `stop.sh` 2/2, `run.sh` 4/4.
-- **The closing review.** Two adversaries told to assume I had cut corners: 47 findings, each
-  reproduced twice, all collected before any was fixed (`local/reviews/`, untracked). The worst:
-  prose after "check:" in a prompt was run as a shell command; an agent could pipe a forged prompt
-  into `graphene ingest hook` and be you; with "no terminal is the person", a pytest file an executor
-  wrote was the person; 3 of 8 parallel leaves were refused over a sibling's landed file; `land`
-  aborted a merge of the person's own and said "nothing of yours was touched"; `archive` could
-  orphan a node and brick the plan. Every promise-breaking one is fixed with a test, except the forged
-  hook event, which is refused by its ordinary spelling only and printed as a hole.
-- **The gate**, on a clean clone of `tree`: 371 tests on Python 3.12 and on 3.13 outside an agent's
-  environment and again inside one; ruff check and format; the wheel built and smoked outside the
-  tree (`graphene 0.4.0`); `npm ci`, typecheck, 20 vitest tests, build, and the committed page
-  identical to what its source builds. CI on `origin/tree`: all five jobs green (run 35570546458).
-- **The rollback recipe** below was run against 0.3's code in a scratch repo.
+- **The whole scene on real agents** (23 September, the feeds task, one run):
+  - The paragraph typed into a session gave a tree in 35 s, with no file touched.
+  - Accepted, `run --parallel 4` did the four leaves in 50 s.
+  - The result scored 18/20 on the hidden acceptance (the 2 misses want what the paragraph never
+    said) and 12/12 held-out. The untouched repo scores 10/20 and 0/12.
+- **The recording** (`docs/assets/watch.gif`, real agents): a prune that went too far, `R`, the leaf
+  coming back wanting `cli/main.py`, `w`, `R`, all done.
+- **`graphene ask`** on the same paragraph: 44 s, seven nodes with needs, first try.
+- **The screen in a real WezTerm** (an isolated mux, 80×24, read back with `wezterm cli get-text`).
+- **The text form:** 54 adversarial agents (49 findings), a recheck of each, then a hunt for the
+  rebuild's own regressions (12, all fixed). Each is guarded by a test.
+- **The closing review:** 78 findings confirmed, all fixed (`a384829`). A recheck of each with a
+  regression test, and a hunt for what the fixes broke (11). Everything the recheck left open is
+  fixed and merged, except the three named in decision 39. Every fix has a test that fails without it.
+- **Ctrl-C, a closed terminal, `kill`**: real signals in `test_run_live.py`, which checks that no
+  executor or check survives.
+- **Tests:** 639 (612 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI green on Linux and macOS, Python 3.12 and 3.13, at `905538b`, after three pushes that failed one Linux job each (a `ps` that cut the command line at 80 columns; the commit says which of my guesses were wrong).
+- **The third test:** eight stand-in runs, one at a time, and an independent audit that reproduced
+  every figure from the raw runs.
 
 ## Not verified
 
-- `graphene watch` on a real terminal by a person: tested through `--once`, and the full-screen loop
-  was never looked at by eyes. The cut-to-fit logic is untested on a real 80x24.
-- The page in a browser beyond the sub-agent's two webkit screenshots; 50 nodes on screen.
-- The hook's cost with thousands of prompt leaves: the review measured the median crossing the 60 ms
-  budget near 5,000; nothing prunes them yet (`graphene plan archive` relabels).
-- A parallel run on a large repo: `start` holds the store's write lock while it looks at every other
-  worktree; the review saw "database is locked" with 20 worktrees of 4,000 untracked files each.
-- Codex hooks and the vendor sandbox (the two things after the list): not started.
-- Review findings left as they are, all visible rather than promise-breaking: two attended sessions
-  in one checkout (the second gets no leaf, and is not told why well); a leaf with a proposed child
-  draws as a sub-goal on the page; non-English yes; `accept` works while paused.
-
-## The test a paragraph can lose: it did not lose
-
-`docs/test/results-2026-09-21.md`, audited by an agent told to assume it was rigged; every number from
-`python3 docs/test/summarize.py <runs>`. Nine runs of a new six-directory task, two arms, a dense
-person and a Tuesday person. **Read this as it is:**
-
-- **Outcome separates nothing.** Every run, both arms, scored 20/20 on the hidden acceptance and 12/12
-  on inputs the code was never shown. The task was built to break that ceiling and did not.
-- **The paragraph arm won on effort:** median 4.5 person actions against 9, 3,196 typed characters
-  against 4,526, $0.61 against $1.15.
-- **Two claims that the plan arm won something were written and the auditor killed both**; they are
-  gone. Correcting everything the audit found makes the plan arm look worse, not better.
-- **Parallelism did not save time in the one truly concurrent run** (1,378 s against 745 s serial).
-  That run was on the build before the closing review's fix: a sibling's landing got a leaf refused
-  four times (finding 4 there, F1 in the review). It is fixed and tested; it has not been re-measured.
-- **The one clean result is the Tuesday claim:** with a plan in force, a one-file request cost the
-  person the same 1 action and 80 characters as with no plan, zero refusals, +1.3 s and +0.5 cents.
-  The auditor's caveat stands: that leaf's scope is `**`, so "free" and "fences nothing" are one
-  measurement.
-- What this means, in my words: on a task sonnet gets right from a paragraph, Graphene is still
-  overhead, as on the first night. Nothing tonight measured the case the product is for (too big to
-  watch, unattended, overnight) against a paragraph, because a stand-in harness that runs arms one at
-  a time cannot. Your ten minutes (`docs/test/PROTOCOL.md`, top) are still worth more than these runs.
-- The test ran on a wheel built from `563c1f6`, before the review's fixes and before the prompt
-  syntax became `--scope`/`--check`.
-
-**One thing it did to this repo, which is yours to undo.** A stand-in ran `graphene plan goal` from a
-shell that had not changed directory, and this repo's own plan goal is now a sentence from a test
-card ("northwind's new feed is xml…", logged 07:42:45Z as "alexlopez (no terminal)"). Nothing else
-changed: the five proposals are as they were. There was no goal before tonight. I did not overwrite
-it, because saying what the plan is for is a person's act and I will not pass for you to do it:
-```
-graphene plan goal "<what this repo's plan is for>"
-```
-It is also what decision 20 costs, seen once for real: a sub-agent's shell with no vendor mark was
-taken for you. `plan goal` now prints which repo it changed and what the goal said before, and the
-log keeps the old words. Eight product findings from the test are in
-`docs/test/findings/2026-09-21-bugs.md`; fixed from it tonight: the blank redirect target read as a
-write, the sibling-landing refusal, the goal's old value, `--check` saying it runs under sh. Left:
-`graphene run` does not record what an executor cost; a worktree is cut from `HEAD`, so uncommitted
-hand-work is not in it; agents still write a scratch plan file when told to use `propose -`.
+- **You, at the keys.** Nobody has pruned a tree with these keys but me through a mux and the
+  stand-ins through the equivalent commands.
+- **WezTerm's own window.** I checked its mux, not the GUI: fonts, mouse capture, whether Shift-drag
+  selects text over the screen.
+- **The paragraph rule's 240 characters** against anyone but you.
+- **Codex as planner or executor:** `--with 'codex exec --sandbox read-only'` should work for `ask`,
+  and was not run.
+- **A stray line**, once, at the top of a 36-column pane of `graphene watch`. I could not reproduce
+  it.
 
 ## Questions (only what blocks the next step)
 
-None blocks. The one I would most like answered: decision 18's default (a typed request may touch
-anything) against the stricter "anything no other open leaf claims".
+1. Is 240 characters the right line between "do it" and "plan it" for you (decision 28)?
+2. When an agent proposes a new tree after your goal is finished, should your goal be set aside
+   until you accept or decline the new sentence (what it does now), or stay until you replace it
+   (decision 39)?
+3. The third test says the tree cost attention rather than saving it. Run the ten-minute recipe
+   yourself (`docs/test/PROTOCOL.md`), with a paragraph run of the same card beside it, before the
+   next directive leans on the tree?
 
 ## Rollback
 
-`main` before tonight: `6cece1c`. Nothing has touched `main`; all work is on `tree`.
+Before the first change `main` on GitHub was `ed010ca` (your merge of PR #26); this run is the
+branch `terminal`, cut from it. Nothing here touched `main`. To put your local `main` where GitHub's
+is (it was 43 behind, at `6cece1c`):
 
 ```
-git checkout main && git reset --hard 6cece1c          # only if tree is merged and you want it out
-sqlite3 .graphene/graphene.db "UPDATE nodes SET data = json_remove(data, '$.parent', '$.aside'); PRAGMA user_version = 3"
+git checkout main && git reset --hard ed010ca
 ```
-
-The second line is for a repo whose store 0.4 has opened (schema 4, no table changed): without it
-0.3 says "written by a newer graphene"; with it 0.3 prints the plan (run tonight, scratch repo).
 
 ## State of every branch
 
-- `main`: untouched, `6cece1c`, as you left it. `origin/main` likewise.
-- `tree`: tonight's work, pushed to `origin/tree`, CI green; PR #26 into `main`, not merged (yours).
-- Left on the machine: five sub-agent worktrees under `.claude/worktrees/agent-*` with their
-  branches (`worktree-agent-*`), merged or read-only; `git worktree remove` and `git branch -D` are
-  yours, as before.
+- `terminal`: this run, pushed; one PR into `main` (#27).
+- `main` (GitHub): `ed010ca`, untouched. Local `main`: `6cece1c`, 43 behind GitHub, untouched.
+- `worktree-agent-a525b0dc…`, `…a6f78b30…`, `…a7755787…`: tonight's three fix branches, merged into
+  `terminal`; their worktrees are under `.claude/worktrees/` and can go (`git worktree remove`).
+- Everything else (`agent/*`, `codex/*`, `lane/*`, `n*`, `graph`, `plan`, `rebuild`, `tree`) is as it
+  was.

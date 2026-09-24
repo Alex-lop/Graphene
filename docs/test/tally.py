@@ -278,11 +278,21 @@ def read_runlog(path: Path, notes: list[str]) -> dict:
             entries.append(json.loads(line))
         except json.JSONDecodeError as exc:
             notes.append(f"{path.name}:{number} is not JSON and was skipped ({exc.msg})")
-    person = [e for e in entries if e.get("who") == "person"]
+    # a `read` is what the person was shown, not something they did or typed (attention.py counts
+    # its words); a `reopen` sends finished work back, which is a restart however it is spelled
+    person = [e for e in entries if e.get("who") == "person" and e.get("type") != "read"]
     stamps = [s for s in (seconds(e.get("t")) for e in entries) if s is not None]
     if len(stamps) < len(entries):
         notes.append("some run log entries carry no readable `t`; wall_seconds spans the ones that do")
-    corrections = [e for e in entries if e.get("type") == "correction"]
+    corrections = [e for e in entries if e.get("type") in ("correction", "reopen")]
+    # `claude -p --resume` prints the session's running total as total_cost_usd, not the call's:
+    # the modelUsage token counts in the same JSON grow by exactly each call's `usage` (checked on
+    # 23 September, and in the 21 September runs' raw JSON). A session costs its largest total;
+    # adding them up counted every earlier call again on each resume.
+    session_cost: dict = {}
+    for i, e in enumerate(x for x in entries if x.get("cost_usd") is not None):
+        key = e.get("session_id") or i
+        session_cost[key] = max(session_cost.get(key, 0.0), float(e.get("cost_usd") or 0))
     return {
         "restarts": len(corrections),
         # The card's own change of mind is mandated by the protocol, and the 20 September run
@@ -293,7 +303,8 @@ def read_runlog(path: Path, notes: list[str]) -> dict:
             int(e["chars"]) if isinstance(e.get("chars"), int) else len(str(e.get("text") or ""))
             for e in person
         ),
-        "executor_cost_usd": round(sum(float(e.get("cost_usd") or 0) for e in entries), 6),
+        "executor_cost_usd": round(sum(session_cost.values()), 6),
+        "executor_cost_summed_usd": round(sum(float(e.get("cost_usd") or 0) for e in entries), 6),
         "executor_turns": sum(int(e.get("turns") or 0) for e in entries),
         "wall_seconds": round(max(stamps) - min(stamps), 1) if len(stamps) > 1 else 0.0,
         "results": sum(1 for e in entries if e.get("type") == "result"),
@@ -323,7 +334,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--intent", required=True, help="intent_globs.txt")
     ap.add_argument("--accept", required=True, help="accept.py")
     ap.add_argument("--quality", help="quality.py: the same checks on inputs the code never saw")
-    ap.add_argument("--arm", required=True, choices=("prompt", "graphene"))
+    ap.add_argument("--arm", required=True, choices=("prompt", "graphene", "tree"))
     ap.add_argument("--runlog", required=True, help="runlog.jsonl")
     args = ap.parse_args(argv[1:])
 
@@ -392,6 +403,8 @@ def main(argv: list[str]) -> int:
         "person_chars": log["person_chars"],
         "executor_cost_usd": round(log["executor_cost_usd"] + runs["cost_usd"], 6),
         "executor_cost_from_runlog_usd": log["executor_cost_usd"],
+        # what 20 and 21 September printed: every resumed call's running total added up
+        "executor_cost_from_runlog_summed_usd": log["executor_cost_summed_usd"],
         "executor_cost_from_graphene_runs_usd": runs["cost_usd"],
         "executor_turns": log["executor_turns"] + runs["turns"],
         "executor_calls": log["results"] + runs["calls"],

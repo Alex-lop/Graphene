@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Every number in results-2026-09-21.md, computed from the runs. Nothing here is typed by hand.
+"""Every number in results-2026-09-21.md and results-2026-09-23.md, computed from the runs. Nothing
+here is typed by hand.
 
-    python3 docs/test/summarize.py <runs-dir> [--out runs-2026-09-21.json]
-    python3 docs/test/summarize.py --json runs-2026-09-21.json
+    python3 docs/test/summarize.py <runs-dir> [--out runs-2026-09-23.json]
+    python3 docs/test/summarize.py --json runs-2026-09-23.json
 
 <runs-dir> holds one directory per run named <task>-<style>-<arm>-<rep>, each with repo/ and
 runlog.jsonl. A run with a `void.txt` beside its runlog is printed in the per-run table with
 `valid` = NO and its reason, and is left out of every median.
 
-`style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt` or
-`graphene`. A run directory from the 20 September test, named <task>-<arm>-<rep>, still reads: its
-style is recorded as `dense`, which is what those stand-ins wrote.
+`style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt`, `graphene` (21
+September) or `tree` (23 September, whose attention numbers come from attention.py and are
+MODELLED person-seconds, printed beside the raw counts they are made of). A run directory from the
+20 September test, named <task>-<arm>-<rep>, still reads: its style is recorded as `dense`, which
+is what those stand-ins wrote.
 
 Two numbers are computed here that tally.py does not print, and each says where it comes from:
 
@@ -42,7 +45,11 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from attention import attention  # noqa: E402
+
 TASKS = ("feeds", "report", "inventory", "logs")
+ARMS = ("prompt", "graphene", "tree")
 COLUMNS = [
     ("files_changed_final_n", "files"),
     ("files_outside_intent_final_n", "outside (final)"),
@@ -62,6 +69,11 @@ COLUMNS = [
     ("person_chars", "person chars"),
     ("spec_chars", "spec chars"),
     ("handoff", "spec/act"),
+    ("typed_chars", "typed"),
+    ("read_words", "read words"),
+    ("modelled_seconds", "person-s (model)"),
+    ("to_run_seconds", "to run (model)"),
+    ("caught_before_code_n", "caught"),
     ("executor_cost_usd", "cost $"),
     ("executor_turns", "turns"),
     ("wall_seconds", "wall s"),
@@ -75,7 +87,7 @@ def spec_chars(db: Path, entries: list[dict], arm: str) -> int:
         for e in entries
         if e.get("who") == "person" and e.get("type") in ("prompt", "correction")
     )
-    if arm == "graphene" and db.exists():
+    if arm in ("graphene", "tree") and db.exists():
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
         for state, data in conn.execute("SELECT state, data FROM nodes"):
             if state == "dropped":
@@ -103,7 +115,7 @@ def name_of(run: Path) -> tuple[str, str, str, int] | None:
         style = "dense"
     else:
         return None
-    if arm not in ("prompt", "graphene") or not rep.isdigit():
+    if arm not in ARMS or not rep.isdigit():
         return None
     return task, style, arm, int(rep)
 
@@ -147,6 +159,16 @@ def collect(runs_dir: Path) -> list[dict]:
             if e.get("who") == "person"
             and (e.get("type") == "prompt" or (e.get("type") == "correction" and not e.get("mandated")))
             and str(e.get("text") or "").strip()
+        )
+        seen = attention(run, arm)
+        tally.update(
+            typed_chars=seen["typed_chars"],
+            read_words=seen["read_words"],
+            modelled_seconds=seen["modelled_seconds"],
+            to_run_seconds=seen["to_run"]["modelled_seconds"],
+            caught_before_code_n=seen["caught_before_code_n"],
+            caught_before_code=seen["caught_before_code"],
+            attention_notes=seen["notes"],
         )
         void = run / "void.txt"
         tally.update(
@@ -203,10 +225,10 @@ def medians(runs: list[dict], by: str) -> str:
     keys = [
         k
         for k in (TASKS if by == "task" else ("dense", "tuesday"))
-        if (k, "prompt") in groups or (k, "graphene") in groups
+        if any((k, arm) in groups for arm in ARMS)
     ]
     for key in [*keys, "all"]:
-        for arm in ("prompt", "graphene"):
+        for arm in ARMS:
             group = groups.get((key, arm), [])
             if not group:
                 continue
@@ -223,7 +245,7 @@ def main(argv: list[str]) -> int:
         runs = json.loads(Path(argv[2]).read_text())
     elif len(argv) > 1:
         runs = collect(Path(argv[1]).expanduser().resolve())
-        out = Path(argv[3]) if len(argv) > 3 and argv[2] == "--out" else HERE / "runs-2026-09-21.json"
+        out = Path(argv[3]) if len(argv) > 3 and argv[2] == "--out" else HERE / "runs-2026-09-23.json"
         out.write_text(json.dumps(runs, indent=1))
     else:
         print(__doc__)

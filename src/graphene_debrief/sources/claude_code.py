@@ -73,6 +73,8 @@ _NOT_A_PROMPT = (
     "<task-notification>",
     "<system-reminder>",
     "[Request interrupted",
+    "Another Claude session sent a message",  # a subagent's hand-back, delivered as a prompt
+    "<agent-message",
 )
 _SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 
@@ -436,7 +438,14 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             except Exception:
                 _log_error(root)
             answer = None
-            if store.node_count():  # no plan, nothing to decide: a repo without one pays nothing for it
+            # no plan, nearly nothing to decide: a repo without one pays one read an event. A session
+            # is taught the tree when it starts, a paragraph becomes one when it is typed, and a
+            # write waits while this session's paragraph has no tree yet
+            name = event.get("hook_event_name")
+            sid = event.get("session_id")
+            waiting = isinstance(sid, str) and bool(store.meta(f"tree:{sid}"))
+            planner = bool(os.environ.get("GRAPHENE_PLANNER"))  # refused a write, plan or no plan
+            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or waiting or planner:
                 from .. import gate
 
                 answer = gate.decide(store, event, root)

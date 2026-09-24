@@ -55,7 +55,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     }
     proposed = agent("plan", "propose", "-", input=json.dumps(proposal))
     assert proposed.exit_code == 0 and "n1  proposed" in proposed.stdout
-    assert "Nobody can start them until a person" in proposed.stdout
+    assert "nobody can start them before that" in proposed.stdout
 
     refused = agent("node", "start", "n1")
     assert refused.exit_code == 1 and "n1 is a proposal" in refused.stderr
@@ -237,3 +237,34 @@ def test_the_tree_in_the_terminal_goal_first_sub_goals_counted_and_finished_work
     assert not any(line.strip().startswith("l0 ") for line in shown)
     frame = person("watch", "--once").stdout
     assert "ship invoices by email" in frame and "just now" in frame and "l3" in frame
+
+
+def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
+    """Recheck: node reopen and node signoff (and start, done and run) changed the plan and said
+    nothing of which repository's plan they changed."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true", "--signoff")
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    acts = [person("node", "start", "l1")]
+    (repo / "api.py").write_text("def users():\n    return [1]\n")
+    acts += [person("node", "done", "l1"), person("node", "signoff", "l1")]
+    acts += [
+        person("node", "reopen", "l1", "--note", "not yet"),
+        person("run", "--with", "true", "--node", "l2"),
+    ]
+    assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
+    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+
+
+# -- the recheck of the closing review: its regression tests --------------------
+
+
+# Recheck 75 (partly)
+def test_pause_resume_prompts_ack_archive_and_release_name_the_repository(repo):
+    """Every write names the repository: pause, which turns enforcement off, said nothing of where."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    agent("node", "start", "l1")
+    acts = [agent("node", "release", "l1", "--why", "needs schema.py")]
+    for args in ("pause", "resume", "prompts strict", "ack", "archive"):
+        acts.append(person("plan", *args.split()))
+    assert [a.exit_code for a in acts] == [0] * 6
+    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]

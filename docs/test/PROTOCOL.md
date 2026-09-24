@@ -6,8 +6,11 @@ than the same person with a prompt and a diff?*
 
 The tree directive sharpened it into the thing actually worth knowing: **how much work does a
 person hand off per unit of their own attention, and was the result right?** Effort is counted in
-person actions and typed characters; rightness is counted twice, once by a hidden acceptance on
-the sample the code was given and once by held-out inputs it was never shown.
+person actions and typed characters. Since 23 September, `attention.py` also counts the words a
+person was shown, and turns all three into **modelled** person-seconds with the keystroke-level
+model: 0.28 s a character, 1.35 s an act, 250 words a minute. That is a model, never a clock.
+Rightness is counted twice, once by a hidden acceptance on the sample the code was given and once
+by held-out inputs it was never shown.
 
 One task, two arms, the same person, the same private card. Every number at the end is computed by
 `tally.py` from git, from `.graphene/graphene.db`, from `.graphene/runs/` and from the run log.
@@ -15,105 +18,155 @@ Nobody estimates anything. A run that goes badly is reported as it went.
 
 ---
 
-## Ten minutes of your attention
+## Ten minutes of your attention: the tree arm
 
-Ten minutes of *yours*. The agent takes longer than that and you are not watching it; that is the
-whole point. Do one arm today and the other tomorrow, and do not read the other arm's diff first.
+Ten minutes of *yours*. The agents take longer than that, and you do not have to watch them. This
+is the product as the README describes it: paragraph in, tree out, prune, run. The stand-ins' run
+of it is in `results-2026-09-23.md`. Read that after you have done this, not before.
 
-Read `docs/test/tasks/feeds/intent.md` and keep it beside you. It is what you want. You never
-paste it into anything, and you never open the repository before your first message.
-
-```sh
-G=~/Desktop/AllThingsAgenticHackathon          # this checkout
-W=$(mktemp -d)                                 # your own scratch, and your own TMPDIR
-export TMPDIR=$W
-
-bash $G/docs/test/newrun.sh $W feeds dense graphene 1    # prints the repo and the base sha
-cd $W/feeds-dense-graphene-1/repo
-R=$W/feeds-dense-graphene-1/runlog.jsonl
-BASE=$(cat $W/feeds-dense-graphene-1/base.sha)
-as_me() { env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u AI_AGENT -u GRAPHENE_NODE "$@"; }
-log() { python3 $G/docs/test/logline.py $R person "$@"; }
-```
-
-**Arm B, the tree.** Start a timer on yourself, not on the clock.
+**Before the clock, once (not timed).** In WezTerm:
 
 ```sh
-as_me graphene plan goal "northwind send xml now and I want it loading like the other two"
-log shape "graphene plan goal …"
+G=~/Desktop/AllThingsAgenticHackathon
+mkdir -p ~/graphene-test
+bash $G/docs/test/newrun.sh ~/graphene-test feeds alex tree 1
+source ~/graphene-test/feeds-alex-tree-1/env.sh
+less $G/docs/test/tasks/feeds/intent.md
 ```
 
-Ask an agent for the tree — in your own words, however you would say it, and ending with
-*"propose a plan with `graphene plan propose -`, reading the JSON on standard input"*. Then shape
-it in the terminal, which is the part that is supposed to be worth the tokens:
+`newrun.sh` makes `~/graphene-test/feeds-alex-tree-1/`:
+- `repo/`, with `graphene init` already done;
+- `base.sha`;
+- an empty `runlog.jsonl`;
+- a `tmp/` of its own;
+- `env.sh`, which puts you in the repo and gives you `log` and `as_me`.
+
+It prints the path and version of the `graphene` it found. That is the build you are testing, so
+write it down. It will not make the same run twice. A second attempt goes in `feeds-alex-tree-2`,
+with the same five lines and a 2 in place of the 1.
+
+The card you just opened is what you want. Keep it beside you, never paste it into anything, and
+do not open the repository's files before your first message.
+
+Put the plan on the right and a small shell for the log at the bottom:
 
 ```sh
-as_me graphene plan --all                       # the tree: the goal, the sub-goals, the leaves
-as_me graphene node set <id> --scope '<a path it may touch>' \
-      --check '<the command that must pass>' --goal '<what you actually meant>'
-as_me graphene node add "<the one it missed>" --parent <id> \
-      --scope '<paths>' --check '<command>'
-as_me graphene node drop <id>
-as_me graphene plan accept
-log accept "graphene plan accept"
+wezterm cli split-pane --right --percent 50 --cwd "$PWD" -- graphene watch
+wezterm cli split-pane --bottom --percent 25 --cwd "$PWD"
 ```
 
-Those are placeholders on purpose. An earlier draft of this recipe filled them in with real paths
-and a real goal from the `feeds` card — `normalize/fields.py`, *"their prices are in cents, not
-pounds"*, `validate/rules.py` — while the paragraph arm's example said only *"whatever you would
-actually have typed"*. That is three of the answers handed to one arm by the protocol itself. The
-21 September auditor found it before anyone ran from it. **Write your own scopes, goals and
-checks, from the card and from what the agent proposed, in both arms.**
-
-Then let it go, and watch it or do not:
+In the new bottom pane:
 
 ```sh
-as_me graphene run --parallel 2 --with "claude -p --model sonnet --permission-mode acceptEdits \
-  --output-format json --allowedTools Read Edit Write Glob Grep 'Bash(graphene *)' \
-  'Bash(python3 *)' 'Bash(git *)' 'Bash(ls *)' 'Bash(cat *)' 'Bash(mkdir *)'"
-log run "graphene run --parallel 2"
-
-as_me graphene watch --once                     # the tree as it stands, folded to what needs you
-as_me graphene plan log                          # every start, check, landing and refusal
-git diff $BASE                                   # the only review you get
-log review "read the diff"
+G=~/Desktop/AllThingsAgenticHackathon
+source ~/graphene-test/feeds-alex-tree-1/env.sh
 ```
 
-**Arm A, the paragraph.** Fresh repo, same card, nothing else changes.
+You now have three panes: the top left is for the agent, the right is the plan, and the bottom is
+for `log`. Every command below that is not `claude` goes in the bottom pane.
+
+**Start a stopwatch**, on your phone rather than in the terminal.
+
+1. **Write your paragraph**, from the card, the way you would really write it. In the bottom pane:
+
+   ```sh
+   nvim ../paragraph.txt
+   log prompt < ../paragraph.txt
+   pbcopy < ../paragraph.txt
+   ```
+
+   In the top-left pane run `claude`, paste with ⌘V, and press Enter. **Note the time.**
+
+   At 240 characters or more, the agent writes no code. It proposes a tree, which appears on the
+   right with every line marked `?`. Under 240 characters there is no tree, and the agent does the
+   work at once. That is this build's rule, and it is what happened to all four Tuesday stand-ins.
+   If it happens to you, carry on without a tree and say so in your notes.
+
+2. **Prune it on the right**, with keys only:
+   - `j` and `k` move, and `Enter` shows everything about a node;
+   - `d` drops a node you did not mean;
+   - `e` edits one node's contract;
+   - `E` edits a subtree as text;
+   - `y` accepts (`V`, a few `j`, then `y` accepts several);
+   - `R` runs everything that is ready.
+
+   As you press `R`, run `log run R` in the bottom pane, and **note the time**.
+
+3. **When the leaves have landed, look.** In the bottom pane:
+
+   ```sh
+   git diff $BASE --stat
+   git diff $BASE
+   python3 -m unittest discover -q tests
+   ```
+
+4. **The change of mind on the card**, once the first part works. In the bottom pane:
+
+   ```sh
+   nvim ../change.txt
+   log correction --mandated < ../change.txt
+   pbcopy < ../change.txt
+   ```
+
+   Paste it into `claude` in the top left, prune what it proposes, press `R`, and run `log run R`
+   again. If a result is wrong and you have to say so ("no, not that"), write it into
+   `../no-1.txt`, then run `log correction < ../no-1.txt`, `pbcopy < ../no-1.txt` and paste it in.
+   You have three corrections, the change of mind included.
+
+   A leaf that comes back shows why on the right. `w` or `b` takes what it offers, and `x` reopens
+   a finished leaf that is wrong.
+
+5. **Stop the stopwatch** when the card is satisfied as far as you can tell, and run `log review done`.
+   Write the three times in `~/graphene-test/feeds-alex-tree-1/notes.md`: paragraph sent, first
+   `R`, and done. Add anything that surprised you.
+
+**Afterwards (not timed).**
 
 ```sh
-bash $G/docs/test/newrun.sh $W feeds dense prompt 1
-cd $W/feeds-dense-prompt-1/repo
-MSG='…whatever you would actually have typed…'
-printf '%s' "$MSG" | python3 $G/docs/test/logline.py $W/feeds-dense-prompt-1/runlog.jsonl person prompt
-env -u GRAPHENE_AS claude -p "$MSG" --model sonnet --permission-mode acceptEdits \
-  --output-format json --allowedTools Read Edit Write Glob Grep 'Bash(graphene *)' \
-  'Bash(python3 *)' 'Bash(git *)' 'Bash(ls *)' 'Bash(cat *)' 'Bash(mkdir *)' \
-  < /dev/null > $TMPDIR/e1.json
-python3 $G/docs/test/logline.py $W/feeds-dense-prompt-1/runlog.jsonl executor result \
-  --from-json $TMPDIR/e1.json
+python3 $G/docs/test/summarize.py ~/graphene-test --out ~/graphene-test/runs.json
+python3 $G/docs/test/attention.py ~/graphene-test/feeds-alex-tree-1
+as_me graphene plan log
 ```
 
-Carry on with `--resume <session_id>`. Every time you have to say "no, not that" — in any form,
-however polite — that is a correction: `log correction "<what you typed>"`. You get three.
+Keep the `--out`. Without it, `summarize.py` writes over `docs/test/runs-2026-09-23.json`, which
+is the record of the stand-in test. `summarize.py` runs the hidden acceptance and the held-out
+checks, which you never see during the run. `attention.py` lists every node you dropped or changed
+before the first leaf started, each with its contract as the agent proposed it. For each one, the
+question this test asks is: *left as proposed, would it have cost a restart, a wrong or unwanted
+result by the card?* Have someone else answer that from the card, not you.
 
-**Read them side by side.** This is the one command, and it recomputes everything:
+**What the numbers will and will not say about you:**
+- The keys you pressed in `graphene watch` are in `graphene plan log`, not in the run log. The
+  `acts` and `typed` columns therefore count only your paragraph, your messages and your `R`s.
+- `R` runs the product's default executor, which is your usual `claude` model and does not print
+  JSON. The cost column will say it is unpriced. The stand-ins' executors were sonnet with JSON
+  output.
+- The `person-s (model)` column is the keystroke-level model the stand-ins were measured with. It
+  is not you. **Your stopwatch is the measure here.**
+
+For scale: the model put a Tuesday run at about 9 minutes and a dense tree run, with a
+3,300-to-3,600-character paragraph, at 60 to 70 modelled minutes. Most of that is typing and
+reading.
+
+**The paragraph arm, if you do it too.** Do it on another day, in a fresh run, and do not read the
+tree arm's diff first:
 
 ```sh
-python3 $G/docs/test/summarize.py $W
+bash $G/docs/test/newrun.sh ~/graphene-test feeds alex prompt 1
+source ~/graphene-test/feeds-alex-prompt-1/env.sh
+rm .claude/settings.local.json
 ```
 
-The first columns are the question as the directive asks it. `outside (final)` is "files touched
-outside intent"; `restarts` is "no, not that", printed twice, once as the protocol counts it and
-once with the change of mind the card forces on you taken out of both arms; `rework` is lines
-written and then written over. `accept` is the hidden acceptance — you never see it during the
-run — and `held-out` is the same code against inputs it was never shown, which is the number the
-20 September test had no way to produce. `spec/act` is how much specification you got in front of
-an executor for each thing you did, which is the closest this harness gets to the measure that
-matters.
+The last line takes Graphene's hooks out of this repository. On 23 September they were left in.
+At this build, a paragraph in a repository where `graphene init` has been run waits for a tree
+whatever the arm, and both dense paragraph-arm stand-ins had to talk their way past it. Without
+the hooks, nothing records the session's writes. This arm's `rework`, `churn` and `write events`
+will then read zero and mean nothing. Files, the diff, outside-intent, acceptance and held-out
+still come from git and the repo. Then follow steps 1, 3, 4 and 5 above, with no tree and no `R`,
+and run the same `summarize.py` line over both runs.
 
-Two arms of one task is an anecdote, not a result. Two styles, two arms, two repetitions is a
-morning.
+Two arms of one task is an anecdote, not a result. It is still worth more than all of the
+stand-ins, because you cannot type at machine speed and you will not remember the card perfectly.
 
 ---
 
@@ -172,6 +225,12 @@ These are the rules that make two numbers comparable. Break one and the run is v
      This is the style the 20 September report said was missing, and it is the ordinary case.
 6. **Both arms run `graphene init`.** The record exists in both, so both are measured the same
    way. The paragraph arm simply has no plan, so nothing there is ever refused.
+   *False from 97e473c on (23 September).* At that build, a prompt of 240 characters or more in a
+   repository with the hooks waits for a tree, plan or no plan. Both dense paragraph-arm runs were
+   held: 3 and 1 refused writes, 3 extra messages each, and in one run two trees accepted unread.
+   A paragraph arm free of Graphene needs `rm .claude/settings.local.json` right after
+   `newrun.sh`. That also removes the arm's write record (rework, churn, write events), which is a
+   trade no run has made yet. The recipe above makes it, and says so.
 7. **Review is by reading.** `git diff <base>`, plus `graphene plan --all` and `graphene plan log`
    in the plan arm. **The person never runs `accept.py` or `quality.py` and never sees either.**
    They are run afterwards, once, by tally.
@@ -192,7 +251,9 @@ These are the rules that make two numbers comparable. Break one and the run is v
 13. **Nothing is tuned.** Not a glob, not a check, not a word of the card, once a run has started.
 14. **The stand-in is not told what is being measured.** *New 21 September.* It gets its arm's
     method and its style and nothing about the hypothesis. `standin.py` prints both briefs from
-    one template, so anyone can diff them.
+    one template, so anyone can diff them. *Broken on 23 September:* the orchestrator told every
+    stand-in to read the test's spec first, and the spec names the measures. The brief alone is
+    not enough. Whatever starts a stand-in must not hand it the spec either.
 
 ---
 
@@ -211,9 +272,12 @@ executor's own JSON.
 - `t` — epoch seconds, or an ISO-8601 stamp. `wall_seconds` spans the first to the last.
 - `who` — `person` or `executor`. Only a person's entries count toward `person_actions` and
   `person_chars`.
-- `type` — `prompt`, `correction`, `shape`, `accept`, `run`, `review`, `handwork`, `result`.
-  `shape` is a person's edit to the plan before it ran; shaping is not a correction, and that is
-  the claim being tested.
+- `type` — `prompt`, `correction`, `shape`, `accept`, `run`, `review`, `handwork`, `result`,
+  and since 23 September `drop`, `edit`, `widen`, `sibling`, `reopen` and `read`. `shape` is a
+  person's edit to the plan before it ran; shaping is not a correction, and that is the claim
+  being tested. `read` is what the person was shown, and it is not an act. `reopen` counts as a
+  restart. `logline.py person edit --edit before after` records a text edit as the characters it
+  added.
 - `mandated` — on a `correction`, this one is the card's own change of mind, which the protocol
   forces on both arms. `restarts` counts it; `restarts_unmandated` does not. Report both.
 - **Never log a `result` for an executor `graphene run` started.** Its cost is read out of
@@ -254,7 +318,10 @@ run` writes each executor's stdout and stderr to `.graphene/runs/<node>-<attempt
 none of it. Run the executor with `--output-format json` and that file *is* the vendor's JSON
 object, cost and turns and session id included, so tally reads it out.
 `executor_cost_from_graphene_runs_usd` is what came from there and
-`executor_calls_unpriced` is how many calls nobody can price. What is missing in the product,
+`executor_calls_unpriced` is how many calls nobody can price. *Changed 23 September:* a resumed
+`claude -p` session reports its running total as `total_cost_usd`, so tally counts each session
+once, at its largest total. `executor_cost_from_runlog_summed_usd` keeps the old sum, which
+over-counted every resumed session on 20 and 21 September. What is missing in the product,
 precisely: nothing in Graphene ever parses `done.stdout`, so no cost, turn count or executor
 session id is stored in the plan, the log or anywhere a person can see it. The smallest change
 would be to `json.loads(done.stdout)` when the executor's basename is `claude` and put

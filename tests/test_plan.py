@@ -580,3 +580,114 @@ def test_the_contract_is_what_an_executor_is_told(store):
     assert "`true` passes and a person signs it off" in text
     assert "graphene node done n1" in text and "graphene node release n1" in text
     assert node.owner == AGENT
+
+
+@pytest.mark.parametrize("act", ["release", "retake"])
+def test_a_done_whose_leaf_was_let_go_during_its_check_is_refused_and_says_so(store, repo, monkeypatch, act):
+    """Recheck: a check that left a file outside the scope wrote it into the next holder's record, and
+    the stale `done` then finished the leaf the person had taken again; a release read "was open"."""
+    plan.propose(store, [api_node(check="touch cache.tmp")], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    real = plan.run_check
+
+    def person_acts_meanwhile(command, where):
+        plan.release(store, "n1", ALEX, "I will do it myself")
+        if act == "retake":
+            plan.start(store, "n1", ALEX, repo)
+        return real(command, where)
+
+    monkeypatch.setattr(plan, "run_check", person_acts_meanwhile)
+    said = "handed back and taken again" if act == "retake" else "handed back"
+    with pytest.raises(Refused, match=f"n1 was {said} while its check ran"):
+        plan.finish(store, "n1", BOT)
+    node = plan.get(store, "n1")
+    assert node.state == (RUNNING if act == "retake" else OPEN) and "cache.tmp" not in node.dirty_at_start
+
+
+def test_undoing_an_edit_to_a_running_leaf_leaves_it_with_its_holder(store, repo):
+    """Recheck: undo made every running row it put back open, so undoing the person's edit took the
+    leaf from the session holding it. Undoing the drop of a running leaf still hands it back."""
+    plan.propose(store, [api_node(), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    with plan.undoable(store, ALEX, "node set n1"):
+        plan.edit(store, "n1", {"title": "users endpoint, better named"}, ALEX)
+    assert plan.undo(store, ALEX) == "node set n1"
+    n1 = plan.get(store, "n1")
+    assert (n1.state, n1.session_id, n1.title) == (RUNNING, BOT.session_id, "users endpoint")
+    plan.start(store, "n2", BOT2, repo)
+    with plan.undoable(store, ALEX, "node drop n2"):
+        plan.drop(store, "n2", ALEX)
+    plan.undo(store, ALEX)
+    assert (plan.get(store, "n2").state, plan.get(store, "n2").session_id) == (OPEN, None)
+
+
+def test_a_leftover_in_a_runs_worktree_is_not_charged_to_a_node_held_in_the_persons_checkout(store, repo):
+    """Recheck: a `--parallel` leaf's stray file in its own worktree kept the person's node from being
+    done until that worktree was cleaned; the leaf's own boundary answers for it."""
+    plan.propose(store, [api_node(), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n2", ALEX, repo)
+    tree = repo / ".graphene" / "worktrees" / "n1"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/n1", str(tree), "HEAD")
+    (tree / "notes.tmp").write_text("scratch\n")
+    (repo / "README.md").write_text("# toy, by the person\n")
+    assert plan.finish(store, "n2", ALEX).state == DONE
+
+
+def test_done_release_and_signoff_ask_git_before_the_write_lock_is_taken(store, repo, monkeypatch):
+    """Recheck: `done` hashed up to 200 files, `release` diffed the checkout and `signoff` resolved a
+    branch while holding the plan's write lock; a hook waiting on it gives up after a quarter second."""
+    plan.propose(store, [api_node(signoff=True), api_node(title="readme", scope=["README.md"])], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    plan.start(store, "n2", BOT2, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "README.md").write_text("# toy, again\n")
+    store.log_node("n1", plan._now(), "unlanded", "graphene run", None, None, {"branch": "graphene/n1"})
+    seen, real = [], plan._git
+
+    def asked(checkout, *args):
+        seen.append((args[0], store.conn.in_transaction))
+        return real(checkout, *args)
+
+    monkeypatch.setattr(plan, "_git", asked)
+    assert plan.finish(store, "n1", BOT).state == REVIEW
+    plan.release(store, "n2", BOT2, "not now")
+    assert plan.signoff(store, "n1", ALEX).state == DONE
+    assert seen and [command for command, locked in seen if locked] == []
+
+
+def test_an_offer_takes_only_the_paths_it_showed(tmp_path):
+    """Recheck 52: the offer hid a brace path and a path its need already writes, and `node widen`
+    then took them all and was refused."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    alex, bot = Caller("alex", True), Caller("claude:aaaa1111", False, "s1")
+    with Store.open(tmp_path) as store:
+        plan.propose(store, [{"id": "n", "title": "n", "scope": ["lib/n.py"], "check": "true"},
+                             {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}],
+                     alex)  # fmt: skip
+        plan.start(store, "x", bot, tmp_path)
+        for path in ("lib/b.py", "{{cookiecutter.slug}}/setup.py", "lib/n.py"):
+            store.log_node("x", plan._now(), "denied", None, "s1", None, {"path": path})
+        plan.release(store, "x", bot, "it needs lib/b.py")
+        plan.edit(store, "x", {"needs": ["n"]}, alex)
+        assert plan.offerable(store, plan.get(store, "x")) == ["lib/b.py"]
+        assert plan.widen(store, "x", [], alex).scope == ["x.py", "lib/b.py"]
+
+
+def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
+    """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    alex, bot = Caller("alex", True), Caller("claude:aaaa1111", False, "s1")
+    with Store.open(tmp_path) as store:
+        items = [{"id": f"m{i}", "title": f"m{i}", "scope": [f"m{i}.py"], "check": "true"} for i in range(40)]
+        plan.propose(store, [*items, {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}], alex)
+        plan.start(store, "x", bot, tmp_path)
+        plan.release(store, "x", bot, "waits on " + " ".join(f"m{i}" for i in range(40)))
+        calls, real = [], plan.validate
+        monkeypatch.setattr(plan, "validate", lambda *a: calls.append(1) or real(*a))
+        [(key, _, argv)] = plan.offers(store, plan.get(store, "x"))
+        assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1

@@ -89,7 +89,8 @@ LOG = [
     {"t": 1010, "who": "person", "type": "correction", "text": "no, not that"},  # chars from the text
     # The card's own change of mind: a correction the protocol makes both arms spend.
     {"t": 1015, "who": "person", "type": "correction", "text": "by hour", "mandated": True},
-    {"t": 1020, "who": "executor", "type": "result", "cost_usd": 0.08, "turns": 3, "session_id": "s1"},
+    # a resume of s1: claude -p prints the session's running total, so this call cost 0.08
+    {"t": 1020, "who": "executor", "type": "result", "cost_usd": 0.20, "turns": 3, "session_id": "s1"},
     {"t": 1030, "who": "person", "type": "review", "text": "", "chars": 0},
 ]
 
@@ -286,7 +287,8 @@ class Tally(unittest.TestCase):
         self.assertEqual(self.out["restarts_unmandated"], 1)
 
     def test_executor_cost_comes_from_the_run_log_and_from_graphene_runs(self):
-        self.assertEqual(self.out["executor_cost_from_runlog_usd"], 0.2)
+        self.assertEqual(self.out["executor_cost_from_runlog_usd"], 0.2)  # s1's last total, once
+        self.assertEqual(self.out["executor_cost_from_runlog_summed_usd"], 0.32)  # the old sum
         self.assertEqual(self.out["executor_cost_from_graphene_runs_usd"], 0.31)
         self.assertEqual(self.out["executor_cost_usd"], 0.51)
         self.assertEqual(self.out["executor_turns"], 7 + 3 + 9)

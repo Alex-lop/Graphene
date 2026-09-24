@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The brief a stand-in person is given, printed rather than written by hand each time.
 
-    docs/test/standin.py <task> <dense|tuesday> <prompt|graphene> <run-dir> <venv-bin> [--parallel]
+    docs/test/standin.py <task> <dense|tuesday> <prompt|tree> <run-dir> <venv-bin>
 
 One generator for both arms and both styles, so anyone auditing can diff the two briefs and see
 that what differs between them is the method and the manner, and nothing else. The card is pasted
@@ -9,6 +9,12 @@ in whole at the end; it is the only thing the stand-in knows that the executor d
 
 The stand-in is not told what is being measured. On 20 September every stand-in knew the
 hypothesis and several said in their notes which way they thought a choice cut.
+
+23 September: the `tree` arm replaces the `graphene` arm (git has the old brief). The person types
+their paragraph to a session in the repo, whose hooks turn it into a proposed tree, and prunes it
+only with the commands `graphene watch`'s keys run. Every shell sources the run's env.sh (newrun.sh
+writes it), and everything the person reads is logged as `read`, in both arms, so attention can be
+modelled from the log rather than guessed.
 """
 
 from __future__ import annotations
@@ -68,31 +74,43 @@ ARMS = {
   3. The change of mind on your card is a follow-up message, once the first part works, and it
      costs you one of your three corrections. Log it as a `correction` with `--mandated`.
   4. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
-    "graphene": """There is a plan, and it is a tree: the root is your goal in your words, its
-  children are how it will be achieved, the leaves are work someone does. You say the goal, an
-  agent proposes the tree, you prune and edit it, you accept it, and then it runs.
+    "tree": """There is a plan, and it is a tree: the root is what you want, its children are
+  how it will be done, the leaves are work an agent does. You say what you want to a session in
+  the repo, the way you always have; the repo's hooks make that session propose a tree instead of
+  writing code; you read the tree, prune it, and let it run. The key in brackets is the key that
+  runs the same command in `graphene watch`; here you type the command.
 
-  1. as_me graphene plan goal "<why you want this, in your words>"        -> log as `shape`
-  2. Ask an executor for a tree. Its message must contain, word for word: propose a plan with
-     `graphene plan propose -`, reading the JSON on standard input. The `-` matters: it is how
-     nobody ends up writing a scratch file anywhere.                      -> log as `prompt`
-  3. Read what it proposed: `as_me graphene plan --all`. Shape it:
-        as_me graphene node set n2 --scope 'a/**' --scope 'b/c.py' --check '<a command>' --goal '…'
-        as_me graphene node add "<the one it missed>" --parent n1 --scope '…' --check '…'
-        as_me graphene node drop n5
-     Shaping is free and is not a correction.                             -> log each as `shape`
-  4. as_me graphene plan accept                                           -> log as `accept`
-  5. {runcmd}
-                                                                          -> log as `run`
-  6. If it stops on something that is yours, do it by hand through the gate:
-     `as_me graphene node start <id>` … `as_me graphene node done <id>`   -> log as `handwork`
-  7. The change of mind on your card is applied at the boundary: `as_me graphene node set` on a
-     node that has not started, which is a `shape`. If no such node is left, it is a
-     `graphene node add`, or a `graphene node reopen` — and a reopen is a correction.
-  8. Review with `as_me graphene plan --all`, `as_me graphene plan log`, `git diff {base}`.
-                                                                          -> log as `review`
-  A correction in this arm is: editing a node that has already started, `graphene node reopen`, or
-  a release that needs you.""",
+  1. Send your opening message to the executor, in the repo: it is the session that proposes.
+                                                                          -> log as `prompt`
+  2. Read its `result` and the tree: `seen as_me graphene plan --text` (a proposal is marked).
+     Carry on in the same session with `--resume <session_id>`, as many messages as you like. A
+     message that is new information or the next step is a `prompt`; a message that says "no,
+     that is not what I meant" is a `correction`.
+  3. Prune the tree with these, and nothing else:
+       did accept "as_me graphene plan accept <id>"      [y] it, what is above it and under it
+       did drop "as_me graphene node drop <id>"          [d] it, and everything under it
+       did edit "as_me graphene node set <id> --title '…' --goal '…' --scope '…' --check '…'"
+                                                         [e] one node's contract, any of those
+     or [E], the tree as text, changed in your own editing tool and saved back:
+       as_me graphene plan --text > "$TMPDIR/before.txt"; cp "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+       … change after.txt …
+       as_me env EDITOR="cp $TMPDIR/after.txt" graphene plan edit
+       log edit --edit "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+     A proposal nobody accepts never runs.
+  4. did run "as_me graphene run --parallel 4 --with \\"{executor}\\" > \\"\\$TMPDIR/run-1.txt\\" 2>&1"
+                                                         [R] four leaves at once, each in its own
+     worktree, merged here when the merge is clean (run-2.txt the next time, and so on). Then
+     `seen as_me graphene plan --text`.
+  5. A leaf that came back: `seen as_me graphene node show <id>` says why, and what it offers:
+       did widen "as_me graphene node widen <id>"        [w] its scope, to the paths it wanted
+       did sibling "as_me graphene node sibling <id>"    [b] a leaf beside it, for those paths
+     Take an offer or not, and run again (step 4).
+  6. The change of mind on your card is a follow-up message to the same session, once the first
+     part works, and it costs you one of your three corrections. Log it as a `correction` with
+     `--mandated`. What it proposes, you prune and run as above.
+  7. A finished leaf that is wrong: did reopen "as_me graphene node reopen <id> --note '…'"
+     [x], then run again. A reopen is a correction.
+  8. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
 }
 
 BRIEF = """You are standing in for the person who wants a change made to a small codebase. Play
@@ -110,11 +128,18 @@ WHERE THINGS ARE
 
 BEFORE YOU TYPE ANYTHING
 
-  export PATH="{venv}:$PATH"
-  export TMPDIR="{tmp}"
-  cd {repo}
-  as_me() {{ env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u AI_AGENT -u GRAPHENE_NODE \\
-             GRAPHENE_AS="person:$(id -un)" "$@"; }}
+  Every shell you open, and every script you write, starts with this line:
+
+    source {run}/env.sh
+
+  It puts {venv} first on PATH, sets TMPDIR, goes to the repo, and gives you:
+
+    as_me <command>            run a command as you, the person
+    did <type> "<command>"     run a command as you, log the whole line as that act, and
+                               what it printed as read
+    log <type> [text]          log something you did (the text on stdin when it has quotes)
+    seen <command>             run a command, show you what it printed, and log that as read
+    reply <file.json>          print what an executor said back, logged as read
 
   `graphene init` has already been run for you. Check `command -v graphene` prints a path under
   {venv}. If it does not, stop and say so: the wrong build is on PATH and the run is void.
@@ -135,10 +160,14 @@ WHAT YOU DO
 
 LOGGING — as you go, never afterwards from memory
 
-  python3 {here}/logline.py {runlog} person shape "as_me graphene plan accept"
-  printf '%s' "$MSG" | python3 {here}/logline.py {runlog} person prompt
-  python3 {here}/logline.py {runlog} person correction "no, the other one" --mandated
-  python3 {here}/logline.py {runlog} executor result --from-json "$TMPDIR/e1.json"
+  printf '%s' "$MSG" | log prompt
+  printf '%s' "$MSG" | log correction --mandated
+  python3 {here}/logline.py "$R" executor result --from-json "$TMPDIR/e1.json"
+  reply "$TMPDIR/e1.json"
+  seen git diff {base}
+
+  Read everything through `seen` or `reply`, including a file you open, so what you read is in
+  the log; a read is not an act and costs you nothing.
 
   IMPORTANT: log the FULL text of every command you run as the person and every message you send,
   not an abbreviation of it. If you ran a long `graphene run --with "…"`, the logged text is that
@@ -148,17 +177,21 @@ LOGGING — as you go, never afterwards from memory
 
 THE EXECUTOR — the same command, the same tools, in both arms
 
-  env -u GRAPHENE_AS {by_hand} < /dev/null > "$TMPDIR/e1.json"
+  as_me env -u GRAPHENE_AS {by_hand} < /dev/null > "$TMPDIR/e1.json"
 
   Its `result` field is what it said back; `session_id` is how you carry on:
   `--resume <session_id>` after the other flags. Your message goes straight after `-p` and nowhere
   else: `--allowedTools` takes a list and will eat a prompt that comes after it.
 
-  Two pieces of grit, both found the hard way, both the same for every arm. Write the whole
+  Three pieces of grit, all found the hard way, all the same for every arm. Write the whole
   invocation — your message in a quoted heredoc, then the command — into one script under
   $TMPDIR and run `bash that-script.sh`: a Bash call that merely contains the string `git` is
-  refused here, and a file written in one call is not reliably there in the next. Each executor
-  call takes minutes; give the Bash call a 900000 ms timeout.
+  refused here, and a file written in one call is not reliably there in the next. Put the
+  message in a file of its own and read it back, `cat > "$TMPDIR/m1.txt" <<'EOF'` … `EOF`, then
+  `MSG=$(cat "$TMPDIR/m1.txt")`: this bash (3.2) misreads an apostrophe in a heredoc written
+  inside `$( )`, and the script dies before it sends anything. Each executor
+  call takes minutes; give the Bash call the longest timeout it takes, and if a call can outlast
+  that, run it in the background and wait for it to finish.
 
 YOUR BUDGET
 
@@ -195,17 +228,10 @@ def main(argv: list[str]) -> int:
         sys.stderr.write(__doc__)
         return 2
     task, style, arm, run_dir, venv = argv[1], argv[2], argv[3], Path(argv[4]), argv[5]
-    parallel = "--parallel" in argv[6:]
     if style not in STYLES or arm not in ARMS:
         sys.stderr.write(f"style is one of {', '.join(STYLES)}; arm is one of {', '.join(ARMS)}\n")
         return 2
     base = (run_dir / "base.sha").read_text().strip()
-    runcmd = (
-        'as_me graphene run --parallel 2 --with "{e}"\n     Two leaves at once, each in its own '
-        "worktree, merged here when the merge is clean."
-        if parallel
-        else 'as_me graphene run --with "{e}"'
-    ).format(e=EXECUTOR)
     print(
         BRIEF.format(
             repo=run_dir / "repo",
@@ -216,7 +242,7 @@ def main(argv: list[str]) -> int:
             venv=venv,
             here=HERE,
             style=STYLES[style],
-            arm=ARMS[arm].format(base=base, runcmd=runcmd),
+            arm=ARMS[arm].format(base=base, executor=EXECUTOR),
             by_hand=BY_HAND,
             card=(HERE / "tasks" / task / "intent.md").read_text(encoding="utf-8"),
         )

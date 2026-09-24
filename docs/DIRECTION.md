@@ -2,8 +2,9 @@
 
 *Alex, this file is yours. Edit anything here and the next agent that works on this repo treats your
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
-shape the plan, the agents execute it. Last written 2026-09-20 by the agent that ran the
-collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`).*
+shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
+collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
+2026-09-23, by the agent that ran the terminal directive.*
 
 ## What Graphene is
 
@@ -181,6 +182,146 @@ above, the old one is left as written and the change is named here.
     back by the next one; you can overrule a sub-goal's check with a reason; and the terminal print
     folds any sub-goal with nothing moving under it, so sixty leaves just accepted are a dozen lines.
 
+## Your answer, 22 September
+
+The question this file asked, whether you would rather shape a tree than type a paragraph, has your
+answer, and it is neither. On the 22nd you sat down as the person for the first time: you shaped a
+tree, added a leaf of your own, ran two executors at once and watched hand-backs come in. Watching a
+leaf come back with a reason taught you what the product is (the boundary is the scope and the
+check, not the executor's opinion), and typing the tree was the expensive part. Both stand-in tests
+had measured the same mistake: they had the person author the tree. So the paragraph stays the
+input, the agent proposes the tree from it, and your job is reading and pruning. The terminal
+directive (`docs/process/directives/TERMINAL_DIRECTIVE.md`) is built on that sentence.
+
+## Decisions taken on 2026-09-23 (the terminal directive)
+
+Taken by the agent that ran the terminal directive, each with its reason and, where there is one,
+the question I would otherwise have asked. Strike any of them. Where one changes a decision above,
+the old one is left as written and the change is named here.
+
+9, amended by the directive in one word: **Graphene starts the planners and executors the person
+names, and never holds a key.**
+
+28. **A paragraph typed into a session becomes a tree before any code. This narrows decision 18.**
+    When a prompt of 240 characters or more reaches a session that holds no leaf, the hook tells the
+    agent, next to the prompt, to propose the tree in the plan's text and stop, and it refuses that
+    session a write until a leaf is accepted and taken. A prompt under 240 characters is still
+    decision 18's leaf, done at once and recorded. "just do it" in a paragraph skips the tree.
+    *Why a rule and not the session's judgement:* I first taught it only at session start ("when the
+    person describes work bigger than one change, propose the tree"), ran your paragraph through a
+    real session, and it wrote the code in 48 seconds. With the rule at the prompt it proposed four
+    leaves with their needs in 35 seconds and touched nothing. *Why length:* your paragraph was 330
+    characters and your one-line asks were under 100; a person writes a piece of work as a paragraph
+    and a fix as a line. *Question:* is 240 the right line for you, and do you want the rule off in
+    some repos (`graphene plan prompts` has leaf and strict; this would be a third)?
+29. **The plan has a text form, and it is the floor.** One line a node: `- title  [id]` is in the
+    plan, `? title  [id]` is a proposal (make it `-` to accept); indentation is the tree; under a
+    node, `scope:` `check:` `needs:` `owner:` `signoff:` and any other line is what it should
+    achieve; `#` lines are Graphene's notes. `graphene plan --text` prints it; `graphene plan edit
+    [id]` and `graphene node edit <id>` open it in `$EDITOR`; `graphene plan propose -` reads it from
+    an agent (JSON is still read). *How a save applies:* as the operations the plan already has (add,
+    edit, accept, drop, reorder), in one transaction, and only what the person changed in the text:
+    each field is compared with the text as it was opened, so a change someone made meanwhile to a
+    node the person did not touch is kept, and one to a node they did touch is refused ("changed by
+    someone else"; delete the note and save again to make your change over theirs). *What is refused,
+    by its line number:* a line under no node, a line that does not line up with its node's other
+    lines, a key written twice or words after the keys in an edited text (what a deleted node line
+    leaves behind), a child typed between a node and its own lines, spellings that carry paths or
+    commands (`files:`, `tests:`), braces in a glob, a `needs:` that names no node, a new leaf from an
+    agent with no scope and no check. Synonyms that say nothing else are read (`depends on:` for
+    needs, `sign-off:` for signoff). *Why:* your afternoon's "adding a node was cumbersome" was the
+    CLI's flags; a text a person and an agent both write is the fix that works in nvim on day one.
+    54 adversarial agents attacked it (49 findings, each re-checked after the fix; a regression test
+    each in `tests/test_plan_text_findings.py`).
+30. **`graphene watch` is the Textual screen. This changes decision 23.** One screen: the tree and
+    the node under the cursor side by side, stacked below 110 columns; the top line says which
+    repository and which plan; the bottom two name the planner and the executors and say which
+    command the last key ran. `--once` prints. The directive's keys, all of them, each a `graphene`
+    command. Two I decided: `?` on a leaf that came back asks the planner (the directive gives `?` to
+    both help and that; elsewhere it is help), and `n` is the next search match after a search, else
+    the "wait on" offer. `:stop` stops a run started from the screen. *Why Textual works at 80
+    columns:* checked in a WezTerm mux at 80x24, reading the screen back.
+31. **Planners: `graphene ask` and `graphene node split`.** A planner is started the way `run` starts
+    an executor, with the command you name (default: Claude Code with only Read, Grep and Glob); what
+    it prints is read as the plan's text and added as its proposals. It is refused a write by the hooks
+    and a leaf by `start` (it carries `GRAPHENE_PLANNER`); asking is the person's, because it spends.
+    *Why printed text and not a command:* then a planner of any vendor needs no permission but to
+    read, and "its only output is a proposal" is true by construction.
+32. **A leaf that comes back offers its own fix.** From what it tried to write outside its scope (a
+    refused write, a refused `done`, what changed when it was handed back): `w` widens its scope to
+    those paths, `b` makes a sibling leaf for them that it then waits on, and `n` makes it wait on the
+    nodes its reason names. The sibling's check is `true`: the first leaf's own check, run after it,
+    says whether the two work together, which was the question.
+33. **The run lets go when told.** Executors start in sessions of their own; Ctrl-C reaches Graphene,
+    which hands back every leaf it started (in place and in worktrees) and stops the executors; a
+    leaf that passed but had not landed is committed on its branch and waits in review. A leaf the
+    person releases or drops stops its executor. A run that died is swept by the next one, by the pid
+    it wrote. A leaf whose need is done but not here (never landed, or uncommitted where it was done)
+    waits, and says why. `start` asks git before it takes the write lock. The default executor may
+    edit files and run `graphene` (its `done` and `release`), and nothing else unless you say so with
+    `--with`.
+34. **The executor's tail comes from both.** Each attempt's output streams to
+    `.graphene/runs/<leaf>-<time>-<n>.txt` (`l` shows it); the hooks' record gives a Claude Code
+    executor's last tool call. The age of whichever is newer is "seconds since it did anything".
+35. **`graphene plan undo` puts back your last act on the plan's shape** (an edit, an add, a drop, an
+    acceptance, a saved text), unless something it touched moved on since; twenty are kept.
+36. **A node's check runs with bash** when there is one (people write bash). **A check that names a
+    path neither in the repo nor in the leaf's scope is warned about when it is written** (your `n9`
+    named `test/test_csvfeed.py`). **Every write names the repository.**
+37. **Textual 8.2 is a new dependency** (rich stays at 15). *Why not an extra:* the screen is where the
+    first ten minutes happen; one more install step is ceremony.
+38. **What I found in my own session.** This repository has Graphene's hooks installed, so the
+    paragraph rule ran in the session that was building it: a long background-task notification was
+    read as a person's paragraph, and my session was refused writes. Prompts the vendor makes itself
+    (task notifications, reminders) are now never the person's. Two of my edits went in before I knew
+    the session was held, by scripts the hook cannot read (the hole this file names); once I knew, I
+    made none that way, and waited for the next prompt to clear it.
+39. **What the closing review and its recheck changed.** Six adversaries over the whole branch, 78
+    findings confirmed by a second agent each, all collected before any was fixed (`a384829`); then
+    a recheck of every one with a regression test: 46 held, 25 partly, 4 not, 3 only documented, and
+    11 regressions the fixes had caused. Those were fixed by three agents in worktrees and me, and
+    merged. The ones that change a decision above, each with its reason:
+    - *The paragraph's wait (28).* Its tree is what that session, the planner or you proposed
+      after it, never another agent's session. A second paragraph while the first waits keeps the
+      first one's start. A short answer that says "no plan" lifts it. The refusal says what lifts it.
+      *Why:* the recheck found sessions refused for good after a question, and told to "propose it"
+      with an accepted tree in front of them.
+    - *The run (33).* A dead run is known by pid and start time, and its executor is stopped TERM
+      then KILL before the leaf goes back. A closed terminal or a `kill` is a Ctrl-C. A stop ends
+      the checks at once, with everything they started; a leaf that had passed and not landed still
+      waits in review, and one that had landed stays done. A merge is aborted only if it is the
+      run's own. *Why:* a pid recorded days ago can belong to a stranger by now, and a sweep killed
+      one in the recheck.
+    - *A need done elsewhere (33).* It counts as here when its files were committed after it
+      finished, even when the content was edited again before that commit. *Why:* the exact-content
+      rule kept a dependant waiting for ever after a formatter touched the file.
+    - *Offers (32).* `w` and `b` take exactly the paths they showed. A second `b` for the same paths
+      is refused.
+    - *Undo (35).* Undoing an edit to a running leaf leaves its holder alone. Only an act that let
+      the executor go is undone into `open`.
+    - *The goal.* An agent's proposed sentence may replace a goal only when nothing under that goal
+      is left to do. It then sets the old goal aside (its text stays in the log) until you accept or
+      decline the new one; if you decline, the plan has no goal. *Question:* is setting it aside
+      right, or should a finished goal stay until you replace it?
+    - *The terminal mark (20).* What you type in `graphene watch` is logged as typed at a terminal
+      (`GRAPHENE_WATCH`). The hook refuses that variable in an agent's command, as it refuses
+      `GRAPHENE_AS`.
+    - *A visual `d`* is one act: all of the selection or none, and one `u` puts it back.
+    Still open, by choice: a need committed on another branch of the same checkout still counts as
+    here after a branch switch; a held node's committed stray edit is excused when a landing merges
+    into the same file; and some phrases said in passing still skip the tree.
+40. **The hold, and what it showed.** At 09:15Z a subagent's report reached this session as a
+    prompt, and the hook read it as your paragraph. Every agent I started carries this session's id,
+    so for an hour nothing could write. I did not route around it: no writes the hook could not read,
+    no clone to write from, nothing in the store. What was committed before the hold was pushed.
+    Another report, which quoted "just do it", lifted the wait for a few minutes, in your name. I
+    wrote nothing in that window, and I would not have counted it as yours. You lifted the hold
+    with "just do it". The harness's report prompt is now the vendor's (`_NOT_A_PROMPT`), so it can
+    neither arm the wait nor speak for you. *What it says about the product:* a wait armed by
+    mistake has one way out, and that way is you. That is the promise working. A command to lift a
+    session's wait from outside it (from `watch`) would have cost you less than resuming this
+    session; it is not built.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -215,6 +356,12 @@ above, the old one is left as written and the change is named here.
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,
   and says so; nothing is lost. Work in the same checkout through a session (a leaf made from your
   prompt answers for it), or let the run finish.
+- "A paragraph becomes a tree" is a rule about length and a few words (decision 28). A long request
+  meant to be done at once needs "just do it", and those words said in passing skip the tree too. A
+  short one that deserved a plan is done at once: with a plan in force, as a leaf from the prompt that
+  you see on the plan; with none (only proposals, or nothing), it leaves no trace.
+- The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
+  started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 
 ## What comes next, in the order I would do it
 
@@ -228,6 +375,15 @@ above, the old one is left as written and the change is named here.
    never reaches your branch. It costs branches, merges and conflicts the person has to understand.
 5. The vendor's sandbox as a third layer for scope when it is on: the only thing that stops a
    script from opening a file itself.
+
+## What comes next, from 23 September
+
+1. You run the ten minutes: `docs/proof/try.sh`, the two panes, your own paragraph. What you feel at
+   the prune is the thing the third test can only model.
+2. The page gets the tree's prune and run, from the same commands (`y`, `d`, `R` are commands).
+3. Codex hooks, then the vendor's sandbox as a third layer for scope, as before.
+4. The planner told the run what it could not settle ("the legacy importer skips the zero rule");
+   those lines could be nodes of their own (owner: you), not prose in the session.
 
 ## How this file is used
 

@@ -66,7 +66,7 @@ def build():
 
         def list_commands(self, ctx):
             """The plan leads the help: what will be done comes before what was."""
-            first = ["plan", "node", "watch", "run", "init", "ui"]
+            first = ["plan", "node", "watch", "ask", "run", "init", "ui"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -199,6 +199,8 @@ def build():
     @cli.command()
     def init() -> None:
         """Install the Claude Code hooks: they hold agents to the plan and keep the record."""
+        if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
+            fail("an executor or a planner does not install hooks; that is the person's", 1)
         r = root()
         try:
             added = install_hooks(r)
