@@ -415,3 +415,24 @@ def test_every_write_ends_with_which_repository_the_same_way(repo):
         last = act.output.splitlines()[-1]
         assert last.startswith("  (the plan of ") and last == act.stderr.splitlines()[-1], act.output
     assert all(act.output.count("(the plan of ") == 1 for act in acts)
+
+
+def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
+    """`which node?`, `say 'on' or 'off'`, and a reopen that lectured on the contract in three
+    clauses: each is now what was refused, or what happened, and the one command."""
+    assert agent("node", "done").stderr == "you hold no node: `graphene node done <id>` names one\n"
+    assert (
+        person("plan", "first", "sideways").stderr == "graphene plan first takes on or off, not 'sideways'\n"
+    )
+    assert person("node", "set", "n1").stderr == (
+        "graphene node set n1 needs what to change: --title, --scope, --check, --goal, --needs, --owner, "
+        "--signoff or --parent\n"
+    )
+    person("node", "add", "users", "--scope", "api.py", "--check", "true")
+    agent("node", "start", "n1")
+    (repo / "api.py").write_text("def users():\n    return {}\n")
+    agent("node", "done")
+    assert person("node", "reopen", "n1", "--note", "a dict").stdout == (
+        "n1 is open again; whoever takes it next is shown your note (its contract is as it was: "
+        "`graphene node edit n1` changes it)\n"
+    )
