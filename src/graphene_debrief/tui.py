@@ -489,6 +489,7 @@ class Watch(App):
     Screen.-narrow #main { layout: vertical; }
     Screen.-narrow #tree { height: 3fr; width: 100%; }
     Screen.-narrow #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
+    #side.-alone { border-left: none; border-top: none; }
     #status { height: 2; background: $boost; padding: 0 1; }
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
     #line.-open { display: block; }
@@ -651,6 +652,7 @@ class Watch(App):
             if tree.show_root != show:
                 tree.show_root = show
             tree.display = show  # no plan yet: the pane says so, across the screen
+            self.query_one("#side").set_class(not show, "-alone")
             if shape != self.shape:
                 self.rebuild(nodes, under)
                 if self.shape is not None and self.view == "said":
@@ -948,7 +950,8 @@ class Watch(App):
             return
         titles = {n.id: n.title for n in self.nodes}
         shown = [n.data for n in _walk(self.tree.root) if n.data in titles]
-        hits = [i for i in shown if text in titles[i].lower() or text in i.lower()]
+        # what the row shows: its title, its id, and the word its state reads as (`/came back`)
+        hits = [i for i in shown if any(text in f.lower() for f in (titles[i], i, self.word(i)))]
         if not hits:
             self.message = f"✗ nothing matches {text!r}"
             return self.say_status()

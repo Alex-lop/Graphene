@@ -1078,3 +1078,10 @@ def test_a_leaf_in_review_that_did_not_land_says_why_and_what_lands_it(repo):
         said = " ".join(seen["detail"].split())
         assert "did not land here: README.md has uncommitted changes in your checkout" in said
         assert "git merge graphene/rule, and y signs it off" in said and "waits for your sign-off" not in said
+
+
+def test_search_finds_a_row_by_the_word_its_state_reads_as(repo):
+    """What a person sees on a row is what `/` finds: `/came back` is the leaf that came back."""
+    every_state(repo)
+    seen, _ = watch(repo, ["slash", *"came back", "enter"])
+    assert seen["cursor"] == "docs"
