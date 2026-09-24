@@ -2,8 +2,10 @@
 
 (Current at every milestone of this run. Last run's is `docs/process/morning-2026-09-23.md`.)
 
-**State right now: the "before" is recorded; nothing is changed yet.** Branch `polish`, cut from
-`origin/main` at `2c86399` (your merge of PR #27).
+**State right now: the "before" is recorded, and four parts are being built in worktrees** (the
+screen, the logic, the messages, plan first as a mode), from one shared vocabulary already on the
+branch (`plan.reads`: one word, glyph and colour per state) and the `graphene plan first on|off`
+setting. Branch `polish`, cut from `origin/main` at `2c86399` (your merge of PR #27).
 
 ## 1. Before and after
 
