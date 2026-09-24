@@ -351,38 +351,66 @@ def clock(stamp: str | None) -> str:
         return stamp[11:16]
 
 
+def elide(text: str, wide: int) -> str:
+    """One line of at most ``wide`` characters, cut at a word with "…" when it is longer: a title in
+    a row of the screen or of `graphene plan`. A single word longer than the row is cut where it must."""
+    text = " ".join(str(text).split())
+    if len(text) <= wide:
+        return text
+    if wide < 2:
+        return "…"[: max(wide, 0)]
+    cut = text.rfind(" ", 0, wide)
+    return (text[:cut] if cut > 0 else text[: wide - 1]).rstrip(" ,;:·") + "…"
+
+
+def blocker(node: P.Node, words: dict[str, str]) -> str:
+    """A node something waits on, as that line says it: its state word, or whose it is when it is a
+    person's own (an agent reading "waits on n1 (yours)" would take n1 for its own)."""
+    word = words.get(node.id, node.state)
+    return f"{node.owner}'s" if word == "yours" else word
+
+
 def notes(store, node: P.Node, by_id: dict[str, P.Node], under: dict) -> list[str]:
-    """What is true of the node right now, for the person reading its contract: its state, what it
-    waits on, and why it came back. Written as "#" lines; never read back."""
-    out: list[str] = []
-    mine = under.get(node.id) or []
-    if mine:
-        leaves = [c for c in P.below(node.id, list(by_id.values())) if not under.get(c.id)]
-        done = sum(1 for c in leaves if c.state == P.DONE)
-        out.append(f"{done}/{len(leaves)} done" + ("" if node.state != P.DONE else "; done"))
-        return out
-    if node.state == P.PROPOSED:
-        out.append(f"proposed by {node.proposed_by}")
-    elif node.state == P.RUNNING:
+    """What is true of the node right now, for the person reading its contract, in the words the
+    screen and `graphene plan` use (`plan.reads`): the state first, then what it waits on, or why it
+    came back. Written as "#" lines; never read back."""
+    everything = list(by_id.values())
+
+    def word(n: P.Node) -> str:
+        return P.reads(n, everything, {n.id} if P.came_back(store, n) else set())
+
+    said = word(node)
+    if said == "proposed":
+        return [f"proposed by {P.said_by(node.proposed_by)}"] if node.state == P.PROPOSED else [said]
+    if said == "running":
         where = node.checkout or ""
         tree = f" in {where[where.index('.graphene') :]}" if ".graphene" in where else ""
-        out.append(f"running: {node.executor} since {clock(node.started_at)}{tree}")
-    elif node.state == P.REVIEW:
-        out.append(f"its check passed; it waits for your sign-off (graphene node signoff {node.id})")
-    elif node.state == P.DONE:
-        out.append(f"done {clock(node.finished_at)}")
-    elif node.state == P.OPEN:
-        blockers = P.unmet(node, by_id)
-        if blockers:
-            out.append("waits on " + ", ".join(b.id for b in blockers))
-        last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-        if last["kind"] == "released":
-            out.append("handed back: " + " ".join(str(last["detail"].get("why", "")).split()))
+        return [f"running: {P.said_by(node.executor)}, since {clock(node.started_at)}{tree}"]
+    if said == "review":
+        return [f"review: its check passed; it waits for your sign-off (graphene node signoff {node.id})"]
+    if said == "done":
+        return [f"done {clock(node.finished_at)}".rstrip()]
+    if said == "waiting":
+        said = "waiting on " + ", ".join(
+            f"{b.id} ({blocker(b, {b.id: word(b)})})" for b in P.unmet(node, by_id)
+        )
+    elif said == "to fill in":
+        said = "to fill in: no scope and no leaves yet"
+    out = [said]
+    last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
+    if node.state != P.OPEN or under.get(node.id):  # a hand-back is a leaf's
+        return out
+    if last["kind"] == "released":
+        why = " ".join(str(last["detail"].get("why", "")).split())
+        if out[0] == "came back":
+            out[0] = f"came back: {why}"
             wanted = P.wanted(store, node)
             if wanted:
                 out.append("it wanted, outside its scope: " + ", ".join(wanted))
-        elif last["kind"] == "reopened":
-            out.append("sent back: " + " ".join(str(last["detail"].get("note", "")).split()))
+        else:
+            out.append(f"handed back: {why}")
+    elif last["kind"] == "reopened":
+        out.append("sent back: " + " ".join(str(last["detail"].get("note", "")).split()))
     return out
 
 

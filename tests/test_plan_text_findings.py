@@ -411,7 +411,7 @@ def test_deleting_only_a_leafs_line_never_gives_its_scope_and_check_to_the_sub_g
     text, opened = T.render(store)
     with pytest.raises(
         Refused,
-        match=r"^line 5: 'scope: src/pdf/\*\*, tests/pdf/\*\*' is 6 columns in from \[pdf\]; .* If they were "
+        match=r"^line 6: 'scope: src/pdf/\*\*, tests/pdf/\*\*' is 6 columns in from \[pdf\]; .* If they were "
         r"a node's whose line you deleted, delete them too",
     ):
         T.apply(store, text.replace("  - render one invoice to PDF bytes  [render]\n", ""), ALEX, opened)
@@ -563,8 +563,8 @@ def test_a_leaf_split_into_children_hands_them_its_scope_and_check(store):
     from test_plan_text import shaped
 
     text, opened = shaped(store)
-    split = text.replace(
-        "- say so in the README  [docs]\n    scope: README.md\n    check: true\n",
+    split = text.replace(  # the note under it is its state, as the screen says it
+        "- say so in the README  [docs]\n    # ready\n    scope: README.md\n    check: true\n",
         "- say so in the README  [docs]\n  - the PDF section\n      scope: README.md\n"
         "      check: grep -q PDF README.md\n  - the changelog\n      scope: CHANGELOG.md\n      check: true\n",
     )
@@ -583,8 +583,8 @@ def test_a_new_sub_goal_with_a_check_wraps_existing_nodes_in_one_save(store):
     from test_plan_text import shaped
 
     text, opened = shaped(store)
-    wrapped = text.replace(
-        "- say so in the README  [docs]\n    scope: README.md\n    check: true\n",
+    wrapped = text.replace(  # the note under it is its state, as the screen says it
+        "- say so in the README  [docs]\n    # ready\n    scope: README.md\n    check: true\n",
         "- ship the docs\n    check: test -f README.md\n"
         "  - say so in the README  [docs]\n      scope: README.md\n      check: true\n",
     )
