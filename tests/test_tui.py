@@ -4,6 +4,7 @@
 the command did, and the bottom line says which command it was."""
 
 import asyncio
+import re
 import sys
 
 from test_plan_cli import agent, person, repo  # noqa: F401  (fixtures)
@@ -50,6 +51,8 @@ def watch(repo, keys, size=(80, 24), before=None):
                 "classes": list(app.screen.classes),
                 "screen": type(app.screen).__name__,
                 "side": shown(app, app.query_one("#side").region),
+                "tree": shown(app, app.query_one("#tree").scrollable_content_region),  # less its scrollbar
+                "sideways": app.tree.max_scroll_x,
             }
 
     return asyncio.run(go()), app
@@ -71,37 +74,47 @@ def proposed(repo):
     assert said.exit_code == 0, said.output
 
 
-def test_it_says_where_it_is_which_plan_and_names_the_two_agents(repo):
+def test_the_top_line_says_whose_plan_and_the_goal_is_the_first_row(repo):
+    """The top line was the repository and a goal cut with no ellipsis; the goal is now the tree's
+    first row, and the top line says whose plan it is in the words every write ends with."""
     proposed(repo)
     seen, _ = watch(repo, [])
-    assert (
-        repo.name in seen["where"] and "the plan (proposed): users come back with their ids" in seen["where"]
-    )
-    assert "planner: claude:5e55105e" in seen["status"] and "executors: none" in seen["status"]
+    where = f"the plan of {plan.where(repo)}"  # the words every write ends with; a long path keeps its tail
+    assert seen["where"] == where if len(where) <= 78 else seen["where"].startswith("the plan of …")
+    assert seen["where"].endswith(repo.name) and len(seen["where"]) <= 78
+    assert seen["tree"][0].startswith("▼ ? users come back with their ids") and "proposed" in seen["tree"][0]
+    assert seen["cursor"] is None and "users come back with their ids" in seen["detail"]  # the goal's pane
+    assert "planner:" not in seen["status"] and "you: 2 · 0 running" in seen["status"]  # the tree, once
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
-    assert wide["classes"] == ["-wide"]
+    assert wide["classes"] == ["-wide"] and "waiting on you: 2 · executors: none" in wide["status"]
+    person("plan", "accept")
+    seen, _ = watch(repo, [])
+    assert seen["tree"][0].startswith("▼ ○ users come back with their ids") and "0/3 done" in seen["tree"][0]
+    folded, _ = watch(repo, ["z", "a"])  # the goal's row folds like any other: all of it
+    assert [row.strip() for row in folded["tree"] if row.strip()] == [folded["tree"][0].strip()]
+    assert folded["tree"][0].startswith("▶")
 
 
 def test_vim_keys_move_and_fold(repo):
     proposed(repo)
-    seen, _ = watch(repo, ["j"])
+    seen, _ = watch(repo, ["j", "j"])  # the goal's row first, then api, then ids
     assert seen["cursor"] == "ids"
     seen, _ = watch(repo, ["G", "g", "g"])
-    assert seen["cursor"] == "api"
+    assert seen["cursor"] is None and "the goal · proposed" in seen["detail"]
     seen, _ = watch(repo, ["G"])
     assert seen["cursor"] == "schema"
-    seen, app = watch(repo, ["z", "M", "j"])  # all closed: the next line is the next sub-goal
+    seen, app = watch(repo, ["z", "M", "j", "j"])  # all closed: the next line is the next sub-goal
     assert seen["cursor"] == "schema"
-    seen, _ = watch(repo, ["z", "M", "z", "R", "j"])  # all open again
+    seen, _ = watch(repo, ["z", "M", "z", "R", "j", "j"])  # all open again
     assert seen["cursor"] == "ids"
-    seen, _ = watch(repo, ["z", "a", "j"])  # za on api closes it; `a` of za adds nothing
+    seen, _ = watch(repo, ["j", "z", "a", "j"])  # za on api closes it; `a` of za adds nothing
     assert seen["cursor"] == "schema" and seen["screen"] == "Screen"
 
 
 def test_y_accepts_d_drops_and_u_puts_it_back(repo):
     proposed(repo)
-    seen, _ = watch(repo, ["j", "y"])
+    seen, _ = watch(repo, ["j", "j", "y"])
     assert states(repo)["ids"] == "open" and states(repo)["api"] == "open"  # and the one it sits under
     assert "graphene plan accept ids" in seen["status"]
     seen, _ = watch(repo, ["G", "d"])
@@ -112,7 +125,7 @@ def test_y_accepts_d_drops_and_u_puts_it_back(repo):
 
 def test_visual_selects_several_and_y_accepts_them_all(repo):
     proposed(repo)
-    watch(repo, ["j", "V", "j", "y"])
+    watch(repo, ["j", "j", "V", "j", "y"])
     assert states(repo)["ids"] == "open" and states(repo)["docs"] == "open"
     assert states(repo)["schema"] == "proposed"
 
@@ -126,7 +139,7 @@ def test_search_moves_to_the_match_and_n_to_the_next(repo):
 def test_a_adds_a_sibling_with_the_title_typed(repo):
     proposed(repo)
     person("plan", "accept")
-    watch(repo, ["j", "a", *"the orders endpoint", "enter"])
+    watch(repo, ["j", "j", "a", *"the orders endpoint", "enter"])
     with Store.open(repo) as store:
         [new] = [n for n in plan.nodes(store) if n.title == "the orders endpoint"]
         assert new.parent == "api" and new.state == "open"  # the planner can fill it in: s
@@ -156,8 +169,8 @@ def test_a_leaf_that_came_back_shows_its_fixes_and_w_takes_one(repo):
         )
         plan.release(store, "schema", bot, "the column needs a migration too")
     seen, _ = watch(repo, ["G"])
-    assert "came back: the column needs a migration too" in seen["detail"]
-    assert "w  widen schema's scope to migrations/001.sql" in seen["detail"]
+    assert "schema · came back" in seen["detail"] and "the column needs a migration too" in seen["detail"]
+    assert "w  widen its scope to migrations/001.sql" in seen["detail"]
     watch(repo, ["G", "w"])
     with Store.open(repo) as store:
         assert plan.get(store, "schema").scope == ["schema.py", "migrations/001.sql"]
@@ -175,8 +188,8 @@ def test_question_mark_is_help_and_l_is_the_executors_output(repo):
     proposed(repo)
     seen, _ = watch(repo, ["question_mark"])
     assert seen["screen"] == "Help"
-    seen, _ = watch(repo, ["j", "l"])
-    assert "ids: the executor's output" in seen["detail"] and "(nothing yet)" in seen["detail"]
+    seen, _ = watch(repo, ["j", "j", "l"])
+    assert "ids · output of attempt 1" in seen["detail"] and "nothing yet" in seen["detail"]
 
 
 def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):
@@ -195,7 +208,7 @@ def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):
             plan.release(store, "schema", bot, "the column needs a migration", wants=["migrations/001.sql"])
 
     seen, _ = watch(repo, [], before=before)
-    assert "came back: the column needs a migration" in seen["detail"]
+    assert "schema · came back" in seen["detail"] and "the column needs a migration" in seen["detail"]
 
 
 class Tty:
@@ -209,7 +222,7 @@ def test_y_on_a_node_that_is_not_a_proposal_says_so(repo):
     """Recheck: y on an accepted node ran nothing and said nothing: the bottom line kept its hint."""
     proposed(repo)
     person("plan", "accept")
-    seen, _ = watch(repo, ["y"])
+    seen, _ = watch(repo, ["j", "y"])
     assert "✗ graphene plan accept api: api is open, not a proposal" in seen["status"]
 
 
@@ -293,16 +306,17 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
         plan.release(store, "schema", bot, LONG, wants=["migrations/001.sql"])
     seen, _ = watch(repo, ["G"])
     side = "\n".join(seen["side"])
-    for key in ("w  widen schema's", "b  a sibling leaf", "n  make schema wait on ids", "?  ask the planner"):
+    for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "?  ask the planner"):
         assert key in side, side
-    assert "? asks the planner" in seen["status"]
+    assert "? ask the planner" in seen["status"] and "? help" not in seen["status"]
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
 
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
     """Recheck: at 80 columns the help was 106 wide from x=0, and its last 26 columns were cut off with
-    no way to scroll to them."""
+    no way to scroll to them. It is grouped as the README groups the keys: two columns at 120, one at
+    80, and it closes on ?, Esc or q."""
     proposed(repo)
     for size in ((80, 24), (120, 40)):
 
@@ -311,9 +325,17 @@ def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
             await pilot.pause()
             text, box = app.screen.query_one("#help").region, app.screen.query_one("VerticalScroll").region
             assert text.right <= width and abs(box.x - (width - box.right)) <= 1, (width, text, box)
-            assert "zM all closed" in "\n".join(shown(app, text))
+            rows = shown(app, text)
+            assert "zR zM" in "\n".join(rows)
+            assert len(app.screen.query("#help > Static")) == (2 if width >= 110 else 1)
+            if width >= 110:  # side by side: the first group of each column on one row
+                assert any("move" in r and "run" in r for r in rows), rows
+                assert "plan first on or off" in "\n".join(rows)
 
         watch(repo, [], size=size, before=before)
+    for key in ("question_mark", "escape", "q"):
+        seen, _ = watch(repo, ["question_mark", key])
+        assert seen["screen"] == "Screen"
 
 
 def test_what_the_planner_said_after_its_block_reaches_the_screen_that_asked(repo, tmp_path, monkeypatch):
@@ -362,9 +384,9 @@ def test_the_side_pane_judges_a_check_as_graphene_node_add_does(repo):
     seen, _ = watch(repo, ["G", "k"])
     assert seen["cursor"] == "use" and "⚠" not in seen["detail"]
     seen, _ = watch(repo, ["G"])
-    assert (
-        "names test/test_csv.py, which is not in the repo and no leaf's scope may create it" in seen["detail"]
-    )
+    assert "names test/test_csv.py, which is not in the repo and no leaf's scope may create it" in " ".join(
+        seen["detail"].split()
+    )  # wrapped at words in the pane
 
 
 def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(repo):
@@ -497,7 +519,7 @@ def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
     assert person_proposes.exit_code == 0, person_proposes.output
     with Store.open(repo) as store:
         plan.start(store, "schema", plan.Caller("claude:aaaa1111", False, "aaaa1111-session"), repo)
-    seen, _ = watch(repo, ["j", "d"])
+    seen, _ = watch(repo, ["j", "j", "d"])
     top, bottom = seen["status"].splitlines()
     assert len(top) <= 78  # 80 columns less the padding: it does not wrap onto the message's row
     assert bottom.startswith("✗ graphene node drop ids: docs waits on ids")
@@ -521,7 +543,7 @@ def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, mon
 # Recheck 37 (partly)
 def test_u_after_a_visual_y_puts_the_whole_selection_back(repo):
     proposed(repo)
-    watch(repo, ["j", "V", "j", "j", "y"])
+    watch(repo, ["j", "j", "V", "j", "j", "y"])
     assert set(states(repo).values()) == {"open"}
     watch(repo, ["u"])
     assert set(states(repo).values()) == {"proposed"}  # one act, one undo
@@ -530,9 +552,9 @@ def test_u_after_a_visual_y_puts_the_whole_selection_back(repo):
 # Recheck 38 (fixed)
 def test_zc_or_za_on_a_leaf_closes_the_branch_it_sits_in(repo):
     proposed(repo)
-    seen, _ = watch(repo, ["j", "z", "c", "j"])  # api closed: the next line is the next sub-goal
+    seen, _ = watch(repo, ["j", "j", "z", "c", "j"])  # api closed: the next line is the next sub-goal
     assert seen["cursor"] == "schema"
-    seen, _ = watch(repo, ["j", "z", "a", "j"])
+    seen, _ = watch(repo, ["j", "j", "z", "a", "j"])
     assert seen["cursor"] == "schema"
 
 
@@ -576,7 +598,7 @@ def test_colon_graphene_ask_gives_the_planner_the_sentence_alone(repo, monkeypat
 def test_a_title_that_starts_with_a_dash_is_a_title_not_an_option(repo):
     proposed(repo)
     person("plan", "accept")
-    seen, _ = watch(repo, ["j", "a", *"--dry-run for deploys", "enter"])
+    seen, _ = watch(repo, ["j", "j", "a", *"--dry-run for deploys", "enter"])
     with Store.open(repo) as store:
         [new] = [n for n in plan.nodes(store) if n.title == "--dry-run for deploys"]
     assert new.parent == "api" and "✗" not in seen["status"]
@@ -593,8 +615,9 @@ def test_at_80_columns_a_leaf_that_came_back_says_why_and_its_keys_before_its_co
         store.log_node("schema", plan._now(), "denied", None, bot.session_id, None, wanted)
         plan.release(store, "schema", bot, "the column needs a migration")
     seen, _ = watch(repo, ["G"])
-    top = [line.strip() for line in seen["detail"].splitlines()[2:6]]
-    assert top[0] == "came back: the column needs a migration" and top[1].startswith("w  widen schema's")
+    top = [line.strip() for line in seen["detail"].splitlines()[:4]]
+    assert top[:2] == ["the schema", "schema · came back"]  # say came back once, in the header
+    assert top[2] == "the column needs a migration" and top[3].startswith("w  widen its scope")
 
 
 # Recheck 70 (fixed)
@@ -607,16 +630,17 @@ def test_colon_ui_is_refused_and_the_screen_still_answers(repo, monkeypatch):
     monkeypatch.setattr(socketserver.BaseServer, "serve_forever", lambda self, *a, **k: served.append(self))
     monkeypatch.setattr(webbrowser, "open", lambda *a, **k: True)
     proposed(repo)
+    seen, _ = watch(repo, ["colon", *"ui", "enter"])
+    assert "`graphene ui` takes a terminal of its own" in seen["status"]
     seen, _ = watch(repo, ["colon", *"ui", "enter", "j"])
-    assert not served and "`graphene ui` takes a terminal of its own" in seen["status"]
-    assert seen["cursor"] == "ids"  # j after it was taken
+    assert not served and seen["cursor"] == "api"  # j after it was taken
 
 
 # Recheck 76 (fixed)
 def test_visual_from_a_sub_goal_accepts_it_and_its_leaves_with_no_refusal(repo):
     """`V j j y` on api: accepting api accepted ids and docs, and then their own accepts said ✗."""
     proposed(repo)
-    seen, _ = watch(repo, ["V", "j", "j", "y"])
+    seen, _ = watch(repo, ["j", "V", "j", "j", "y"])
     assert [states(repo)[i] for i in ("api", "ids", "docs", "schema")] == ["open", "open", "open", "proposed"]
     assert "✗" not in seen["status"] and "graphene plan accept api ids docs" in seen["status"]
 
@@ -635,3 +659,352 @@ def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
     held = set(listed.stdout.split())
     links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)", (root / "README.md").read_text(encoding="utf-8"))
     assert "docs/assets/watch.gif" in links and not [p for p in links if p not in held]
+
+
+# -- the polish: one grammar, a pane per kind, the status line, the keys (driven at 80 and at 120) ----
+
+SIZES = ((80, 24), (120, 36))
+RUN = plan.Caller("run:claude", False, "7e1f00aa-run-session")
+SESSION = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+LONG_TITLE = "the contract test names every enabled source and runs each one of them end to end"
+
+
+def every_state(repo):
+    """A plan with a leaf in every state a person meets: running (with its hooks' record and an empty
+    log), came back, waiting, yours, to fill in, review, done, ready, and a proposal."""
+    import subprocess
+    import time
+
+    from graphene_debrief.model import ToolEvent
+
+    def commit():
+        subprocess.run(
+            ["git", "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qam", "x"], cwd=repo
+        )
+
+    alex = plan.Caller("alex", True)
+    with Store.open(repo) as store:
+        plan.set_goal(store, "users come back with their ids, and the schema says so", alex)
+        plan.propose(store, [
+            {"id": "api", "title": "the API"},
+            {"id": "ids", "title": "users returns ids", "parent": "api", "scope": ["api.py"], "check": "true",
+             "goal": "users() returns each user's id, so a caller can come back with it"},
+            {"id": "docs", "title": "document it", "parent": "api", "scope": ["README.md"], "check": "true"},
+            {"id": "more", "title": LONG_TITLE, "parent": "api", "scope": ["tests/test_contract.py"],
+             "check": "true", "needs": ["ids"]},
+            {"id": "later", "title": "the rest, to be split", "parent": "api"},
+            {"id": "mine", "title": "read it over", "parent": "api", "owner": "alex"},
+            {"id": "schema", "title": "the schema"},
+            {"id": "rule", "title": "a rule for ids", "parent": "schema", "scope": ["rules.py"],
+             "check": "true", "signoff": True},
+            {"id": "table", "title": "the users table", "parent": "schema", "scope": ["schema.py"],
+             "check": "true"},
+            {"id": "ready1", "title": "a sample", "parent": "schema", "scope": ["sample.txt"],
+             "check": "true"},
+        ], alex)  # fmt: skip
+        plan.start(store, "table", RUN, repo)
+        (repo / "schema.py").write_text("TABLES = ['users']\n")
+        plan.finish(store, "table", RUN, checkout=repo)
+        commit()
+        plan.start(store, "rule", RUN, repo)
+        (repo / "rules.py").write_text("RULES = []\n")
+        plan.finish(store, "rule", RUN, checkout=repo)
+        subprocess.run(["git", "add", "rules.py"], cwd=repo)
+        commit()
+        plan.start(store, "docs", SESSION, repo)
+        store.log_node("docs", plan._now(), "denied", None, SESSION.session_id, None, {"path": "docs/api.md"})
+        plan.release(store, "docs", SESSION, "it needs docs/api.md, and ids has to land first")
+        plan.start(store, "ids", RUN, repo)
+        log = repo / ".graphene" / "runs" / "ids-1.txt"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("")
+        attempt = {"attempt": 1, "log": str(log)}
+        store.log_node("ids", plan._now(), "attempt", RUN.label, RUN.session_id, None, attempt)
+        now = time.time()
+        for k, (tool, given) in enumerate(
+            [("Read", {"file_path": "api.py"}), ("Bash", {"command": "cat api.py"})]
+        ):
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now - 30 + k * 10))
+            event = ToolEvent(
+                f"e{k}", RUN.session_id, None, stamp, tool, given, file_path=given.get("file_path")
+            )
+            store.add_event(event)
+        plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x.py"], "check": "true"}], SESSION)
+
+
+def at(repo, node_id, size, keys=(), before=None):
+    """The screen with the cursor on a node, found by search as a person finds it."""
+    seen, app = watch(repo, ["slash", *node_id, "enter", "escape", *keys], size=size, before=before)
+    assert seen["cursor"] == node_id, (node_id, seen["cursor"])
+    return seen, app
+
+
+def test_every_row_reads_in_one_grammar_at_80_and_120(repo):
+    """The tree's rows were three ragged columns, overflowed into a horizontal scroll and cut ids in
+    half. Now: glyph, title cut at a word, id, state word, in fixed columns at any depth."""
+    every_state(repo)
+    words = {"api": "0/5 done", "ids": "running", "docs": "came back", "more": "waiting",
+             "later": "to fill in", "mine": "yours", "schema": "1/3 done", "rule": "review", "table": "done",
+             "ready1": "ready", "idea": "proposed"}  # fmt: skip
+    for size in SIZES:
+        seen, app = watch(repo, [], size=size)
+        end, _ = watch(repo, ["G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
+        rows = [r.rstrip() for r in [*seen["tree"], *end["tree"]] if r.strip()]
+        assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/8 done"), rows
+        mine = {i: next(r for r in rows if f"  {i} " in r + " ") for i in words}
+        assert len({r.index(f"  {i} ") for i, r in mine.items()}) == 1, (size, mine)  # one id column
+        at_word = {r.index(words[i], r.index(f"  {i} ") + len(i)) for i, r in mine.items()}
+        assert len(at_word) == 1  # one column of state words
+        assert all(r.endswith(words[i]) for i, r in mine.items()), (size, mine)  # never cut
+        long = mine["more"]
+        title = long[long.index("◌ ") + 2 : long.index("…")]
+        assert LONG_TITLE.startswith(title) and LONG_TITLE[len(title)] == " "  # cut at a word
+        assert seen["sideways"] == end["sideways"] == 0  # never a horizontal scroll
+
+
+def test_the_tree_takes_what_its_rows_need_from_110_columns_and_sits_above_the_pane_below(repo):
+    every_state(repo)
+
+    async def before(app, pilot):
+        tree, side = app.query_one("#tree").region, app.query_one("#side").region
+        if app.size.width >= 110:
+            assert side.x == tree.right and side.width >= 44 and tree.width >= 60  # side by side
+        else:
+            assert side.y > tree.y and side.width == app.size.width  # the pane under the tree
+            assert tree.height <= (app.size.height - 3) // 2
+
+    for size in SIZES:
+        watch(repo, [], size=size, before=before)
+    with Store.open(repo) as store:  # short titles: the tree is only as wide as they need
+        plan.drop(store, "more", plan.Caller("alex", True))
+
+    async def short(app, pilot):
+        assert app.query_one("#tree").region.width < 60 and app.query_one("#side").region.width > 60
+
+    watch(repo, [], size=(120, 36), before=short)
+
+
+def test_the_node_pane_has_a_section_for_each_kind_and_nothing_blank_or_twice(repo):
+    every_state(repo)
+    said = {
+        "api": ["api · 0/5 done", "users returns ids", "more on ids (running)", "mine is yours"],
+        "ids": ["ids · running", "executor claude, started by graphene run", "worktree", "cat api.py"],
+        "docs": ["docs · came back", "it needs docs/api.md", "w widen its scope to docs/api.md",
+                 "b a sibling leaf for docs/api.md", "n wait on ids", "? ask the planner"],
+        "more": ["more · waiting", "needs ids (running)"],
+        "later": ["later · to fill in", "no scope and no leaves yet"],
+        "mine": ["mine · yours", "owner alex"],
+        "rule": ["rule · review", "its check passed; it waits for your sign-off", "changed rules.py"],
+        "table": ["table · done at ", "changed schema.py"],
+        "ready1": ["ready1 · ready", "scope sample.txt", "check true"],
+        "idea": ["idea · proposed by a Claude Code session (aaaa1111)", "scope x.py"],
+    }  # fmt: skip
+    for size in SIZES:
+        for node_id, parts in said.items():
+            seen, _ = at(repo, node_id, size)
+            pane, flat = seen["detail"], " ".join(seen["detail"].split())
+            for part in parts:
+                assert part in flat, (size, node_id, part, pane)
+            assert "revision" not in pane and "\n\n\n" not in pane  # no bookkeeping, no blank section
+            keyed = [
+                ln
+                for ln in pane.splitlines()
+                if re.match(r"(why|goal|scope|check|needs|owner|changed)  ", ln)
+            ]
+            assert all(len(ln.split()) > 1 for ln in keyed), (node_id, pane)  # no key without its value
+            assert len({len(ln) - len(ln.split(" ", 1)[1].lstrip()) for ln in keyed}) <= 1, pane  # aligned
+            assert flat.count("running") == 1 or node_id != "ids"  # said once
+        seen, _ = at(repo, "ids", size)
+        goal = "users() returns each user's id, so a caller can come back with it"
+        assert goal in " ".join(seen["detail"].split())  # wrapped at words: every word whole
+
+
+def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
+    every_state(repo)
+    seen, _ = at(repo, "docs", (80, 24))
+    rows = [ln.rstrip() for ln in seen["detail"].splitlines() if re.match(r"  [wbn?]  ", ln)]
+    assert [r[2] for r in rows] == ["w", "b", "n", "?"]
+    assert len({len(r) for r in rows}) == 1 and all("graphene " in r for r in rows)  # commands at one edge
+    assert rows[0].endswith("graphene node widen docs") and rows[3].endswith("graphene ask … --about docs")
+
+
+def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "docs", size, keys=["enter"])
+        record = seen["detail"]
+        assert record.splitlines()[0].startswith("record · ctrl-d ctrl-u scroll")
+        for section in (
+            "contract",
+            "came back",
+            "holds",
+            "the check",
+            "refused",
+            "coverage",
+            "what people did",
+        ):
+            assert re.search(rf"^{section}\b", record, re.M), (size, section, record)
+        assert "`" not in record and "graphene node" not in record  # the keys are on the status line
+        assert "a Claude Code session (aaaa1111)" in record and "handed back" in record
+        assert seen["status"].splitlines()[1].startswith("ctrl-d ctrl-u scroll · Enter back · w widen")
+
+
+def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "ids", size, keys=["l"])
+        lines = seen["detail"].splitlines()
+        assert lines[:2] == ["ids · output of attempt 1", ".graphene/runs/ids-1.txt"]
+        assert "tool calls the hooks recorded" in " ".join(seen["detail"].split())
+        calls = [ln for ln in lines if re.match(r"\d\d:\d\d:\d\d  ", ln)]
+        assert [c.split("  ", 1)[1] for c in calls] == ["Read api.py", "Bash cat api.py"]  # newest last
+
+
+def test_colour_says_who_has_the_move_and_red_is_only_a_command_that_failed(repo):
+    from rich.style import Style
+
+    from graphene_debrief.tui import _walk
+
+    every_state(repo)
+    palette = {word: plan.look(word)[1] for word in ("came back", "review", "yours", "running", "proposed")}
+    assert palette == {"came back": "magenta", "review": "magenta", "yours": "magenta", "running": "yellow",
+                       "proposed": "cyan"}  # fmt: skip
+
+    async def before(app, pilot):
+        for node in _walk(app.tree.root):
+            label = app.tree.render_label(node, Style(), Style())
+            styles = " ".join(str(span.style) for span in label.spans)
+            assert plan.look(app.words[node.data])[1] in styles and "red" not in styles, (node.data, styles)
+        assert "red" not in " ".join(str(s.style) for s in app.query_one("#status").render().spans)
+
+    watch(repo, [], size=(120, 36), before=before)
+
+
+def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
+    every_state(repo)
+    wide, _ = at(repo, "rule", (120, 36))
+    top, bottom = wide["status"].splitlines()
+    assert top == "waiting on you: 4 · executors: 1 running · R runs 1 ready · 1/8 done · plan first: on (P)"
+    assert bottom == "y sign off · x send back · Enter record · ? help · q quit"
+    narrow, _ = at(repo, "rule", (80, 24))
+    top, bottom = narrow["status"].splitlines()
+    assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first"
+    long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
+
+    async def said(app, pilot):
+        app.message = long
+        app.say_status()
+        await pilot.pause()
+        bottom = str(app.query_one("#status").render()).splitlines()[1]
+        assert len(bottom) <= 78 and bottom.endswith("…") and long.startswith(bottom[:-1] + " ")  # at a word
+
+    watch(repo, [], before=said)
+
+
+def test_an_empty_plan_says_what_to_do_in_two_lines(repo):
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        assert seen["detail"].splitlines() == [
+            "Nothing is planned here yet. Tell your agent what you want, in a paragraph;",
+            "it proposes the tree here. Or :ask <what you want>.  ? lists the keys.",
+        ]
+
+
+def test_y_signs_off_a_leaf_in_review_and_marks_your_own_leaf_done(repo, monkeypatch):
+    every_state(repo)
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    at(repo, "rule", (80, 24), keys=["y"])
+    at(repo, "mine", (80, 24), keys=["y"])
+    assert asked == [["node", "signoff", "rule"], ["node", "done", "mine"]]
+
+
+def test_s_is_refused_on_what_is_running_in_review_or_done_without_starting_a_planner(repo, monkeypatch):
+    every_state(repo)
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    for node_id, word in (("ids", "running"), ("rule", "review"), ("table", "done")):
+        seen, _ = at(repo, node_id, (120, 36), keys=["s"])
+        assert (
+            f"{node_id} is {word}: s splits a leaf still to do, so no planner was started" in seen["status"]
+        )
+    assert asked == []
+    at(repo, "later", (80, 24), keys=["s"])
+    assert asked == [["node", "split", "later"]]
+
+
+def test_P_turns_plan_first_off_and_on_and_the_status_line_says_which(repo):
+    every_state(repo)
+    for now in (False, True):
+        seen, _ = watch(repo, ["P"], size=(120, 36))
+        with Store.open(repo) as store:
+            assert plan.plan_first(store) is now
+        assert f"plan first: {'on' if now else 'off'} (P)" in seen["status"]
+
+
+def test_keys_typed_after_colon_or_slash_go_to_the_line_not_to_the_tree(repo, monkeypatch):
+    """Recorded: `:node signoff x` typed fast ran s (split), r (run), d (drop) and u (undo) on the tree
+    before the line took the keyboard."""
+    every_state(repo)
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    was = states(repo)
+
+    from textual.widgets import Input
+
+    async def typed(app, pilot, *keys):
+        focus = Input.focus  # the line takes the keyboard only after the next refresh: type before it does
+        Input.focus = lambda self, scroll_visible=True: self
+        try:
+            await pilot.press(*keys)
+            await pilot.pause()
+        finally:
+            Input.focus = focus
+
+    seen, _ = watch(
+        repo, ["j"], before=lambda app, pilot: typed(app, pilot, "colon", *"node signoff rule", "enter")
+    )
+    assert asked == [["node", "signoff", "rule"]] and states(repo) == was  # no s, r, d or u on the tree
+    assert seen["cursor"] == "api"  # and the keyboard is the tree's again
+    seen, _ = watch(repo, [], before=lambda app, pilot: typed(app, pilot, "slash", *"table", "enter"))
+    assert seen["cursor"] == "table" and states(repo) == was
+
+
+def test_a_busy_store_never_crashes_the_screen(repo):
+    """Two `graphene watch` started at once on a new store: one crashed with `database is locked`."""
+    import sqlite3
+
+    every_state(repo)
+    busy = {"on": False}
+
+    def open_store():
+        if busy["on"]:
+            raise sqlite3.OperationalError("database is locked")
+        return Store.open(repo)
+
+    async def go():
+        app = Watch(repo, open_store, every=60)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            first = shown(app, app.query_one("#tree").region)[0]
+            busy["on"] = True
+            app.refresh_plan()
+            for key in ("j", "y", "x", "w"):  # keys that read the plan, while it cannot be read
+                await pilot.press(key)
+                await pilot.pause()
+            assert "the plan's store did not open (database is locked)" in str(
+                app.query_one("#status").render()
+            )
+            assert shown(app, app.query_one("#tree").region)[0] == first  # the last screen stays up
+            busy["on"] = False
+            app.refresh_plan()
+            await pilot.pause()
+            assert "did not open" not in str(app.query_one("#status").render())
+            busy["on"] = True
+
+        fresh = Watch(repo, open_store, every=60)  # locked from the first look
+        async with fresh.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            assert "did not open" in str(fresh.query_one("#status").render())
+
+    asyncio.run(go())

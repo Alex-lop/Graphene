@@ -132,9 +132,6 @@ def register(cli: typer.Typer, root, open_store, fail):
         text = " ".join(text.split())
         return text if len(text) <= 100 else f"{text[:97]}… (`graphene node show {node_id}` has all of it)"
 
-    def cut(text: str, wide: int) -> str:
-        return text if len(text) <= wide else text[: wide - 1] + "…"
-
     def scope_cell(n: P.Node, wide: int = 36) -> str:
         """The scope as one table cell: as many globs as fit, then how many more (`node show` has all)."""
         shown: list[str] = []
@@ -147,27 +144,31 @@ def register(cli: typer.Typer, root, open_store, fail):
     def holds(n: P.Node, who: P.Caller) -> bool:
         return n.session_id == who.session_id if who.session_id else n.executor == who.name
 
-    def describe(store, n: P.Node, by_id: dict[str, P.Node]) -> str:
-        if n.state == P.RUNNING:
-            return f"{n.executor} since {(n.started_at or '')[11:16]}Z"
-        if n.state == P.REVIEW:
-            return f"check passed; waits for a sign-off: `graphene node signoff {n.id}`"
-        if n.state == P.PROPOSED:
-            needs = f"would wait on {', '.join(n.needs)}; " if n.needs else ""
-            return f"proposed by {n.proposed_by}; {needs}`graphene plan accept {n.id}`"
-        if n.state == P.OPEN:
-            blockers = P.unmet(n, by_id)
-            if blockers:
-                return "waits on " + ", ".join(
-                    f"{b.id} ({b.owner}'s)" if b.owner != P.AGENT else b.id for b in blockers
-                )
-            last = (store.node_log(n.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-            if last["kind"] == "released":
-                return f"ready · handed back: {brief(last['detail'].get('why', ''), n.id)}"
-            if last["kind"] == "reopened":
-                return f"ready · sent back: {brief(last['detail'].get('note', ''), n.id)}"
-            return "ready"
-        return ""
+    def describe(store, n: P.Node, word: str, by_id: dict[str, P.Node], words: dict, who: P.Caller) -> str:
+        """What a leaf's row adds after its state: where it may write, what it waits on, and the
+        command for the move that is the person's (accept, sign off)."""
+        said = [scope_cell(n)] if n.scope else []
+        if word == "running":
+            said.append(f"{P.said_by(n.executor)}, since {T.clock(n.started_at)}")
+        elif word == "review":
+            said.append(f"its check passed: `graphene node signoff {n.id}`")
+        elif n.state == P.PROPOSED:
+            said += [f"would wait on {', '.join(n.needs)}"] if n.needs else []
+            said.append(f"`graphene plan accept {n.id}`")
+        elif word == "waiting":
+            said.append("waits on " + ", ".join(f"{b.id} ({T.blocker(b, words)})" for b in P.unmet(n, by_id)))
+        elif word == "yours" and n.owner != who.name:
+            said.append(f"{n.owner}'s")
+        elif word == "to fill in":
+            said.append(
+                f"no scope and no leaves yet: `graphene node split {n.id}`, or `graphene node edit {n.id}`"
+            )
+        last = (store.node_log(n.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
+        if n.state == P.OPEN and last["kind"] == "released":
+            said.append(f"handed back: {brief(last['detail'].get('why', ''), n.id)}")
+        elif n.state == P.OPEN and last["kind"] == "reopened":
+            said.append(f"sent back: {brief(last['detail'].get('note', ''), n.id)}")
+        return " · ".join(said)
 
     FOLD = 12  # lines of tree the plain print shows before finished leaves fold into their sub-goal
 
@@ -212,54 +213,51 @@ def register(cli: typer.Typer, root, open_store, fail):
             for n in alive
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
-        yours += [n for n in P.ready(alive) if n.owner != P.AGENT]
-        back = [n for n in alive if P.offers(store, n)]  # it came back with a fix on offer: the person's
+        back = {n.id for n in alive if P.came_back(store, n)}  # it came back: the next move is the person's
+        words = {n.id: P.reads(n, alive, back) for n in alive}  # the words the screen and the text use
+        yours += [n for n in alive if words[n.id] == "yours"]  # a person's own leaf, scope or none
         if who.person and (yours or stuck or back):
-            ask = {P.PROPOSED: "accept", P.REVIEW: "sign off", P.OPEN: "yours to do"}
             seen: list[str] = []
             told = [
-                f"{n.id} ({ask[n.state]}"
+                f"{n.id} ({words[n.id]}"
                 + (f", with the {len(P.below(n.id, alive))} under it" if under.get(n.id) else "")
                 + ")"
                 for n in yours
                 if n.id not in seen and not seen.append(n.id)
             ]
             told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
-            told += [f"{n.id} (came back: `graphene node show {n.id}`)" for n in back]
+            told += [f"{n.id} (came back: `graphene node show {n.id}`)" for n in alive if n.id in back]
             more = (
                 f", and {len(told) - 8} more (`graphene plan --all`)"
                 if len(told) > 8 and not everything
                 else ""
             )
-            lines.append("waiting on a person: " + ", ".join(told if everything else told[:8]) + more)
-        wid = max(len(n.id) + 2 * len(P.above(n, by_id)) for n in alive)
-        wt = min(44, max(len(n.title) for n in alive))
-        wo = max(len(n.owner) for n in alive)
-        ws = max(len(scope_cell(n)) for n in alive)
+            lines.append("waiting on you: " + ", ".join(told if everything else told[:8]) + more)
+        # One row grammar, as on the screen: glyph and title (cut at a word) in one column, the id in the
+        # next, the state word in the next, whatever the depth; then what the print adds.
+        heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
+        wt = max(min(48, max(heads[n.id] + len(n.title) for n in alive)), max(heads.values()) + 12)
+        wid, ww = max(len(n.id) for n in alive), max(len(w) for w in words.values())
         shown = [n for n in alive if not n.aside or n.state != P.DONE]
         fold = not everything and len(shown) > FOLD
 
         def row(n: P.Node, depth: int) -> str:
-            mine = under.get(n.id, [])
-            if not mine and not n.scope:
-                state, what = "sub-goal", f"no leaves yet: `graphene node add … --parent {n.id}`"
-            elif mine:
-                done = sum(1 for c in P.below(n.id, alive) if not under.get(c.id) and c.state == P.DONE)
+            word = words[n.id]
+            if under.get(n.id):
                 of = sum(1 for c in P.below(n.id, alive) if not under.get(c.id))
-                state, what = (
-                    ("done" if n.state == P.DONE else n.state if n.state != P.OPEN else "sub-goal"),
-                    (f"{done}/{of} done" + (f"; then `{n.check}`" if n.check and n.state != P.DONE else "")),
-                )
+                what = f"then `{n.check}`" if n.check and n.state != P.DONE else ""
+                what += f" · `graphene plan accept {n.id}`" if n.state == P.PROPOSED else ""
                 if n.id in closed:
                     inside = [c for c in P.below(n.id, alive) if c.id in ready_ids]
                     what += f" · {len(inside)} ready" if inside else ""
                     what += f" · {of} leaves folded (`graphene plan --all` unfolds)"
+                what = what.removeprefix(" · ")
             else:
-                state = "waiting" if n.state == P.OPEN and P.unmet(n, by_id) else n.state
-                what = describe(store, n, by_id)
-            ident = ("  " * depth + n.id).ljust(wid)
-            cells = f"  {ident}  {state.ljust(8)}  {cut(n.title, wt).ljust(wt)}  {n.owner.ljust(wo)}  "
-            return f"{cells}{scope_cell(n).ljust(ws)}  ·  {what}".rstrip()
+                what = describe(store, n, word, by_id, words, who)
+            head = f"{'  ' * depth}{P.look(word)[0]} "
+            title = f"{head}{T.elide(n.title, wt - len(head))}"
+            cells = f"  {title.ljust(wt)}  {n.id.ljust(wid)}  {word.ljust(ww)}"
+            return f"{cells}  · {what}" if what else cells.rstrip()
 
         # Folded, a sub-goal with nothing moving under it (nothing running, in review or proposed) is one
         # line: a plan of sixty leaves just accepted is a dozen lines, not seventy-eight.
@@ -288,7 +286,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 lines.append(
                     f"  {'  ' * depth}✓ {len(folded)} done here"
                     + (f" (with {inside} under them)" if inside else "")
-                    + f": {cut(', '.join(n.id for n in folded), 60)}   (`graphene plan --all` unfolds)"
+                    + f": {T.elide(', '.join(n.id for n in folded), 60)}   (`graphene plan --all` unfolds)"
                 )
 
         walk(None, 0)
@@ -296,7 +294,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         if done_asides and not everything:
             lines.append(
                 f"  ✓ {len(done_asides)} done from a prompt, each with its record "
-                f"(`graphene plan --all`; latest: {done_asides[-1].id}, {cut(done_asides[-1].title, 40)})"
+                f"(`graphene plan --all`; latest: {done_asides[-1].id}, {T.elide(done_asides[-1].title, 40)})"
             )
         try:
             loose = P.unowned(store, checkout()) if not P.nodes(store, (P.RUNNING,)) else []

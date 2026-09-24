@@ -186,9 +186,32 @@ def test_what_is_true_of_a_node_is_written_as_notes_and_never_read(store, repo):
     plan.release(store, "render", BOT, "it needs src/util.py as well")
     store.log_node("render", plan._now(), "denied", None, None, None, {"path": "src/util.py"})
     text, _ = T.render(store)
-    assert "# handed back: it needs src/util.py as well" in text
+    assert "# came back: it needs src/util.py as well" in text  # the word the screen shows, then why
     assert "# it wanted, outside its scope: src/util.py" in text
-    assert "# waits on render" in text  # the template waits on it
+    assert "# waiting on render (came back)" in text  # the template waits on it
+
+
+def test_the_notes_say_a_nodes_state_in_the_words_of_the_screen(store, repo):
+    """The text form's notes spelled the state their own way ("waits on", "running: claude:…", no
+    note at all for a ready leaf); now the same word as the screen and `graphene plan`, then what
+    the word needs said."""
+    run = plan.Caller("run:claude", False, "run-session")
+    shaped(store)
+    plan.propose(store, [{"id": "mine", "title": "read it over", "owner": "alex"},
+                         {"id": "later", "title": "the rest, to be split"}], ALEX)  # fmt: skip
+    plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x.py"], "check": "true"}], BOT)
+    plan.start(store, "render", run, repo)
+    notes = {}
+    for line in T.render(store)[0].splitlines():
+        if "[" in line:
+            node = line.rsplit("[", 1)[1].rstrip("]")
+        elif line.strip().startswith("# ") and not line.startswith("#"):
+            notes.setdefault(node, []).append(line.strip()[2:])
+    assert notes["pdf"] == ["0/2 done"] and notes["docs"] == ["ready"]
+    assert notes["render"][0].startswith("running: claude, started by graphene run, since ")
+    assert notes["template"] == ["waiting on render (running)"]
+    assert notes["mine"] == ["yours"] and notes["later"] == ["to fill in: no scope and no leaves yet"]
+    assert notes["idea"] == ["proposed by a Claude Code session (aaaa1111)"]
 
 
 def test_a_multi_line_check_is_compared_as_the_text_writes_it(store):
