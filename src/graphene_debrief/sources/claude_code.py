@@ -439,13 +439,12 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
                 _log_error(root)
             answer = None
             # no plan, nearly nothing to decide: a repo without one pays one read an event. A session
-            # is taught the tree when it starts, a paragraph becomes one when it is typed, and a
-            # write waits while this session's paragraph has no tree yet
+            # is taught the text when it starts and told plan first at a prompt, and with plan first
+            # on (with no node, only the person's setting makes it so) it writes nothing yet
             name = event.get("hook_event_name")
-            sid = event.get("session_id")
-            waiting = isinstance(sid, str) and bool(store.meta(f"tree:{sid}"))
+            first = store.meta("plan_first") == "on"
             planner = bool(os.environ.get("GRAPHENE_PLANNER"))  # refused a write, plan or no plan
-            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or waiting or planner:
+            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or first or planner:
                 from .. import gate
 
                 answer = gate.decide(store, event, root)

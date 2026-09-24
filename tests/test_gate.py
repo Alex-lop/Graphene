@@ -59,6 +59,15 @@ def holding(repo, **node):
         plan.start(store, "n1", BOT, repo)
 
 
+def plan_first(repo, on: bool):
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, on, ALEX)
+
+
+def told(answer) -> str:
+    return answer["hookSpecificOutput"]["additionalContext"]
+
+
 def test_without_a_plan_the_hook_refuses_nothing_and_a_new_session_learns_the_text(repo):
     assert write(repo, "src/db/schema.py") is None
     assert hook(repo, "Stop") is None
@@ -106,9 +115,12 @@ def test_a_tighter_scope_binds_the_very_next_write(repo):
 def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     with Store.open(repo) as store:
         plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    said = reason(write(repo, "src/api/users.py"))  # never set, plan first is on while a plan is in force
+    assert "holds no leaf" in said and "graphene node start n1" in said
+    assert write(repo, "/tmp/elsewhere/notes.md") is None  # outside the repo is not the plan's business
+    plan_first(repo, False)  # decision 4, and nobody typed a prompt to make a leaf from
     said = reason(write(repo, "src/api/users.py"))
     assert "holds no node" in said and "graphene node start n1" in said
-    assert write(repo, "/tmp/elsewhere/notes.md") is None  # outside the repo is not the plan's business
     with Store.open(repo) as store:
         plan.edit(store, "n1", {"owner": "alex"}, ALEX)
     said = reason(write(repo, "src/api/users.py"))
@@ -116,6 +128,8 @@ def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     with Store.open(repo) as store:
         plan.set_paused(store, True, ALEX)
     assert write(repo, "src/api/users.py") is None  # paused: nothing is enforced
+    plan_first(repo, True)
+    assert write(repo, "src/api/users.py") is None  # plan first included
 
 
 def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo, finish):
@@ -124,6 +138,9 @@ def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo, finis
     holding(repo)
     with Store.open(repo) as store:
         finish(store, repo, "n1", BOT)
+    assert "holds no leaf" in reason(write(repo, "src/db/schema.py"))  # plan first, on while in force
+    assert "holds no leaf" in reason(bash(repo, "echo x >> src/db/schema.py"))
+    plan_first(repo, False)
     assert "propose a node for it" in reason(write(repo, "src/db/schema.py"))
     assert "propose a node for it" in reason(bash(repo, "echo x >> src/db/schema.py"))
     assert hook(repo, "Stop") is None  # it holds nothing, so it may stop
@@ -155,6 +172,7 @@ def test_a_stop_is_refused_while_a_node_is_held_and_allowed_once_it_is_done_or_h
 
 def test_another_session_is_not_held_by_a_node_it_does_not_hold(repo):
     holding(repo)
+    plan_first(repo, False)  # decision 4's refusal, which says who holds what
     assert hook(repo, "Stop", session_id="someone-else") is None
     other = hook(
         repo,
@@ -276,7 +294,7 @@ def test_a_command_too_long_to_parse_in_time_is_let_through_at_once(repo):
     assert time.perf_counter() - start < 1.0  # parsed, this took 1.4 s, and 3 MB took 234 s
 
 
-# -- a paragraph becomes a tree before any code ----------------------------------------------------------
+# -- plan first: a mode the person sets, and no rule reads their words -----------------------------------
 
 PARAGRAPH = (
     "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: "
@@ -285,135 +303,140 @@ PARAGRAPH = (
 )
 
 
-def test_a_paragraph_is_asked_for_a_tree_and_its_writes_wait_even_with_no_plan_yet(repo):
-    told = hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)["hookSpecificOutput"]["additionalContext"]
-    assert "becomes a tree before any code" in told and "graphene plan propose -" in told
-    refused = write(repo, "ingest/xmlfeed.py")
-    assert "becomes a tree before any code" in refused["hookSpecificOutput"]["permissionDecisionReason"]
-    heredoc = "graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
-    assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": heredoc}) is None
-    assert hook(repo, "PreToolUse", tool_name="Read", tool_input={"file_path": str(repo / "x")}) is None
-
-
-def test_a_line_and_a_paragraph_that_says_just_do_it_are_done_at_once(repo):
-    assert hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header") is None
-    assert write(repo, "README.md") is None
-    assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH + " Just do it, no plan.") is None
-    assert write(repo, "ingest/xmlfeed.py") is None
-
-
-def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons_paragraph(repo):
-    """A long background-task notification was read as a paragraph in the session that built this."""
-    notice = "<task-notification>\n<task-id>b3a0</task-id>\n<status>completed</status>\n" + "x" * 300
-    assert hook(repo, "UserPromptSubmit", prompt=notice) is None
-    assert hook(repo, "UserPromptSubmit", prompt="[SYSTEM NOTIFICATION] " + "y" * 300) is None
-    assert write(repo, "ingest/xmlfeed.py") is None
-
-
-def test_a_subagents_hand_back_is_the_vendors_never_the_persons_paragraph_or_word(repo):
-    """A hand-back armed the wait in the session that built this, and one that quoted 'just do it'
-    lifted it: a subagent's words were read as the person's."""
-    handback = (
-        'Another Claude session sent a message:\n<agent-message from="a525b0dc7264a9b8d">\n'
-        "[Subagent hand-back] The text below is the final report of a subagent. " + "x" * 300
-    )
-    assert not gate.paragraph(handback)
-    assert hook(repo, "UserPromptSubmit", prompt=handback) is None
-    assert write(repo, "ingest/xmlfeed.py") is None
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    hook(repo, "UserPromptSubmit", prompt=handback + ' Only Alex can type "just do it".')
-    assert "becomes a tree before any code" in reason(write(repo, "ingest/xmlfeed.py"))
-
-
-# -- the recheck of the closing review: what the paragraph's wait still got wrong --------------------------
-
-
 @pytest.mark.parametrize(
     "said",
     [
-        PARAGRAPH + " Please don't just do it: I want to see the tree first.",
-        PARAGRAPH + " I don't want you to just do it.",
-        PARAGRAPH + " I can't do it now myself.",
-        "We have no plan for the Northwind feed yet. " + PARAGRAPH,
-        PARAGRAPH + " I don't plan to ship this before Friday, so take your time.",
-        PARAGRAPH + " There is no plan to keep the legacy importer.",
-        PARAGRAPH + " Legacy has no owner; don't plan around it.",
+        PARAGRAPH,
+        "fix the typo in the README header",
+        PARAGRAPH + " Just do it, no plan.",
+        "no plan, skip the tree: do it now",
+        "yes",
+        "/Users/alex/proj/ingest is where csv loads. " + PARAGRAPH,
+        "[feature] " + PARAGRAPH,
+        "<Product> rows. " + PARAGRAPH,
     ],
 )
-def test_skipping_words_negated_or_said_in_passing_do_not_skip_the_tree(said):
-    """Recheck 18 and 71: can't, curly apostrophes and a negation further back switched the rule off."""
-    assert gate.paragraph(said)
-
-
-def test_skipping_words_that_mean_it_skip_the_tree():
-    assert not gate.paragraph(PARAGRAPH + " Don't worry about tests, just do it.")
-    assert not gate.paragraph(PARAGRAPH + " I don’t mind: skip the plan.")
-
-
-def test_a_question_paragraph_holds_its_writes_until_a_short_answer_says_no_plan(repo):
-    """Recheck hunt: after a paragraph that got no tree, only 'just do it' lifted the wait, and the
-    refusal did not say so. It says so now, and 'no plan' in a short answer lifts it."""
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    hook(repo, "UserPromptSubmit", prompt="thanks. fix the typo in README.md: 'hi' should be 'hello'")
-    said = reason(write(repo, "README.md"))
-    assert "'just do it' or 'no plan'" in said
-    hook(repo, "UserPromptSubmit", prompt="do it without a plan please")
-    assert write(repo, "README.md") is None
-
-
-def test_a_tree_made_by_the_planner_or_before_a_second_paragraph_is_the_paragraphs_tree(repo):
-    """Recheck hunt: a tree the session did not propose (:ask), or one proposed before the person's
-    feedback paragraph, left the session told to 'propose it' for ever, even once it was accepted."""
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_words(repo, said):
+    """The paragraph rule read 240 characters, "just do it" and "no plan" out of the person's prose
+    (decision 28), and held a session for an hour (decision 40). Plan first is a setting: no word and
+    no length of a prompt turns it on or off, and a prompt that starts with a path or a bracket is
+    still the person's."""
+    plan_first(repo, True)
+    ask = told(hook(repo, "UserPromptSubmit", prompt=said))
+    assert ask.startswith("Graphene: Plan first is on") and "graphene plan propose - <<'EOF'" in ask
+    assert "then stop" in ask and "A one-line ask is one leaf" in ask
+    refused = reason(write(repo, "ingest/xmlfeed.py"))
+    assert refused.startswith("plan first: this session holds no leaf, so it writes nothing yet")
+    assert "P in graphene watch or `graphene plan first off`" in refused
+    heredoc = "graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
+    assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": heredoc}) is None
+    assert hook(repo, "PreToolUse", tool_name="Read", tool_input={"file_path": str(repo / "x")}) is None
     with Store.open(repo) as store:
-        plan.propose(store, [{"id": "xml", "title": "xml", "scope": ["src/api/**"], "check": "true"}],
-                     Caller("planner", False))  # fmt: skip
-    hook(repo, "UserPromptSubmit", prompt="On the tree: " + PARAGRAPH)  # feedback, a paragraph too
-    assert "waits for the person" in reason(write(repo, "src/api/users.py"))
+        assert store.node_log("*", ("denied",))[-1]["detail"] == {
+            "path": "ingest/xmlfeed.py",
+            "how": "plan first",
+        }
+
+
+def test_plan_first_off_leaves_a_paragraph_alone(repo):
+    plan_first(repo, False)
+    assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH) is None
+    assert write(repo, "ingest/xmlfeed.py") is None
+
+
+def test_a_new_session_is_taught_by_the_state_plan_first_is_in(repo):
+    plan_first(repo, True)
+    on = told(hook(repo, "SessionStart", source="startup"))
+    assert "Plan first is on" in on and "theirs at once" in on and "just do" not in on
+    plan_first(repo, False)
+    off = told(hook(repo, "SessionStart", source="startup"))
+    assert "Plan first is on" not in off and "A quick change they want done now, just do" in off
+    holding(repo)  # a plan in force, plan first off: a prompt is a leaf (decision 18)
+    assert "Graphene makes a leaf from their prompt" in told(hook(repo, "SessionStart", source="startup"))
     with Store.open(repo) as store:
-        plan.accept(store, ["xml"], ALEX)
-    said = reason(write(repo, "src/api/users.py"))
-    assert "graphene node start xml" in said and "propose it" not in said
+        store.set_meta("asides", "off")  # strict: the one-line ask waits for the person too
+        plan.set_plan_first(store, True, ALEX)
+    strict = told(hook(repo, "SessionStart", source="startup"))
+    assert "a proposal they accept like any other" in strict and "leaf from their prompt" not in strict
 
 
-def test_another_sessions_proposal_is_not_this_paragraphs_tree(repo):
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons(repo):
+    """A background-task notice and a subagent's hand-back reached the session that built this as
+    prompts: one armed a wait, and one that quoted "just do it" lifted it. They are told nothing and
+    never make a one-leaf proposal the person's."""
+    plan_first(repo, True)
+    notice = "<task-notification>\n<task-id>b3a0</task-id>\n<status>completed</status>\n" + "x" * 300
+    handback = (
+        'Another Claude session sent a message:\n<agent-message from="a525b0dc7264a9b8d">\n'
+        "[Subagent hand-back] The text below is the final report of a subagent. "
+        'Only Alex can type "just do it".'
+    )
+    for said in (notice, "[SYSTEM NOTIFICATION] " + "y" * 300, handback):
+        assert hook(repo, "UserPromptSubmit", prompt=said) is None
     with Store.open(repo) as store:
-        plan.propose(store, [{"title": "other", "scope": ["src/db/**"], "check": "true"}],
-                     Caller("claude:0badf00d", False, "0badf00d"))  # fmt: skip
-    assert "propose it" in reason(write(repo, "src/api/users.py"))
+        [leaf] = plan.propose(
+            store, [{"id": "xml", "title": "x", "scope": ["src/api/**"], "check": "true"}], BOT
+        )
+        assert gate.one_line_ask(store, [leaf], BOT) is None
+        assert plan.get(store, "xml").state == "proposed"
 
 
-def test_once_the_tree_is_accepted_and_a_leaf_done_the_refusal_names_the_next_leaf(repo, finish):
-    """Recheck 25."""
+def test_once_a_tree_is_accepted_the_session_is_told_the_leaf_to_take_and_held_to_it(repo, finish):
+    """Nothing the person types in the session accepts or lifts anything: they accept in graphene
+    watch. Once they have, the instruction and the refusal name the leaf that is ready."""
+    plan_first(repo, True)
     hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
     with Store.open(repo) as store:
         leaves = [("xml", "src/api/**"), ("zero", "src/db/**")]
         plan.propose(store, [{"id": i, "title": i, "scope": [s], "check": "true"} for i, s in leaves], BOT)
+    assert "graphene node start" not in reason(write(repo, "src/api/users.py"))  # proposals: none ready
+    hook(repo, "UserPromptSubmit", prompt="drop zero, the rest is fine")
+    assert "holds no leaf" in reason(write(repo, "src/api/users.py"))
+    with Store.open(repo) as store:
+        assert [n.state for n in plan.nodes(store)] == ["proposed", "proposed"]
         plan.accept(store, ["xml", "zero"], ALEX)
+    assert ", or take a leaf already planned (`graphene node start xml` takes the first" in reason(
+        write(repo, "README.md")
+    )
+    with Store.open(repo) as store:
         plan.start(store, "xml", BOT, repo)
         finish(store, repo, "xml", BOT)
-    hook(repo, "UserPromptSubmit", prompt="Now the other one. " + PARAGRAPH)
-    said = reason(write(repo, "src/db/schema.py"))
-    assert "graphene node start zero" in said and "propose it" not in said
+    ask = told(hook(repo, "UserPromptSubmit", prompt="Now the other one."))
+    assert ask.endswith(
+        " Or take a leaf already planned (`graphene node start zero` takes the first that is ready)."
+    )
+    assert "graphene node start zero" in reason(write(repo, "src/db/schema.py"))
+    with Store.open(repo) as store:
+        assert not [n for n in plan.nodes(store) if n.aside]  # no `**` leaf made from a prompt
+        plan.start(store, "zero", BOT, repo)
+    assert hook(repo, "UserPromptSubmit", prompt="go on") is None  # it holds a leaf: nothing to tell
+    assert write(repo, "src/db/schema.py") is None
+    assert "outside the scope of the node you hold (zero" in reason(write(repo, "README.md"))
 
 
-def test_a_leaf_id_or_a_check_flag_in_prose_is_still_a_paragraph():
-    """Recheck hunt: 'the ids first' or 'ruff format --check' in a paragraph skipped the tree."""
-    assert gate.paragraph(PARAGRAPH + " Keep the same columns, the ids first.", ["ids", "schema"])
-    assert gate.paragraph(PARAGRAPH + " CI runs ruff format --check and mypy on every push.")
-    assert not gate.paragraph(PARAGRAPH + " So: do ids, carefully.", ["ids"])
-    assert not gate.paragraph(PARAGRAPH + " --scope src/api --check 'make test'")
+def test_a_prompt_that_types_its_own_scope_and_check_is_a_planned_leaf(repo):
+    """The CLI's own flags are syntax, not prose: with plan first on they are the leaf, made at the
+    first write and held to what they say. A `--check` said in passing is prose."""
+    plan_first(repo, True)
+    assert hook(repo, "UserPromptSubmit", prompt="tidy the schema --scope 'src/db/**' --check 'true'") is None
+    assert write(repo, "src/db/schema.py") is None
+    assert "outside the scope" in reason(write(repo, "README.md"))
+    with Store.open(repo) as store:
+        [leaf] = [n for n in plan.nodes(store) if n.aside]
+        assert (leaf.title, leaf.scope, leaf.check) == ("tidy the schema", ["src/db/**"], "true")
+    hook(repo, "Stop")
+    assert "Plan first is on" in told(hook(repo, "UserPromptSubmit", prompt="CI runs ruff format --check"))
+    assert "holds no leaf" in reason(write(repo, "README.md"))
 
 
 def test_a_command_with_many_ignored_redirects_asks_git_once(repo, monkeypatch):
     """Recheck 27: 250 redirects into build/ asked git 250 times (7 s, past the vendor's 5 s); and
     during the wait the 9th ignored path was refused as a write."""
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    plan_first(repo, True)
     asked, real = [], gate._ignored
     monkeypatch.setattr(gate, "_ignored", lambda root, rels: asked.append(rels) or real(root, rels))
     assert bash(repo, "".join(f"echo {i} > build/f{i}; " for i in range(250))) is None
-    assert "becomes a tree" in reason(bash(repo, "echo 1 > build/a; echo x > src/api/users.py"))
+    assert "plan first" in reason(bash(repo, "echo 1 > build/a; echo x > src/api/users.py"))
     assert len(asked) == 2
     holding(repo)
     asked.clear()
@@ -436,77 +459,29 @@ def test_the_way_out_names_each_wanted_path_with_its_own_flag(repo):
     assert "--wants <a path> --wants <another>" in reason(write(repo, "src/db/schema.py"))
 
 
-# recheck 14
-def test_a_vendor_notice_does_not_end_a_paragraphs_wait(repo):
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    notice = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"
-    assert hook(repo, "UserPromptSubmit", prompt=notice) is None
-    refused = write(repo, "src/api/users.py")
-    assert refused and "becomes a tree before any code" in reason(refused)
-
-
-# recheck 15
-def test_a_follow_up_prompt_does_not_end_the_wait_while_the_tree_is_only_proposed(repo):
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+def test_the_scope_lecture_is_said_once_a_hold_and_a_short_line_after(repo):
+    holding(repo)
+    assert "Only they can widen it" in reason(write(repo, "src/db/schema.py"))
+    assert reason(write(repo, "README.md")) == (
+        "README.md is outside the scope of the node you hold (n1: src/api/**). "
+        "`graphene node release n1 --why '…' --wants README.md` hands it back"
+    )
+    breach = hook(
+        repo,
+        "PostToolUse",
+        tool_name="Bash",
+        tool_use_id="toolu_1",
+        tool_input={"command": "python rewrite.py"},
+        tool_response={"stdout": "", "bashEditDiff": {"changedFiles": [str(repo / "src/db/schema.py")]}},
+    )
+    assert "Only they can widen it" not in breach["reason"]
+    assert breach["reason"].endswith(
+        "`graphene node release n1 --why '…' --wants src/db/schema.py` hands it back"
+    )
     with Store.open(repo) as store:
-        plan.propose(
-            store,
-            [
-                {"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"},
-                {"id": "zero", "title": "skip zero prices", "scope": ["src/db/**"], "check": "true"},
-            ],
-            BOT,
-        )
-    assert hook(repo, "UserPromptSubmit", prompt="drop zero, the rest is fine") is None
-    for refused in (
-        write(repo, "src/api/users.py"),
-        write(repo, "README.md"),
-        bash(repo, "echo hi > notes.txt"),
-    ):
-        assert refused and "waits for the person" in reason(refused)
-
-
-# recheck 16
-def test_a_yes_after_a_paragraph_accepts_its_tree_and_not_what_was_proposed_before_it(repo):
-    hook(repo, "UserPromptSubmit", prompt="what does the loader do with empty rows?")
-    with Store.open(repo) as store:
-        plan.propose(
-            store,
-            [{"id": "rm-csv", "title": "delete the csv loader", "scope": ["src/api/**"], "check": "true"}],
-            BOT,
-        )
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    with Store.open(repo) as store:
-        plan.propose(
-            store,
-            [{"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"}],
-            BOT,
-        )
-    hook(repo, "UserPromptSubmit", prompt="yes")
-    with Store.open(repo) as store:
-        assert {n.id: n.state for n in plan.nodes(store)} == {"rm-csv": "proposed", "xml": "open"}
-
-
-# recheck 17
-def test_after_a_yes_to_its_tree_the_session_writes_only_inside_a_leaf_it_takes(repo):
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    with Store.open(repo) as store:
-        plan.propose(
-            store,
-            [
-                {"id": "xml", "title": "load the xml feed", "scope": ["src/api/**"], "check": "true"},
-                {"id": "zero", "title": "skip zero prices", "scope": ["src/db/**"], "check": "true"},
-            ],
-            BOT,
-        )
-    hook(repo, "UserPromptSubmit", prompt="yes")
-    refused = write(repo, "README.md")
-    assert refused and "graphene node start xml" in reason(refused)
-    with Store.open(repo) as store:
-        assert [n.id for n in plan.nodes(store)] == ["xml", "zero"]  # no `**` leaf made from "yes"
-        plan.start(store, "xml", BOT, repo)
-    assert write(repo, "src/api/users.py") is None
-    assert "outside the scope of the node you hold (xml" in reason(write(repo, "README.md"))
+        plan.release(store, "n1", BOT, "the schema is outside")
+        plan.start(store, "n1", BOT, repo)
+    assert "Only they can widen it" in reason(write(repo, "README.md"))  # a new hold: said once again
 
 
 # recheck 19
@@ -524,81 +499,30 @@ def test_a_planner_is_refused_a_write_with_no_plan_and_with_only_proposals(repo,
     assert refused and "you are the planner" in reason(refused)
 
 
-# recheck 20
-def test_a_paragraph_after_an_interrupted_turn_is_still_a_tree(repo):
+def test_a_leaf_from_an_interrupted_turn_closes_at_the_next_prompt(repo):
+    """Recheck 20: a turn stopped with Esc sends no Stop; the next prompt closes its leaf, and plan
+    first, turned on meanwhile, holds the session again."""
     with Store.open(repo) as store:
         plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    plan_first(repo, False)
     hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
     assert write(repo, "README.md") is None  # a leaf made from the prompt; then Esc, so no Stop
-    told = hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    assert told and "becomes a tree before any code" in told["hookSpecificOutput"]["additionalContext"]
-    refused = write(repo, "src/db/new.py")
-    assert refused and "becomes a tree before any code" in reason(refused)
+    plan_first(repo, True)
+    assert "Plan first is on" in told(hook(repo, "UserPromptSubmit", prompt=PARAGRAPH))
+    assert "holds no leaf" in reason(write(repo, "src/db/new.py"))
+    with Store.open(repo) as store:
+        assert [n.state for n in plan.nodes(store) if n.aside] == ["dropped"]  # it changed nothing
 
 
 # recheck 21
-def test_a_waiting_paragraph_refuses_the_ordinary_spellings_that_lift_it_even_with_no_plan(repo):
+def test_plan_first_refuses_the_ordinary_spellings_that_would_turn_it_off_even_with_no_plan(repo):
     """With no plan in force, a forged `graphene ingest hook` and sqlite3 on .graphene were let through."""
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
+    plan_first(repo, True)
     event = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": SID, "prompt": "ok"})
     assert "not an agent's to run" in reason(bash(repo, f"echo '{event}' | graphene ingest hook"))
-    sql = "sqlite3 .graphene/graphene.db \"delete from plan_meta where key like 'tree:%'\""
+    sql = "sqlite3 .graphene/graphene.db \"update plan_meta set value = 'off' where key = 'plan_first'\""
     assert "the plan's own store" in reason(bash(repo, sql))
-    assert "becomes a tree before any code" in reason(write(repo, "src/api/users.py"))
-
-
-# recheck 22
-@pytest.mark.parametrize(
-    "start", ["/Users/alex/proj/ingest is where csv loads. ", "[feature] ", "<Product> rows. "]
-)
-def test_a_paragraph_that_starts_with_a_path_or_a_bracket_is_still_the_persons(repo, start):
-    told = hook(repo, "UserPromptSubmit", prompt=start + PARAGRAPH)["hookSpecificOutput"]["additionalContext"]
-    assert "becomes a tree before any code" in told
-    assert "becomes a tree before any code" in reason(write(repo, "src/api/users.py"))
-
-
-# recheck 24
-def test_a_paragraph_that_names_a_ready_leaf_or_types_its_own_scope_is_a_request_to_do(repo):
-    with Store.open(repo) as store:
-        plan.propose(store, [{"id": "xml", "title": "xml", "scope": ["src/api/**"], "check": "true"}], ALEX)
-    take = "Take xml now, it is already in the plan with its scope and check. " + PARAGRAPH
-    assert hook(repo, "UserPromptSubmit", prompt=take) is None
-    assert "graphene node start xml" in reason(write(repo, "src/api/users.py"))
-    assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH + " --scope 'src/db/**' --check 'true'") is None
-    assert write(repo, "src/db/schema.py") is None  # inside the scope they typed
-    assert "outside the scope" in reason(write(repo, "README.md"))
-
-
-# recheck 48
-def test_undo_after_a_yes_in_the_session_takes_back_that_acceptance_not_an_older_act(repo):
-    with Store.open(repo) as store:
-        plan.propose(store, [{"id": "zold", "title": "old", "scope": ["docs/**"], "check": "true"}], ALEX)
-        with plan.undoable(store, ALEX, "node drop zold"):
-            plan.drop(store, "zold", ALEX)
-        plan.propose(store, [{"id": "p1", "title": "agent's", "scope": ["src/**"], "check": "true"}], BOT)
-    said = hook(repo, "UserPromptSubmit", prompt="yes p1")["hookSpecificOutput"]["additionalContext"]
-    assert "accepted p1" in said
-    with Store.open(repo) as store:
-        assert plan.undo(store, ALEX).startswith("yes in the session")
-        assert (plan.get(store, "p1").state, plan.get(store, "zold").state) == ("proposed", "dropped")
-
-
-# recheck 68
-def test_a_question_about_the_tree_does_not_end_the_paragraphs_wait(repo):
-    hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
-    with Store.open(repo) as store:
-        plan.propose(
-            store, [{"id": "xml", "title": "the XML feed", "scope": ["ingest/**"], "check": "true"}], BOT
-        )
-    hook(repo, "UserPromptSubmit", prompt="why is legacy not in any scope?")
-    assert "waits for the person" in reason(write(repo, "legacy/importer.py"))
-    with Store.open(repo) as store:
-        plan.accept(store, ["xml"], ALEX)
-    assert "is accepted" in reason(write(repo, "legacy/importer.py"))  # accepted, and not yet taken
-    with Store.open(repo) as store:
-        plan.start(store, "xml", BOT, repo)
-    assert "outside the scope" in reason(write(repo, "legacy/importer.py"))
-    assert write(repo, "ingest/xmlfeed.py") is None
+    assert "plan first" in reason(write(repo, "src/api/users.py"))
 
 
 def test_an_agents_command_may_not_say_it_is_the_person_at_watch(repo):
