@@ -100,14 +100,12 @@ def _how_out(held: list[P.Node]) -> str:
     )
 
 
-# What a session is told when it starts, plan or no plan: how the person's paragraph becomes a tree.
-# The person never types the tree; the agent proposes it in the text the person prunes. A few lines,
-# because every session in a repo with Graphene's hooks reads them.
+# What a session is told when it starts, plan or no plan: the text the plan is proposed in. The
+# person never types the tree; the agent proposes it and the person prunes it. A few lines, because
+# every session in a repo with Graphene's hooks reads them.
 TEACH = (
-    "This repository uses Graphene: a plan the person and their coding agents share, as a tree. When the "
-    "person describes work bigger than one quick change, or asks for a plan, do not start it: read what "
-    "you need, propose the tree, then stop and tell them it is ready to prune (they see it at once in "
-    "`graphene watch`):\n"
+    "This repository uses Graphene: a plan the person and their coding agents share, as a tree. You "
+    "propose it in this text, and the person prunes it (they see it at once in `graphene watch`):\n"
     "graphene plan propose - <<'EOF'\n"
     "goal: their aim, in one sentence\n"
     "- a sub-goal  [short-id]\n"
@@ -119,47 +117,69 @@ TEACH = (
     "EOF\n"
     "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
-    "`needs` orders leaves that build on each other. A quick change they want done now, just do."
+    "`needs` orders leaves that build on each other."
+)
+FREE = (  # plan first off: the session's judgement, and decision 18 while a plan is in force
+    "When the person describes work bigger than one quick change, or asks for a plan, do not start it: "
+    "read what you need, propose the tree, then stop and tell them it is ready to prune. A quick change "
+    "they want done now, just do."
 )
 IN_FORCE = (
     "A plan is in force here: `graphene plan` shows it and what is ready; `graphene node start <id>` takes "
     "a leaf and tells you what it is for, from the goal down. While you hold a leaf, writes outside its "
     "scope are refused. A leaf too big to do well is split: propose its children in the same text (its "
-    "line, with theirs under it) and hand it back. When the person asks you here for something no leaf "
-    "covers, and you hold no leaf, just do it: Graphene makes a leaf from their prompt and records what "
-    "you changed."
+    "line, with theirs under it) and hand it back."
+)
+ASIDE = (  # decision 18: plan first off, prompts are leaves
+    "When the person asks you here for something no leaf covers, and you hold no leaf, just do it: "
+    "Graphene makes a leaf from their prompt and records what you changed."
 )
 
 
-# A paragraph is a piece of work, and a piece of work becomes a tree before any code: the person
-# reads the agent's understanding of it, prunes it, and runs it. One line is a Tuesday request, done
-# at once (a leaf made from the prompt, decision 18). "just do it" in a paragraph skips the tree;
-# while a paragraph waits, a short prompt that says "no plan" lifts the wait too.
-PARAGRAPH = 240  # characters: Alex's paragraph on 22 September was 330; his one-line asks, under 100
-_JUST = re.compile(r"\b(just do it|do it now|skip the (?:plan|tree)|no need (?:for a|to) plan)\b", re.I)
-_NO_PLAN = re.compile(r"\b(no|without a|forget the) (plan|tree)\b(?!\s+(to|for)\b)", re.I)
-# "don't just do it", "I can't do it now", "I don't want you to just do it"; not "don't worry, just do it"
-_NEGATED = re.compile(
-    r"\b(don['’]?t|do not|not|never|can['’]?t|cannot|won['’]?t|shouldn['’]?t|didn['’]?t)"
-    r"(?:\s+(?:want|wanted|need|you|me|us|to|going|have))*\s+$",
-    re.I,
-)
-# a paragraph that asks for a leaf already in the plan is a request to do it, not new work
-_TAKE = r"\b(?:do|take|start|run|work on|finish|pick up)\s+(?:the\s+)?(?:leaf\s+)?[`'\"]?"
-TREE_ASK = (
-    "Graphene: the person wrote a paragraph, so this becomes a tree before any code. Read what you need, "
-    "then propose the tree with `graphene plan propose -` in the plan's text (the form shown when this "
-    "session started: sub-goals, leaves with scope: and check:, needs: between leaves that build on each "
-    "other), and stop: tell them it is ready to prune in `graphene watch`, where y accepts and R runs it. "
-    "Writing files waits until they accept it and a leaf of it is taken (had they wanted it done at once "
-    "they would have said 'just do it')."
-)
-TREE_WAIT = (
-    "The person's paragraph becomes a tree before any code: propose it with `graphene plan propose - "
-    "<<'EOF' … EOF` and stop. They prune and accept it in `graphene watch`; its leaves are worked after "
-    "that (`graphene node start <id>`, or R there). If what they now ask is not that paragraph's work, "
-    "tell them: writing waits until they answer with 'just do it' or 'no plan', or accept a tree"
-)
+def _first(store) -> bool:
+    """Plan first, as the person set it (``P.plan_first``). A paused plan enforces nothing, this
+    included."""
+    return P.plan_first(store) and not P.paused(store)
+
+
+def _strict(store) -> bool:
+    """`graphene plan prompts strict`: nothing is made or accepted by a prompt; the person accepts."""
+    return store.meta("asides") == "off"
+
+
+def _first_said(store) -> str:
+    """Plan first, as a session is told it when it starts and at every prompt while it holds no leaf.
+    Nothing here reads the person's words: the agent judges what they asked for, and the tree or the
+    leaf it proposes is what the person sees and prunes."""
+    taken = "theirs at once, and `graphene node start <id>` takes it"
+    one = "a proposal they accept like any other" if _strict(store) else taken
+    return (
+        "Plan first is on: before you write anything, propose what you will do in the plan's text "
+        "(`graphene plan propose - <<'EOF' … EOF`) and do what it prints. A piece of work is a tree: "
+        "propose it, then stop and tell the person it is ready to prune in `graphene watch`. A one-line "
+        f"ask is one leaf with its scope and check, {one}. Nothing to write, nothing to propose."
+    )
+
+
+def _take(store) -> str:
+    """A leaf already planned is taken, not proposed again: the next of an accepted tree, say."""
+    ready = P.ready(P.nodes(store), P.Caller("agent", False))
+    return (
+        f"take a leaf already planned (`graphene node start {ready[0].id}` takes the first that is ready)"
+        if ready
+        else ""
+    )
+
+
+def _first_refused(store) -> str:
+    """The write refused while plan first is on and the session holds no leaf: in a line, and how the
+    person turns it off."""
+    take = _take(store)
+    return (
+        "plan first: this session holds no leaf, so it writes nothing yet. Propose what you will do "
+        f"(`graphene plan propose -`){f', or {take}' if take else ''}. The person turns plan first off "
+        "with P in graphene watch or `graphene plan first off`"
+    )
 
 
 def _vendor_made(said: str) -> bool:
@@ -170,75 +190,16 @@ def _vendor_made(said: str) -> bool:
     return said.startswith((*_NOT_A_PROMPT, "[SYSTEM NOTIFICATION")) or bool(_SLASH_COMMAND.match(said))
 
 
-def _said(pattern: re.Pattern[str], said: str) -> bool:
-    """Said and not negated in its own clause."""
-    clauses = (re.split(r"[,.;:!?\n]", said[: m.start()])[-1] for m in pattern.finditer(said))
-    return any(not _NEGATED.search(clause) for clause in clauses)
-
-
-def just_do_it(said: str) -> bool:
-    """The person's way to skip the tree: "just do it", and not "don't just do it". While a paragraph
-    waits, a short answer that says "no plan" or "without a plan" lifts the wait as well; inside a
-    paragraph those words are prose ("we have no plan for the feed yet") and skip nothing."""
-    return _said(_JUST, said) or (len(said.strip()) < PARAGRAPH and _said(_NO_PLAN, said))
-
-
-def paragraph(text: str, ready: tuple[str, ...] | list[str] = ()) -> bool:
-    """A piece of work as people write one: a paragraph, not a line. Not what the vendor sends, not
-    one that says "just do it", and not one that asks for its own leaf: "do <a ready leaf>", or the
-    CLI's --scope and quoted --check that a leaf made from the prompt reads. A leaf's id or a
-    `--check` flag said in passing ("the ids first", "ruff format --check") is prose."""
-    said = text.strip()
-    if len(said) < PARAGRAPH or _vendor_made(said) or just_do_it(said):
-        return False
-    if _SCOPE.search(said) and _CHECK.search(said):
-        return False
-    return not any(re.search(rf"{_TAKE}{re.escape(i)}(?![\w-])", said, re.I) for i in ready)
-
-
-def _tree_wait(store, sid: str) -> str | None:
-    """What this session is told while its paragraph waits for its tree, or None when it no longer
-    waits: it holds a leaf (whose scope binds), or the tree is all done or dropped. The tree is what
-    was proposed since the paragraph by this session, the planner (`:ask`) or the person, never by
-    another agent's session."""
-    since = store.meta(f"tree:{sid}")
-    if not since or _held(store, sid):
-        return None
-    everything = P.nodes(store)
-    me = f"claude:{sid[:8]}"
-    tree = [
-        n
-        for n in everything
-        if (n.created_at or "") >= since
-        and not n.aside
-        and (n.proposed_by == me or not (n.proposed_by or "").startswith(("claude:", "codex:")))
-    ]
-    if not tree:
-        return TREE_WAIT
-    if all(n.state in (P.DONE, *P.GONE) for n in tree):
-        store.set_meta(f"tree:{sid}", None)  # the paragraph is answered
-        return None
-    ours = {n.id for n in tree}
-    ready = [n for n in P.ready(everything, P.Caller("agent", False)) if n.id in ours]
-    if ready:
-        return (
-            "The paragraph's tree is accepted; its leaves are worked one at a time, inside their "
-            f"scopes. `graphene node start {ready[0].id}` takes the first that is ready (or the person runs "
-            "them with R in `graphene watch`). Nothing is written outside a leaf you hold"
-        )
-    if any(n.state == P.PROPOSED for n in tree):
-        return (
-            "The paragraph's tree waits for the person: they prune and accept it in `graphene watch` (y). "
-            "Nothing is written before a leaf of it is accepted and taken"
-        )
-    return "The paragraph's tree is being worked; nothing is written outside a leaf you hold"
-
-
 def _session_start(store) -> dict | None:
+    """What a new session is told, by the state the plan is in: plan first on or off, a plan in force
+    or none, and whether a prompt is a leaf (decision 18) or not (strict)."""
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # started by `graphene run` or `graphene ask`: its prompt is the whole of its task
-    said = TEACH + ("\n\n" + IN_FORCE if P.in_force(store) else "")
-    return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": said}}
+    first, force = _first(store), P.in_force(store)
+    said = [TEACH, _first_said(store) if first else FREE]
+    if force:
+        said.append(IN_FORCE + ("" if first or _strict(store) else " " + ASIDE))
+    return _context("SessionStart", "\n\n".join(said))
 
 
 def _claim_first(store) -> str:
@@ -256,27 +217,20 @@ def _claim_first(store) -> str:
         + ", so nothing here may be written: work happens inside a node, and a plan stays in force "
         "after its last node is done. If this change is worth making, propose a node for it: "
         "`graphene node add '<what>' --scope '<paths it needs>' --check '<command that shows it is done>'`, "
-        "then tell the person; a plain yes typed here accepts it, or they change it or say no. "
+        "then tell the person: they accept it, change it or drop it in `graphene watch`. "
         "`graphene plan` shows what each node waits for"
     )
 
 
-_YES = re.compile(
-    r"^\W*(yes|yep|yeah|ok|okay|sure|accept|accepted|approve|approved|go ahead|do it|do that|do them|"
-    r"lgtm|sounds good|looks good)\b",
-    re.IGNORECASE,
-)
 # The CLI's own flags, typed into the prompt: `fix the header --scope README.md --check 'make lint'`.
 # A review ran prose through the first spelling (`scope:` / `check:` anywhere in the text): "double
 # check: ./scripts/deploy.sh is never called" executed the script. Nobody writes `--check` in prose.
 _SCOPE = re.compile(r"""(?<!\S)--scope[ =]+(?:'([^']+)'|"([^"]+)"|(\S+))""")
 _CHECK = re.compile(r"""(?<!\S)--check[ =]+(?:'([^']+)'|"([^"]+)")""")  # quoted, so its end is said
-_NOT_YES = re.compile(r"[?]|\b(but|except|not|no|don'?t|drop|skip|instead|first|before|unless|wrong)\b", re.I)
 # `graphene ingest …` as a command, not the word: a repo with an ingest/ package had three hand-backs
 # refused for naming ingest/__init__.py in their reason
 _HOOK = re.compile(r"\bgraphene\s+ingest\b|\bingest\s+hook\b|\bhook_main\s*\(")
 _READS = re.compile(r"\s*(rg|e?grep|git\s+grep|graphene\s+node\s+release)\b")
-SHORT = 80  # a prompt longer than this is a request, not an answer
 HOOKS = (".claude/settings.json", ".claude/settings.local.json")
 
 
@@ -290,59 +244,70 @@ def _me(sid: str) -> P.Caller:
     return P.Caller(P.person_name(), True, sid, stand_in=True)
 
 
+def _contract(text: str | None) -> bool:
+    """The person typed a leaf's scope and check in the CLI's own flags: that prompt is a leaf they
+    wrote themselves, planned already. Syntax, not prose."""
+    return bool(text and _SCOPE.search(text) and _CHECK.search(text))
+
+
 def _on_prompt(store, sid: str, text: str) -> dict | None:
-    """A prompt is remembered (the next write may become a leaf made from it); a paragraph becomes a
-    tree first; and a short yes accepts what this session proposed, or the proposals it names."""
+    """A prompt is remembered: with plan first off the next write may become a leaf made from it, and
+    either way a one-leaf proposal made after it is the person's ask (``one_line_ask``). With plan
+    first on, a session that holds no leaf is told, next to every prompt, to propose before it
+    writes. No word of the prompt is read for that: not its length, not "just do it"."""
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # an executor or a planner Graphene started: its prompt is ours, not a person's
-    said = text.strip()
-    if _vendor_made(said):
+    if _vendor_made(text.strip()):
         return None
-    planned = store.node_count() > 0
-    ready = [n.id for n in P.ready(P.nodes(store))] if planned else []
-    routed = paragraph(said, ready)
-    if not planned and not routed and not store.meta(f"tree:{sid}"):
-        return None  # no plan, no paragraph, nothing waiting: a repo without a plan pays one read
+    first = _first(store)
+    if not first and not store.node_count():
+        return None  # no plan and plan first off: a repo without a plan pays a read or two
     for n in _held(store, sid):
         if n.aside:  # the turn before ended without a Stop (interrupted): its record closes here
             _close(store, n, sid)
-    before = store.meta(f"prompt_at:{sid}") or ""
     store.set_meta(f"prompt_at:{sid}", P._now())
-    if just_do_it(said):
-        store.set_meta(f"tree:{sid}", None)  # the person lifts the wait
-    if routed and not _held(store, sid):
-        # a second paragraph while the first still waits (feedback on its tree, "do them in order")
-        # keeps the first one's start: the tree proposed in between is still its tree
-        store.set_meta(f"tree:{sid}", store.meta(f"tree:{sid}") or P._now())
-        store.set_meta(f"prompt:{sid}", None)  # no leaf is made from it: it becomes a tree instead
-        return _context("UserPromptSubmit", TREE_ASK)
     store.set_meta(f"prompt:{sid}", text)  # TODO: two rows a session, never pruned
-    proposals = P.nodes(store, (P.PROPOSED,))
-    if store.meta("asides") == "off" or not proposals or len(text) > SHORT:
+    if not first or _held(store, sid) or _contract(text):
         return None
-    if not _YES.match(text) or _NOT_YES.search(text) or text.lstrip().startswith("/"):
-        return None  # "sure, drop n1", "ok so what is n1?": a yes with a no in it accepts nothing
-    named = [n for n in proposals if re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", text)]
-    if not named and re.search(r"\b(all|everything|the plan)\b", text, re.IGNORECASE):
-        named = proposals
-    # an unnamed yes answers what this session proposed since the person last spoke, not hours ago
-    mine = [n for n in proposals if n.proposed_by == f"claude:{sid[:8]}" and (n.created_at or "") >= before]
-    chosen = named or mine
-    if not chosen:
+    take = _take(store)
+    return _context("UserPromptSubmit", f"Graphene: {_first_said(store)}" + (f" Or {take}." if take else ""))
+
+
+def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
+    """The one-line ask stays free. One leaf, with its scope and its check and nothing under it,
+    proposed by a Claude Code session that holds no leaf, after the person's last prompt there and
+    before any other proposal of that session since, is what that prompt asked for: it is accepted
+    at once, as the person's, and the log says "by their prompt in the session". A tree waits for
+    them, and so does a leaf that would make a sub-goal of another (a split) or bring a proposal
+    above it along. Returns what `graphene plan propose` says instead of "proposed", or None.
+    The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
+    subagent carries its session's id. `graphene plan prompts strict` turns this off."""
+    sid = who.session_id
+    asked = store.meta(f"prompt_at:{sid}") if sid and not who.person else None
+    if not asked or len(added) != 1 or _strict(store) or _held(store, sid):
         return None
+    everything = P.nodes(store)
+    by_id, under = {n.id: n for n in everything}, P.kids(everything)
+    node = by_id[added[0].id]
+    since = [n.id for n in everything if n.proposed_by == who.name and (n.created_at or "") >= asked]
+    parent = by_id.get(node.parent or "")
+    if (
+        since != [node.id]
+        or not (node.scope and node.check)
+        or under.get(node.id)
+        or any(a.state == P.PROPOSED for a in P.above(node, by_id))
+        or (parent is not None and not under.get(parent.id))
+    ):
+        return None
+    me, said = _me(sid), store.meta(f"prompt:{sid}") or ""
     try:
-        with P.undoable(store, _me(sid), f"yes in the session: {text[:40]}"):
-            accepted = P.accept(store, [n.id for n in chosen], _me(sid), by="prompt", prompt=text[:SHORT])
-    except P.Refused as no:
-        return _context(
-            "UserPromptSubmit", f"Graphene read that as accepting a proposal, and could not: {no}"
-        )
-    ready = P.ready(P.nodes(store), P.Caller("agent", False))
-    told = ", ".join(f"{n.id} ({n.title})" for n in accepted)
-    return _context(
-        "UserPromptSubmit",
-        f"The person's answer accepted {told}: in the plan now, as they stand."
-        + (f" `graphene node start {ready[0].id}` takes the first that is ready." if ready else ""),
+        with P.undoable(store, me, f"a one-line ask in the session: {said[:40]}"):
+            P.accept(store, [node.id], me, by="prompt", prompt=said[:80])
+    except P.Refused:
+        return None  # its parent is held, say: it waits for the person like any proposal
+    return (
+        f"{node.id} is accepted, as the person's: one leaf for what they asked in this session is theirs "
+        f"at once. `graphene node start {node.id}` takes it"
     )
 
 
@@ -364,15 +329,12 @@ def _close(store, node: P.Node, sid: str) -> str | None:
 def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
     """The person typed a request into a session that holds no node, and the agent is about to write
     for it: that request becomes a leaf, held by this session, with nothing for the person to do.
-    Its scope and check are what they wrote after `scope:` and `check:`, when they wrote any; else it
+    Its scope and check are what they wrote after `--scope` and `--check`, when they wrote any; else it
     may touch anything and is done when the turn ends, and its record says what it did touch. The
     scope is never guessed from the prose."""
     text = store.meta(f"prompt:{sid}")
-    if not text or os.environ.get("GRAPHENE_NODE") or store.meta("asides") == "off":
+    if not text or os.environ.get("GRAPHENE_NODE") or _strict(store):
         return None
-    ready = P.ready(P.nodes(store), P.Caller("agent", False))
-    if any(re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", text) for n in ready):
-        return None  # "do n1": the leaf they named is there to be taken, with its own scope
     scope = [next(g for g in m.groups() if g) for m in _SCOPE.finditer(text)]
     check = _CHECK.search(text)
     words = _SCOPE.sub("", _CHECK.sub("", text)).strip() or text
@@ -485,21 +447,25 @@ def decide(store, event: dict, root: Path) -> dict | None:
         return None
     if name == "UserPromptSubmit":  # before "in force": a plan of nothing but proposals binds nobody yet
         return _on_prompt(store, sid, str(event.get("prompt") or ""))
-    if name == "SessionStart":  # with or without a plan: this is where a paragraph learns to be a tree
+    if name == "SessionStart":  # with or without a plan: this is where a session learns the text
         return _session_start(store)
     planner = bool(os.environ.get("GRAPHENE_PLANNER"))
-    waiting = name == "PreToolUse" and _tree_wait(store, sid)
-    if name == "PreToolUse" and (planner or waiting or P.in_force(store)):
+    # plan first: a session that holds no leaf writes nothing, plan or no plan yet
+    first = name == "PreToolUse" and not planner and _first(store) and not _held(store, sid)
+    if name == "PreToolUse" and (planner or first or P.in_force(store)):
         guarded = _guard_command(event)  # the store and the hooks are nobody's to reach round
         if guarded is not None:
             return guarded
-    if name == "PreToolUse" and (planner or waiting):
+    if name == "PreToolUse" and (planner or first):
         written = _first_write(event, root)
-        if written is not None:
-            how = "planner" if planner else "paragraph"
+        cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+        # a prompt that typed its own --scope and --check planned its leaf: made at its first write
+        planned = first and _contract(store.meta(f"prompt:{sid}"))
+        if written is not None and not (planned and _aside(store, sid, cwd, root)):
+            how = "planner" if planner else "plan first"
             store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
             return _deny("you are the planner: your only output is the proposal you print. Write no file"
-                         if planner else waiting)  # fmt: skip
+                         if planner else _first_refused(store))  # fmt: skip
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")

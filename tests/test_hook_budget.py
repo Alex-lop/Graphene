@@ -106,6 +106,40 @@ def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
     assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms"
 
 
+def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
+    """Plan first adds a path that runs with no plan at all: every prompt of a session that holds no
+    leaf is told, and every write it tries before proposing is refused. The agent waits for both."""
+    from graphene_debrief import plan
+
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, True, plan.Caller("alex", True))
+    edit = {"tool_name": "Edit", "tool_input": {"file_path": str(repo / "a.py")}}
+
+    def once(n: int) -> float:
+        prompt = n % 2
+        said = {"hook_event_name": "UserPromptSubmit", "prompt": "fix the header", "prompt_id": f"p{n}"}
+        event = {
+            "session_id": "budget",
+            "cwd": str(repo),
+            **(said if prompt else {"hook_event_name": "PreToolUse", **edit}),
+        }
+        start = time.perf_counter()
+        done = subprocess.run(HOOK, input=json.dumps(event), cwd=repo, capture_output=True, text=True)
+        elapsed = (time.perf_counter() - start) * 1000
+        assert done.returncode == 0, done.stderr
+        assert ("Plan first is on" if prompt else "plan first: this session holds no leaf") in done.stdout
+        return elapsed
+
+    once(1)
+    times = sorted(once(n) for n in range(RUNS))
+    median = statistics.median(times)
+    with capsys.disabled():
+        print(f"\nplan first: median {median:.0f} ms, p95 {times[math.ceil(0.95 * RUNS) - 1]:.0f} ms")
+    assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms"
+
+
 def test_the_hook_path_imports_no_cli_library(tmp_path):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)

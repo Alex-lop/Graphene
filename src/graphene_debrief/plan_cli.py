@@ -14,6 +14,7 @@ from pathlib import Path
 
 import typer
 
+from . import gate as G
 from . import plan as P
 from . import plan_text as T
 
@@ -471,7 +472,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             added = as_json(store) if text.lstrip().startswith(("{", "[")) else as_text(store)
             if not who.person and added:
                 out(
-                    f"{len(added)} proposed. The person sees them now (`graphene watch`, `graphene plan`) "
+                    G.one_line_ask(store, added, who)  # one leaf for the person's own ask is theirs at once
+                    or f"{len(added)} proposed. The person sees them now (`graphene watch`, `graphene plan`) "
                     "and accepts or prunes them; nobody can start them before that. Tell them the tree is "
                     "ready, and stop"
                 )
