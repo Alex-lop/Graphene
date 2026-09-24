@@ -848,6 +848,7 @@ class Watch(App):
         first = lines[0].strip() if lines else ""
         for word in argv[1:]:  # `graphene node edit x: x: scope changed` says x once
             first = first.removeprefix(f"{word}: ")
+        first = first.removeprefix(f"{' '.join(argv[:2])}: ")  # and `plan first on: plan first: on`
         self.message = f"{'✗ ' if code else ''}graphene {shlex.join(argv)}" + (f": {first}" if first else "")
         if not quiet:
             self.refresh_plan()

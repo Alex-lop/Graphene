@@ -165,3 +165,7 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
         again = len(store.node_log())
         assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
         assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)"
+        mark = len(store.node_log())  # seen in WezTerm: x during a run, and the run said "nothing finished"
+        plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
+        plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
+        assert summary(store, mark) == "run: n2 released by you, ready again"

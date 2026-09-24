@@ -349,6 +349,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     back = [n.id for n in ran if n.state == P.OPEN and n.id in let_go and not let_go[n.id].get("person")]
     handed = [i for i in back if let_go[i].get("why") == STOPPED]
     back = [i for i in back if i not in handed]
+    freed = [n.id for n in ran if n.state == P.OPEN and let_go.get(n.id, {}).get("person")]
 
     def named(ids: list[str]) -> str:
         return ", ".join(ids[:3]) + (f" and {len(ids) - 3} more" if len(ids) > 3 else "")
@@ -357,6 +358,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(back)} came back ({named(back)})"] if back else []
     said += [f"{len(review)} in review ({named(review)})"] if review else []
     said += [f"{named(handed)} handed back, ready again"] if handed else []
+    said += [f"{named(freed)} released by you, ready again"] if freed else []
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished")
     if not ran:
