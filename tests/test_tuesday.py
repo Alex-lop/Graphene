@@ -210,7 +210,7 @@ def test_a_one_line_ask_proposed_as_one_leaf_is_the_persons_at_once(repo, monkey
         "typo is accepted, as the person's" in said.stdout
         and "`graphene node start typo` takes it" in said.stdout
     )
-    assert "proposed. The person sees them now" not in said.stdout
+    assert "until the person accepts" not in said.stdout
     with Store.open(repo) as store:
         assert plan.get(store, "typo").state == OPEN
         [entry] = store.node_log("typo", ("accepted",))
@@ -248,16 +248,16 @@ def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monke
         hook(repo, "UserPromptSubmit", prompt=prompt)
         for text in texts:
             said = propose(repo, monkeypatch, text)
-            assert said.exit_code == 0 and "The person sees them now" in said.stdout, said.output
+            assert said.exit_code == 0 and "until the person accepts" in said.stdout, said.output
     hook(repo, "UserPromptSubmit", prompt="and the other one")
     other = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": OTHER.session_id}  # not the session prompted
     b = "- b  [b]\n    scope: b\n    check: true\n"
-    assert "The person sees them now" in propose(repo, monkeypatch, b, env=other).stdout
+    assert "until the person accepts" in propose(repo, monkeypatch, b, env=other).stdout
     with Store.open(repo) as store:
         store.set_meta("asides", "off")  # strict: nothing is made or accepted by a prompt
     hook(repo, "UserPromptSubmit", prompt="one more")
     assert (
-        "The person sees them now"
+        "until the person accepts"
         in propose(repo, monkeypatch, "- c  [c]\n    scope: c\n    check: true\n").stdout
     )
     with Store.open(repo) as store:
@@ -275,6 +275,6 @@ def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, mon
     hook(repo, "UserPromptSubmit", prompt="do n1")
     with Store.open(repo) as store:
         plan.start(store, "n1", BOT, repo)
-    assert "The person sees them now" in propose(repo, monkeypatch, LEAF).stdout
+    assert "until the person accepts" in propose(repo, monkeypatch, LEAF).stdout
     with Store.open(repo) as store:
         assert plan.get(store, "typo").state == PROPOSED
