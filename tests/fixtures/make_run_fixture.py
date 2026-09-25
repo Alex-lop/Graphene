@@ -52,8 +52,8 @@ from pathlib import Path
 
 from make_transcript_fixture import bash_ok, edit_result
 
-from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_debrief.sources.claude_code import project_dir_name
+from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
+from graphene_map.sources.claude_code import project_dir_name
 
 ROOT = "/home/dev/project"
 ELSEWHERE = "/home/dev/wt/api"

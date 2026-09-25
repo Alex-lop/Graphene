@@ -4,9 +4,9 @@ import subprocess
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief.plan_view import HOLES, NODE_H, NODE_W, build_plan_view
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.plan_view import HOLES, NODE_H, NODE_W, build_plan_view
+from graphene_map.store import Store
 
 ALEX = plan.Caller("alex", True)
 BOT = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")

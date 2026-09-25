@@ -201,7 +201,7 @@ Code agent, a Codex agent (`codex exec`) and a person editing by hand.
 ## P3. What the Claude Code hooks add
 
 `graphene init` registers one command, `graphene ingest hook`, on eight events. With a plan in
-force it answers as well as records (`src/graphene_debrief/gate.py`), in the vendor's documented
+force it answers as well as records (`src/graphene_map/gate.py`), in the vendor's documented
 JSON:
 
 | Event | Answer |
@@ -535,7 +535,7 @@ ignores itself in git through a `.gitignore` of its own, so the repo's `.gitigno
 `graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
 first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners
 (agents first, then each person), and every position is computed in Python
-(`src/graphene_debrief/plan_view.py`, tested in pytest) so the page decides no layout. The second
+(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The second
 screen is the record of a run: lanes of agents over rows of files (`graph.py`).
 
 The page can change the plan only when a person started `graphene ui` (started from an agent's

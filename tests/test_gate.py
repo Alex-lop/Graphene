@@ -7,10 +7,10 @@ import subprocess
 
 import pytest
 
-from graphene_debrief import gate, plan
-from graphene_debrief.plan import Caller
-from graphene_debrief.sources.claude_code import hook_main
-from graphene_debrief.store import Store
+from graphene_map import gate, plan
+from graphene_map.plan import Caller
+from graphene_map.sources.claude_code import hook_main
+from graphene_map.store import Store
 
 SID = "5e55105e-0000-4000-8000-000000000001"
 ALEX = Caller("alex", True)
@@ -84,7 +84,7 @@ def test_the_word_ingest_in_a_reason_is_not_running_the_hook(repo):
     for forged in (
         "graphene ingest hook < e.json",
         "echo {} | graphene  ingest hook",
-        "python -m graphene_debrief.cli ingest hook",
+        "python -m graphene_map.cli ingest hook",
     ):
         refused = hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": forged})
         assert "not an agent's to run" in refused["hookSpecificOutput"]["permissionDecisionReason"]

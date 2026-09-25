@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from graphene_debrief import store as store_module
-from graphene_debrief.cli import build
-from graphene_debrief.sources.claude_code import HOOK_EVENTS, project_dir_name
+from graphene_map import store as store_module
+from graphene_map.cli import build
+from graphene_map.sources.claude_code import HOOK_EVENTS, project_dir_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
@@ -60,7 +60,7 @@ def transcript(repo, tmp_path, monkeypatch):
 
 
 def test_version_and_help_read_as_a_product():
-    from graphene_debrief import __version__  # no literal here: a release bumps the package, not this test
+    from graphene_map import __version__  # no literal here: a release bumps the package, not this test
 
     assert f"graphene {__version__}" in run("--version").output
     text = run("--help").output
@@ -81,7 +81,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert not (repo / ".gitignore").exists()  # the store ignores itself; the repo's file is not touched
     assert (repo / ".graphene").exists()  # holding one setting: plan first is on
     assert "already installed" in run("init").output
-    from graphene_debrief.store import Store
+    from graphene_map.store import Store
 
     Store.open(repo).close()  # what the first hook event does
     assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"  # the store ignores itself

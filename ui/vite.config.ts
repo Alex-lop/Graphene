@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   build: {
-    outDir: "../src/graphene_debrief/ui/static",
+    outDir: "../src/graphene_map/ui/static",
     emptyOutDir: true,
     sourcemap: false,
     cssCodeSplit: false,

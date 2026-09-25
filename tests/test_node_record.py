@@ -11,12 +11,12 @@ import subprocess
 
 import pytest
 
-from graphene_debrief import node_record as NR
-from graphene_debrief import plan
-from graphene_debrief.commits import sync_commits
-from graphene_debrief.plan import Caller
-from graphene_debrief.sources.claude_code import hook_main, ingest_hook_event
-from graphene_debrief.store import Store
+from graphene_map import node_record as NR
+from graphene_map import plan
+from graphene_map.commits import sync_commits
+from graphene_map.plan import Caller
+from graphene_map.sources.claude_code import hook_main, ingest_hook_event
+from graphene_map.store import Store
 
 S1 = "aaaa1111-0000-4000-8000-000000000001"
 S2 = "bbbb2222-0000-4000-8000-000000000002"

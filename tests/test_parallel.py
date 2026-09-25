@@ -8,10 +8,10 @@ import sys
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief.plan import DONE, REVIEW, Caller
-from graphene_debrief.run import run_parallel
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.plan import DONE, REVIEW, Caller
+from graphene_map.run import run_parallel
+from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 WORKER = """
@@ -200,7 +200,7 @@ def test_what_a_killed_run_left_behind_does_not_stop_the_next(repo):
 
 
 def test_scopes_that_could_meet_are_kept_apart_even_when_no_tracked_file_shows_it():
-    from graphene_debrief.run import may_collide
+    from graphene_map.run import may_collide
 
     assert may_collide(["**/*.py"], ["src/**"]) and may_collide(["src"], ["src/api/x.py"])
     assert may_collide(["shared.txt", "x.txt"], ["shared.txt"])

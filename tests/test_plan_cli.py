@@ -12,8 +12,8 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
-from graphene_debrief.cli import build
-from graphene_debrief.tui import _cli
+from graphene_map.cli import build
+from graphene_map.tui import _cli
 
 runner = CliRunner()
 AGENT_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "5e55105e-0000-4000-8000-000000000001"}
@@ -186,13 +186,13 @@ def test_a_person_can_drop_a_node_that_is_running_and_a_long_reason_is_cut_in_th
 def test_a_long_scope_and_a_long_title_stay_inside_their_columns(repo):
     """Found by proposing this repo's own next steps: one node with seven globs made every row
     of the plan three hundred columns wide."""
-    globs = [f"src/graphene_debrief/module_{i}.py" for i in range(7)]
+    globs = [f"src/graphene_map/module_{i}.py" for i in range(7)]
     args = [a for g in globs for a in ("--scope", g)]
     person(
         "node", "add", "cut the session card down to a view of one node's record", *args, "--check", "true"
     )
     [row] = [line for line in person("plan").stdout.splitlines() if "  n1  " in line]
-    assert "src/graphene_debrief/module_0.py, +6 more" in row and "a view of one…" in row  # cut at a word
+    assert "src/graphene_map/module_0.py, +6 more" in row and "a view of one…" in row  # cut at a word
     assert len(row) < 140
     assert all(g in person("node", "show", "n1").stdout for g in globs)  # the whole of it is one command away
 
@@ -343,7 +343,7 @@ def test_init_sets_plan_first_on(repo):
 CLI = [
     sys.executable,
     "-c",
-    "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()",
+    "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()",
 ]
 
 

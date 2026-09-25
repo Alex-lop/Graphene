@@ -1116,7 +1116,7 @@ class Watch(App):
         logs = self.root_path / ".graphene" / "runs"
         logs.mkdir(parents=True, exist_ok=True)
         log = logs / f"{argv[0]}-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{len(self.runs)}.txt"
-        cli = "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()"
+        cli = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
         env = {**os.environ, "GRAPHENE_WATCH": "1" if sys.stdin.isatty() else ""}
         with open(log, "w", encoding="utf-8") as sink:
             proc = subprocess.Popen(

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from test_plan_cli import agent, person, repo, runner  # noqa: F401  (fixtures)
 
-from graphene_debrief.cli import build
+from graphene_map.cli import build
 
 TEXT = """\
 goal: users come back with their ids
@@ -173,8 +173,8 @@ def test_a_prompts_leaf_or_a_finished_leaf_does_not_hide_a_typo_in_a_check(repo,
     """Recheck: once a leaf made from a prompt (scope **) was in the plan, every path counted as one a
     leaf may create, and the warning went silent for the whole plan until it was archived. A finished
     leaf's scope creates nothing more either. The warning said "cannot pass" of what is a guess."""
-    from graphene_debrief import plan
-    from graphene_debrief.store import Store
+    from graphene_map import plan
+    from graphene_map.store import Store
 
     alex, old = plan.Caller("alex", True), {"id": "old", "title": "old tests", "scope": ["test/**"]}
     with Store.open(repo) as store:

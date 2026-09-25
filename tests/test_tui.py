@@ -9,9 +9,9 @@ import sys
 
 from test_plan_cli import agent, person, repo  # noqa: F401  (fixtures)
 
-from graphene_debrief import plan
-from graphene_debrief.store import Store
-from graphene_debrief.tui import Watch
+from graphene_map import plan
+from graphene_map.store import Store
+from graphene_map.tui import Watch
 
 TREE = """\
 goal: users come back with their ids
@@ -398,7 +398,7 @@ def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(r
     reaching a parallel run started from another terminal."""
     import subprocess
 
-    from graphene_debrief import run as R
+    from graphene_map import run as R
 
     # its own SIGINT handler: a CI step may start with SIGINT ignored, and a child inherits that
     # (and only after it says so: a SIGINT before that is ignored, which raced on Linux CI)
@@ -431,8 +431,8 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
     proposed(repo)
     child = (
         "import asyncio, subprocess, types\n"
-        "from graphene_debrief import tui\n"
-        "from graphene_debrief.store import Store\n"
+        "from graphene_map import tui\n"
+        "from graphene_map.store import Store\n"
         f"repo = {str(repo)!r}\n"
         "real = subprocess.Popen\n"  # the run is a sleep, so the screen's own git calls stay real
         "tui.subprocess = types.SimpleNamespace(Popen=lambda argv, **kw: real(['sleep', '20'], **kw),\n"
@@ -454,7 +454,7 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
 
 # Recheck 29 (fixed)
 def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, monkeypatch):
-    from graphene_debrief import server
+    from graphene_map import server
 
     served = []
     monkeypatch.setattr(server, "make_server", lambda *a, **k: served.append(a))
@@ -467,7 +467,7 @@ def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, 
 
 # Recheck 30 (fixed)
 def test_a_node_moved_under_a_later_one_is_drawn_under_it(repo):
-    from graphene_debrief.tui import _walk
+    from graphene_map.tui import _walk
 
     proposed(repo)
     person("plan", "accept")
@@ -515,7 +515,7 @@ def test_escape_ends_a_search_so_n_takes_the_offer_again(repo):
 def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
     from test_plan_cli import runner
 
-    from graphene_debrief.cli import build
+    from graphene_map.cli import build
 
     person_proposes = runner.invoke(  # the person's own tree: no planner named, the longest top line
         build(), ["plan", "propose", "-"], env={"GRAPHENE_AS": "person:alex"}, input=TREE
@@ -532,7 +532,7 @@ def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
 # Recheck 36 (fixed)
 def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, monkeypatch):
     proposed(repo)
-    monkeypatch.setattr("graphene_debrief.tui.time.strftime", lambda _: "20260923-040553")  # one second
+    monkeypatch.setattr("graphene_map.tui.time.strftime", lambda _: "20260923-040553")  # one second
 
     async def before(app, pilot):
         app.background(["node", "show", "docs"])
@@ -656,9 +656,9 @@ def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
     import subprocess
     from pathlib import Path
 
-    import graphene_debrief
+    import graphene_map
 
-    root = Path(graphene_debrief.__file__).resolve().parents[2]
+    root = Path(graphene_map.__file__).resolve().parents[2]
     listed = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True)
     held = set(listed.stdout.split())
     links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)", (root / "README.md").read_text(encoding="utf-8"))
@@ -679,7 +679,7 @@ def every_state(repo):
     import subprocess
     import time
 
-    from graphene_debrief.model import ToolEvent
+    from graphene_map.model import ToolEvent
 
     def commit():
         subprocess.run(
@@ -881,7 +881,7 @@ def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
 def test_colour_says_who_has_the_move_and_red_is_only_a_command_that_failed(repo):
     from rich.style import Style
 
-    from graphene_debrief.tui import _walk
+    from graphene_map.tui import _walk
 
     every_state(repo)
     palette = {word: plan.look(word)[1] for word in ("came back", "review", "yours", "running", "proposed")}

@@ -2,6 +2,8 @@
 
 ## Unreleased (after 0.4.0)
 
+- The import package is `graphene_map`, matching the distribution (it was `graphene_debrief`). The command is still `graphene`, and installed hooks keep working. Anything that imported `graphene_debrief` imports `graphene_map`.
+
 Paragraph in, tree out, prune, run.
 - A paragraph typed into a session (240 characters or more) is asked for a tree before any code: the agent proposes it in the plan's text and stops, and its writes wait until a leaf is accepted. A line is still done at once; "just do it" skips the tree, and a short "no plan" lifts a wait. A new session is taught the text whether or not a plan exists yet.
 - The plan as text: `graphene plan --text`; `graphene plan edit [id]` and `graphene node edit <id>` open it in `$EDITOR` and apply what you changed, all or nothing, refusing a line it cannot read by its number; `graphene plan propose -` reads it from an agent (JSON still read) and refuses at once on a terminal with nothing piped; `graphene plan undo`.

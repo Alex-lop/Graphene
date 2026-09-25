@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from graphene_debrief.cli import build
-from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_debrief.sources.claude_code import hook_main, project_dir_name
-from graphene_debrief.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
+from graphene_map.cli import build
+from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
+from graphene_map.sources.claude_code import hook_main, project_dir_name
+from graphene_map.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))

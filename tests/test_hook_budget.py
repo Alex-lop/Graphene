@@ -13,15 +13,15 @@ import sys
 import time
 from pathlib import Path
 
-from graphene_debrief.store import Store
+from graphene_map.store import Store
 
 RUNS = 20
 BUDGET_MS = 150 if os.environ.get("CI") else 60  # a shared CI runner is slower and noisier
-HOOK = [sys.executable, "-c", "from graphene_debrief.cli import app; app()", "ingest", "hook"]
+HOOK = [sys.executable, "-c", "from graphene_map.cli import app; app()", "ingest", "hook"]
 PROBE = """
 import sys
 sys.argv = ["graphene", "ingest", "hook"]
-from graphene_debrief.cli import app
+from graphene_map.cli import app
 try:
     app()
 except SystemExit:
@@ -71,7 +71,7 @@ def test_the_hook_stays_inside_its_time_budget(tmp_path, capsys):
 def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
     """The other hot path: with a plan in force every write is looked up against the node's scope
     before it happens, and the agent waits for that answer too."""
-    from graphene_debrief import plan
+    from graphene_map import plan
 
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
@@ -109,7 +109,7 @@ def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
 def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
     """Plan first adds a path that runs with no plan at all: every prompt of a session that holds no
     leaf is told, and every write it tries before proposing is refused. The agent waits for both."""
-    from graphene_debrief import plan
+    from graphene_map import plan
 
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)

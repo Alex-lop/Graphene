@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief.plan import DONE, OPEN, Caller
-from graphene_debrief.run import command_for, run_plan, summary
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.plan import DONE, OPEN, Caller
+from graphene_map.run import command_for, run_plan, summary
+from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 
@@ -29,7 +29,7 @@ else:
 STUBBORN = "import pathlib; pathlib.Path('schema.py').write_text('again')"
 HANDS_BACK = """
 import os, subprocess, sys
-cli = "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()"
+cli = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
 argv = [sys.executable, "-c", cli, "node", "release", os.environ["GRAPHENE_NODE"], "--why", "needs schema.py"]
 subprocess.run(argv, check=True, env={**os.environ, "GRAPHENE_AS": "agent:script"})
 """
@@ -126,8 +126,8 @@ def test_an_executor_that_is_not_installed_is_one_line_and_the_node_is_handed_ba
 
 GROWER = """
 import pathlib, time
-from graphene_debrief import plan
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.store import Store
 pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
 with Store.open(pathlib.Path(".")) as store:
     more = {"title": "more", "scope": [f"more{time.time_ns()}.py"], "check": "true"}

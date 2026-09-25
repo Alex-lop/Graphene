@@ -13,17 +13,17 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief import run as R
-from graphene_debrief.plan import DONE, OPEN, REVIEW, RUNNING, Caller, Refused
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map import run as R
+from graphene_map.plan import DONE, OPEN, REVIEW, RUNNING, Caller, Refused
+from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 BOT = Caller("claude:aaaa1111", False, "aaaa1111-session")
 CLI = [
     sys.executable,
     "-c",
-    "import sys; from graphene_debrief.cli import app; sys.argv[0] = 'graphene'; app()",
+    "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()",
 ]
 SLOW = """
 import pathlib, sys, time
@@ -321,7 +321,7 @@ def parked(repo, store):
 def test_a_parked_leaf_merged_by_hand_and_signed_off_on_the_page_lets_its_dependant_start(repo):
     """Recheck: the page's sign-off passed no checkout, so where the hand merge landed was never
     recorded and what needs the leaf waited for ever."""
-    from graphene_debrief.server import OPS
+    from graphene_map.server import OPS
 
     with Store.open(repo) as store:
         parked(repo, store)
@@ -336,7 +336,7 @@ def test_signing_off_a_parked_leaf_whose_branch_is_gone_does_not_say_it_was_kept
     the sign-off said "graphene/a is not merged here, so it was kept"."""
     from typer.testing import CliRunner
 
-    from graphene_debrief.cli import build
+    from graphene_map.cli import build
 
     with Store.open(repo) as store:
         tree = parked(repo, store)
@@ -850,7 +850,7 @@ def test_a_persons_edit_asks_git_before_the_write_lock_is_taken(repo, monkeypatc
 
     from typer.testing import CliRunner
 
-    from graphene_debrief.cli import build
+    from graphene_map.cli import build
 
     def person(*args, input=None):
         return CliRunner().invoke(build(), list(args), env={"GRAPHENE_AS": "person:alex"}, input=input)

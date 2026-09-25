@@ -8,9 +8,9 @@ import sys
 import pytest
 from test_plan import ALEX, BOT, repo, store  # noqa: F401  (fixtures)
 
-from graphene_debrief import plan
-from graphene_debrief import plan_text as T
-from graphene_debrief.plan import DONE, DROPPED, OPEN, PROPOSED, Refused
+from graphene_map import plan
+from graphene_map import plan_text as T
+from graphene_map.plan import DONE, DROPPED, OPEN, PROPOSED, Refused
 
 TREE = """\
 goal: customers can download their invoices as PDF

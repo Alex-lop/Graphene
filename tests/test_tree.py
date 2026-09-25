@@ -8,8 +8,8 @@ import json
 import pytest
 from test_plan import ALEX, BOT, git, repo, store  # noqa: F401  (fixtures)
 
-from graphene_debrief import plan
-from graphene_debrief.plan import DONE, DROPPED, OPEN, PROPOSED, REVIEW, Caller, Refused
+from graphene_map import plan
+from graphene_map.plan import DONE, DROPPED, OPEN, PROPOSED, REVIEW, Caller, Refused
 
 TREE = [
     {
@@ -113,7 +113,7 @@ def test_every_executor_is_told_the_path_from_the_root_to_its_leaf(store, repo):
     assert lines[1].strip() == "why:    ship invoices by email before the quarter ends"
     assert lines[2].strip() == "the HTTP surface (api): customers can fetch their invoices"
     assert lines[3].strip().startswith("goal:")
-    from graphene_debrief.run import prompt_for
+    from graphene_map.run import prompt_for
 
     assert "ship invoices by email" in prompt_for(
         plan.get(store, "a"), [], None, plan.trail(store, plan.get(store, "a"))
@@ -200,7 +200,7 @@ def test_a_sub_goal_with_a_sign_off_waits_for_the_person_after_its_leaves(store,
 
 
 def test_the_record_rolls_up_the_same_way_per_subtree_and_per_plan(store, repo):
-    from graphene_debrief.node_record import rolled_up
+    from graphene_map.node_record import rolled_up
 
     plan.propose(store, TREE, ALEX)
     do(store, repo, "a", "src/api/a.txt")
@@ -331,7 +331,7 @@ def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
     for mark in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "CODEX_SESSION_ID", "GRAPHENE_NODE"):
         monkeypatch.delenv(mark, raising=False)
     who = (
-        "import os; from graphene_debrief.plan import caller as c; "
+        "import os; from graphene_map.plan import caller as c; "
         "raise SystemExit(c(dict(os.environ), False).person)"
     )
     ok, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)

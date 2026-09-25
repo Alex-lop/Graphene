@@ -5,9 +5,9 @@ import subprocess
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief.plan import AGENT, DONE, OPEN, PROPOSED, REVIEW, RUNNING, Caller, Refused
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.plan import AGENT, DONE, OPEN, PROPOSED, REVIEW, RUNNING, Caller, Refused
+from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 BOT = Caller("claude:aaaa1111", False, "aaaa1111-session")

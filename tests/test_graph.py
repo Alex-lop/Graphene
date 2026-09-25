@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.graph import BREAK, CAPTION, MARK_CAP, build_graph, to_json
-from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_debrief.record import seconds
-from graphene_debrief.store import Store
+from graphene_map.graph import BREAK, CAPTION, MARK_CAP, build_graph, to_json
+from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
+from graphene_map.record import seconds
+from graphene_map.store import Store
 
 SID = "aaaaaaaa-0000-4000-8000-000000000000"
 ROOT = "/home/dev/project"

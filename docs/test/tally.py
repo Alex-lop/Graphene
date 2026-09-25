@@ -33,7 +33,7 @@ Three things changed after the 20 September run, because the numbers it printed 
    was run with `--output-format json` that file *is* the vendor's JSON object, so the cost is
    recoverable after all. The run log no longer has to carry it.
 
-The scope matcher is Graphene's own (``graphene_debrief.plan.in_scope``), so "outside intent" here
+The scope matcher is Graphene's own (``graphene_map.plan.in_scope``), so "outside intent" here
 means exactly what "outside a node's scope" means to the hook that refuses a write.
 """
 
@@ -49,7 +49,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from graphene_debrief.plan import in_scope  # noqa: E402
+from graphene_map.plan import in_scope  # noqa: E402
 
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 REFUSAL_KINDS = ("denied", "breach", "refused")

@@ -21,7 +21,7 @@ def finish():
     a test that only needs a node finished writes one line inside the first glob of its scope."""
     from pathlib import Path
 
-    from graphene_debrief import plan
+    from graphene_map import plan
 
     def _finish(store, repo, node_id, who, **kwargs):
         node = plan.get(store, node_id)

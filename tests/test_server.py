@@ -9,10 +9,10 @@ import urllib.request
 
 import pytest
 
-from graphene_debrief import plan as P
-from graphene_debrief import server as ui
-from graphene_debrief.model import Prompt, Session, ToolEvent
-from graphene_debrief.store import Store
+from graphene_map import plan as P
+from graphene_map import server as ui
+from graphene_map.model import Prompt, Session, ToolEvent
+from graphene_map.store import Store
 
 SID = "aaaaaaaa-0000-4000-8000-000000000000"
 QUIET = "bbbbbbbb-0000-4000-8000-000000000000"

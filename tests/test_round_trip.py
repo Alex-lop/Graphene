@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.commits import sync_commits
-from graphene_debrief.graph import build_graph, to_json
-from graphene_debrief.sources.claude_code import backfill
-from graphene_debrief.store import Store
+from graphene_map.commits import sync_commits
+from graphene_map.graph import build_graph, to_json
+from graphene_map.sources.claude_code import backfill
+from graphene_map.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))

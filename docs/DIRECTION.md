@@ -399,6 +399,19 @@ left as written and the change is named here.
     `:ask add a --dry-run flag` took the flag for ask's own option; the offers lost their commands at
     120 columns; `graphene watch` spawned by a harness as a person ran with the agent's marks.
 
+## Decisions taken on 2026-09-25 (the Nemotron directive)
+
+Taken by the agent that ran `docs/process/directives/NEMOTRON_DIRECTIVE.md`, each with its evidence.
+Strike any of them. Where one changes a decision above, the old one is left as written and the
+change is named here.
+
+53. **The import package is `graphene_map`, matching the distribution. This changes decision 11's
+    last sentence.** Not `graphene`: that import name belongs to the GraphQL library on PyPI, and a
+    person with both installed gets whichever wins. The command stays `graphene`, so hooks already
+    installed (`graphene ingest hook`) keep working. Dated records (`docs/test/results-*`,
+    `docs/test/findings/`, the diary in `docs/process/`) keep the old name, because they describe
+    what was there then.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files

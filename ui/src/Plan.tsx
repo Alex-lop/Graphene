@@ -1,5 +1,5 @@
 // The plan: what will be done, by whom, inside which paths, and what it waits for. Every position
-// comes from src/graphene_debrief/plan_view.py; the page adds the gutter it draws lane names in and
+// comes from src/graphene_map/plan_view.py; the page adds the gutter it draws lane names in and
 // nothing else. Every control here changes what an agent may do, through one function in plan.py,
 // and where that mechanism stops the sentence saying so is printed next to the control.
 

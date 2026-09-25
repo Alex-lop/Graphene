@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.model import Session, ToolEvent
-from graphene_debrief.sources.claude_code import (
+from graphene_map.model import Session, ToolEvent
+from graphene_map.sources.claude_code import (
     backfill,
     install_hooks,
     is_prompt,
@@ -17,7 +17,7 @@ from graphene_debrief.sources.claude_code import (
     project_dir_name,
     transcripts_for,
 )
-from graphene_debrief.store import Store
+from graphene_map.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
