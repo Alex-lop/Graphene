@@ -238,33 +238,48 @@ def build():
 
     WHO = ("planner", "executor")
 
-    def nemotron() -> tuple[dict[str, str], str | None]:
-        """Nemotron on Token Factory, as a new repo is offered it: Ultra plans; Nano, then Super on a
-        second attempt, do the leaves, in a Sandbox when ConTree is set up here and on this machine
-        otherwise. The ids are the live list's, so a run is reproducible and nothing is guessed. Out of
-        reach it is plain `nemotron`, which finds its models when it runs, and the second value says in
-        one line what could not be reached. Asked once: offline, init must not wait a minute."""
+    def unreadable(command: str) -> str | None:
+        """Why a planner or an executor cannot be started as written (`--with` splits it as a shell does)."""
+        try:
+            shlex.split(command)
+        except ValueError as no:
+            return f"{command!r} cannot be read as a command: {no}"
+        return None
+
+    def nemotron() -> tuple[dict[str, str], str, str | None]:
+        """Nemotron on Token Factory as a new repo is offered it, what that is in words, and what could
+        not be reached, in one line, or None. The ids are the live list's, so a run is reproducible and
+        nothing is guessed: the largest of Ultra and Super plans (as planner.py picks when it runs), and
+        the two smallest listed do the leaves, the second on a second attempt; in a Sandbox when ConTree
+        is set up here, on this machine otherwise. Out of reach it is plain `nemotron`, which finds its
+        models when it runs. Asked once: offline, init must not wait."""
         from . import sandbox
         from . import tokenfactory as tf
 
         unreached = tf.reach(tries=1)
         found = {} if unreached else tf.roles(tf.models(tries=1))
+        plans = [s for s in ("ultra", "super") if s in found][:1]
+        leaves = [s for s in ("nano", "super", "ultra") if s in found][:2]
 
-        def models(*sizes: str) -> str:
-            return "".join(f" --model {shlex.quote(found[s])}" for s in sizes if s in found)
+        def models(sizes: list[str]) -> str:
+            return "".join(f" --model {shlex.quote(found[s])}" for s in sizes)
 
         place = "sandbox" if sandbox.configured() else "local"
-        ladder = f"nemotron{models('nano', 'super')} --placement {place}"
-        return {"planner": f"nemotron{models('ultra')}", "executor": ladder}, unreached
+        ladder = f"nemotron{models(leaves)} --placement {place}"
+        planner = plans[0].title() if plans else "largest"
+        does = " then ".join(s.title() for s in leaves) or "smallest"
+        said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
+        return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached
 
-    def asked_once(offer: dict[str, str], now: dict) -> dict[str, str]:
-        """At a terminal: numbered, Nemotron first and the default. Enter keeps what is set."""
+    def asked_once(offer: dict[str, str], said: str, now: dict) -> dict[str, str]:
+        """At a terminal: numbered, Nemotron first and the default. Enter keeps what is set; a command
+        of your own that cannot be read is said so, and asked again."""
         kept = any(now.values())
         if kept:
             say(" · ".join(f"{k} now: {now[k] or 'claude'}" for k in WHO))
         where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
         say("which planner and executor for this repo?")
-        say("  1  Nemotron on Token Factory: Ultra plans, Nano then Super do the leaves,")
+        say(f"  1  Nemotron on Token Factory: {said},")
         for line in (f"     {where}", "  2  Claude Code", "  3  Codex", "  4  a command of your own"):
             say(line)
         picks = {"1": offer, "2": dict.fromkeys(WHO, "claude"), "3": dict.fromkeys(WHO, "codex"), "4": {}}
@@ -273,27 +288,34 @@ def build():
         ask = "choose (Enter keeps them)" if kept else "choose"
         while (picked := typer.prompt(ask, default="" if kept else "1", show_default=not kept)) not in picks:
             say("choose 1, 2, 3 or 4")
-        if picked == "4":
-            return {k: typer.prompt(f"the {k}, a command that takes the prompt last") for k in WHO}
-        return picks[picked]
+        if picked != "4":
+            return picks[picked]
 
-    def choose(store, given: dict[str, str]) -> str:
-        """The planner and the executor, kept in the store's meta as `--with` reads them. With no flags a
-        terminal is asked; without one, what is set is kept, and what is not gets Nemotron when Token
-        Factory answers, else Claude Code. The flags change only what they name. Returns what is set,
-        in one line."""
+        def readable(command: str) -> str:
+            if why := unreadable(command):
+                raise typer.BadParameter(why)  # the prompt says it and asks again
+            return command
+
+        what = "a command that takes the prompt last"
+        return {k: typer.prompt(f"the {k}, {what}", value_proc=readable) for k in WHO}
+
+    def choose(store, given: dict[str, str], asking: bool) -> str:
+        """The planner and the executor, kept in the store's meta as `--with` reads them. Asking, the
+        person chooses at the terminal; else what is set is kept, and what is not gets Nemotron when
+        Token Factory answers, else Claude Code. The flags change only what they name, and plain
+        `nemotron` among them is the offer, ids and all. Returns what is set, in one line."""
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
-        asking = not given and sys.stdin.isatty() and sys.stdout.isatty()
-        offer, unreached = {}, None
+        offer, said, unreached = {}, "", None
         if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
-            offer, unreached = nemotron()
+            offer, said, unreached = nemotron()
             if unreached:
                 say(unreached)
         if asking:
-            given = asked_once(offer, now)
+            given = asked_once(offer, said, now)
         else:
-            given = {**{k: "claude" if unreached else offer[k] for k in missing}, **given}
+            plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
+            given = {**{k: "claude" if unreached else offer[k] for k in missing}, **given, **plain}
         for k, v in given.items():
             store.set_meta(k, v)
         told = " · ".join(f"{k}: {store.meta(k) or 'claude'}" for k in WHO)
@@ -311,17 +333,18 @@ def build():
 
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not install hooks; that is the person's", 1)
+        who = P.caller()
         given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
         if given:  # they are started as you, with your permissions, and they spend
             try:
-                P._person_only(P.caller(), "choosing the planner and the executor")
+                P._person_only(who, "choosing the planner and the executor")
             except P.Refused as no:
                 fail(str(no), 1)
         for k, v in given.items():
-            try:
-                shlex.split(v)
-            except ValueError as no:
-                fail(f"--{k} {v!r} cannot be read as a command: {no}")
+            if why := unreadable(v):
+                fail(f"--{k} {why}")
+        # an agent is never asked, at a terminal or not: it would be choosing what the person runs
+        asking = not given and who.person and sys.stdin.isatty() and sys.stdout.isatty()
         r = root()
         try:
             added = install_hooks(r)
@@ -337,7 +360,7 @@ def build():
                 store.set_meta("plan_first", "on")
             say("plan first is on: what you ask for in a session becomes a tree before any code "
                 "(`graphene plan first off` turns it off)")  # fmt: skip
-            say(choose(store, given))
+            say(choose(store, given, asking))
         if settings.name == Path(SETTINGS).name:
             say(
                 f"{settings} is your personal settings file (if your team shares .claude/, add that "

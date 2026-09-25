@@ -353,20 +353,29 @@ largest Nemotron the list has; its bill goes into the plan's log.
 ## P4c. Which planner and which executor
 
 `graphene init` chooses both, once per repository, and keeps them in the store's meta (`planner`,
-`executor`), each spelled as `--with` takes it. At a terminal it asks, numbered: Nemotron on Token
-Factory first and the default (Ultra plans; Nano, then Super on a second attempt, do the leaves; in a
-Sandbox when ConTree is set up on the machine, on it otherwise), then Claude Code, Codex, or a command
-of your own; run again, it shows what is set, and Enter keeps it. Without a terminal it takes
-`--planner` and `--executor` and changes only what they name; with neither it keeps what is set, and
-gives what is not Nemotron when Token Factory answers, else Claude Code. Nemotron is written with the
-ids Token Factory's model list gave (`nemotron --model <nano> --model <super> --placement local`,
-`nemotron --model <ultra>`), and as plain `nemotron`, which finds its models when it runs, when the
-list could not be read. Token Factory is asked once, without retrying, and what could not be reached
-(no key, a refused key, no answer, no Nemotron listed) is one line. `run`, `ask` and `node split`
-start what was chosen, and so do the screen's `R`, `:ask` and `s`; `--with` overrides it for one
-command. Choosing is the person's: an agent's `--planner` or `--executor` is refused, since what they
-name runs with the person's permissions and spends on their key. The screen's status line says what
-`R` starts (`R runs 3 ready with nemotron`) where the line has room.
+`executor`), each spelled as `--with` takes it. At a terminal it asks the person, numbered: Nemotron
+on Token Factory first and the default, then Claude Code, Codex, or a command of your own (read as
+`--with` reads one; one that cannot be read is said so and asked again). Run again, it shows what is
+set, and Enter keeps it. Without a terminal it takes `--planner` and `--executor` and changes only
+what they name; with neither it keeps what is set, and gives what is not Nemotron when Token Factory
+answers, else Claude Code.
+
+Nemotron, chosen at the terminal or as plain `nemotron` in a flag, is written with the ids Token
+Factory's model list gave: the largest of Ultra and Super plans (`nemotron --model <ultra>`), as the
+planner picks when it runs, and the two smallest listed do the leaves, the second on a second attempt
+(`nemotron --model <nano> --model <super> --placement local`). The menu names the sizes it found.
+The placement is `sandbox` when ConTree is set up here (`sandbox.configured`: the SDK imports, and
+`NEBIUS_API_KEY` with `NEBIUS_PROJECT_ID`, or a `contree auth` profile), `local` otherwise. When the
+list could not be read it is plain `nemotron`, which finds its models when it runs. Token Factory is
+asked once, with no retry, and a try waits 10 seconds at most (`tokenfactory.LISTED`). What could not
+be reached (no key, a refused key, no answer, no Nemotron listed) is one line.
+
+`run`, `ask` and `node split` start what was chosen, and so do the screen's `R`, `:ask` and `s`;
+`--with` overrides it for one command. Choosing is the person's, since what is chosen runs with the
+person's permissions and spends on their key: an agent's `--planner` or `--executor` is refused, and
+an agent is never asked, at a terminal or not. An agent's plain `graphene init` still fills a choice
+that is not set with the offer above. The screen's status line names what `R` starts (`R runs 3 ready
+with nemotron`) only where the long form still fits with it.
 
 ## P5. Where each mechanism ends
 

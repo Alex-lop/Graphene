@@ -747,7 +747,8 @@ class Watch(App):
     def say_status(self) -> None:
         """Two lines, each fitted at a word: the plan (what waits on the person, the executors, what
         R would start, how much is done, plan first), then the moment (what the last command said,
-        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end."""
+        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end. What
+        R starts, when `graphene init` chose it, is named only where the long form still fits with it."""
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
@@ -758,7 +759,7 @@ class Watch(App):
         long = [
             (f"waiting on you: {c['you']}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
-            (f"R runs {c['ready']} ready{c.get('with', '')}" if c["ready"] else "nothing ready to run", ""),
+            (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
         ]
@@ -769,8 +770,9 @@ class Watch(App):
             (c["done"], ""),
             (f"plan first: {first}", ""),
         ]
-        whole = " · ".join(text for text, _ in long)
-        top = fit(long if len(whole) <= room else short, room)
+        named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
+        fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
+        top = fit(fits[0] if fits else short, room)
         said = self.busy or self.message
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))

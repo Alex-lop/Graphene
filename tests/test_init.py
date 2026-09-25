@@ -8,13 +8,14 @@ import importlib.util
 import os
 import pty
 import select
+import socket
 import subprocess
 import sys
 import time
 import types
 
 import pytest
-from fake_tokenfactory import Fake
+from fake_tokenfactory import MODELS, Fake
 from test_plan_cli import AGENT_ENV, CLI, person, repo, runner  # noqa: F401  (fixtures)
 
 from graphene_map import sandbox
@@ -45,16 +46,18 @@ def chosen(repo) -> dict:
         return {k: store.meta(k) for k in ("planner", "executor")}
 
 
-def at_terminal(repo, args, *answers) -> str:
-    """The CLI at a terminal (a pty), answering each question when it has asked it and gone quiet."""
+def at_terminal(repo, args, *answers, env=None) -> str:
+    """The CLI at a terminal (a pty), answering each question when it has asked it and gone quiet. A
+    question beyond the answers given gets end-of-input (Ctrl-D), so the command fails."""
     main, tty = pty.openpty()
-    proc = subprocess.Popen([*CLI, *args], cwd=repo, stdin=tty, stdout=tty, stderr=tty)
+    env = {**os.environ, **(env or {})}
+    proc = subprocess.Popen([*CLI, *args], cwd=repo, stdin=tty, stdout=tty, stderr=tty, env=env)
     os.close(tty)
     said, since, left, deadline = b"", b"", list(answers), time.monotonic() + 60
     while time.monotonic() < deadline:
         if not select.select([main], [], [], 0.3)[0]:
-            if left and since.endswith(b": "):
-                os.write(main, left.pop(0).encode() + b"\n")
+            if since.endswith(b": "):
+                os.write(main, left.pop(0).encode() + b"\n" if left else b"\x04")
                 since = b""
             continue
         try:
@@ -85,13 +88,31 @@ def test_at_a_terminal_nemotron_is_offered_first_and_written_with_the_ids_the_li
     flat = " ".join(said.split())  # a terminal wraps a long line at a word
     assert f"planner: nemotron --model {ULTRA} · executor: nemotron --model {NANO}" in flat
     assert (repo / ".claude" / "settings.local.json").exists()  # the hooks, as before
-    again = at_terminal(repo, ["init"], "4", "claude", "codex")  # asked again, with what is set shown
+    again = at_terminal(repo, ["init"], "4", "'unclosed", "claude", "codex")  # asked again, with what is set
+    assert "Error: \"'unclosed\" cannot be read as a command: No closing quotation" in again  # and again
     flat = " ".join(again.split())
     assert f"planner now: nemotron --model {ULTRA} · executor now: nemotron --model {NANO}" in flat
     assert "choose (Enter keeps them): " in again
     assert chosen(repo) == {"planner": "claude", "executor": "codex"}
     at_terminal(repo, ["init"], "")  # Enter keeps them
     assert chosen(repo) == {"planner": "claude", "executor": "codex"}
+
+
+def test_the_offer_names_the_sizes_the_list_has_and_writes_their_ids(repo, fake):
+    fake.models = [m for m in MODELS if "Ultra" not in m["id"]]
+    said = at_terminal(repo, ["init"], "")
+    assert "  1  Nemotron on Token Factory: Super plans, Nano then Super do the leaves,\n" in said
+    assert chosen(repo) == {"planner": f"nemotron --model {SUPER}", "executor": NEMOTRON["executor"]}
+    fake.models = [m for m in MODELS if "Nemotron" not in m["id"]]
+    said = at_terminal(repo, ["init"], "1")
+    assert "Token Factory lists no NVIDIA Nemotron model for this key\n" in said
+    assert "  1  Nemotron on Token Factory: largest plans, smallest does the leaves,\n" in said
+    assert chosen(repo) == {"planner": "nemotron", "executor": "nemotron --placement local"}
+
+
+def test_plain_nemotron_in_the_flags_is_the_offer_with_the_ids_the_list_gave(repo, fake):
+    assert person("init", "--planner", "nemotron", "--executor", "nemotron").exit_code == 0
+    assert chosen(repo) == NEMOTRON
 
 
 def test_without_a_terminal_the_flags_choose_and_change_only_what_they_name(repo):
@@ -145,6 +166,22 @@ def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo,
     assert "Token Factory answered 502 to GET /models: <html> <h1>Bad Gateway</h1>\n" in said.output
 
 
+def test_init_waits_seconds_not_a_minute_on_an_endpoint_that_never_answers(repo, monkeypatch):
+    with socket.socket() as hole:
+        hole.bind(("127.0.0.1", 0))
+        hole.listen()  # the connection is taken; nothing is ever read or answered
+        monkeypatch.setenv("NEBIUS_API_KEY", "a-key")
+        monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", f"http://127.0.0.1:{hole.getsockname()[1]}/v1/")
+        monkeypatch.setattr(tf, "LISTED", 1)
+        tf._listed.cache_clear()
+        began = time.monotonic()
+        said = person("init")
+        assert time.monotonic() - began < 10
+    [line] = [line for line in said.output.splitlines() if "Token Factory" in line]
+    assert line.startswith("Token Factory could not be reached at http://127.0.0.1:") and "timed out" in line
+    assert chosen(repo) == {"planner": "claude", "executor": "claude"}
+
+
 def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, monkeypatch, tmp_path):
     if importlib.util.find_spec("contree_sdk") is None:  # the `sandbox` extra is not installed here
         monkeypatch.setitem(sys.modules, "contree_sdk", types.ModuleType("contree_sdk"))
@@ -166,6 +203,9 @@ def test_an_agent_does_not_choose_what_the_person_runs(repo):
     assert said.stderr.startswith("choosing the planner and the executor is the person's to do")
     assert chosen(repo) == {"planner": None, "executor": None}
     assert not (repo / ".claude").exists()  # refused before anything was installed
+    said = at_terminal(repo, ["init"], env=AGENT_ENV)  # at a terminal: not asked (a question gets Ctrl-D)
+    assert "which planner and executor" not in said
+    assert chosen(repo) == {"planner": "claude", "executor": "claude"}  # no key: what a script gets
 
 
 WHO = """
@@ -221,5 +261,8 @@ def test_the_status_line_says_what_r_starts_when_init_chose_it(repo):
     assert person("init", "--executor", f"nemotron --model {NANO}").exit_code == 0
     seen, _ = watch(repo, [], size=(120, 36))
     assert "R runs 1 ready with nemotron · " in seen["status"] and "planner" not in seen["status"]
+    for width in (90, 96):  # no room for its name: the long form stays, without it
+        mid, _ = watch(repo, [], size=(width, 30))
+        assert "waiting on you: 0 · executors: none · R runs 1 ready · 0/1 done" in mid["status"]
     narrow, _ = watch(repo, [], size=(80, 24))
     assert "R: 1 ready · " in narrow["status"]  # at 80 columns the short form, unchanged

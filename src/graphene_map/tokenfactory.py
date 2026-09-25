@@ -28,6 +28,7 @@ BASE = "https://api.tokenfactory.nebius.com/v1/"
 KEY = "NEBIUS_API_KEY"
 TRIES = 6  # a 429 or a 5xx is tried again, waiting what the server asks or twice as long each time
 TIMEOUT = 300  # seconds for one completion: a long reasoning answer from the largest model takes minutes
+LISTED = 10  # seconds a try at the model list waits for an answer: offline, init must not wait a minute
 
 
 class Unreachable(Exception):
@@ -85,7 +86,7 @@ def _request(
 
 @lru_cache(maxsize=4)
 def _listed(url: str, tries: int = TRIES) -> tuple[Model, ...]:
-    said, _ = _request("GET", "models?verbose=true", tries=tries)
+    said, _ = _request("GET", "models?verbose=true", timeout=LISTED, tries=tries)
     out = []
     for m in said.get("data") or []:
         price = m.get("pricing") or {}
