@@ -562,7 +562,6 @@ class Watch(App):
         self.anchor: int | None = None  # the line visual selection started on
         self.shape: object = None  # what the tree was last built from: rebuilt only when it changed
         self.runs: list[subprocess.Popen] = []
-        self.first = True
         self.known: set[str] = set()
         self.complete: set[str] = set()  # the sub-goals whose leaves were all done when the tree was built
         self.files: list[str] = []  # what git tracks, for the check that names a missing file
@@ -700,13 +699,13 @@ class Watch(App):
         sub-goal says whether anything in it is the person's move without being opened."""
         tree = self.tree
         shut = {t.data for t in [tree.root, *_walk(tree.root)] if t.allow_expand and not t.is_expanded}
-        goals = P.kids(nodes)  # a leaf with only proposals drawn under it keeps its own word
+        goals = P.kids(nodes)  # a leaf with a proposal under it is a leaf: counted, and folded keeps its word
 
         def folded(node_id: str | None) -> str:
-            if node_id not in shut or (node_id is not None and not goals.get(node_id)):
+            if node_id not in shut or not goals.get(node_id):
                 return ""
             below = nodes if node_id is None else P.below(node_id, nodes)
-            return inside([self.words[c.id] for c in below if not under.get(c.id)])
+            return inside([self.words[c.id] for c in below if not goals.get(c.id)])
 
         rows = {
             n.id: (P.look(w := self.words[n.id])[0], w, n.title, n.id, bool(under.get(n.id)), folded(n.id))
@@ -724,7 +723,7 @@ class Watch(App):
         """At 110 columns and more the tree is as wide as its rows need, and the node pane has the
         rest (never less than PANE); below that the tree is as tall as its rows, up to half the
         screen, and the node pane has what is left under it."""
-        tree, width, height = self.tree, self.size.width, self.size.height
+        tree, width = self.tree, self.size.width
         if not width:
             return
         by_id = {n.id: n for n in nodes}
@@ -737,12 +736,18 @@ class Watch(App):
             sized = ("wide", max(30, min(need, width - PANE - 3)))
         else:
             lines = tree.last_line + 1 if tree.show_root else 0
-            sized = ("narrow", max(3, min(lines, (height - 3) // 2)))
+            sized = ("narrow", max(3, min(lines, self.tree_room())))
         if sized != self.sized:
             self.sized = sized
             kind, amount = sized
             tree.styles.width = amount if kind == "wide" else None
             tree.styles.height = amount if kind == "narrow" else None
+
+    def tree_room(self) -> int:
+        """The rows the tree may take: the screen less its top line and the two at the bottom, and
+        below 110 columns half of that, the node pane under it."""
+        rows = self.size.height - 3
+        return rows if self.size.width >= WIDE else max(3, rows // 2)
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
@@ -759,7 +764,7 @@ class Watch(App):
         was_open = {n.data for n in _walk(tree.root) if n.is_expanded}
         cursor, at_goal = self.selected(), tree.cursor_node is tree.root
         tree.clear()
-        placed, finished = {}, set()
+        placed, finished, new = {}, set(), []
         by_id = {n.id: n for n in nodes}
         queue = [n for n in nodes if n.parent not in by_id]  # the tops, then each one's children
         while queue:
@@ -773,12 +778,14 @@ class Watch(App):
             moved = node.id not in self.known or (node.id in finished) != (node.id in self.complete)
             opened = node.id not in finished if moved else node.id in was_open
             placed[node.id] = parent.add(Text(node.title), data=node.id, expand=opened, allow_expand=has_kids)
+            if node.id not in self.known:
+                new.append(placed[node.id])
             queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
         tree.root.allow_expand = bool(nodes)
+        if self.shape is None:
+            tree.root.expand()  # the goal's row starts open
         self.known, self.complete = {n.id for n in nodes}, finished
-        if self.first:
-            self.fold_as_opened()
-        self.first = False
+        self.outline(new)  # when the screen opens every node is new; later, what a planner adds
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
         if cursor in placed and not at_goal:
             tree.cursor_line = placed[cursor].line
@@ -786,10 +793,21 @@ class Watch(App):
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
 
+    def outline(self, among: list) -> None:
+        """A tree taller than its pane folds the sub-goals ``among`` to one row each, which counts what
+        is inside (a thirty-leaf plan at 80x24). A leaf with a proposal under it stays open: the
+        proposal is the person's move."""
+        if self.tree.last_line + 1 <= self.tree_room():
+            return
+        goals = P.kids(self.nodes)
+        with self.prevent(Tree.NodeExpanded, Tree.NodeCollapsed):  # one redraw after, not one a node
+            for node in among:
+                if goals.get(node.data):
+                    node.collapse()
+
     def fold_as_opened(self) -> None:
         """The folds the tree opens with, and zx puts back: a subtree whose leaves are all done is
-        folded, the rest is open; a tree still taller than the screen is folded to its outline, each
-        sub-goal under the goal one row that counts what is inside (a thirty-leaf plan at 80x24).
+        folded, the rest is open, and a tree still taller than its pane is folded to its outline.
         Then, as vim's zx does, the row under the cursor is shown."""
         tree, cursor = self.tree, self.tree.cursor_node
         with self.prevent(Tree.NodeExpanded, Tree.NodeCollapsed):  # one redraw after, not one a node
@@ -797,9 +815,7 @@ class Watch(App):
                 if node.allow_expand:
                     (node.collapse if node.data in self.complete else node.expand)()
             tree.root.expand()
-            if tree.last_line + 1 > self.size.height - 3:
-                for top in tree.root.children:
-                    top.collapse_all()
+            self.outline(list(_walk(tree.root)))
             up = cursor.parent if cursor is not None else None
             while up is not None:
                 up.expand()

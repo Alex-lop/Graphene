@@ -1,4 +1,6 @@
-"""plan30.py <dir>: a thirty-leaf plan, mid-run, in a fresh git repository at <dir>.
+"""plan30.py <dir> [goal|arrive|late]: a thirty-leaf plan, mid-run, in a fresh git repository at <dir>.
+`goal` stops once the goal is set; `arrive` does the rest into the repository `goal` made, for a
+screen already open on it; `late` goes on to finish the report, which leaves a tree of 21 rows.
 
 Six sub-goals: two finished (6 and 5 leaves), one with a leaf that came back, a running one, a
 proposal and one waiting; one with a review, a running leaf and two ready; one ready, waiting and
@@ -10,7 +12,9 @@ The screens beside this file were taken from it with the polish run's harness
 started with SOCKS=/tmp/graphene-fold/mux: `python plan30.py /tmp/graphene-fold/feeds`, a copy of it
 kept as the snapshot, then `shoot.py <before|after> <graphene> <snapshot> <name> <keys>` for each
 name: f01-opens (no key), f02-zM, f03-zR-zx, f04-folded-row (/reader), f05-came-back (/came back),
-f06-zo (/validate, zo). The before ran af03827's src (git archive), the after this branch."""
+f06-zo (/validate, zo). The before ran af03827's src (git archive), the after this branch.
+f07-late was taken the same way from `late`; f08-arrives opened the screen on `goal` and ran
+`arrive` into it five seconds later, the screen taken fifteen seconds after that."""
 
 import os
 import subprocess
@@ -22,7 +26,7 @@ from graphene_map import plan
 from graphene_map.store import Store
 
 root = Path(sys.argv[1])
-root.mkdir(parents=True)
+mode = sys.argv[2] if len(sys.argv) > 2 else ""
 os.environ["USER"] = "alex"
 
 
@@ -35,15 +39,20 @@ def git(*args):
     )
 
 
-git("init", "-q", "-b", "main")
-(root / "README.md").write_text("feeds\n")
-(root / ".gitignore").write_text(".graphene/\n")
-git("add", "-A")
-git("commit", "-qm", "start")
-
 alex = plan.Caller("alex", True)
 RUN = plan.Caller("run:nemotron", False, "7e1f00aa-run-session")
 SESSION = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+if mode != "arrive":
+    root.mkdir(parents=True)
+    git("init", "-q", "-b", "main")
+    (root / "README.md").write_text("feeds\n")
+    (root / ".gitignore").write_text(".graphene/\n")
+    git("add", "-A")
+    git("commit", "-qm", "start")
+    with Store.open(root) as store:
+        plan.set_goal(store, "csv feeds import cleanly, and every bad row is named with its line", alex)
+if mode == "goal":
+    sys.exit(0)
 
 
 def leaf(i, title, parent, **more):
@@ -51,7 +60,6 @@ def leaf(i, title, parent, **more):
 
 
 with Store.open(root) as store:
-    plan.set_goal(store, "csv feeds import cleanly, and every bad row is named with its line", alex)
     plan.propose(store, [
         {"id": "reader", "title": "read every feed as rows"},
         leaf("csv-open", "open a feed whatever its encoding", "reader"),
@@ -139,6 +147,14 @@ with Store.open(root) as store:
         leaf("d-dialects", "which dialects we read, with an example of each", "docs"),
         leaf("d-report", "how to read the bad rows report", "docs"),
     ], SESSION)  # fmt: skip
+    if mode == "late":
+        plan.signoff(store, "r-format", alex, checkout=root)
+        (root / "feeds" / "r-json.py").write_text("# r-json\n")
+        plan.finish(store, "r-json", RUN, checkout=root)
+        git("add", "-A")
+        git("commit", "-qm", "r-json")
+        done("r-email")
+        done("r-limit")
     time.sleep(0.1)
 
 with Store.open(root) as store:

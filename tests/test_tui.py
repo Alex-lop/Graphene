@@ -750,9 +750,9 @@ def test_every_row_reads_in_one_grammar_at_80_and_120(repo):
     words = {"api": "0/5 done", "ids": "running", "docs": "came back", "more": "waiting",
              "later": "to fill in", "mine": "yours", "schema": "1/3 done", "rule": "review", "table": "done",
              "ready1": "ready", "idea": "proposed"}  # fmt: skip
-    for size in SIZES:
-        seen, app = watch(repo, [], size=size)
-        end, _ = watch(repo, ["G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
+    for size in SIZES:  # all open: at 80x24 its twelve rows are taller than the pane, and fold
+        seen, app = watch(repo, ["z", "R"], size=size)
+        end, _ = watch(repo, ["z", "R", "G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
         rows = [r.rstrip() for r in [*seen["tree"], *end["tree"]] if r.strip()]
         assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/8 done"), rows
         mine = {i: next(r for r in rows if f"  {i} " in r + " ") for i in words}
@@ -1190,7 +1190,7 @@ def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopene
         app.tree.move_cursor(api())
         for key in ("z", "o"):
             await pilot.press(key)
-        await then(lambda s: None)
+        await then(lambda s: plan.start(s, "schema", RUN, repo))  # something else moves: a rebuild
         assert api().is_expanded  # the person opened it: it stays open
 
     watch(repo, [], before=before)
@@ -1207,19 +1207,25 @@ def test_zx_folds_as_the_screen_opened_and_keeps_the_cursor_in_sight(repo):
     assert seen["cursor"] == "ids" and any("users returns ids" in r for r in rows_of(seen))
 
 
+def six_parts(store, by=None, parts=range(6)):
+    """The goal, and sub-goals of five leaves each: accepted when a person proposes them, else the
+    planner's tree, proposed."""
+    alex = plan.Caller("alex", True)
+    plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
+    plan.propose(store, [
+        item
+        for s in parts
+        for item in ({"id": f"s{s}", "title": f"the part number {s} of the importer"}, *(
+            {"id": f"s{s}-{k}", "title": f"leaf {k} of part {s}", "parent": f"s{s}",
+             "scope": [f"f{s}{k}.py"], "check": "true"} for k in range(5)))
+    ], by or alex)  # fmt: skip
+
+
 def thirty(repo):
     """Six sub-goals of five leaves: one finished, one with a leaf that came back, one with a
     proposal under it, three ready."""
-    alex = plan.Caller("alex", True)
     with Store.open(repo) as store:
-        plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
-        plan.propose(store, [
-            item
-            for s in range(6)
-            for item in ({"id": f"s{s}", "title": f"the part number {s} of the importer"}, *(
-                {"id": f"s{s}-{k}", "title": f"leaf {k} of part {s}", "parent": f"s{s}",
-                 "scope": [f"f{s}{k}.py"], "check": "true"} for k in range(5)))
-        ], alex)  # fmt: skip
+        six_parts(store)
         for k in range(5):
             land(repo, store, f"s0-{k}", f"f0{k}.py", "x\n")
         plan.start(store, "s1-0", SESSION, repo)
@@ -1246,6 +1252,75 @@ def test_a_thirty_leaf_plan_reads_at_80x24_as_its_outline(repo):
     rows = rows_of(wide)
     assert len(rows) == 1 + 6 + 5 * 5 + 1 and any("leaf 0 of part 1" in r for r in rows)
     assert next(r for r in rows if "  s0 " in r).endswith("  5 done")
+
+
+def test_the_outline_is_measured_against_the_tree_pane_not_the_screen(repo):
+    """The outline's rule compared the tree with the whole screen (21 rows at 80x24), but below 110
+    columns the tree has half of it (10 rows): thirty leaves with four parts done are 17 rows, and the
+    leaf that came back, in the last part, opened out of sight."""
+    with Store.open(repo) as store:
+        six_parts(store)
+        for s in range(4):
+            for k in range(5):
+                land(repo, store, f"s{s}-{k}", f"f{s}{k}.py", "x\n")
+        plan.start(store, "s5-4", SESSION, repo)
+        plan.release(store, "s5-4", SESSION, "it needs the sku table, which is outside its scope")
+    seen, _ = watch(repo, [])
+    rows = rows_of(seen)
+    assert len(rows) == 7 and rows[-1].endswith("  1 came back, 4 ready"), rows
+    wide, _ = watch(repo, [], size=(120, 36))  # 17 rows fit its 33: only the finished parts fold
+    rows = rows_of(wide)
+    assert len(rows) == 17 and rows[-1].endswith("  came back"), rows
+
+
+def test_a_plan_that_arrives_while_the_screen_is_open_reads_as_it_would_have_opened(repo):
+    """The outline was drawn only when the screen opened: a plan landing on an open screen (the
+    planner's, the demo's) came in whole, ten rows of 33 in sight at 80x24. A sub-goal that arrives in
+    a tree taller than its pane comes in folded; one the person opened stays open."""
+    from graphene_map.tui import _walk
+
+    alex = plan.Caller("alex", True)
+    with Store.open(repo) as store:
+        plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
+
+    async def arrive(app, pilot):
+        thirty(repo)
+        app.refresh_plan()
+        await pilot.pause()
+
+    seen, _ = watch(repo, [], before=arrive)
+    fresh, _ = watch(repo, [])
+    assert rows_of(seen) == rows_of(fresh) and len(rows_of(seen)) == 7, rows_of(seen)
+    got = {}
+
+    async def grow(app, pilot):
+        for key in ["slash", *"s1", "enter", "escape", "z", "o"]:  # the part with the leaf that came back
+            await pilot.press(key)
+        with Store.open(repo) as store:
+            six_parts(store, SESSION, parts=[6])  # the planner proposes one part more
+        app.refresh_plan()
+        await pilot.pause()
+        got.update({n.data: n.is_expanded for n in _walk(app.tree.root) if n.data in ("s1", "s6")})
+        got["s6 says"] = app.tree.rows["s6"][5]  # below the pane's last row: what its row reads
+
+    watch(repo, [], before=grow)
+    assert got == {"s1": True, "s6": False, "s6 says": "5 proposed"}
+
+
+def test_a_leaf_with_a_proposal_under_it_is_counted_and_shown_as_the_leaf_it_is(repo):
+    """A leaf with an executor's proposal under it (`node add --parent`) is still a leaf. Its folded
+    sub-goal left it out of the count, and said `1 proposed, 4 ready` of a part whose leaf came back;
+    and the outline folded the leaf too, so opening its sub-goal still hid the proposal."""
+    thirty(repo)
+    with Store.open(repo) as store:
+        plan.start(store, "s3-0", SESSION, repo)
+        plan.propose(store, [{"id": "s3-0a", "title": "the sku table first", "parent": "s3-0",
+                              "scope": ["sku.py"], "check": "true"}], SESSION)  # fmt: skip
+        plan.release(store, "s3-0", SESSION, "it needs the sku table, proposed under it")
+    seen, _ = watch(repo, [])
+    assert next(r for r in rows_of(seen) if "  s3 " in r).endswith("  1 came back, 5 more")
+    seen, _ = at(repo, "s3", (80, 24), keys=["z", "o"])
+    assert any("  s3-0a " in r and r.endswith("  proposed") for r in rows_of(seen)), rows_of(seen)
 
 
 def test_help_lists_the_fold_keys(repo):
