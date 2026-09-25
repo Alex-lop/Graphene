@@ -811,21 +811,95 @@ def test_a_check_git_cannot_make_a_worktree_for_is_a_failed_check_and_not_a_cras
     assert plan.get(store, "n1").state == RUNNING and no_check_tree_left(store, repo)
 
 
-def test_a_check_finds_what_git_ignores_in_the_checkout_as_its_environment(store, repo):
-    """A .venv or node_modules is not in the leaf's state as git sees it; it is linked in from the
-    checkout, so `.venv/bin/pytest` or `npm test` still runs. What git ignores, git never counts."""
+def test_what_git_ignores_is_not_in_the_checks_worktree_and_the_check_cannot_change_it(store, repo):
+    """A .venv linked into the check's worktree from the checkout was the check's to change: `uv run`
+    there re-installed the project into it, which left the checkout's .venv pointing at a worktree
+    that was then deleted; and git counted the link as a new file, so a check that wants a clean
+    `git status` failed there and passed in the checkout. The check makes its own environment."""
     (repo / ".gitignore").write_text(".venv/\n")
     git(repo, "add", ".gitignore")
     git(repo, "commit", "-qm", "ignore the environment")
-    (repo / ".venv/bin").mkdir(parents=True)
-    (repo / ".venv/bin/tool").write_text("#!/bin/sh\necho ran > .venv/ran\n")
-    (repo / ".venv/bin/tool").chmod(0o755)
-    plan.propose(store, [api_node(check=".venv/bin/tool && grep -q 'return \\[1\\]' src/api/users.py")], ALEX)
+    (repo / ".venv").mkdir()
+    (repo / ".venv/project").write_text(f"{repo}\n")  # where an editable install says the project is
+    check = 'test -z "$(git status --porcelain)" && test ! -e .venv && mkdir .venv && pwd > .venv/project'
+    plan.propose(store, [api_node(check=check)], ALEX)
     plan.start(store, "n1", BOT, repo)
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
     assert plan.finish(store, "n1", BOT).state == DONE
-    assert (repo / ".venv/ran").read_text() == "ran\n"  # written through the link, where git never looks
-    assert store.node_log("n1", ("finished",))[0]["detail"]["changed"] == ["src/api/users.py"]
+    assert (repo / ".venv/project").read_text() == f"{repo}\n" and no_check_tree_left(store, repo)
+
+
+def test_a_check_runs_none_of_the_persons_git_hooks(store, repo):
+    """Making the check's worktree ran the person's post-checkout hook, once a check, and a hook that
+    failed made every check "could not be run": the check's result is the check's own."""
+    ran = repo / ".git" / "hook.ran"
+    (repo / ".git/hooks").mkdir(exist_ok=True)
+    (repo / ".git/hooks/post-checkout").write_text(f"#!/bin/sh\ntouch {ran}\nexit 1\n")
+    (repo / ".git/hooks/post-checkout").chmod(0o755)
+    assert plan.run_check("true", repo) == (True, "exit 0, no output", [])
+    assert not ran.exists() and no_check_tree_left(store, repo)
+
+
+def slow_checkout(repo, said) -> None:
+    """Every checkout of the repo now takes a second and a half, and then writes ``said``: a stand-in
+    for a repository large enough that making a worktree takes a while (300,000 files: 39 s)."""
+    (repo / ".gitattributes").write_text("*.slow filter=slow\n")
+    (repo / "a.slow").write_text("slow\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "slow")
+    git(repo, "config", "filter.slow.smudge", f"sleep 1.5; touch {said}; cat")
+
+
+def test_the_checks_time_limit_covers_making_its_worktree_and_what_git_started_ends_with_it(
+    store, repo, monkeypatch
+):
+    """Making the worktree was held to a cap of git's own (30 s), apart from the check's: on a large
+    repository a check that passes was refused as "could not be run". Killed at that cap, git left
+    its worktree registered and locked, and the `git reset` it had started wrote on after the call."""
+    checked_out = repo / ".git" / "checked-out"
+    slow_checkout(repo, checked_out)
+    monkeypatch.setattr(plan, "CHECK_TIMEOUT", 0.5)
+    assert plan.run_check("true", repo) == (False, "timed out after 0.5 s", [])
+    time.sleep(2)  # longer than the checkout would have taken
+    assert not checked_out.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_run_stopped_while_the_checks_worktree_is_made_stops_the_check(store, repo):
+    """A stop (``end_checks``) that came while git made the check's worktree was lost: nothing was
+    running yet for it to end, and the check ran to its end after the stop, and could pass."""
+    checked_out, ran = repo / ".git" / "checked-out", repo / ".git" / "check.ran"
+    slow_checkout(repo, checked_out)
+
+    def stop_it():  # once git is writing the worktree
+        until = time.monotonic() + 20
+        while not list(repo.glob(".graphene/worktrees/.check-*/tree/.git")) and time.monotonic() < until:
+            time.sleep(0.01)
+        plan.end_checks()
+
+    threading.Thread(target=stop_it).start()
+    with pytest.raises(KeyboardInterrupt):
+        plan.run_check(f"touch {ran}", repo)
+    time.sleep(2)
+    assert not ran.exists() and not checked_out.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_stop_between_two_steps_of_making_the_worktree_stops_the_check(store, repo, monkeypatch):
+    """A stop that comes while no step of the check is running, between two of git's, still stops it."""
+    ran, real = repo / ".git" / "check.ran", plan.head
+
+    def stopped_meanwhile(checkout):
+        plan.end_checks()
+        return real(checkout)
+
+    monkeypatch.setattr(plan, "head", stopped_meanwhile)
+    with pytest.raises(KeyboardInterrupt):
+        plan.run_check(f"touch {ran}", repo)
+    assert not ran.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_check_begun_after_a_stop_runs(store, repo):
+    plan.end_checks()
+    assert plan.run_check("true", repo)[0]
 
 
 def test_a_tracked_file_outside_the_scope_is_refused_before_the_check_runs(store, repo, monkeypatch):

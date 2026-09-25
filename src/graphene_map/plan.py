@@ -19,6 +19,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -448,13 +449,12 @@ def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]
 # -- git: what changed since a node was started -------------------------------------------------------
 
 
-def _git(checkout: str | Path, *args: str, index: Path | None = None, given: str | None = None) -> str:
-    # no call here takes the checkout's index lock (a read asks for none, and ``index`` is one of the
-    # caller's own): with leaves in worktrees of their own, one node's look at the other trees (`git
-    # status`) met another's commit and broke it
-    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
+def _git(checkout: str | Path, *args: str) -> str:
+    # every call here is a read, and a read must not take the index lock: with leaves in worktrees of
+    # their own, one node's look at the other trees (`git status`) met another's commit and broke it
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     out = subprocess.run(
-        ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env, input=given
+        ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env
     )
     if out.returncode != 0:
         raise Refused(f"git {' '.join(args)} failed in {checkout}: {out.stderr.strip()[:200]}")
@@ -558,20 +558,73 @@ def ctrl_c_on_hangup():
             signal.signal(sig, handler)
 
 
-_checks: set[subprocess.Popen] = set()  # the checks running now; a run that is stopped ends them
+_checks: set[subprocess.Popen] = set()  # what the checks are running now; a run that is stopped ends it
+_stopped = float("-inf")  # when a run last ended its checks: every check begun before is stopped
+
+
+def _ended(
+    args: str | list[str], cwd: str | Path, env: dict, began: float, given: str | None = None
+) -> tuple[int, str, str]:
+    """Run a step of the check begun at ``began`` (the check itself, a string bash runs, or one of
+    git's, a list): its exit code and what it said on stdout and on stderr. It runs in a session of
+    its own and is ended with everything it started when the check's time is up (TimeoutExpired), on
+    a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says
+    nothing of the work, so it is not taken as a result (KeyboardInterrupt), whether the stop came
+    while it ran or before it started. Killing bash alone had left its `sleep` running; killing git
+    alone left the `git reset` it had started writing a worktree after the check was over; a stop
+    that came while the worktree was being made was lost, and the check ran to its end; and a
+    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    shell = isinstance(args, str)
+    with subprocess.Popen(
+        args,
+        shell=shell,
+        executable=BASH if shell else None,  # people write bash (`[[ ]]`, `set -o pipefail`); else sh
+        cwd=cwd,
+        stdin=None if given is None else subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        _checks.add(proc)
+        try:
+            if began <= _stopped:
+                _end_check(proc)
+            out, err = proc.communicate(given, timeout=max(began + CHECK_TIMEOUT - time.monotonic(), 0))
+        except BaseException:
+            _end_check(proc)
+            raise
+        finally:
+            _checks.discard(proc)
+    if began <= _stopped:
+        raise KeyboardInterrupt
+    return proc.returncode, out, err
 
 
 @contextmanager
-def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple = ()):
+def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float):
     """A worktree of ``checkout`` as git sees it now, whether committed or not (what it tracks, as it
     is on disk, and the new files it does not ignore), but for ``leave_out``: cut from a commit on no
     branch, under the run's own worktrees (which ``elsewhere`` never asks about), and removed when
-    the block ends, however it ends. What git ignores (a .venv, node_modules, .env) is linked in from
-    the checkout: it is the check's environment, not the leaf's work, and git counts nothing there."""
+    the block ends, however it ends. Making it is a part of the check (``_ended``: its time, its stop)
+    and runs none of the person's git hooks (a post-checkout hook that failed made every check "could
+    not be run"). What git ignores is not there: a .venv linked in from the checkout was the check's
+    to change, and `uv run` in the worktree re-installed the project into it, pointing the checkout's
+    .venv at a worktree that was then deleted."""
     import shutil  # here: the hook imports this module on every event and never runs a check
     import tempfile
 
-    common, had = _git(checkout, "rev-parse", "--git-common-dir", "--git-path", "index").splitlines()
+    def git(*args: str, index: Path | None = None, given: str | None = None) -> str:
+        # ``index`` is the check's own, so the checkout's index lock is never taken
+        env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
+        argv = ["git", "-c", "core.hooksPath=/dev/null", "-C", str(checkout), *args]
+        code, out, err = _ended(argv, checkout, env, began, given)
+        if code:
+            raise Refused(f"git {' '.join(args)} failed in {checkout}: {err.strip()[:200]}")
+        return out
+
+    common, had = git("rev-parse", "--git-common-dir", "--git-path", "index").splitlines()
     trees = Path(checkout, common).parent / ".graphene" / "worktrees"
     trees.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".check-", dir=trees))
@@ -581,25 +634,26 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple = ()):
         # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
         with suppress(OSError):  # a repo where nothing was ever added has no index yet
             shutil.copyfile(Path(checkout, had), index)
-        _git(checkout, "add", "-A", index=index)
+        git("add", "-A", index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
-            _git(checkout, "update-index", "-z", "--force-remove", "--stdin", index=index, given=out)
-        state, base = _git(checkout, "write-tree", index=index).strip(), head(checkout)
+            git("update-index", "-z", "--force-remove", "--stdin", index=index, given=out)
+        state, base = git("write-tree", index=index).strip(), head(checkout)
         nobody = ("-c", "user.name=graphene", "-c", "user.email=graphene@localhost")  # on no branch
-        commit = _git(checkout, *nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
-        _git(checkout, "worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
-        ignored = _git(checkout, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory")
-        for entry in (e.rstrip("/") for e in ignored.split("\0")):
-            if entry and entry.split("/")[0] != ".graphene":
-                with suppress(OSError):  # what cannot be linked is not there
-                    (tree / entry).parent.mkdir(parents=True, exist_ok=True)
-                    os.symlink(Path(checkout).resolve() / entry, tree / entry)
+        commit = git(*nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
+        # ponytail: a whole checkout per check, which grows with the repository; a kept worktree moved
+        # to each commit (`git checkout --detach`) if a large repository needs it
+        git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
         yield tree
     finally:
-        with suppress(Refused, OSError, subprocess.TimeoutExpired):  # never made: the rmtree is enough
-            _git(checkout, "worktree", "remove", "--force", str(tree))
         shutil.rmtree(tmp, ignore_errors=True)
+        # then git's record of it; twice forced: a worktree whose making was stopped is locked
+        with suppress(OSError, subprocess.TimeoutExpired):
+            subprocess.run(
+                ["git", "-C", str(checkout), "worktree", "remove", "--force", "--force", str(tree)],
+                capture_output=True,
+                timeout=30,
+            )
 
 
 @ctrl_c_on_hangup()
@@ -611,51 +665,30 @@ def run_check(
     place Graphene runs a check. Graphene runs it, not the executor: "it passed" is then a fact about
     the repo and not a sentence in somebody's summary. It runs in a clean worktree of that state
     (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
-    executor's tree, to be counted as its change and committed with its leaf.
-
-    It runs in a session of its own and is ended with everything it started: on a timeout, a Ctrl-C,
-    a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says nothing of
-    the work, so it is not taken as a result. Killing bash alone had left its `sleep` running; and a
-    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    executor's tree, to be counted as its change and committed with its leaf. Its time limit and its
+    stop (``_ended``) are the whole of it, the making of that worktree included."""
+    began = time.monotonic()
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     env = {**os.environ, "GRAPHENE_AS": "agent:check"}
     try:
-        with _clean_tree(checkout, leave_out) as tree:
-            with subprocess.Popen(
-                command,
-                shell=True,
-                executable=BASH,  # people write bash (`[[ ]]`, `set -o pipefail`); sh when there is none
-                cwd=tree,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-                start_new_session=True,
-            ) as proc:
-                _checks.add(proc)
-                try:
-                    stdout, stderr = proc.communicate(timeout=CHECK_TIMEOUT)
-                except BaseException as why:
-                    _end_check(proc)
-                    if not isinstance(why, subprocess.TimeoutExpired):
-                        raise
-                    return False, f"timed out after {CHECK_TIMEOUT} s", []
-                finally:
-                    stopped = proc not in _checks
-                    _checks.discard(proc)
+        with _clean_tree(checkout, leave_out, began) as tree:
+            code, out, err = _ended(command, tree, env, began)
             made = [p for p in leave_out if os.path.lexists(tree / p)]
-    except (Refused, OSError, subprocess.TimeoutExpired) as no:  # it never ran, which is no pass
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {CHECK_TIMEOUT} s", []
+    except (Refused, OSError) as no:  # it never ran, which is no pass
         return False, f"the check could not be run: {no}", []
-    if stopped:
-        raise KeyboardInterrupt
-    text = (stdout + stderr).strip()
-    return proc.returncode == 0, (text[-TAIL:] if text else f"exit {proc.returncode}, no output"), made
+    text = (out + err).strip()
+    return code == 0, (text[-TAIL:] if text else f"exit {code}, no output"), made
 
 
 def end_checks() -> None:
     """End every check running in this process (a stopped parallel run's are in its worker threads,
-    where no Ctrl-C lands); each then says it was stopped instead of giving a result."""
+    where no Ctrl-C lands), and every one begun before now that is still making its worktree; each
+    then says it was stopped instead of giving a result."""
+    global _stopped
+    _stopped = time.monotonic()
     while _checks:
         _end_check(_checks.pop())
 
