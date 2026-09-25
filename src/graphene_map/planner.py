@@ -145,8 +145,14 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             bill["dollars"] += said["dollars"]
             message = said["message"]
             calls = message.get("tool_calls") or []
+            if not calls and said.get("finish") == "length" and params["max_tokens"] < 32_768:
+                params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)  # cut off: ask again, with room
+                print(f"{step:>3} cut off at the token limit; again with {params['max_tokens']}", file=say)
+                continue
             if not calls:
                 answer = message.get("content") or ""
+                if said.get("finish") == "length":
+                    print("the answer was cut off at the token limit, even with more room", file=say)
                 break
             messages.append({"role": "assistant", "content": message.get("content") or "",
                              "tool_calls": calls})

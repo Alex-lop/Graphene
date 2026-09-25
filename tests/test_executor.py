@@ -361,3 +361,26 @@ def test_graphenes_own_done_keeps_the_key_for_a_sandbox_check(repo, monkeypatch)
         node = plan.get(store, "greet")
         executor.Leaf(store, node, executor.Local(repo), repo, "s")._graphene("node", "done", "greet")
     assert seen["env"]["NEBIUS_API_KEY"] == "the-key"
+
+
+def test_a_reply_cut_off_at_the_token_limit_is_said_and_asked_again_with_more_room(repo, fake):
+    f = fake([script({"greet": [
+        {"content": "Let me think about greet at length", "_finish": "length"},
+        call("edit", path="app.py", old='"hi"', new='"hello"'),
+        call("done"),
+    ]})] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)
+    assert [n.id for n in done] == ["greet"]
+    assert f.requests[0]["max_tokens"] == 4096 and f.requests[1]["max_tokens"] == 8192
+    assert f.requests[1]["messages"][-1]["content"].startswith("Your answer was cut off at the token limit")
+
+
+def test_nemotrons_own_toolcall_text_is_read_as_its_calls(repo, fake):
+    def tag(name, **arguments):
+        return {"content": f"<TOOLCALL>{json.dumps([{'name': name, 'arguments': arguments}])}</TOOLCALL>"}
+
+    fake([script({"greet": [tag("edit", path="app.py", old='"hi"', new='"hello"'), tag("done")]})] * 5)
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)  # the native protocol: a server that hands the call back as text still works
+    assert [n.id for n in done] == ["greet"]

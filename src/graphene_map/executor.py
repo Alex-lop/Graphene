@@ -46,6 +46,7 @@ done refuses, read why, fix it, and call done again. If the leaf cannot be done 
 release with the reason and the paths you would need; the person decides. Keep each step small."""
 
 NUDGE = "Use a tool. When the leaf is done call done; if it cannot be done inside its scope, call release."
+CUT = "Your answer was cut off at the token limit. Think less, and call one tool."
 
 TOOLS = [
     {"type": "function", "function": {
@@ -248,16 +249,29 @@ The tools: view(path, start?, end?), edit(path, old, new), write(path, content),
 release(why, wants?)."""
 
 
+_NATIVE_CALL = re.compile(r"<TOOLCALL>\s*(.*?)\s*</TOOLCALL>", re.DOTALL)
+
+
 def text_calls(content: str | None) -> list[dict]:
-    """Tool calls written as fenced text, for a model whose native calls misfire."""
-    out = []
-    for k, block in enumerate(_TEXT_CALL.findall(content or "")):
+    """Tool calls written as text: a fenced ```tool block (``--protocol text``), or Nemotron's own
+    `<TOOLCALL>[{"name": …, "arguments": {…}}]</TOOLCALL>` when a server hands it back as text."""
+    found: list[dict] = []
+    for block in _TEXT_CALL.findall(content or ""):
+        try:
+            found.append(json.loads(block))
+        except ValueError:
+            continue
+    for block in _NATIVE_CALL.findall(content or ""):
         try:
             said = json.loads(block)
+        except ValueError:
+            continue
+        found += said if isinstance(said, list) else [said]
+    out = []
+    for k, said in enumerate(found):
+        if isinstance(said, dict) and isinstance(said.get("name"), str):
             given = json.dumps(said.get("arguments") or {})
             out.append({"id": f"text_{k}", "function": {"name": said["name"], "arguments": given}})
-        except (ValueError, KeyError, TypeError):
-            continue
     return out
 
 
@@ -343,7 +357,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             bill["seconds"] += said["seconds"]
         message = said["message"]
         native = message.get("tool_calls") or []
-        calls = native or (text_calls(message.get("content")) if args.protocol == "text" else [])
+        calls = native or text_calls(message.get("content"))  # a native call handed back as text, too
         print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
         if message.get("content"):
             print(f"{tag}{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
@@ -356,7 +370,11 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if nudged > 2:
                 print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
                 return
-            messages.append({"role": "user", "content": NUDGE})
+            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
+            if cut and params.get("max_tokens"):
+                params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
+                print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
+            messages.append({"role": "user", "content": CUT if cut else NUDGE})
             continue
         for c in calls:
             name = c["function"]["name"]
