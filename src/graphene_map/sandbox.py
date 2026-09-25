@@ -18,6 +18,7 @@ yet (checked 2026-09-25), and the version is pinned in the ``sandbox`` extra.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import shlex
@@ -85,11 +86,10 @@ def grants(scope: list[str], files: list[str], dirs: set[str]) -> tuple[list[str
     return sorted(trees), owned, sorted(inside)
 
 
-def setup(scope: list[str], files: list[str], dirs: set[str]) -> str:
-    """The script that makes the sandbox (run as root, once): the repository unpacked at /work, a git
-    baseline for the executor's `git diff`, and layer 2."""
-    trees, owned, opened = grants(scope, files, dirs)
-    q = shlex.quote
+def base(prepare: str | None = None) -> str:
+    """The script that makes the checkpoint every leaf at one commit forks from (run as root, once): the
+    repository unpacked at /work, a git baseline for the executor's `git diff`, the leaf's user, and
+    ``prepare`` (what the repository needs installed to run its checks, e.g. `pip install -e .`)."""
     lines = [
         "set -e",
         f"mkdir -p {WORK} && tar -xf /tmp/graphene/repo.tar -C {WORK} && rm -f /tmp/graphene/repo.tar",
@@ -97,8 +97,17 @@ def setup(scope: list[str], files: list[str], dirs: set[str]) -> str:
         f"git config --system --add safe.directory {WORK}",  # the leaf's user reads root's repository
         f"cd {WORK} && git init -q && git add -A && "
         "git -c user.name=graphene -c user.email=graphene@localhost commit -qm base --allow-empty",
-        f"chown -R root:root {WORK} && chmod -R a+rX,go-w {WORK}",
     ]
+    if prepare:
+        lines.append(f"cd {WORK} && {prepare}")
+    return "\n".join(lines)
+
+
+def layer2(scope: list[str], files: list[str], dirs: set[str]) -> str:
+    """One leaf's permissions on the checkpoint (run as root): layer 2, then the file list."""
+    trees, owned, opened = grants(scope, files, dirs)
+    q = shlex.quote
+    lines = ["set -e", f"chown -R root:root {WORK} && chmod -R a+rX,go-w {WORK}"]
     for d in opened:
         lines.append(f"mkdir -p {q(WORK + '/' + d)} && chmod 1777 {q(WORK + '/' + d)}")
     for t in trees:
@@ -107,6 +116,12 @@ def setup(scope: list[str], files: list[str], dirs: set[str]) -> str:
         lines.append(f"chown {USER}:{USER} {q(WORK + '/' + f)}")
     lines.append(_manifest())
     return "\n".join(lines)
+
+
+def setup(scope: list[str], files: list[str], dirs: set[str], prepare: str | None = None) -> str:
+    """The checkpoint and one leaf's permissions in one script: what a leaf whose checkout is not a
+    clean commit gets (its state is its own, so nothing is shared)."""
+    return base(prepare) + "\n" + layer2(scope, files, dirs).removeprefix("set -e\n")
 
 
 STATE = "/tmp/graphene.state"  # the exit code and the file list, read back whole (never from stdout)
@@ -165,6 +180,7 @@ class Contree:
     def __init__(self, image: str = IMAGE):
         from contree_sdk import ContreeSync
 
+        self.image = image
         if not credentials():  # else the SDK sends the variable's name as the token, and gets a 401
             raise RuntimeError("ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID in the environment, or a "
                                "profile saved by `contree auth`")  # fmt: skip
@@ -195,7 +211,7 @@ class Docker:
     ConTree (`GRAPHENE_SANDBOX=docker`), with the same Linux users and permissions layer 2 rests on."""
 
     def __init__(self, image: str = IMAGE):
-        self.base, self.ops, self.made = image, 0, []
+        self.base, self.image, self.ops, self.made = image, image, 0, []
 
     def forget(self, keep: set[str] = frozenset()) -> None:
         """Remove the checkpoint images this box made, but ``keep``: nothing else prunes them."""
@@ -242,10 +258,10 @@ class Docker:
         return self._docker("run", "--rm", image, "cat", path).stdout
 
 
-def choose(name: str | None = None):
-    """The sandbox Graphene uses: ConTree, unless GRAPHENE_SANDBOX says docker."""
+def choose(name: str | None = None, image: str | None = None):
+    """The sandbox Graphene uses: ConTree, unless GRAPHENE_SANDBOX says docker; from ``image``."""
     name = name or os.environ.get("GRAPHENE_SANDBOX") or "contree"
-    return Docker() if name == "docker" else Contree()
+    return Docker(image or IMAGE) if name == "docker" else Contree(image or IMAGE)
 
 
 def check_in_fork(name: str, image: str, root: Path, command: str, timeout: float = 1800,
@@ -278,21 +294,41 @@ class Sandbox:
 
     name = "sandbox"
 
-    def __init__(self, root: Path, scope: list[str], box=None, store=None, node_id: str | None = None):
+    def __init__(self, root: Path, scope: list[str], box=None, store=None, node_id: str | None = None,
+                 prepare: str | None = None, checkout: Path | None = None):  # fmt: skip
+        """``root``: where the executor's edits land here; ``checkout``: the git checkout its files come
+        from, when that is not ``root`` (a fork's copy has no .git of its own)."""
         self.root, self.scope, self.store, self.node_id = root, scope, store, node_id
+        source = checkout or root
         self.box = box if box is not None else choose()
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
         self.timings: list[float] = []
-        files = P.in_tree(root)
+        self.shared: str | None = None  # the checkpoint of the commit, which other leaves fork too
+        files = P.in_tree(source)
         dirs = {str(p) for f in files for p in Path(f).parents if str(p) != "."}
-        tar = pack(root)
-        try:
-            began = time.monotonic()
-            self.image, code, out = self.box.start(tar, setup(scope, files, dirs), 600)
-            self.timings.append(time.monotonic() - began)
-        finally:
-            tar.unlink(missing_ok=True)
+        began = time.monotonic()
+        key = self._key(source, prepare)
+        shared = store.meta(key) if store is not None and key else None
+        if shared:  # a leaf at this commit made the checkpoint already: fork it, with this leaf's grants
+            self.image, code, out = self.box.run(shared, layer2(scope, files, dirs), {}, 600)
+            self.shared = shared if code == 0 else None  # gone (a pruned box): made again below
+        self.reused = bool(self.shared)
+        if not self.shared:
+            tar = pack(source)
+            try:
+                if key:  # a clean commit: its checkpoint is kept for the other leaves at it
+                    shared, code, out = self.box.start(tar, base(prepare), 1800)
+                    if code == 0:
+                        self.shared = shared
+                        if store is not None:
+                            store.set_meta(key, shared)
+                        self.image, code, out = self.box.run(shared, layer2(scope, files, dirs), {}, 600)
+                else:
+                    self.image, code, out = self.box.start(tar, setup(scope, files, dirs, prepare), 1800)
+            finally:
+                tar.unlink(missing_ok=True)
+        self.timings.append(time.monotonic() - began)
         if code != 0:
             raise RuntimeError(f"the sandbox could not be made (exit {code}): {out[-500:]}")
         self.base = self.image
@@ -300,6 +336,28 @@ class Sandbox:
         if state is None:
             raise RuntimeError("the sandbox was made, and its list of files did not come back whole")
         self.seen = state[1]
+
+    def _key(self, checkout: Path, prepare: str | None) -> str | None:
+        """Where the checkpoint of this checkout's commit is kept, or None when the checkout is not
+        exactly a commit (anything uncommitted is this leaf's own)."""
+        try:
+            if P._git(checkout, "status", "--porcelain").strip():
+                return None
+            head = P._git(checkout, "rev-parse", "HEAD").strip()
+        except (P.Refused, OSError):
+            return None
+        box = getattr(self.box, "box", self.box)  # a wrapper's box is the box
+        made = f"{type(box).__name__}|{getattr(box, 'image', IMAGE)}|{prepare or ''}"
+        return f"sandbox:{head}:{hashlib.sha1(made.encode()).hexdigest()[:12]}"
+
+    def fork(self, root: Path) -> Sandbox:
+        """Another sandbox from this one's first image, for a copy of the same checkout: a fork of the
+        leaf (``--forks``), which uploads and sets up nothing."""
+        other = object.__new__(Sandbox)
+        other.__dict__.update(self.__dict__)
+        other.root, other.pushed, other.strays, other.timings = root, set(), set(), []
+        other.image, other.seen = self.base, dict(self.seen)
+        return other
 
     def read(self, rel: str) -> bytes:
         return (self.root / rel).read_bytes()
@@ -373,7 +431,8 @@ class Sandbox:
                 "back, and it is undone before your next command)")  # fmt: skip
 
     def close(self) -> None:
-        """The checkpoints this sandbox made go, but the first: the leaf's check forks from it."""
+        """The checkpoints this sandbox made go, but its first (the leaf's check forks from it) and the
+        commit's (other leaves fork from it)."""
         if hasattr(self.box, "forget"):
-            self.box.forget({self.base})
+            self.box.forget({self.base, *([self.shared] if self.shared else [])})
 

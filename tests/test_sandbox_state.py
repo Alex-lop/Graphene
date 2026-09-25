@@ -59,3 +59,29 @@ def test_a_list_that_does_not_come_back_whole_changes_nothing_here(repo, monkeyp
         assert (repo / "src" / "data" / "f002.txt").exists()
     finally:
         place.close()
+
+
+@needs_docker
+def test_leaves_at_one_commit_fork_one_checkpoint_each_with_its_own_scope(repo, tmp_path):
+    from graphene_map.store import Store
+
+    (repo / ".gitignore").write_text(".graphene/\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    who = ["-c", "user.name=T", "-c", "user.email=t@e"]
+    subprocess.run(["git", "-C", str(repo), *who, "commit", "-qm", "ignore the store"], check=True)
+    with Store.open(repo) as store:
+        prep = "echo ok > /opt/p"
+        a = sandbox.Sandbox(repo, ["src/data/f001.txt"], sandbox.Docker(), store, "a", prepare=prep)
+        b = sandbox.Sandbox(repo, ["src/data/f002.txt"], sandbox.Docker(), store, "b", prepare=prep)
+        try:
+            assert not a.reused and b.reused and a.shared == b.shared
+            assert b.box.ops == 2  # its grants, and its file list: no upload, no setup
+            code, _ = b.run("echo mine > src/data/f002.txt && cat /opt/p")  # the prepared checkpoint
+            assert code == 0 and (repo / "src" / "data" / "f002.txt").read_text() == "mine\n"
+            code, _ = b.run("echo not-mine > src/data/f001.txt")  # a's scope, not b's
+            assert code != 0 and (repo / "src" / "data" / "f001.txt").read_text() == "1\n"
+            fork = b.fork(tmp_path / "copy")
+            assert fork.image == b.base and fork.shared == b.shared
+        finally:
+            a.close()
+            b.close()

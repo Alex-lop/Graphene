@@ -431,8 +431,10 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
         copies.append(copy)
         if args.placement == "local":
             place = Local(copy)
-        else:  # the first fork's base is where the leaf's check is run from: any fork's is the same
-            place = _sandbox(copy, node, store, session, log=k == 0)
+        elif k == 0:  # the leaf's sandbox, made once; its check forks from it
+            place = _sandbox(copy, node, store, session, args, checkout=here)
+        else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
+            place = forks[0].place.fork(copy)
         forks.append(Fork(store, node, place, repo, session, check=node.check, won=won))
     def told(k: int) -> list[dict]:
         said = [dict(m) for m in messages]
@@ -526,7 +528,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                     said = leaf.done()
                     print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
                 return 0
-            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session)
+            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session, args)
             leaf = Leaf(store, node, place, repo, session)
             try:
                 converse(leaf, model, messages, args, params, bill, "")
@@ -565,19 +567,19 @@ def _brief(arguments) -> str:
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
-def _sandbox(here: Path, node: P.Node, store: Store, session: str, log: bool = True):
-    """The leaf's sandbox, and a note in its record of where it is, so that its check (whoever runs
-    `done`) runs in a fork of the same sandbox."""
+def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkout: Path | None = None):
+    """The leaf's sandbox, forked from its commit's checkpoint when another leaf made it, and a note in
+    its record of where it is, so that its check (whoever runs `done`) runs in a fork of the same."""
     from . import sandbox
 
     name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
-    place = sandbox.Sandbox(here, node.scope, sandbox.choose(name), store, node.id)
-    if not log:  # a fork's sandbox: the check that counts runs from the leaf's own
-        return place
+    box = sandbox.choose(name, args.image)
+    place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
+    shared = "forked from the commit's checkpoint" if place.reused else "made"
     store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
                    {"placement": "sandbox", "box": name, "image": place.base,
                     "seconds": round(place.timings[0], 3)})  # fmt: skip
-    print(f"sandbox ready ({name}, {place.timings[0]:.1f} s): image {place.base[:12]}", flush=True)
+    print(f"sandbox {shared} ({name}, {place.timings[0]:.1f} s): image {place.base[:19]}", flush=True)
     return place
 
 
@@ -596,6 +598,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--inline", type=int, default=0, help="inline the scope's files, up to N characters")
     parser.add_argument("--protocol", choices=("native", "text"), default="native")
     parser.add_argument("--forks", type=int, default=1, help="N conversations; the check picks")
+    parser.add_argument("--image", help="the sandbox's image (default python:3.12, with git and setpriv)")
+    parser.add_argument("--prepare", help="a command run once, as root, in the checkpoint (pip install -e .)")
     parser.add_argument("prompt")
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a stopped run: the bill is still written
