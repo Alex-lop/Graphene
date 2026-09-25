@@ -62,7 +62,13 @@ docs/proof/nemotron.sh ~/graphene-nemotron
   - For Sandboxes, a project with the beta (by request).
   - The rules' credits: `NEBIUS-DEVPOST-GLOBAL26` on the resources page gives $25 of Token Factory
     credit.
-- **PR #29** (draft), `nemotron` into `main`. It is green in CI at every push.
+- **PR #29** (draft), `nemotron` into `main`. CI was not green at every push, and two runs show
+  why:
+  - `2926419`, macOS 3.13: the hook time-budget test, 163 ms against 150 on the runner. That is the
+    directive's named environment test, left as it is.
+  - `3b7da28`, macOS 3.12: a real race. The executor read its attempt number back from the log
+    before `run` had written it, so it could stay on Nano for attempt 2. Fixed at `46ac1c8`
+    (`GRAPHENE_TRY`), with a test that fails without the fix.
 - **The README changes, for you to put in your own words.** The opening and the hand-back copy are
   untouched. What changed:
   1. **The setup:** install with the `sandbox` extra, the key, `graphene init`, and what runs where.
