@@ -311,8 +311,9 @@ The tests:
   - a race in the attempt number (fixed at `07c73ab`);
   - a race in a test's trigger (made deterministic at `a03bf4c`).
 
-  I cancelled the queued runs of superseded commits, so the tip gets CI's verdict. Check it on
-  PR #29.
+  I cancelled the queued runs of superseded commits, so the tip got CI's verdict: **green on all
+  seven jobs at `a03bf4c`** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the page). That is the
+  last commit that changes code; later commits touch only this file.
 - **Not verified.** Anything against Token Factory or ConTree (no key): the real ids and prices,
   Nemotron's tool calls, ConTree's users, output cap and timings, the live demo, and every number in
   section 1.
