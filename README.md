@@ -37,17 +37,26 @@ says which one.
 
 ## The first ten minutes
 
-You need Claude Code, git, and a repository with some work to do in it: one of your own.
-Install and set up the repository, once:
+You need git, a repository with some work to do in it (one of your own), and a key for Nebius
+Token Factory. Install and set up the repository, once:
 
 ```
-uv tool install git+https://github.com/Alex-lop/Graphene
+uv tool install 'graphene-map[sandbox] @ git+https://github.com/Alex-lop/Graphene'
+export NEBIUS_API_KEY=…            # tokenfactory.nebius.com; for Sandboxes, NEBIUS_PROJECT_ID too
 cd ~/src/your-repo
 graphene init
 ```
 
-Open two panes in WezTerm: your agent on the left, the plan on the right (it reads best at 80
-columns or more, so give the window room). In the pane you are in:
+`graphene init` asks once which planner and which executor this repository uses, and offers
+NVIDIA Nemotron on Token Factory first. Nemotron 3 Ultra plans the tree. A Nemotron Nano does each
+leaf, and a Super takes over when Nano's attempt is refused. Each leaf runs in a Token Factory
+Sandbox forked from the same checkpoint of your repository (in a worktree of its own when Sandboxes
+are not set up), and the leaf's check decides. With Nemotron, ask for what you want with `:ask` in
+`graphene watch` or `graphene ask "…"` at the shell. Claude Code and Codex can plan and execute
+instead, as before: choose them at `init`, or name one for a single command with `--with`.
+
+With Claude Code as the planner, open two panes in WezTerm: your agent on the left, the plan on the
+right (it reads best at 80 columns or more, so give the window room). In the pane you are in:
 
 ```
 wezterm cli split-pane --right --percent 50 --cwd "$PWD" -- graphene watch
@@ -135,13 +144,29 @@ tests of Graphene's own:
   in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
   agents tried to break it: what they found is fixed, and each finding has a test.
 
-What it is not yet: the hooks are for Claude Code only (the plan, `run` and the worktrees work with
-any executor that has a shell); the page (`graphene ui`) shows the tree and is otherwise as it was.
+What it is not yet: the Nemotron planner and executor have run only against a recorded stand-in for
+Token Factory and a Docker stand-in for Sandboxes, not against the services themselves (the tests in
+`tests/test_executor.py` and `tests/test_escape.py` are that evidence). The hooks are for Claude Code
+only (the plan, `run` and the worktrees work with any executor that has a shell); the page
+(`graphene ui`) shows the tree and is otherwise as it was.
 [docs/DIRECTION.md](docs/DIRECTION.md) has what was decided, why, and what comes next.
 
 ## What does not bind
 
-A control you cannot trust is worse than none, so here is where each one ends.
+A control you cannot trust is worse than none, so here is where each one ends. First, who is held
+before a write, and how:
+
+| Executor | Before the write | While it runs | At `done` |
+| --- | --- | --- | --- |
+| Nemotron, in a sandbox | its edit and write tools refuse a path outside the scope | its commands run as a user who can write only the scope; what a command makes outside it never comes back | Graphene's check, in a fork of the sandbox, and git |
+| Nemotron, local | the same tools refuse | nothing: a command can write where your user can | the check, and git |
+| Claude Code, with the hooks | the hook denies a write tool or a shell write it can read, outside the scope | nothing more | the check, and git |
+| Codex, or any command | nothing | its own sandbox, if you give it one | the check, and git |
+| You | nothing | nothing | the check, and git |
+
+- In a sandbox, the user a Nemotron leaf runs as can create a file in any directory where its scope
+  names a file. POSIX grants that per directory, not per name. Such a file never reaches your
+  checkout: it is refused, logged, removed before the next command, and the check never sees it.
 
 - With plan first on, the agent judges what is a tree and what is one leaf. One leaf it proposes
   after your prompt is accepted at once as yours, and the log says so ("by their prompt").
@@ -186,8 +211,9 @@ A control you cannot trust is worse than none, so here is where each one ends.
 uv tool install git+https://github.com/Alex-lop/Graphene
 ```
 
-`uv tool install graphene-map` installs the last release on PyPI, 0.2.0, which is the record only:
-no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
+`[sandbox]` adds ConTree's SDK, which Token Factory Sandboxes need; without it, Nemotron leaves run in
+worktrees on your machine. `uv tool install graphene-map` installs the last release on PyPI, 0.2.0,
+which is the record only: no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
 Graphene's hook to `.claude/settings.local.json` (yours, not the team's `settings.json`) and keeps
 the file out of `git add` through `.git/info/exclude`. The hook holds agents to the plan and keeps
 the record; the agent waits about 40 ms for it on each tool call. Graphene never edits your own
@@ -208,8 +234,14 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
 
 ## Privacy
 
-- Nothing leaves your machine. Graphene itself calls no model and sends nothing anywhere. `graphene
-  run` and `graphene ask` start the executor or planner you name, with the permissions you give it.
+- With Nemotron as planner or executor, Graphene sends Token Factory the prompts about your
+  repository and the files the model reads, and in a sandbox it sends Sandboxes the leaf's checkout.
+  The key is read from your environment at each call and written nowhere; a command the model runs,
+  and every check, gets an environment without it. With Claude Code or Codex, Graphene itself sends
+  nothing anywhere: `graphene run` and `graphene ask` start the executor or planner you name, with the
+  permissions you give it.
+- What a Nemotron leaf cost is Token Factory's own token count at its list price: in the leaf's
+  record, on `graphene watch`'s status line, and on the run's last line.
 - The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git.
   Graphene never pushes. It commits and merges only in `graphene run --parallel`, on
   `graphene/<leaf>` branches of its own, merged into the checkout you started it from when the merge
@@ -220,7 +252,9 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
 
 macOS or Linux, [uv](https://docs.astral.sh/uv/), Python 3.12 or later (uv fetches it), and git. The
 screen (`graphene watch`) is [Textual](https://textual.textualize.io/) and works in any modern
-terminal; it was checked in WezTerm at 80 columns. The hooks are for Claude Code.
+terminal; it was checked in WezTerm at 80 columns. Nemotron needs a Token Factory key, and
+Sandboxes the `sandbox` extra and a project with the beta; the Docker stand-in the tests use needs
+Docker. The hooks are for Claude Code.
 
 ## License
 
