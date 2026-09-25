@@ -1,4 +1,4 @@
-"""Dataclasses shared by the store, the sources, the map and a node's record."""
+"""Dataclasses shared by the store, the hooks, the map and a node's record."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ class Session:
     started_at: str | None = None
     ended_at: str | None = None
     head_at_start: str | None = None  # git HEAD when the session started; None when unknown
-    source: str = "hook"  # "hook" | "backfill"
+    source: str = "hook"  # "hook"; "backfill" in a store an earlier version filled from transcripts
     transcript_path: str | None = None
 
 
@@ -79,10 +79,3 @@ class Commit:
     event_id: str | None = None  # the Bash call whose response names the SHA
     origin_sha: str | None = None  # the commit a recorded cherry-pick copied
     files: list[tuple[str, str | None]] = field(default_factory=list)  # (repo-relative path, status)
-
-
-@dataclass(slots=True)
-class DebriefRun:
-    id: int
-    session_ids: list[str]
-    timestamp: str

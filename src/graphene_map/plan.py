@@ -7,7 +7,7 @@ at the boundary by a mechanism that needs no vendor: ``finish`` runs the node's 
 git which paths changed since the node was started. A node with a failing check, or with a change
 outside its scope, is not done, and what waits on it cannot start. What the Claude Code hooks add on
 top (a write refused before it happens, a stop refused while a node is open) lives in
-``sources/claude_code.py`` and reads the same rows.
+``hooks.py`` and ``gate.py``, and reads the same rows.
 """
 
 from __future__ import annotations

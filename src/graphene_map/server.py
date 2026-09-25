@@ -24,7 +24,6 @@ from . import plan as P
 from .commits import refresh_commits
 from .graph import build_graph, to_json
 from .plan_view import build_plan_view
-from .sources.claude_code import backfill
 from .store import Store
 
 STATIC = Path(__file__).parent / "ui" / "static"
@@ -180,8 +179,7 @@ def make_server(root: Path, session_ids: list[str], writable: bool = False) -> T
                 asked = [i for v in parse_qs(url.query).get("sessions", []) for i in v.split(",") if i]
                 try:
                     with Store.open(root) as store:
-                        report = backfill(store, root)  # a transcript that has not changed costs one stat
-                        refresh_commits(store, root, report.added + report.refreshed + (asked or session_ids))
+                        refresh_commits(store, root, asked or session_ids)
                         body = payload(
                             store, asked or session_ids, token=token, writable=writable, checkout=root
                         )

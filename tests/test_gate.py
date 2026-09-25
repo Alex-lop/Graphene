@@ -8,8 +8,8 @@ import subprocess
 import pytest
 
 from graphene_map import gate, plan
+from graphene_map.hooks import hook_main
 from graphene_map.plan import Caller
-from graphene_map.sources.claude_code import hook_main
 from graphene_map.store import Store
 
 SID = "5e55105e-0000-4000-8000-000000000001"

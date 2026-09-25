@@ -7,7 +7,7 @@ command somebody actually typed, not a grammar exercise.
 
 from pathlib import Path
 
-from graphene_map.attribute import bash_written_paths, check_segments
+from graphene_map.shell import bash_written_paths, check_segments
 
 
 def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():
@@ -100,7 +100,7 @@ def test_quotes_variables_and_newlines_in_shell_commands(tmp_path):
 def test_files_inside_a_nested_checkout_are_outside_the_repo(tmp_path):
     """A worktree under .claude/worktrees/ (Claude Code puts them there) is another checkout, so a
     path inside it is named absolutely: it is not this repo's file."""
-    from graphene_map.sources.claude_code import relative_path
+    from graphene_map.hooks import relative_path
 
     worktree = tmp_path / ".claude" / "worktrees" / "agent-1"
     (worktree / "src").mkdir(parents=True)

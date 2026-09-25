@@ -15,9 +15,9 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .attribute import shell_segments
 from .model import Commit, ToolEvent
 from .record import seconds
+from .shell import shell_segments
 from .store import Store
 
 STAMP = "%Y-%m-%dT%H:%M:%S.000Z"

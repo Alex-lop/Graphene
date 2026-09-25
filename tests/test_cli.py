@@ -1,9 +1,10 @@
 """The command line, end to end, through Typer's runner."""
 
+import io
 import json
+import re
 import sqlite3
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -11,12 +12,9 @@ from typer.testing import CliRunner
 
 from graphene_map import store as store_module
 from graphene_map.cli import build
-from graphene_map.sources.claude_code import HOOK_EVENTS, project_dir_name
+from graphene_map.hooks import HOOK_EVENTS, hook_main
 
-FIXTURES = Path(__file__).parent / "fixtures"
-sys.path.insert(0, str(FIXTURES))
-import make_transcript_fixture as fixture  # noqa: E402
-
+SID = "11111111-2222-4333-8444-555555555555"
 runner = CliRunner()
 
 
@@ -43,20 +41,36 @@ def no_forced_colour(monkeypatch):
 def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # no real transcripts in tests
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # not your own Claude Code settings
     return tmp_path
 
 
+def hook(repo, name: str, session: str = SID, **fields) -> None:
+    """One event, as Claude Code hands it to `graphene ingest hook`."""
+    event = {"hook_event_name": name, "session_id": session, "cwd": str(repo), **fields}
+    assert hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=io.StringIO()) == 0
+
+
+def write(repo, n: int, path: str, text: str, session: str = SID) -> None:
+    full = str(repo / path)
+    wrote = {"type": "create", "filePath": full, "content": text}
+    tool = {"tool_name": "Write", "tool_input": {"file_path": full, "content": text}, "tool_response": wrote}
+    hook(repo, "PostToolUse", session, prompt_id="p1", tool_use_id=f"toolu_w{n}", **tool)
+
+
 @pytest.fixture
-def transcript(repo, tmp_path, monkeypatch):
-    """The synthetic fixture, re-rendered with this repo as its cwd."""
-    monkeypatch.setattr(fixture, "CWD", str(repo))
-    out = tmp_path / "transcripts"
-    for path, text in fixture.render().items():
-        target = out / path.relative_to(fixture.OUT)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-    return out / f"{fixture.SID}.jsonl"
+def recorded(repo):
+    """A session the hooks recorded: a prompt, three files written, an edit that failed."""
+    hook(repo, "SessionStart", source="startup")
+    hook(repo, "UserPromptSubmit", prompt="greet people with hello, and say so in the README", prompt_id="p1")
+    write(repo, 1, "app/hello.py", 'def greet(name):\n    return f"hello {name}"\n')
+    write(repo, 2, "tests/test_hello.py", "from app.hello import greet\n")
+    write(repo, 3, "README.md", "# hello\n")
+    edit = {"file_path": str(repo / "app" / "hello.py"), "old_string": "hi", "new_string": "hello"}
+    failed = {"tool_name": "Edit", "tool_input": edit, "error": "String to replace not found in file."}
+    hook(repo, "PostToolUseFailure", prompt_id="p1", tool_use_id="toolu_e1", is_interrupt=False, **failed)
+    hook(repo, "Stop")
+    return SID
 
 
 def test_version_and_help_read_as_a_product():
@@ -87,14 +101,18 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert (repo / ".graphene" / ".gitignore").read_text() == "*\n"  # the store ignores itself
 
 
-def test_nothing_recorded_and_nothing_to_backfill(repo):
+def test_nothing_planned_and_nothing_recorded(repo, tmp_path):
+    """What Claude Code keeps under ~/.claude is not read: a transcript of this repo draws nothing."""
+    transcripts = tmp_path / "claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(repo))
+    transcripts.mkdir(parents=True)
+    said = {"type": "user", "cwd": str(repo), "timestamp": "2026-03-01T09:00:00.000Z"}
+    said |= {"message": {"role": "user", "content": "greet people with hello"}}
+    (transcripts / f"{SID}.jsonl").write_text(json.dumps(said) + "\n")
     for args in (["ui"], ["ui", "--json"]):
         result = run(*args)
         assert result.exit_code == 1, args
-        line = one_line(result)
-        assert line.startswith("no Claude Code sessions for this repo yet (looked in ")
-        assert project_dir_name(repo) in line  # the encoded project directory it searched
-    assert run("ingest").exit_code == 1
+        assert one_line(result).startswith("nothing to draw here yet: no plan, and no Claude Code session")
+    assert run("ingest").exit_code == 2  # the hooks call `graphene ingest hook`; there is nothing else
     assert not (repo / ".graphene").exists()  # nothing to record, nothing written
 
 
@@ -146,60 +164,9 @@ def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
     assert "hooks are installed" in line and "graphene init" not in line
 
 
-def test_the_empty_first_run_says_where_it_looked(repo, tmp_path, monkeypatch):
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
-    result = run("ui")
-    assert result.exit_code == 1
-    line = one_line(result)
-    assert line.startswith("no Claude Code sessions for this repo yet (looked in ~/.claude/projects/")
-    assert "`graphene init` records sessions live" in line
-
-
-def test_the_map_backfills_from_transcripts_on_its_first_run(repo, tmp_path, monkeypatch):
-    monkeypatch.setattr(fixture, "CWD", str(repo))
-    target = tmp_path / "claude" / "projects" / project_dir_name(repo)
-    for path, text in fixture.render().items():
-        out = target / path.relative_to(fixture.OUT)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text)
-    drawn = run("ui", "--json")
-    assert drawn.exit_code == 0, drawn.output + drawn.stderr
-    assert "loaded 1 session" in drawn.output + drawn.stderr
-    graph = json.loads(drawn.stdout)
-    assert graph["run"]["sessions"][0]["id"] == fixture.SID
-    assert "file:app/hello.py" in {row["id"] for row in graph["rows"]}
-    assert "loaded" not in run("ui", "--json").stderr  # read once; a transcript that has not changed is free
-
-
-def test_every_run_picks_up_new_transcripts_without_hooks(repo, tmp_path, monkeypatch):
-    """A second session reaches the map even though `graphene init` was never run."""
-    monkeypatch.setattr(fixture, "CWD", str(repo))
-    target = tmp_path / "claude" / "projects" / project_dir_name(repo)
-    rendered = fixture.render()
-    main = next(p for p in rendered if p.name == f"{fixture.SID}.jsonl")
-    target.mkdir(parents=True)
-    (target / main.name).write_text(rendered[main])
-    first = run("ui", "--json")
-    assert first.exit_code == 0 and "loaded 1 session" in first.stderr
-    second_id = "22222222-2222-4333-8444-555555555555"
-    later = rendered[main].replace(fixture.SID, second_id).replace("2026-03-01T", "2026-03-02T")
-    (target / f"{second_id}.jsonl").write_text(later)
-    again = run("ui", "--json")
-    assert again.exit_code == 0, again.output + again.stderr
-    assert "loaded 1 session" in again.stderr
-    assert json.loads(again.stdout)["run"]["sessions"][0]["id"] == second_id  # the one that finished last
-    third = run("ui", "--json")
-    assert "loaded" not in third.stderr  # nothing new: no parse, no notice
-
-
-def test_the_map_is_drawn_from_a_backfilled_transcript(repo, transcript):
-    loaded = run("ingest", "--backfill", "--transcript", str(transcript))
-    assert loaded.exit_code == 0, loaded.output
-    assert "added 1" in loaded.output
-
+def test_the_map_is_drawn_from_a_session_the_hooks_recorded(repo, recorded):
     graph = json.loads(run("ui", "--json").stdout)
-    assert [lane["session"] for lane in graph["lanes"] if lane["kind"] == "main"] == [fixture.SID]
+    assert [lane["session"] for lane in graph["lanes"] if lane["kind"] == "main"] == [SID]
     assert {row["path"] for row in graph["rows"] if row["kind"] == "file"} >= {
         "app/hello.py",
         "tests/test_hello.py",
@@ -207,9 +174,9 @@ def test_the_map_is_drawn_from_a_backfilled_transcript(repo, transcript):
     }
     assert graph["counters"]["failures"] + graph["counters"]["refused"] >= 1
 
-    one = run("ui", "--session", fixture.SID[:8], "--json")
+    one = run("ui", "--session", SID[:8], "--json")
     assert one.exit_code == 0, one.output
-    assert [s["id"] for s in json.loads(one.stdout)["run"]["sessions"]] == [fixture.SID]
+    assert [s["id"] for s in json.loads(one.stdout)["run"]["sessions"]] == [SID]
     assert run("ui", "--session", "zzz").exit_code == 2
 
 
@@ -237,41 +204,30 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     assert not (home / ".graphene").exists()
 
 
-def quiet_transcript(repo, tmp_path, monkeypatch) -> Path:
-    """A session that only read files and ran a command: nothing was changed."""
-    monkeypatch.setattr(fixture, "CWD", str(repo))
-    records = [
-        fixture.user_text("what does hello.py do?", "prompt-quiet", 0, 1),
-        fixture.tool_use("t1", "Read", {"file_path": f"{repo}/app/hello.py"}, 0, 2),
-        fixture.tool_result("t1", "def greet(name): ...", {"type": "text"}, "prompt-quiet", 0, 3),
-        fixture.tool_use("t2", "Bash", {"command": "uv run pytest -q"}, 0, 4),
-        fixture.tool_result("t2", "ok", fixture.bash_ok("2 passed"), "prompt-quiet", 0, 5),
-    ]
-    path = tmp_path / "quiet" / "99999999-2222-4333-8444-555555555555.jsonl"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
-    return path
-
-
-def test_a_session_that_changed_nothing_is_still_drawn(repo, tmp_path, monkeypatch):
-    path = quiet_transcript(repo, tmp_path, monkeypatch)
-    assert run("ingest", "--backfill", "--transcript", str(path)).exit_code == 0
+def test_a_session_that_changed_nothing_is_still_drawn(repo):
+    """A session that only read a file and ran a command: nothing was changed."""
+    quiet = "99999999-2222-4333-8444-555555555555"
+    hook(repo, "UserPromptSubmit", quiet, prompt="what does hello.py do?", prompt_id="p1")
+    read = {"tool_name": "Read", "tool_input": {"file_path": f"{repo}/app/hello.py"}, "tool_response": {}}
+    hook(repo, "PostToolUse", quiet, prompt_id="p1", tool_use_id="t1", **read)
+    ran = {"stdout": "2 passed", "stderr": "", "interrupted": False}
+    bash = {"tool_name": "Bash", "tool_input": {"command": "uv run pytest -q"}, "tool_response": ran}
+    hook(repo, "PostToolUse", quiet, prompt_id="p1", tool_use_id="t2", **bash)
     graph = json.loads(run("ui", "--json").stdout)
     assert graph["run"]["prompts"] == 1 and graph["rows"] == []  # nothing changed, so no file row
 
 
-def test_a_store_another_process_is_writing_is_one_line(repo, transcript, monkeypatch):
+def test_a_store_another_process_is_writing_is_one_line(repo, recorded, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AS", "person:alex")
     monkeypatch.setattr(store_module, "TIMEOUT", 0.2)
-    run("ingest", "--backfill", "--transcript", str(transcript))
     other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
-    other.execute("BEGIN EXCLUSIVE")  # a hook or a backfill, mid-write
+    other.execute("BEGIN EXCLUSIVE")  # a hook or another command, mid-write
     try:
         result = run("node", "add", "the users endpoint", "--scope", "src/**", "--check", "true")
         assert result.exit_code == 1
         assert one_line(result) == (
             "the store .graphene/graphene.db is locked by another graphene process "
-            "(a backfill or a hook); try again in a moment"
+            "(a hook or a command); try again in a moment"
         )
     finally:
         other.close()
@@ -297,8 +253,8 @@ def test_a_corrupt_store_is_rebuilt(repo):
     output = result.output + result.stderr
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
     assert "store rebuilt" in output and "Traceback" not in output
-    assert result.exit_code == 1  # nothing to backfill from here: the usual one-line message
-    assert "no Claude Code sessions for this repo" in output
+    assert result.exit_code == 1  # an empty store has nothing to draw: the usual one-line message
+    assert "nothing to draw here yet" in output
 
 
 def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tmp_path, monkeypatch):

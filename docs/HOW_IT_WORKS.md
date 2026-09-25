@@ -220,8 +220,8 @@ Code agent, a Codex agent (`codex exec`) and a person editing by hand.
 ## P3. What the Claude Code hooks add
 
 `graphene init` registers one command, `graphene ingest hook`, on eight events. With a plan in
-force it answers as well as records (`src/graphene_map/gate.py`), in the vendor's documented
-JSON:
+force it answers as well as records (`src/graphene_map/hooks.py` records, `gate.py` answers), in
+the vendor's documented JSON:
 
 | Event | Answer |
 | --- | --- |
@@ -507,7 +507,7 @@ It never prints a zero it cannot stand behind.
 
 ### Live hooks
 
-`graphene init` adds one command hook, `graphene ingest hook`, to eight Claude Code events in the
+`hooks.py`. `graphene init` adds one command hook, `graphene ingest hook`, to eight Claude Code events in the
 repo's `.claude/settings.local.json` (the personal file; the team's `settings.json` is never
 written, though hooks found there are recognised, and a repo whose hooks live there gets new events
 added there): `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
@@ -520,7 +520,7 @@ Claude Code runs the command with the event JSON on stdin. The command writes on
 force (P3), so a broken Graphene can never block the agent. It takes
 about 40 ms (a median of twenty runs on the author's machine, measured by `tests/test_hook_budget.py`
 and held under 60 ms there) because it imports only the standard library on that path, and if another process
-holds the database lock (a backfill, a second session) it gives up after 250 ms and logs the
+holds the database lock (a command, a second session) it gives up after 250 ms and logs the
 missed event rather than stalling the agent.
 
 What each event contributes:
@@ -528,9 +528,10 @@ What each event contributes:
 | Event | Recorded |
 | --- | --- |
 | `SessionStart` | the session, its repo, the time, and `git rev-parse HEAD` at that moment |
-| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id`; a slash command (`/model`, a skill) is skipped, as in the transcripts |
+| `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id`; a slash command (`/model`, a skill) is skipped |
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
+| `SubagentStart`, `SubagentStop` | the subagent, its type, its start and end, its working directory and, when that lies in a worktree of the repo (asked of git's own files while it exists), the worktree |
 | `Stop` | the session's end time (updated on every turn end) |
 
 Not all of a response is worth keeping. A `Read` is recorded as the call, the path and whether it
@@ -543,58 +544,30 @@ keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session. Subagent calls carry `agent_id`, which is the lane they are drawn on.
+the session. Subagent calls carry `agent_id`, which is the lane they are drawn on. The rest of a
+subagent is in other calls: the `Agent` call that spawned it names it in its response (`agentId`)
+and carries its task and its prompt, and its spawn link starts there; the `SubagentHandback` call it
+makes carries its closing words. The map reads them off those calls. A command's list of changed
+files names a worktree's copy of a file, and the worktree `SubagentStart` recorded maps it to the
+repo's file, drawn as a copy.
 
-### Transcript backfill
+### What is not read
 
-`graphene ingest --backfill` reads the JSONL transcripts Claude Code keeps under
-`~/.claude/projects/<encoded repo path>/`, plus any directory whose name starts with that prefix
-(sessions launched from a subdirectory of the repo), under the repo's path as given and as
-resolved through symlinks. A transcript is used only if its recorded `cwd` lies inside the repo. Facts the parser relies on, observed on Claude Code 2.1.27x:
-
-- One JSON object per line. `type` is `user`, `assistant`, or bookkeeping (`attachment`,
-  `system`, `file-history-snapshot`, `queue-operation`, `mode`, ...). Only `user` and `assistant`
-  records carry prompts and tool calls; every other type is counted and listed after a backfill
-  as "other record types", so a new type Claude Code starts writing is at least visible.
-- A prompt is a `user` record whose content is a string (or text blocks) and that is not
-  `isMeta`, not `isSidechain`, not a compaction summary, and not a slash-command echo wrapped in
-  `<command-name>` or `<local-command-stdout>` tags.
-- A tool call is a `tool_use` block in an `assistant` record. Its result is a `tool_result` block
-  in a later `user` record; `is_error` marks failure, and that record's `toolUseResult` holds the
-  structured result. That record also carries the `promptId` of the turn it ran in, which is how
-  calls are grouped; a call without one is grouped under the last prompt before its timestamp.
-- Subagent transcripts live in `<transcript dir>/<session id>/subagents/**/*.jsonl` and are
-  merged into the session, keeping their `agentId`.
-- The transcript never records the git HEAD at session start, so backfilled sessions store it as
-  unknown; the git fallback below then uses the last commit made before the session started
-  (or git's empty tree when there is none), so commits made during or after the session do not
-  hide its changes.
-
-A transcript is only parsed when it might have changed: the store keeps the file's size and
-modification time from the last time it was read, and a transcript matching both is skipped
-without being opened. One that grew is parsed and its session reloaded. A transcript that cannot
-be read is reported and skipped; the others still load. Injected context blocks
-(`<system-reminder>…</system-reminder>`) are stripped from prompt text, and a message that
-consists only of them is not a prompt.
-
-A session the hooks recorded is left alone, because the hooks saw more than the transcript does
-(the content before and after each call, and the git HEAD at the start). There is one exception:
-if the hooks are installed in this repo and the transcript holds more tool calls than the store
-has events for that session — which means they were installed part-way through it — the session
-is rebuilt from the transcript automatically, keeping the HEAD the hook captured and the earlier
-of the two start times, and is reported as refreshed. `--replace` forces that rebuild for every
-session the hooks recorded, installed or not.
+Graphene reads no transcript: nothing under `~/.claude/projects/`, where Claude Code keeps them.
+What it knows of a session is what the hooks recorded while it ran, so a session is on the record
+from the moment `graphene init` installed them, and one run before that, or in a checkout without
+them, is not. What no hook event carries, the record does not have: the Workflow run a subagent
+belongs to, so a Workflow's agents are not drawn as one group. A store written by an earlier
+version, which read the transcripts, keeps what it read, and the map still draws it.
 
 ### The store
 
-`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. A hook-recorded
-session can outlive its transcript, and the plan lives nowhere else, so the store is never rebuilt
-from scratch: an older store is migrated in place, by additive steps only, by whichever process
+`.graphene/graphene.db` carries a schema version in SQLite's `user_version`. What the hooks
+recorded and the plan live nowhere else, so the store is never rebuilt from scratch: an older store is migrated in place, by additive steps only, by whichever process
 opens it first (the hook included). A store written by a *newer* Graphene is left exactly as it is
 and the command says to upgrade. Only a file SQLite refuses to read at all is moved aside, to
 `.graphene/graphene.db.corrupt.bak` (with its `-wal`/`-shm` sidecars, and a numeric suffix rather
-than overwriting an existing backup), and replaced by an empty store that is backfilled from the
-transcripts. A locked database is not that case and is never moved. The hook path never moves
+than overwriting an existing backup), and replaced by an empty store. A locked database is not that case and is never moved. The hook path never moves
 anything: on a store it cannot use it skips the event, writes one line to `.graphene/ingest.log`,
 and exits 0.
 
@@ -647,9 +620,9 @@ to start one. `graphene watch` is the plan on one screen (P1a); `graphene plan -
 text (P1c). `graphene node show <id>` is a node's record (P6). `graphene ui` is the plan and, behind
 it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
 
-`graphene ui` first tops the store up from the repo's transcripts (a transcript that has not changed
-since it was last read costs one `stat`), so a session run without the hooks still reaches the map
-the next time you look; the plan's commands read only the store. `--session ID` picks a session by
+`graphene ui` draws what the store holds, the plan and the sessions the hooks recorded, and asks git
+for the commits inside those sessions (all of them the first time, afterwards the ones still running
+or ended within a day). `--session ID` picks a session by
 id or unique prefix and can be repeated to put several on one axis; with none, the session that
 finished last and did something is drawn. `--json` prints the graph the page draws.
 
@@ -657,11 +630,11 @@ Output rules: plain text, never wrapped or cut, so an agent reads a contract as 
 person greps it. In a terminal a line is word-wrapped at the width; piped or redirected it is one
 line with no escape codes. `NO_COLOR` turns colour off and keeps the layout. Every dead end is one
 line on stderr and a non-zero exit (plain when it is merely empty, red when it is an error):
-outside a git repository, inside your home directory, no transcripts for this repo (naming the
-directory it searched), a store another Graphene process has locked, no plan in this repo yet.
+outside a git repository, inside your home directory, nothing to draw (no plan and no session
+recorded), a store another Graphene process has locked, no plan in this repo yet.
 
-Graphene writes nothing until it has something to record: in a repo with neither a store nor a
-transcript the empty state is printed and `.graphene/` and `.gitignore` are left alone (`graphene
+Graphene writes nothing until it has something to record: in a repo with no store the empty state
+is printed and `.graphene/` and `.gitignore` are left alone (`graphene
 init` creates them, and says so).
 
 All commands except the hook refuse to run outside a git repository, and never treat your home
@@ -675,7 +648,9 @@ the prompts about your repository and the files the model reads, and Sandboxes t
 nothing else, anywhere. The key is read from your environment at each call and written nowhere. It
 never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
-permissions you give them; nothing else in Graphene starts an agent. Transcripts can contain secrets; the store stays in `.graphene/` inside
+permissions you give them; nothing else in Graphene starts an agent. It reads nothing Claude Code keeps under `~/.claude/`
+but the one setting `graphene init` looks for (and never writes). What the hooks record can contain
+secrets; the store stays in `.graphene/` inside
 the repo, a directory that is made private to your user (`0700`, the database `0600`) and that
 ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 

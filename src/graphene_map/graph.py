@@ -17,11 +17,10 @@ import os
 import posixpath
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
 
-from .attribute import check_segments
 from .model import Agent, Commit, Prompt, Session, ToolEvent
 from .record import Change, Coverage, Omitted, changes, coverage, seconds, window_commits
+from .shell import check_segments
 from .store import Store
 
 CAPTION = "Layout and timing do not imply causality."
@@ -154,46 +153,15 @@ def _denial(error: str) -> tuple[bool, str]:
     return False, ""
 
 
-def iso(moment: datetime) -> str:
-    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def parse_since(value: str, now: datetime) -> str:
-    """``6h`` / ``2d`` / ``30m`` / ``2026-09-16`` -> ISO timestamp cutoff."""
-    match = re.fullmatch(r"(\d+)([mhdw])", value.strip())
-    if match:
-        amount, unit = int(match.group(1)), match.group(2)
-        delta = {
-            "m": timedelta(minutes=amount),
-            "h": timedelta(hours=amount),
-            "d": timedelta(days=amount),
-            "w": timedelta(weeks=amount),
-        }[unit]
-        return iso(now - delta)
-    try:
-        parsed = datetime.fromisoformat(value.strip())
-    except ValueError:
-        raise ValueError(f"cannot read --since {value!r}: use 6h, 2d, or a date like 2026-09-16") from None
-    if parsed.tzinfo is None:
-        parsed = parsed.astimezone()
-    return iso(parsed.astimezone(UTC))
-
-
-def select_sessions(
-    store: Store, session_id: str | None = None, since: str | None = None, now: datetime | None = None
-) -> list[str]:
-    """Which sessions the map draws: one by id (prefix ok), all since a cutoff, or the latest that
-    did something (a map of an empty session shows nothing)."""
-    now = now or datetime.now(UTC)
+def select_sessions(store: Store, session_id: str | None = None) -> list[str]:
+    """Which sessions the map draws: one by id (prefix ok), or the latest that did something (a map
+    of an empty session shows nothing)."""
     sessions = store.sessions()
     if session_id:
         matches = [s.id for s in sessions if s.id.startswith(session_id)]
         if len(matches) != 1:
             raise ValueError(f"{len(matches)} sessions match {session_id!r}")
         return matches
-    if since:
-        cutoff = parse_since(since, now)
-        return [s.id for s in sessions if (s.ended_at or s.started_at or "") >= cutoff]
     # latest is the one that finished last, which is the one a person comes back to
     latest = sorted(sessions, key=lambda s: s.ended_at or s.started_at or "", reverse=True)
     for wanted in (store.did_something, store.event_count):
@@ -235,6 +203,25 @@ def _lane_id(session_id: str, agent_id: str | None) -> str:
 
 def _ref(event: ToolEvent) -> str:
     return f"event:{event.session_id[:8]}:{event.id}"
+
+
+def _told_by_calls(known: dict[tuple[str, str], Agent], events: list[ToolEvent]) -> None:
+    """What the hooks record of a subagent in calls other than its own: the Agent call that spawned it
+    names it in its response and carries its task and prompt, and its SubagentHandback call carries
+    its closing words. A field its row already holds (a store filled from the transcripts) stays."""
+    for e in events:
+        if e.tool in ("Agent", "Task") and isinstance(e.response, dict):
+            a = known.get((e.session_id, _str(e.response.get("agentId"))))
+            if a is not None and a.parent_tool_use_id is None:
+                a.parent_tool_use_id, a.parent_agent_id = e.id, e.agent_id
+                a.task = a.task or _str(e.input.get("description"))
+                a.prompt = a.prompt or _str(e.input.get("prompt"))
+        elif e.tool == "SubagentHandback" and e.agent_id and (a := known.get((e.session_id, e.agent_id))):
+            a.closing = a.closing or _str(e.input.get("message"))
+
+
+def _str(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _kind(event: ToolEvent, checks: list[str]) -> tuple[str, str | None, bool | None]:
@@ -371,6 +358,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         span(_lane_id(e.session_id, e.agent_id), e.timestamp)
         if e.agent_id and (e.session_id, e.agent_id) not in known:  # an agent only its calls record
             known[(e.session_id, e.agent_id)] = Agent(id=e.agent_id, session_id=e.session_id)
+    _told_by_calls(known, events)
     for a in known.values():
         for stamp in (a.started_at, a.ended_at if seen(a.ended_at) else None):
             span(_lane_id(a.session_id, a.id), stamp)

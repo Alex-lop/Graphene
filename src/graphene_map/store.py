@@ -6,9 +6,10 @@ import contextlib
 import json
 import os
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
 
-from .model import Agent, Commit, DebriefRun, Prompt, Session, ToolEvent
+from .model import Agent, Commit, Prompt, Session, ToolEvent
 
 TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
 RESPONSE_CAP = 256 * 1024
@@ -145,6 +146,39 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # does not know.
     4: (),
 }
+
+
+def repo_root(start: Path) -> Path:
+    """The repository whose store a directory belongs to: the nearest ancestor containing .git,
+    else ``start`` itself; inside a linked worktree, the main repo's root, so what an agent does in a
+    worktree (a hook event, a Nemotron executor's call) lands in the repo's own store."""
+    for candidate in (start, *start.parents):
+        main = worktree_main(str(candidate))
+        if main is not None:
+            return Path(main) if main else candidate
+    return start
+
+
+@lru_cache(maxsize=4096)
+def worktree_main(directory: str) -> str | None:
+    """The main repo root of the checkout rooted at ``directory``: in a linked worktree ``.git`` is a
+    file naming the admin directory, whose ``commondir`` names the common ``.git``, whose parent is
+    that root. ``""`` when the checkout is its own repo (a clone, or a submodule, whose admin
+    directory has no ``commondir``), None when the directory is no checkout at all. Stdlib only: the
+    hook path must not spawn git."""
+    dot = os.path.join(directory, ".git")
+    if not os.path.exists(dot):
+        return None
+    if os.path.isdir(dot):
+        return ""
+    try:
+        with open(dot, encoding="utf-8") as f:
+            gitdir = f.read().partition("gitdir:")[2].strip()
+        admin = gitdir if os.path.isabs(gitdir) else os.path.join(directory, gitdir)
+        with open(os.path.join(admin, "commondir"), encoding="utf-8") as f:
+            return os.path.dirname(os.path.normpath(os.path.join(admin, f.read().strip())))
+    except OSError:
+        return ""
 
 
 class StaleStore(Exception):
@@ -289,11 +323,11 @@ class Store:
         """Open (creating) the repo's store. ``quick`` is the hook path: give up on a lock after 250 ms.
 
         The directory is private to the user and git-ignored on every open, not only by `init`,
-        because whichever command creates it fills it with transcript content.
+        because whichever command creates it fills it with what a session typed and ran.
 
         An older store is migrated in place by whoever opens it, the hook included (the steps only
         add tables and columns). Only a file SQLite cannot read is moved aside and replaced by an
-        empty one (the caller backfills it); ``rebuilt_from`` then holds the backup path. The hook
+        empty one; ``rebuilt_from`` then holds the backup path. The hook
         path never does that, and nobody touches a store a newer Graphene wrote: both raise
         ``StaleStore``.
         """
@@ -312,7 +346,7 @@ class Store:
             store = cls(path, timeout=timeout)
             store.rebuilt_from = str(backup.relative_to(repo_root))
         with contextlib.suppress(OSError):
-            os.chmod(path, 0o600)  # the file too, not only the directory: transcripts can hold secrets
+            os.chmod(path, 0o600)  # the file too, not only the directory: a recorded call can hold secrets
         return store
 
     def close(self) -> None:
@@ -371,27 +405,6 @@ class Store:
             (session_id, session_id),
         ).fetchone()
         return bool(row[0])
-
-    def transcript_stat(self, session_id: str) -> tuple[int, float] | None:
-        """Size and mtime of the transcript when this session was last read from it."""
-        row = self.conn.execute(
-            "SELECT transcript_size, transcript_mtime FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
-        return None if row is None or row[0] is None else (int(row[0]), float(row[1]))
-
-    def set_transcript_stat(self, session_id: str, stat: tuple[int, float]) -> None:
-        self.conn.execute(
-            "UPDATE sessions SET transcript_size = ?, transcript_mtime = ? WHERE id = ?",
-            (stat[0], stat[1], session_id),
-        )
-
-    def delete_session_data(self, session_id: str) -> None:
-        """Drop prompts, events and agents before a reload from the transcript. Commits are git's
-        and stay (the reload credits them again); stored explanations are left alone too."""
-        self.conn.execute("DELETE FROM tool_events WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM agents WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
     # -- prompts ------------------------------------------------------------------------------
 
@@ -477,8 +490,8 @@ class Store:
     # -- agents and commits -------------------------------------------------------------------
 
     def upsert_agent(self, a: Agent) -> None:
-        """Insert, or fill in what a later record knows: a hook event sees the start, the transcript
-        the task, the handback the closing message."""
+        """Insert, or fill in what a later record knows: SubagentStart sees the start, SubagentStop
+        the end."""
         cols = [f for f in Agent.__slots__ if f not in ("id", "session_id")]
         self.conn.execute(
             f"INSERT INTO agents (id, session_id, {', '.join(cols)}) "
@@ -608,61 +621,6 @@ class Store:
 
     def set_meta(self, key: str, value: str | None) -> None:
         self.conn.execute("INSERT OR REPLACE INTO plan_meta (key, value) VALUES (?, ?)", (key, value))
-
-    # -- explanations -------------------------------------------------------------------------
-
-    def set_explanation(
-        self,
-        prompt_id: str,
-        path: str,
-        text: str,
-        source: str,
-        created_at: str,
-        model: str | None = None,
-    ) -> None:
-        self.conn.execute(
-            "INSERT OR REPLACE INTO explanations (prompt_id, path, text, source, created_at, model) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (prompt_id, path, text, source, created_at, model),
-        )
-
-    def explanation(self, prompt_id: str, path: str) -> tuple[str, str, str | None] | None:
-        """(sentence, who wrote it, which model wrote it if any)."""
-        row = self.conn.execute(
-            "SELECT text, source, model FROM explanations WHERE prompt_id = ? AND path = ?",
-            (prompt_id, path),
-        ).fetchone()
-        return (row[0], row[1], row[2]) if row else None
-
-    # -- debrief runs -------------------------------------------------------------------------
-
-    def add_debrief_run(self, session_ids: list[str], timestamp: str) -> DebriefRun:
-        cur = self.conn.execute(
-            "INSERT INTO debrief_runs (session_ids, timestamp) VALUES (?, ?)",
-            (json.dumps(session_ids), timestamp),
-        )
-        return DebriefRun(int(cur.lastrowid), list(session_ids), timestamp)
-
-    def last_debrief_run(self) -> DebriefRun | None:
-        row = self.conn.execute("SELECT * FROM debrief_runs ORDER BY id DESC LIMIT 1").fetchone()
-        return DebriefRun(row["id"], json.loads(row["session_ids"]), row["timestamp"]) if row else None
-
-    def recent_paths(self, limit: int = 5) -> list[tuple[str, str]]:
-        """(repo-relative path, last time it was touched), newest first: what `why` suggests."""
-        rows = self.conn.execute(
-            "SELECT file_path, MAX(timestamp) AS last FROM tool_events "
-            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%' "
-            "GROUP BY file_path ORDER BY last DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return [(r["file_path"], r["last"]) for r in rows]
-
-    def recorded_path_count(self) -> int:
-        row = self.conn.execute(
-            "SELECT COUNT(DISTINCT file_path) FROM tool_events "
-            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%'"
-        ).fetchone()
-        return int(row[0])
 
 
 def _session(r: sqlite3.Row) -> Session:

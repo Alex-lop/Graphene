@@ -3,7 +3,7 @@
 Each screen of `graphene watch` this run changed, in an isolated WezTerm mux at 80×24 and at 120×36,
 on the same saved repository of the real feeds run: before (`2c86399`) and after (this branch).
 The SVGs keep the colours; the `.txt` beside each is the same screen as text. How they were taken:
-[harness/README.md](harness/README.md).
+[docs/screens/README.md](../../screens/README.md).
 
 ## The tree as proposed, cursor on a sub-goal
 

@@ -9,7 +9,7 @@ import sys
 
 def app() -> None:
     if sys.argv[1:3] == ["ingest", "hook"]:
-        from .sources.claude_code import hook_main
+        from .hooks import hook_main
 
         raise SystemExit(hook_main())
     build()()
@@ -36,17 +36,8 @@ def build():
 
     from . import __version__
     from .commits import refresh_commits
-    from .sources.claude_code import (
-        SETTINGS,
-        backfill,
-        hooks_file,
-        hooks_installed,
-        install_hooks,
-        looked_in,
-        repo_root,
-        transcripts_for,
-    )
-    from .store import StaleStore, Store
+    from .hooks import SETTINGS, hooks_file, hooks_installed, install_hooks
+    from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
         'one line only you can add: "bashEditDiffEnabled": true in ~/.claude/settings.json makes Claude '
@@ -64,7 +55,7 @@ def build():
             return False
 
     LOCKED = (
-        "the store .graphene/graphene.db is locked by another graphene process (a backfill or a hook); "
+        "the store .graphene/graphene.db is locked by another graphene process (a hook or a command); "
         "try again in a moment"
     )
 
@@ -92,7 +83,7 @@ def build():
             paragraphs(sub, rich)
 
     class LockAware(TyperGroup):
-        """One place where losing the race with a hook or a backfill is a line, not a traceback; and
+        """One place where losing the race with a hook or another command is a line, not a traceback; and
         where a missing option or argument, anywhere, is a line and not Click's usage box."""
 
         def __init__(self, *args, **kwargs):
@@ -190,32 +181,12 @@ def build():
             note(f"store rebuilt (old copy at {store.rebuilt_from})")
         return store
 
-    def no_sessions(r: Path) -> None:
+    def nothing_to_draw(r: Path) -> None:
         if hooks_installed(r):
             then = "the hooks are installed, so the next session here is recorded live"
         else:
             then = "`graphene init` records sessions live"
-        empty(
-            f"no Claude Code sessions for this repo yet (looked in {looked_in(r)}): "
-            f"run Claude Code here, then `graphene` again; {then}"
-        )
-
-    def loaded_store(r: Path) -> Store:
-        """The repo's store, topped up from Claude Code's transcripts first (a transcript that has not
-        changed since it was last read costs one stat, so this is cheap on every run). A repo with
-        neither a store nor a transcript gets the empty state and nothing written."""
-        if not (r / ".graphene" / "graphene.db").exists() and not transcripts_for(r):
-            no_sessions(r)
-        store = open_store(r)
-        report = backfill(store, r)
-        if not store.sessions():
-            store.close()
-            no_sessions(r)
-        refresh_commits(store, r, report.added + report.refreshed)
-        n = len(report.added)
-        if n:
-            note(f"loaded {n} session{'s' if n != 1 else ''} from Claude Code's transcripts")
-        return store
+        empty(f"nothing to draw here yet: no plan, and no Claude Code session recorded; {then}")
 
     @cli.callback(invoke_without_command=True)
     def main(
@@ -378,46 +349,13 @@ def build():
                 "Install it with `uv tool install graphene-map` (or `--editable .`)."
             )
 
-    ingest = typer.Typer(
-        help="Record what the agent did (the hooks and --backfill do this for you).",
-        invoke_without_command=True,
-    )
+    ingest = typer.Typer(help="Record what the agent did (the hooks call this).")
     cli.add_typer(ingest, name="ingest", hidden=True)
-
-    @ingest.callback()
-    def ingest_main(
-        ctx: typer.Context,
-        do_backfill: bool = typer.Option(
-            False, "--backfill", help="Load this repo's Claude Code transcripts."
-        ),
-        transcript: list[Path] = typer.Option(
-            None, "--transcript", help="Backfill these transcript files only."
-        ),
-        replace: bool = typer.Option(False, "--replace", help="Rebuild sessions the hooks recorded, too."),
-    ) -> None:
-        if ctx.invoked_subcommand is not None:
-            return
-        if not do_backfill:
-            fail("nothing to do: pass --backfill, or let the hooks call `graphene ingest hook`", 1)
-        r = root()
-        with open_store(r) as store:
-            report = backfill(store, r, transcripts=transcript or None, replace=replace)
-        console.print(
-            f"added {len(report.added)}, refreshed {len(report.refreshed)}, "
-            f"already present {len(report.skipped)}, other repos {len(report.other_repo)}"
-        )
-        for sid in report.added + report.refreshed:
-            console.print(f"  {sid}")
-        for path, error in report.failed:
-            console.print(f"[yellow]could not read {path}: {error}[/yellow]")
-        if report.skipped_records:
-            kinds = ", ".join(f"{k} {v}" for k, v in sorted(report.skipped_records.items()))
-            console.print(f"other record types (not prompts or tool calls): {kinds}")
 
     @ingest.command("hook")
     def ingest_hook() -> None:
         """Read one hook event from stdin (used by the installed hooks)."""
-        from .sources.claude_code import hook_main
+        from .hooks import hook_main
 
         raise typer.Exit(hook_main())
 
@@ -438,18 +376,16 @@ def build():
         from .server import export_html, make_server
 
         r = root()
-        planned = False
-        if (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
-            with open_store(r) as store:
-                planned = store.node_count() > 0
+        if not (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
+            nothing_to_draw(r)
         # The plan is the page's first screen, so a repo that has one opens even when no session has
-        # been recorded in it yet; `loaded_store` ends the command when there is nothing to look at.
-        with open_store(r) if planned else loaded_store(r) as store:
-            if planned:
-                report = backfill(store, r)  # the record fills in beside the plan, quietly
-                refresh_commits(store, r, report.added + report.refreshed)
+        # been recorded in it yet. The sessions are the ones the hooks recorded; their commits, git's.
+        with open_store(r) as store:
+            if not store.node_count() and not store.sessions():
+                nothing_to_draw(r)
+            refresh_commits(store, r, [])
             try:
-                ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
+                ids = [i for one in session or [None] for i in select_sessions(store, one)]
             except ValueError as exc:
                 fail(str(exc))
             if as_json:
