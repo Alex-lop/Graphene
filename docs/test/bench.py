@@ -200,7 +200,8 @@ def last_words(log: str | None) -> str:
 def ended(hold: list[dict], stop: tuple[str, str] = TIMEOUT) -> tuple[str, str]:
     """How one hold of a leaf ended, from the plan's log: landed, handed back, failed or stopped, and
     why. A failed attempt is one whose executor ended with no done and no release of its own (a crash,
-    a timeout, a step cap, silence): the run's own boundary after it is logged as the run. `stop` is
+    a timeout, a step cap, silence): the run's own boundary after it is logged as the run, with the
+    attempt's session. `stop` is
     how a hand-back by a stopped `graphene run` counts. A leaf refused a call by the spend cap is
     stopped: the night's budget ended it, not its executor."""
     if any(e["kind"] == "landed" for e in hold):
@@ -211,7 +212,10 @@ def ended(hold: list[dict], stop: tuple[str, str] = TIMEOUT) -> tuple[str, str]:
         return stop
     tries = [k for k, e in enumerate(hold) if e["kind"] == "attempt"]
     last = hold[tries[-1] :] if tries else hold
-    if not any(e["kind"] in VERDICTS and e["actor"] != hold[0]["actor"] for e in last):
+    run = (hold[0]["actor"], hold[0]["session_id"])  # the run's own acts carry its name and the attempt's
+    # session; an executor's own `done` or `release` differs in one (Claude Code: its name; Nemotron:
+    # no session, since it is logged under the run's name)
+    if not any(e["kind"] in VERDICTS and (e["actor"], e["session_id"]) != run for e in last):
         said = last_words(last[0]["detail"].get("log")) if tries else "it never started"
         said += f"; {why}" if why else ""
         if said.startswith("stopped: the spend cap is reached"):  # tokenfactory.Spent, as the executor says
