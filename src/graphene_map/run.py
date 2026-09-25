@@ -41,6 +41,26 @@ DEFAULT_WITH = (
     "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)'"
 )
 ATTEMPTS = 3
+CODEX = "codex exec --sandbox workspace-write"
+
+
+def named(spec: str | None) -> str:
+    """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
+    Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default;
+    anything else is a command, as it is."""
+    spec = (spec or "").strip()
+    word = spec.split(None, 1)[0] if spec else ""
+    if word == "nemotron":
+        from .executor import template
+
+        return template(spec)
+    return {"": DEFAULT_WITH, "claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+
+
+def label(template: str) -> str:
+    """Who the run's executor is, in the plan's log: `run:<this>`."""
+    argv = shlex.split(template)
+    return "nemotron" if "graphene_map.executor" in argv else argv[0]
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
 GRACE = 10  # seconds an executor is given to end after TERM, before KILL
@@ -242,7 +262,7 @@ def run_node(
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on."""
     session = str(uuid.uuid4())
-    who = P.Caller(f"run:{shlex.split(template)[0]}", False, session)
+    who = P.Caller(f"run:{label(template)}", False, session)
     stop = stop or Stop()
     try:
         node = P.start(store, node_id, who, checkout)

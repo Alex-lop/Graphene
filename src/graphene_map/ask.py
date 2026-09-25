@@ -30,6 +30,25 @@ from .run import _splits, command_for
 # read-only`.
 DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config"
 ATTEMPTS = 2
+
+
+def named(spec: str | None) -> str:
+    """What --with names, as the planner to start: `nemotron [options]` is Graphene's own planner on
+    Token Factory; `claude` and `codex` alone are those agents with read-only tools; anything else is a
+    command, as it is."""
+    spec = (spec or "").strip()
+    if spec.split(None, 1)[:1] == ["nemotron"]:
+        from .planner import template
+
+        return template(spec)
+    return {"": DEFAULT_PLANNER, "claude": DEFAULT_PLANNER, "codex": "codex exec --sandbox read-only"}.get(
+        spec, spec
+    )
+
+
+def label(template: str) -> str:
+    argv = shlex.split(template)
+    return "nemotron" if "graphene_map.planner" in argv else Path(argv[0]).name
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 _START = re.compile(r"^(?:goal:|[-*+?][ \t])", re.MULTILINE)
 
@@ -118,8 +137,8 @@ def ask(
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
     session = str(uuid.uuid4())
-    argv0 = shlex.split(template)[0]
-    who = P.Caller(f"planner:{Path(argv0).name}", False, session)
+    argv0 = label(template)
+    who = P.Caller(f"planner:{argv0}", False, session)
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
     asked = prompt = prompt_for(store, sentence, about, split)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock

@@ -388,15 +388,23 @@ def _check_write(
             f"{rel} holds the hooks that keep this plan; a leaf made from a prompt does not reach it. "
             "The person edits it themselves, or plans a leaf whose scope names it"
         )
+    said = scope_refused(store, held, rel, event.get("session_id"), how, agent_id)
+    return None if said is None else _deny(said)  # inside: say nothing, so the person's own rules apply
+
+
+def scope_refused(
+    store, held: list[P.Node], rel: str, session: object, how: str, agent_id: str | None = None
+) -> str | None:
+    """Why a write of ``rel`` by whoever holds ``held`` is refused, or None when a scope covers it. The
+    refusal is logged on the node, where a hand-back's offers are read from. The Claude Code hook and
+    the Nemotron executor's write tools both say it, so an agent of either meets the same words."""
     if any(P.in_scope(rel, n.scope) for n in held):
-        return None  # inside the scope: say nothing, so the person's own permission settings still apply
+        return None
     n = held[0]
-    store.log_node(
-        n.id, P._now(), "denied", n.executor, event.get("session_id"), agent_id, {"path": rel, "how": how}
-    )
+    store.log_node(n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
     scopes = "; ".join(f"{h.id}: {', '.join(h.scope)}" for h in held)
-    way_out = _how_out(store, event.get("session_id"), held, [rel])
-    return _deny(f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}")
+    way_out = _how_out(store, session, held, [rel])
+    return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
 
 
 def _guard_command(event: dict) -> dict | None:

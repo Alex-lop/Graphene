@@ -694,7 +694,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         The last line says what the run did; `graphene watch` shows it when the run ends."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
-        from .run import DEFAULT_WITH, run_parallel, run_plan, summary
+        from .run import named, run_parallel, run_plan, summary
 
         r = root()
         with open_store(r) as store:
@@ -706,11 +706,11 @@ def register(cli: typer.Typer, root, open_store, fail):
             try:
                 if parallel > 1:
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), parallel, executor or DEFAULT_WITH,
+                        lambda: open_store(r), r, checkout(), parallel, named(executor),
                         attempts, node or None, out, logs,
                     )  # fmt: skip
                 else:
-                    run_plan(store, checkout(), executor or DEFAULT_WITH, attempts, node or None, out, logs)
+                    run_plan(store, checkout(), named(executor), attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
@@ -719,7 +719,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(summary(store, since))
 
     def planner(sentence: str, executor: str | None, about: str | None, split: bool) -> None:
-        from .ask import DEFAULT_PLANNER, ask
+        from .ask import ask, named
 
         who = P.caller()
         if not who.person:
@@ -727,7 +727,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                  "  propose the tree yourself: graphene plan propose - <<'EOF' … EOF", 1)  # fmt: skip
 
         def go(store):
-            said = ask(store, checkout(), sentence, executor or DEFAULT_PLANNER, about, split, out)
+            said = ask(store, checkout(), sentence, named(executor), about, split, out)
             for line in said:
                 out(line)
             if said:
