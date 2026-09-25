@@ -41,8 +41,8 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
-from ..attribute import nested_checkout
 from ..model import Agent, Prompt, Session, ToolEvent
+from ..shell import nested_checkout
 from ..store import StaleStore, Store
 
 # SubagentStart and SubagentStop carry agent_id, agent_type and the common cwd, per the official

@@ -7,7 +7,7 @@ command somebody actually typed, not a grammar exercise.
 
 from pathlib import Path
 
-from graphene_map.attribute import bash_written_paths, check_segments
+from graphene_map.shell import bash_written_paths, check_segments
 
 
 def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():

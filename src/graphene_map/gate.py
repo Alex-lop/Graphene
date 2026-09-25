@@ -444,7 +444,7 @@ def _first_write(event: dict, root: Path) -> str | None:
         path = tool_input.get("file_path") or tool_input.get("notebook_path")
         return _rel(path, root, cwd) if isinstance(path, str) and path else None
     if tool == "Bash":
-        from .attribute import bash_written_paths
+        from .shell import bash_written_paths
 
         command = str(tool_input.get("command") or "")
         if len(command) > PARSED:
@@ -525,7 +525,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         command = str(tool_input.get("command") or "")
         if len(command) > PARSED:
             return None  # TODO: too long to parse inside the hook's time; `done` asks git anyway
-        from .attribute import bash_written_paths
+        from .shell import bash_written_paths
 
         held = _held(store, sid)
         rels = []

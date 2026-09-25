@@ -19,9 +19,9 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from .attribute import check_segments
 from .model import Agent, Commit, Prompt, Session, ToolEvent
 from .record import Change, Coverage, Omitted, changes, coverage, seconds, window_commits
+from .shell import check_segments
 from .store import Store
 
 CAPTION = "Layout and timing do not imply causality."
