@@ -11,6 +11,9 @@
 - The bill: what the Nemotron planner and executors cost, at list price, in `graphene node show`, `graphene plan record`, the run's last line and the screen's status line.
 - `graphene ui --export` draws a `graphene run` from the store alone; `.github/workflows/pages.yml` publishes the demo page when started by hand.
 - Python 3.14 in CI; the store binds values to plain `?` only.
+- Graphene reads no Claude Code transcript: `graphene ui` draws the plan and the sessions the hooks recorded; `graphene ingest --backfill` is removed (`graphene ingest hook` is unchanged). A session run before `graphene init`, or without the hooks, is not on the map. Internal: `graphene_map.attribute` is `graphene_map.shell`, `graphene_map.sources.claude_code` is `graphene_map.hooks`, `repo_root` lives in `graphene_map.store`. The screen harness is `docs/screens/`.
+- Sandboxes: a clean commit's checkpoint is made once and every leaf at it forks it; `--forks` forks one sandbox; `--image` and `--prepare`; the file list is read back whole; what git ignores is nobody's change. An executor that cannot work hands its leaf back with the cause. The planner and executor read only what git shows. A reasoning model's cut-off reply, Nemotron's `<TOOLCALL>` text and common tool names are handled. A `--parallel` leaf's record holds its own commits, and a Nemotron leaf's is graded by the writes it recorded.
+- `docs/test/`: `bench.py` and `results.py` (the benchmark), `score_tree.py` (a tree against its task), `access.py` (the access check), and the OpenCode placement spike.
 
 Paragraph in, tree out, prune, run.
 - A paragraph typed into a session (240 characters or more) is asked for a tree before any code: the agent proposes it in the plan's text and stops, and its writes wait until a leaf is accepted. A line is still done at once; "just do it" skips the tree, and a short "no plan" lifts a wait. A new session is taught the text whether or not a plan exists yet.

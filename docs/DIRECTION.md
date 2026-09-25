@@ -551,6 +551,41 @@ change is named here.
     back without an offer it could take is not run again, since a free retry would inflate the
     landed share. Rows are grouped by task, configuration, Graphene's sha, the executor's prompt
     version and the tree, and accept is printed beside landed.
+66. **Graphene reads no Claude Code transcript, and the session-era modules are cut to what the plan,
+    the gate, the record and the page use. This finishes decision 25's follow-up.** `graphene ui` and
+    its page draw what the store holds: the plan, and the sessions the hooks recorded while they ran.
+    `graphene ingest --backfill` is gone; `graphene ingest hook` is not.
+    - **Renamed for what they do:** `shell.py` (was `attribute.py`) and `hooks.py` (was
+      `sources/claude_code.py`). `repo_root` lives in `store.py`, so the Nemotron executor no longer
+      imports the Claude Code module.
+    - **Deleted:** the session card's store methods and the `--since` picker. Their tables stay,
+      since migrations only add.
+    - **Size:** `src/graphene_map` lost 731 lines.
+
+    *Why:* no command needed the transcripts. Every session in a repository where `graphene init`
+    ran is recorded live by the hooks that hold it to the plan. And a stranger's Graphene should not
+    read their home directory.
+
+    *What it gives up:* a session run before `init`, or without the hooks, is not on the map, and a
+    Workflow's grouping of subagents is not drawn. A subagent's task, closing words and worktree
+    are read from what the hooks recorded (the review found them lost at first).
+
+    The map of what was kept, moved and deleted is `docs/process/nemotron/cut.md`.
+67. **A leaf in a sandbox forks its commit's checkpoint.** The repository is uploaded and set up once
+    for each clean commit, `--prepare` included, and kept in the store's meta. Every leaf at that
+    commit forks it and adds only its own scope's permissions. `--forks N` forks one sandbox. A leaf
+    with uncommitted work of its own gets a checkpoint of its own. *Why:* the thesis is "each leaf
+    runs in a Sandbox forked from the same checkpoint", and the judges found that each leaf and each
+    fork uploaded and set up again. *Evidence:* two leaves at one commit, the second made with two
+    operations (`tests/test_sandbox_state.py`).
+68. **An executor that cannot work at all hands its leaf back itself, with the cause** (no key, a
+    refused key, no sandbox, ConTree's own errors, the spend cap). *Why:* the run then does not send
+    it round again to fail the same way and run its check on untouched code. A judge saw a wrong key
+    come back as "3 attempts, the last one refused: AssertionError".
+69. **Only what git shows is read and sent.** The planner's `read` and the executor's `view` refuse a
+    file git ignores (a `.env`) and `.graphene/`. The sandbox takes only what git shows. *Why:* a judge
+    had the planner send a git-ignored secret to Token Factory. *The hole, written down:* in the local
+    placement a command the model runs can read what your user can, and its output goes to the model.
 
 ## What does not bind (say it wherever you sell it)
 

@@ -245,6 +245,8 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
   permissions you give it.
 - What a Nemotron leaf cost is Token Factory's own token count at its list price: in the leaf's
   record, on `graphene watch`'s status line, and on the run's last line.
+- Graphene reads no Claude Code transcript. What it knows of a session is what its hooks recorded
+  while the session ran, in `.graphene/`.
 - The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git.
   Graphene never pushes. It commits and merges only in `graphene run --parallel`, on
   `graphene/<leaf>` branches of its own, merged into the checkout you started it from when the merge
