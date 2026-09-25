@@ -1,7 +1,7 @@
 # The messages, before and after
 
 Each message item of the directive, in a fresh repository of its own, run with `graphene` at
-`2c86399` (before) and on this branch (after): `harness/items.sh <graphene> <dir>`. An agent is a
+`2c86399` (before) and on this branch (after): `docs/screens/items.sh <graphene> <dir>`. An agent is a
 shell with Claude Code's marks; the person is one without them. `<repo>` stands for the path.
 
 ## 1. parent: places or is refused
