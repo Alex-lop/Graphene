@@ -331,13 +331,25 @@ tool call at a time (view, edit, write, run, done, release) and runs the call in
 conversations at once from one checkpoint, each in a copy of the checkout. A fork's `done` runs the
 check in its copy; the first whose check passes is copied in (what its scope covers, nothing else) and
 Graphene's own `done` decides. `--protocol text` takes tool calls written as fenced text, for a model
-whose native calls misfire. A command the model runs, and the check, get an environment without the key.
+whose native calls misfire; Nemotron's own `<TOOLCALL>` text is read in either protocol, and a tool
+called by another common name (`read_file`, `str_replace`, `bash`) is the tool it means. A reply cut
+off at the token limit is asked again with more room. `view` reads only what git shows. A command the
+model runs, and every check, get an environment without the key. An executor that cannot work at all
+(no key, a refused key, no sandbox, the spend cap) hands the leaf back itself, with the cause.
 
 **The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
-SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). The
-leaf's checkout is packed (what git tracks, and what it does not ignore) and unpacked at `/work` in a
-sandbox from `python:3.12`. There a script run as root makes a git baseline and a user, `leaf`, for
-every command:
+SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). Without
+them it refuses in words before anything is sent.
+
+**The checkpoint.** For a checkout that is exactly a commit, the repository is uploaded and set up once:
+- git tracks it, or does not ignore it;
+- it is unpacked at `/work` in a sandbox from `python:3.12` (`--image` names another);
+- a git baseline is made, and the user `leaf`;
+- `--prepare` runs once, as root (`pip install -e .[test]`, say).
+
+That checkpoint is kept in the store's meta. Every leaf started at that commit forks it. A leaf with
+uncommitted work of its own gets a checkpoint of its own. Each fork then gets its leaf's permissions
+(`layer2`):
 
 - `/work` is root's and nobody else may write it;
 - `leaf` owns the files the scope covers, and every directory the scope covers whole;
@@ -345,18 +357,27 @@ every command:
   `leaf` can create a file there and replace its own, and cannot delete, rename or change anyone
   else's.
 
-The checkout here stays what the boundary reads. The executor's edits land here after the scope
-check and are pushed into the sandbox before its next command. After each command a manifest of
-`/work` says what changed: what the scope covers is brought back here; anything else (a new file in a
-shared directory, a link) is never brought back. It is logged on the leaf as a breach, the model is
-told, and it is removed before the next command. The leaf's check runs in a fresh fork of the sandbox's
-first image, holding the checkout as Graphene holds it, as `leaf` (`sandbox.check_in_fork`). So a
-file a command left outside the scope cannot change the check's result. `GRAPHENE_SANDBOX=docker` puts
-the same sandbox in a local Docker container (`sandbox.Docker`): the tests' and CI's stand-in for
-ConTree, with the same users and permissions.
+`--forks N` makes one sandbox for the leaf and forks the others from it (`Sandbox.fork`).
 
-**The planner** reads the repository with list, glob, grep and read. They run here and read only: a
-planner writes nothing. It prints the fenced `plan` block that `ask.py` reads. It defaults to the
+**Edits, commands and the record.** The checkout here stays what the boundary reads. The executor's
+edits land here after the scope check, and are pushed into the sandbox before its next command. After
+each command, the command's exit code and a list of every file under `/work` with its hash are
+written to a file in the sandbox, closed by an end line, and read back whole. Never from the command's
+output, which is capped. A list that does not come back whole changes nothing here.
+
+What the scope covers is brought back here. Anything else, such as a new file in a shared directory
+or a link, is never brought back, and neither is what git ignores (a check's `__pycache__`). Such a
+path is logged on the leaf as a breach, the model is told, and it is removed before the next command.
+The executor records each write it made, its own edits and what its commands changed here, in its
+usage row, and the leaf's record is graded by them.
+
+**The check.** The leaf's check runs in a fresh fork of the leaf's first image, holding the checkout as
+Graphene holds it, as `leaf` (`sandbox.check_in_fork`). So a file a command left outside the scope
+cannot change its result. `GRAPHENE_SANDBOX=docker` puts the same sandbox in a local Docker container
+(`sandbox.Docker`): the tests' and CI's stand-in for ConTree, with the same users and permissions.
+
+**The planner** reads the repository with list, glob, grep and read. They run here and read only what
+git shows: never a file git ignores (a `.env`), never `.graphene/`. A planner writes nothing. It prints the fenced `plan` block that `ask.py` reads. It defaults to the
 largest Nemotron the list has; its bill goes into the plan's log.
 
 **Which executors are held before the write, and how:**
