@@ -233,7 +233,7 @@ Recording and deciding fail apart. If the gate crashes, the call goes through, t
 ## P4. `graphene run`
 
 For each node an agent can reach, in order: Graphene starts the node itself, runs the executor
-command you gave (`--with`, default `claude -p --permission-mode acceptEdits --allowedTools
+command you gave (`--with`, else the one `graphene init` chose (P4b), else `claude -p --permission-mode acceptEdits --allowedTools
 'Bash(graphene *)'`: it may edit and run its own `done` and `release`) with the node's contract as
 its last argument and `GRAPHENE_NODE` in its environment, waits for the process to end,
 and then looks at the node, not at the exit code. If the executor ran `graphene node done` itself
@@ -281,13 +281,31 @@ so the hooks hold a leaf there as they do in your checkout.
 ## P4a. `graphene ask`
 
 A planner is an executor whose scope is the plan (`ask.py`). It is started as `run` starts an
-executor, with the command the person names (default `claude -p --tools Read,Grep,Glob
+executor, with the command the person names (`--with`, else the one `graphene init` chose, else `claude -p --tools Read,Grep,Glob
 --strict-mcp-config`: it can read and nothing else, and none of the person's MCP servers reach it), `GRAPHENE_PLANNER` in its environment, and a prompt holding the sentence,
 the plan's text and the rules for a leaf. What it prints is read as the plan's text (the last fenced
 block, or else from the first line that reads as one) and added as its proposals; a proposal
 Graphene cannot read goes back to it once, with the refusal. The hooks refuse it a write and
 `start` refuses it a leaf. Asking is the person's: it spends. `graphene node split <id>` asks it to cut
 a leaf; `--about <id>` asks it about a leaf that came back.
+
+## P4b. Which planner and which executor
+
+`graphene init` chooses both, once per repository, and keeps them in the store's meta (`planner`,
+`executor`), each spelled as `--with` takes it. At a terminal it asks, numbered: Nemotron on Token
+Factory first and the default (Ultra plans; Nano, then Super on a second attempt, do the leaves; in a
+Sandbox when ConTree is set up on the machine, on it otherwise), then Claude Code, Codex, or a command
+of your own; run again, it shows what is set, and Enter keeps it. Without a terminal it takes
+`--planner` and `--executor` and changes only what they name; with neither it keeps what is set, and
+gives what is not Nemotron when Token Factory answers, else Claude Code. Nemotron is written with the
+ids Token Factory's model list gave (`nemotron --model <nano> --model <super> --placement local`,
+`nemotron --model <ultra>`), and as plain `nemotron`, which finds its models when it runs, when the
+list could not be read. Token Factory is asked once, without retrying, and what could not be reached
+(no key, a refused key, no answer, no Nemotron listed) is one line. `run`, `ask` and `node split`
+start what was chosen, and so do the screen's `R`, `:ask` and `s`; `--with` overrides it for one
+command. Choosing is the person's: an agent's `--planner` or `--executor` is refused, since what they
+name runs with the person's permissions and spends on their key. The screen's status line says what
+`R` starts (`R runs 3 ready with nemotron`) where the line has room.
 
 ## P5. Where each mechanism ends
 

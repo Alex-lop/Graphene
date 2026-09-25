@@ -50,14 +50,16 @@ def base() -> str:
     return os.environ.get("GRAPHENE_TOKENFACTORY_URL", BASE).rstrip("/") + "/"
 
 
-def _request(method: str, path: str, body: dict | None = None, timeout: float = 60) -> tuple[dict, dict]:
+def _request(
+    method: str, path: str, body: dict | None = None, timeout: float = 60, tries: int = TRIES
+) -> tuple[dict, dict]:
     """One request, tried again on a 429 or a 5xx. Returns the JSON answer and the response headers."""
     key = os.environ.get(KEY)
     if not key:
         raise Unreachable(f"{KEY} is not set: Token Factory needs a key (tokenfactory.nebius.com)")
     data = json.dumps(body).encode() if body is not None else None
     wait = 2.0
-    for attempt in range(1, TRIES + 1):
+    for attempt in range(1, tries + 1):
         req = urllib.request.Request(base() + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {key}")
         req.add_header("Content-Type", "application/json")
@@ -66,14 +68,14 @@ def _request(method: str, path: str, body: dict | None = None, timeout: float = 
                 return json.loads(resp.read() or b"{}"), dict(resp.headers)
         except urllib.error.HTTPError as no:
             said = no.read().decode("utf-8", "replace")[:300]
-            if (no.code == 429 or no.code >= 500) and attempt < TRIES:
+            if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
             raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as no:
-            if attempt < TRIES:
+            if attempt < tries:
                 time.sleep(wait)
                 wait *= 2
                 continue
@@ -82,8 +84,8 @@ def _request(method: str, path: str, body: dict | None = None, timeout: float = 
 
 
 @lru_cache(maxsize=4)
-def _listed(url: str) -> tuple[Model, ...]:
-    said, _ = _request("GET", "models?verbose=true")
+def _listed(url: str, tries: int = TRIES) -> tuple[Model, ...]:
+    said, _ = _request("GET", "models?verbose=true", tries=tries)
     out = []
     for m in said.get("data") or []:
         price = m.get("pricing") or {}
@@ -92,9 +94,9 @@ def _listed(url: str) -> tuple[Model, ...]:
     return tuple(out)
 
 
-def models() -> list[Model]:
+def models(tries: int = TRIES) -> list[Model]:
     """Every model Token Factory lists for this key, with its list price (asked once a process)."""
-    return list(_listed(base()))
+    return list(_listed(base(), tries))
 
 
 ROLES = ("ultra", "super", "nano")
@@ -193,13 +195,13 @@ def _write(path: Path | None, row: dict) -> None:
         f.write(json.dumps(row) + "\n")
 
 
-def reach() -> str | None:
+def reach(tries: int = TRIES) -> str | None:
     """What could not be reached, in one line, or None when the key works and a Nemotron model is
-    listed. `graphene init` says it."""
+    listed. `graphene init` says it, asking once (``tries=1``): offline, it must not wait a minute."""
     try:
-        found = roles()
+        found = roles(models(tries))
     except Unreachable as no:
-        return str(no)
+        return " ".join(str(no).split())  # a gateway's error page has lines of its own
     if not found:
         return "Token Factory lists no NVIDIA Nemotron model for this key"
     return None

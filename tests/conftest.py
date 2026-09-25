@@ -15,6 +15,14 @@ def utc(monkeypatch):
     time.tzset()
 
 
+@pytest.fixture(autouse=True)
+def no_token_factory(monkeypatch):
+    """Nothing in the suite reaches the real Token Factory or Sandboxes, whatever the shell has: a test
+    that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
+    for name in ("NEBIUS_API_KEY", "GRAPHENE_TOKENFACTORY_URL", "CONTREE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def finish():
     """Do a node's work and finish it: a node with nothing changed inside its scope is not done, so

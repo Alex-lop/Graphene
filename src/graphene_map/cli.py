@@ -19,6 +19,7 @@ def build():
     import inspect
     import json
     import os
+    import shlex
     import shutil
     import sqlite3
     from pathlib import Path
@@ -235,11 +236,92 @@ def build():
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 
+    WHO = ("planner", "executor")
+
+    def nemotron() -> tuple[dict[str, str], str | None]:
+        """Nemotron on Token Factory, as a new repo is offered it: Ultra plans; Nano, then Super on a
+        second attempt, do the leaves, in a Sandbox when ConTree is set up here and on this machine
+        otherwise. The ids are the live list's, so a run is reproducible and nothing is guessed. Out of
+        reach it is plain `nemotron`, which finds its models when it runs, and the second value says in
+        one line what could not be reached. Asked once: offline, init must not wait a minute."""
+        from . import tokenfactory as tf
+        from .sandbox import sandbox_configured
+
+        unreached = tf.reach(tries=1)
+        found = {} if unreached else tf.roles(tf.models(tries=1))
+
+        def models(*sizes: str) -> str:
+            return "".join(f" --model {shlex.quote(found[s])}" for s in sizes if s in found)
+
+        place = "sandbox" if sandbox_configured() else "local"
+        ladder = f"nemotron{models('nano', 'super')} --placement {place}"
+        return {"planner": f"nemotron{models('ultra')}", "executor": ladder}, unreached
+
+    def asked_once(offer: dict[str, str], now: dict) -> dict[str, str]:
+        """At a terminal: numbered, Nemotron first and the default. Enter keeps what is set."""
+        kept = any(now.values())
+        if kept:
+            say(" · ".join(f"{k} now: {now[k] or 'claude'}" for k in WHO))
+        where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
+        say("which planner and executor for this repo?")
+        say("  1  Nemotron on Token Factory: Ultra plans, Nano then Super do the leaves,")
+        for line in (f"     {where}", "  2  Claude Code", "  3  Codex", "  4  a command of your own"):
+            say(line)
+        picks = {"1": offer, "2": dict.fromkeys(WHO, "claude"), "3": dict.fromkeys(WHO, "codex"), "4": {}}
+        if kept:
+            picks[""] = {}
+        ask = "choose (Enter keeps them)" if kept else "choose"
+        while (picked := typer.prompt(ask, default="" if kept else "1", show_default=not kept)) not in picks:
+            say("choose 1, 2, 3 or 4")
+        if picked == "4":
+            return {k: typer.prompt(f"the {k}, a command that takes the prompt last") for k in WHO}
+        return picks[picked]
+
+    def choose(store, given: dict[str, str]) -> str:
+        """The planner and the executor, kept in the store's meta as `--with` reads them. With no flags a
+        terminal is asked; without one, what is set is kept, and what is not gets Nemotron when Token
+        Factory answers, else Claude Code. The flags change only what they name. Returns what is set,
+        in one line."""
+        now = {k: store.meta(k) for k in WHO}
+        missing = [k for k in WHO if k not in given and not now[k]]
+        asking = not given and sys.stdin.isatty() and sys.stdout.isatty()
+        offer, unreached = {}, None
+        if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
+            offer, unreached = nemotron()
+            if unreached:
+                say(unreached)
+        if asking:
+            given = asked_once(offer, now)
+        else:
+            given = {**{k: "claude" if unreached else offer[k] for k in missing}, **given}
+        for k, v in given.items():
+            store.set_meta(k, v)
+        told = " · ".join(f"{k}: {store.meta(k) or 'claude'}" for k in WHO)
+        return f"{told}  (`graphene init` changes them; --with changes one command)"
+
     @cli.command()
-    def init() -> None:
-        """Install the Claude Code hooks: they hold agents to the plan and keep the record."""
+    def init(
+        planner: str = typer.Option(None, help="The planner: nemotron, claude, codex or a command."),
+        executor: str = typer.Option(None, help="The executor: nemotron, claude, codex or a command."),
+    ) -> None:
+        """Install the Claude Code hooks (they hold agents to the plan and keep the record), and choose
+        this repo's planner and executor: asked at a terminal, the flags when not. `graphene run`, `ask`
+        and `node split` start them; `--with` overrides one command."""
+        from . import plan as P
+
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not install hooks; that is the person's", 1)
+        given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
+        if given:  # they are started as you, with your permissions, and they spend
+            try:
+                P._person_only(P.caller(), "choosing the planner and the executor")
+            except P.Refused as no:
+                fail(str(no), 1)
+        for k, v in given.items():
+            try:
+                shlex.split(v)
+            except ValueError as no:
+                fail(f"--{k} {v!r} cannot be read as a command: {no}")
         r = root()
         try:
             added = install_hooks(r)
@@ -253,8 +335,9 @@ def build():
         with open_store(r) as store:  # a repository set up for Graphene plans first (`plan first off`)
             if store.meta("plan_first") is None:
                 store.set_meta("plan_first", "on")
-        say("plan first is on: what you ask for in a session becomes a tree before any code "
-            "(`graphene plan first off` turns it off)")  # fmt: skip
+            say("plan first is on: what you ask for in a session becomes a tree before any code "
+                "(`graphene plan first off` turns it off)")  # fmt: skip
+            say(choose(store, given))
         if settings.name == Path(SETTINGS).name:
             say(
                 f"{settings} is your personal settings file (if your team shares .claude/, add that "

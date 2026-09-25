@@ -637,12 +637,14 @@ class Watch(App):
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
+        executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         self.counts = {
             "you": len(tops) + len(yours),
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
             "first": P.plan_first(store),
+            "with": f" with {Path(executor[0]).name}" if executor else "",
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
@@ -756,7 +758,7 @@ class Watch(App):
         long = [
             (f"waiting on you: {c['you']}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
-            (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
+            (f"R runs {c['ready']} ready{c.get('with', '')}" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
         ]
