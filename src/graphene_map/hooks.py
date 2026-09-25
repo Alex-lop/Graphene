@@ -20,9 +20,9 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
-from ..model import Agent, Prompt, Session, ToolEvent
-from ..shell import nested_checkout
-from ..store import StaleStore, Store
+from .model import Agent, Prompt, Session, ToolEvent
+from .shell import nested_checkout
+from .store import StaleStore, Store, repo_root, worktree_main
 
 # SubagentStart and SubagentStop carry agent_id, agent_type and the common cwd, per the official
 # page (code.claude.com/docs/en/hooks.md, "SubagentStart input" and "SubagentStop input"). Nothing
@@ -42,17 +42,6 @@ HOOK_COMMAND = "graphene ingest hook"
 SETTINGS = ".claude/settings.local.json"  # personal; the team's settings.json is the committed one
 TEAM_SETTINGS = ".claude/settings.json"
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-_NOT_A_PROMPT = (
-    "<command-name>",
-    "<command-message>",
-    "<local-command-stdout>",
-    "<local-command-caveat>",
-    "<task-notification>",
-    "<system-reminder>",
-    "[Request interrupted",
-    "Another Claude session sent a message",  # a subagent's hand-back, delivered as a prompt
-    "<agent-message",
-)
 _SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 
 
@@ -60,44 +49,12 @@ def now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-def repo_root(start: Path) -> Path:
-    """Nearest ancestor containing .git, else ``start`` itself; inside a linked worktree, the main
-    repo's root, so a worktree agent's events land in the repo's own store."""
-    for candidate in (start, *start.parents):
-        main = _worktree_main(str(candidate))
-        if main is not None:
-            return Path(main) if main else candidate
-    return start
-
-
-@lru_cache(maxsize=4096)
-def _worktree_main(directory: str) -> str | None:
-    """The main repo root of the checkout rooted at ``directory``: in a linked worktree ``.git`` is a
-    file naming the admin directory, whose ``commondir`` names the common ``.git``, whose parent is
-    that root. ``""`` when the checkout is its own repo (a clone, or a submodule, whose admin
-    directory has no ``commondir``), None when the directory is no checkout at all. Stdlib only: the
-    hook path must not spawn git."""
-    dot = os.path.join(directory, ".git")
-    if not os.path.exists(dot):
-        return None
-    if os.path.isdir(dot):
-        return ""
-    try:
-        with open(dot, encoding="utf-8") as f:
-            gitdir = f.read().partition("gitdir:")[2].strip()
-        admin = gitdir if os.path.isabs(gitdir) else os.path.join(directory, gitdir)
-        with open(os.path.join(admin, "commondir"), encoding="utf-8") as f:
-            return os.path.dirname(os.path.normpath(os.path.join(admin, f.read().strip())))
-    except OSError:
-        return ""
-
-
 def worktree_root(path: str, root: Path) -> str | None:
     """The root of the worktree of ``root`` that holds ``path``, when one holds it: the nearest
     checkout above it, asked from git's own files. A checkout that is its own repo ends the walk."""
     current = os.path.dirname(os.path.normpath(path))
     while True:
-        main = _worktree_main(current)
+        main = worktree_main(current)
         if main is not None:
             return current if main and _same_dir(main, str(root)) else None
         parent = os.path.dirname(current)
@@ -340,7 +297,7 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             first = store.meta("plan_first") == "on"
             planner = bool(os.environ.get("GRAPHENE_PLANNER"))  # refused a write, plan or no plan
             if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or first or planner:
-                from .. import gate
+                from . import gate
 
                 answer = gate.decide(store, event, root)
         if answer is not None:

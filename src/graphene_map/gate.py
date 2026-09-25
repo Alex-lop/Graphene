@@ -51,7 +51,7 @@ def _held(store, session_id: str) -> list[P.Node]:
 
 def _rel(path: str, root: Path, cwd: str | None) -> str | None:
     """Repo-relative for a path in the repo or a worktree of it; None for anywhere else."""
-    from .sources.claude_code import _map_path  # here, not at the top: that module imports this one
+    from .hooks import _map_path  # here, not at the top: that module imports this one
 
     full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
     rel = _map_path(full, root)
@@ -191,10 +191,24 @@ def _first_refused(store) -> str:
     )
 
 
+# What Claude Code delivers as a prompt that nobody typed: its own notices, and other agents' words.
+_NOT_A_PROMPT = (
+    "<command-name>",
+    "<command-message>",
+    "<local-command-stdout>",
+    "<local-command-caveat>",
+    "<task-notification>",
+    "<system-reminder>",
+    "[Request interrupted",
+    "Another Claude session sent a message",  # a subagent's hand-back, delivered as a prompt
+    "<agent-message",
+)
+
+
 def _vendor_made(said: str) -> bool:
     """What the vendor sends as a prompt on its own (a finished background task, a reminder, a slash
     command): never the person's words, so it neither starts nor ends anything."""
-    from .sources.claude_code import _NOT_A_PROMPT, _SLASH_COMMAND
+    from .hooks import _SLASH_COMMAND  # here, not at the top: that module imports this one
 
     return said.startswith((*_NOT_A_PROMPT, "[SYSTEM NOTIFICATION")) or bool(_SLASH_COMMAND.match(said))
 

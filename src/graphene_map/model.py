@@ -1,4 +1,4 @@
-"""Dataclasses shared by the store, the sources, the map and a node's record."""
+"""Dataclasses shared by the store, the hooks, the map and a node's record."""
 
 from __future__ import annotations
 

@@ -9,7 +9,7 @@ import sys
 
 def app() -> None:
     if sys.argv[1:3] == ["ingest", "hook"]:
-        from .sources.claude_code import hook_main
+        from .hooks import hook_main
 
         raise SystemExit(hook_main())
     build()()
@@ -36,8 +36,8 @@ def build():
 
     from . import __version__
     from .commits import refresh_commits
-    from .sources.claude_code import SETTINGS, hooks_file, hooks_installed, install_hooks, repo_root
-    from .store import StaleStore, Store
+    from .hooks import SETTINGS, hooks_file, hooks_installed, install_hooks
+    from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
         'one line only you can add: "bashEditDiffEnabled": true in ~/.claude/settings.json makes Claude '
@@ -355,7 +355,7 @@ def build():
     @ingest.command("hook")
     def ingest_hook() -> None:
         """Read one hook event from stdin (used by the installed hooks)."""
-        from .sources.claude_code import hook_main
+        from .hooks import hook_main
 
         raise typer.Exit(hook_main())
 

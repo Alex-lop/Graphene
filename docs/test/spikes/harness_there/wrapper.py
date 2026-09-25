@@ -28,8 +28,7 @@ from graphene_map import plan as P
 from graphene_map import sandbox
 from graphene_map import tokenfactory as tf
 from graphene_map.executor import Leaf
-from graphene_map.sources.claude_code import repo_root
-from graphene_map.store import Store
+from graphene_map.store import Store, repo_root
 
 IMAGE = "graphene-harness-there:opencode-1.18.31"  # docker build -t <this> docs/test/spikes/harness_there
 KEYFILE = "/tmp/graphene/key"

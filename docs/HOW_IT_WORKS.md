@@ -220,8 +220,8 @@ Code agent, a Codex agent (`codex exec`) and a person editing by hand.
 ## P3. What the Claude Code hooks add
 
 `graphene init` registers one command, `graphene ingest hook`, on eight events. With a plan in
-force it answers as well as records (`src/graphene_map/gate.py`), in the vendor's documented
-JSON:
+force it answers as well as records (`src/graphene_map/hooks.py` records, `gate.py` answers), in
+the vendor's documented JSON:
 
 | Event | Answer |
 | --- | --- |
@@ -486,7 +486,7 @@ It never prints a zero it cannot stand behind.
 
 ### Live hooks
 
-`graphene init` adds one command hook, `graphene ingest hook`, to eight Claude Code events in the
+`hooks.py`. `graphene init` adds one command hook, `graphene ingest hook`, to eight Claude Code events in the
 repo's `.claude/settings.local.json` (the personal file; the team's `settings.json` is never
 written, though hooks found there are recognised, and a repo whose hooks live there gets new events
 added there): `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,

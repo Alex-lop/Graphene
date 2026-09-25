@@ -33,8 +33,7 @@ from pathlib import Path
 from . import gate
 from . import plan as P
 from . import tokenfactory as tf
-from .sources.claude_code import repo_root
-from .store import Store
+from .store import Store, repo_root
 
 PROMPT_VERSION = 1
 SYSTEM = """\

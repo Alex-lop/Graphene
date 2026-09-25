@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from graphene_map import store as store_module
 from graphene_map.cli import build
-from graphene_map.sources.claude_code import HOOK_EVENTS, hook_main
+from graphene_map.hooks import HOOK_EVENTS, hook_main
 
 SID = "11111111-2222-4333-8444-555555555555"
 runner = CliRunner()

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from graphene_map.sources.claude_code import (
+from graphene_map.hooks import (
     HOOK_COMMAND,
     HOOK_EVENTS,
     hook_main,

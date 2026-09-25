@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
 
 from .model import Agent, Commit, Prompt, Session, ToolEvent
@@ -145,6 +146,39 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # does not know.
     4: (),
 }
+
+
+def repo_root(start: Path) -> Path:
+    """The repository whose store a directory belongs to: the nearest ancestor containing .git,
+    else ``start`` itself; inside a linked worktree, the main repo's root, so what an agent does in a
+    worktree (a hook event, a Nemotron executor's call) lands in the repo's own store."""
+    for candidate in (start, *start.parents):
+        main = worktree_main(str(candidate))
+        if main is not None:
+            return Path(main) if main else candidate
+    return start
+
+
+@lru_cache(maxsize=4096)
+def worktree_main(directory: str) -> str | None:
+    """The main repo root of the checkout rooted at ``directory``: in a linked worktree ``.git`` is a
+    file naming the admin directory, whose ``commondir`` names the common ``.git``, whose parent is
+    that root. ``""`` when the checkout is its own repo (a clone, or a submodule, whose admin
+    directory has no ``commondir``), None when the directory is no checkout at all. Stdlib only: the
+    hook path must not spawn git."""
+    dot = os.path.join(directory, ".git")
+    if not os.path.exists(dot):
+        return None
+    if os.path.isdir(dot):
+        return ""
+    try:
+        with open(dot, encoding="utf-8") as f:
+            gitdir = f.read().partition("gitdir:")[2].strip()
+        admin = gitdir if os.path.isabs(gitdir) else os.path.join(directory, gitdir)
+        with open(os.path.join(admin, "commondir"), encoding="utf-8") as f:
+            return os.path.dirname(os.path.normpath(os.path.join(admin, f.read().strip())))
+    except OSError:
+        return ""
 
 
 class StaleStore(Exception):

@@ -11,8 +11,8 @@ import pytest
 from typer.testing import CliRunner
 
 from graphene_map.cli import build
+from graphene_map.hooks import hook_main
 from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_map.sources.claude_code import hook_main
 from graphene_map.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
 

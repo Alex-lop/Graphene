@@ -124,7 +124,7 @@ def test_the_planner_writes_nothing_and_takes_no_leaf(repo, monkeypatch):
             plan.start(store, "ids", Caller("planner:claude", False, "p1"), repo)
     import io
 
-    from graphene_map.sources.claude_code import hook_main
+    from graphene_map.hooks import hook_main
 
     event = {"session_id": "p1", "cwd": str(repo), "hook_event_name": "PreToolUse", "tool_name": "Write",
              "tool_input": {"file_path": str(repo / "api.py"), "content": "x"}}  # fmt: skip
@@ -230,7 +230,7 @@ def test_the_planner_is_refused_a_write_before_anything_is_accepted(repo, monkey
     """`ask` is first used on an empty plan, and there the hooks let a planner with write tools write."""
     import io
 
-    from graphene_map.sources.claude_code import hook_main
+    from graphene_map.hooks import hook_main
 
     def told(command):
         monkeypatch.setenv("GRAPHENE_PLANNER", "1")
