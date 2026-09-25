@@ -85,7 +85,7 @@ class Node:
     title: str
     goal: str = ""
     scope: list[str] = field(default_factory=list)  # globs, repo-relative; "!glob" takes paths back out
-    check: str | None = None  # a shell command that must exit 0, run by Graphene in the node's checkout
+    check: str | None = None  # a shell command that must exit 0, run by Graphene on the node's state
     signoff: bool = False  # a person must also say so
     needs: list[str] = field(default_factory=list)
     owner: str = AGENT
@@ -448,12 +448,13 @@ def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]
 # -- git: what changed since a node was started -------------------------------------------------------
 
 
-def _git(checkout: str | Path, *args: str) -> str:
-    # every call here is a read, and a read must not take the index lock: with leaves in worktrees of
-    # their own, one node's look at the other trees (`git status`) met another's commit and broke it
-    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+def _git(checkout: str | Path, *args: str, index: Path | None = None, given: str | None = None) -> str:
+    # no call here takes the checkout's index lock (a read asks for none, and ``index`` is one of the
+    # caller's own): with leaves in worktrees of their own, one node's look at the other trees (`git
+    # status`) met another's commit and broke it
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
     out = subprocess.run(
-        ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env
+        ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env, input=given
     )
     if out.returncode != 0:
         raise Refused(f"git {' '.join(args)} failed in {checkout}: {out.stderr.strip()[:200]}")
@@ -560,43 +561,96 @@ def ctrl_c_on_hangup():
 _checks: set[subprocess.Popen] = set()  # the checks running now; a run that is stopped ends them
 
 
+@contextmanager
+def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple = ()):
+    """A worktree of ``checkout`` as git sees it now, whether committed or not (what it tracks, as it
+    is on disk, and the new files it does not ignore), but for ``leave_out``: cut from a commit on no
+    branch, under the run's own worktrees (which ``elsewhere`` never asks about), and removed when
+    the block ends, however it ends. What git ignores (a .venv, node_modules, .env) is linked in from
+    the checkout: it is the check's environment, not the leaf's work, and git counts nothing there."""
+    import shutil  # here: the hook imports this module on every event and never runs a check
+    import tempfile
+
+    common, had = _git(checkout, "rev-parse", "--git-common-dir", "--git-path", "index").splitlines()
+    trees = Path(checkout, common).parent / ".graphene" / "worktrees"
+    trees.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=".check-", dir=trees))
+    tree, index = tmp / "tree", tmp / "index"
+    try:
+        # a copy of the checkout's index, so what git tracks is taken as git has it (a tracked file an
+        # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
+        with suppress(OSError):  # a repo where nothing was ever added has no index yet
+            shutil.copyfile(Path(checkout, had), index)
+        _git(checkout, "add", "-A", index=index)
+        if leave_out:
+            out = "".join(f"{p}\0" for p in leave_out)
+            _git(checkout, "update-index", "-z", "--force-remove", "--stdin", index=index, given=out)
+        state, base = _git(checkout, "write-tree", index=index).strip(), head(checkout)
+        nobody = ("-c", "user.name=graphene", "-c", "user.email=graphene@localhost")  # on no branch
+        commit = _git(checkout, *nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
+        _git(checkout, "worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
+        ignored = _git(checkout, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory")
+        for entry in (e.rstrip("/") for e in ignored.split("\0")):
+            if entry and entry.split("/")[0] != ".graphene":
+                with suppress(OSError):  # what cannot be linked is not there
+                    (tree / entry).parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(Path(checkout).resolve() / entry, tree / entry)
+        yield tree
+    finally:
+        with suppress(Refused, OSError, subprocess.TimeoutExpired):  # never made: the rmtree is enough
+            _git(checkout, "worktree", "remove", "--force", str(tree))
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @ctrl_c_on_hangup()
-def run_check(command: str, checkout: str | Path) -> tuple[bool, str]:
-    """Run a node's check where the node ran. Graphene runs it, not the executor: "it passed" is
-    then a fact about the repo and not a sentence in somebody's summary. It runs in a session of its
-    own and is ended with everything it started: on a timeout, a Ctrl-C, a closed terminal or a
-    `kill`, and when a run is stopped (``end_checks``), which says nothing of the work, so it is
-    not taken as a result. Killing bash alone had left its `sleep` running; and a terminal's Ctrl-C
-    that reached the check itself had been recorded as the executor's failed check."""
+def run_check(
+    command: str, checkout: str | Path, leave_out: list[str] | tuple = ()
+) -> tuple[bool, str, list[str]]:
+    """Run a check on the state of ``checkout``: whether it passed, the tail of what it said, and
+    which of ``leave_out`` (new files, left out of what it runs on) it made again. This is the one
+    place Graphene runs a check. Graphene runs it, not the executor: "it passed" is then a fact about
+    the repo and not a sentence in somebody's summary. It runs in a clean worktree of that state
+    (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
+    executor's tree, to be counted as its change and committed with its leaf.
+
+    It runs in a session of its own and is ended with everything it started: on a timeout, a Ctrl-C,
+    a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says nothing of
+    the work, so it is not taken as a result. Killing bash alone had left its `sleep` running; and a
+    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     env = {**os.environ, "GRAPHENE_AS": "agent:check"}
-    with subprocess.Popen(
-        command,
-        shell=True,
-        executable=BASH,  # people write bash (`[[ ]]`, `set -o pipefail`); sh when there is none
-        cwd=checkout,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        start_new_session=True,
-    ) as proc:
-        _checks.add(proc)
-        try:
-            stdout, stderr = proc.communicate(timeout=CHECK_TIMEOUT)
-        except BaseException as why:
-            _end_check(proc)
-            if not isinstance(why, subprocess.TimeoutExpired):
-                raise
-            return False, f"timed out after {CHECK_TIMEOUT} s"
-        finally:
-            stopped = proc not in _checks
-            _checks.discard(proc)
+    try:
+        with _clean_tree(checkout, leave_out) as tree:
+            with subprocess.Popen(
+                command,
+                shell=True,
+                executable=BASH,  # people write bash (`[[ ]]`, `set -o pipefail`); sh when there is none
+                cwd=tree,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                start_new_session=True,
+            ) as proc:
+                _checks.add(proc)
+                try:
+                    stdout, stderr = proc.communicate(timeout=CHECK_TIMEOUT)
+                except BaseException as why:
+                    _end_check(proc)
+                    if not isinstance(why, subprocess.TimeoutExpired):
+                        raise
+                    return False, f"timed out after {CHECK_TIMEOUT} s", []
+                finally:
+                    stopped = proc not in _checks
+                    _checks.discard(proc)
+            made = [p for p in leave_out if os.path.lexists(tree / p)]
+    except (Refused, OSError, subprocess.TimeoutExpired) as no:  # it never ran, which is no pass
+        return False, f"the check could not be run: {no}", []
     if stopped:
         raise KeyboardInterrupt
     text = (stdout + stderr).strip()
-    return proc.returncode == 0, (text[-TAIL:] if text else f"exit {proc.returncode}, no output")
+    return proc.returncode == 0, (text[-TAIL:] if text else f"exit {proc.returncode}, no output"), made
 
 
 def end_checks() -> None:
@@ -1671,40 +1725,6 @@ def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
     return [p for p, f in full if os.path.isfile(f) and not os.path.islink(f)]
 
 
-@contextmanager
-def _set_aside(store, node: Node, checkout: str | Path, paths: list[str]):
-    """``paths`` moved under the store's folder while the block runs, and back after it, always: all
-    but the ones made again meanwhile, which stay as they were made. A file that cannot be put back
-    is left where it was set aside, and the refusal says where."""
-    if not paths:
-        yield
-        return
-    import shutil  # here: the hook imports this module on every event and never moves a file
-
-    held = Path(store.path).parent / "aside" / f"{node.id}-{os.getpid()}-{threading.get_ident()}"
-    moved: list[str] = []
-    try:
-        for path in paths:
-            (held / path).parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(os.path.join(checkout, path), held / path)
-            moved.append(path)
-        yield
-    finally:
-        kept = []
-        for path in moved:
-            home = Path(checkout) / path
-            if os.path.lexists(home):
-                continue  # made again: the check's own
-            try:
-                home.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(held / path, home)
-            except OSError:
-                kept.append(path)
-        if kept:
-            raise refusal(f"{node.id}: these could not be put back after its check, and are in {held}", kept)
-        shutil.rmtree(held, ignore_errors=True)
-
-
 def _done_by_hand(store, node: Node, who: Caller, now: str, checkout: str | Path | None) -> Node:
     """A person's own leaf with no scope is their to-do: there is no check to run and nothing to ask
     git, so `done` is their word, and the log says so."""
@@ -1770,38 +1790,24 @@ def finish(
     stray = sorted(set(outside_scope(store, node, changed)) | set(links_out(checkout, changed)))
     stray += elsewhere(store, node)
     # A file git does not track, outside the scope, may be what a run of the check left (a cache from
-    # the executor's own test run). They are set aside while Graphene runs the check, and what the
-    # check makes again is its own: it stays, and is neither counted nor committed. The rest is put
-    # back, and refused as ever. Anything else outside the scope is refused before the check runs.
+    # the executor's own test run). The check runs without them, and what it makes again is its own:
+    # it is neither counted nor committed. The rest are refused as ever. Anything else outside the
+    # scope is refused before the check runs. The check writes nothing here git sees (``run_check``).
     aside = _untracked(checkout, stray) if stray and override is None and node.check else []
     if stray and override is None and len(aside) < len(stray):
         raise _stray(store, node, who, now, stray)
-    theirs: list[str] = []  # what the check made again: its own leftovers
-    with _set_aside(store, node, checkout, aside):
-        before = dirty(checkout) if node.check else {}
-        passed, output = (True, "") if not node.check else run_check(node.check, checkout)
-        if node.check:
-            # what Graphene's own run of the check left behind (a cache, a coverage file) is not the
-            # executor's change: it is taken as it is, so a second `done` is not refused over it
-            after = dirty(checkout)
-            theirs = [p for p in aside if p in after]
-            left = {p: h for p, h in after.items() if before.get(p, "") != h and not in_scope(p, node.scope)}
-            if left:
-                with store.claim():
-                    node = get(store, node_id)
-                    if node.state == RUNNING and node.started_at == began:  # never into a later hold's record
-                        node.dirty_at_start.update(left)
-                        store.put_node(to_dict(node))
-            store.log_node(
-                node.id,
-                _now(),
-                "check_passed" if passed else "check_failed",
-                who.label,
-                who.session_id,
-                None,
-                {"command": node.check, "output": output},
-            )
-    if aside and len(theirs) < len(aside):
+    passed, output, theirs = (True, "", []) if not node.check else run_check(node.check, checkout, aside)
+    if node.check:
+        store.log_node(
+            node.id,
+            _now(),
+            "check_passed" if passed else "check_failed",
+            who.label,
+            who.session_id,
+            None,
+            {"command": node.check, "output": output},
+        )
+    if len(theirs) < len(aside):
         raise _stray(store, node, who, now, [p for p in stray if p not in theirs])
     changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names
     if not passed and override is None:
@@ -1840,7 +1846,7 @@ def finish(
         # in a run's own worktree the sub-goal's check would not see its sibling leaves: `run.land`
         # rolls up after the merge, in the checkout where they are all together
         roll_up(store, who, node.checkout or ".", now)
-    mark_boundary(store, node.checkout or ".", now)  # after: what a sub-goal's check left is nobody's change
+    mark_boundary(store, node.checkout or ".", now)
     return node
 
 
@@ -1891,7 +1897,7 @@ def roll_up(
         if node.check:
             if checkout is None:
                 continue
-            passed, output = run_check(node.check, checkout)
+            passed, output, _ = run_check(node.check, checkout)
             kind = "check_passed" if passed else "check_failed"
             store.log_node(node.id, _now(), kind, who.label, who.session_id, None,
                            {"command": node.check, "output": output})  # fmt: skip
@@ -1948,7 +1954,7 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
     changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
     passed = None
     if node.check and changed:
-        passed, output = run_check(node.check, checkout)
+        passed, output, _ = run_check(node.check, checkout)
         kind = "check_passed" if passed else "check_failed"
         store.log_node(node.id, _now(), kind, who.label, who.session_id, None,
                        {"command": node.check, "output": output})  # fmt: skip

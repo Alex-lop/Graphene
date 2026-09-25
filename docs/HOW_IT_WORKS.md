@@ -61,12 +61,12 @@ on what every node above it needs. A cycle through needs, through the tree, or t
 that needs its own sub-goal) is refused when the plan is edited.
 
 **Done rolls up** (`plan.roll_up`). When the last child of a sub-goal is done, the sub-goal's own
-check, if it has one, is run by Graphene in the checkout where the children's work is together; that
-is where integration lives. Passing (or having no check), the sub-goal is done, or in `review` if it
-asks for a sign-off, and what needs it can start. Failing, it stays open, the log has the output,
-`graphene plan` says "its leaves are done and its own check fails", and the way on is a leaf under
-it for what is missing; `graphene node done <sub-goal>` runs the check again. A child added or
-reopened under a finished sub-goal reopens it.
+check, if it has one, is run by Graphene on the checkout where the children's work is together (in
+a worktree of its state, as a leaf's is: P2 step 3); that is where integration lives. Passing (or
+having no check), the sub-goal is done, or in `review` if it asks for a sign-off, and what needs it
+can start. Failing, it stays open, the log has the output, `graphene plan` says "its leaves are done
+and its own check fails", and the way on is a leaf under it for what is missing; `graphene node done
+<sub-goal>` runs the check again. A child added or reopened under a finished sub-goal reopens it.
 
 **A proposal is a subtree.** `graphene plan propose` reads the plan's text (P1c; JSON with nested
 `"children"` is still read), and a line with the id of a node already there is where new lines hang. Accepting a node accepts every proposal under it and every proposal
@@ -169,13 +169,20 @@ read the plan an hour ago.
    repo since the node was started (a worktree made later is compared with the commit the node
    started from). The worktrees of `graphene run --parallel` are not asked: each one's leaf answers
    for it at its own `done`. The node stays `running`.
-3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
-   log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
-   as it is, so a second `done` is not refused over it. When the only paths step 2 found are new
-   untracked files, they are set aside under `.graphene/` while the check runs, and what the check
-   makes again (the `__pycache__` an executor's own test run left) is the check's: it stays, it is
-   not counted, and it is left out of what the leaf's commit takes. The rest are put back and
-   refused as in step 2.
+3. It runs the check (30 minute cap) and keeps the tail of the output in the log. Non-zero: refused.
+   The check never runs in the checkout itself (`plan.run_check`, the one place a check is run).
+   Graphene commits the node's state as git sees it, committed or not (what git tracks, as it is on
+   disk, and the new files git does not ignore), on no branch; cuts a worktree from that commit under
+   `.graphene/worktrees/`; runs the check there; and removes the worktree however the check ends, a
+   Ctrl-C or a stopped run included. So nothing the check writes (a cache, a coverage file, an edit)
+   lands in the executor's tree, is counted as its change, or is committed with its leaf. What git
+   ignores (a `.venv`, `node_modules`, `.env`) is linked into that worktree from the checkout: it is
+   the check's environment, not the node's work, and what the check writes there git never counts.
+   When the only paths step 2 found are new untracked files, the check runs without them, and what
+   it makes again (the `__pycache__` an executor's own test run left, in a repository with no
+   `.gitignore`) is the check's: it stays in the checkout as the executor left it, it is not
+   counted, and it is left out of what the leaf's commit takes. The rest are refused as in step 2.
+   A sub-goal's check (P1a) and a prompt leaf's (P1b) run the same way.
 4. If nothing inside the scope has changed at all, it is not done either: a check that already
    passed shows nothing (an executor that crashed at once was once reported done this way). An
    executor with nothing to do hands the node back and says so.
@@ -311,6 +318,14 @@ a leaf; `--about <id>` asks it about a leaf that came back.
   name it; a script that opens it directly is neither stopped nor noticed. Nothing here defends
   the store against an executor that sets out to rewrite it.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
+- A check runs on the node's state as git sees it (P2 step 3), and what git ignores is linked in
+  from the checkout, not copied: a check reads the checkout's `.venv` and `node_modules` as they
+  are, and what it writes under an ignored path lands in the checkout, uncounted. A check that
+  names the checkout by an absolute path reads and writes the checkout itself. What git does not
+  carry is not there (an empty directory, a submodule's files), and every check pays for a checkout
+  (about 0.2 s on a repository of 325 files). A leaf of `graphene run --parallel` works in a
+  worktree cut fresh, which has nothing git ignores, so neither its executor nor its check finds a
+  `.venv` there.
 - The boundary asks git about every working tree of the repo that exists when the node ends (a
   path changed in another worktree is refused with the tree named), except the worktrees of
   `graphene run --parallel`, whose own leaves answer for them; a node in your checkout that writes

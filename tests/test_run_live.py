@@ -262,7 +262,7 @@ def test_run_node_names_a_sub_goal_and_means_its_leaves(repo):
 
 
 def test_a_check_is_run_with_bash(repo):
-    passed, _ = plan.run_check("[[ 1 == 1 ]] && set -o pipefail", repo)
+    passed, _, _ = plan.run_check("[[ 1 == 1 ]] && set -o pipefail", repo)
     assert passed or not Path("/bin/bash").exists()
 
 
@@ -614,9 +614,9 @@ def test_a_leaf_let_go_while_its_check_runs_is_not_made_done(repo, monkeypatch, 
         (repo / "a.txt").write_text("a, by its executor\n")
         real = plan.run_check
 
-        def person_acts_meanwhile(command, where):
+        def person_acts_meanwhile(command, where, *leave_out):
             plan.drop(store, "a", ALEX) if act == "drop" else plan.release(store, "a", ALEX, "stop")
-            return real(command, where)
+            return real(command, where, *leave_out)
 
         monkeypatch.setattr(plan, "run_check", person_acts_meanwhile)
         with pytest.raises(Refused, match="while its check ran"):

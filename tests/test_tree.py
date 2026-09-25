@@ -334,7 +334,7 @@ def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
         "import os; from graphene_map.plan import caller as c; "
         "raise SystemExit(c(dict(os.environ), False).person)"
     )
-    ok, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)
+    ok, _, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)
     assert ok  # exit 0: not a person
 
 
