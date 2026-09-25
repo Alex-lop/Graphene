@@ -851,7 +851,7 @@ class Watch(App):
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
-            *([(f"${c['spent']:.2f} at list price", "dim")] if c.get("spent") is not None else []),
+            *([(f"{money(c['spent'])} at list price", "dim")] if c.get("spent") is not None else []),
         ]
         short = [
             (f"you: {c['you']}", you),
@@ -859,7 +859,7 @@ class Watch(App):
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
             (f"plan first: {first}", ""),
-            *([(f"${c['spent']:.2f}", "dim")] if c.get("spent") is not None else []),
+            *([(money(c["spent"]), "dim")] if c.get("spent") is not None else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
@@ -1425,6 +1425,11 @@ def goal_pane(store, s, wide: int) -> Text:
         pane.gap()
         _waiting(pane, s.nodes, s)
     return pane.render()
+
+
+def money(dollars: float) -> str:
+    """Dollars as a person reads a bill: cents, or four places below a cent (a spend is never $0.00)."""
+    return f"${dollars:.2f}" if dollars >= 0.01 or not dollars else f"${dollars:.4f}"
 
 
 def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[int, int] = (60, 0)) -> Text:

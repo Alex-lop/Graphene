@@ -159,8 +159,9 @@ def ask(
         printed = done.stdout.strip()
         text = proposal_in(printed)
         if not text.strip():
-            tail = printed[-300:] or done.stderr[-300:]
-            refusal = f"the planner printed no proposal (exit {done.returncode}): {tail}"
+            said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
+            tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
+            refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
             try:
                 with store.claim():

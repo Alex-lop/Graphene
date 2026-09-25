@@ -79,6 +79,15 @@ TOOLS = [
             "required": ["why"]}}},
 ]  # fmt: skip
 
+# The names a small model was trained to call its tools by, and their arguments: a call spelled so is
+# the tool it means, not a wasted turn. TODO: which of these Nemotron uses is not measured yet.
+ALIASES = {"read_file": "view", "read": "view", "cat": "view", "open": "view", "str_replace": "edit",
+           "str_replace_editor": "edit", "replace": "edit", "write_file": "write", "create_file": "write",
+           "bash": "run", "shell": "run", "execute": "run", "finish": "done", "submit": "done"}  # fmt: skip
+ARGS = {"file_path": "path", "filePath": "path", "filename": "path", "file": "path", "old_str": "old",
+        "old_string": "old", "oldString": "old", "new_str": "new", "new_string": "new", "newString": "new",
+        "text": "content", "file_text": "content", "cmd": "command", "reason": "why"}  # fmt: skip
+
 VIEW_LINES = 400
 OUTPUT = 8_000  # characters of a command's output the model is shown: its tail, where the result is
 KEEP = 150_000  # characters of history before the oldest tool results are cut to a line
@@ -214,12 +223,14 @@ class Leaf:
         return said
 
     def call(self, name: str, arguments: str | dict | None) -> str:
+        name = ALIASES.get(name, name)
         tool = {"view": self.view, "edit": self.edit, "write": self.write, "run": self.run,
                 "done": self.done, "release": self.release}.get(name)  # fmt: skip
         if tool is None:
             return f"there is no tool {name!r}; the tools are view, edit, write, run, done, release"
         try:
             args = json.loads(arguments or "{}") if isinstance(arguments, str) else dict(arguments or {})
+            args = {ARGS.get(k, k): v for k, v in args.items()}
             return tool(**args)
         except (ValueError, TypeError) as no:
             return f"{name} could not take those arguments ({no}); send them as JSON with the named fields"
@@ -463,7 +474,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             print("stopped: Token Factory lists no Nemotron model for this key", flush=True)
             return 3
         ladder = args.model
-        model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
+        tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
+        model = ladder[min(tried, len(ladder)) - 1]
         first = [prompt]
         if args.map:
             files = P.in_tree(here)

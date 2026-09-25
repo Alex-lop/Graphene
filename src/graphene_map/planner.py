@@ -123,10 +123,10 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     try:
         model = args.model or tf.roles().get("ultra") or tf.roles().get("super")
     except tf.Unreachable as no:
-        print(f"the planner stopped: {no}", file=say)
+        print(f"stopped: {no}", file=say)
         return 3
     if not model:
-        print("the planner stopped: Token Factory lists no Nemotron Ultra or Super for this key", file=say)
+        print("stopped: Token Factory lists no Nemotron Ultra or Super for this key", file=say)
         return 3
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
     params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
@@ -158,7 +158,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             if step == args.steps - 1:
                 messages.append({"role": "user", "content": "Answer now with the proposal."})
     except tf.Unreachable as no:
-        print(f"the planner stopped: {no}", file=say)
+        print(f"stopped: {no}", file=say)
         return 3
     finally:
         bill["dollars"] = round(bill["dollars"], 6)

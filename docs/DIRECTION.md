@@ -481,6 +481,76 @@ change is named here.
     wanted. *Why:* the directive's thesis is "fork it again, or step up a size, and let the check
     decide." `--model` given twice is the step up. Whether forks pay for themselves is a number for the
     benchmark, not tonight.
+61. **`graphene init` chooses the planner and the executor, once per repository, and the person
+    chooses.** Both are kept in the store's meta, keys `planner` and `executor`, beside `plan_first`.
+    Each is a `--with` spec: `nemotron --model <ultra>`,
+    `nemotron --model <nano> --model <super> --placement local|sandbox`, `claude`, `codex`, or a
+    command.
+    - **At a terminal** it asks, numbered: Nemotron on Token Factory first and the default, then
+      Claude Code, Codex, and a command of the person's own. Run again, it shows what is set and
+      Enter keeps it.
+    - **Without a terminal**, `--planner` and `--executor` change only what they name. With neither,
+      what is set is kept, and what is not gets Nemotron when Token Factory answers, else Claude Code.
+    - **Nemotron is written with the ids the live list gave** (56): the largest of Ultra and Super
+      plans, and the two smallest listed do the leaves. The sandbox placement is chosen when ConTree
+      is configured. When Token Factory is out of reach it writes plain `nemotron`, and one line says
+      what could not be reached, after one try of at most 10 s.
+    - **Who uses it.** `run`, `ask` and `node split` (so `R`, `:ask` and `s`) start what is set, and
+      `--with` overrides one command. An agent's flags are refused, and an agent is never asked. The
+      status line names the executor after R only where the long form still fits it.
+
+    *Why:* one visible, reproducible choice per repository. It is the person's, because it runs
+    with their permissions and spends on their key. *Evidence:* `tests/test_init.py`, against the
+    fake and with no key.
+62. **The check runs in a clean worktree of the leaf's state. This changes decision 48.** How:
+    - Graphene commits the checkout as git sees it, committed or not, on no branch, through a
+      temporary index.
+    - It cuts a worktree from that commit under `.graphene/worktrees/` and runs the check there,
+      with the check's time limit and its stop covering the making of the worktree too.
+    - It removes the worktree however the check ends.
+
+    Nothing a check writes lands in the executor's tree, is counted as its change, or is committed with
+    its leaf. It is one function, `plan.run_check`, for a leaf's `done`, a sub-goal's roll-up and a
+    prompt leaf's close. For a leaf that worked in a sandbox, the check runs in a fork of the sandbox
+    instead (57).
+
+    Decision 48's move-aside is deleted, and its rule stays: new untracked files outside the scope
+    are left out of the check's tree, and what the check makes again is not counted. Nothing git
+    ignores is linked in. The review found that a `uv run` check re-pointed the checkout's `.venv` at
+    the temporary tree and then lost it. So a check makes its own environment: `uv run` builds one in
+    the tree, and a check that calls `.venv/bin/pytest` directly fails there.
+
+    No check gets `NEBIUS_API_KEY`. The check `graphene run` ran after an executor ended used to
+    inherit it. *Evidence:* the tests named in `beb6164`, `4213b6f` and
+    `test_the_check_graphene_runs_after_the_executor_never_gets_the_key` each fail on the code
+    before them.
+63. **Folding in `graphene watch`: vim's keys, and a folded row that counts.**
+    - **The keys.** `za` folds or unfolds (on the goal, all of it), `zo` and `zc` open and close,
+      `zR` and `zM` open and fold everything, and `zx` puts back the folds the screen opened with.
+    - **What folds by itself.** A subtree whose leaves are all done folds when the screen opens, and
+      when it finishes on screen. A tree taller than its pane (at 80×24, the ten rows above the node
+      pane) opens as its outline, one row a sub-goal. A sub-goal that arrives into such a tree while
+      the screen is open comes in folded. A fold the person makes stays until something inside it
+      changes.
+    - **The folded row.** It keeps decision 41's glyph, title and id. Its word column says how many
+      leaves are inside and in which states, whose move first: `6 done`, `1 came back, 4 more`.
+
+    *Evidence:* the before and after screens in `docs/process/nemotron/folding/`: thirty leaves at
+    80×24 were ten rows of one sub-goal, and are now seven rows that say where the person's move is.
+    *The cost you may strike:* folding a row whose count is wider than every word shown moves the ids
+    by up to about ten columns.
+64. **The demo URL is one file**: `graphene ui --export docs/demo/index.html`, run in the demo run's
+    repository. The page is drawn from `.graphene/` alone, so a run by executors that keep no records
+    of their own (Nemotron through `graphene run`) is drawn in full: the tree, each leaf's state and
+    its log as its record. It never carries what a check printed, a path to the checkout or the
+    executor, or a token. `.github/workflows/pages.yml` publishes `docs/demo/` and runs only when
+    started by hand; enabling Pages is yours.
+65. **The benchmark plays the person by one rule.** It takes a leaf's widen offer only when every
+    path it adds is inside the task's `intent_globs.txt`, refuses any other, and never takes `b`: a
+    sibling whose check is `true` would land and be counted as a leaf of the tree. A leaf that came
+    back without an offer it could take is not run again, since a free retry would inflate the
+    landed share. Rows are grouped by task, configuration, Graphene's sha, the executor's prompt
+    version and the tree, and accept is printed beside landed.
 
 ## What does not bind (say it wherever you sell it)
 
@@ -526,6 +596,10 @@ change is named here.
   (decision 57).
 - With Nemotron named, the prompts about your repository and the files the model reads go to Token
   Factory, and in a sandbox the leaf's checkout goes to Sandboxes (decision 54).
+- An agent's plain `graphene init` fills a choice that is not set with Graphene's offer; it cannot name
+  another. A script that writes the store directly can change what `R` starts.
+- A check runs in a clean worktree with nothing git ignores in it, so a check that relies on an
+  ignored environment (`.venv/bin/pytest`, `node_modules`) must make its own there.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 
