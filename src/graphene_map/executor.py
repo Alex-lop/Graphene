@@ -24,6 +24,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import gate
@@ -303,7 +304,11 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             return 3
         ladder = args.model
         model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
-        place = Local(here) if args.placement == "local" else _sandbox(here, node, args)
+        try:
+            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session)
+        except (RuntimeError, ImportError, OSError) as no:
+            print(f"stopped: the sandbox could not be made: {no}", flush=True)
+            return 3
         leaf = Leaf(store, node, place, repo, session)
         first = [prompt]
         if args.map:
@@ -334,6 +339,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                 message = said["message"]
                 native = message.get("tool_calls") or []
                 calls = native or (text_calls(message.get("content")) if args.protocol == "text" else [])
+                print(f"{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
                 if message.get("content"):
                     print(f"{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
                 kept = {"role": "assistant", "content": message.get("content") or ""}
@@ -349,10 +355,12 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                     continue
                 for c in calls:
                     name = c["function"]["name"]
+                    began = time.monotonic()
                     result = leaf.call(name, c["function"].get("arguments"))
+                    took = time.monotonic() - began
                     first_line = result.split("\n", 1)[0][:160]
                     brief = _brief(c["function"].get("arguments"))
-                    print(f"{step:>3} {name} {brief} → {first_line}", flush=True)
+                    print(f"{step:>3} {name} {brief} → {first_line} ({took:.2f} s)", flush=True)
                     if native:
                         messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
                     else:
@@ -381,10 +389,18 @@ def _brief(arguments) -> str:
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
-def _sandbox(here: Path, node: P.Node, args: argparse.Namespace):
-    from .sandbox import Sandbox
+def _sandbox(here: Path, node: P.Node, store: Store, session: str):
+    """The leaf's sandbox, and a note in its record of where it is, so that its check (whoever runs
+    `done`) runs in a fork of the same sandbox."""
+    from . import sandbox
 
-    return Sandbox(here, node.scope)
+    name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
+    place = sandbox.Sandbox(here, node.scope, sandbox.choose(name), store, node.id)
+    store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
+                   {"placement": "sandbox", "box": name, "image": place.base,
+                    "seconds": round(place.timings[0], 3)})  # fmt: skip
+    print(f"sandbox ready ({name}, {place.timings[0]:.1f} s): image {place.base[:12]}", flush=True)
+    return place
 
 
 NAME = "nemotron"
