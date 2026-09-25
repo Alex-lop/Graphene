@@ -188,16 +188,17 @@ def display_state(node: P.Node, by_id: dict[str, P.Node], under: dict | None = N
     return "waiting" if P.unmet(node, by_id) else "ready"
 
 
-def came_back(store, node: P.Node) -> list[str]:
+def came_back(store, node: P.Node, export: bool = False) -> list[str]:
     """The words a node came back with: a person's when they sent it back, its executor's when it
-    was handed back. They are the plan's, not a log's, so an exported page carries them too."""
+    was handed back. They are the plan's, not a log's, so an exported page carries them too, to
+    their first line (``_cut``)."""
     if node.state != P.OPEN:
         return []
     last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
     if last["kind"] == "reopened":
-        return [f"sent back: {last['detail'].get('note', '')}"]
+        return [f"sent back: {_cut(last['detail'].get('note', ''), export)}"]
     if last["kind"] == "released":
-        return [f"handed back: {last['detail'].get('why', '')}"]
+        return [f"handed back: {_cut(last['detail'].get('why', ''), export)}"]
     return []
 
 
@@ -219,8 +220,15 @@ def waits(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> 
     return list(dict.fromkeys(reasons))
 
 
-def _said(detail: dict) -> str:
-    """The one thing a log entry has to say, in the order the terminal prints it."""
+def _cut(said: str, export: bool) -> str:
+    """What a file that leaves the machine keeps of a sentence: its first line. The reason `run`
+    hands a leaf back with quotes its last refusal, and a failed check's output is under it."""
+    return said.split("\n")[0] if export else said
+
+
+def _said(detail: dict, export: bool = False) -> str:
+    """The one thing a log entry has to say, in the order the terminal prints it. In an export a
+    check says its command and not its output."""
     changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
     fields = changed.items() if isinstance(changed, dict) else ()
     paths = changed if isinstance(changed, list) else []
@@ -232,19 +240,24 @@ def _said(detail: dict) -> str:
         or detail.get("path")
         or "; ".join(f"{k}: {a!r} → {b!r}" for k, (a, b) in fields)
         or (f"changed: {', '.join(paths)}" if paths else "")
-        or detail.get("output")
+        or (None if export else detail.get("output"))
         or detail.get("command")
         or ""
     )
-    return said[:SAID_CAP]
+    return _cut(said, export)[:SAID_CAP]
 
 
-def node_log(store, node_id: str) -> list[dict]:
-    entries = store.node_log(node_id)[-LOG_TAIL:]
+def node_log(store, node_id: str, export: bool = False) -> list[dict]:
+    """The page polls, so it is sent the tail; an export is read once and carries the whole log,
+    whose first entries say who held the node."""
+    entries = store.node_log(node_id)
+    if not export:
+        entries = entries[-LOG_TAIL:]
     return [
-        {"at": e["timestamp"], "kind": e["kind"], "actor": e["actor"] or "", "said": _said(e["detail"])}
+        {"at": e["timestamp"], "kind": e["kind"], "actor": e["actor"] or "",
+         "said": _said(e["detail"], export)}
         for e in entries
-    ]
+    ]  # fmt: skip
 
 
 def waiting_on_person(nodes: list[P.Node], person: str) -> list[dict]:
@@ -262,10 +275,11 @@ def waiting_on_person(nodes: list[P.Node], person: str) -> list[dict]:
     return out
 
 
-def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> dict:
-    """Everything the plan screen draws, with every x, y and point computed here. ``logs`` is False
-    for a file that leaves the machine: a node's log can hold the output of its check, and the
-    export promises no tool output. ``checkout`` is where to ask git what changed between nodes."""
+def build_plan_view(store, export: bool = False, checkout: Path | None = None) -> dict:
+    """Everything the plan screen draws, with every x, y and point computed here. ``export`` is for
+    a file that leaves the machine: each node's log goes whole, as its record, without what a check
+    printed, since the export promises no tool output. ``checkout`` is where to ask git what changed
+    between nodes."""
     live = [n for n in P.nodes(store) if n.state not in P.GONE]
     by_id = {n.id: n for n in live}
     person = P.person_name()
@@ -333,8 +347,8 @@ def build_plan_view(store, logs: bool = True, checkout: Path | None = None) -> d
                 executor=n.executor,
                 started_at=n.started_at,
                 finished_at=n.finished_at,
-                waits=came_back(store, n) + waits(n, by_id, under),
-                log=node_log(store, n.id) if logs else [],
+                waits=came_back(store, n, export) + waits(n, by_id, under),
+                log=node_log(store, n.id, export),
                 lane=owner,
                 column=col,
                 row=row,

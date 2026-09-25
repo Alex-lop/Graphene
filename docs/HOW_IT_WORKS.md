@@ -545,6 +545,11 @@ launch, sent in a header a cross-site form cannot set. Each control calls the sa
 sign-off fields the page prints where that mechanism ends (P5).
 
 `graphene ui --export FILE` writes the same page as one file with its data inlined: paths, counts,
-commit subjects, prompts, each agent's task, and the plan without its nodes' logs (a log can hold
-the output of a check). It carries no token and cannot write. Every piece of text reaches the page
+commit subjects, prompts, each agent's task, and the plan with each node's whole log as its record.
+In the file a check is named by its command and result and never by what it printed, and a reason
+keeps only its first line (the reason `graphene run` hands a leaf back with quotes the refusal, and
+a failed check's output is under it). A run by executors that keep no records of their own is drawn
+from those logs alone; the second screen, drawn from Claude Code's sessions, is shut when there are
+none. It carries no token and cannot write. `docs/demo/README.md` says how the demo page is made
+from it and hosted. Every piece of text reaches the page
 through `textContent`, and `</` is escaped inside the JSON, so nothing recorded can turn into markup.

@@ -104,7 +104,7 @@ def payload(
     known = {r["id"] for r in rail}
     ids = [i for i in session_ids if i in known] or [r["id"] for r in rail[:1]]
     rail = [r for r in rail if r["id"] in ids] if only else rail
-    plan_view = build_plan_view(store, logs=not only, checkout=checkout) | {
+    plan_view = build_plan_view(store, export=only, checkout=checkout) | {
         "writable": writable,
         "token": token,
     }
@@ -121,8 +121,9 @@ def payload(
 
 def export_html(store: Store, session_ids: list[str]) -> str:
     """One self-contained file: the built page with its assets and the data inlined. Paths, counts,
-    task text and prompts go in; no hunks and no tool output exist in the graph to leak, and the
-    plan goes in without its nodes' logs, which can hold the output of a check."""
+    task text and prompts go in; no hunks and no tool output exist in the graph to leak, and each
+    node's log goes in as its record without what its check printed. A run whose executors keep no
+    records of their own (`graphene run --with` anything but Claude Code) is drawn from those logs."""
     page = (STATIC / "index.html").read_text(encoding="utf-8")
 
     def inline(match: re.Match) -> str:

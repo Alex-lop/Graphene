@@ -242,7 +242,8 @@ def run_node(
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on."""
     session = str(uuid.uuid4())
-    who = P.Caller(f"run:{shlex.split(template)[0]}", False, session)
+    # the command's name, never where it lives: the label is on the page an export publishes
+    who = P.Caller(f"run:{Path(shlex.split(template)[0]).name}", False, session)
     stop = stop or Stop()
     try:
         node = P.start(store, node_id, who, checkout)

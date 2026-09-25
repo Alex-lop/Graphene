@@ -247,7 +247,8 @@ def test_what_a_check_printed_never_leaves_the_machine_in_an_export(repo):
         page = ui.export_html(store, [SID])
     assert "hunter2" in json.loads(live)["plan"]["nodes"][0]["log"][-1]["said"]  # the person sees it
     assert "hunter2" not in page.replace("echo TOKEN-sk-live-hunter2; exit 1", "")  # the file does not
-    assert '"log": []' in page
+    # the log goes as the node's record (the demo page is drawn from it), the failed check by its command
+    assert '"kind": "check_failed", "actor": "claude:x", "said": "echo TOKEN-sk-live-hunter2; exit 1"' in page
 
 
 def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_them(repo, finish):
