@@ -316,3 +316,14 @@ def test_the_attempt_is_the_one_run_names_not_the_log_s_count(repo, fake, monkey
     monkeypatch.setenv("GRAPHENE_TRY", "2")  # the second attempt, whose row is not written yet
     executor.main(["--model", NANO, "--model", SUPER, "the contract"])
     assert f.requests[0]["model"] == SUPER
+
+
+def test_a_tool_called_by_another_common_name_is_the_tool_it_means(repo, fake):
+    fake([script({"greet": [
+        call("str_replace", file_path="app.py", old_str='"hi"', new_str='"hello"'),
+        call("bash", cmd=CHECK),
+        call("finish"),
+    ]})] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)
+    assert [n.id for n in done] == ["greet"]
