@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan (proposed): Load the Northwind XML feed through the same `load` command and JSONL sink  
+▼ ? zero price is skipped for every supplier  [zero-price]  │ xml-wiring (revision 1): xml enabled end to end           
+└ ? a price of 0 fails validation  [zero-rule]              │   why:    the xml source is wired in (xml-source)         
+▼ ? the xml source is wired in  [xml-source]                │   goal:   FIELD_MAPS "xml": code->sku, desc->name,        
+├ ? an xml reader  [xml-reader]                             │ price->price with price_unit "minor"; "xml" in            
+└ ? xml enabled end to end  [xml-wiring]                    │ ENABLED_SOURCES, the USAGE line and README;               
+                                                            │ samples/prices.xml loads to exactly NW-1 and NW-2         
+                                                            │   scope:  normalize/fields.py, config/defaults.py,        
+                                                            │ cli/main.py, README.md, tests/test_xmlfeed.py   (a write  
+                                                            │ anywhere else is refused, and blocks `done`)              
+                                                            │   needs:  xml-reader, zero-rule   (it cannot start until  
+                                                            │ they are done)                                            
+                                                            │   done:   `python3 -m unittest discover -q tests` passes  
+                                                            │   finish: graphene node done xml-wiring   (runs the check 
+                                                            │ and asks git what changed)                                
+                                                            │   stuck:  graphene node release xml-wiring --why '<what   
+                                                            │ is in the way>' [--wants <paths it needs>]   (hands it    
+                                                            │ back; say why)                                            
+                                                            │ xml-wiring  xml enabled end to end                        
+                                                            │   state: proposed · owner agent                           
+                                                            │   nobody has held this node yet, so no window and nothing 
+                                                            │ changed under it                                          
+                                                            │   coverage: not computed — nobody has held this node, so  
+                                                            │ there is no window for git to answer for                  
+                                                            │   refused: nothing                                        
+                                                            │   nobody has accepted, edited, signed off, sent back or   
+                                                            │ handed back this node                                     
+                                                            │   every entry, check runs included: `graphene plan log`   
+                                                            │ (1 for xml-wiring)                                        
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: none · 0/3 done                                                                  
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                                                                     

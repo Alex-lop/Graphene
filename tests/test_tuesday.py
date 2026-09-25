@@ -1,20 +1,26 @@
 # ruff: noqa: F811  (the repo fixture is imported from test_gate and named again as an argument)
 """Free on a Tuesday: with a plan in force, a small attended task costs the person nothing more than
-the prompt they would have typed anyway. Driven through hook_main with the vendor's event shapes."""
+the prompt they would have typed anyway. With plan first off, the prompt is the leaf (decision 18);
+with it on, the agent proposes the one leaf and it is theirs at once. Driven through hook_main with
+the vendor's event shapes, and `graphene plan propose` as an agent runs it."""
 
 import pytest
-from test_gate import ALEX, SID, bash, hook, reason, repo, write  # noqa: F401  (repo is a fixture)
+from test_gate import ALEX, BOT, SID, bash, hook, reason, repo, write  # noqa: F401  (repo is a fixture)
+from typer.testing import CliRunner
 
 from graphene_debrief import plan
+from graphene_debrief.cli import build
 from graphene_debrief.plan import DONE, DROPPED, OPEN, PROPOSED, Caller
 from graphene_debrief.store import Store
 
 OTHER = Caller("claude:0ther000", False, "0ther000-session")
+AGENT = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SID}  # the shell of the session the hook sees
 
 
-def in_force(repo):  # a finished plan stays in force: the state decision 4 was written for
+def in_force(repo):  # a finished plan stays in force, and plan first is off: decision 18's state
     with Store.open(repo) as store:
         plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+        plan.set_plan_first(store, False, ALEX)
 
 
 @pytest.fixture(autouse=True)
@@ -101,31 +107,18 @@ def test_a_shell_write_is_covered_by_the_leaf_its_prompt_made(repo):
     assert bash(repo, "echo 'T = []' > src/db/schema.py && echo x > src/db/other.py") is None
 
 
-def test_yes_typed_into_the_session_accepts_what_the_session_proposed(repo):
-    bot = Caller("claude:5e55105e", False, SID)
+@pytest.mark.parametrize("first", [True, False])
+@pytest.mark.parametrize("said", ["yes", "yes, go ahead", "ok do n1", "accept everything", "lgtm n1"])
+def test_a_yes_typed_into_the_session_accepts_nothing(repo, said, first):
+    """Decision 19's yes rule read magic words out of the person's prose; it is gone. They accept in
+    graphene watch (y) or with `graphene plan accept`."""
     with Store.open(repo) as store:
-        plan.propose(store, [{"title": "mine", "scope": ["src/db/**"], "check": "true"}], bot)
-        plan.propose(store, [{"title": "theirs", "scope": ["src/api/**"], "check": "true"}], OTHER)
-    said = context(hook(repo, "UserPromptSubmit", prompt="yes, go ahead"))
-    assert "accepted n1 (mine)" in said and "graphene node start n1" in said
+        plan.propose(store, [{"title": "mine", "scope": ["src/db/**"], "check": "true"}], BOT)
+        plan.set_plan_first(store, first, ALEX)
+    answer = hook(repo, "UserPromptSubmit", prompt=said)
+    assert answer is None or "accepted" not in context(answer)
     with Store.open(repo) as store:
-        assert plan.get(store, "n1").state == OPEN and plan.get(store, "n2").state == PROPOSED
-        entry = store.node_log("n1", ("accepted",))[-1]
-        assert entry["actor"] == "alex (no terminal)" and entry["detail"]["by"] == "prompt"
-    assert "accepted n2" in context(hook(repo, "UserPromptSubmit", prompt="ok do n2"))
-
-
-def test_only_a_short_yes_accepts_and_a_request_that_mentions_a_node_does_not(repo):
-    with Store.open(repo) as store:
-        plan.propose(store, [{"title": "mine", "scope": ["src/db/**"], "check": "true"}], OTHER)
-    said_no = ("sure, drop n1", "okay, but not n1", "ok so what is n1?", "yes, n1 is wrong -- skip it",
-               "go to n1's file and tell me what it does", "Sounds good except n1", "/yes n1")  # fmt: skip
-    long = "yes that is roughly right, and before you touch anything read the design notes, then n1"
-    for prompt in ("no, drop n1", "can you explain n1 to me?", *said_no, long, "yes"):
-        assert hook(repo, "UserPromptSubmit", prompt=prompt) is None  # the last: not this session's proposal
-    with Store.open(repo) as store:
-        assert plan.get(store, "n1").state == PROPOSED
-    assert "accepted n1" in context(hook(repo, "UserPromptSubmit", prompt="accept everything"))
+        assert plan.get(store, "n1").state == PROPOSED and not store.node_log("n1", ("accepted",))
 
 
 def test_prose_is_never_a_scope_or_a_command(repo):
@@ -171,8 +164,12 @@ def test_a_prompt_that_cannot_become_a_leaf_leaves_nothing_open_behind(repo):
 
 
 def test_naming_a_ready_leaf_is_not_a_way_around_it(repo):
+    """ "do n1" was read for the id to skip the prompt's leaf; no rule reads the prompt now. With plan
+    first on the session is told to take n1, and refused until it does."""
     in_force(repo)
-    hook(repo, "UserPromptSubmit", prompt="do n1")
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, True, ALEX)
+    assert "`graphene node start n1`" in context(hook(repo, "UserPromptSubmit", prompt="do n1"))
     assert "graphene node start n1" in reason(write(repo, "src/db/schema.py"))  # take it; no `**` instead
 
 
@@ -193,11 +190,91 @@ def test_an_agent_may_not_run_the_hook_itself(repo):
         assert "not an agent's to run" in reason(bash(repo, command))
 
 
-def test_a_stale_yes_accepts_nothing_the_person_has_not_just_been_shown(repo):
-    bot = Caller("claude:5e55105e", False, SID)
+# -- the one-line ask stays free: plan first on ------------------------------------------------------------
+
+LEAF = "- fix the header typo  [typo]\n    scope: README.md\n    check: grep -q Hello README.md\n"
+
+
+def propose(repo, monkeypatch, text, env=AGENT):
+    monkeypatch.chdir(repo)
+    return CliRunner().invoke(build(), ["plan", "propose", "-"], env=env, input=text)
+
+
+def test_a_one_line_ask_proposed_as_one_leaf_is_the_persons_at_once(repo, monkeypatch):
     with Store.open(repo) as store:
-        plan.propose(store, [{"title": "old idea", "scope": ["src/db/**"], "check": "true"}], bot)
-    hook(repo, "UserPromptSubmit", prompt="what does schema.py do?")  # the person moved on
-    assert hook(repo, "UserPromptSubmit", prompt="yes") is None
+        plan.set_plan_first(store, True, ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
+    said = propose(repo, monkeypatch, LEAF)
+    assert said.exit_code == 0, said.output
+    assert (
+        "typo is accepted, as the person's" in said.stdout
+        and "`graphene node start typo` takes it" in said.stdout
+    )
+    assert "until the person accepts" not in said.stdout
     with Store.open(repo) as store:
-        assert plan.get(store, "n1").state == PROPOSED
+        assert plan.get(store, "typo").state == OPEN
+        [entry] = store.node_log("typo", ("accepted",))
+        assert entry["actor"] == "alex (no terminal)"
+        assert entry["detail"] == {"by": "prompt", "prompt": "fix the typo in the README header"}
+        plan.start(store, "typo", BOT, repo)
+    assert write(repo, "README.md") is None
+    assert "outside the scope" in reason(write(repo, "src/db/schema.py"))
+
+
+def test_undo_takes_back_a_one_line_ask_as_any_act_of_the_persons(repo, monkeypatch):
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, True, ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
+    assert "is accepted" in propose(repo, monkeypatch, LEAF).stdout
+    with Store.open(repo) as store:
+        assert plan.undo(store, ALEX).startswith("a one-line ask in the session: fix the typo")
+        assert plan.get(store, "typo").state == PROPOSED
+
+
+def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monkeypatch):
+    in_force(repo)
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, True, ALEX)
+    tree = (
+        "- load the feed  [feed]\n  - read xml  [xml]\n      scope: src/api/**\n      check: true\n"
+        "  - skip zeros  [zero]\n      scope: src/db/**\n      check: true\n"
+    )
+    waits = [
+        ("add the xml feed", [tree, LEAF]),  # a tree, and a second proposal in the same turn
+        ("split users", ["- users  [n1]\n  - part  [part]\n      scope: src/api/x.py\n      check: true\n"]),
+        ("add a note", ["- a note  [note]\n    scope: NOTES.md\n    signoff: yes\n"]),  # no check
+    ]
+    for prompt, texts in waits:
+        hook(repo, "UserPromptSubmit", prompt=prompt)
+        for text in texts:
+            said = propose(repo, monkeypatch, text)
+            assert said.exit_code == 0 and "until the person accepts" in said.stdout, said.output
+    hook(repo, "UserPromptSubmit", prompt="and the other one")
+    other = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": OTHER.session_id}  # not the session prompted
+    b = "- b  [b]\n    scope: b\n    check: true\n"
+    assert "until the person accepts" in propose(repo, monkeypatch, b, env=other).stdout
+    with Store.open(repo) as store:
+        store.set_meta("asides", "off")  # strict: nothing is made or accepted by a prompt
+    hook(repo, "UserPromptSubmit", prompt="one more")
+    assert (
+        "until the person accepts"
+        in propose(repo, monkeypatch, "- c  [c]\n    scope: c\n    check: true\n").stdout
+    )
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert states == {"n1": OPEN} | dict.fromkeys(
+            ["feed", "xml", "zero", "typo", "part", "note", "b", "c"], PROPOSED
+        )
+
+
+def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, monkeypatch):
+    """What an agent proposes while it holds a leaf is its idea, not the ask the person typed."""
+    in_force(repo)
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, True, ALEX)
+    hook(repo, "UserPromptSubmit", prompt="do n1")
+    with Store.open(repo) as store:
+        plan.start(store, "n1", BOT, repo)
+    assert "until the person accepts" in propose(repo, monkeypatch, LEAF).stdout
+    with Store.open(repo) as store:
+        assert plan.get(store, "typo").state == PROPOSED

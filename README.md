@@ -64,25 +64,30 @@ Now say what you want, on the left, in a paragraph. On the 22nd I typed this abo
 > at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored
 > or legacy files that aren't ours this week.
 
-Graphene asks the agent to plan a paragraph before it writes anything, and holds its writes until
-you have accepted the tree and a leaf of it is taken. On the right, a tree
-appears, every line marked `?`: a proposal. The agent also says what it could not settle. That run
-flagged that the legacy importer skips the zero-price rule, which I had just told it not to touch.
-That is a misunderstanding caught before any code, and exactly what the tree is for. A single line
-("fix the typo in the header") is still just done (with a plan in force, it is on the plan as a leaf
-with a record of what it touched). "just do it", "do it now" or "skip the plan" in a paragraph skip
-the tree, and so does one that asks for a leaf already on the plan ("do ids") or carries the CLI's
-`--scope` and a quoted `--check`. If the agent answers your paragraph with a question and you then
-ask for something else, its writes still wait, and the refusal it relays says how out: answer "just
-do it" or "no plan".
+`graphene init` turned **plan first** on: whatever you ask for in the session is proposed before
+any code, and the agent writes nothing until a leaf of it is accepted and taken. On the right, a
+tree appears, every line marked `?`: a proposal. The agent also says what it could not settle. That
+run flagged that the legacy importer skips the zero-price rule, which I had just told it not to
+touch. That is a misunderstanding caught before any code, and exactly what the tree is for.
+
+A one-line ask ("fix the typo in the header") costs nothing more: the agent proposes it as one leaf,
+which is yours at once because you asked for it, takes it, and does it. The status line says whether
+plan first is on; `P` turns it off and on (or `graphene plan first off`), and with it off what you
+ask for is done at once and recorded as a leaf. Nothing reads your words to decide: not their
+length, not "just do it".
 
 Prune it on the right:
 
-- `j` `k` move, `za` folds, `Enter` shows everything about a node.
+- `j` `k` move, `za` folds, `Enter` shows everything about a node. The goal is the first row.
 - `d` drops a leaf you did not mean. `e` opens its contract in your editor. `E` opens a whole
   subtree as text. `a` adds a line, and `s` asks the planner to split a leaf.
-- `y` accepts. `V`, a few `j`, then `y` accepts several.
+- `y` accepts (on the goal, everything proposed). `V`, a few `j`, then `y` accepts several. On a
+  leaf waiting for your sign-off, `y` signs it off.
 - `R` runs everything that is ready.
+
+Every row reads the same: what it is, its id, and one word for where it stands (proposed, ready,
+waiting, running, came back, review, done, yours). The colour says whose move it is: cyan, the
+agent's guess for you to prune; magenta, it waits on you; yellow, an executor is on it; green, done.
 
 Leaves light up as executors take them. The node pane shows which executor, in which worktree, what
 it did last and how many seconds ago; `l` shows its output. Each leaf lands on your branch as a merge
@@ -113,7 +118,9 @@ tests of Graphene's own:
   session in a fresh copy of that repository with the hooks installed: 35 seconds, four leaves under
   three sub-goals, `needs` set between them, and no file touched. Before Graphene asked for the tree
   at the prompt, the same paragraph got its code written straight away, in 48 seconds. (One run of
-  each, 23 September.)
+  each, 23 September.) With plan first as a setting and no rule about length, the same paragraph
+  gave four leaves in 30 seconds, and a one-line ask before it was proposed as one leaf, accepted as
+  mine, done and checked in 25 seconds, with nothing to press. (One run each, 24 September.)
 - **The tree runs in parallel and lands.** Accepted as proposed, `graphene run --parallel 4` did all
   four leaves in 50 seconds, each a merge on the branch. The result passes 18 of the task's 20 hidden
   acceptance checks (the 2 it misses want something the paragraph never said) and 12 of its 12
@@ -136,15 +143,12 @@ any executor that has a shell); the page (`graphene ui`) shows the tree and is o
 
 A control you cannot trust is worse than none, so here is where each one ends.
 
-- "A paragraph becomes a tree" is a rule about length (240 characters) and a few words. A long
-  request you meant to have done at once needs "just do it" in it; the same words said in passing
-  ("so do it now if you can") skip the tree too. A short one that deserved a plan is done at once;
-  with a plan in force (any node accepted and not archived) it is on the plan as a leaf made from
-  your prompt, and with none it leaves no trace.
-- Tools that write through an MCP server are seen neither by the paragraph's wait nor by a leaf's
-  scope: the hooks read Claude Code's own write tools and the shell. That includes a filesystem MCP
-  server writing files in this repository; `done` asks git, so under a held leaf such a write is
-  caught there, and during the wait or with no leaf held nothing catches it.
+- With plan first on, the agent judges what is a tree and what is one leaf. One leaf it proposes
+  after your prompt is accepted at once as yours, and the log says so ("by their prompt").
+- Tools that write through an MCP server are seen neither by plan first nor by a leaf's scope: the
+  hooks read Claude Code's own write tools and the shell. That includes a filesystem MCP server
+  writing files in this repository; `done` asks git, so under a held leaf such a write is caught
+  there, and with no leaf held nothing catches it.
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
   itself). The hook refuses the forms it can parse (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`).
   The rest is caught at `done`, by git; until then the stray change is on disk.
@@ -158,12 +162,21 @@ A control you cannot trust is worse than none, so here is where each one ends.
   carries none is taken for you. An agent that strips its marks, or one from a vendor that sets none,
   passes for a person; the log marks every act made with no terminal (except the commands you type
   in `graphene watch`, which it vouches for).
-- A request typed into a session is taken as yours, and so is a "yes". An agent that starts another
-  agent writes its prompt. The log names every leaf made from a prompt and every acceptance made by
-  one. A leaf made from a one-line prompt with no `--scope` may touch anything (never the plan's
-  store or the hooks' settings): it is a record, not a fence.
-- During `graphene run --parallel`, a change you make by hand in the checkout it merges into can
-  make a leaf wait or keep it from landing. It is sent back or waits for you; nothing is lost.
+- A request typed into a session is taken as yours. An agent that starts another agent, a subagent
+  included, writes its prompt; the log names every leaf made or accepted by a prompt. With plan
+  first off, a leaf made from a one-line prompt with no `--scope` may touch anything (never the
+  plan's store or the hooks' settings): it is a record, not a fence.
+- A commit is the repository moving, and the plan follows it: only uncommitted changes that no leaf
+  made count as loose. An agent that writes outside every leaf between leaves and commits it is not
+  seen at the next start.
+- What a leaf's check creates is not its executor's change (a `__pycache__` in a repository with no
+  `.gitignore`): at `done`, new untracked files outside the scope are set aside while the check runs,
+  and what the check makes again stays and is not counted. An untracked file of yours that the
+  executor deleted outside its scope is not caught; a tracked one is.
+- During `graphene run --parallel`, an uncommitted change in the checkout it merges into (yours, or
+  a one-line ask your session did there) can keep a leaf from landing. It waits in review, its pane
+  says which file is in the way, and `y` signs it off once you have merged its branch; nothing is
+  lost.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
 

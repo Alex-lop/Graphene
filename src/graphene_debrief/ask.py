@@ -150,8 +150,12 @@ def ask(
                 refusal = f"Graphene could not read the proposal: {no}"
             else:
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
-                if rest:
-                    say(f"the planner says: {' '.join(rest.split())[:600]}")
+                if rest:  # its lines as it wrote them (a list stays a list), not run together
+                    lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
+                    said_lines = [line for line in lines if line][:12]
+                    say("the planner says:")
+                    for line in said_lines:
+                        say(f"  {line[:300]}")
                 return said
         say(refusal)
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try

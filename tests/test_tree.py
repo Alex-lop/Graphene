@@ -235,7 +235,7 @@ def test_a_running_leaf_cannot_be_made_a_sub_goal_by_moving_a_node_under_it(stor
     plan.propose(store, [{"id": "x", "title": "x", "scope": ["README.md"], "check": "false"}], ALEX)
     plan.propose(store, [{"id": "y", "title": "y", "scope": ["src/**"], "check": "true"}], ALEX)
     plan.start(store, "x", BOT, repo)
-    with pytest.raises(Refused, match="x is running"):
+    with pytest.raises(Refused, match="a child would make x a sub-goal while claude:aaaa1111 holds it"):
         plan.edit(store, "y", {"parent": "x"}, ALEX)
 
 
@@ -336,3 +336,104 @@ def test_the_check_graphene_runs_is_never_the_person(store, repo, monkeypatch):
     )
     ok, _ = plan.run_check(f"{__import__('sys').executable} -c '{who}'", repo)
     assert ok  # exit 0: not a person
+
+
+def test_one_word_for_each_state_as_a_person_reads_it(store, repo):
+    """The screen, `graphene plan` and the text form's notes read a node's state from one place."""
+    plan.propose(store, TREE, ALEX)
+    plan.propose(store, [{"id": "mine", "title": "read it over", "owner": "alex"}], ALEX)
+    plan.propose(store, [{"id": "later", "title": "the rest, to be split"}], ALEX)
+    plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x"], "check": "true"}], BOT)
+    everything = plan.nodes(store)
+    said = {n.id: plan.reads(n, everything) for n in everything}
+    assert said == {
+        "api": "0/2 done", "a": "ready", "b": "waiting", "docs": "waiting",
+        "mine": "yours", "later": "to fill in", "idea": "proposed",
+    }  # fmt: skip
+    plan.start(store, "a", BOT, repo)
+    plan.release(store, "a", BOT, "it needs src/other.txt", wants=["src/other.txt"])
+    back = {n.id for n in plan.nodes(store) if plan.came_back(store, n)}
+    assert back == {"a"} and plan.reads(plan.get(store, "a"), plan.nodes(store), back) == "came back"
+    plan.widen(store, "a", [], ALEX)  # the person took the offer: it is ready again, not "came back"
+    assert not plan.came_back(store, plan.get(store, "a"))
+    assert {w: plan.look(w)[0] for w in ("proposed", "running", "came back", "done")} == {
+        "proposed": "?", "running": "●", "came back": "↩", "done": "✓"
+    }
+    assert plan.said_by("run:claude") == "claude, started by graphene run"
+    assert plan.said_by("claude:59409a10") == "a Claude Code session (59409a10)"
+
+
+def test_a_persons_own_leaf_with_no_scope_is_their_to_do_done_by_their_word(store, repo):
+    """`a` then `owner: me` in the screen made a node that start called "a sub-goal with no leaves
+    yet", and that `done` sent to `start`."""
+    plan.propose(store, [{"id": "top", "title": "the release", "children": [
+        {"id": "tell", "title": "tell the team", "owner": "me"},
+    ]}], ALEX)  # fmt: skip
+    with pytest.raises(Refused) as mine:
+        plan.start(store, "tell", ALEX, repo)
+    assert str(mine.value) == (
+        "tell is yours to do by hand: it has no scope, so there is nothing to start\n"
+        "  graphene node done tell when it is done"
+    )
+    with pytest.raises(Refused, match="tell is alex's to do by hand"):
+        plan.start(store, "tell", BOT, repo)
+    with pytest.raises(Refused, match="tell is alex's to do by hand: [^\n]* nothing to finish\n"):
+        plan.finish(store, "tell", BOT, checkout=repo)
+    assert plan.finish(store, "tell", ALEX, checkout=repo).state == DONE
+    [said] = store.node_log("tell", ("finished",))
+    assert said["actor"] == "alex" and said["detail"]["note"].startswith("done by hand: the person's word")
+    assert plan.get(store, "top").state == DONE  # and it rolls up like any leaf
+    with pytest.raises(Refused, match="tell is done already"):
+        plan.finish(store, "tell", ALEX, checkout=repo)
+
+
+def test_a_to_do_that_waits_on_something_says_so(store, repo):
+    tell = {"id": "tell", "title": "tell the team", "owner": "me", "needs": ["a"]}
+    plan.propose(store, [{"id": "a", "title": "a", "scope": ["a.txt"], "check": "true"}, tell], ALEX)
+    with pytest.raises(Refused, match=r"tell waits on a \(open\)"):
+        plan.finish(store, "tell", ALEX, checkout=repo)
+    assert plan.get(store, "tell").state == OPEN
+
+
+def test_an_agents_node_with_no_scope_and_no_leaves_says_how_it_gets_filled_in(store, repo):
+    plan.propose(store, [{"id": "later", "title": "the rest, to be split"}], ALEX)
+    for act, verb in ((lambda: plan.start(store, "later", BOT, repo), "start"),
+                      (lambda: plan.finish(store, "later", BOT), "finish")):  # fmt: skip
+        with pytest.raises(Refused) as no:
+            act()
+        assert str(no.value) == (
+            f"later has no scope and no leaves yet, so there is nothing to {verb}\n"
+            "  s in graphene watch asks the planner to split it, or graphene node edit later gives it a "
+            "scope and a check"
+        )
+
+
+def test_done_on_a_leaf_that_is_not_running_says_the_line_for_its_state(store, repo):
+    """`start` on a waiting leaf said what it waits on, and `done` on it then said "`graphene node
+    start` takes it": a command that tells you to run the one that was just refused."""
+    plan.propose(store, TREE, ALEX)
+    plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x"], "check": "true"}], BOT)
+    signed = {"id": "ok", "title": "signed", "scope": ["ok.txt"], "check": "true", "signoff": True}
+    plan.propose(store, [signed], ALEX)
+
+    def said(node_id, who=BOT):
+        with pytest.raises(Refused) as no:
+            plan.finish(store, node_id, who)
+        return str(no.value)
+
+    assert said("a") == "a is ready, not running\n  graphene node start a takes it"
+    assert said("b") == "b is not running: it waits on a (open)"
+    with pytest.raises(Refused) as waiting:
+        plan.start(store, "b", BOT, repo)
+    assert str(waiting.value) == "b waits on a (open)"  # and never the command just refused
+    assert said("idea") == (
+        "idea is a proposal: nothing to finish until the person accepts it\n"
+        "  graphene plan accept idea (the person's)"
+    )
+    assert said("idea", ALEX).endswith("\n  graphene plan accept idea")
+    do(store, repo, "ok", "ok.txt")
+    assert said("ok") == (
+        "ok is finished and waits for the person's sign-off\n  graphene node signoff ok (the person's)"
+    )
+    do(store, repo, "a", "src/api/a.txt")
+    assert said("a") == "a is done already"

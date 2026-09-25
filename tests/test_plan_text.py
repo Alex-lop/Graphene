@@ -186,9 +186,32 @@ def test_what_is_true_of_a_node_is_written_as_notes_and_never_read(store, repo):
     plan.release(store, "render", BOT, "it needs src/util.py as well")
     store.log_node("render", plan._now(), "denied", None, None, None, {"path": "src/util.py"})
     text, _ = T.render(store)
-    assert "# handed back: it needs src/util.py as well" in text
+    assert "# came back: it needs src/util.py as well" in text  # the word the screen shows, then why
     assert "# it wanted, outside its scope: src/util.py" in text
-    assert "# waits on render" in text  # the template waits on it
+    assert "# waiting on render (came back)" in text  # the template waits on it
+
+
+def test_the_notes_say_a_nodes_state_in_the_words_of_the_screen(store, repo):
+    """The text form's notes spelled the state their own way ("waits on", "running: claude:…", no
+    note at all for a ready leaf); now the same word as the screen and `graphene plan`, then what
+    the word needs said."""
+    run = plan.Caller("run:claude", False, "run-session")
+    shaped(store)
+    plan.propose(store, [{"id": "mine", "title": "read it over", "owner": "alex"},
+                         {"id": "later", "title": "the rest, to be split"}], ALEX)  # fmt: skip
+    plan.propose(store, [{"id": "idea", "title": "an idea", "scope": ["x.py"], "check": "true"}], BOT)
+    plan.start(store, "render", run, repo)
+    notes = {}
+    for line in T.render(store)[0].splitlines():
+        if "[" in line:
+            node = line.rsplit("[", 1)[1].rstrip("]")
+        elif line.strip().startswith("# ") and not line.startswith("#"):
+            notes.setdefault(node, []).append(line.strip()[2:])
+    assert notes["pdf"] == ["0/2 done"] and notes["docs"] == ["ready"]
+    assert notes["render"][0].startswith("running: claude, started by graphene run, since ")
+    assert notes["template"] == ["waiting on render (running)"]
+    assert notes["mine"] == ["yours"] and notes["later"] == ["to fill in: no scope and no leaves yet"]
+    assert notes["idea"] == ["proposed by a Claude Code session (aaaa1111)"]
 
 
 def test_a_multi_line_check_is_compared_as_the_text_writes_it(store):
@@ -326,3 +349,67 @@ def test_a_sub_goal_whose_children_are_all_proposals_is_not_asked_the_leaf_rule(
     T.apply(store, "- the API  [api]\n    check: true\n  ? endpoint  [ep]\n      scope: src/**\n"
                    "      check: true\n", ALEX, None)  # fmt: skip
     assert plan.edit(store, "api", {"title": "the public API"}, ALEX).title == "the public API"
+
+
+# -- every key the text reads: honoured, or refused by its line; never turned into prose -----------
+
+
+def leaf(title: str, *lines: str, check: bool = True) -> str:
+    """A node's line and its own lines under it, and a scope and a check unless told otherwise."""
+    tail = ("scope: calc.py", "check: true") if check else ()
+    return "".join(f"{'    ' if k else ''}{line}\n" for k, line in enumerate((f"- {title}", *lines, *tail)))
+
+
+def test_parent_places_a_node_under_a_node_of_the_text_or_of_the_plan(store):
+    """A proposal said `parent: wire` under a leaf; it was read as the leaf's goal and the leaf landed
+    at the root."""
+    wire = "- wire it in  [wire]\n  - add is kept  [keep]\n      scope: calc.py\n      check: true\n"
+    T.apply(store, wire + leaf("sub is added  [sub]", "parent: wire"), BOT, None)
+    sub = plan.get(store, "sub")
+    assert (sub.parent, sub.goal) == ("wire", "")
+    plan.accept(store, [], ALEX)
+    T.apply(store, leaf("mul is added  [mul]", "parent: wire"), BOT, None)
+    assert plan.get(store, "mul").parent == "wire"  # a node already in the plan
+    powers = leaf("powers  [pow]", "parent: wire", check=False) + leaf("neg  [neg]", "parent: pow")
+    T.apply(store, powers, BOT, None)
+    assert (plan.get(store, "pow").parent, plan.get(store, "neg").parent) == ("wire", "pow")
+    assert "parent:" not in T.render(store)[0]  # the tree is said by indentation, not as anyone's goal
+
+
+@pytest.mark.parametrize(
+    "text, says",
+    [
+        (leaf("a leaf  [a]", "parent: nowhere"),
+         "line 2: parent: 'nowhere' is not the id of a node, in this text or in the plan"),
+        (leaf("a leaf  [a]", "parent:"), "line 2: parent: names no node"),
+        ("- top  [top]\n  - a leaf  [a]\n      parent: other\n      scope: x\n      check: true\n"
+         + leaf("other  [other]"),
+         "line 3: parent: other, but [a]'s line is indented under [top]; say where it goes one way"),
+        (leaf("a leaf  [a]", "parent: a"), "line 2: parent: a is the node itself"),
+        (leaf("a leaf  [a]", "title: something else"),
+         "line 2: title: is not read under a node; a node's title is its own line, after its '- '"),
+        (leaf("a leaf  [a]", "children: b, c", check=False), "line 2: children: is not read under a node"),
+        (leaf("a leaf  [a]", "id: b"), "line 2: id: b, and the node's line says [a]"),
+        (leaf("a leaf", "id: not an id!"), "line 2: id: 'not an id!' is not an id"),
+    ],
+)  # fmt: skip
+def test_a_key_the_text_cannot_honour_is_refused_by_its_line(store, text, says):
+    with pytest.raises(Refused) as no:
+        T.apply(store, text, BOT, None)
+    assert str(no.value).startswith(says)
+    assert plan.nodes(store) == []
+
+
+def test_id_is_the_nodes_id_and_goal_is_what_it_should_achieve(store):
+    T.apply(store, leaf("div is added", "id: div", "goal: division, by zero refused"), BOT, None)
+    div = plan.get(store, "div")
+    assert (div.title, div.goal) == ("div is added", "division, by zero refused")
+
+
+def test_a_person_moves_a_node_with_parent_in_an_edit(store):
+    shaped(store)
+    text, opened = T.render(store)
+    docs = "- say so in the README  [docs]\n"
+    moved = text.replace(docs, docs + "    parent: pdf\n")
+    assert T.apply(store, moved, ALEX, opened) == ["docs: moved under pdf"]
+    assert plan.get(store, "docs").parent == "pdf"

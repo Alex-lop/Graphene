@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ○ Load the Northwind XML feed through the same `load` command and…   2/4 done 
+├ ▶ ✓ zero price is skipped for every supplier             zero-price  done     
+└ ▼ ○ the xml source is wired in                           xml-source  1/3 done 
+  ├   ✓ an xml reader                                      xml-reader  done     
+  ├   ○ xml enabled end to end                             xml-wiring  ready    
+  └   ◇ read the new README section for xml                n6          yours    
+────────────────────────────────────────────────────────────────────────────────
+ the xml source is wired in                                                     
+ xml-source · 1/3 done                                                          
+                                                                                
+ why      Load the Northwind XML feed through the same `load` command and…      
+                                                                                
+ ✓ an xml reader                                             xml-reader  done   
+ ○ xml enabled end to end                                    xml-wiring  ready  
+ ◇ read the new README section for xml                       n6          yours  
+                                                                                
+ waiting  n6 is yours                                                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ you: 1 · 0 running · R: 1 ready · 2/4 done · plan first: on                    
+ za fold · r run what is ready here · E edit it as text · ? help · q quit       

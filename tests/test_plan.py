@@ -190,7 +190,7 @@ def test_a_node_with_a_change_outside_its_scope_is_not_done_however_the_file_was
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
     subprocess.run("cat > src/db/schema.py <<'X'\nTABLES = ['users']\nX", shell=True, cwd=repo, check=True)
     (repo / "notes.txt").write_text("scratch")  # a new file nobody asked for
-    with pytest.raises(Refused, match=r"outside its scope .*: notes.txt, src/db/schema.py"):
+    with pytest.raises(Refused, match=r"outside its scope [^\n]*\n  notes.txt, src/db/schema.py\n"):
         plan.finish(store, "n1", BOT)
     assert plan.get(store, "n1").state == RUNNING
     with pytest.raises(Refused, match="n2 waits on n1"):
@@ -371,11 +371,11 @@ def test_a_file_git_was_told_to_stop_watching_does_not_pass_the_boundary(store, 
     (repo / "README.md").write_text("# tampered, and git says nothing changed\n")
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
     with pytest.raises(
-        Refused, match="README.md marked assume-unchanged or skip-worktree since it was started"
+        Refused, match="marked assume-unchanged or skip-worktree since it was started\n  README.md\n"
     ):
         plan.finish(store, "n1", BOT)
     git(repo, "update-index", "--no-assume-unchanged", "README.md")
-    with pytest.raises(Refused, match="outside its scope .*README.md"):
+    with pytest.raises(Refused, match="outside its scope [^\n]*\n  README.md"):
         plan.finish(store, "n1", BOT)
 
 
@@ -403,7 +403,7 @@ def test_a_scope_spelled_in_the_wrong_case_says_so_when_it_refuses(store, repo):
     plan.propose(store, [api_node(scope=["readme.md"])], ALEX)
     plan.start(store, "n1", BOT, repo)
     (repo / "README.md").write_text("# changed\n")
-    with pytest.raises(Refused, match="README.md differs from the scope only in upper and lower case"):
+    with pytest.raises(Refused, match=r"\(readme.md\)[^\n]*; README.md differs from it only in upper and"):
         plan.finish(store, "n1", BOT)
 
 
@@ -500,7 +500,7 @@ def test_work_done_after_the_audited_window_closed_stops_the_next_start(store, r
     plan.finish(store, "n1", BOT)
     (repo / "src/db/schema.py").write_text("TABLES = ['after hours']\n")  # no node is open now
     assert plan.unowned(store, repo) == ["src/db/schema.py"]
-    with pytest.raises(Refused, match="src/db/schema.py changed while no node owned it"):
+    with pytest.raises(Refused, match="has an uncommitted change no node made\n  src/db/schema.py\n"):
         plan.start(store, "n2", BOT, repo)
     with pytest.raises(Refused, match="person's to do"):
         plan.acknowledge(store, repo, BOT)
@@ -538,7 +538,7 @@ def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, rep
     (repo / "src/api/users.py").write_text("half done\n")
     (repo / "src/db/schema.py").write_text("stray\n")
     plan.release(store, "b", BOT, "stuck")
-    with pytest.raises(Refused, match=r"c cannot start: src/db/schema.py changed"):
+    with pytest.raises(Refused, match=r"c cannot start: the checkout has an [^\n]*\n  src/db/schema.py\n"):
         plan.start(store, "c", BOT2, repo)
 
 
@@ -549,7 +549,7 @@ def test_the_first_node_handed_back_with_a_stray_file_stops_the_next_start_too(s
     plan.start(store, "a", BOT, repo)
     (repo / "src/db/schema.py").write_text("stray\n")
     plan.release(store, "a", BOT, "stuck")
-    with pytest.raises(Refused, match="b cannot start: src/db/schema.py changed"):
+    with pytest.raises(Refused, match="b cannot start: the checkout has an [^\n]*\n  src/db/schema.py\n"):
         plan.start(store, "b", BOT2, repo)
 
 
@@ -691,3 +691,178 @@ def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeyp
         monkeypatch.setattr(plan, "validate", lambda *a: calls.append(1) or real(*a))
         [(key, _, argv)] = plan.offers(store, plan.get(store, "x"))
         assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1
+
+
+# -- what counts at the boundary, and how a refusal reads ----------------------------------------------
+
+
+def python_leaf(**extra):
+    """A leaf whose check leaves a cache outside its scope, as `python -m unittest` leaves __pycache__."""
+    check = "mkdir -p cache && echo compiled > cache/users.pyc && grep -q 'return \\[1\\]' src/api/users.py"
+    return {"title": "users endpoint", "scope": ["src/api/**"], "check": check, **extra}
+
+
+def test_what_the_check_makes_again_is_its_own_and_is_neither_counted_nor_committed(store, repo):
+    """A Python repo with no .gitignore: the executor ran the tests before `done`, and `done` was
+    refused over the __pycache__ they left outside the scope."""
+    plan.propose(store, [python_leaf()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "cache").mkdir()
+    (repo / "cache/users.pyc").write_text("compiled by the executor's own test run\n")
+    assert plan.finish(store, "n1", BOT).state == DONE
+    assert (repo / "cache/users.pyc").read_text() == "compiled\n"  # the check's, left where it made it
+    [ended] = store.node_log("n1", ("finished",))
+    assert ended["detail"]["changed"] == ["src/api/users.py"]  # what `run` commits
+    aside = store.path.parent / "aside"
+    assert not aside.exists() or not any(aside.iterdir())
+
+
+def test_what_the_check_does_not_make_again_is_put_back_and_refused(store, repo):
+    plan.propose(store, [python_leaf()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "cache").mkdir()
+    (repo / "cache/users.pyc").write_text("x\n")
+    (repo / "notes.txt").write_text("the executor's own\n")
+    with pytest.raises(Refused, match=r"changed outside its scope \(src/api/\*\*\)[^\n]*\n  notes.txt\n"):
+        plan.finish(store, "n1", BOT)
+    assert (repo / "notes.txt").read_text() == "the executor's own\n"  # put back as it was
+    assert plan.get(store, "n1").state == RUNNING
+
+
+def test_what_was_set_aside_is_put_back_when_the_check_is_stopped(store, repo, monkeypatch):
+    plan.propose(store, [python_leaf()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "notes.txt").write_text("the executor's own\n")
+
+    def stopped(command, where):
+        assert not (repo / "notes.txt").exists()  # set aside while the check runs
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(plan, "run_check", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        plan.finish(store, "n1", BOT)
+    assert (repo / "notes.txt").read_text() == "the executor's own\n"
+
+
+def test_a_tracked_file_outside_the_scope_is_refused_before_the_check_runs(store, repo, monkeypatch):
+    plan.propose(store, [python_leaf()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "README.md").write_text("changed\n")
+    (repo / "notes.txt").write_text("x\n")
+    monkeypatch.setattr(plan, "run_check", lambda *a: pytest.fail("the check ran"))
+    with pytest.raises(Refused, match=r"\n  README.md, notes.txt\n"):
+        plan.finish(store, "n1", BOT)
+    assert (repo / "notes.txt").exists()
+
+
+def test_files_git_ignores_never_count(store, repo):
+    (repo / ".gitignore").write_text("*.log\nbuild/\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-qm", "ignore logs")
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "debug.log").write_text("x\n")
+    (repo / "build").mkdir()
+    (repo / "build/out.o").write_text("x\n")
+    assert plan.finish(store, "n1", BOT).state == DONE
+    assert store.node_log("n1", ("finished",))[0]["detail"]["changed"] == ["src/api/users.py"]
+
+
+def test_deleting_a_leftover_that_was_there_when_the_hold_started_is_not_a_change(store, repo, finish):
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
+    (repo / "cache").mkdir()
+    (repo / "cache/old.pyc").write_text("left by an earlier check\n")
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    plan.start(store, "b", BOT, repo)
+    assert "cache/old.pyc" in plan.get(store, "b").dirty_at_start
+    (repo / "cache/old.pyc").unlink()  # as a refusal told it to
+    (repo / "README.md").write_text("# toy, documented\n")
+    assert plan.finish(store, "b", BOT).state == DONE
+    assert plan.unowned(store, repo) == []  # and between nodes it is no loose change either
+
+
+def test_deleting_a_tracked_file_or_reverting_the_persons_edit_still_counts(store, repo):
+    (repo / "src/db/schema.py").write_text("TABLES = ['the person was here']\n")  # uncommitted
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "checkout", "--", "src/db/schema.py")  # wipes the person's uncommitted edit
+    (repo / "README.md").unlink()
+    with pytest.raises(Refused, match=r"\n  README.md, src/db/schema.py\n"):
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_persons_commit_is_not_a_loose_change_and_an_uncommitted_one_is(store, repo, finish):
+    """A .gitignore the person committed between leaves blocked every start until `plan ack`."""
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a's work")
+    (repo / ".gitignore").write_text("__pycache__/\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-qm", "ignore caches")
+    assert plan.unowned(store, repo) == []
+    (repo / "notes.txt").write_text("mine\n")
+    assert plan.unowned(store, repo) == ["notes.txt"]
+    said = (
+        "b cannot start: the checkout has an uncommitted change no node made\n"
+        "  notes.txt\n"
+        "  put it back, or ask the person: graphene plan ack makes it theirs as it stands, and so does "
+        "committing it"
+    )
+    with pytest.raises(Refused) as first:
+        plan.start(store, "b", BOT, repo)
+    assert str(first.value) == said
+    with pytest.raises(Refused) as again:  # said once: the second time is short
+        plan.start(store, "b", BOT, repo)
+    assert str(again.value).endswith("\n  put it back, or ask the person: graphene plan ack")
+    git(repo, "add", "notes.txt")
+    git(repo, "commit", "-qm", "my notes")  # committing it does what ack does
+    assert plan.start(store, "b", BOT, repo).state == RUNNING
+
+
+def test_a_refusal_lectures_once_in_a_hold_and_again_in_the_next(store, repo):
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "README.md").write_text("stray\n")
+    said = []
+    for _ in range(2):
+        with pytest.raises(Refused) as no:
+            plan.finish(store, "n1", BOT)
+        said.append(str(no.value))
+    base = plan.get(store, "n1").base_sha[:10]
+    assert said[0] == (
+        "n1 is not done: changed outside its scope (src/api/**, tests/**), which only the person widens\n"
+        "  README.md\n"
+        f"  put it back (git checkout {base} -- <path>, or delete a new file), or say why: "
+        "graphene node release n1 --why '…'"
+    )
+    assert said[1] == (
+        "n1 is not done: changed outside its scope (src/api/**, tests/**)\n"
+        "  README.md\n"
+        "  put it back, or say why: graphene node release n1 --why '…'"
+    )
+    with pytest.raises(Refused) as other:  # another caller meets it for the first time
+        plan.finish(store, "n1", ALEX)
+    assert "which only the person widens" in str(other.value)
+    git(repo, "checkout", "--", "README.md")
+    plan.release(store, "n1", BOT, "the README is mine to change")
+    plan.start(store, "n1", BOT, repo)
+    (repo / "README.md").write_text("stray again\n")
+    with pytest.raises(Refused, match="which only the person widens"):  # a new hold: said again
+        plan.finish(store, "n1", BOT)
+
+
+def test_a_refusal_lists_the_paths_that_fit_and_counts_the_rest():
+    said = str(plan.refusal("x is not done", [f"src/module_{k}/file.py" for k in range(40)], "do this"))
+    what, paths, do = said.split("\n")
+    assert what == "x is not done" and do == "  do this"
+    assert paths.startswith("  src/module_0/file.py, ") and paths.endswith(" more")
+    assert len(paths) <= plan.WIDE + 2

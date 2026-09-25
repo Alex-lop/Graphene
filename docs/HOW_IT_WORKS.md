@@ -78,21 +78,29 @@ again; dropping a sub-goal drops what is under it, unless something outside wait
 above the leaf, with its own goal; `plan.contract` prints it as `why:` lines above the leaf's goal.
 `graphene node start`, `graphene node show` and the prompt `graphene run` hands over all use it.
 
-**In the terminal** (`plan_cli.plan_lines`): the goal, a count of leaves, what waits on a person
-(a proposed subtree is asked about once, at its top; a leaf that came back with a fix on offer too),
-then the tree indented by depth. Once it is longer than a dozen lines, finished nodes fold into one
-`✓ n done here` line per level; `--all` unfolds. `graphene watch` is the same plan on one screen
-(`tui.py`, Textual): the tree, the node under the cursor, the executors as they work, vim keys, every
-key a `graphene` command, which the bottom line names: run in its process, or, for what takes
-time (`run`, `ask`, `node split`, `node done`, `node signoff`), in a process of its own. It
-polls the store once a second; `--once` prints `plan_lines` instead.
+**In the terminal** (`plan_cli.plan_lines`): the goal, a count of leaves, what waits on you (a
+proposed subtree is asked about once, at its top; a leaf that came back, one in review, one of
+yours), then the tree indented by depth, one row a node: glyph, title cut at a word, id, and the
+word its state reads as (`plan.reads`: proposed, ready, waiting, running, came back, review, done,
+yours, to fill in; a sub-goal reads `2/3 done`), then what the print adds (scope, what it waits on,
+the command that is the person's). Once it is longer than a dozen lines, finished nodes fold into
+one `✓ n done here` line per level; `--all` unfolds. `graphene watch` is the same plan on one screen
+(`tui.py`, Textual): the goal as the first row, the tree in the same rows and colours (`plan.look`:
+the colour says whose move it is), a pane for the node under the cursor laid out by kind, vim keys,
+every key a `graphene` command, which the bottom line names: run in its process, or, for what takes
+time (`run`, `ask`, `node split`, `node done`, `node signoff`), in a process of its own. It polls
+the store once a second; a store too busy to open leaves the screen as it was and says so; `--once`
+prints `plan_lines` instead. The text form's `#` notes say a node's state in the same words.
 
 ## P1c. The plan as text
 
 `plan_text.py`. One line a node: `- title  [id]` is in the plan, `? title  [id]` a proposal;
 indentation is the tree; under a node's line, at one column, `scope:` `check:` `needs:` `owner:`
-`signoff:` and any other line (what it should achieve); `#` lines are notes Graphene writes and never
-reads. `render` writes a plan (or a subtree, or one node) so that `parse` reads it back as it is, and
+`signoff:`, `parent: <id>` (puts the node under that one, in the text or the plan, and is refused by
+its line when it names none or disagrees with the indentation), `id:` (the node's id, when the line
+has no `[id]`) and any other line (what it should achieve); `title:` and `children:` are refused by
+their line (the title is the node's line, children are indentation), never swallowed as prose. `#`
+lines are notes Graphene writes and never reads. `render` writes a plan (or a subtree, or one node) so that `parse` reads it back as it is, and
 `apply` makes the plan say what a text says, as the operations `plan.py` already has (add, edit,
 accept, drop, reorder) in one transaction. A text that was opened is compared three ways: only what
 the person changed against the text as it was opened is changed, and a node someone else changed
@@ -121,34 +129,22 @@ nothing changed is dropped. It is a record rather than a gate: it does not run t
 worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
 `graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
 
-**A paragraph is a tree first.** A prompt of 240 characters or more, in a session that holds no leaf,
-is not made into a leaf: the hook asks the agent, beside the prompt, to propose the tree in the
-plan's text and stop, and refuses that session's writes (and the commands that reach round
-`graphene`) until a leaf of its tree is accepted and taken; the refusal says which step the tree is
-at (`gate._tree_wait`). Its tree is what was proposed after it by that session, by the planner
-(`:ask`) or by the person, never by another agent's session. The wait ends when the session holds a
-leaf, when the tree is all done or dropped, or when the person says "just do it" (or, in a prompt
-shorter than a paragraph, "no plan" or "without a plan"); a clarifying prompt does not end it, and
-the refusal says so, for the agent to relay. A second paragraph while the first waits keeps the
-first one's start. This holds with no plan at all. "just do it", "do it now", "skip the plan" (not
-negated in their own clause: "don't", "can't", "I don't want you to"), a request for a leaf on the
-plan ("do ids"), or the CLI's `--scope` with a quoted `--check` skip the tree; a leaf's id or a flag
-said in passing does not. What the vendor sends as a prompt on its own (a finished background task,
-a reminder, a slash command) neither starts nor ends a wait.
+**Plan first** is a setting of the person's (`graphene plan first on|off`, `P` in `graphene watch`;
+`graphene init` sets it on, and never set it is on while a plan is in force; `plan.plan_first`). On,
+a session that holds no leaf is told beside every prompt to propose what it will do in the plan's
+text before it writes, a piece of work as a tree the person prunes and a one-line ask as one leaf,
+and its writes (and the commands that reach round `graphene`) are refused until it holds a leaf; the
+refusal says how the person turns it off (`gate._first_refused`). One leaf with a scope and a check,
+proposed by a Claude Code session after the person's last prompt there and before any other
+proposal of that session since, is what that prompt asked for: it is accepted at once, as the
+person's, logged "by their prompt in the session" (`gate.one_line_ask`); a tree waits for them. A
+prompt that types the CLI's own `--scope` and a quoted `--check` has planned its leaf, which is made
+at its first write. Off, what decision 18 says above holds. Nothing reads the person's words to
+decide any of this: not their length, not "just do it", not "yes". What the vendor sends as a prompt
+on its own (a finished background task, a reminder, a slash command) is never the person's.
 
 A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
 and its record says the check failed. A session is never trapped by it.
-
-The same hook reads a short prompt (80 characters at most, with no question mark and none of but,
-except, not, no, drop, skip, instead, first, before, unless, wrong) that begins with yes, ok, sure, accept,
-go ahead, do it or lgtm as the person accepting proposals: the ones it names by id, all of them if
-it says "all" or "everything", else the ones this session proposed since the person's previous prompt. The log entry carries
-`by: prompt` and the words. The agent is told, as added context, what was accepted and what is
-ready. All of this rests on the vendor being the only caller of the hook, and any command an agent
-can run is also a caller: a Bash command that names `graphene … ingest` is refused, which stops the
-ordinary spelling and not a determined one; and an agent that starts a second agent writes its
-prompt. So these acts are logged with `(no terminal)`, `by: prompt` and the words, and
-`graphene plan prompts strict` turns the whole route off.
 
 ## P2. The boundary: what makes a node done
 
@@ -175,7 +171,11 @@ read the plan an hour ago.
    for it at its own `done`. The node stays `running`.
 3. It runs the check in the node's checkout (30 minute cap) and keeps the tail of the output in the
    log. Non-zero: refused. What the check itself leaves behind (a cache, a coverage file) is taken
-   as it is, so a second `done` is not refused over it.
+   as it is, so a second `done` is not refused over it. When the only paths step 2 found are new
+   untracked files, they are set aside under `.graphene/` while the check runs, and what the check
+   makes again (the `__pycache__` an executor's own test run left) is the check's: it stays, it is
+   not counted, and it is left out of what the leaf's commit takes. The rest are put back and
+   refused as in step 2.
 4. If nothing inside the scope has changed at all, it is not done either: a check that already
    passed shows nothing (an executor that crashed at once was once reported done this way). An
    executor with nothing to do hands the node back and says so.
@@ -183,10 +183,12 @@ read the plan an hour ago.
    and the `HEAD` it ended at, go into the log for the node's record; and the tree as it stands is
    remembered as this checkout's **boundary**.
 
-Between nodes nobody owns the repo. Whatever differs from the last boundary at the next `start`,
-outside the scope of every node started since, is a change no node owned: an agent's `start` is
-refused until it is put back, a person sees it on `graphene plan` and can accept it with
-`graphene plan ack`. This exists because a real agent did exactly that (next section).
+Between nodes nobody owns the repo. An uncommitted change that differs from the last boundary at
+the next `start`, outside the scope of every node started since, is a change no node owned: an
+agent's `start` is refused until it is put back, a person sees it on `graphene plan` and makes it
+theirs with `graphene plan ack` (or by committing it). A commit is not such a change: it is the
+repository moving (a `.gitignore` of yours, a `git pull`), and the plan follows it. This exists
+because a real agent did exactly that (next section).
 
 A person can overrule the gate with `graphene node done <id> --override "reason"`; the log keeps the
 reason, the stray paths and whether the check had failed. `graphene node release <id> --why "…"`
@@ -208,15 +210,15 @@ JSON:
 | `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way, links resolved first; a target git ignores passes; a command that mentions `GRAPHENE_AS` or reaches into `.graphene/` is denied whatever the scope; a command over 64,000 characters is not parsed at all (the parser is superlinear, and a hook that runs out of time lets the call through) |
 | `PostToolUse` on `Bash` | when Claude Code reports which files the command changed (`bashEditDiff`) and one is outside the scope: logged as a **breach**, and the agent is told to put it back. Claude Code does not fire this event for a command that exits non-zero, so this layer can be dodged; the boundary cannot |
 | `Stop` | refused while the session holds a running node: finish it, or hand it back saying why |
-| `SessionStart` | with or without a plan: the plan's text form and when to propose a tree; with one in force, how to take a leaf. Not for an executor or a planner Graphene started |
-| `UserPromptSubmit` | a paragraph (P1b) is asked for a tree; a short "yes" accepts what this session proposed |
+| `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
+| `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on and no leaf held, the instruction to propose first |
 
 The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
 checked with Graphene's own gate on a real session). The hook reads the node's row on every call,
 so tightening a scope binds the very next write. It adds about 40 ms to each event it runs on
 (`tests/test_hook_budget.py` holds the median under 60 ms for recording and for refusing); in a
 repo with no plan the gate is imported only when a session starts, when a prompt is typed, and while
-a paragraph waits for its tree.
+plan first is on.
 
 A finished plan stays in force. The first real agent run against an earlier build did both nodes
 inside their scopes, waited until no node was open, then made the edit no node allowed, and said so:
@@ -298,8 +300,8 @@ a leaf; `--about <id>` asks it about a leaf that came back.
   `running` on the plan. `graphene run` does not depend on `Stop` at all.
 - A hook that crashes or times out lets the call through. That is the vendor's rule.
 - Writes through an MCP server's tools are not seen by the hooks at all, a filesystem server's
-  included: under a held leaf `done` asks git and catches them; during a paragraph's wait, or in a
-  session that holds no leaf, nothing does.
+  included: under a held leaf `done` asks git and catches them; in a session that holds no leaf,
+  nothing does.
 - The person-only rule rests on the environment, and no command line can do better. Inside an
   agent's environment `GRAPHENE_AS` changes nothing; an agent that first strips its own markers
   (`env -u CLAUDECODE …`) and then sets it passes for a person. The log shows such an act as made

@@ -1,146 +1,213 @@
-# morning.md — 2026-09-23 — the terminal directive
+# morning.md — 2026-09-24 — the polish directive
 
-(Current at every milestone of this run. Last night's is `docs/process/morning-2026-09-21.md`.)
+(Current at every milestone of this run. Last run's is `docs/process/morning-2026-09-23.md`.)
 
-## 1. What you can run in five minutes
+**State: done, green, one PR.** Branch `polish`, cut from `origin/main` at `2c86399` (your merge of
+PR #27). No mechanism was added except where a rough edge needed one, and each of those is named
+below and in `docs/DIRECTION.md` (41 to 52). 695 tests, ruff clean, CI green at `3e25762`.
 
-Paragraph in, tree out, prune, run, on real agents, in WezTerm:
+## 1. Before and after
+
+The judge was the screen and the transcript. I built the feeds task with `docs/proof/try.sh`,
+typed your paragraph into a real Claude Code session, and ran real executors. I drove
+`graphene watch` by keys in an isolated WezTerm mux at 80×24 and 120×36, in every state a node can
+be in: proposed, ready, waiting, running, came back, review, done, yours. Then I fixed what read
+badly, merged, sat in it again, and fixed what that found.
+
+Every screen, before and after at both sizes: **[polish/screens.md](polish/screens.md)** (SVGs with
+the colours; a `.txt` of each beside it). Every message item: **[polish/messages.md](polish/messages.md)**.
+Three of the screens:
+
+**The tree, as proposed (120 columns).** It had three ragged columns, a goal cut off in the top bar,
+a blank sub-goal pane and `planner: claude:59409a10`. Now one row grammar and the goal as the first
+row. The sub-goal's pane lists its leaves, and the status line says what waits on you.
+
+![before](polish/before/p01-proposed-subgoal-120x36.svg)
+![after](polish/after/p01-proposed-subgoal-120x36.svg)
+
+**A leaf that came back (80 columns).** Before, `↩` was the only red on the screen and `b`'s command
+was missing. Now three offers of one shape, each with its command (under it where the pane is
+narrow), in magenta: it waits on you.
+
+| before | after |
+| --- | --- |
+| ![](polish/before/p10-came-back-80x24.svg) | ![](polish/after/p10-came-back-80x24.svg) |
+
+**A running leaf (120 columns).** Before, "running" was said twice, as `run:claude`. Now: which
+executor, in words; its worktree; the last thing it did and how long ago. `l` shows the tool calls
+its hooks recorded while `claude -p` has printed nothing.
+
+![before](polish/before/p08-running-120x36.svg)
+![after](polish/after/p08-running-120x36.svg)
+
+The messages, in one line each (the full before and after is in `polish/messages.md`):
+
+- **`parent:`** was read as the node's goal, and the node landed at the root. Now it places the
+  node, or is refused by line. `id:` is read; `title:` and `children:` are refused.
+- **The check's own leftovers.** `done` refused over `__pycache__/` in a repository with no
+  `.gitignore`. Now it passes, and the cache is neither counted nor committed with the leaf.
+- **Your commit.** Committing a `.gitignore` refused the next agent's `start` until `plan ack`. Now
+  it starts. `ack` means: the uncommitted changes are yours as they stand.
+- **A refusal** was four sentences. Now: what, the paths, the commands. The second time it is short.
+- **`done` on a leaf that waits** said "`graphene node start` takes it". Now: "not running: it waits
+  on sub (running)".
+- **`next:`** was a 500-character sentence. Now one line.
+- **`reopen` with no note** printed Click's usage box. Now one line, and a prompt at a terminal. So
+  does every missing option.
+- **Which repository.** The trailer came first on some writes, last on others, and not at all on
+  some. Now `  (the plan of ~/repo)` is the last line of every write. The screen's top line says the
+  same.
+- **`graphene` with no plan** suggested typing the tree with `node add` flags. Now: say it to your
+  agent, or `graphene ask`.
+- **`graphene plan`** put the id first. Now its rows read as the screen's do. So do the lines
+  `node add`, `propose` and `accept` print, and the text form's `#` notes.
+
+**Plan first.** It is now a setting, not a rule about length. It shows on the status line, `P` or
+`graphene plan first on|off` turns it on and off, and `graphene init` sets it on. Checked on a real
+session in a fresh feeds repository:
+
+- A one-line ask ("Add a sentence to the README saying the CLI's --source flag accepts csv or json.")
+  was proposed as one leaf, accepted as yours by the prompt, taken, done and checked. 25 seconds,
+  nothing to press.
+- Your paragraph, typed next in the same session, gave a four-leaf tree in 30 seconds, and nothing
+  was touched.
+
+Nothing reads your words any more, so a "yes" typed into the session no longer accepts; `y` in the
+screen does (decision 46).
+
+**Found by sitting in it, not on the directive's list** (each fixed, each with a test that fails
+without its fix):
+
+- **Fast typing ran commands.** Keys typed in one burst after `:`, `/`, `a`, `A` or `x` reached the
+  tree as commands. `:node signoff x` typed fast started a split, a run, a drop and an undo. The
+  headless tests pressed keys one at a time and hid it.
+- **A sign-off of work that wasn't here.** A leaf that passed and did not land (the one-line ask's
+  README edit was uncommitted) could be signed off mid-merge, conflict open, and it read as landed.
+  `signoff` now refuses until the branch is merged, and the pane says which file is in the way.
+- **A crash.** Two screens opened at once on a new store crashed on `database is locked`.
+- **`:ask add a --dry-run flag`** took the flag for one of ask's own options.
+- **Offers lost their commands** at 120 columns.
+- **A person's own leaf with no scope** was a "sub-goal" that could never be finished. It reads
+  `yours` now, and `y` marks it done.
+
+**The README gif** is recorded again, with real agents, on the new screen:
+`docs/assets/watch.gif` (`vhs docs/proof/terminal.tape`).
+
+## 2. What you can run in five minutes
 
 ```
-cd ~/Desktop/AllThingsAgenticHackathon && git checkout terminal && uv tool install --editable . --force
-docs/proof/try.sh                        # builds ~/graphene-try (the feeds task) and prints the rest
-cd ~/graphene-try
+cd ~/Desktop/AllThingsAgenticHackathon && git checkout polish && uv tool install --editable . --force
+docs/proof/try.sh ~/graphene-try2        # the feeds task, hooks installed, plan first on
+cd ~/graphene-try2
 wezterm cli split-pane --right --percent 50 --cwd "$PWD" -- graphene watch
-claude                                   # then paste the paragraph try.sh printed, or write your own
+claude                                   # then a one-line ask, then the paragraph try.sh printed
 ```
 
-On the right the tree appears, every line `?` (about 35 seconds). `j` `k` to read it, `Enter` on a
-leaf for all of it. Prune one thing: `e` on a leaf opens its contract in your editor. Try taking a
-path out of a scope, so that it comes back. `y` on each sub-goal accepts it, or `:plan accept`
-accepts all. `R` runs. Leaves go `●`, then `✓`; the node pane says which executor, where, what it did
-last and how many seconds ago (`l` is its output). The leaf you starved comes back `↩`, and the node
-pane offers `w` (widen to what it wanted) and `b` (a sibling for it). Press `w`, then `R`.
-`git log --graph --oneline` reads as the tree. `docs/assets/watch.gif` is that scene, recorded.
+- **The one-line ask.** It appears on the right as a leaf that is yours. It goes `●`, then `✓`, and
+  you press nothing.
+- **The paragraph.** The tree appears with every row `?`.
+- **The prune.** `gg`, then `E`, then take a path out of a scope.
+- **Accept and run.** `y` on the goal row accepts the whole tree. `R` runs it.
+- **The hand-back.** The starved leaf comes back `↩` with `w`, `b` and `?`. `/came back` finds it.
+  `w`, then `R`.
+- **The rest.** `?` for the keys, `Enter` for the record, `P` for plan first.
 
-## 2. What is waiting on you
+## 3. What is waiting on you
 
-- **One PR, `terminal` into `main`:** https://github.com/Alex-lop/Graphene/pull/27. CI is green on
-  every push but one: `f10387e` failed a timing test on macOS (the hook with a locked store took
-  2.05 s against 2.0), because the paragraph rule had made every prompt write. `c3003be` fixed it.
-- **The hold (decision 40).** From 09:15Z until you typed "just do it", this session and every
-  agent it started could not write. The hook had read a subagent's report as your paragraph. I did
-  not route around it. The cause is fixed (`bf82b47`). A report that quoted "just do it" also lifted
-  the wait once, in your name. That is closed too, and it is the finding I would read first.
-- **The third test says the tree did not save attention** (`docs/test/results-2026-09-23.md`,
-  audited). Where a tree existed, the paragraph arm won on every attention measure, and both arms
-  got the same outcome. Misunderstandings caught before code: 0 or 1 of 3. The possible one is you
-  putting back a line of your own paragraph that the proposal had dropped. These are stand-ins and
-  modelled seconds, two runs an arm. Your own ten-minute run (the recipe is in
-  `docs/test/PROTOCOL.md`) outranks it. Without a paragraph run of the same card beside it, that run
-  shows no saving either way.
-- **The decisions to strike** are 28 to 40 in `docs/DIRECTION.md`, each with its reason. Read these
-  first:
-  - **28**: a paragraph (240 characters or more) becomes a tree before any code, and the session's
-    writes wait.
-  - **39**: what the closing review and its recheck changed. It holds one question about your goal.
-  - **40**: the hold.
-  - **31**: the planner prints its proposal and holds no write tool.
-- **This repository's own store** still has the goal "why this repo's plan exists, in your words"
-  (you typed the placeholder from an old morning.md on the 21st) and five proposals from the 20th.
-  It is yours; I left it. `graphene plan goal '<yours>'` replaces the goal, and `graphene node drop
-  <id>` removes each proposal (`plan archive` touches only what is done or dropped).
+- **One PR, `polish` into `main`:** https://github.com/Alex-lop/Graphene/pull/28. CI is green at
+  `3e25762`. Four pushes before it failed CI at ruff, over the harness script in `docs/process/polish/`:
+  I had linted `src` and `tests`, and CI lints the whole repository.
+- **The decisions to strike: 41 to 52** in `docs/DIRECTION.md`. Read these first:
+  - **46, plan first.** It replaces the 240-character rule, and it withdraws decision 19's "a plain
+    yes accepts".
+  - **47, what `ack` means now.** Commits are the repository moving, and the hole that opens is
+    written down.
+  - **48, the check's leftovers.** This is the one small mechanism. Its real fix, a clean worktree
+    for the check, is named.
+- **Three repositories in your home, made by this run.** I left them so you can look:
+  - `~/graphene-live`: the live session. I resolved a README merge conflict there by hand.
+  - `~/graphene-polish`: the saved screens' repository.
+  - `~/graphene-demo`: the recording's repository.
+  `rm -rf` each when you are done. `~/graphene-try` was there before; I did not touch it.
 
-## 3. The map of the code
+## 4. The map of the code
 
-`src/graphene_debrief/`, 11,000 lines. Read in this order; each line ends with where its tests are.
+`src/graphene_debrief/`, 8,500 lines in the modules below. Where this run moved things:
 
-- `plan.py` (2,000): what the product means. Standard library only, because the hook imports it.
-  Node, `caller()` (who is a person), scope globs, the tree (`kids`, `above`, `below`, `validate`,
-  `ready`), git reads, the operations (`propose`, `accept`, `edit`, `drop`, `start`, `finish`,
-  `release`), `not_here` (a need done elsewhere), `offers`/`offerable`/`widen`/`sibling` (a
-  hand-back's fixes), `undoable`/`undo`, `run_check`. Tests: `test_plan.py`, `test_tree.py`,
-  `test_run_live.py`.
-- `plan_text.py` (940): the plan as text. `parse` (a line belongs to the node line just above it,
-  at one column, or is refused by number), `render`, `apply` (three-way, one transaction),
-  `edit_loop` (the editor, refusals written under their line). Tests: `test_plan_text.py`,
-  `test_plan_text_cli.py`, `test_plan_text_findings.py`.
-- `gate.py` (590): what the Claude Code hooks answer, including `paragraph()`, `_tree_wait` and the
-  session-start teaching. Tests: `test_gate.py`, `test_hooks.py`.
-- `run.py` (750): `graphene run`, in place and `--parallel`. `run_node`, `sweep` (by pid and start
-  time), `land`/`park`, `live`/`tail`. Tests: `test_run.py`, `test_parallel.py`, `test_run_live.py`
-  (real signals).
-- `ask.py` (160): the planner. Tests: `test_ask.py`.
-- `tui.py` (830): `graphene watch`. `Watch` is the app; `PlanTree` reads the two-key sequences;
-  `detail()` is the node pane; `_cli()` runs a key's command in-process, `background()` in a process
-  of its own. Tests: `test_tui.py` (Textual's pilot, at 80 and 120 columns).
-- `plan_cli.py` (1,040): the `plan`, `node`, `watch`, `ask` and `run` commands; `write()` wraps
-  every act of yours (undo, and which repository). Tests: `test_plan_cli.py`, `test_plan_text_cli.py`.
-- Barely touched tonight: `node_record.py`, `store.py` (`claim()` now joins an outer one),
-  `sources/claude_code.py` (hook entry, transcripts), `graph.py`/`plan_view.py`/`server.py` (the
-  page), `attribute.py`, `commits.py`, `record.py`.
+- **`plan.py` (2,300).** The end of the file now holds how a node reads to a person: `reads` gives
+  the one word, `look` its glyph and colour, and `came_back`, `said_by`, `where` and `plan_first`
+  sit beside them. Also new:
+  - `refusal(what, paths, do)` and `first_time(…)`: the refusal shape, said once.
+  - `unowned`, which now compares only the working tree.
+  - The set-aside of the check's leftovers inside `finish` (`_set_aside`).
+  - `unlanded`, and the sign-off that refuses until the branch is merged.
+  Tests: `test_plan.py`, `test_tree.py` (`test_one_word_for_each_state…`), `test_parallel.py`.
+- **`tui.py` (1,600).** In reading order:
+  - `row`: the row grammar.
+  - `Pane`: aligned keys, wrapped at words.
+  - `PlanTree`: the vim keys, and the keys that open a line act at once.
+  - `Watch`: `draw`, `size_panes` (the width rule), `say_status` (the two lines), and the keys.
+  - `detail`: one pane per kind of node.
+  - `_came_back`: the offers.
+  - `record_pane` and `tail_pane`.
+  Tests: `test_tui.py`, at 80 and 120 columns. `burst()` sends keys the way a terminal does.
+- **`gate.py` (570).** Plan first (`_first`, `_first_said`, `_first_refused`), and `one_line_ask`.
+  The paragraph rule and the yes rule are gone. Tests: `test_gate.py`, `test_tuesday.py`,
+  `test_hook_budget.py`.
+- **`plan_cli.py` (1,090).**
+  - `plan_lines`: the plan print, in the row grammar.
+  - `next_lines`: one line.
+  - `said_where`: the trailer.
+  - `value` and `log_line`: the log in words.
+  - `one_row`.
+  - `plan first`.
+  Tests: `test_plan_cli.py`.
+- **`cli.py`.** One line for any missing option, and `--help` as paragraphs. **`run.py`**:
+  `summary`, the run's last line. **`plan_text.py`**: `parent:`/`id:` in `parse`, and the notes in
+  the state words.
 
-To change what a line of the text means, start at `plan_text.parse` and add a case to
-`test_plan_text_findings.py`. To change a key, it's `Watch.BINDINGS` and a test in `test_tui.py`.
+To change what a state is called or its colour, change `plan.LOOK` or `plan.reads`: the screen,
+`graphene plan` and the text form all follow. To change a key, change `Watch.BINDINGS`, and if it
+opens a line, `PlanTree.on_key` too. Its test goes in `test_tui.py`, with `burst()` if typing speed
+matters.
 
-## 4. What was verified, and how
+## Verified, and not
 
-- **The whole scene on real agents** (23 September, the feeds task, one run):
-  - The paragraph typed into a session gave a tree in 35 s, with no file touched.
-  - Accepted, `run --parallel 4` did the four leaves in 50 s.
-  - The result scored 18/20 on the hidden acceptance (the 2 misses want what the paragraph never
-    said) and 12/12 held-out. The untouched repo scores 10/20 and 0/12.
-- **The recording** (`docs/assets/watch.gif`, real agents): a prune that went too far, `R`, the leaf
-  coming back wanting `cli/main.py`, `w`, `R`, all done.
-- **`graphene ask`** on the same paragraph: 44 s, seven nodes with needs, first try.
-- **The screen in a real WezTerm** (an isolated mux, 80×24, read back with `wezterm cli get-text`).
-- **The text form:** 54 adversarial agents (49 findings), a recheck of each, then a hunt for the
-  rebuild's own regressions (12, all fixed). Each is guarded by a test.
-- **The closing review:** 78 findings confirmed, all fixed (`a384829`). A recheck of each with a
-  regression test, and a hunt for what the fixes broke (11). Everything the recheck left open is
-  fixed and merged, except the three named in decision 39. Every fix has a test that fails without it.
-- **Ctrl-C, a closed terminal, `kill`**: real signals in `test_run_live.py`, which checks that no
-  executor or check survives.
-- **Tests:** 639 (612 in `tests/`, 27 in `docs/test/`). One recheck test (a second Ctrl-C during the executor's TERM) is timing-based; watch it in CI. Ruff clean. CI green on Linux and macOS, Python 3.12 and 3.13, at `905538b`, after three pushes that failed one Linux job each (a `ps` that cut the command line at 80 columns; the commit says which of my guesses were wrong).
-- **The third test:** eight stand-in runs, one at a time, and an independent audit that reproduced
-  every figure from the raw runs.
-
-## Not verified
-
-- **You, at the keys.** Nobody has pruned a tree with these keys but me through a mux and the
-  stand-ins through the equivalent commands.
-- **WezTerm's own window.** I checked its mux, not the GUI: fonts, mouse capture, whether Shift-drag
-  selects text over the screen.
-- **The paragraph rule's 240 characters** against anyone but you.
-- **Codex as planner or executor:** `--with 'codex exec --sandbox read-only'` should work for `ask`,
-  and was not run.
-- **A stray line**, once, at the top of a 36-column pane of `graphene watch`. I could not reproduce
-  it.
+- **Verified.**
+  - Everything in section 1: the screens and messages are captures, and the plan-first runs are
+    real sessions.
+  - 695 tests on the last commit, ruff over the whole repository, and CI green on Linux and macOS,
+    Python 3.12 and 3.13, at `3e25762`.
+  - The recording, on real agents.
+- **Not verified.**
+  - **You, at the keys, in WezTerm's own window.** I drove its mux, not the GUI: fonts, the width
+    your window really has, the mouse.
+  - **Codex as planner or executor.**
+  - **The one-line ask on a second vendor, and on a subagent.** A subagent carries its session's
+    id, so a leaf it proposes after your prompt would be taken as your ask. That hole is decision
+    19's, now decision 46's, and it is written there.
 
 ## Questions (only what blocks the next step)
 
-1. Is 240 characters the right line between "do it" and "plan it" for you (decision 28)?
-2. When an agent proposes a new tree after your goal is finished, should your goal be set aside
-   until you accept or decline the new sentence (what it does now), or stay until you replace it
-   (decision 39)?
-3. The third test says the tree cost attention rather than saving it. Run the ten-minute recipe
-   yourself (`docs/test/PROTOCOL.md`), with a paragraph run of the same card beside it, before the
-   next directive leans on the tree?
+1. **Plan first's default.** It is "on while a plan is in force", and `graphene init` turns it on,
+   so this repository, set up before the mode, has it off. Is that what you meant, or on everywhere
+   Graphene is installed?
+2. **The one-line ask.** It proposes a goal too, when the plan has none, and that sentence becomes
+   the plan's goal until your next tree replaces it. Keep it, or give a one-line ask no goal?
 
 ## Rollback
 
-Before the first change `main` on GitHub was `ed010ca` (your merge of PR #26); this run is the
-branch `terminal`, cut from it. Nothing here touched `main`. To put your local `main` where GitHub's
-is (it was 43 behind, at `6cece1c`):
+Before the first change `main` on GitHub was `2c86399`. This run is the branch `polish`; nothing
+touched `main`.
 
 ```
-git checkout main && git reset --hard ed010ca
+git checkout main && git reset --hard 2c86399
 ```
 
 ## State of every branch
 
-- `terminal`: this run, pushed; one PR into `main` (#27).
-- `main` (GitHub): `ed010ca`, untouched. Local `main`: `6cece1c`, 43 behind GitHub, untouched.
-- `worktree-agent-a525b0dc…`, `…a6f78b30…`, `…a7755787…`: tonight's three fix branches, merged into
-  `terminal`; their worktrees are under `.claude/worktrees/` and can go (`git worktree remove`).
-- Everything else (`agent/*`, `codex/*`, `lane/*`, `n*`, `graph`, `plan`, `rebuild`, `tree`) is as it
-  was.
+- `polish`: this run, pushed, CI green. One PR into `main`: #28.
+- `main` (GitHub): `2c86399`, untouched. Local `main`: `6cece1c`, behind GitHub, untouched.
+- `worktree-wf_6c44769e-477-1` … `-4`: this run's four build branches, merged into `polish`; their
+  worktrees are removed, the branches kept (`git branch -d` drops them).
+- Everything else (`terminal`, `tree`, `agent/*`, `codex/*`, `lane/*`, `n*`, …) is as it was.

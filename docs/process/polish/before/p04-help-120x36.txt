@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan (proposed): Load the Northwind XML feed through the same `load` command and JSONL sink  
+▼ ? zero price is skipped for every supplier  [zero-price]  │ a price of 0 fails validation                             
+└ ? a price of 0 fails validation  [zero-rule]              │ [zero-rule] proposed, revision 1   proposed by            
+▼ ? the xml source is wired in  [xml-source]                │ claude:59409a10                                           
+├ ? an xml reader  [xml-reader]                             │ under: zero price is skipped for every supplier           
+└ ? xml enabled end to end  [xml-wiring]                    │ (zero-price)                                              
+                                                            │                                                           
+                                                            │ scope  validate/rules.py, tests/test_rules.py             
+                                                            │ check  python3 -m unittest -q tests.test_rules            
+       ╭────────────────────────────────────────────────────────────────────────────────────────────────────────╮       
+       │                                                                                                        │ == 0, 
+       │  move     j k   gg G   / search   n next      fold  za zo zc   zR all open   zM all closed             │alike  
+       │  shape    a sibling   A child   e edit this contract   E edit this subtree as text                     │       
+       │           d drop   s split (the planner)   y accept   u undo   V select several, then y or d           │       
+       │  run      R run everything ready   r run this subtree   x release (running) or reopen (done)           │       
+       │  see      Enter the record   l the executor's output   ctrl-d ctrl-u scroll it                         │ with  
+       │  a leaf that came back:  w widen its scope   b a sibling for what it wanted   n wait on what it names  │       
+       │                          ? ask the planner (elsewhere ? is this help)                                  │       
+       │  :        any graphene command, as you would type it (`:node show x`, `:plan log`), and                │       
+       │           :ask <what you want>   the planner proposes it       :stop   stops a run started here        │       
+       │  q quit (a run started here goes on; `:stop` stops it)                                                 │       
+       │                                                                                                        │       
+       │  Each key is a command you can type yourself; the bottom line says which one it ran.                   │       
+       │  The planner proposes the tree (a session, or :ask); the executors do its leaves (R, r).               │       
+       │                                                                                                        │       
+       ╰────────────────────────────────────────────────────────────────────────────────────────────────────────╯       
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: none · 0/3 done                                                                  
+ /zero-rule: 1 of 1 (n next · Esc ends the search)                                                                      

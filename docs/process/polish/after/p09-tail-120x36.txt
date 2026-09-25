@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ○ Load the Northwind XML feed through the same `load`…     2/4 done │ xml-wiring · output of attempt 1                
+├ ▶ ✓ zero price is skipped for every supplier   zero-price  done     │ .graphene/runs/xml-wiring-20260924T042457-2515  
+└ ▼ ○ the xml source is wired in                 xml-source  1/3 done │ 57e0-1.txt                                      
+  ├   ✓ an xml reader                            xml-reader  done     │                                                 
+  ├   ● xml enabled end to end                   xml-wiring  running  │ its log is empty until it ends; these are the   
+  └   ◇ read the new README section for xml      n6          yours    │ tool calls the hooks recorded for it, newest    
+                                                                      │ last:                                           
+                                                                      │ 00:25:09  Bash git ls-files; cat…               
+                                                                      │ 00:25:11  Bash cat ingest/__init__.py…          
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+ waiting on you: 1 · executors: 1 running · nothing ready to run · 2/4 done · plan first: on (P)                        
+ ctrl-d ctrl-u scroll · l back · ? help · q quit                                                                        

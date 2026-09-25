@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan (proposed): Load the Northwind XML feed through 
+▼ ? zero price is skipped for every supplier  [zero-price]                      
+└ ? a price of 0 fails validation  [zero-rule]                                  
+▼ ? the xml source is wired in  [xml-source]                                    
+├ ? an xml reader  [xml-reader]                                                 
+└ ? xml enabled end to end  [xml-wiring]                                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ xml-wiring (revision 1): xml enabled end to end                                
+   why:    the xml source is wired in (xml-source)                              
+   goal:   FIELD_MAPS "xml": code->sku, desc->name, price->price with        ▁▁ 
+ price_unit "minor"; "xml" in ENABLED_SOURCES, the USAGE line and README;       
+ samples/prices.xml loads to exactly NW-1 and NW-2                              
+   scope:  normalize/fields.py, config/defaults.py, cli/main.py, README.md,     
+ tests/test_xmlfeed.py   (a write anywhere else is refused, and blocks          
+ `done`)                                                                        
+ planner: claude:59409a10 · executors: none · 0/3 done                          
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                             

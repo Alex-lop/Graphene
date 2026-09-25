@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ? Load the Northwind XML feed through the same `load` command and…   proposed 
+├ ▼ ? zero price is skipped for every supplier             zero-price  proposed 
+│ └   ? a price of 0 fails validation                      zero-rule   proposed 
+└ ▼ ? the xml source is wired in                           xml-source  proposed 
+  ├   ? an xml reader                                      xml-reader  proposed 
+  └   ? xml enabled end to end                             xml-wiring  proposed 
+────────────────────────────────────────────────────────────────────────────────
+ zero price is skipped for every supplier                                       
+ zero-price · proposed by a Claude Code session (59409a10)                      
+                                                                                
+ ? a price of 0 fails validation                           zero-rule  proposed  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ you: 2 · 0 running · none ready · 0/0 done · plan first: off                   
+ y accept · d drop · e edit · E edit with what is under it · ? help · q quit    

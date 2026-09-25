@@ -4,8 +4,10 @@
 #
 #   vhs docs/proof/terminal.tape        (writes docs/assets/watch.gif; ~3 minutes, some cents)
 #
-# Needs vhs, tmux, claude, and graphene on PATH. The repository is made fresh under $TMPDIR/graphene-demo,
-# and tmux runs a server of its own (-L graphene-demo), never yours.
+# Needs vhs, tmux, claude, and graphene on PATH. The session gets none of your MCP servers
+# (--strict-mcp-config): what it says about them would be in the recording. The repository is made
+# fresh at ~/graphene-demo (a directory of its own, deleted first: the screen names it, so it is one
+# a person recognises), and tmux runs a server of its own (-L graphene-demo), never yours.
 
 Output docs/assets/watch.gif
 Set Shell "bash"
@@ -20,15 +22,16 @@ Hide
 Type "unset CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT AI_AGENT GRAPHENE_AS; export PS1='$ ' BASH_SILENCE_DEPRECATION_WARNING=1" Enter
 # this checkout's graphene, with its dependencies, first on PATH (the hooks find it there too)
 Type "export PATH=$PWD/.venv/bin:$PATH" Enter
-# the prune, scripted: e on the last leaf takes cli/main.py out of its scope (a person would type it)
+# the prune, scripted: E on the goal opens the whole plan, and cli/main.py goes from every scope (a
+# person would type it); which leaf wanted it depends on the planner, so it is taken from all
 Type `export EDITOR="sed -i.bak -e 's#, cli/main.py##' -e 's#cli/main.py, ##'"` Enter
-Type "D=${TMPDIR:-/tmp}/graphene-demo; rm -rf $D; bash docs/proof/try.sh $D/feeds > /dev/null && cd $D/feeds && clear" Enter
+Type "D=$HOME/graphene-demo; rm -rf $D; bash docs/proof/try.sh $D/feeds > /dev/null && cd $D/feeds && clear" Enter
 Sleep 4s
 Type `G=$(command -v graphene); tmux -L graphene-demo -f /dev/null new-session -s demo -x 180 -y 48 "bash --norc --noprofile" \; set -g status off \; split-window -h -l 48% -c "$PWD" "$G watch" \; select-pane -L` Enter
 Sleep 4s
 Show
 
-Type `claude -p "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week." --allowedTools "Bash(graphene *)" Read Grep Glob`
+Type `claude -p "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week." --allowedTools "Bash(graphene *)" Read Grep Glob --strict-mcp-config`
 Sleep 1s
 Enter
 Sleep 3s
@@ -41,9 +44,9 @@ Sleep 5s
 Ctrl+B
 Type "o"
 Sleep 1s
-Type "G"
+Type "gg"
 Sleep 3s
-Type "e"
+Type "E"
 Sleep 3s
 Type ":plan accept"
 Sleep 1s
@@ -54,8 +57,12 @@ Sleep 8s
 Hide
 Sleep 150s
 Show
-Type "G"
-Sleep 6s
+Type "/came back"
+Sleep 1s
+Enter
+Sleep 1s
+Escape
+Sleep 5s
 # it came back wanting cli/main.py: take the offer, run again
 Type "w"
 Sleep 3s

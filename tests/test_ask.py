@@ -58,7 +58,7 @@ def test_a_planner_reads_the_repo_and_its_proposal_is_added_for_the_person_to_pr
     )
     assert said.exit_code == 0, said.output
     assert "proposed ids: users returns ids" in said.stdout
-    assert "the planner says: I read api.py and schema.py" in said.stdout  # its prose, outside the block
+    assert "the planner says:\n  I read api.py and schema.py" in said.stdout  # its prose, a line each
     assert "prune it: `graphene watch`" in said.stdout
     with Store.open(repo) as store:
         ids = plan.get(store, "ids")

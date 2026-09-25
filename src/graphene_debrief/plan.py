@@ -46,6 +46,39 @@ class Refused(Exception):
     """The plan says no, and the message is the reason, written for whoever asked."""
 
 
+WIDE = 96  # the columns a refusal's line of paths fills before it says "and N more"
+
+
+def refusal(what: str, paths: list[str] | tuple = (), do: str = "") -> Refused:
+    """A refusal in one shape: what was refused and why, in a line; the paths, indented, as many as
+    fit; then the one or two commands. Nothing more: an explanation is said once (``first_time``)."""
+    lines = [what]
+    if paths:
+        shown, rest = [paths[0]], list(paths[1:])
+        while rest and len(", ".join([*shown, rest[0]])) + len(f" and {len(rest) - 1} more") <= WIDE:
+            shown.append(rest.pop(0))
+        lines.append("  " + ", ".join(shown) + (f" and {len(rest)} more" if rest else ""))
+    if do:
+        lines.append("  " + do)
+    return Refused("\n".join(lines))
+
+
+SAID_KEPT = 200  # the refusals remembered as said; the oldest is forgotten first
+
+
+def first_time(store, who: Caller, node: Node, kind: str) -> bool:
+    """Is this the first time this caller meets this refusal of this node, in this hold? A refusal
+    lectures once and is short after that. Kept in the store's meta, keyed by who, the node, the
+    hold's start and the kind; a caller refused inside a claim asks this before the claim, or the
+    rollback forgets it."""
+    key = f"{who.name}|{node.id}|{node.started_at or ''}|{kind}"
+    said = json.loads(store.meta("said") or "[]")
+    if key in said:
+        return False
+    store.set_meta("said", json.dumps([*said, key][-SAID_KEPT:]))
+    return True
+
+
 @dataclass(slots=True)
 class Node:
     id: str
@@ -474,14 +507,26 @@ def changed_since(
 ) -> list[str]:
     """Paths whose content differs from when the node was started: committed since, or changed in
     the working tree, however they were written. A path that was already dirty then counts only if
-    it has changed again."""
+    it has changed again. A file git did not track then and that is gone now, and not by a commit, is
+    not a change: the tree is back to what git has (an executor that deletes a cache a check left,
+    as a refusal told it to, was refused for deleting it)."""
     changed: set[str] = set(dirty_at_start)
+    committed: set[str] = set()
     if base_sha:
-        changed.update(
+        committed = {
             p for p in _git(checkout, "diff", "--name-only", "-z", base_sha, "HEAD").split("\0") if p
-        )
-    changed.update(dirty(checkout))
-    return sorted(p for p in changed if p not in dirty_at_start or _hash(checkout, p) != dirty_at_start[p])
+        }
+    changed |= committed
+    now = dirty(checkout)
+    changed.update(now)
+    gone = {p for p in dirty_at_start if p not in now and p not in committed}
+    if gone and base_sha:
+        gone -= set(_git(checkout, "ls-tree", "-r", "-z", "--name-only", base_sha).split("\0"))
+    return sorted(
+        p
+        for p in changed
+        if p not in gone and (p not in dirty_at_start or _hash(checkout, p) != dirty_at_start[p])
+    )
 
 
 @contextmanager
@@ -667,11 +712,20 @@ def _save(store, node: Node, kind: str, who: Caller, now: str, **detail) -> None
     store.log_node(node.id, now, kind, who.label, who.session_id, node.agent_id, detail or None)
 
 
+def _under_hands(held: Node, child: str | None = None) -> Refused:
+    """A child under a running leaf would make it a sub-goal while its executor works on it."""
+    return refusal(
+        f"{child + ' would make ' if child else 'a child would make '}{held.id} a sub-goal while "
+        f"{held.executor} holds it",
+        do=f"they hand it back first: graphene node release {held.id} --why '…'",
+    )
+
+
 def _person_only(who: Caller, what: str) -> None:
     if not who.person:
-        raise Refused(
-            f"{what} is the person's to do, at a terminal or in the map, and this call comes from "
-            f"{who.name}. Say what you need and why; they decide"
+        raise refusal(
+            f"{what} is the person's to do, and this call comes from {who.name}",
+            do="say what you need and why; they decide",
         )
 
 
@@ -952,7 +1006,9 @@ def propose(
             if isinstance(item.get("children"), list):
                 flat[:0] = [(child, node.id) for child in item["children"]]
             if node.id in taken:
-                raise Refused(f"{node.id} is already in the plan; `graphene node set {node.id} …` edits it")
+                raise refusal(
+                    f"{node.id} is already in the plan", do=f"graphene node set {node.id} … edits it"
+                )
             bad = ".." in node.id or node.id.endswith((".", ".lock"))  # graphene/<id> is a branch name
             if bad or not re.fullmatch(r"[A-Za-z0-9][\w.-]{0,31}", node.id):
                 raise Refused(
@@ -978,10 +1034,7 @@ def propose(
         held = {n.id: n for n in existing if n.state == RUNNING}
         for node in added:
             if node.state == OPEN and node.parent in held:
-                raise Refused(
-                    f"{node.parent} is running ({held[node.parent].executor}); a child would make it a "
-                    f"sub-goal under their hands. `graphene node release {node.parent} --why …` first"
-                )
+                raise _under_hands(held[node.parent])
         for node in added:
             wrong = miscased(node.scope, files or [])
             if wrong:
@@ -1015,10 +1068,7 @@ def accept(
         for node in chosen:
             parent = by_id.get(node.parent or "")
             if parent is not None and parent.state == RUNNING:
-                raise Refused(
-                    f"{node.id} would make {parent.id} a sub-goal while {parent.executor} holds it; they "
-                    f"hand it back first (`graphene node release {parent.id} --why …`)"
-                )
+                raise _under_hands(parent, node.id)
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
         proposed_goal, by = store.meta("goal:proposed"), store.meta("goal:proposed:by")
@@ -1044,7 +1094,12 @@ def edit(
     with store.claim():
         node = get(store, node_id)
         if node.state in (DONE, *GONE):
-            raise Refused(f"{node.id} is {node.state}; `graphene node reopen {node.id}` first")
+            if node.state != DONE:
+                raise Refused(f"{node.id} is {node.state}: it is not in the plan any more")
+            raise refusal(
+                f"{node.id} is done, and a finished node's contract is not edited",
+                do=f"graphene node reopen {node.id} --note '…' opens it again",
+            )
         fresh = from_dict({**{f: getattr(node, f) for f in EDITABLE}, **changes, "id": node.id}, node.id)
         fresh.owner = _owner(fresh.owner)
         if fresh.owner == "me":
@@ -1059,10 +1114,7 @@ def edit(
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         target = next((n for n in nodes(store) if n.id == node.parent), None)
         if "parent" in changed and target is not None and target.state == RUNNING:
-            raise Refused(
-                f"{target.id} is running ({target.executor}); a child would make it a sub-goal under "
-                f"their hands. `graphene node release {target.id} --why …` first"
-            )
+            raise _under_hands(target)
         wrong = miscased(node.scope, files or []) if "scope" in changed else None
         if wrong:
             raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
@@ -1084,7 +1136,10 @@ def drop(store, node_id: str, who: Caller, now: str | None = None, waiting: bool
             _person_only(who, "dropping an accepted node")
         held = [n for n in going if n.state == RUNNING]
         if held and not who.person:
-            raise Refused(f"{held[0].id} is running ({held[0].executor}); `graphene node release` first")
+            raise refusal(
+                f"{held[0].id} is running ({held[0].executor})",
+                do=f"graphene node release {held[0].id} --why '…' first",
+            )
         gone = {n.id for n in going}
         left = [n for n in everything if n.id not in gone and gone & set(n.needs) and n.state not in GONE]
         if left and waiting:
@@ -1157,9 +1212,13 @@ def _reaches(
 
 
 def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
-    """Paths changed since the last boundary in this checkout that no node can answer for: outside
-    the scope of every node started since then. An executor that finishes its node inside the scope
-    and then does the rest "after the audited window closed" lands here."""
+    """Uncommitted changes in this checkout that were not there, as they are, at the last boundary,
+    and that no node can answer for: outside the scope of every node started since then. An executor
+    that finishes its node inside the scope and then does the rest "after the audited window closed"
+    lands here. Only the working tree is compared: a commit (the person's, or pulled) is the
+    repository moving, and the plan follows it; a person's `.gitignore`, committed, had blocked every
+    start. TODO: the hole this opens is that an agent that commits what it wrote between leaves is
+    not seen here; it is written down, not guarded."""
     checkout = str(Path(checkout).resolve())
     mark = _boundary(store, checkout)
     if mark is None:
@@ -1169,7 +1228,7 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
         for n in nodes(store)
         if n.id != but and n.checkout == checkout and (n.started_at or "") >= mark["at"]
     ]
-    changed = changed_since(checkout, mark["head"], mark["dirty"])
+    changed = sorted(p for p, h in dirty(checkout).items() if p not in mark["dirty"] or mark["dirty"][p] != h)
     by_id = {n.id: n for n in nodes(store)}
     left: set[str] = set()  # a hand-back's own leftovers, now inside its scope or a leaf it waits on
     for e in store.node_log(kinds=("released",)):
@@ -1196,8 +1255,9 @@ def accept_path(store, checkout: str | Path, path: str | Path) -> None:
 
 
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
-    """The person says the tree is fine as it stands: what changed between nodes is theirs now."""
-    _person_only(who, "accepting changes made while no node owned them")
+    """`graphene plan ack`: the uncommitted changes in the checkout are the person's as they stand
+    (committing them does the same, since only the working tree is compared)."""
+    _person_only(who, "making the uncommitted changes in the checkout yours")
     now = now or _now()
     paths = unowned(store, checkout)
     mark_boundary(store, checkout, now)
@@ -1213,34 +1273,81 @@ def _may_start(store, node: Node, who: Caller, everything: list[Node]) -> None:
     write lock, because the plan may have moved in between."""
     by_id = {n.id: n for n in everything}
     if paused(store):
-        raise Refused("the plan is paused; `graphene plan resume` is the person's to run")
+        raise refusal("the plan is paused, so nothing starts", do="graphene plan resume (the person's)")
     under = kids(everything).get(node.id)
-    if under or not node.scope:
-        inside = ", ".join(n.id for n in under or []) or f"none yet: `graphene node add … --parent {node.id}`"
-        raise Refused(
-            f"{node.id} is a sub-goal: the work is in its leaves ({inside}). "
-            "`graphene plan` shows which are ready"
+    if under:
+        raise refusal(
+            f"{node.id} is a sub-goal: the work is in its leaves ({', '.join(n.id for n in under)})",
+            do="graphene plan shows which are ready",
         )
     if node.state == RUNNING:
         raise Refused(f"{node.id} is already running ({node.executor}, since {node.started_at})")
-    if node.state == PROPOSED or any(a.state == PROPOSED for a in above(node, by_id)):
-        raise Refused(f"{node.id} is a proposal; a person accepts it with `graphene plan accept {node.id}`")
-    if node.state != OPEN:
-        raise Refused(f"{node.id} is {node.state}")
+    if node.state != OPEN or any(a.state == PROPOSED for a in above(node, by_id)):
+        raise _as_it_stands(node, everything, who)
+    if not node.scope:
+        raise _no_scope(node, who, "start")
     if os.environ.get("GRAPHENE_PLANNER") and not who.person:
         raise Refused("you are the planner: you propose the tree, and executors take its leaves")
     if not may_take(node, who):
-        raise Refused(
-            f"{node.id} is {node.owner}'s node, not {'yours' if who.person else "an agent's"}; "
-            "take another (`graphene plan`), or stop if everything left waits on it"
+        raise refusal(
+            f"{node.id} is {node.owner}'s node, not {'yours' if who.person else "an agent's"}",
+            do="graphene plan shows what else is ready; stop if everything left waits on it",
         )
     blockers = unmet(node, by_id)
     if blockers:
-        told = ", ".join(
-            f"{b.id} ({b.state}{', ' + b.owner + chr(39) + 's' if b.owner != AGENT else ''})"
-            for b in blockers
+        raise Refused(f"{node.id} waits on {_told(blockers)}")
+
+
+def _told(blockers: list[Node]) -> str:
+    return ", ".join(
+        f"{b.id} ({b.state}{', ' + b.owner + chr(39) + 's' if b.owner != AGENT else ''})" for b in blockers
+    )
+
+
+def _no_scope(node: Node, who: Caller, verb: str) -> Refused:
+    """A node with no scope and no children: a person's own to-do, done by hand, or a node an agent
+    left to be filled in (a placeholder `s` in graphene watch fills in)."""
+    if node.owner != AGENT:
+        whose = "yours" if who.person else f"{node.owner}'s"
+        return refusal(
+            f"{node.id} is {whose} to do by hand: it has no scope, so there is nothing to {verb}",
+            do=f"graphene node done {node.id} when it is done"
+            if who.person
+            else "graphene plan shows what is ready",
         )
-        raise Refused(f"{node.id} waits on {told}")
+    return refusal(
+        f"{node.id} has no scope and no leaves yet, so there is nothing to {verb}",
+        do=f"s in graphene watch asks the planner to split it, or graphene node edit {node.id} gives it a "
+        "scope and a check",
+    )
+
+
+def _as_it_stands(node: Node, everything: list[Node], who: Caller, verb: str = "start") -> Refused:
+    """The line for the state a node is in, for a `start` or a `done` it is not in the state for:
+    each state says what it is and what moves it on, and never the command that was just refused."""
+    if node.state in GONE:
+        return Refused(f"{node.id} is {node.state}: it is not in the plan any more")
+    by_id = {n.id: n for n in everything}
+    word = reads(node, everything)
+    if word == "proposed":
+        top = next((a for a in reversed(above(node, by_id)) if a.state == PROPOSED), node)
+        return refusal(
+            f"{node.id} is a proposal: nothing to {verb} until the person accepts it",
+            do=f"graphene plan accept {top.id}" + ("" if who.person else " (the person's)"),
+        )
+    if word == "done":
+        return Refused(f"{node.id} is done already")
+    if word == "review":
+        return refusal(
+            f"{node.id} is finished and waits for the person's sign-off",
+            do=f"graphene node signoff {node.id}" + ("" if who.person else " (the person's)"),
+        )
+    if not node.scope and not kids(everything).get(node.id):
+        return _no_scope(node, who, verb)
+    blockers = unmet(node, by_id)
+    if blockers:
+        return Refused(f"{node.id} is not running: it waits on {_told(blockers)}")
+    return refusal(f"{node.id} is ready, not running", do=f"graphene node start {node.id} takes it")
 
 
 def start(
@@ -1265,6 +1372,19 @@ def start(
     if _boundary(store, checkout) is None:
         mark_boundary(store, checkout, now)  # the first start in a checkout: the tree as it stands
     loose = unowned(store, checkout, but=node_id)
+    if loose and not (who.person or attended):  # refused here, not under the claim: its rollback forgets
+        it, change, stand = (
+            ("it", "an uncommitted change", "it stands")
+            if len(loose) == 1
+            else ("them", "uncommitted changes", "they stand")
+        )
+        why = f" makes {it} theirs as {stand}, and so does committing {it}"
+        raise refusal(
+            f"{node_id} cannot start: the checkout has {change} no node made",
+            loose,
+            f"put {it} back, or ask the person: graphene plan ack"
+            + (why if first_time(store, who, first, "loose") else ""),
+        )
     away = not_here(store, first, checkout)
     files, base, was_dirty = tracked(checkout), head(checkout), dirty(checkout)
     # a leaf made from a prompt is a record, not a gate (``close_aside``): it skips the two looks
@@ -1276,13 +1396,6 @@ def start(
         node = get(store, node_id)
         everything = nodes(store)
         _may_start(store, node, who, everything)
-        if loose and not (who.person or attended):
-            listed = ", ".join(loose[:8]) + (f" and {len(loose) - 8} more" if len(loose) > 8 else "")
-            raise Refused(
-                f"{node.id} cannot start: {listed} changed while no node owned "
-                f"{'it' if len(loose) == 1 else 'them'}. Put {'it' if len(loose) == 1 else 'them'} back, "
-                "or tell the person: `graphene plan ack` is theirs to run if the change is theirs"
-            )
         if away:
             raise Refused(f"{node.id} waits on {'; '.join(away)}")
         for other in everything:
@@ -1296,9 +1409,10 @@ def start(
             if other.state == RUNNING and other.checkout == checkout:
                 shared = overlap(node.scope, other.scope, files)
                 if shared:
-                    raise Refused(
-                        f"{node.id} and {other.id} ({other.executor}, running) both claim "
-                        f"{', '.join(shared[:5])}; one writer at a time: wait for {other.id}"
+                    raise refusal(
+                        f"{node.id} and {other.id} ({other.executor}, running) both claim these; one "
+                        f"writer at a time, so wait for {other.id}",
+                        shared,
                     )
         node.state, node.executor, node.session_id, node.agent_id = (
             RUNNING,
@@ -1527,6 +1641,87 @@ def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[s
     ]
 
 
+def _stray(store, node: Node, who: Caller, now: str, stray: list[str]) -> Refused:
+    """`done` refused over what changed outside the scope: logged, and said with its explanation the
+    first time in a hold, and short after that."""
+    store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"outside": stray})
+    first = first_time(store, who, node, "outside")
+    what = f"{node.id} is not done: changed outside its scope ({', '.join(node.scope)})"
+    what += ", which only the person widens" if first else ""
+    folded = [p for p in stray if in_scope(p.lower(), [g.lower() for g in node.scope])]
+    what += (
+        f"; {folded[0]} differs from it only in upper and lower case, and git's spelling counts"
+        if folded
+        else ""
+    )
+    linked = links_out(node.checkout or ".", stray)
+    what += f"; {linked[0]} is a symbolic link that leaves the repo" if linked else ""
+    back = (
+        f" (git checkout {(node.base_sha or 'HEAD')[:10]} -- <path>, or delete a new file)" if first else ""
+    )
+    it = "it" if len(stray) == 1 else "them"
+    return refusal(what, stray, f"put {it} back{back}, or say why: graphene node release {node.id} --why '…'")
+
+
+def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
+    """Of ``paths``, the files git does not track (nor ignore): what a run of a check may have made."""
+    new = {e[3:] for e in _git(checkout, "status", "--porcelain", "-z", "--untracked-files=all").split("\0")
+           if e.startswith("?? ")}  # fmt: skip
+    full = [(p, os.path.join(checkout, p)) for p in paths if p in new]
+    return [p for p, f in full if os.path.isfile(f) and not os.path.islink(f)]
+
+
+@contextmanager
+def _set_aside(store, node: Node, checkout: str | Path, paths: list[str]):
+    """``paths`` moved under the store's folder while the block runs, and back after it, always: all
+    but the ones made again meanwhile, which stay as they were made. A file that cannot be put back
+    is left where it was set aside, and the refusal says where."""
+    if not paths:
+        yield
+        return
+    import shutil  # here: the hook imports this module on every event and never moves a file
+
+    held = Path(store.path).parent / "aside" / f"{node.id}-{os.getpid()}-{threading.get_ident()}"
+    moved: list[str] = []
+    try:
+        for path in paths:
+            (held / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(os.path.join(checkout, path), held / path)
+            moved.append(path)
+        yield
+    finally:
+        kept = []
+        for path in moved:
+            home = Path(checkout) / path
+            if os.path.lexists(home):
+                continue  # made again: the check's own
+            try:
+                home.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(held / path, home)
+            except OSError:
+                kept.append(path)
+        if kept:
+            raise refusal(f"{node.id}: these could not be put back after its check, and are in {held}", kept)
+        shutil.rmtree(held, ignore_errors=True)
+
+
+def _done_by_hand(store, node: Node, who: Caller, now: str, checkout: str | Path | None) -> Node:
+    """A person's own leaf with no scope is their to-do: there is no check to run and nothing to ask
+    git, so `done` is their word, and the log says so."""
+    with store.claim():
+        node = get(store, node.id)
+        everything = nodes(store)
+        by_id = {n.id: n for n in everything}
+        if node.state != OPEN or any(a.state == PROPOSED for a in above(node, by_id)):
+            raise _as_it_stands(node, everything, who, "finish")
+        if unmet(node, by_id):
+            raise Refused(f"{node.id} waits on {_told(unmet(node, by_id))}")
+        node.state, node.finished_at = DONE, now
+        _save(store, node, "finished", who, now, note="done by hand: the person's word, with no check to run")
+    roll_up(store, who, checkout, now)
+    return node
+
+
 def finish(
     store,
     node_id: str,
@@ -1544,8 +1739,10 @@ def finish(
         if override is not None:
             _person_only(who, "overruling a node's check or scope")
         return _finish_subgoal(store, node, who, now, checkout or ".", override)
+    if node.state == OPEN and not node.scope and node.owner != AGENT and who.person:
+        return _done_by_hand(store, node, who, now, checkout)
     if node.state != RUNNING:
-        raise Refused(f"{node.id} is {node.state}, not running; `graphene node start {node.id}` takes it")
+        raise _as_it_stands(node, nodes(store), who, "finish")
     _holder_only(node, who, "finishing it")
     if override is not None:
         _person_only(who, "overruling a node's check or scope")
@@ -1557,63 +1754,63 @@ def finish(
                 set(now_unseen["flagged"].splitlines()) - set(node.unseen_at_start["flagged"].splitlines())
             )
             what = (
-                f"{', '.join(hidden)} marked assume-unchanged or skip-worktree since it was started "
-                "(`git update-index --no-assume-unchanged --no-skip-worktree <path>` undoes it)"
+                "marked assume-unchanged or skip-worktree since it was started"
                 if hidden
-                else ".git/info/exclude edited since it was started (put it back as it was)"
+                else ".git/info/exclude edited since it was started"
             )
             store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"unseen": what})
-            raise Refused(f"{node.id} is not done: git can no longer answer for this checkout: {what}")
+            raise refusal(
+                f"{node.id} is not done: git can no longer answer for this checkout: {what}",
+                hidden,
+                "git update-index --no-assume-unchanged --no-skip-worktree <path> undoes it"
+                if hidden
+                else "put it back as it was",
+            )
     changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
     stray = sorted(set(outside_scope(store, node, changed)) | set(links_out(checkout, changed)))
     stray += elsewhere(store, node)
-    if stray and override is None:
-        store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"outside": stray})
-        listed = ", ".join(stray[:8]) + (f" and {len(stray) - 8} more" if len(stray) > 8 else "")
-        folded = [p for p in stray if in_scope(p.lower(), [g.lower() for g in node.scope])]
-        hint = (
-            f" ({folded[0]} differs from the scope only in upper and lower case: git's spelling is the "
-            "one that counts, and the person can correct the scope.)"
-            if folded
-            else ""
-        )
-        linked = links_out(checkout, stray)
-        hint += f" ({linked[0]} is a symbolic link that leaves the repo.)" if linked else ""
-        raise Refused(
-            f"{node.id} is not done: changed outside its scope ({', '.join(node.scope)}): {listed}.{hint} "
-            "Put those back as they were (`git checkout <base> -- <path>`, or delete a new file), or say "
-            f"why the scope is wrong: `graphene node release {node.id} --why '…'`. "
-            "Only the person widens a scope, and only they decide a build leftover belongs in .gitignore"
-        )
-    before = dirty(node.checkout or ".") if node.check else {}
-    passed, output = (True, "") if not node.check else run_check(node.check, node.checkout or ".")
-    if node.check:
-        # what Graphene's own run of the check left behind (a cache, a coverage file) is not the
-        # executor's change: it is taken as it is, so a second `done` is not refused over it
-        after = dirty(node.checkout or ".")
-        left = {p: h for p, h in after.items() if before.get(p, "") != h and not in_scope(p, node.scope)}
-        if left:
-            with store.claim():
-                node = get(store, node_id)
-                if node.state == RUNNING and node.started_at == began:  # never into a later hold's record
-                    node.dirty_at_start.update(left)
-                    store.put_node(to_dict(node))
-        store.log_node(
-            node.id,
-            _now(),
-            "check_passed" if passed else "check_failed",
-            who.label,
-            who.session_id,
-            None,
-            {"command": node.check, "output": output},
-        )
+    # A file git does not track, outside the scope, may be what a run of the check left (a cache from
+    # the executor's own test run). They are set aside while Graphene runs the check, and what the
+    # check makes again is its own: it stays, and is neither counted nor committed. The rest is put
+    # back, and refused as ever. Anything else outside the scope is refused before the check runs.
+    aside = _untracked(checkout, stray) if stray and override is None and node.check else []
+    if stray and override is None and len(aside) < len(stray):
+        raise _stray(store, node, who, now, stray)
+    theirs: list[str] = []  # what the check made again: its own leftovers
+    with _set_aside(store, node, checkout, aside):
+        before = dirty(checkout) if node.check else {}
+        passed, output = (True, "") if not node.check else run_check(node.check, checkout)
+        if node.check:
+            # what Graphene's own run of the check left behind (a cache, a coverage file) is not the
+            # executor's change: it is taken as it is, so a second `done` is not refused over it
+            after = dirty(checkout)
+            theirs = [p for p in aside if p in after]
+            left = {p: h for p, h in after.items() if before.get(p, "") != h and not in_scope(p, node.scope)}
+            if left:
+                with store.claim():
+                    node = get(store, node_id)
+                    if node.state == RUNNING and node.started_at == began:  # never into a later hold's record
+                        node.dirty_at_start.update(left)
+                        store.put_node(to_dict(node))
+            store.log_node(
+                node.id,
+                _now(),
+                "check_passed" if passed else "check_failed",
+                who.label,
+                who.session_id,
+                None,
+                {"command": node.check, "output": output},
+            )
+    if aside and len(theirs) < len(aside):
+        raise _stray(store, node, who, now, [p for p in stray if p not in theirs])
+    changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names
     if not passed and override is None:
         raise Refused(f"{node.id} is not done: `{node.check}` failed:\n{output}")
     if override is None and not any(in_scope(p, node.scope) for p in changed):
-        raise Refused(
+        raise refusal(
             f"{node.id} is not done: nothing inside its scope ({', '.join(node.scope)}) has changed since "
-            "it was started, so a passing check shows nothing. If there was nothing to do, hand it "
-            f"back and say so: `graphene node release {node.id} --why '…'`"
+            "it was started, so a passing check shows nothing",
+            do=f"if there was nothing to do, say so: graphene node release {node.id} --why '…'",
         )
     # where it ended and what git said had changed by then: what the node's record reads, asked of
     # git before the write lock is taken (hundreds of files are hashed while every hook would wait)
@@ -1731,10 +1928,12 @@ def _finish_subgoal(
         return node
     if node not in roll_up(store, who, checkout, now) and get(store, node.id).state == OPEN:
         last = (store.node_log(node.id, ("check_failed",)) or [{"detail": {}}])[-1]["detail"]
-        raise Refused(
+        raise refusal(
             f"{node.id} is not done: its children are, and its own check `{node.check}` fails, so they "
-            f"do not yet work together:\n{last.get('output', '')}\nAdd a leaf under {node.id} for what is "
-            f"missing (`graphene node add '…' --parent {node.id} --scope … --check …`)"
+            f"do not yet work together:\n{last.get('output', '')}",
+            do=f"graphene node edit {node.id}: a line you add under it is a leaf for what is missing"
+            if who.person
+            else f"propose a leaf under it for what is missing: graphene plan propose - (parent: {node.id})",
         )
     return get(store, node.id)
 
@@ -1756,8 +1955,9 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         if not passed and len(store.node_log(node.id, ("check_failed",))) == 1:
             # said once, so the agent can put it right; asked to stop again, the leaf closes with the
             # failure on its record. It is a record, not a gate: a session is never trapped by it
-            raise Refused(
-                f"`{node.check}` failed:\n{output}\nPut it right, or stop again and it is recorded as it is"
+            raise refusal(
+                f"`{node.check}` failed:\n{output}",
+                do="put it right, or stop again and it is recorded as it is",
             )
     with store.claim():
         node = get(store, node_id)
@@ -1795,7 +1995,7 @@ def release(
             raise Refused(f"{node.id} is {node.state}, not running")
         _holder_only(node, who, "handing it back")
         if node.started_at != began:
-            raise Refused(f"{node.id} changed hands just now; look again (`graphene plan`)")
+            raise refusal(f"{node.id} changed hands just now", do="graphene plan shows who holds it")
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
         _save(
@@ -1812,6 +2012,13 @@ def release(
     return node
 
 
+def unlanded(store, node_id: str) -> dict | None:
+    """What the last hold of a leaf left when it passed and could not be merged here (its branch, its
+    worktree, and why): None once it landed, or when it was taken again since."""
+    log = store.node_log(node_id, ("started", "landed", "unlanded"))
+    return log[-1]["detail"] if log and log[-1]["kind"] == "unlanded" else None
+
+
 def signoff(
     store, node_id: str, who: Caller, now: str | None = None, checkout: str | Path | None = None
 ) -> Node:
@@ -1821,20 +2028,29 @@ def signoff(
     _person_only(who, "signing a node off")
     now = now or _now()
     checkout = checkout if checkout is not None else store.path.parent.parent
-    unlanded = store.node_log(node_id, ("unlanded",))
+    left = unlanded(store, node_id)
     landed = None
-    if unlanded:  # asked of git before the write lock is taken
-        branch = unlanded[-1]["detail"].get("branch", f"graphene/{node_id}")
+    if left:  # asked of git before the write lock is taken
+        branch = left.get("branch", f"graphene/{node_id}")
         try:
             sha = _git(checkout, "rev-parse", "-q", "--verify", branch).strip()
         except (Refused, OSError, subprocess.TimeoutExpired):
             sha = ""  # the branch is gone: merged and deleted
+        merged = not sha or subprocess.run(
+            ["git", "-C", str(checkout), "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True
+        ).returncode == 0  # fmt: skip
+        if not merged:  # signed off unmerged, it read as landed and what needed it went ahead without it
+            raise refusal(
+                f"{node_id}'s work is on {branch} and not in this checkout yet",
+                do=f"git merge {branch} (commit or stash first what git says is in the way), "
+                f"then graphene node signoff {node_id}",
+            )
         landed = {"commit": sha or head(checkout), "branch": branch, "into": str(Path(checkout).resolve())}
     with store.claim():
         node = get(store, node_id)
         if node.state != REVIEW:
             raise Refused(
-                f"{node.id} is {node.state}; a sign-off comes after its executor ran `graphene node done`"
+                f"{node.id} is {reads(node, nodes(store))}, and a sign-off comes once its check has passed"
             )
         node.state = DONE
         _save(store, node, "signed_off", who, now)
@@ -1998,3 +2214,93 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.log_node("*", now, "goal", who.label, None, None, {"note": back or "", "was": was or ""})
         store.set_meta("undo", json.dumps(stack))
     return act["what"]
+
+
+# -- how a node reads to a person -------------------------------------------------------------------
+# One word, one glyph and one colour for each state, the same on the screen, in `graphene plan` and in
+# the text form's notes. The colour says who has the move: cyan, the agent's guess, yours to prune;
+# magenta, it waits on you; yellow, an agent is on it; green, done; plain, an agent can take it; dim,
+# nothing to do yet. Red is kept for a command that failed. A sub-goal reads as "2/3 done".
+LOOK = {
+    "proposed": ("?", "cyan"),
+    "ready": ("○", ""),
+    "waiting": ("◌", "dim"),
+    "running": ("●", "yellow"),
+    "came back": ("↩", "magenta"),
+    "review": ("◆", "magenta"),
+    "yours": ("◇", "magenta"),
+    "to fill in": ("·", "dim"),
+    "done": ("✓", "green"),
+}
+
+
+def came_back(store, node: Node) -> bool:
+    """Open, and its last hold ended with its executor handing it back, and the person has not
+    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again)."""
+    if node.state != OPEN:
+        return False
+    last = (store.node_log(node.id, ("started", "released", "reopened", "edited")) or [{"kind": ""}])[-1]
+    return last["kind"] == "released" and not last["detail"].get("person")
+
+
+def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = frozenset()) -> str:
+    """The word a node's state reads as, for a person: proposed, ready, waiting, running, came back
+    (``back``: the ids `came_back` says so of), review, done, yours (a person's), to fill in (no
+    leaves and no scope yet), or a sub-goal's "2/3 done"."""
+    by_id = {n.id: n for n in everything}
+    if node.state == PROPOSED or any(a.state == PROPOSED for a in above(node, by_id)):
+        return "proposed"
+    if node.state in (DONE, REVIEW, RUNNING):
+        return {DONE: "done", REVIEW: "review", RUNNING: "running"}[node.state]
+    under = kids(everything)
+    if under.get(node.id):
+        mine = [c for c in below(node.id, everything) if not under.get(c.id) and c.state != PROPOSED]
+        return f"{sum(c.state == DONE for c in mine)}/{len(mine)} done"
+    if node.id in back:
+        return "came back"
+    if unmet(node, by_id):
+        return "waiting"
+    if node.owner != AGENT:
+        return "yours"
+    return "ready" if node.scope else "to fill in"
+
+
+def look(word: str) -> tuple[str, str]:
+    """The glyph and the colour (a Rich style) of a word `reads` returns."""
+    return LOOK.get(word, ("○", ""))
+
+
+def said_by(label: str | None) -> str:
+    """Who an actor on the plan is, in a person's words: `run:claude` is claude started by `graphene
+    run`, `claude:5940…` a Claude Code session, `planner` the planner `graphene ask` started."""
+    if not label:
+        return "nobody on record"
+    if label.startswith("run:"):
+        return f"{label[4:]}, started by graphene run"
+    if label.startswith("planner"):
+        return "the planner (graphene ask)"
+    kind, _, rest = label.partition(":")
+    if kind in ("claude", "codex") and rest:
+        return f"a {'Claude Code' if kind == 'claude' else 'Codex'} session ({rest})"
+    return label
+
+
+def where(root: str | Path) -> str:
+    """The repository as the screen's top line and every write's last line name it."""
+    path, home = str(root), str(Path.home())
+    return "~" + path[len(home) :] if path.startswith(home + os.sep) else path
+
+
+def plan_first(store) -> bool:
+    """Plan first: what a person asks for in a session is proposed as a tree before any code. The
+    person's setting (`graphene plan first on|off`, `P` in graphene watch); never set, it is on while
+    a plan is in force. `graphene init` sets it on in a repository it sets up."""
+    said = store.meta("plan_first")
+    return said == "on" if said in ("on", "off") else in_force(store)
+
+
+def set_plan_first(store, on: bool, who: Caller) -> None:
+    """The person turns plan first on or off; it is theirs, like the plan's other settings."""
+    _person_only(who, "turning plan first on or off")
+    store.set_meta("plan_first", "on" if on else "off")
+    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": "on" if on else "off"})

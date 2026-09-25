@@ -1,0 +1,24 @@
+╭─────────────────────────────────────────────────────────────────────────────╮ 
+│  move                                                                       │ 
+│    j k   down, up                                                           │ 
+│    gg G  the goal, the last row                                             │ 
+│    /     search; n the next match                                           │ 
+│    Esc   ends a search, a selection, a pane                                 │ 
+│                                                                             │ 
+│  fold                                                                       │─
+│    za     fold or unfold here (on the goal: all)                            │ 
+│    zo zc  unfold, fold                                                      │ 
+│    zR zM  all open, all closed                                              │ 
+│                                                                             │ 
+│  shape                                                                      │ 
+│    y    accept a proposal; sign off a leaf in review; your own leaf is      │ 
+│         done                                                                │ 
+│    d    drop                                                                │ 
+│    e    edit its contract in $EDITOR                                        │ 
+│    E    edit it with what is under it, as text                              │ 
+│    a A  add a sibling, a child                                              │ 
+│    s    the planner splits it into leaves                                   │ 
+│    u    undo your last act on the plan                                      │ 
+│    V    select several, then y or d                                         │ 
+│                                                                             │ 
+╰─────────────────────────────────────────────────────────────────────────────╯ 

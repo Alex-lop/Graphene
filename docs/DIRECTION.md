@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-23, by the agent that ran the terminal directive.*
+2026-09-24, by the agent that ran the polish directive.*
 
 ## What Graphene is
 
@@ -322,6 +322,83 @@ names, and never holds a key.**
     session's wait from outside it (from `watch`) would have cost you less than resuming this
     session; it is not built.
 
+## Decisions taken on 2026-09-24 (the polish directive)
+
+Taken by the agent that ran `docs/process/directives/POLISH_DIRECTIVE.md`, which added no mechanism
+and judged everything at the screen: the feeds task built by `docs/proof/try.sh`, a real Claude Code
+session and real executors, `graphene watch` driven by keys in a WezTerm mux at 80×24 and 120×36.
+Each decision has its reason. Strike any of them. Where one changes a decision above, the old one is
+left as written and the change is named here.
+
+41. **One row grammar, everywhere: the title, then the id, then one word for the state.** `○ an xml
+    reader  xml-reader  ready`, in fixed columns (ids under ids, words under words, at any depth; a
+    title is cut at a word with an ellipsis; nothing scrolls sideways, and an id is never cut). The
+    same row on the screen, in `graphene plan`, and in what `node add`, `propose` and `accept` print;
+    the text form's `#` notes say the same words. *Why the id after the title:* a person reads what
+    a node is, and the id is a handle for commands; the text form already writes `- title  [id]`.
+42. **One word and one colour per state, and the colour says whose move it is** (`plan.reads`,
+    `plan.look`): proposed (cyan: the agent's guess, yours to prune), ready (plain: an agent can take
+    it), waiting (dim), running (yellow: an executor is on it), came back, review and yours (magenta:
+    it waits on you), done (green), to fill in (a node with no leaves and no scope yet: dim). A
+    sub-goal reads `2/3 done`. Red is only the mark of a command that failed. *Why:* a leaf that came
+    back is the loop working, and it was the only red thing on the screen.
+43. **The goal is the tree's first row**, folded like any node, and its pane is the overview. The
+    top line says only `the plan of ~/repo`, the words every write's last line ends with.
+44. **The status line: first the plan, then the moment.** Line one: what waits on you, how many
+    executors run, what `R` would start, how much is done, and plan first on or off; a short form at
+    80 columns, whole pieces dropped from the end, never a word cut. Line two: what the last command
+    said, else what the keys do on the row under the cursor. *Why the planner is no longer named
+    there:* it named whichever session last proposed (`planner: claude:59409a10`); who proposed a
+    node is in its pane, in words (`proposed by a Claude Code session (59409a10)`), and the help
+    names the two agents.
+45. **The record (Enter) is laid out, not pasted**: contract, why it came back, each hold (who,
+    when, how it ended, where, what changed in and outside its scope), the check Graphene ran, what
+    was refused, coverage, what people did; one line when nothing has happened yet. It says that it
+    scrolls; the keys are on the status line.
+46. **Plan first is a mode, not a reading of your words. This replaces decision 28's rule, and
+    withdraws decision 19.** `graphene plan first on|off`, `P` in the screen, shown on the status
+    line; never set, it is on while a plan is in force, and `graphene init` sets it on. On, a
+    session that holds no leaf proposes before it writes; one leaf it proposes after your prompt is
+    yours at once (the one-line ask stays free: 25 seconds, nothing to press, on 24 September), and a
+    tree waits for you. *Why:* the directive's rule that nothing reads your prose for length or for
+    magic words, anywhere; the 240 characters were a heuristic about how you write, and they caused
+    the hold of decision 40. *What it gives up:* decision 19's "a plain yes typed into the session
+    accepts" read your words, so it is gone; you accept with `y` in the screen. *Question:* this
+    repository was set up before the mode and has no plan in force, so plan first is off here; is
+    "on while a plan is in force" the default you meant, or on everywhere Graphene is installed?
+47. **`ack` means: the uncommitted changes in the checkout are yours, as they stand.** A commit is
+    the repository moving (your `.gitignore`, a `git pull`), and the plan follows it: only
+    uncommitted changes no leaf made are loose. Committing them does what `ack` does. *The hole it
+    opens,* written down and not guarded: an agent that writes outside every leaf between leaves and
+    commits it is not seen at the next start.
+48. **What the check creates is not the executor's change.** At `done`, when the only strays are new
+    untracked files, they are set aside while the check runs; what it makes again (the `__pycache__`
+    of an executor's own test run, in a repository with no `.gitignore`) stays, is not counted, and
+    is not committed with the leaf. This is a small mechanism, and the directive asks for the real
+    fix to be named: run the check in a clean copy of the leaf's own commit (a worktree), so nothing
+    it writes ever lands in the executor's tree. *Its hole:* an untracked file of yours that the
+    executor deleted outside its scope is not caught (a tracked one is).
+49. **The text form reads every key or refuses it by its line.** `parent: <id>` places the node
+    under that one (it was read as the node's goal, and the node landed at the root); `id:` is the
+    node's id; `title:` and `children:` are refused (the title is the line, children are
+    indentation).
+50. **A person's own leaf with no scope is a to-do**, not "a sub-goal with no leaves yet": `y` in the
+    screen (`graphene node done`) finishes it on your word, and `start` says it is yours to do by
+    hand. An agent's node with no scope and no leaves is "to fill in": `s` asks the planner, `e` gives
+    it a scope and a check.
+51. **Refusals are one shape and said once**: what was refused and why, the paths, one or two
+    commands; the explanation the first time a caller meets it in a hold, a short line after
+    (`plan.refusal`, `plan.first_time`; the hook's scope lecture too). `next:` is one line. A command
+    never tells you to run itself. `reopen` and `release` ask for their note at a terminal; a
+    missing option anywhere is one line, not a usage box.
+52. **What sitting in it found that the tests did not**, each now with a test that fails without its
+    fix: keys typed in one burst after `:`, `/`, `a`, `A` or `x` ran as commands on the tree (a
+    terminal delivers them before a binding's action runs; the headless pilot pressed them one at a
+    time and hid it); a leaf that passed and did not land was signed off mid-merge, conflict open,
+    and read as landed; two screens starting at once on a new store crashed on `database is locked`;
+    `:ask add a --dry-run flag` took the flag for ask's own option; the offers lost their commands at
+    120 columns; `graphene watch` spawned by a harness as a person ran with the agent's marks.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -356,10 +433,10 @@ names, and never holds a key.**
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,
   and says so; nothing is lost. Work in the same checkout through a session (a leaf made from your
   prompt answers for it), or let the run finish.
-- "A paragraph becomes a tree" is a rule about length and a few words (decision 28). A long request
-  meant to be done at once needs "just do it", and those words said in passing skip the tree too. A
-  short one that deserved a plan is done at once: with a plan in force, as a leaf from the prompt that
-  you see on the plan; with none (only proposals, or nothing), it leaves no trace.
+- With plan first on (decision 46) the agent judges what is a tree and what is one leaf; one leaf
+  it proposes after your prompt is accepted as yours, and the log says so.
+- A commit is the repository moving (decision 47): an agent that commits what it wrote outside every
+  leaf, between leaves, is not seen at the next start.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 
@@ -384,6 +461,14 @@ names, and never holds a key.**
 3. Codex hooks, then the vendor's sandbox as a third layer for scope, as before.
 4. The planner told the run what it could not settle ("the legacy importer skips the zero rule");
    those lines could be nodes of their own (owner: you), not prose in the session.
+
+## What comes next, from 24 September
+
+1. You sit in it for ten minutes: `docs/proof/try.sh`, the two panes, your own paragraph, at the
+   width your WezTerm really is. This run's judge was an agent's eye through a mux; yours outranks it.
+2. The page gets the screen's row grammar and palette, then the tree's prune and run.
+3. The check in a clean worktree of the leaf's commit (decision 48's real fix).
+4. Codex hooks, then the vendor's sandbox as a third layer for scope, as before.
 
 ## How this file is used
 

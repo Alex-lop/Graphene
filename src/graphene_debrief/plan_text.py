@@ -13,9 +13,11 @@
           needs: render-invoice
 
 "-" is a node in the plan and "?" a proposal (make it "-" to accept it). A line indented under a
-node is its child. Under a node, `scope:` `check:` `needs:` `owner:` and `signoff:` are its contract;
-any other line under it says what it should achieve. "#" lines are Graphene's notes and are never
-read. The [id] keeps an edit on the node it was made on; a line without one is a new node.
+node is its child. Under a node, `scope:` `check:` `needs:` `owner:` and `signoff:` are its contract,
+`parent:` puts it under the node it names and `id:` is its [id]; any other line under it says what it
+should achieve (`title:` and `children:` are refused: a title is the node's line, a child is indented
+under it). "#" lines are Graphene's notes and are never read. The [id] keeps an edit on the node it
+was made on; a line without one is a new node.
 
 It is the form a person edits (`graphene plan edit`, `E` in `graphene watch`), the form an agent
 proposes in (`graphene plan propose -`), and the form `graphene plan --text` prints. What a text
@@ -52,6 +54,9 @@ _NEAR = {
     "verify": "check", "done when": "check", "done": "check", "acceptance": "check",
     "test command": "check", "deps": "needs", "dependencies": "needs", "assignee": "owner",
 }  # fmt: skip
+# A node's other fields, as the JSON form names them: read under a node, never taken for what it should
+# achieve. parent: and id: are honoured; title: and children: are refused with where they are written.
+_PLACE = ("parent", "id", "title", "children")
 _MARK = re.compile(r"(?P<mark>[-*+?•])\s+(?P<rest>.*)")
 _NUMBERED = re.compile(r"\d{1,3}[.)]\s+\S.*")
 _ID_AT_END = re.compile(r"\s+\[(?P<id>[^\[\]]{1,40})\](?P<after>\s*:|\s+\([^()]*\))?\s*$")
@@ -91,6 +96,7 @@ class Line:
     owner: str = P.AGENT
     signoff: bool = False
     goal: list[str] = field(default_factory=list)
+    under: str | None = None  # the id a `parent:` line names; "" for none, at the top
     said: set[str] = field(default_factory=set)  # which keys the text wrote at all
     column: int | None = None  # where its own lines start: they all start there
     at: dict[str, int] = field(default_factory=dict)  # the line each key was written on
@@ -135,6 +141,8 @@ def _key(body: str, near: bool = True) -> tuple[str, str] | None:
         return _SAME.get(word, word), found["value"].strip()
     if word == "signoff" or word == "sign off":
         return "signoff", found["value"].strip()
+    if near and word in _PLACE:  # "- id: …" as a node's own line stays a title
+        return word, found["value"].strip()
     if near and word in _NEAR:
         return "?", word
     return None
@@ -247,6 +255,15 @@ def parse(text: str, strict: bool = False) -> tuple[str | None, list[Line]]:
         key, value = keyed
         if key == "?":
             raise P.Refused(f"line {no}: '{value}:' is not read; say it with {_NEAR[value]}:")
+        if key in ("title", "children"):
+            raise P.Refused(
+                f"line {no}: {key}: is not read under a node; "
+                + (
+                    "a node's title is its own line, after its '- '"
+                    if key == "title"
+                    else "a child is a '- ' line indented under its parent, after the parent's own lines"
+                )
+            )
         if strict and key in last.at and key != "goal":
             raise P.Refused(
                 f"line {no}: [{name}] has its {key}: on line {last.at[key]} already. If you deleted a node's "
@@ -254,10 +271,57 @@ def parse(text: str, strict: bool = False) -> tuple[str | None, list[Line]]:
             )
         if key != "goal":  # a description written after goal: is still description
             last.at.setdefault(key, no)
+        if key in ("id", "parent"):
+            _place_key(last, key, _uncomment(value).strip("[]`* "), no)
+            continue
         if not value and key in ("scope", "needs", "check"):
             pending = (last, key, indent)
         _set(last, key, value, no)
     return ("\n".join(goal) if goal is not None else None), lines
+
+
+def _place_key(line: Line, key: str, word: str, no: int) -> None:
+    """`id:` is the node's [id], said on a line of its own; `parent:` names the node it goes under
+    (placed in ``_placed``, once every line has its id)."""
+    name = line.id or line.title
+    if key == "id":
+        if not _VALID_ID.fullmatch(word):
+            raise P.Refused(
+                f"line {no}: id: {word!r} is not an id: letters, digits, '-', '_' and '.', at most 32"
+            )
+        if line.id not in (None, word):
+            raise P.Refused(
+                f"line {no}: id: {word}, and the node's line says [{line.id}]; an id is written once, as "
+                "[id] at the end of the node's line"
+            )
+        line.id = word
+        return
+    if not word:
+        raise P.Refused(f"line {no}: parent: names no node; write the [id] of the node it goes under")
+    word = "" if word.lower() in _NONE else word
+    if line.under not in (None, word):
+        raise P.Refused(f"line {no}: [{name}] has a parent: already ({line.under or 'none'})")
+    line.under = word
+
+
+def _placed(lines: list[Line]) -> None:
+    """A `parent:` line puts its node under the node it names: one of the same text, by index, or one
+    in the plan, by id (``Line.under``, for ``apply``). A line indented under another node that names a
+    different one says two things, and is refused."""
+    at = {ln.id: k for k, ln in enumerate(lines)}
+    for ln in lines:
+        if ln.under is None:
+            continue
+        named = lines[ln.parent].id if ln.parent is not None else ""
+        if ln.parent is not None and ln.under != named:
+            raise P.Refused(
+                f"line {ln.at['parent']}: parent: {ln.under or 'none'}, but [{ln.id}]'s line is indented "
+                f"under [{named}]; say where it goes one way"
+            )
+        if ln.under == ln.id:
+            raise P.Refused(f"line {ln.at['parent']}: parent: {ln.under} is the node itself")
+        if ln.under in at:
+            ln.parent = at[ln.under]
 
 
 def _set(line: Line, name: str, value: str, no: int) -> None:
@@ -351,38 +415,66 @@ def clock(stamp: str | None) -> str:
         return stamp[11:16]
 
 
+def elide(text: str, wide: int) -> str:
+    """One line of at most ``wide`` characters, cut at a word with "…" when it is longer: a title in
+    a row of the screen or of `graphene plan`. A single word longer than the row is cut where it must."""
+    text = " ".join(str(text).split())
+    if len(text) <= wide:
+        return text
+    if wide < 2:
+        return "…"[: max(wide, 0)]
+    cut = text.rfind(" ", 0, wide)
+    return (text[:cut] if cut > 0 else text[: wide - 1]).rstrip(" ,;:·") + "…"
+
+
+def blocker(node: P.Node, words: dict[str, str]) -> str:
+    """A node something waits on, as that line says it: its state word, or whose it is when it is a
+    person's own (an agent reading "waits on n1 (yours)" would take n1 for its own)."""
+    word = words.get(node.id, node.state)
+    return f"{node.owner}'s" if word == "yours" else word
+
+
 def notes(store, node: P.Node, by_id: dict[str, P.Node], under: dict) -> list[str]:
-    """What is true of the node right now, for the person reading its contract: its state, what it
-    waits on, and why it came back. Written as "#" lines; never read back."""
-    out: list[str] = []
-    mine = under.get(node.id) or []
-    if mine:
-        leaves = [c for c in P.below(node.id, list(by_id.values())) if not under.get(c.id)]
-        done = sum(1 for c in leaves if c.state == P.DONE)
-        out.append(f"{done}/{len(leaves)} done" + ("" if node.state != P.DONE else "; done"))
-        return out
-    if node.state == P.PROPOSED:
-        out.append(f"proposed by {node.proposed_by}")
-    elif node.state == P.RUNNING:
+    """What is true of the node right now, for the person reading its contract, in the words the
+    screen and `graphene plan` use (`plan.reads`): the state first, then what it waits on, or why it
+    came back. Written as "#" lines; never read back."""
+    everything = list(by_id.values())
+
+    def word(n: P.Node) -> str:
+        return P.reads(n, everything, {n.id} if P.came_back(store, n) else set())
+
+    said = word(node)
+    if said == "proposed":
+        return [f"proposed by {P.said_by(node.proposed_by)}"] if node.state == P.PROPOSED else [said]
+    if said == "running":
         where = node.checkout or ""
         tree = f" in {where[where.index('.graphene') :]}" if ".graphene" in where else ""
-        out.append(f"running: {node.executor} since {clock(node.started_at)}{tree}")
-    elif node.state == P.REVIEW:
-        out.append(f"its check passed; it waits for your sign-off (graphene node signoff {node.id})")
-    elif node.state == P.DONE:
-        out.append(f"done {clock(node.finished_at)}")
-    elif node.state == P.OPEN:
-        blockers = P.unmet(node, by_id)
-        if blockers:
-            out.append("waits on " + ", ".join(b.id for b in blockers))
-        last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-        if last["kind"] == "released":
-            out.append("handed back: " + " ".join(str(last["detail"].get("why", "")).split()))
+        return [f"running: {P.said_by(node.executor)}, since {clock(node.started_at)}{tree}"]
+    if said == "review":
+        return [f"review: its check passed; it waits for your sign-off (graphene node signoff {node.id})"]
+    if said == "done":
+        return [f"done {clock(node.finished_at)}".rstrip()]
+    if said == "waiting":
+        said = "waiting on " + ", ".join(
+            f"{b.id} ({blocker(b, {b.id: word(b)})})" for b in P.unmet(node, by_id)
+        )
+    elif said == "to fill in":
+        said = "to fill in: no scope and no leaves yet"
+    out = [said]
+    last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
+    if node.state != P.OPEN or under.get(node.id):  # a hand-back is a leaf's
+        return out
+    if last["kind"] == "released":
+        why = " ".join(str(last["detail"].get("why", "")).split())
+        if out[0] == "came back":
+            out[0] = f"came back: {why}"
             wanted = P.wanted(store, node)
             if wanted:
                 out.append("it wanted, outside its scope: " + ", ".join(wanted))
-        elif last["kind"] == "reopened":
-            out.append("sent back: " + " ".join(str(last["detail"].get("note", "")).split()))
+        else:
+            out.append(f"handed back: {why}")
+    elif last["kind"] == "reopened":
+        out.append("sent back: " + " ".join(str(last["detail"].get("note", "")).split()))
     return out
 
 
@@ -480,9 +572,13 @@ def apply(
         if line.id is None:
             line.id = slug(line.title, taken)
             taken.add(line.id)
-    for line in lines:  # a need of the same text follows its line's new id
+    for line in lines:  # a need (or a parent:) of the same text follows its line's new id
         line.needs = [renamed[i].id if i in renamed else i for i in line.needs]
-    parent_of = {ln.id: (lines[ln.parent].id if ln.parent is not None else base_parent) for ln in lines}
+        line.under = renamed[line.under].id if line.under in renamed else line.under
+    _placed(lines)
+    parent_of = {
+        ln.id: (lines[ln.parent].id if ln.parent is not None else (ln.under or base_parent)) for ln in lines
+    }
     fresh = [ln for ln in lines if ln.id not in everything]
     kept = [ln for ln in lines if ln.id in everything]
     _guard_shape(lines, fresh, everything, opened, parent_of, who)
@@ -561,6 +657,12 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
                     f"line {ln.at.get('needs', ln.no)}: needs: {need!r} is not the id of a node (the line "
                     "was read as needs:, which names the [id]s it waits on)"
                 )
+        known = everything.get(ln.under or "")
+        if ln.under and ln.parent is None and (known is None or known.state in P.GONE):
+            raise P.Refused(
+                f"line {ln.at['parent']}: parent: {ln.under!r} is not the id of a node, in this text or in "
+                "the plan"
+            )
         if ln not in fresh:
             continue
         parent = lines[ln.parent] if ln.parent is not None else None
@@ -601,7 +703,7 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
                     f"{', '.join(differ)}. Only the person edits a contract (`graphene plan edit {ln.id}`); "
                     "write its line without them to put new lines under it"
                 )
-            if ln.parent is not None and parent_of[ln.id] != node.parent:
+            if (ln.parent is not None or ln.under is not None) and parent_of[ln.id] != node.parent:
                 raise P.Refused(
                     f"line {ln.no}: [{ln.id}] sits under {node.parent or 'the goal'} in the plan, not under "
                     f"{parent_of[ln.id]}; only the person moves a node"
@@ -857,7 +959,8 @@ def _annotated(text: str, refusal: str) -> str:
     marked = [(line, False) for line in lines]
     at = min(int(found[1]), len(lines)) if found else 0
     indent = " " * (len(lines[at - 1]) - len(lines[at - 1].lstrip())) if found and at else ""
-    marked.insert(at, (indent + _REFUSED + " ".join(note.split()), True))
+    said = "; ".join(" ".join(part.split()) for part in note.splitlines() if part.strip())  # one comment line
+    marked.insert(at, (indent + _REFUSED + said, True))
     return "\n".join(line for line, new in marked if new or not line.lstrip().startswith(_REFUSED)) + "\n"
 
 

@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ? Load the Northwind XML feed through the same `load`…     proposed │ a price of 0 fails validation                   
+├ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮  
+│ │  move                                                   run                                                      │  
+└ │    j k   down, up                                         R  run every ready leaf                                │  
+  │    gg G  the goal, the last row                           r  run the ready leaves under this one                 │  
+  │    /     search; n the next match                         x  release a running leaf; send back one in review;    │  
+  │    Esc   ends a search, a selection, a pane                  reopen a done one                                   │  
+  │                                                           P  plan first on or off: a session proposes a tree     │  
+  │  fold                                                        before any code                                     │  
+  │    za     fold or unfold here (on the goal: all)                                                                 │  
+  │    zo zc  unfold, fold                                  see                                                      │  
+  │    zR zM  all open, all closed                            Enter          the record: who held it, what changed,  │  
+  │                                                                          the check                               │  
+  │  shape                                                    l              the executor's output                   │  
+  │    y    accept a proposal; sign off a leaf in review;     ctrl-d ctrl-u  scroll the pane                         │  
+  │         your own leaf is done                                                                                    │  
+  │    d    drop                                            a leaf that came back                                    │  
+  │    e    edit its contract in $EDITOR                      w  widen its scope to what it wanted                   │  
+  │    E    edit it with what is under it, as text            b  a sibling leaf for that, which it waits on          │  
+  │    a A  add a sibling, a child                            n  wait on the leaves its reason names                 │  
+  │    s    the planner splits it into leaves                 ?  ask the planner (elsewhere ? is this help)          │  
+  │    u    undo your last act on the plan                                                                           │  
+  │    V    select several, then y or d                     :                                                        │  
+  │                                                           :<command>   any graphene command, as you would type   │  
+  │                                                                        it (:node show x, :plan log)              │  
+  │                                                           :ask <what>  the planner proposes it                   │  
+  │                                                           :stop        stops a run started here                  │  
+  │                                                           q            quit; a run started here goes on          │  
+  │                                                                                                                  │  
+  │  Every key is a graphene command, and the bottom line says which it ran. Two agents work here: the planner       │  
+  │  proposes the tree (a session, or :ask), the executors do its leaves (R, r).                                     │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯  
+                                                                      │                                                 
+ waiting on you: 2 · executors: none · nothing ready to run · 0/0 done · plan first: off (P)                            
+ y accept · d drop · e edit · E edit with what is under it · ? help · q quit                                            

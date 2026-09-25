@@ -10,7 +10,7 @@ import pytest
 
 from graphene_debrief import plan
 from graphene_debrief.plan import DONE, OPEN, Caller
-from graphene_debrief.run import command_for, run_plan
+from graphene_debrief.run import command_for, run_plan, summary
 from graphene_debrief.store import Store
 
 ALEX = Caller("alex", True)
@@ -73,7 +73,10 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         tails = [e["detail"]["log"] for e in store.node_log("n1", ("attempt",))]
         assert len(set(tails)) == 2 and all(Path(t).is_file() for t in tails)  # one tail an attempt, kept
         assert plan.get(store, "n2").state == OPEN  # a person's node is never handed to an executor
-    assert "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py): schema.py" in said[2]
+    assert (
+        "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py), which only the person "
+        "widens · schema.py" in said[2]
+    )
     assert said[-1] == "n1 is done"
     assert len(list((repo / ".graphene/runs").glob("n1-*-2.txt"))) == 1
 
@@ -87,7 +90,8 @@ def test_out_of_attempts_the_node_is_handed_back_with_the_reason_and_the_run_mov
         [released] = store.node_log("n1", ("released",))
         assert released["detail"]["why"].startswith("2 attempts, the last one refused: n1 is not done")
         # n2 could not start either: what n1's executor left behind belongs to no node
-        assert "n2 cannot start: schema.py changed while no node owned it" in " ".join(said)
+        said = " ".join(said)
+        assert "n2 cannot start: the checkout has an uncommitted change no node made\n  schema.py\n" in said
 
 
 def test_an_executor_that_hands_the_node_back_is_believed(repo):
@@ -137,3 +141,31 @@ def test_a_plan_that_grows_while_the_run_is_going_does_not_make_the_run_unbounde
         done = run_plan(store, repo, executor(repo, GROWER), say=lambda _: None)
         assert [n.id for n in done] == ["n1"]
         assert [n.state for n in plan.nodes(store)] == [DONE, OPEN]  # the new node waits for the next run
+
+
+ONLY_N1 = """
+import os, pathlib
+if os.environ["GRAPHENE_NODE"] == "n1":
+    pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
+"""
+
+
+def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
+    """A run ended with an agent's `next:` ("mine, mine. `graphene node start mine` prints its
+    contract…"), about the person's own leaf, and `graphene watch` showed that when the run ended."""
+    said = []
+    with Store.open(repo) as store:
+        docs = users_node(title="docs", scope=["docs.md"], check="test -s docs.md")
+        plan.propose(store, [users_node(), docs], ALEX)
+        since = len(store.node_log())
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
+        assert summary(store, since) == "run: 1 done, 1 came back (n2)"
+        assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
+                             "n2 came back after 1 attempt"]  # fmt: skip
+        again = len(store.node_log())
+        assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
+        assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)"
+        mark = len(store.node_log())  # seen in WezTerm: x during a run, and the run said "nothing finished"
+        plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
+        plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
+        assert summary(store, mark) == "run: n2 released by you, ready again"
