@@ -92,7 +92,15 @@ the colour says whose move it is), a pane for the node under the cursor laid out
 every key a `graphene` command, which the bottom line names: run in its process, or, for what takes
 time (`run`, `ask`, `node split`, `node done`, `node signoff`), in a process of its own. It polls
 the store once a second; a store too busy to open leaves the screen as it was and says so; `--once`
-prints `plan_lines` instead. The text form's `#` notes say a node's state in the same words.
+prints `plan_lines` instead. The text form's `#` notes say a node's state in the same words. A
+subtree whose leaves are all done is folded, when the screen opens and when it finishes; a tree
+still taller than its pane (`tree_room`: at 80x24 the ten rows above the node pane) opens as its
+outline, each sub-goal one row, and a sub-goal that arrives in such a tree while the screen is open
+comes in folded, while what the person opened stays open. A leaf with a proposal under it is a leaf:
+it stays open, and a count counts it. A folded row keeps the grammar, and its word is what is inside
+(`tui.inside`): how many leaves in which states, whose move first, as many whole states as fit 20
+columns and the rest counted (`1 came back, 4 more`, `6 done`). `za` `zo` `zc` `zR` `zM` are vim's;
+`zx` puts the folds back as the screen opened them.
 
 ## P1c. The plan as text
 
