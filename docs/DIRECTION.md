@@ -411,6 +411,59 @@ change is named here.
     installed (`graphene ingest hook`) keep working. Dated records (`docs/test/results-*`,
     `docs/test/findings/`, the diary in `docs/process/`) keep the old name, because they describe
     what was there then.
+54. **Graphene calls a model when you name its Nemotron planner or executor. This changes decision 9,
+    as amended on 23 September.** `--with nemotron` is Graphene's own code calling Nebius Token Factory
+    with your `NEBIUS_API_KEY`. The key is read from the environment at each call and written nowhere:
+    not in the store, a log, the ledger, a recording or a sandbox. What leaves the machine is the
+    prompts about the repository, the files the model asks to read, and, in a sandbox, the leaf's
+    checkout. Claude Code and Codex are started exactly as before. *Why:* the directive makes Nemotron
+    how Graphene works, and a planner or executor that is Graphene's own code is the only way to hold it
+    before the write (55). *Evidence:* `tests/test_executor.py` shows a command the model runs has
+    `GRAPHENE_NODE` in its environment and no key. `tests/test_tokenfactory.py` shows the ledger and a
+    recording hold no key.
+55. **The placement is "the loop here, the tools there."** Graphene's loop runs on this machine and
+    calls Token Factory. Every tool call runs in the leaf's placement: its checkout, or a Token Factory
+    Sandbox. *Why, with the evidence:*
+    - Only a loop of ours can refuse a write before it happens. The edit and write tools do
+      (`gate.scope_refused`, the hook's own words, not a copy).
+    - The refusal is logged where the hand-back's offers are read from, so a leaf that comes back
+      offers `w` for exactly the path it was refused (`tests/test_executor.py`).
+    - The key never enters the machine where model-written code runs.
+    - In the Docker stand-in, a command took 1.3 to 2.3 s and making the sandbox 7.5 s
+      (`tests/test_escape.py`'s log).
+    - ConTree's own latencies, and any number with a real model, are not measured: this shell had no
+      key.
+    The other placement, a harness such as OpenCode inside the sandbox, is spiked in
+    `docs/test/spikes/harness_there/`; its numbers are there.
+56. **No model id is written into Graphene: the live list names them.** `tokenfactory.roles` picks the
+    Nemotron Ultra, Super and Nano out of `GET /v1/models` by name, the newest of each, a `-fast` twin
+    second. The executor's default is the smallest listed, the planner's the largest. `graphene init`
+    writes the ids it saw into the repo's config, so a run can be repeated. *Evidence:* none from the
+    live list tonight (no key). The picking is tested on a list shaped like the documented one.
+57. **Layer 2 is directory-grained, and what it cannot stop never comes back.** In a sandbox the
+    leaf's user owns the scope's files and whole-scope directories. In a directory where the scope
+    names a file it may create files (sticky bit), and nowhere else. POSIX grants "may create" per
+    directory, not per name. So a command there can make a file the scope does not name: it is never
+    brought back to the checkout, it is logged as a breach and removed before the next command, and the
+    check, which runs from the checkout, never sees it. *Evidence:* `tests/test_escape.py`. A redirect,
+    `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink over the file and `chmod` all exit non-zero.
+    A new `tests/conftest.py` and a link out are made, refused and never brought back. Every in-scope
+    write succeeds.
+58. **The bill is Token Factory's own usage at its list price.** Each call's `usage`, priced by the
+    `pricing` the verbose model list gives, goes into a `usage` row per attempt in the leaf's record,
+    per planner call in the plan's log, and into a ledger when one is named. The ledger's cap refuses
+    the next call at 100%, before it is sent.
+59. **The ConTree SDK is pinned at 0.3.6, and ConTree is spoken to in one class.** The docs' Getting
+    Started describes an SDK that takes a `contree_client` client. No release does that: 0.3.6 and
+    0.4.0.dev5 both take a config or a token. 0.4.0.dev5 also needs `contree-client~=0.2` where the CLI
+    needs `~=0.4`. `tests/test_sandbox_contract.py` binds every call Graphene makes to the pinned
+    SDK's signatures.
+60. **A leaf can be forked: N conversations from one checkpoint, and the check picks** (`--forks N`).
+    The first fork whose check passes is copied in, what its scope covers and nothing else, and
+    Graphene's own `done` decides. When every fork gives up, the leaf comes back with every path they
+    wanted. *Why:* the directive's thesis is "fork it again, or step up a size, and let the check
+    decide." `--model` given twice is the step up. Whether forks pay for themselves is a number for the
+    benchmark, not tonight.
 
 ## What does not bind (say it wherever you sell it)
 
@@ -450,6 +503,12 @@ change is named here.
   it proposes after your prompt is accepted as yours, and the log says so.
 - A commit is the repository moving (decision 47): an agent that commits what it wrote outside every
   leaf, between leaves, is not seen at the next start.
+- The Nemotron executor in the local placement is held before the write by its tools only. A command
+  it runs can write anywhere your user can, and is caught at `done`, by git. In a sandbox a command
+  can make a new file in a directory where the scope names a file; it never reaches your checkout
+  (decision 57).
+- With Nemotron named, the prompts about your repository and the files the model reads go to Token
+  Factory, and in a sandbox the leaf's checkout goes to Sandboxes (decision 54).
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 

@@ -1,8 +1,10 @@
 # How Graphene works
 
 Graphene keeps a plan that a person and their coding agents share, holds executors to it, and
-keeps a record of what was done for each node. No model is involved at any point: everything here
-is computed from the plan's own rows, from git, and from what Claude Code already records.
+keeps a record of what was done for each node. No model decides anything here: the plan, the boundary
+and the record are computed from the plan's own rows, from git, and from what the executors record. A
+model is called only by the planner and the executor you name, Graphene's Nemotron ones included
+(P4b).
 
 Part one is the plan and what makes it bind. Part two is the record underneath it.
 
@@ -289,6 +291,65 @@ Graphene cannot read goes back to it once, with the refusal. The hooks refuse it
 `start` refuses it a leaf. Asking is the person's: it spends. `graphene node split <id>` asks it to cut
 a leaf; `--about <id>` asks it about a leaf that came back.
 
+## P4b. Nemotron on Token Factory: the executor, the planner, the sandbox
+
+`--with nemotron` names Graphene's own executor (`executor.py`) to `graphene run`, and its own planner
+(`planner.py`) to `graphene ask`, `node split` and `:ask`. Both call Nebius Token Factory's
+OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key in
+`NEBIUS_API_KEY`. The key is sent in one header and written nowhere. No model id is written into
+Graphene: `tokenfactory.roles` reads the NVIDIA Nemotron models from the live list (`GET /v1/models`),
+by size (Ultra, Super, Nano). Every call's usage is priced at the list price that same list gives. It
+goes into the leaf's record as a `usage` row (calls, tokens in and out, dollars, writes refused) and,
+when `GRAPHENE_LEDGER` names a file, into that ledger, which `GRAPHENE_SPEND_CAP_USD` caps: at the cap
+the next call is refused before it is sent. A 429 or a 5xx is waited out (`Retry-After`, else doubling).
+
+**The executor** is started by `graphene run` like any other: in the leaf's checkout, with
+`GRAPHENE_NODE` and the contract as its last argument. Its loop runs here. It asks a model for one
+tool call at a time (view, edit, write, run, done, release) and runs the call in the leaf's
+**placement**: the checkout itself (`--placement local`), or a Token Factory Sandbox
+(`--placement sandbox`). `done` is `graphene node done`: git and the check decide, never the model.
+`--model` given twice or more is a ladder: attempt *k* uses the *k*-th model. `--forks N` runs N
+conversations at once from one checkpoint, each in a copy of the checkout. A fork's `done` runs the
+check in its copy; the first whose check passes is copied in (what its scope covers, nothing else) and
+Graphene's own `done` decides. `--protocol text` takes tool calls written as fenced text, for a model
+whose native calls misfire. A command the model runs, and the check, get an environment without the key.
+
+**The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
+SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). The
+leaf's checkout is packed (what git tracks, and what it does not ignore) and unpacked at `/work` in a
+sandbox from `python:3.12`. There a script run as root makes a git baseline and a user, `leaf`, for
+every command:
+
+- `/work` is root's and nobody else may write it;
+- `leaf` owns the files the scope covers, and every directory the scope covers whole;
+- a directory where the scope names a file, existing or not, is writable with the sticky bit, so
+  `leaf` can create a file there and replace its own, and cannot delete, rename or change anyone
+  else's.
+
+The checkout here stays what the boundary reads. The executor's edits land here after the scope
+check and are pushed into the sandbox before its next command. After each command a manifest of
+`/work` says what changed: what the scope covers is brought back here; anything else (a new file in a
+shared directory, a link) is never brought back. It is logged on the leaf as a breach, the model is
+told, and it is removed before the next command. The leaf's check runs in a fresh fork of the sandbox's
+first image, holding the checkout as Graphene holds it, as `leaf` (`sandbox.check_in_fork`). So a
+file a command left outside the scope cannot change the check's result. `GRAPHENE_SANDBOX=docker` puts
+the same sandbox in a local Docker container (`sandbox.Docker`): the tests' and CI's stand-in for
+ConTree, with the same users and permissions.
+
+**The planner** reads the repository with list, glob, grep and read. They run here and read only: a
+planner writes nothing. It prints the fenced `plan` block that `ask.py` reads. It defaults to the
+largest Nemotron the list has; its bill goes into the plan's log.
+
+**Which executors are held before the write, and how:**
+
+| Executor | Before the write | While it runs | At `done` |
+| --- | --- | --- | --- |
+| Nemotron, in a sandbox | its edit and write tools refuse a path outside the scope, in the hook's words, and log it for the offers | its commands run as a user who can write only the scope; what a command makes outside it is never brought back | Graphene's check, in a fork of the sandbox, and git |
+| Nemotron, local | the same tools refuse | nothing: a command can write where your user can | the check, and git |
+| Claude Code, with the hooks | `PreToolUse` denies Edit, Write, MultiEdit and NotebookEdit outside the scope, and the shell forms the parser reads (`>`, `tee`, `sed -i`, `mv`, `cp`, `rm`) | nothing more | the check, and git |
+| Codex, or any command | nothing | its own sandbox if you give it one (Codex's `workspace-write` keeps it to the checkout, not the scope) | the check, and git |
+| A person | nothing | nothing | the check, and git |
+
 ## P5. Where each mechanism ends
 
 - A shell command can write a file in a way no parser reads (a script that opens files itself).
@@ -523,10 +584,12 @@ written.
 
 ## 5. What Graphene never does
 
-It never calls a model and never sends anything anywhere. It never pushes, and it commits and merges
-only in `graphene run --parallel`, on branches of its own (P4). `graphene run` starts the executors
-you name and `graphene ask` the planner you name, with the permissions you give them; nothing else in
-Graphene starts an agent, and it never holds a key. Transcripts can contain secrets; the store stays in `.graphene/` inside
+It calls a model only when you name its Nemotron planner or executor (P4b). Then it sends Token Factory
+the prompts about your repository and the files the model reads, and Sandboxes the leaf's checkout, and
+nothing else, anywhere. The key is read from your environment at each call and written nowhere. It
+never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
+`graphene run` starts the executors you name and `graphene ask` the planner you name, with the
+permissions you give them; nothing else in Graphene starts an agent. Transcripts can contain secrets; the store stays in `.graphene/` inside
 the repo, a directory that is made private to your user (`0700`, the database `0600`) and that
 ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 
