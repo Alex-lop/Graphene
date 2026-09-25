@@ -90,6 +90,7 @@ class NodeRecord:
     coverage: dict = field(default_factory=dict)
     refusals: Refusals = field(default_factory=Refusals)
     acts: list[Act] = field(default_factory=list)
+    bill: dict | None = None  # what its model calls cost, from Token Factory's usage (``bill``)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -118,7 +119,31 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _coverage(store, node, windows, list(inside.values()), at),
         _refusals(log),
         _acts(log),
+        bill(log),
     )
+
+
+def bill(log: list[dict]) -> dict | None:
+    """What a node's model calls cost, added up from the `usage` rows its Nemotron executor (or, for
+    the plan's own log, its planner) wrote: Token Factory's own token counts, priced at the list price
+    its model list gives. None when no model call was recorded."""
+    rows = [e["detail"] for e in log if e["kind"] == "usage"]
+    if not rows:
+        return None
+    out = {k: sum(r.get(k) or 0 for r in rows) for k in ("calls", "prompt_tokens", "completion_tokens")}
+    out["dollars"] = round(sum(r.get("dollars") or 0 for r in rows), 6)
+    out["models"] = sorted({r["model"] for r in rows if r.get("model")})
+    out["attempts"] = len(rows)
+    return out
+
+
+def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
+    if not b:
+        return []
+    models = ", ".join(m.rsplit("/", 1)[-1] for m in b["models"])
+    return [f"{indent}bill: ${b['dollars']:.4f} at list price · {b['calls']} model call{_s(b['calls'])} · "
+            f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out · {models} "
+            "(Token Factory's usage)"]  # fmt: skip
 
 
 def to_dict(record: NodeRecord) -> dict:
@@ -434,6 +459,7 @@ def render(record: NodeRecord) -> list[str]:
     lines += _window_lines(record)
     lines += _coverage_lines(record.coverage, record.refusals.last_check)
     lines += _refusal_lines(record.refusals)
+    lines += bill_line(record.bill)
     lines += _act_lines(record.acts)
     return lines
 
@@ -585,4 +611,10 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         f"{refused} write{_s(refused)} refused; "
         f"{sum(len(r.refusals.done) for _, r in records)} `done` refused"
     )
+    bills = [r.bill for _, r in records if r.bill]
+    if bills:
+        kinds = ("calls", "prompt_tokens", "completion_tokens", "dollars")
+        total = {k: sum(b[k] for b in bills) for k in kinds}
+        total["models"] = sorted({m for b in bills for m in b["models"]})
+        lines += bill_line(total, "    ")
     return lines

@@ -121,6 +121,14 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
         assert started["actor"] == "run:nemotron"
     log = next((repo / ".graphene" / "runs").glob("greet-*.txt")).read_text()
     assert "nemotron executor" in log and "bill: 4 calls" in log and "at list price" in log
+    from graphene_map.node_record import node_record, render
+    from graphene_map.run import summary
+
+    with Store.open(repo) as store:
+        shown = "\n".join(render(node_record(store, repo, plan.get(store, "greet"))))
+        assert f"bill: ${bill['detail']['dollars']:.4f} at list price · 4 model calls" in shown
+        assert "Nemotron-3-Nano-fake (Token Factory's usage)" in shown
+        assert summary(store, 0).endswith(f"; ${bill['detail']['dollars']:.4f} at list price")
 
 
 def test_every_way_out_of_the_scope_is_refused_before_the_write_and_becomes_the_offer(repo, fake, tmp_path):

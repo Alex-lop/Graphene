@@ -589,11 +589,13 @@ def register(cli: typer.Typer, root, open_store, fail):
     @plan_cli.command()
     def record() -> None:
         """The record of the whole plan: every leaf's added up. One leaf's is `graphene node show`."""
-        from .node_record import rolled_up
+        from .node_record import bill, bill_line, rolled_up
 
         def go(store):
             for line in rolled_up(store, root(), P.leaves(P.nodes(store))):
                 out(line.replace("under it", "in the plan"))
+            for line in bill_line(bill(store.node_log("*", ("usage",))), "    "):
+                out(line.replace("bill:", "the planner's bill:"))
 
         run(go)
 

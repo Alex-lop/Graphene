@@ -379,11 +379,13 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(review)} in review ({named(review)})"] if review else []
     said += [f"{named(handed)} handed back, ready again"] if handed else []
     said += [f"{named(freed)} released by you, ready again"] if freed else []
+    spent = sum(e["detail"].get("dollars") or 0 for e in log if e["kind"] == "usage")
+    cost = f"; ${spent:.4f} at list price" if any(e["kind"] == "usage" for e in log) else ""
     if stopped:
-        return "run stopped: " + (", ".join(said) or "nothing was finished")
+        return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
         return "run: nothing started (graphene plan says what each leaf waits on)"
-    return "run: " + (", ".join(said) or "nothing finished")
+    return "run: " + (", ".join(said) or "nothing finished") + cost
 
 
 @contextlib.contextmanager
