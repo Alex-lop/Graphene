@@ -1339,3 +1339,21 @@ def test_help_lists_the_fold_keys(repo):
 
     fold = dict(dict(HELP)["fold"])
     assert "counts the leaves inside" in fold["zo zc"] and "as it opened" in fold["zx"]
+
+
+def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
+    """What the Nemotron executors cost, from Token Factory's usage at list price: the plan's in the
+    status line, the leaf's in its pane. Nothing is said about a bill where no model was called."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    plain, _ = watch(repo, ["j"], size=(120, 36))
+    assert "list price" not in plain["status"] and "bill" not in plain["detail"]
+    with Store.open(repo) as store:
+        for dollars in (0.0101, 0.0022):
+            store.log_node("ids", plan._now(), "usage", "run:nemotron", None, None,
+                           {"model": "nvidia/Nemotron-3-Nano-fake", "calls": 3, "prompt_tokens": 900,
+                            "completion_tokens": 80, "dollars": dollars})  # fmt: skip
+        store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
+                       {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
+    seen, _ = watch(repo, ["j"], size=(120, 36))
+    assert seen["status"].splitlines()[0].endswith("$0.03 at list price")  # the planner's and the leaf's
+    assert "bill $0.0123 at list price · 6 calls · Nemotron-3-Nano-fake" in " ".join(seen["detail"].split())

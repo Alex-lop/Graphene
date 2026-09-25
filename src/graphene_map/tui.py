@@ -42,6 +42,7 @@ from textual.widgets._tree import TOGGLE_STYLE
 from . import plan as P
 from . import plan_text as T
 from . import run as R
+from .node_record import bill
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
@@ -666,6 +667,7 @@ class Watch(App):
         ]
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
+        usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
             "running": sum(n.state == P.RUNNING for n in leaves),
@@ -673,6 +675,7 @@ class Watch(App):
             "done": f"{done}/{len(leaves)} done",
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
+            "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
@@ -848,6 +851,7 @@ class Watch(App):
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
+            *([(f"${c['spent']:.2f} at list price", "dim")] if c.get("spent") is not None else []),
         ]
         short = [
             (f"you: {c['you']}", you),
@@ -855,6 +859,7 @@ class Watch(App):
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
             (f"plan first: {first}", ""),
+            *([(f"${c['spent']:.2f}", "dim")] if c.get("spent") is not None else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
@@ -1467,6 +1472,10 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     pane.gap()
     _why(pane, store, node, s.by_id)
     _contract(pane, store, node, s, s.root_path, files)
+    spent = bill(store.node_log(node.id, ("usage",)))
+    if spent:
+        models = ", ".join(m.rsplit("/", 1)[-1] for m in spent["models"])
+        pane.field("bill", f"${spent['dollars']:.4f} at list price · {spent['calls']} calls · {models}")
     if word in ("done", "review"):
         ended = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
         pane.field("changed", ", ".join(ended.get("changed") or []) or "nothing on record")
