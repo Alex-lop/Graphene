@@ -109,12 +109,27 @@ def setup(scope: list[str], files: list[str], dirs: set[str]) -> str:
     return "\n".join(lines)
 
 
+STATE = "/tmp/graphene.state"  # the exit code and the file list, read back whole (never from stdout)
+END = MARK + "end"
+
+
 def _manifest() -> str:
-    """Every file under /work but .git, with its hash; links marked, never followed."""
+    """Every file under /work but .git, with its hash (links marked, never followed), written to a file
+    in the sandbox after the command's exit code, and closed by an end line. It is read back whole:
+    stdout is capped, and a list cut short would read as files deleted."""
     return (
-        f"echo {MARK}manifest; cd {WORK} && find . -path ./.git -prune -o -type f -print0 | "
-        "xargs -0 -r sha1sum; find . -path ./.git -prune -o -type l -printf 'link %p\\n'"
+        f"{{ cat /tmp/graphene.code 2>/dev/null || echo 0; cd {WORK} && "
+        "find . -path ./.git -prune -o -type f -print0 | xargs -0 -r sha1sum; "
+        f"find . -path ./.git -prune -o -type l -printf 'link %p\\n'; echo {END}; }} > {STATE}"
     )
+
+
+def _state(text: str) -> tuple[int, dict[str, str]] | None:
+    """The exit code and the file list, or None when the list did not arrive whole."""
+    lines = text.rstrip("\n").split("\n")
+    if len(lines) < 2 or lines[-1] != END or not lines[0].strip().lstrip("-").isdigit():
+        return None
+    return int(lines[0]), _parse_manifest("\n".join(lines[1:-1]))
 
 
 def _parse_manifest(text: str) -> dict[str, str]:
@@ -281,7 +296,10 @@ class Sandbox:
         if code != 0:
             raise RuntimeError(f"the sandbox could not be made (exit {code}): {out[-500:]}")
         self.base = self.image
-        self.seen = _parse_manifest(out.split(MARK + "manifest", 1)[-1])
+        state = _state(self.box.read(self.image, STATE).decode("utf-8", "replace"))
+        if state is None:
+            raise RuntimeError("the sandbox was made, and its list of files did not come back whole")
+        self.seen = state[1]
 
     def read(self, rel: str) -> bytes:
         return (self.root / rel).read_bytes()
@@ -294,7 +312,7 @@ class Sandbox:
 
     def run(self, command: str, timeout: int = 300) -> tuple[int, str]:
         q = shlex.quote
-        files, lines = {}, []
+        files, lines = {}, [f"rm -f {STATE} /tmp/graphene.code"]  # never the last command's list, read again
         for k, rel in enumerate(sorted(self.pushed)):  # the executor's own edits, as the leaf's user
             files[f"/tmp/graphene/push/{k}"] = (self.root / rel).read_bytes()
             target = q(f"{WORK}/{rel}")
@@ -307,19 +325,23 @@ class Sandbox:
             f"cd {WORK} && setpriv --reuid={USER} --regid={USER} --init-groups env -i HOME=/home/{USER} "
             f"PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 bash -c {q(command)} > /tmp/graphene.out 2>&1; "
             "echo $? > /tmp/graphene.code",
-            f"echo {MARK}code; cat /tmp/graphene.code; echo {MARK}out; tail -c {OUTPUT} /tmp/graphene.out",
             _manifest(),
+            f"tail -c {OUTPUT} /tmp/graphene.out",  # what the model is shown: its tail, capped anyway
         ]
         began = time.monotonic()
-        image, code, said = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
+        image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
         self.timings.append(time.monotonic() - began)
-        if MARK + "manifest" not in said:
-            return code or 1, f"the sandbox did not answer as expected (exit {code}): {said[-2000:]}"
+        try:
+            state = _state(self.box.read(image, STATE).decode("utf-8", "replace"))
+        except Exception as no:  # a box that cannot be read now: nothing is taken as changed
+            state, output = None, f"{output}\n({type(no).__name__}: {no})"
+        if state is None:  # fail closed: without the whole list, no file is taken as deleted or changed
+            self.image = image
+            return code or 1, (f"{output}\n(the sandbox's list of files did not come back whole; nothing "
+                               "was brought back from this command)")  # fmt: skip
         self.image, self.pushed, self.strays = image, set(), set()
-        head, _, manifest = said.partition(MARK + "manifest")
-        exit_code = int(head.split(MARK + "code", 1)[1].split(MARK + "out", 1)[0].strip() or 1)
-        output = head.split(MARK + "out", 1)[1].lstrip("\n")
-        return exit_code, output + self._bring_back(_parse_manifest(manifest))
+        exit_code, now = state
+        return exit_code, output + self._bring_back(now)
 
     def _bring_back(self, now: dict[str, str]) -> str:
         """What the command changed in the sandbox: what the scope covers comes here, what it does not
