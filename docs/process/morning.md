@@ -5,7 +5,7 @@
 **The blocker, first: this run has had no Token Factory key and no Sandboxes access.**
 - At 01:15 EDT `NEBIUS_API_KEY` was not set in the shell this run works in, and `GET /v1/models`
   answered `401 token is not present`. Neither ConTree's CLI nor its credentials are on the machine.
-- I checked again at every milestone. It was still unset at 04:10.
+- I checked again at every milestone. It was still unset at 05:56, when the run ended.
 - So everything is built against two stand-ins, and the first real run needs only the key:
   - for Token Factory, a scripted fake endpoint (`tests/fake_tokenfactory.py`; it can replay a
     recording, and none exists yet);
@@ -83,12 +83,15 @@ Still open from their list:
 cd ~/Desktop/AllThingsAgenticHackathon && git checkout nemotron && uv sync --all-extras
 open -a Docker                              # the sandbox stand-in
 uv run pytest -q tests/test_escape.py tests/test_executor.py tests/test_planner.py tests/test_init.py
+SHOW_DEMO=1 uv run pytest -q -s tests/test_demo_script.py     # the whole demo script, against the fake
 uv run python docs/test/access.py --sandbox docker
+open docs/process/nemotron/demo-draft-standin.gif           # the tape, rendered against the stand-in
 ```
 
 `test_escape.py` is the one to read. A scripted Nemotron executor, in a sandbox, tries every way out
 of its leaf's scope, and every way fails; every write inside the scope succeeds. Section 4 quotes its
-log.
+log. The gif is the storyboard's shape with a scripted model on a tiny repository. It is not Token
+Factory, and it is kept in the diary for that reason.
 
 **With a key**, the Nemotron path end to end on feeds, where the key spends real money (about the
 price of a coffee, going by the fake's token counts; unmeasured):
@@ -96,7 +99,8 @@ price of a coffee, going by the fake's token counts; unmeasured):
 ```
 export NEBIUS_API_KEY=… NEBIUS_PROJECT_ID=…
 uv tool install --editable '.[sandbox]' --force
-docs/proof/nemotron.sh ~/graphene-nemotron
+docs/proof/nemotron.sh ~/graphene-nemotron      # the path in one script
+vhs docs/proof/nemotron.tape                     # the same, on screen, for the video
 ```
 
 ## 3. What waits on you
@@ -211,6 +215,18 @@ docs/proof/nemotron.sh ~/graphene-nemotron
   intent, and never a sibling.
 - **Backlog 7:** Python 3.14 is in CI. One finding goes against the directive: no 3.13 or 3.14 build
   warns about `?N` placeholders. Python 3.12.0 to 3.12.3 do, and those are fixed.
+- **66. Graphene reads no Claude Code transcript** (item 9). The transcript world is deleted, and the
+  modules are named for what they do:
+  - `hooks.py`, the live hooks;
+  - `shell.py`, the shell parser the gate uses;
+  - `repo_root` is in `store.py`.
+
+  `src/graphene_map` lost 731 lines. A review found the map had lost a subagent's task and worktree;
+  both are now read from what the hooks recorded. The full map of what was kept, moved and deleted is
+  `docs/process/nemotron/cut.md`.
+- **67. A leaf in a sandbox forks its commit's checkpoint**, and **68. an executor that cannot work
+  hands its leaf back with the cause**, and **69. only what git shows is read and sent.** All three
+  came from the judges (section 1b).
 
 ## 5. From tomorrow to 30 October
 
@@ -223,41 +239,55 @@ Each step, with its risk.
 | +2 to +4 days | Item 2d: tune on feeds and inventory until 80% land over three runs with accept passing, one lever at a time, rows for each | Nano may land far less than 80%. Report it low and climb the ladder (Super, forks). The directive forbids tuning the number, not the executor. |
 | +5 days | Freeze; report and logs held out; backlog 1 and 2 (five runs each, and the cost curves) | Spend: the ledger caps each night at $30. |
 | +6 days | Backlog 3 (a fifth task from a real repository) and 4 (`--parallel 8`, thirty leaves, in sandboxes) | ConTree's beta cap of 50 operations at once, and rate limits. |
-| by 20 October | The demo run, live; render `docs/proof/nemotron.sh` with VHS; record the video to `docs/demo/STORYBOARD.md` | A flaky live run on camera. Record the terminal from a real run, cut only the waits. |
+| by 20 October | The demo run, live; `vhs docs/proof/nemotron.tape` (two panes, the storyboard's scenes); record the video to `docs/demo/STORYBOARD.md` | A flaky live run on camera. The tape cuts only the waits. |
 | by 25 October | Finish `docs/HACKATHON.md` in your words: numbers, the account of changes, feedback. Export the demo page and enable Pages. | The judges test until 15 December, so the page and the README must keep working. |
 | 30 October, 10:00 PT | Submit on Devpost | Yours. |
 
 ## 6. The map of the code, where it moved
 
-`src/graphene_map/` has 14,017 lines, 24 modules.
+`src/graphene_map/` has 13,540 lines in 23 modules at `a03bf4c`.
 
 New tonight:
-- `tokenfactory.py` (208): the client, `roles` from the live list, the ledger and the cap.
-- `executor.py` (566): the Nemotron executor. `Leaf` holds its tools, `converse` the loop,
-  `fork_and_pick` the forks, `Local` the local placement.
-- `planner.py` (197): the Nemotron planner.
-- `sandbox.py` (349): the ConTree box, the Docker stand-in, layer 2 (`grants`, `setup`), `Sandbox`
-  and `check_in_fork`.
+- `tokenfactory.py` (213): the client, `roles` from the live list, the ledger and the cap.
+- `executor.py` (623): the Nemotron executor.
+  - `Leaf` holds its tools; `converse` is the loop, `fork_and_pick` the forks, `Local` the local
+    placement.
+  - `stop` hands the leaf back when the executor cannot work.
+  - `ALIASES` and `text_calls` cover the call spellings small models use.
+- `planner.py` (205): the Nemotron planner; it reads what git shows.
+- `sandbox.py` (439):
+  - `Contree`, the ConTree box, and `Docker`, its stand-in;
+  - `base` (the commit's checkpoint) and `layer2` (a leaf's permissions);
+  - `Sandbox`, with `.fork` and the whole-list `_state`;
+  - `check_in_fork`.
+
+Moved by the cut (item 9, `docs/process/nemotron/cut.md`):
+- `sources/claude_code.py` is `hooks.py` (415): the live hooks. The transcript backfill is deleted.
+- `attribute.py` is `shell.py` (251).
+- `repo_root` is in `store.py`.
 
 Where old code moved:
 - **`gate.scope_refused`:** the one scope refusal, which the hook and the executor both say.
 - **`plan.run_check`:** the one place a check runs (a clean worktree). `plan.sandboxed` routes a
-  sandbox leaf's check to a fork, and `plan.in_tree` lists what git sees.
-- **`node_record.bill`:** the bill.
+  sandbox leaf's check to a fork, and `plan.in_tree` lists what git shows.
+- **`node_record`:** `bill`; `_own`, a `--parallel` leaf's own commits; `_graded_by_executor`.
 - **`run.named` and `ask.named`:** turn `nemotron`, `claude` and `codex` into commands.
-- **`cli.init`:** the choice (61).
-- **`tui.py`:** folding (the `outline` and `zx` code) and the bill.
+- **`cli.init`:** the choice first (61).
+- **`tui.py`:** folding and the bill.
 
-The harness lives in `docs/test/`:
+The harness is in `docs/test/`:
 - `access.py`: the access check.
-- `bench.py` and `results.py`: the benchmark and its table.
-- `trees/README.md`: how a fixed tree is made.
-- `spikes/harness_there/`: the placement spike.
-- `score_tree.py`: the tree scorer (item 4), when merged.
+- `bench.py` and `results.py`: the benchmark.
+- `score_tree.py` and `trees/README.md`: the fixed trees.
+- `spikes/harness_there/`: the OpenCode placement spike.
 
-The tests are `tests/fake_tokenfactory.py` (the recorded fake), plus `test_tokenfactory`,
-`test_executor`, `test_planner`, `test_escape`, `test_sandbox_contract`, `test_init` and
-`test_demo_export`.
+The screen harness is `docs/screens/`.
+
+The tests:
+- `tests/fake_tokenfactory.py`, the scripted fake (it can replay a recording);
+- `test_tokenfactory`, `test_executor`, `test_planner`, `test_init`, `test_demo_script` and
+  `test_demo_export`;
+- and, with Docker, `test_escape`, `test_sandbox_state` and `test_sandbox_contract`.
 
 ## 7. Questions (only what blocks the next step)
 
@@ -267,15 +297,41 @@ The tests are `tests/fake_tokenfactory.py` (the recorded fake), plus `test_token
 ## Verified, and not
 
 - **Verified.**
-  - The suite is green at every commit that ran it (769 at `f7b3d02` before wave 3). Ruff is
-    clean over the whole repository.
+  - The suite: 758 tests at `a03bf4c`, green, nothing skipped with Docker running. Ruff is clean over
+    the whole repository.
+  - The wheel installs outside the tree and runs `graphene --version`, and the Nemotron modules
+    import from it.
   - The escape test runs against a real Linux user in Docker.
   - The OpenCode spike ran, with numbers.
-  - The access check runs, and says "no key" truthfully.
-- **Not verified.**
-  - Anything against Token Factory or ConTree: no key.
-  - `docs/proof/nemotron.sh`: its steps are the commands the tests drive, but it has never run.
-  - The VHS render.
+  - `docs/proof/nemotron.sh` runs end to end against the scripted fake (`tests/test_demo_script.py`).
+  - The tape renders.
+  - The access check says "no key" truthfully.
+- **CI.** Two failures in tonight's pushes were environment tests (the hook budget on a macOS
+  runner). Two were real:
+  - a race in the attempt number (fixed at `07c73ab`);
+  - a race in a test's trigger (made deterministic at `a03bf4c`).
+
+  I cancelled the queued runs of superseded commits, so the tip gets CI's verdict. Check it on
+  PR #29.
+- **Not verified.** Anything against Token Factory or ConTree (no key): the real ids and prices,
+  Nemotron's tool calls, ConTree's users, output cap and timings, the live demo, and every number in
+  section 1.
+
+## The diary (item 9)
+
+`docs/process/` is on its own branch, `process-archive`, made with `git subtree split` so its history
+comes too, and pushed. After you merge PR #29, the one command that takes the diary out of `main` is:
+
+```
+git rm -r -q docs/process && git commit -m "the process diary lives on the branch process-archive"
+```
+
+Nothing in the product, the tests or CI reads `docs/process/`. I checked that with `git grep`. Two
+documents name files in it, and those names will point at `process-archive`:
+- `docs/DIRECTION.md` names the directives and past morning files;
+- `docs/screens/README.md` names the polish run's saved screens.
+
+The screen harness moved out to `docs/screens/` first.
 
 ## Rollback
 
@@ -288,10 +344,13 @@ git checkout main && git reset --hard cd13cbe
 
 ## State of every branch
 
-- `nemotron`: this run, pushed, draft PR #29.
-- `main` (GitHub): `cd13cbe`, untouched. Local `main`: `6cece1c`, behind, untouched.
-- Tonight's build branches:
-  - `worktree-wf_cc0667ef-4ad-1` … `-4`, `worktree-wf_649e59d0-fc8-1` and `-2`, and
-    `worktree-agent-a8f2179f59c043d5a`: merged into `nemotron`. Their worktrees are under
-    `.claude/worktrees/`, and they are removed at the end of the run.
-  - Wave 3 (item 9's cut, item 4's scorer) is still running.
+- **`nemotron`:** this run, 73 commits on `origin/main`, pushed. Draft PR #29, description current.
+- **`process-archive`:** `docs/process/` with its history (`git subtree split`), pushed.
+- **`main` (GitHub):** `cd13cbe`, untouched. Local `main`: `6cece1c`, behind, untouched.
+- **Tonight's build branches:** `worktree-wf_cc0667ef-4ad-1` … `-4`, `worktree-wf_649e59d0-fc8-1`
+  and `-2`, `worktree-wf_75600a22-a0a-1` and `-2`, and `worktree-agent-a8f2179f59c043d5a`. All are
+  merged into `nemotron`. Their worktrees are removed and the branches kept (`git branch -d` drops
+  them).
+- **Everything else** (`polish`, `terminal`, `agent/*`, `n*`, …) is as it was.
+- **Docker:** tonight's 195 test checkpoints are pruned. `python:3.12` and the spike's image
+  `graphene-harness-there:opencode-1.18.31` stay.
