@@ -90,9 +90,28 @@ class Fake:
                                   "completion_tokens": len(json.dumps(message)) // 4}  # fmt: skip
                 usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
                 finish = "tool_calls" if message.get("tool_calls") else "stop"
+                if body.get("stream"):  # a harness (OpenCode, through the AI SDK) asks for server-sent events
+                    return self._stream(body, message, usage, finish)
                 choice = {"index": 0, "message": {"role": "assistant", **message}, "finish_reason": finish}
                 self._send(200, {"id": "fake", "object": "chat.completion", "model": body.get("model"),
                                  "choices": [choice], "usage": usage})  # fmt: skip
+
+            def _stream(self, body: dict, message: dict, usage: dict, finish: str) -> None:
+                """The same answer as two chunks (the whole message, then the finish and the usage)."""
+                delta = {"role": "assistant", **{k: v for k, v in message.items() if v is not None}}
+                if delta.get("tool_calls"):
+                    delta["tool_calls"] = [{"index": k, **c} for k, c in enumerate(delta["tool_calls"])]
+                head = {"id": "fake", "object": "chat.completion.chunk", "model": body.get("model")}
+                chunks = [
+                    {**head, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
+                    {**head, "choices": [{"index": 0, "delta": {}, "finish_reason": finish}], "usage": usage},
+                ]
+                data = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b"data: [DONE]\n\n"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
