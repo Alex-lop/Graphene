@@ -244,7 +244,7 @@ Recording and deciding fail apart. If the gate crashes, the call goes through, t
 ## P4. `graphene run`
 
 For each node an agent can reach, in order: Graphene starts the node itself, runs the executor
-command you gave (`--with`, default `claude -p --permission-mode acceptEdits --allowedTools
+command you gave (`--with`, else the one `graphene init` chose (P4c), else `claude -p --permission-mode acceptEdits --allowedTools
 'Bash(graphene *)'`: it may edit and run its own `done` and `release`) with the node's contract as
 its last argument and `GRAPHENE_NODE` in its environment (and `GRAPHENE_EXECUTOR`, the command's
 name, so the executor's own `done` is logged as `run:<name>`, as the run's acts are), waits for the
@@ -294,7 +294,7 @@ so the hooks hold a leaf there as they do in your checkout.
 ## P4a. `graphene ask`
 
 A planner is an executor whose scope is the plan (`ask.py`). It is started as `run` starts an
-executor, with the command the person names (default `claude -p --tools Read,Grep,Glob
+executor, with the command the person names (`--with`, else the one `graphene init` chose, else `claude -p --tools Read,Grep,Glob
 --strict-mcp-config`: it can read and nothing else, and none of the person's MCP servers reach it), `GRAPHENE_PLANNER` in its environment, and a prompt holding the sentence,
 the plan's text and the rules for a leaf. What it prints is read as the plan's text (the last fenced
 block, or else from the first line that reads as one) and added as its proposals; a proposal
@@ -360,6 +360,33 @@ largest Nemotron the list has; its bill goes into the plan's log.
 | Claude Code, with the hooks | `PreToolUse` denies Edit, Write, MultiEdit and NotebookEdit outside the scope, and the shell forms the parser reads (`>`, `tee`, `sed -i`, `mv`, `cp`, `rm`) | nothing more | the check, and git |
 | Codex, or any command | nothing | its own sandbox if you give it one (Codex's `workspace-write` keeps it to the checkout, not the scope) | the check, and git |
 | A person | nothing | nothing | the check, and git |
+
+## P4c. Which planner and which executor
+
+`graphene init` chooses both, once per repository, and keeps them in the store's meta (`planner`,
+`executor`), each spelled as `--with` takes it. At a terminal it asks the person, numbered: Nemotron
+on Token Factory first and the default, then Claude Code, Codex, or a command of your own (read as
+`--with` reads one; one that cannot be read is said so and asked again). Run again, it shows what is
+set, and Enter keeps it. Without a terminal it takes `--planner` and `--executor` and changes only
+what they name; with neither it keeps what is set, and gives what is not Nemotron when Token Factory
+answers, else Claude Code.
+
+Nemotron, chosen at the terminal or as plain `nemotron` in a flag, is written with the ids Token
+Factory's model list gave: the largest of Ultra and Super plans (`nemotron --model <ultra>`), as the
+planner picks when it runs, and the two smallest listed do the leaves, the second on a second attempt
+(`nemotron --model <nano> --model <super> --placement local`). The menu names the sizes it found.
+The placement is `sandbox` when ConTree is set up here (`sandbox.configured`: the SDK imports, and
+`NEBIUS_API_KEY` with `NEBIUS_PROJECT_ID`, or a `contree auth` profile), `local` otherwise. When the
+list could not be read it is plain `nemotron`, which finds its models when it runs. Token Factory is
+asked once, with no retry, and a try waits 10 seconds at most (`tokenfactory.LISTED`). What could not
+be reached (no key, a refused key, no answer, no Nemotron listed) is one line.
+
+`run`, `ask` and `node split` start what was chosen, and so do the screen's `R`, `:ask` and `s`;
+`--with` overrides it for one command. Choosing is the person's, since what is chosen runs with the
+person's permissions and spends on their key: an agent's `--planner` or `--executor` is refused, and
+an agent is never asked, at a terminal or not. An agent's plain `graphene init` still fills a choice
+that is not set with the offer above. The screen's status line names what `R` starts (`R runs 3 ready
+with nemotron`) only where the long form still fits with it.
 
 ## P5. Where each mechanism ends
 

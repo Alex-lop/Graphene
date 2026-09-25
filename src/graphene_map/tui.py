@@ -637,12 +637,14 @@ class Watch(App):
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
+        executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         self.counts = {
             "you": len(tops) + len(yours),
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
             "first": P.plan_first(store),
+            "with": f" with {Path(executor[0]).name}" if executor else "",
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
@@ -745,7 +747,8 @@ class Watch(App):
     def say_status(self) -> None:
         """Two lines, each fitted at a word: the plan (what waits on the person, the executors, what
         R would start, how much is done, plan first), then the moment (what the last command said,
-        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end."""
+        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end. What
+        R starts, when `graphene init` chose it, is named only where the long form still fits with it."""
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
@@ -767,8 +770,9 @@ class Watch(App):
             (c["done"], ""),
             (f"plan first: {first}", ""),
         ]
-        whole = " · ".join(text for text, _ in long)
-        top = fit(long if len(whole) <= room else short, room)
+        named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
+        fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
+        top = fit(fits[0] if fits else short, room)
         said = self.busy or self.message
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))

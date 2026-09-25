@@ -680,8 +680,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         executor: str = typer.Option(
             None,
             "--with",
-            help="The executor: a command that takes a prompt as its last argument. Default: "
-            "claude that may edit files and run graphene; e.g. 'codex exec --sandbox workspace-write'.",
+            help="The executor, for this run: nemotron, claude, codex, or a command that takes a prompt as "
+            "its last argument. Default: the one `graphene init` chose, else claude that may edit files "
+            "and run graphene.",
         ),
         attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
@@ -704,15 +705,16 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail("nothing to run: the plan has no open leaf", 1)
             said_where()  # first: a run changes the plan for as long as it goes
             logs = r / ".graphene" / "runs"
+            template = named(executor or store.meta("executor"))  # --with, else the repo's (`graphene init`)
             since = len(store.node_log())  # what this run did is what the log says after this
             try:
                 if parallel > 1:
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), parallel, named(executor),
+                        lambda: open_store(r), r, checkout(), parallel, template,
                         attempts, node or None, out, logs,
                     )  # fmt: skip
                 else:
-                    run_plan(store, checkout(), named(executor), attempts, node or None, out, logs)
+                    run_plan(store, checkout(), template, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
@@ -729,7 +731,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                  "  propose the tree yourself: graphene plan propose - <<'EOF' … EOF", 1)  # fmt: skip
 
         def go(store):
-            said = ask(store, checkout(), sentence, named(executor), about, split, out)
+            template = named(executor or store.meta("planner"))  # --with, else the repo's (`graphene init`)
+            said = ask(store, checkout(), sentence, template, about, split, out)
             for line in said:
                 out(line)
             if said:
@@ -746,7 +749,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         executor: str = typer.Option(
             None,
             "--with",
-            help="The planner, a command taking a prompt last. Default: claude with read-only tools.",
+            help="The planner, for this question: nemotron, claude, codex, or a command taking a prompt "
+            "last. Default: the one `graphene init` chose, else claude with read-only tools.",
         ),
         about: str = typer.Option(None, "--about", help="A node the question is about (one that came back)."),
     ) -> None:
@@ -1037,7 +1041,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     def split(
         node_id: str = typer.Argument(...),
         executor: str = typer.Option(
-            None, "--with", help="The planner. Default: claude with read-only tools."
+            None, "--with", help="The planner. Default: the one `graphene init` chose, else claude."
         ),
     ) -> None:
         """Ask the planner to cut a leaf into smaller leaves under it, as proposals for you to prune."""
