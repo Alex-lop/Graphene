@@ -1085,3 +1085,182 @@ def test_search_finds_a_row_by_the_word_its_state_reads_as(repo):
     every_state(repo)
     seen, _ = watch(repo, ["slash", *"came back", "enter"])
     assert seen["cursor"] == "docs"
+
+
+# -- folding (the Nemotron directive, item 7): a thirty-leaf plan at 80x24 --------------------------
+
+
+def land(repo, store, node_id, path, text):
+    """A leaf done by an executor, its work committed, as a run leaves it."""
+    import subprocess
+
+    plan.start(store, node_id, RUN, repo)
+    (repo / path).write_text(text)
+    plan.finish(store, node_id, RUN, checkout=repo)
+    git = ["git", "-c", "user.email=t@e.com", "-c", "user.name=T"]
+    subprocess.run([*git, "add", path], cwd=repo, check=True)
+    subprocess.run([*git, "commit", "-qm", node_id], cwd=repo, check=True)
+
+
+def api_done(repo):
+    """TREE accepted, and both leaves under the API done: a finished subtree beside a ready leaf."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        land(repo, store, "docs", "README.md", "users come back with their ids\n")
+
+
+def rows_of(seen):
+    return [r.rstrip() for r in seen["tree"] if r.strip()]
+
+
+def test_a_finished_subtree_opens_folded_and_its_row_counts_its_leaves(repo):
+    """A folded row read `done` or `2/5 done`, the same as open: nothing said what was inside. Now its
+    word, in the word's column, is how many leaves are inside and in which states."""
+    api_done(repo)
+    for size in SIZES:
+        seen, _ = watch(repo, ["j"], size=size)
+        rows = rows_of(seen)
+        api, schema = (next(r for r in rows if title in r) for title in ("the API", "the schema"))
+        assert "▶ ✓ the API" in api and api.endswith("  2 done"), rows
+        assert not any("users returns ids" in r for r in rows)
+        assert api.index("  api ") == schema.index("  schema ")  # ids under ids
+        assert api.index("2 done") == schema.index("ready")  # words under words
+        assert "za unfold" in seen["status"]
+        opened, _ = watch(repo, ["j", "z", "o"], size=size)
+        rows = rows_of(opened)
+        assert next(r for r in rows if "the API" in r).endswith("  done")  # open: its own word again
+        assert any("users returns ids" in r for r in rows) and "za unfold" not in opened["status"]
+        goal, _ = watch(repo, ["z", "a"], size=size)  # the goal's row folds like any other: every leaf
+        assert rows_of(goal) == [rows_of(goal)[0]] and rows_of(goal)[0].endswith("  1 ready, 2 done")
+        assert "za unfold" in goal["status"]
+
+
+def test_a_folded_row_says_whose_move_is_inside_first_and_counts_the_rest(repo):
+    """The states inside, as many as fit whole, whose move first (the person's, then the executors'),
+    the rest as `n more`; each state in its own colour, the glyph the node's own."""
+    from graphene_map.tui import inside, row
+
+    assert inside(["done"] * 12) == "12 done"
+    assert inside(["done", "running", "done", "done"]) == "1 running, 3 done"
+    assert inside(["done", "running", "came back", "waiting", "proposed", "done"]) == "1 came back, 5 more"
+    label = row("○", "0/5 done", "the API", "api", 60, 3, 19, inside="1 came back, 4 more")
+    styles = {label.plain[s.start : s.end].strip(): str(s.style) for s in label.spans}
+    assert styles.get("1 came back") == "magenta" and "4 more" not in styles and "○" not in styles
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = watch(repo, ["j", "z", "c"], size=size)  # the API: running, came back, waiting, …
+        rows = rows_of(seen)
+        api = next(r for r in rows if "the API" in r)
+        assert api.endswith("  1 came back, 4 more") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
+        assert rows[0].index("1/8 done") == api.index("1 came back")  # the goal's word, above it
+        seen, _ = at(repo, "schema", size, keys=["z", "c"])
+        schema = next(r for r in rows_of(seen) if "  schema " in r)
+        assert schema.endswith("  1 review, 2 more"), schema
+
+
+def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopened(repo):
+    """It folded only when the screen opened: a sub-goal that finished while you watched stayed open,
+    with all its leaves. A fold you make yourself stays until something inside changes."""
+    from graphene_map.tui import _walk
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+
+    async def before(app, pilot):
+        def api():
+            return next(n for n in _walk(app.tree.root) if n.data == "api")
+
+        async def then(act):
+            with Store.open(repo) as store:
+                act(store)
+            app.refresh_plan()
+            await pilot.pause()
+
+        assert api().is_expanded  # docs is still to do
+        await then(lambda s: land(repo, s, "docs", "README.md", "ids\n"))
+        assert not api().is_expanded  # it finished while the screen was open
+        await then(lambda s: plan.reopen(s, "docs", plan.Caller("alex", True), "the example is wrong"))
+        assert api().is_expanded  # something inside moved: open again
+        await then(lambda s: land(repo, s, "docs", "README.md", "ids, with an example\n"))
+        assert not api().is_expanded
+        app.tree.move_cursor(api())
+        for key in ("z", "o"):
+            await pilot.press(key)
+        await then(lambda s: None)
+        assert api().is_expanded  # the person opened it: it stays open
+
+    watch(repo, [], before=before)
+
+
+def test_zx_folds_as_the_screen_opened_and_keeps_the_cursor_in_sight(repo):
+    """vim's zx: the folds as they were when the screen opened, then the row under the cursor shown."""
+    api_done(repo)
+    seen, _ = watch(repo, ["z", "R", "z", "x"])
+    rows = rows_of(seen)
+    assert next(r for r in rows if "the API" in r).endswith("  2 done")
+    assert not any("users returns ids" in r for r in rows)
+    seen, _ = watch(repo, ["z", "R", "j", "j", "z", "x"])  # on ids, inside the finished subtree
+    assert seen["cursor"] == "ids" and any("users returns ids" in r for r in rows_of(seen))
+
+
+def thirty(repo):
+    """Six sub-goals of five leaves: one finished, one with a leaf that came back, one with a
+    proposal under it, three ready."""
+    alex = plan.Caller("alex", True)
+    with Store.open(repo) as store:
+        plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
+        plan.propose(store, [
+            item
+            for s in range(6)
+            for item in ({"id": f"s{s}", "title": f"the part number {s} of the importer"}, *(
+                {"id": f"s{s}-{k}", "title": f"leaf {k} of part {s}", "parent": f"s{s}",
+                 "scope": [f"f{s}{k}.py"], "check": "true"} for k in range(5)))
+        ], alex)  # fmt: skip
+        for k in range(5):
+            land(repo, store, f"s0-{k}", f"f0{k}.py", "x\n")
+        plan.start(store, "s1-0", SESSION, repo)
+        plan.release(store, "s1-0", SESSION, "it needs the sku table, which is outside its scope")
+        plan.propose(store, [{"id": "s2-new", "title": "an empty row is skipped", "parent": "s2",
+                              "scope": ["n.py"], "check": "true"}], SESSION)  # fmt: skip
+
+
+def test_a_thirty_leaf_plan_reads_at_80x24_as_its_outline(repo):
+    """A tree taller than the screen, finished subtrees folded, opens as its outline: each sub-goal one
+    row that counts what is inside, what waits on the person first, and the goal's pane names it. At
+    120x36 it fits, and opens with only the finished subtree folded."""
+    thirty(repo)
+    seen, _ = watch(repo, [])
+    rows = rows_of(seen)
+    words = ["5 done", "1 came back, 4 ready", "1 proposed, 5 ready", "5 ready", "5 ready", "5 ready"]
+    words = {f"s{s}": w for s, w in enumerate(words)}
+    assert len(rows) == 7 and seen["sideways"] == 0, rows  # the goal and its six sub-goals, whole
+    for i, word in words.items():
+        mine = next(r for r in rows if f"  {i} " in r)
+        assert mine.lstrip("├└│ ").startswith("▶") and mine.endswith(f"  {word}"), (i, mine)
+    assert "s1-0 came back" in " ".join(" ".join(seen["side"]).split())
+    wide, _ = watch(repo, [], size=(120, 36))
+    rows = rows_of(wide)
+    assert len(rows) == 1 + 6 + 5 * 5 + 1 and any("leaf 0 of part 1" in r for r in rows)
+    assert next(r for r in rows if "  s0 " in r).endswith("  5 done")
+
+
+def test_help_lists_the_fold_keys(repo):
+    proposed(repo)
+    for size in SIZES:
+
+        async def before(app, pilot):
+            await pilot.press("question_mark")
+            await pilot.pause()
+            text = "\n".join(shown(app, app.screen.query_one("#help").region))
+            for key in ("za", "zo zc", "zR zM", "zx"):
+                assert key in text, (key, text)
+
+        watch(repo, [], size=size, before=before)
+    from graphene_map.tui import HELP
+
+    fold = dict(dict(HELP)["fold"])
+    assert "counts the leaves inside" in fold["zo zc"] and "as it opened" in fold["zx"]

@@ -54,8 +54,9 @@ HELP = (
         ("j k", "down, up"), ("gg G", "the goal, the last row"), ("/", "search; n the next match"),
         ("Esc", "ends a search, a selection, a pane"),
     )),
-    ("fold", (("za", "fold or unfold here (on the goal: all)"), ("zo zc", "unfold, fold"),
-              ("zR zM", "all open, all closed"))),
+    ("fold", (("za", "fold or unfold here (on the goal: all)"),
+              ("zo zc", "unfold, fold; a folded row counts the leaves inside by state"),
+              ("zR zM", "all open, all closed"), ("zx", "as it opened: what is done folded, the rest open"))),
     ("shape", (
         ("y", "accept a proposal; sign off a leaf in review; your own leaf is done"),
         ("d", "drop"), ("e", "edit its contract in $EDITOR"), ("E", "edit it with what is under it, as text"),
@@ -98,6 +99,8 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "to fill in": ["s split it (the planner)", "e edit"],
 }
 OFFERED = {"w": "w widen", "b": "b sibling", "n": "n wait"}
+FOLDED = 20  # the columns a folded row's count of states takes, as a rule: whole states, the rest "n more"
+WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waiting", "to fill in", "done")
 
 
 def _cli(argv: list[str]) -> tuple[int, str]:
@@ -122,10 +125,13 @@ def _cli(argv: list[str]) -> tuple[int, str]:
 # -- how a row reads ---------------------------------------------------------------------------------
 
 
-def row(glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False) -> Text:
+def row(
+    glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside=""
+) -> Text:
     """One row: glyph, the title cut at a word, the id (dim) and the state word in its colour, in
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
-    what the row may take; an id is never cut, the title gives way."""
+    what the row may take; an id is never cut, the title gives way. ``inside``: a folded row's
+    count of its leaves by state, in the word's column, each state in its own colour."""
     colour = P.look(word)[1] if word else ""
     title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), 4)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
@@ -135,8 +141,29 @@ def row(glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, wo
     out.append(T.elide(title, title_w).ljust(title_w), "bold" if bold else "")
     if ids and node_id:
         out.append(f"  {node_id.ljust(ids)}", "dim")
-    out.append(f"  {word.ljust(words)}", colour)
+    if not inside:
+        out.append(f"  {word.ljust(words)}", colour)
+        return out
+    out.append("  ")
+    for k, piece in enumerate(inside.split(", ")):  # `1 came back`: the state after the count, its colour
+        out.append(", " if k else "")
+        out.append(piece, P.look(piece.partition(" ")[2])[1])
+    out.append(" " * (words - len(inside)))
     return out
+
+
+def inside(words: list[str]) -> str:
+    """What a folded row says in its word's column: how many leaves are inside and in which states,
+    whose move first (`1 came back, 4 more`, `12 done`), as many whole states as fit FOLDED; the
+    rest is counted, never cut."""
+    order = sorted(set(words), key=lambda w: WHOSE.index(w) if w in WHOSE else len(WHOSE))
+    counts = [(words.count(w), w) for w in order]
+    for k in range(len(counts), 0, -1):
+        rest = sum(n for n, _ in counts[k:])
+        said = ", ".join([f"{n} {w}" for n, w in counts[:k]] + ([f"{rest} more"] if rest else []))
+        if len(said) <= FOLDED or k == 1:
+            return said
+    return ""
 
 
 def hanging(said: str, wide: int) -> Text:
@@ -354,9 +381,10 @@ class PlanTree(Tree[str]):
         "zc": "close",
         "zR": "open_all",
         "zM": "close_all",
+        "zx": "app.fold_as_opened",
     }
     pending = ""
-    rows: dict = {}  # a node's data (None: the goal) -> (glyph, word, title, id, bold)
+    rows: dict = {}  # a node's data (None: the goal) -> (glyph, word, title, id, bold, inside when folded)
     ids = words = 0  # the widths of the id column and of the state column
     chosen: frozenset = frozenset()  # a visual selection, drawn reversed
 
@@ -372,8 +400,8 @@ class PlanTree(Tree[str]):
         if said is None:
             return super().render_label(node, base_style, style)
         wide = self._room(node)
-        glyph, word, title, node_id, bold = said
-        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold)
+        glyph, word, title, node_id, bold, folded = said
+        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded)
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)
@@ -536,6 +564,7 @@ class Watch(App):
         self.runs: list[subprocess.Popen] = []
         self.first = True
         self.known: set[str] = set()
+        self.complete: set[str] = set()  # the sub-goals whose leaves were all done when the tree was built
         self.files: list[str] = []  # what git tracks, for the check that names a missing file
         self.files_at = 0.0
         self.nodes: list[P.Node] = []
@@ -667,14 +696,25 @@ class Watch(App):
         self.show_detail(store)
 
     def relabel(self, nodes: list[P.Node], under: dict, goal_word: str, goal: str) -> None:
+        """Each row's cells. A folded row's word is what is inside it (`inside`), so a folded
+        sub-goal says whether anything in it is the person's move without being opened."""
         tree = self.tree
+        shut = {t.data for t in [tree.root, *_walk(tree.root)] if t.allow_expand and not t.is_expanded}
+        goals = P.kids(nodes)  # a leaf with only proposals drawn under it keeps its own word
+
+        def folded(node_id: str | None) -> str:
+            if node_id not in shut or (node_id is not None and not goals.get(node_id)):
+                return ""
+            below = nodes if node_id is None else P.below(node_id, nodes)
+            return inside([self.words[c.id] for c in below if not under.get(c.id)])
+
         rows = {
-            n.id: (P.look(self.words[n.id])[0], self.words[n.id], n.title, n.id, bool(under.get(n.id)))
+            n.id: (P.look(w := self.words[n.id])[0], w, n.title, n.id, bool(under.get(n.id)), folded(n.id))
             for n in nodes
         }
-        rows[None] = (P.look(goal_word)[0], goal_word, goal, "", True)
+        rows[None] = (P.look(goal_word)[0], goal_word, goal, "", True, folded(None))
         ids = max((len(n.id) for n in nodes), default=0)
-        words = max((len(w) for w in [*self.words.values(), goal_word]), default=0)
+        words = max(len(r[5] or r[1]) for r in rows.values())  # what each row shows in the word's column
         chosen = frozenset(self.chosen()) if self.anchor is not None else frozenset()
         if (rows, ids, words, chosen) != (tree.rows, tree.ids, tree.words, tree.chosen):
             tree.rows, tree.ids, tree.words, tree.chosen = rows, ids, words, chosen
@@ -719,21 +759,25 @@ class Watch(App):
         was_open = {n.data for n in _walk(tree.root) if n.is_expanded}
         cursor, at_goal = self.selected(), tree.cursor_node is tree.root
         tree.clear()
-        placed = {}
+        placed, finished = {}, set()
         by_id = {n.id: n for n in nodes}
         queue = [n for n in nodes if n.parent not in by_id]  # the tops, then each one's children
         while queue:
             node = queue.pop(0)
             parent = placed.get(node.parent) if node.parent in by_id else tree.root
             has_kids = bool(under.get(node.id))
-            finished = has_kids and all(c.state == P.DONE for c in P.below(node.id, nodes))
-            opened = (not finished) if self.first else node.id in was_open or node.id not in self.known
+            if has_kids and all(c.state == P.DONE for c in P.below(node.id, nodes)):
+                finished.add(node.id)
+            # a subtree folds when it finishes and opens when it stops being finished (a leaf in it
+            # reopened, a new one added); otherwise it stays as the person left it
+            moved = node.id not in self.known or (node.id in finished) != (node.id in self.complete)
+            opened = node.id not in finished if moved else node.id in was_open
             placed[node.id] = parent.add(Text(node.title), data=node.id, expand=opened, allow_expand=has_kids)
             queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
         tree.root.allow_expand = bool(nodes)
+        self.known, self.complete = {n.id for n in nodes}, finished
         if self.first:
-            tree.root.expand()  # the goal's row starts open, as every unfinished sub-goal does
-        self.known = {n.id for n in nodes}
+            self.fold_as_opened()
         self.first = False
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
         if cursor in placed and not at_goal:
@@ -741,6 +785,32 @@ class Watch(App):
         elif tree.cursor_line < 0:
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
+
+    def fold_as_opened(self) -> None:
+        """The folds the tree opens with, and zx puts back: a subtree whose leaves are all done is
+        folded, the rest is open; a tree still taller than the screen is folded to its outline, each
+        sub-goal under the goal one row that counts what is inside (a thirty-leaf plan at 80x24).
+        Then, as vim's zx does, the row under the cursor is shown."""
+        tree, cursor = self.tree, self.tree.cursor_node
+        with self.prevent(Tree.NodeExpanded, Tree.NodeCollapsed):  # one redraw after, not one a node
+            for node in _walk(tree.root):
+                if node.allow_expand:
+                    (node.collapse if node.data in self.complete else node.expand)()
+            tree.root.expand()
+            if tree.last_line + 1 > self.size.height - 3:
+                for top in tree.root.children:
+                    top.collapse_all()
+            up = cursor.parent if cursor is not None else None
+            while up is not None:
+                up.expand()
+                up = up.parent
+        _ = tree.last_line
+        if cursor is not None:
+            tree.move_cursor(cursor)
+
+    def action_fold_as_opened(self) -> None:
+        self.fold_as_opened()
+        self.refresh_plan()
 
     def say_status(self) -> None:
         """Two lines, each fitted at a word: the plan (what waits on the person, the executors, what
@@ -795,14 +865,17 @@ class Watch(App):
             return [":ask what you want", *tail]
         if self.on_goal():
             keys = ["y accept it all"] if self.counts.get("you") else ["R run all ready"]
-            return [*keys, "E edit the plan as text", "za fold all", *tail]
+            fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
+            return [*keys, "E edit the plan as text", fold, *tail]
         word = self.word(self.selected())
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             return [*offers, "? ask the planner", "Enter record", "q quit"]
+        node = self.tree.cursor_node
+        shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
-            return [*KEYS[word], *tail]
-        return ["za fold", "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
+            return [*shut, *KEYS[word], *tail]
+        return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
         return self.offered.get(self.selected() or "", [])
