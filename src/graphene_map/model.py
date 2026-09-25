@@ -79,10 +79,3 @@ class Commit:
     event_id: str | None = None  # the Bash call whose response names the SHA
     origin_sha: str | None = None  # the commit a recorded cherry-pick copied
     files: list[tuple[str, str | None]] = field(default_factory=list)  # (repo-relative path, status)
-
-
-@dataclass(slots=True)
-class DebriefRun:
-    id: int
-    session_ids: list[str]
-    timestamp: str

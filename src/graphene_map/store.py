@@ -8,7 +8,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from .model import Agent, Commit, DebriefRun, Prompt, Session, ToolEvent
+from .model import Agent, Commit, Prompt, Session, ToolEvent
 
 TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
 RESPONSE_CAP = 256 * 1024
@@ -587,61 +587,6 @@ class Store:
 
     def set_meta(self, key: str, value: str | None) -> None:
         self.conn.execute("INSERT OR REPLACE INTO plan_meta (key, value) VALUES (?, ?)", (key, value))
-
-    # -- explanations -------------------------------------------------------------------------
-
-    def set_explanation(
-        self,
-        prompt_id: str,
-        path: str,
-        text: str,
-        source: str,
-        created_at: str,
-        model: str | None = None,
-    ) -> None:
-        self.conn.execute(
-            "INSERT OR REPLACE INTO explanations (prompt_id, path, text, source, created_at, model) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (prompt_id, path, text, source, created_at, model),
-        )
-
-    def explanation(self, prompt_id: str, path: str) -> tuple[str, str, str | None] | None:
-        """(sentence, who wrote it, which model wrote it if any)."""
-        row = self.conn.execute(
-            "SELECT text, source, model FROM explanations WHERE prompt_id = ? AND path = ?",
-            (prompt_id, path),
-        ).fetchone()
-        return (row[0], row[1], row[2]) if row else None
-
-    # -- debrief runs -------------------------------------------------------------------------
-
-    def add_debrief_run(self, session_ids: list[str], timestamp: str) -> DebriefRun:
-        cur = self.conn.execute(
-            "INSERT INTO debrief_runs (session_ids, timestamp) VALUES (?, ?)",
-            (json.dumps(session_ids), timestamp),
-        )
-        return DebriefRun(int(cur.lastrowid), list(session_ids), timestamp)
-
-    def last_debrief_run(self) -> DebriefRun | None:
-        row = self.conn.execute("SELECT * FROM debrief_runs ORDER BY id DESC LIMIT 1").fetchone()
-        return DebriefRun(row["id"], json.loads(row["session_ids"]), row["timestamp"]) if row else None
-
-    def recent_paths(self, limit: int = 5) -> list[tuple[str, str]]:
-        """(repo-relative path, last time it was touched), newest first: what `why` suggests."""
-        rows = self.conn.execute(
-            "SELECT file_path, MAX(timestamp) AS last FROM tool_events "
-            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%' "
-            "GROUP BY file_path ORDER BY last DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return [(r["file_path"], r["last"]) for r in rows]
-
-    def recorded_path_count(self) -> int:
-        row = self.conn.execute(
-            "SELECT COUNT(DISTINCT file_path) FROM tool_events "
-            "WHERE file_path IS NOT NULL AND file_path NOT LIKE '/%'"
-        ).fetchone()
-        return int(row[0])
 
 
 def _session(r: sqlite3.Row) -> Session:

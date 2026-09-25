@@ -385,7 +385,7 @@ def build():
                 nothing_to_draw(r)
             refresh_commits(store, r, [])
             try:
-                ids = [i for one in session or [None] for i in select_sessions(store, one, None)]
+                ids = [i for one in session or [None] for i in select_sessions(store, one)]
             except ValueError as exc:
                 fail(str(exc))
             if as_json:

@@ -152,18 +152,6 @@ def test_a_huge_write_keeps_its_path_and_its_content_column(tmp_path):
     assert back.new_content == content  # the diff is computed from this column, so it is kept whole
 
 
-def test_explanations_and_debrief_runs(tmp_path):
-    with Store.open(tmp_path) as store:
-        assert store.last_debrief_run() is None
-        run = store.add_debrief_run(["s1", "s2"], "t")
-        assert store.last_debrief_run() == run
-        store.set_explanation("p1", "a.py", "Edited a.py", "null", "t")
-        assert store.explanation("p1", "a.py") == ("Edited a.py", "null", None)
-        store.set_explanation("p1", "a.py", "Better", "claude", "t2", "haiku")
-        assert store.explanation("p1", "a.py") == ("Better", "claude", "haiku")
-        assert store.explanation("p1", "zzz") is None
-
-
 def test_ids_are_scoped_to_their_session(tmp_path):
     with Store.open(tmp_path) as store:
         for sid in ("a", "b"):
