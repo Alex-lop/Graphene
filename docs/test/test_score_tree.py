@@ -87,3 +87,62 @@ def test_each_score_names_what_fails_it_and_the_row_carries_the_tree_the_planner
     assert second["fail_after"] is None and second["counts"]["checks_failing_after"] is None
     assert second["planner"] == {"prompt": [2], "model": []}
     assert "checks failing after" not in capsys.readouterr().out
+
+
+def one_leaf(tmp_path, monkeypatch, files: dict, intent: list[str], scope: str, check: str = "",
+             after: bool = False) -> dict:  # fmt: skip
+    """score() on a repo of `files` and a tree of one leaf `x`; `after` scores the untouched repo as done."""
+    monkeypatch.setitem(make_task.TASKS, "tiny", {".gitignore": ".graphene/\n", **files})
+    build = lambda d: make_task.build("tiny", d)  # noqa: E731
+    done = None
+    if after:
+        build(done := tmp_path / "after")
+    text = f"goal: g\n\n- x  [x]\n    scope: {scope}\n" + (f"    check: {check}\n" if check else "")
+    return score_tree.score(text, intent, build, done)
+
+
+A = {"app/a.py": "", "app/b.py": ""}
+
+
+def test_a_scope_reaches_an_intent_glob_by_a_new_path_whatever_else_is_there(tmp_path, monkeypatch):
+    for files, intent, scope in [
+        (A, ["docs/**"], "docs/new/**"),
+        ({**A, "docs/old.md": ""}, ["docs/**"], "docs/new/**"),  # the same, with a file under docs/
+        ({**A, "tests/test_a.py": ""}, ["tests/**", "app/**"], "app/a.py, tests/test_json_*.py"),
+        ({**A, "docs/old.txt": ""}, ["docs/**"], "**/*.md"),  # docs/new.md, whose name neither spells
+        (A, ["docs/**"], "docs"),  # src/api, src/api/ and src/api/** mean the same (plan._pattern)
+        (A, ["docs/**"], "docs/"),
+        (A, ["docs"], "docs/**"),
+    ]:
+        got = one_leaf(tmp_path, monkeypatch, files, intent, scope)
+        assert got["unreached"] == [], (intent, scope)
+        assert got["overreach"] == ({"x": ["**/*.md"]} if scope == "**/*.md" else {}), (intent, scope)
+    # a path the intent takes back out reaches nothing, and is a path past the intent
+    got = one_leaf(tmp_path, monkeypatch, {"ingest/csvfeed.py": ""}, ["ingest/**", "!ingest/csvfeed.py"],
+                   "ingest/csvfeed.py")  # fmt: skip
+    assert got["unreached"] == ["ingest/**"] and got["overreach"] == {"x": ["ingest/csvfeed.py"]}
+
+
+def test_a_scope_glob_that_names_nothing_outside_the_intent_is_overreach(tmp_path, monkeypatch):
+    got = one_leaf(tmp_path, monkeypatch, A, ["app/**"], "app/a.py, newpkg/**, app/new.py")
+    assert got["overreach"] == {"x": ["newpkg/**"]} and got["counts"]["overreaching_leaves"] == 1
+    assert got["names_nothing"] == {"x": ["newpkg/**", "app/new.py"]}
+
+
+def test_a_leaf_with_no_check_passes_at_base_and_after_as_bench_counts_it(tmp_path, monkeypatch):
+    got = one_leaf(tmp_path, monkeypatch, A, ["app/**"], "app/a.py", after=True)
+    assert got["pass_at_base"] == ["x"] and got["fail_after"] == []
+
+
+def test_after_that_is_not_a_repos_top_is_refused_and_no_row_is_written(tmp_path, monkeypatch, capsys):
+    monkeypatch.setitem(make_task.TASKS, "tiny", {".gitignore": ".graphene/\n", **A})
+    (tmp_path / "tasks" / "tiny").mkdir(parents=True)
+    (tmp_path / "tasks" / "tiny" / "intent_globs.txt").write_text("app/**\n")
+    (plan := tmp_path / "tiny.plan").write_text("goal: g\n\n- x  [x]\n    scope: app/a.py\n    check: true\n")
+    make_task.build("tiny", repo := tmp_path / "repo")
+    (rundir := tmp_path / "rundir").mkdir()
+    scores = tmp_path / "scores.jsonl"
+    argv = ["tiny", "--plan", str(plan), "--tasks", str(tmp_path / "tasks"), "--scores", str(scores)]
+    for bad in (tmp_path / "no-such-repo", rundir, repo / "app"):
+        assert score_tree.main([*argv, "--after", str(bad)], build=lambda d: make_task.build("tiny", d)) == 2
+        assert str(bad) in capsys.readouterr().out and not scores.exists()

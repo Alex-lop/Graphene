@@ -8,16 +8,20 @@ The plan is its text, as `graphene plan --text` prints it (by default docs/test/
 Its leaves are scored with Graphene's own code:
 
 - **coverage**: every glob of the task's intent_globs.txt that no leaf's scope reaches. A glob is
-  reached when a path it names (a file of the task's repo, or a path a scope or the intent spells out)
-  is inside the intent and inside some leaf's scope (`plan.in_scope`); a glob that names no such path
-  is reached when a scope's globs may meet it (`run.may_collide`);
-- **overreach**: per leaf, the repo's files and the new paths its scope spells out that no intent glob
-  covers; and, apart, the scope globs that name nothing in the repo (new files, or a wrong guess);
+  reached when a path it names and the intent keeps is inside some leaf's scope (`plan.in_scope`):
+  a file of the task's repo, or a path a glob of the intent or of a scope names whether or not it
+  exists (each wildcard read as `x`, a `**/` also as each directory a glob names), so a leaf's
+  `tests/test_json_*.py` reaches `tests/**` whatever else is in tests/;
+- **overreach**: per leaf, the repo's files its scope covers and no intent glob does, and its scope
+  globs that name nothing in the repo and lie outside the intent (`newpkg/**`; `docs` is `docs/**`,
+  as `plan._pattern` reads it). All the scope globs that name nothing (new files, or a wrong guess)
+  are listed apart, inside the intent or not;
 - **overlap**: pairs of leaves whose scopes share a path (`plan.overlap`) or whose globs may meet
   (`run.may_collide`, which is what makes `graphene run --parallel` hold one of them back);
 - **checks**: every leaf's check, run with `plan.run_check` at the base commit of a repo built fresh
   with make_task.py (a check that passes there is not a check), and with --after in a finished run's
-  repo (one bench.py left), where each should pass. A leaf with no check passes, as bench.py counts it.
+  repo (one bench.py left, refused unless it is a git checkout's top), where each should pass. A leaf
+  with no check passes, at base and after, as bench.py counts it.
 
 With --store (the repo where the planner made the tree), the planner's model and prompt version come
 from the plan's log (its `usage` rows); else from the flags. The report is printed, and one JSON row
@@ -32,6 +36,7 @@ import argparse
 import hashlib
 import itertools
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -61,10 +66,15 @@ def leaves(text: str) -> dict[str, plan_text.Line]:
     return {ln.id or ln.title: ln for k, ln in enumerate(lines) if k not in over}
 
 
-def spelled(globs: list[str]) -> list[str]:
-    """The paths globs spell out: those with no wildcard, not taken out."""
-    plain = [g for g in globs if g[:1] != "!" and not any(c in g for c in "*?")]
-    return [g.strip().removeprefix("./").rstrip("/") for g in plain]
+def readings(glob: str, dirs: set[str]) -> list[str]:
+    """Paths a glob names, whether or not they exist: each wildcard read as `x`, and a `**/` also as
+    each of `dirs` it may stand for (`**/*.md` names docs/x.md when docs is one)."""
+    # ponytail: a witness, not an intersection of globs: two that meet only at a path neither's reading
+    # is (`src/*/api.py` and `src/v2/**`) do not meet here; intersect their patterns if a real tree needs it
+    glob = glob.strip().removeprefix("./")
+    head, cross, rest = (glob + "**" if glob.endswith("/") else glob).partition("**/")
+    heads = [head, *(d + "/" for d in dirs if cross and (d + "/").startswith(head))]
+    return [re.sub(r"\*\*|[*?]", "x", h + rest) for h in heads]
 
 
 def planner_of(store_repo: Path | None, prompt: int | None, model: str | None) -> dict:
@@ -90,24 +100,21 @@ def score(text: str, intent: list[str], build: Callable[[Path], str], after: Pat
         at_base = [k for k, ln in tree.items() if not ln.check or P.run_check(ln.check, repo)[0]]
     fail_after = None
     if after is not None:
-        fail_after = [k for k, ln in tree.items() if not (ln.check and P.run_check(ln.check, after)[0])]
+        fail_after = [k for k, ln in tree.items() if ln.check and not P.run_check(ln.check, after)[0]]
 
-    def names(glob: str, among) -> list[str]:
-        return [p for p in among if P.in_scope(p, [glob])]
+    def past_intent(glob: str) -> bool:  # a glob that names nothing: `docs` also reads as `docs/**`
+        path = readings(glob, set())[0]
+        return not (P.in_scope(path, intent) or P.in_scope(path + "/x", intent))
 
-    new = {k: [p for p in spelled(ln.scope) if not names(p, files)] for k, ln in tree.items()}
-    paths = {*files, *spelled(intent), *(p for ps in new.values() for p in ps)}
-    unreached = []
-    for g in (g for g in intent if g[:1] != "!"):
-        named = [p for p in names(g, paths) if P.in_scope(p, intent)]
-        if named:
-            reached = any(P.in_scope(p, ln.scope) for p in named for ln in tree.values())
-        else:  # it names nothing yet: whether the globs themselves may meet
-            reached = any(may_collide([g], ln.scope) for ln in tree.values())
-        unreached += [] if reached else [g]
-    past = {k: [p for p in sorted({*files, *new[k]}) if P.in_scope(p, ln.scope) and not P.in_scope(p, intent)]
-            for k, ln in tree.items()}  # fmt: skip
-    empty = {k: [g for g in ln.scope if g[:1] != "!" and not names(g, files)] for k, ln in tree.items()}
+    globs = [g for g in [*intent, *(g for ln in tree.values() for g in ln.scope)] if g[:1] != "!"]
+    dirs = {re.split(r"[*?]", g)[0].rpartition("/")[0] for g in globs} - {""}
+    kept = [p for p in {*files, *(p for g in globs for p in readings(g, dirs))} if P.in_scope(p, intent)]
+    unreached = [g for g in intent if g[:1] != "!" and not any(
+        P.in_scope(p, [g]) and P.in_scope(p, ln.scope) for p in kept for ln in tree.values())]  # fmt: skip
+    empty = {k: [g for g in ln.scope if g[:1] != "!" and not any(P.in_scope(f, [g]) for f in files)]
+             for k, ln in tree.items()}  # fmt: skip
+    past = {k: [p for p in files if P.in_scope(p, ln.scope) and not P.in_scope(p, intent)]
+            + [g for g in empty[k] if past_intent(g)] for k, ln in tree.items()}  # fmt: skip
     overlaps = []
     for a, b in itertools.combinations(tree, 2):
         shared = P.overlap(tree[a].scope, tree[b].scope, files)
@@ -165,6 +172,11 @@ def main(argv: list[str] | None = None, build: Callable[[Path], str] | None = No
         if not need.is_file():
             print(f"no {need}")
             return 2
+    top = subprocess.run(["git", "-C", str(args.after), "rev-parse", "--show-toplevel"], capture_output=True,
+                         text=True).stdout.strip() if args.after else ""  # fmt: skip
+    if args.after and (not top or Path(top).resolve() != args.after.resolve()):
+        print(f"no repo at {args.after}: --after is the top of a finished run's repo (bench's <run>/repo)")
+        return 2
     planner = planner_of(args.store, args.planner_prompt, args.planner_model)
     try:
         scored = score(plan.read_text(encoding="utf-8"), tally.intent_globs(globs),
