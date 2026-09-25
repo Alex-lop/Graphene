@@ -8,7 +8,7 @@ the person's own; and a proposed sub-goal of three. 30 leaves drawn: 14 done, 2 
 3 waiting, 4 proposed, 1 review, 4 ready, 1 yours.
 
 The screens beside this file were taken from it with the polish run's harness
-(docs/process/polish/harness), as a copy whose shoot.py had REPO = /tmp/graphene-fold/feeds, muxes
+(docs/screens), as a copy whose shoot.py had REPO = /tmp/graphene-fold/feeds, muxes
 started with SOCKS=/tmp/graphene-fold/mux: `python plan30.py /tmp/graphene-fold/feeds`, a copy of it
 kept as the snapshot, then `shoot.py <before|after> <graphene> <snapshot> <name> <keys>` for each
 name: f01-opens (no key), f02-zM, f03-zR-zx, f04-folded-row (/reader), f05-came-back (/came back),
