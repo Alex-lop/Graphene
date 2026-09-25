@@ -510,6 +510,7 @@ What each event contributes:
 | `UserPromptSubmit` | the prompt text verbatim, with Claude Code's `prompt_id`; a slash command (`/model`, a skill) is skipped |
 | `PostToolUse` | the tool name, input, response, and for file tools the file's content before and after |
 | `PostToolUseFailure` | the same call marked failed, with the error text |
+| `SubagentStart`, `SubagentStop` | the subagent, its type, its start and end, its working directory and, when that lies in a worktree of the repo (asked of git's own files while it exists), the worktree |
 | `Stop` | the session's end time (updated on every turn end) |
 
 Not all of a response is worth keeping. A `Read` is recorded as the call, the path and whether it
@@ -522,16 +523,21 @@ keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session. Subagent calls carry `agent_id`, which is the lane they are drawn on.
+the session. Subagent calls carry `agent_id`, which is the lane they are drawn on. The rest of a
+subagent is in other calls: the `Agent` call that spawned it names it in its response (`agentId`)
+and carries its task and its prompt, and its spawn link starts there; the `SubagentHandback` call it
+makes carries its closing words. The map reads them off those calls. A command's list of changed
+files names a worktree's copy of a file, and the worktree `SubagentStart` recorded maps it to the
+repo's file, drawn as a copy.
 
 ### What is not read
 
 Graphene reads no transcript: nothing under `~/.claude/projects/`, where Claude Code keeps them.
 What it knows of a session is what the hooks recorded while it ran, so a session is on the record
 from the moment `graphene init` installed them, and one run before that, or in a checkout without
-them, is not. What no hook event carries, the record does not have: a subagent's task and closing
-words, the Workflow run it belongs to, the worktree it was spawned in. A store written by an
-earlier version, which read the transcripts, keeps what it read, and the map still draws it.
+them, is not. What no hook event carries, the record does not have: the Workflow run a subagent
+belongs to, so a Workflow's agents are not drawn as one group. A store written by an earlier
+version, which read the transcripts, keeps what it read, and the map still draws it.
 
 ### The store
 

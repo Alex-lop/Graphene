@@ -205,6 +205,25 @@ def _ref(event: ToolEvent) -> str:
     return f"event:{event.session_id[:8]}:{event.id}"
 
 
+def _told_by_calls(known: dict[tuple[str, str], Agent], events: list[ToolEvent]) -> None:
+    """What the hooks record of a subagent in calls other than its own: the Agent call that spawned it
+    names it in its response and carries its task and prompt, and its SubagentHandback call carries
+    its closing words. A field its row already holds (a store filled from the transcripts) stays."""
+    for e in events:
+        if e.tool in ("Agent", "Task") and isinstance(e.response, dict):
+            a = known.get((e.session_id, _str(e.response.get("agentId"))))
+            if a is not None and a.parent_tool_use_id is None:
+                a.parent_tool_use_id, a.parent_agent_id = e.id, e.agent_id
+                a.task = a.task or _str(e.input.get("description"))
+                a.prompt = a.prompt or _str(e.input.get("prompt"))
+        elif e.tool == "SubagentHandback" and e.agent_id and (a := known.get((e.session_id, e.agent_id))):
+            a.closing = a.closing or _str(e.input.get("message"))
+
+
+def _str(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
 def _kind(event: ToolEvent, checks: list[str]) -> tuple[str, str | None, bool | None]:
     """(mark kind, label, ok) for one call on its agent's lane; ``checks`` are its check commands."""
     if checks:  # one call can run several; its result is the call's, and the label says all it ran
@@ -339,6 +358,7 @@ def build_graph(store: Store, session_ids: list[str], until: str | None = None) 
         span(_lane_id(e.session_id, e.agent_id), e.timestamp)
         if e.agent_id and (e.session_id, e.agent_id) not in known:  # an agent only its calls record
             known[(e.session_id, e.agent_id)] = Agent(id=e.agent_id, session_id=e.session_id)
+    _told_by_calls(known, events)
     for a in known.values():
         for stamp in (a.started_at, a.ended_at if seen(a.ended_at) else None):
             span(_lane_id(a.session_id, a.id), stamp)

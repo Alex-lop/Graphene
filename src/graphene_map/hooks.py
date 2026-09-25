@@ -49,10 +49,10 @@ def now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-def worktree_root(path: str, root: Path) -> str | None:
-    """The root of the worktree of ``root`` that holds ``path``, when one holds it: the nearest
-    checkout above it, asked from git's own files. A checkout that is its own repo ends the walk."""
-    current = os.path.dirname(os.path.normpath(path))
+def worktree_root(directory: str, root: Path) -> str | None:
+    """The root of the worktree of ``root`` that holds ``directory``, when one holds it: the nearest
+    checkout at or above it, asked from git's own files. A checkout that is its own repo ends the walk."""
+    current = os.path.normpath(directory)
     while True:
         main = worktree_main(current)
         if main is not None:
@@ -129,7 +129,7 @@ def _map_path(path: str, root: Path) -> str:
     """Repo-relative for a path in the repo or in a worktree of it (a worktree copy maps to the path
     it copies), the path itself for anything else."""
     p = os.path.normpath(path)
-    live = worktree_root(p, root)
+    live = worktree_root(os.path.dirname(p), root)
     return os.path.relpath(p, live) if live is not None else relative_path(p, root)
 
 
@@ -212,7 +212,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     if name == "UserPromptSubmit":
         text = str(event.get("prompt") or "")
         if _SLASH_COMMAND.match(text.strip()):
-            return False  # a slash command is not a request; the transcript parser skips them too
+            return False  # a slash command is not a request
         prompt_id = event.get("prompt_id") or str(uuid.uuid4())
         store.add_prompt(
             Prompt(
@@ -232,7 +232,11 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         if agent_id is None:
             return False
         started = ts if name == "SubagentStart" else None
-        agent = Agent(agent_id, sid, type=_text(event.get("agent_type")), cwd=_text(event.get("cwd")))
+        cwd = _text(event.get("cwd"))
+        agent = Agent(agent_id, sid, type=_text(event.get("agent_type")), cwd=cwd)
+        # the worktree it works in, asked of git while it exists: a command's list of changed files
+        # names the worktree's copy, and this is what maps it to the repo's file (record.changes)
+        agent.worktree = worktree_root(cwd, root) if cwd else None
         agent.started_at, agent.ended_at = started, None if started else ts
         store.upsert_agent(agent)
         return True
