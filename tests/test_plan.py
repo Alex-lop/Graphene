@@ -1,7 +1,10 @@
 """The plan binds at the boundary, whoever executes a node: `finish` asks git what changed and runs
 the check itself. A real git repo in every test, because git is the mechanism."""
 
+import os
 import subprocess
+import threading
+import time
 
 import pytest
 
@@ -591,11 +594,11 @@ def test_a_done_whose_leaf_was_let_go_during_its_check_is_refused_and_says_so(st
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
     real = plan.run_check
 
-    def person_acts_meanwhile(command, where):
+    def person_acts_meanwhile(command, where, *leave_out):
         plan.release(store, "n1", ALEX, "I will do it myself")
         if act == "retake":
             plan.start(store, "n1", ALEX, repo)
-        return real(command, where)
+        return real(command, where, *leave_out)
 
     monkeypatch.setattr(plan, "run_check", person_acts_meanwhile)
     said = "handed back and taken again" if act == "retake" else "handed back"
@@ -645,9 +648,9 @@ def test_done_release_and_signoff_ask_git_before_the_write_lock_is_taken(store, 
     store.log_node("n1", plan._now(), "unlanded", "graphene run", None, None, {"branch": "graphene/n1"})
     seen, real = [], plan._git
 
-    def asked(checkout, *args):
+    def asked(checkout, *args, **kw):
         seen.append((args[0], store.conn.in_transaction))
-        return real(checkout, *args)
+        return real(checkout, *args, **kw)
 
     monkeypatch.setattr(plan, "_git", asked)
     assert plan.finish(store, "n1", BOT).state == REVIEW
@@ -711,14 +714,15 @@ def test_what_the_check_makes_again_is_its_own_and_is_neither_counted_nor_commit
     (repo / "cache").mkdir()
     (repo / "cache/users.pyc").write_text("compiled by the executor's own test run\n")
     assert plan.finish(store, "n1", BOT).state == DONE
-    assert (repo / "cache/users.pyc").read_text() == "compiled\n"  # the check's, left where it made it
+    # the executor's, as it left it: the check's own went with the worktree it ran in (it had replaced
+    # the executor's, when the check ran in place)
+    assert (repo / "cache/users.pyc").read_text() == "compiled by the executor's own test run\n"
     [ended] = store.node_log("n1", ("finished",))
     assert ended["detail"]["changed"] == ["src/api/users.py"]  # what `run` commits
-    aside = store.path.parent / "aside"
-    assert not aside.exists() or not any(aside.iterdir())
+    assert no_check_tree_left(store, repo)
 
 
-def test_what_the_check_does_not_make_again_is_put_back_and_refused(store, repo):
+def test_what_the_check_does_not_make_again_is_refused(store, repo):
     plan.propose(store, [python_leaf()], ALEX)
     plan.start(store, "n1", BOT, repo)
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
@@ -727,24 +731,175 @@ def test_what_the_check_does_not_make_again_is_put_back_and_refused(store, repo)
     (repo / "notes.txt").write_text("the executor's own\n")
     with pytest.raises(Refused, match=r"changed outside its scope \(src/api/\*\*\)[^\n]*\n  notes.txt\n"):
         plan.finish(store, "n1", BOT)
-    assert (repo / "notes.txt").read_text() == "the executor's own\n"  # put back as it was
+    assert (repo / "notes.txt").read_text() == "the executor's own\n"  # as it was
     assert plan.get(store, "n1").state == RUNNING
 
 
-def test_what_was_set_aside_is_put_back_when_the_check_is_stopped(store, repo, monkeypatch):
-    plan.propose(store, [python_leaf()], ALEX)
+def test_a_check_that_is_stopped_leaves_the_checkout_as_it_was_and_its_worktree_goes(store, repo):
+    """The executor's new files used to be set aside while the check ran, and put back when it was
+    stopped: now nothing in the checkout is moved, and the check's worktree goes however it ends."""
+    wrote = repo / ".git" / "check.wrote"
+    check = f"echo check > notes.txt && echo check >> README.md && touch {wrote} && sleep 30"
+    plan.propose(store, [python_leaf(check=check)], ALEX)
     plan.start(store, "n1", BOT, repo)
     (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
     (repo / "notes.txt").write_text("the executor's own\n")
+    left = files_in(repo)
 
-    def stopped(command, where):
-        assert not (repo / "notes.txt").exists()  # set aside while the check runs
-        raise KeyboardInterrupt
+    def stop_it():  # once it has written, as a stopped run ends the checks it started
+        until = time.monotonic() + 20
+        while not wrote.exists() and time.monotonic() < until:
+            time.sleep(0.01)
+        plan.end_checks()
 
-    monkeypatch.setattr(plan, "run_check", stopped)
+    threading.Thread(target=stop_it).start()
     with pytest.raises(KeyboardInterrupt):
         plan.finish(store, "n1", BOT)
-    assert (repo / "notes.txt").read_text() == "the executor's own\n"
+    assert files_in(repo) == left and no_check_tree_left(store, repo)
+
+
+def files_in(repo) -> dict[str, bytes]:
+    """Every file of the checkout with its content, but git's own and the plan's store."""
+    inside = (p for p in repo.rglob("*") if not {".git", ".graphene"} & set(p.relative_to(repo).parts))
+    return {str(p.relative_to(repo)): p.read_bytes() for p in inside if p.is_file()}
+
+
+def no_check_tree_left(store, repo) -> bool:
+    listed = subprocess.run(["git", "-C", str(repo), "worktree", "list"], capture_output=True, text=True)
+    left = list((store.path.parent / "worktrees").glob(".check-*"))
+    return len(listed.stdout.splitlines()) == 1 and not left
+
+
+def test_a_check_that_writes_leaves_the_checkout_exactly_as_the_executor_left_it(store, repo):
+    """The check runs in a worktree of its own, cut from the leaf's state as git sees it, committed or
+    not: whatever it writes, in the scope or out, to a tracked file or a new one, goes with that
+    worktree. Run in place, what a check wrote was counted as the executor's change, and committed."""
+    check = (
+        "grep -q 'return \\[1\\]' src/api/users.py && test -s src/api/helper.py"  # it sees the leaf's work
+        " && echo check >> src/api/users.py && echo check >> src/api/helper.py && echo x > src/api/new.py"
+        " && echo check >> README.md && rm src/db/schema.py && echo x > by_the_check.txt"
+    )
+    plan.propose(store, [api_node(check=check)], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "src/api/helper.py").write_text("HELP = 1\n")
+    left = files_in(repo)
+    status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
+    assert plan.finish(store, "n1", BOT).state == DONE
+    assert files_in(repo) == left
+    after = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
+    assert after.stdout == status.stdout
+    [ended] = store.node_log("n1", ("finished",))
+    assert ended["detail"]["changed"] == ["src/api/helper.py", "src/api/users.py"]
+    assert no_check_tree_left(store, repo)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+def test_a_check_git_cannot_make_a_worktree_for_is_a_failed_check_and_not_a_crash(store, repo):
+    """The check's worktree is made by git: when git cannot read the leaf's state, the check did not
+    run, which is no pass, and it is said as a refusal (a sub-goal's stays open with it in its log)."""
+    plan.propose(store, [api_node()], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    (repo / "src/api/unreadable.py").write_text("x = 1\n")
+    (repo / "src/api/unreadable.py").chmod(0)
+    try:
+        with pytest.raises(Refused, match=r"`true` failed:\nthe check could not be run: git add -A failed"):
+            plan.finish(store, "n1", BOT)
+    finally:
+        (repo / "src/api/unreadable.py").chmod(0o644)
+    assert plan.get(store, "n1").state == RUNNING and no_check_tree_left(store, repo)
+
+
+def test_what_git_ignores_is_not_in_the_checks_worktree_and_the_check_cannot_change_it(store, repo):
+    """A .venv linked into the check's worktree from the checkout was the check's to change: `uv run`
+    there re-installed the project into it, which left the checkout's .venv pointing at a worktree
+    that was then deleted; and git counted the link as a new file, so a check that wants a clean
+    `git status` failed there and passed in the checkout. The check makes its own environment."""
+    (repo / ".gitignore").write_text(".venv/\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-qm", "ignore the environment")
+    (repo / ".venv").mkdir()
+    (repo / ".venv/project").write_text(f"{repo}\n")  # where an editable install says the project is
+    check = 'test -z "$(git status --porcelain)" && test ! -e .venv && mkdir .venv && pwd > .venv/project'
+    plan.propose(store, [api_node(check=check)], ALEX)
+    plan.start(store, "n1", BOT, repo)
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    assert plan.finish(store, "n1", BOT).state == DONE
+    assert (repo / ".venv/project").read_text() == f"{repo}\n" and no_check_tree_left(store, repo)
+
+
+def test_a_check_runs_none_of_the_persons_git_hooks(store, repo):
+    """Making the check's worktree ran the person's post-checkout hook, once a check, and a hook that
+    failed made every check "could not be run": the check's result is the check's own."""
+    ran = repo / ".git" / "hook.ran"
+    (repo / ".git/hooks").mkdir(exist_ok=True)
+    (repo / ".git/hooks/post-checkout").write_text(f"#!/bin/sh\ntouch {ran}\nexit 1\n")
+    (repo / ".git/hooks/post-checkout").chmod(0o755)
+    assert plan.run_check("true", repo) == (True, "exit 0, no output", [])
+    assert not ran.exists() and no_check_tree_left(store, repo)
+
+
+def slow_checkout(repo, said) -> None:
+    """Every checkout of the repo now takes a second and a half, and then writes ``said``: a stand-in
+    for a repository large enough that making a worktree takes a while (300,000 files: 39 s)."""
+    (repo / ".gitattributes").write_text("*.slow filter=slow\n")
+    (repo / "a.slow").write_text("slow\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "slow")
+    git(repo, "config", "filter.slow.smudge", f"sleep 1.5; touch {said}; cat")
+
+
+def test_the_checks_time_limit_covers_making_its_worktree_and_what_git_started_ends_with_it(
+    store, repo, monkeypatch
+):
+    """Making the worktree was held to a cap of git's own (30 s), apart from the check's: on a large
+    repository a check that passes was refused as "could not be run". Killed at that cap, git left
+    its worktree registered and locked, and the `git reset` it had started wrote on after the call."""
+    checked_out = repo / ".git" / "checked-out"
+    slow_checkout(repo, checked_out)
+    monkeypatch.setattr(plan, "CHECK_TIMEOUT", 0.5)
+    assert plan.run_check("true", repo) == (False, "timed out after 0.5 s", [])
+    time.sleep(2)  # longer than the checkout would have taken
+    assert not checked_out.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_run_stopped_while_the_checks_worktree_is_made_stops_the_check(store, repo):
+    """A stop (``end_checks``) that came while git made the check's worktree was lost: nothing was
+    running yet for it to end, and the check ran to its end after the stop, and could pass."""
+    checked_out, ran = repo / ".git" / "checked-out", repo / ".git" / "check.ran"
+    slow_checkout(repo, checked_out)
+
+    def stop_it():  # once git is writing the worktree
+        until = time.monotonic() + 20
+        while not list(repo.glob(".graphene/worktrees/.check-*/tree/.git")) and time.monotonic() < until:
+            time.sleep(0.01)
+        plan.end_checks()
+
+    threading.Thread(target=stop_it).start()
+    with pytest.raises(KeyboardInterrupt):
+        plan.run_check(f"touch {ran}", repo)
+    time.sleep(2)
+    assert not ran.exists() and not checked_out.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_stop_between_two_steps_of_making_the_worktree_stops_the_check(store, repo, monkeypatch):
+    """A stop that comes while no step of the check is running, between two of git's, still stops it."""
+    ran, real = repo / ".git" / "check.ran", plan.head
+
+    def stopped_meanwhile(checkout):
+        plan.end_checks()
+        return real(checkout)
+
+    monkeypatch.setattr(plan, "head", stopped_meanwhile)
+    with pytest.raises(KeyboardInterrupt):
+        plan.run_check(f"touch {ran}", repo)
+    assert not ran.exists() and no_check_tree_left(store, repo)
+
+
+def test_a_check_begun_after_a_stop_runs(store, repo):
+    plan.end_checks()
+    assert plan.run_check("true", repo)[0]
 
 
 def test_a_tracked_file_outside_the_scope_is_refused_before_the_check_runs(store, repo, monkeypatch):
