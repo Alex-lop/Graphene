@@ -504,6 +504,15 @@ def tracked(checkout: str | Path) -> list[str]:
         return []
 
 
+def in_tree(checkout: str | Path) -> list[str]:
+    """The files of a checkout as git sees them: what it tracks, and what it does not ignore."""
+    try:
+        said = _git(checkout, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    except (Refused, OSError, subprocess.TimeoutExpired):
+        return []
+    return sorted({p for p in said.split("\0") if p})
+
+
 def changed_since(
     checkout: str | Path, base_sha: str | None, dirty_at_start: dict[str, str | None]
 ) -> list[str]:
@@ -671,7 +680,8 @@ def run_check(
     began = time.monotonic()
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
-    env = {**os.environ, "GRAPHENE_AS": "agent:check"}
+    # It runs code an executor wrote, so it never gets the Token Factory key.
+    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"} | {"GRAPHENE_AS": "agent:check"}
     try:
         with _clean_tree(checkout, leave_out, began) as tree:
             code, out, err = _ended(command, tree, env, began)
@@ -682,6 +692,28 @@ def run_check(
         return False, f"the check could not be run: {no}", []
     text = (out + err).strip()
     return code == 0, (text[-TAIL:] if text else f"exit {code}, no output"), made
+
+
+def sandboxed(store, node: Node) -> dict | None:
+    """Where the current hold of this leaf worked, when that was a sandbox: the Nemotron executor
+    notes it (`placement`) so that its check, whoever runs `done`, runs in a fork of the same one."""
+    log = store.node_log(node.id, ("started", "placement"))
+    last = log[-1] if log else None
+    if last is None or last["kind"] != "placement" or last["detail"].get("placement") != "sandbox":
+        return None
+    return last["detail"]
+
+
+def _check_in_sandbox(place: dict, command: str, checkout, leave_out) -> tuple[bool, str, list[str]]:
+    from .sandbox import check_in_fork
+
+    try:
+        code, out = check_in_fork(place["box"], place["image"], Path(checkout), command, CHECK_TIMEOUT,
+                                  list(leave_out))  # fmt: skip
+    except Exception as no:  # an SDK, a network or a box that is gone: it never ran, which is no pass
+        return False, f"the check could not be run in the leaf's sandbox: {no}", []
+    text = out.strip()
+    return code == 0, (text[-TAIL:] if text else f"exit {code}, no output"), []
 
 
 def end_checks() -> None:
@@ -1830,7 +1862,12 @@ def finish(
     aside = _untracked(checkout, stray) if stray and override is None and node.check else []
     if stray and override is None and len(aside) < len(stray):
         raise _stray(store, node, who, now, stray)
-    passed, output, theirs = (True, "", []) if not node.check else run_check(node.check, checkout, aside)
+    if not node.check:
+        passed, output, theirs = True, "", []
+    else:
+        place = sandboxed(store, node)
+        passed, output, theirs = (run_check(node.check, checkout, aside) if place is None else
+                                  _check_in_sandbox(place, node.check, checkout, aside))  # fmt: skip
     if node.check:
         store.log_node(
             node.id,

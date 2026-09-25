@@ -287,3 +287,14 @@ def test_when_every_fork_gives_up_the_leaf_comes_back_with_what_they_wanted(repo
         released = store.node_log("greet", ("released",))[-1]["detail"]
         assert released["why"] == "the greeting is also in other.py"
         assert sorted(released["wants"]) == ["cli.py", "other.py"]
+
+
+def test_the_check_graphene_runs_after_the_executor_never_gets_the_key(repo, fake):
+    fake([script({"greet": [call("edit", path="app.py", old='"hi"', new='"hello"')] + [
+        {"content": "that is all"}] * 3})] * 10)  # fmt: skip
+    plan_of(repo, leaf(check="env | grep -E 'NEBIUS|GRAPHENE_AS'; false"))
+    run_one(repo)  # the executor stops calling tools; `graphene run` runs the gate itself
+    with Store.open(repo) as store:
+        said = store.node_log("greet", ("check_failed",))[-1]["detail"]["output"]
+    assert "GRAPHENE_AS=agent:check" in said
+    assert "NEBIUS_API_KEY" not in said and "fake-key" not in said

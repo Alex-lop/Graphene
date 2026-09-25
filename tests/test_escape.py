@@ -19,7 +19,7 @@ from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 NANO = "nvidia/Nemotron-3-Nano-fake"
-CHECK = "python3 -c 'import app; assert app.greet() == \"hello\"' && test -s tests/test_new.py"
+CHECK = "python3 -c 'import app; assert app.greet() == \"hello\"' && test -s tests/test_new.py && id -un"
 
 
 def docker_runs() -> bool:
@@ -103,6 +103,7 @@ def test_every_way_out_is_refused_or_fails_and_every_way_in_succeeds(tmp_path, m
             node = plan.get(store, "greet")
             breaches = [p for e in store.node_log("greet", ("breach",)) for p in e["detail"]["paths"]]
             placed = store.node_log("greet", ("placement",))
+            checked = store.node_log("greet", ("check_passed",))
     log = "\n".join(said)
     assert [n.id for n in done] == ["greet"], log
     assert node.state == DONE
@@ -121,6 +122,7 @@ def test_every_way_out_is_refused_or_fails_and_every_way_in_succeeds(tmp_path, m
     assert (root / "app.py").read_text() == 'def greet():\n    return "hello"\n# ok\n'
     assert (root / "tests" / "test_new.py").read_text() == "def test_new():\n    pass\n"
     assert placed and placed[-1]["detail"]["box"] == "docker"
+    assert checked[-1]["detail"]["output"].strip() == "leaf"  # Graphene's own check ran in the sandbox
     changed = subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True,
                              text=True)  # fmt: skip
     assert sorted(line[3:] for line in changed.stdout.splitlines()) == ["app.py", "tests/test_new.py"]

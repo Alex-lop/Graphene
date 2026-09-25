@@ -123,12 +123,14 @@ def _parse_manifest(text: str) -> dict[str, str]:
     return out
 
 
-def pack(root: Path) -> Path:
+def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
     """The leaf's checkout as git sees it (tracked, and untracked but not ignored), in a tar."""
     fd, name = tempfile.mkstemp(suffix=".tar")
     os.close(fd)
     with tarfile.open(name, "w") as tar:
-        for rel in P.tracked(root):
+        for rel in P.in_tree(root):
+            if rel in leave_out:
+                continue
             path = root / rel
             if path.is_file() or path.is_symlink():
                 tar.add(path, arcname=rel, recursive=False)
@@ -176,7 +178,7 @@ class Docker:
         """Remove the checkpoint images this box made, but ``keep``: nothing else prunes them."""
         gone = [i for i in reversed(self.made) if i not in keep]
         if gone:
-            self._docker("rmi", "-f", *gone)
+            self._docker("rmi", "-f", "--no-prune", *gone)  # a parent is another sandbox's checkpoint
         self.made = [i for i in self.made if i in keep]
 
     def _docker(self, *args: str, data: bytes | None = None) -> subprocess.CompletedProcess:
@@ -223,11 +225,13 @@ def choose(name: str | None = None):
     return Docker() if name == "docker" else Contree()
 
 
-def check_in_fork(name: str, image: str, root: Path, command: str, timeout: float = 1800) -> tuple[int, str]:
+def check_in_fork(name: str, image: str, root: Path, command: str, timeout: float = 1800,
+                  leave_out: list[str] = ()) -> tuple[int, str]:  # fmt: skip
     """A leaf's check in a fresh fork of the image its sandbox started from, holding the leaf's checkout
     as Graphene reads it (what a command left there outside the scope is not in it), run as the leaf's
-    user. Nothing it writes comes back: the fork is thrown away."""
-    tar = pack(root)
+    user. Nothing it writes comes back: the fork is thrown away. ``leave_out``: new files outside the
+    scope that the check runs without, as it does here."""
+    tar = pack(root, leave_out)
     try:
         script = "\n".join([
             f"cd {WORK} && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {{}} +",
@@ -257,7 +261,7 @@ class Sandbox:
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
         self.timings: list[float] = []
-        files = P.tracked(root)
+        files = P.in_tree(root)
         dirs = {str(p) for f in files for p in Path(f).parents if str(p) != "."}
         tar = pack(root)
         try:

@@ -270,7 +270,7 @@ def attempt_number(store: Store, node: P.Node) -> int:
 def in_scope_files(root: Path, scope: list[str], budget: int) -> str:
     """The tracked files in the scope, inlined up to ``budget`` characters, for a small model."""
     out, left = [], budget
-    for rel in P.tracked(root):
+    for rel in P.in_tree(root):
         if not P.in_scope(rel, scope):
             continue
         try:
@@ -385,7 +385,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     copies, forks = [], []
     for k in range(n):
         copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
-        for rel in P.tracked(here):
+        for rel in P.in_tree(here):
             src = here / rel
             if src.is_file() and not src.is_symlink():
                 (copy / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -466,7 +466,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
         first = [prompt]
         if args.map:
-            files = P.tracked(here)
+            files = P.in_tree(here)
             more = "\n…" if len(files) > 400 else ""
             first.append("The repository's files:\n" + "\n".join(files[:400]) + more)
         if args.inline:
