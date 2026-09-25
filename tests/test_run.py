@@ -118,10 +118,14 @@ def test_claude_is_told_which_session_it_is_and_resumed_on_a_second_attempt():
 def test_an_executor_that_is_not_installed_is_one_line_and_the_node_is_handed_back(repo):
     with Store.open(repo) as store:
         plan.propose(store, [users_node()], ALEX)
-        with pytest.raises(plan.Refused, match="cannot run `no-such-executor-anywhere`"):
-            run_plan(store, repo, "no-such-executor-anywhere --flag", say=lambda _: None)
+        with pytest.raises(plan.Refused, match="cannot run `/nowhere/mine/no-such-executor-anywhere`"):
+            run_plan(store, repo, "/nowhere/mine/no-such-executor-anywhere --flag", say=lambda _: None)
         assert plan.get(store, "n1").state == OPEN  # not left running with nobody on it
-        assert "could not be started" in store.node_log("n1", ("released",))[0]["detail"]["why"]
+        # the plan names it by its command, never by where it lives: an export publishes the reason
+        why = store.node_log("n1", ("released",))[0]["detail"]["why"]
+        assert why == (
+            "the executor could not be started: no-such-executor-anywhere: No such file or directory"
+        )
 
 
 GROWER = """

@@ -151,6 +151,21 @@ def test_an_open_node_with_something_left_to_wait_on_reads_as_waiting(store):
     assert at["a"]["waits"] == []  # it is the person's own node, and it is theirs to do now
 
 
+def test_a_leaf_its_executor_handed_back_came_back_and_waits_on_the_person(store, repo, monkeypatch):
+    """Decision 42: the terminal reads it `came back`, in the colour of what waits on you."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    plan.propose(store, [node("a"), node("b", needs=["a"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.release(store, "a", BOT, "it needs README.md too")
+    view = build_plan_view(store)
+    at = {n["id"]: n for n in view["nodes"]}
+    assert at["a"]["display_state"] == "came back"
+    assert at["b"]["waits"] == ["waits on a (a), which came back"]
+    assert view["waiting_on_person"] == [{"id": "a", "title": "a", "why": "see why it came back"}]
+    plan.edit(store, "a", {"title": "a, again"}, ALEX)  # the person has moved it on: it is ready again
+    assert build_plan_view(store)["nodes"][0]["display_state"] == "ready"
+
+
 def test_a_running_node_carries_who_holds_it_since_when_and_its_log(store, repo):
     plan.propose(store, [node("a")], ALEX)
     plan.start(store, "a", BOT, repo)

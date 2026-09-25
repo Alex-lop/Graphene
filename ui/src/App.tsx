@@ -97,7 +97,7 @@ export function App(): ReactElement {
   if (shown === "plan") {
     return (
       <div className="app plan">
-        <PlanHeader plan={plan} view={shown} onView={setView} />
+        <PlanHeader plan={plan} view={shown} onView={setView} recorded={runs.length} />
         <main className="centre">
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
           <PlanTree plan={plan} picked={picked} onPick={setPicked} />

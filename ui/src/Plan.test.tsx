@@ -6,7 +6,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-import { PlanInspector, PlanTree } from "./Plan";
+import { PlanHeader, PlanInspector, PlanTree } from "./Plan";
 import type { Plan, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
@@ -87,4 +87,13 @@ test("a node's detail opens with the path from the goal down to it, root first",
   expect(why.indexOf("people can sign in")).toBeLessThan(why.indexOf("do signin (signin)"));
   expect(why).toMatch(/style="padding-left:12px">do signin \(signin\)/); // a level in from the root
   expect(html).toContain("src/**"); // and a leaf still says what it may touch
+});
+
+test("with no Claude Code session recorded, the record screen cannot be opened and the button says why", () => {
+  // a run by any other executor (graphene run --with …) records no session: its record is on the plan
+  const header = (recorded: number) =>
+    renderToStaticMarkup(<PlanHeader plan={plan} view="plan" onView={() => undefined} recorded={recorded} />);
+  const record = (html: string) => html.slice(html.lastIndexOf("<button", html.indexOf("the record")));
+  expect(record(header(0))).toMatch(/^<button[^>]* disabled="" title="no Claude Code session was recorded in this repo/);
+  expect(record(header(1))).not.toContain("disabled");
 });

@@ -58,9 +58,10 @@ def named(spec: str | None) -> str:
 
 
 def label(template: str) -> str:
-    """Who the run's executor is, in the plan's log: `run:<this>`."""
+    """Who the run's executor is, in the plan's log: `run:<this>`. The command's name, never where it
+    lives: the label is on the page an export publishes."""
     argv = shlex.split(template)
-    return "nemotron" if "graphene_map.executor" in argv else argv[0]
+    return "nemotron" if "graphene_map.executor" in argv else Path(argv[0]).name
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
 GRACE = 10  # seconds an executor is given to end after TERM, before KILL
@@ -262,7 +263,8 @@ def run_node(
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on."""
     session = str(uuid.uuid4())
-    who = P.Caller(f"run:{label(template)}", False, session)
+    name = label(template)
+    who = P.Caller(f"run:{name}", False, session)
     stop = stop or Stop()
     try:
         node = P.start(store, node_id, who, checkout)
@@ -283,7 +285,9 @@ def run_node(
                 session,
                 attempt > 1,
             )
+            # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session}
+            env["GRAPHENE_EXECUTOR"] = name
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
@@ -296,7 +300,7 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
-                P.release(store, node.id, who, f"the executor could not be started: {argv[0]}: {no.strerror}")
+                P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
                     "another executor with --with"

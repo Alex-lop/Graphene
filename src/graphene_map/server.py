@@ -104,7 +104,7 @@ def payload(
     known = {r["id"] for r in rail}
     ids = [i for i in session_ids if i in known] or [r["id"] for r in rail[:1]]
     rail = [r for r in rail if r["id"] in ids] if only else rail
-    plan_view = build_plan_view(store, logs=not only, checkout=checkout) | {
+    plan_view = build_plan_view(store, export=only, checkout=checkout) | {
         "writable": writable,
         "token": token,
     }
@@ -121,8 +121,10 @@ def payload(
 
 def export_html(store: Store, session_ids: list[str]) -> str:
     """One self-contained file: the built page with its assets and the data inlined. Paths, counts,
-    task text and prompts go in; no hunks and no tool output exist in the graph to leak, and the
-    plan goes in without its nodes' logs, which can hold the output of a check."""
+    task text and prompts go in; no hunks and no tool output exist in the graph to leak, and each
+    node's log goes in as its record without what its check printed, and without the checkout's
+    path. A run whose executors keep no records of their own (`graphene run --with` anything but
+    Claude Code) is drawn from those logs."""
     page = (STATIC / "index.html").read_text(encoding="utf-8")
 
     def inline(match: re.Match) -> str:
@@ -133,7 +135,12 @@ def export_html(store: Store, session_ids: list[str]) -> str:
 
     page = re.sub(r'<script[^>]*\bsrc="(?P<src>[^"]+)"[^>]*></script>', inline, page)
     page = re.sub(r'<link[^>]*\brel="stylesheet"[^>]*\bhref="(?P<src>[^"]+)"[^>]*>', inline, page)
-    data = payload(store, session_ids, only=True).replace("</", "<\\/")
+    # A sentence that names this checkout's path (git's refusal of a leaf's merge, a file refused in
+    # a leaf's worktree) names the repository instead: where it lives on this disk stays here.
+    root = store.path.parent.parent.absolute()
+    data = payload(store, session_ids, only=True)
+    data = data.replace(json.dumps(str(root), ensure_ascii=False)[1:-1], root.name)
+    data = data.replace("</", "<\\/")
     return page.replace("</head>", f"{DATA_TAG}{data}</script></head>", 1)
 
 
