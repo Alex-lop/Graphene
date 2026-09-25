@@ -138,6 +138,7 @@ class Leaf:
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
         self.finished = False
         self.refused = 0
+        self.wrote: dict[str, str] = {}  # path -> how: its own edit or write, or a command in a sandbox
 
     def _rel(self, path: str) -> tuple[str | None, str | None]:
         """The repo-relative path, or why a write there is refused before anything is touched."""
@@ -197,6 +198,7 @@ class Leaf:
         if count != 1:
             return f"old is in {rel} {count} times; it must be exactly once (view the file, copy the lines)"
         self.place.write(rel, text.replace(old, new, 1).encode())
+        self.wrote[rel] = "edit"
         return f"edited {rel}"
 
     def write(self, path: str, content: str) -> str:
@@ -204,10 +206,13 @@ class Leaf:
         if no:
             return no
         self.place.write(rel, content.encode())
+        self.wrote[rel] = "edit"
         return f"wrote {rel} ({len(content.splitlines())} lines)"
 
     def run(self, command: str) -> str:
         code, out = self.place.run(command)
+        for rel in getattr(self.place, "brought", ()):  # what a command changed in the sandbox, brought here
+            self.wrote.setdefault(rel, "shell")
         tail = out[-OUTPUT:]
         cut = f"(first {len(out) - OUTPUT} characters not shown)\n" if len(out) > OUTPUT else ""
         return f"exit {code}\n{cut}{tail}"
@@ -455,6 +460,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     for t in threads:
         t.join()
     bill["refused_in_forks"] = sum(f.refused for f in forks)
+    bill["wrote_in_forks"] = {}
     try:
         winner = next((k for k, f in enumerate(forks) if f.passed), None)
         bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
@@ -466,6 +472,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 print(real.release(gave_up[0][0], wants), flush=True)
             print(f"no fork's check passed ({n} forks)", flush=True)
             return None
+        bill["wrote_in_forks"] = forks[winner].wrote  # the winner's writes are the leaf's
         after = _in_scope_state(copies[winner], node.scope)
         for rel in before.keys() - after.keys():
             (here / rel).unlink(missing_ok=True)
@@ -541,6 +548,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             return stop(store, node, f"{type(no).__name__}: {no}")
         finally:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
+            bill["wrote"] = {**bill.pop("wrote_in_forks", {}), **(leaf.wrote if leaf else {})}
             bill["dollars"] = round(bill["dollars"], 6)
             store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill)
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "

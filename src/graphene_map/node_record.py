@@ -102,8 +102,9 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
     # store holds a year of them.
     credited = {c.sha: c for c in store.commits_between("0000", "9999")}
     inside: dict[str, object] = {}
+    own = _own(store, node, root) if any(P.RUN_TREE in (w.checkout or "") for w in windows) else None
     for window in windows:
-        mine = _commits(window, root, credited, at)
+        mine = _commits(window, root, credited, at, own)
         window.commits = [c.sha for c in mine]
         inside |= {c.sha: c for c in mine}
         _fill(window, node, mine, root, at)
@@ -186,7 +187,22 @@ def _shift(stamp: str, delta: int) -> str:
     return moved.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def _commits(window: Window, root: str | Path, credited: dict, at: str) -> list:
+def _own(store, node: P.Node, root: str | Path) -> set[str] | None:
+    """A `--parallel` leaf's own commits: what its branch carried into the merge that landed it, or its
+    branch while it waits. Asked of git by ancestry, because by time the checkout it landed in also
+    holds its siblings' merges, made while it worked. None when git cannot say."""
+    landed = (store.node_log(node.id, ("landed",)) or [None])[-1]
+    merge = landed["detail"].get("commit") if landed else None
+    span = f"{merge}^1..{merge}^2" if merge else f"{node.base_sha}..graphene/{node.id}"
+    try:
+        said = subprocess.run(["git", "-C", str(root), "rev-list", span], capture_output=True, text=True,
+                              timeout=20)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return set(said.stdout.split()) if said.returncode == 0 else None
+
+
+def _commits(window: Window, root: str | Path, credited: dict, at: str, own: set[str] | None = None) -> list:
     """Every commit git holds whose committer time falls inside the window, whoever made it.
 
     Git is asked directly, not only the store: the store holds a commit only when a recorded
@@ -199,10 +215,14 @@ def _commits(window: Window, root: str | Path, credited: dict, at: str) -> list:
     # milliseconds, so a node started at 12:00:00.400 and a commit stamped 12:00:00 cannot be put in
     # order by time at all. Its second is inside the window, and ancestry settles the rest.
     lo, hi = int(seconds(window.started_at)), int(seconds(window.ended_at or at))
-    wide = (_shift(window.started_at, -2), _shift(window.ended_at or at, 2))
+    if own is not None:  # a --parallel leaf's commits are its branch's, made when it landed, after it ended
+        hi = int(seconds(at))
+    wide = (_shift(window.started_at, -2), _shift(at if own is not None else window.ended_at or at, 2))
     found = {c.sha: c for c in commits_in(Path(root), *wide)}
     found |= credited  # the store's rows win: they name the session and the call
     mine = [c for c in found.values() if lo <= int(seconds(c.committed_at)) <= hi]
+    if own is not None:
+        mine = [c for c in mine if c.sha in own]
     before = _already_there([c.sha for c in mine if int(seconds(c.committed_at)) == lo], window, root)
     return sorted((c for c in mine if c.sha not in before), key=lambda c: (seconds(c.committed_at), c.sha))
 
@@ -323,6 +343,10 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
         )
     ids = sorted({w.session_id for w in windows if w.session_id})
     held = ", ".join(dict.fromkeys(w.executor or "an executor the log does not name" for w in windows))
+    usage = store.node_log(node.id, ("usage",))
+    ours = [e for e in usage if e["session_id"] in ids and "wrote" in e["detail"]]
+    if ours:  # Graphene's own executor: it recorded each write it made, whatever held the session
+        return _graded_by_executor(counts, under, commits, ours)
     if not ids:
         counts["read_from"] = (
             f"the node's log and git. No vendor keeps records for {held or 'nobody'}, so nothing here "
@@ -387,6 +411,33 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
         f"session{_s(len(ids))} {', '.join(i[:8] for i in ids)}, and this node's "
         f"{len(commits) - counts['not_graded_commits']} selected afterwards"
     )
+    return counts
+
+
+def _graded_by_executor(counts: dict, under: list[str], commits: list, ours: list[dict]) -> dict:
+    """The Nemotron executor's own record of every write it made, per attempt: its edit and write
+    tools ("edit"), and what a command changed in its sandbox and was brought back ("shell"). What it
+    ran in the local placement wrote nothing it could record, and traces to git alone."""
+    wrote: dict[str, str] = {}
+    for e in ours:
+        for path, how in (e["detail"].get("wrote") or {}).items():
+            grade = "edit" if how == "edit" else "shell"
+            wrote[path] = max(wrote.get(path, grade), grade, key=RANK.__getitem__)
+    for path in under:
+        if path in wrote:
+            counts[f"changed_{wrote[path]}"] += 1
+            counts["changed_nothing"] -= 1
+    grades: dict[str, str] = {}
+    for commit in commits:
+        for path, _status in commit.files:
+            grade = wrote.get(path, "window")
+            grades[path] = max(grades.get(path, grade), grade, key=RANK.__getitem__)
+    kinds = list(grades.values())
+    counts |= {"committed_files": len(grades), "edit": kinds.count("edit"), "shell": kinds.count("shell"),
+               "commit": 0, "window": kinds.count("window"), "nothing": kinds.count("window"),
+               "write": kinds.count("edit") + kinds.count("shell"), "computed": True}  # fmt: skip
+    counts["read_from"] = "the node's log, git, and the Nemotron executor's own record of each write it made"
+    counts["how"] = f"graded by the writes the executor recorded in its {len(ours)} attempt{_s(len(ours))}"
     return counts
 
 

@@ -407,12 +407,13 @@ class Sandbox:
         changed = sorted(p for p in now.keys() | self.seen.keys() if now.get(p) != self.seen.get(p))
         ignored = gate._ignored(self.root, changed)  # a check's __pycache__: nobody's change, as at done
         changed = [p for p in changed if p not in ignored]
-        refused = []
+        refused, self.brought = [], []
         for rel in changed:
             if not P.in_scope(rel, self.scope) or now.get(rel) == "link":
                 refused.append(rel)
                 continue
             local = self.root / rel
+            self.brought.append(rel)
             if rel not in now:
                 local.unlink(missing_ok=True)
             else:
