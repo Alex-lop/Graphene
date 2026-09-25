@@ -18,16 +18,20 @@ In order:
    action in <run>/runlog.jsonl. A refused leaf is not run again. Then it runs again, until nothing
    is left to run, at most --rounds times, and says so when the cap is hit;
 5. counts, from git, the store, .graphene/runs/ and the run log, and appends a JSON row per leaf and
-   one for the run to --rows. accept.py and quality.py are run as tally.py runs them.
+   one for the run to --rows. accept.py and quality.py are run as tally.py runs them, and only their
+   counts are kept: the rows are what the executor is tuned from, and a hidden check's name is the check.
 
 `w` and not `b`: both offers add the same paths, and `b`'s sibling leaf, with its check `true`, would
 land and be counted as a leaf of the tree. A widened leaf is the tree's own leaf, held to its own check.
 
 The spend: every Token Factory call goes to one ledger for the night (GRAPHENE_LEDGER, set here). At
 80% of GRAPHENE_SPEND_CAP_USD (30 if unset) no new run starts; at 100% a run stops between rounds
-(the client already refuses a call at the cap). Either way the exit code is 3. A Nemotron
-configuration that cannot reach Token Factory starts nothing (exit 2), rather than count a run whose
-every leaf failed for want of a key.
+(the client already refuses a call at the cap), and a leaf whose executor was refused a call is
+counted as stopped, not failed. SIGTERM (or Ctrl-C) stops the round as its --timeout does, and the run
+is counted as far as it got. Each of these exits 3. An attempt with no usage row of its own (a shell
+executor, or a Nemotron one killed first) is unpriced, and a run with one has no cost per landed
+leaf: it is unknown, never $0. A Nemotron configuration that cannot reach Token Factory starts
+nothing (exit 2), rather than count a run whose every leaf failed for want of a key.
 
 This is the measuring instrument, and the only code here that reads docs/test/tasks/:
 intent_globs.txt at run time, and accept.py and quality.py only by running them. Nothing it reads
@@ -38,9 +42,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -70,6 +76,9 @@ MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CODE
 CLI = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
 # what an executor's own `done` or `release` logs; the run's boundary after it ended logs as the run
 VERDICTS = ("finished", "refused", "check_passed", "check_failed", "released")
+# how a leaf handed back by a stopped `graphene run` is counted, by what stopped the round
+TIMEOUT = ("failed", "timeout: the round ran past --timeout and the run was stopped")
+SIGNALLED = ("stopped", "the bench was sent SIGTERM or Ctrl-C, and it stopped the run")
 
 
 def graphene(repo: Path, env: dict, *args: str) -> str:
@@ -84,14 +93,17 @@ def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True).stdout.strip()
 
 
-def graphene_sha() -> str:
-    """The commit of the Graphene that ran, "-dirty" when its code (or this harness's) differs from it;
-    the night's rows and ledger, which grow as it runs, are not code."""
-    where = Path(P.__file__).parents[2]
+def graphene_sha(where: Path = Path(P.__file__).parents[2]) -> str:
+    """The commit of the Graphene that ran; when its code (or this harness's) differs from it, "-dirty-"
+    and a hash of the difference, so two different edits are never one configuration in results.md.
+    The night's rows and ledger, which grow as it runs, are not code."""
     sha = git(where, "rev-parse", "HEAD")
     if not sha:
         return f"not a git checkout: {where}"
-    return sha[:12] + ("-dirty" if git(where, "status", "--porcelain", "--", "src", "docs/test/*.py") else "")
+    code = ("--", "src", "docs/test/*.py")
+    # ponytail: an untracked file counts by its name only; `git add` it and its content counts too
+    changed = git(where, "status", "--porcelain", *code) + git(where, "diff", "HEAD", *code)
+    return sha[:12] + (f"-dirty-{hashlib.sha256(changed.encode()).hexdigest()[:8]}" if changed else "")
 
 
 def logger(runlog: Path):
@@ -132,15 +144,22 @@ def base_checks(repo: Path, base: str, where: Path) -> dict[str, bool]:
         git(repo, "worktree", "remove", "--force", str(where))
 
 
-def one_round(repo: Path, env: dict, argv: list[str], out: Path, timeout: float) -> str:
-    """`graphene run`, its output kept; past the timeout it is stopped as a Ctrl-C stops it (every leaf
-    handed back, every executor ended). Returns its last line."""
+def one_round(repo: Path, env: dict, argv: list[str], out: Path, timeout: float) -> tuple[str, tuple | None]:
+    """`graphene run`, its output kept. Past the timeout, or when the bench is sent SIGTERM or Ctrl-C
+    (main makes SIGTERM a KeyboardInterrupt), it is stopped as a Ctrl-C stops it (every leaf handed
+    back, every executor ended) and waited for: nothing it started runs on unwatched. Returns its last
+    line, and TIMEOUT or SIGNALLED when it was stopped."""
+    cut = None
     with out.open("w", encoding="utf-8") as sink:
         proc = subprocess.Popen([sys.executable, "-c", CLI, *argv], cwd=repo, env=env,
                                 stdin=subprocess.DEVNULL, stdout=sink, stderr=subprocess.STDOUT)  # fmt: skip
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            cut = TIMEOUT
+        except KeyboardInterrupt:
+            cut = SIGNALLED
+        if cut:
             proc.terminate()  # graphene takes SIGTERM as Ctrl-C
             try:
                 proc.wait(timeout=120)
@@ -148,7 +167,7 @@ def one_round(repo: Path, env: dict, argv: list[str], out: Path, timeout: float)
                 proc.kill()
                 proc.wait()
     lines = out.read_text(encoding="utf-8").strip().splitlines()
-    return lines[-1] if lines else f"(no output; exit {proc.returncode})"
+    return (lines[-1] if lines else f"(no output; exit {proc.returncode})"), cut
 
 
 def play(store, n: P.Node, intent: list[str]) -> tuple[list[str] | None, list[str], str]:
@@ -161,6 +180,13 @@ def play(store, n: P.Node, intent: list[str]) -> tuple[list[str] | None, list[st
     return None, paths, "; ".join(o[1] for o in offers)
 
 
+def counts(script: Path, repo: Path) -> dict:
+    """accept.py's or quality.py's passed and failed, and whether it failed to say: nothing else. The
+    rows are what the executor is tuned from, and a hidden check's name, note or traceback is the check."""
+    said = tally.acceptance(script, repo)
+    return {k: said.get(k, 0) for k in ("passed", "failed")} | {"error": bool(said.get("error"))}
+
+
 def last_words(log: str | None) -> str:
     """The last thing an attempt's executor printed (the Nemotron executor's bill line aside)."""
     try:
@@ -171,28 +197,32 @@ def last_words(log: str | None) -> str:
     return " ".join(said[-1].split())[:200] if said else "no output"
 
 
-def ended(hold: list[dict]) -> tuple[str, str]:
-    """How one hold of a leaf ended, from the plan's log: landed, handed back or failed, and why. A
-    failed attempt is one whose executor ended with no done and no release of its own (a crash, a
-    timeout, a step cap, silence): the run's own boundary after it is logged as the run."""
+def ended(hold: list[dict], stop: tuple[str, str] = TIMEOUT) -> tuple[str, str]:
+    """How one hold of a leaf ended, from the plan's log: landed, handed back, failed or stopped, and
+    why. A failed attempt is one whose executor ended with no done and no release of its own (a crash,
+    a timeout, a step cap, silence): the run's own boundary after it is logged as the run. `stop` is
+    how a hand-back by a stopped `graphene run` counts. A leaf refused a call by the spend cap is
+    stopped: the night's budget ended it, not its executor."""
     if any(e["kind"] == "landed" for e in hold):
         return "landed", ""
     back = [str(e["detail"].get("why", "")) for e in hold if e["kind"] == "released"]
     why = back[-1] if back else ""
     if why == STOPPED:
-        return "failed", "timeout: the round ran past --timeout and the run was stopped"
+        return stop
     tries = [k for k, e in enumerate(hold) if e["kind"] == "attempt"]
     last = hold[tries[-1] :] if tries else hold
     if not any(e["kind"] in VERDICTS and e["actor"] != hold[0]["actor"] for e in last):
         said = last_words(last[0]["detail"].get("log")) if tries else "it never started"
         said += f"; {why}" if why else ""
+        if said.startswith("stopped: the spend cap is reached"):  # tokenfactory.Spent, as the executor says
+            return "stopped", said.removeprefix("stopped: ")
         return "failed", f"its executor ended with no done and no release: {said}"
     if back:
         return "handed back", why
     return "unlanded", "it passed and its merge did not go in; it waits in review"
 
 
-def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool]) -> list[dict]:
+def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool], signalled: set[str]) -> list[dict]:
     entries = [json.loads(ln) for ln in runlog.read_text(encoding="utf-8").splitlines() if ln.strip()]
     decided: dict[str, dict] = {}
     for e in entries:
@@ -205,9 +235,10 @@ def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool]) -> list[dict]:
         for n in P.order(P.leaves(everything)):
             log = store.node_log(n.id)
             starts = [k for k, e in enumerate(log) if e["kind"] == "started"]
-            holds = [log[a:b] for a, b in zip(starts, [*starts[1:], len(log)], strict=True)]
+            holds = [log[a:b] for a, b in itertools.pairwise([*starts, len(log)])]
             waits = ", ".join(m.id for m in P.unmet(n, by_id)) or "nothing"
-            outcome, why = ended(holds[0]) if holds else ("not started", f"it waited on {waits}")
+            stop = SIGNALLED if n.id in signalled else TIMEOUT
+            outcome, why = ended(holds[0], stop) if holds else ("not started", f"it waited on {waits}")
             finished = [e["detail"] for e in log if e["kind"] == "finished"]
             changed = finished[-1].get("changed") or [] if finished else []
             if outcome == "landed" and not all(P.in_scope(p, n.scope) for p in changed):
@@ -216,7 +247,7 @@ def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool]) -> list[dict]:
             offer = None if d is None else ("w" if d["type"] == "widen" else "refused")
             then = None
             if offer == "w":
-                then = ended(holds[-1])[0] if len(holds) > 1 else "not run again"
+                then = ended(holds[-1], stop)[0] if len(holds) > 1 else "not run again"
             usage = [e["detail"] for e in log if e["kind"] == "usage"]
             attempts = sum(e["kind"] == "attempt" for e in log)
             wall = 0.0
@@ -247,14 +278,20 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("task")
     ap.add_argument("--config", required=True, help="the configuration's name, in the rows and the run's dir")
     ap.add_argument("--executor", required=True, help="as `graphene run --with` takes it: 'nemotron …'")
-    ap.add_argument("--planner", default="nemotron",
-                    help="what made the tree (recorded: the tree is fixed, so no planner runs here)")
+    ap.add_argument(
+        "--planner",
+        default="nemotron",
+        help="what made the tree (recorded: the tree is fixed, so no planner runs here)",
+    )
     ap.add_argument("--parallel", type=int, default=4, help="N for `graphene run --parallel`, 2 or more")
     ap.add_argument("--run", type=int, default=1, help="the run number")
     ap.add_argument("--rounds", type=int, default=3, help="`graphene run`s at most, offers taken between")
     ap.add_argument("--timeout", type=float, default=3600, help="seconds a round may take; then it stops")
-    ap.add_argument("--checks-only", action="store_true",
-                    help="build, load the tree, run each leaf's check at the base commit, and stop")
+    ap.add_argument(
+        "--checks-only",
+        action="store_true",
+        help="build, load the tree, run each leaf's check at the base commit, and stop",
+    )
     ap.add_argument("--tasks", type=Path, default=HERE / "tasks", help="where <task>/intent_globs.txt is")
     ap.add_argument("--trees", type=Path, default=HERE / "trees", help="where <task>.plan is")
     ap.add_argument("--out", type=Path, default=Path.home() / "graphene-bench" / time.strftime("%Y-%m-%d"))
@@ -310,7 +347,9 @@ def main(argv: list[str] | None = None) -> int:
     intent = tally.intent_globs(card / "intent_globs.txt")
 
     only: list[str] = []
+    signalled: set[str] = set()
     stopped, cap_hit, rounds, began = None, False, 0, time.monotonic()
+    was = signal.signal(signal.SIGTERM, signal.default_int_handler)  # a kill stops the round, as Ctrl-C does
     while True:
         rounds += 1
         with Store.open(repo) as store:
@@ -318,13 +357,18 @@ def main(argv: list[str] | None = None) -> int:
         argv = ["run", "--parallel", str(args.parallel), "--with", args.executor]
         argv += [x for i in only for x in ("--node", i)]
         log("run", "graphene " + shlex.join(argv))
-        print(f"round {rounds}: {one_round(repo, env, argv, run_dir / f'round-{rounds}.txt', args.timeout)}")
+        said, cut = one_round(repo, env, argv, run_dir / f"round-{rounds}.txt", args.timeout)
+        print(f"round {rounds}: {said}")
         decisions = []
         with Store.open(repo) as store:
             ran = {e["node_id"] for e in store.node_log()[since:] if e["kind"] == "started"}
             for n in P.nodes(store):
                 if n.id in ran and P.came_back(store, n) and P.offers(store, n):
                     decisions.append((n.id, *play(store, n, intent)))
+        if cut is SIGNALLED:
+            signalled, stopped = ran, "a signal (SIGTERM or Ctrl-C)"
+            print("stopped: the bench was sent SIGTERM or Ctrl-C; the run is counted as far as it got")
+            break
         for node, command, paths, said in decisions:
             if command:
                 graphene(repo, env, *command)
@@ -338,17 +382,19 @@ def main(argv: list[str] | None = None) -> int:
             left = [n for n in P.leaves(everything) if n.state == P.OPEN and not P.came_back(store, n)]
             only = [n.id for n in left]
             ready = [n.id for n in P.ready(everything, P.Caller("agent", False)) if n.id in only]
-        if not ran or not ready:
-            break
-        if tf.spent() >= cap:
+        if tf.spent() >= cap:  # before the end of the run is looked at: the cap may be what ended it
             stopped = "the spend cap"
-            print(f"stopped: the ledger is at ${tf.spent():.2f} of ${cap:.2f}; {', '.join(ready)} not run")
+            not_run = f"; {', '.join(ready)} not run" if ready else ""
+            print(f"stopped: the ledger is at ${tf.spent():.2f} of ${cap:.2f}{not_run}")
+            break
+        if not ran or not ready:
             break
         if rounds == args.rounds:
             cap_hit = True
             print(f"the cap of {args.rounds} rounds is hit: {', '.join(ready)} not run again")
             break
     wall = time.monotonic() - began
+    signal.signal(signal.SIGTERM, was)
 
     meta = {
         "task": args.task, "config": args.config, "run": args.run, "planner": args.planner,
@@ -356,10 +402,12 @@ def main(argv: list[str] | None = None) -> int:
         "prompt_version": PROMPT_VERSION if args.executor.split()[:1] == ["nemotron"] else None,
         "tree": hashlib.sha256(tree.read_bytes()).hexdigest()[:12],
     }  # fmt: skip
-    leaves = [{**meta, **row} for row in leaf_rows(repo, runlog, at_base)]
+    leaves = [{**meta, **row} for row in leaf_rows(repo, runlog, at_base, signalled)]
     kinds = ("landed", "handed back", "failed", "not started")
     count = {k: sum(r["outcome"] == k for r in leaves) for k in kinds}
     dollars = round(sum(r["dollars"] for r in leaves), 6)
+    unpriced = sum(r["unpriced_attempts"] for r in leaves)
+    per_landed = None if unpriced or not count["landed"] else round(dollars / count["landed"], 6)
     quality = card / "quality.py"
     outside = [p for p in tally.changed_files(repo, base) if not P.in_scope(p, intent)]
     run = {
@@ -370,11 +418,11 @@ def main(argv: list[str] | None = None) -> int:
         "offers_taken": sum(r["offer"] == "w" for r in leaves),
         "offers_refused": sum(r["offer"] == "refused" for r in leaves),
         "checks_passing_at_base": flagged,
-        "accept": tally.acceptance(card / "accept.py", repo),
-        "quality": tally.acceptance(quality, repo) if quality.is_file() else None,
-        "dollars": dollars, "tokens_in": sum(r["tokens_in"] for r in leaves),
+        "accept": counts(card / "accept.py", repo),
+        "quality": counts(quality, repo) if quality.is_file() else None,
+        "dollars": dollars, "unpriced_attempts": unpriced, "tokens_in": sum(r["tokens_in"] for r in leaves),
         "tokens_out": sum(r["tokens_out"] for r in leaves),
-        "cost_per_landed_usd": round(dollars / count["landed"], 6) if count["landed"] else None,
+        "cost_per_landed_usd": per_landed,
         "rounds": rounds, "rounds_cap_hit": cap_hit, "stopped": stopped, "wall_seconds": round(wall, 1),
         "files_outside_intent_final": outside,
         "person_actions": tally.read_runlog(runlog, [])["person_actions"],
@@ -388,10 +436,11 @@ def main(argv: list[str] | None = None) -> int:
         more = f", offer {r['offer']}" + (f", then {r['then']}" if r["then"] else "") if r["offer"] else ""
         print(f"  {r['leaf']:28} {r['outcome']}{more}  {r['attempts']} attempts  ${r['dollars']:.4f}")
     acc = run["accept"]
+    accepted = "error" if acc["error"] else f"{acc['passed']}/{acc['passed'] + acc['failed']}"
+    priced = f", {unpriced} attempts unpriced: the cost is unknown" if unpriced else ""
     print(f"{run['landed']} of {len(leaves)} landed, {run['handed_back']} handed back "
-          f"({run['landed_after_offer']} then landed), {run['failed']} failed; accept "
-          f"{acc.get('passed')}/{(acc.get('passed') or 0) + (acc.get('failed') or 0)}; "
-          f"${dollars:.4f} at list price; rows in {args.rows}")  # fmt: skip
+          f"({run['landed_after_offer']} then landed), {run['failed']} failed; accept {accepted}; "
+          f"${dollars:.4f} at list price{priced}; rows in {args.rows}")  # fmt: skip
     return 3 if stopped else 0
 
 

@@ -28,7 +28,14 @@ G=~/Desktop/AllThingsAgenticHackathon          # this checkout, at the commit un
 export NEBIUS_API_KEY=…
 mkdir -p ~/graphene-trees
 bash $G/docs/test/newrun.sh ~/graphene-trees feeds standin tree 1   # repo, graphene init, env.sh
+# the planner's calls go to the night's ledger, under its cap, as every bench run's do
+printf 'export GRAPHENE_LEDGER=%s GRAPHENE_SPEND_CAP_USD=%s\n' \
+  "$G/docs/test/ledger-2026-09-25.jsonl" "${GRAPHENE_SPEND_CAP_USD:-30}" \
+  >> ~/graphene-trees/feeds-standin-tree-1/env.sh
 ```
+
+Without that line Token Factory's client writes no ledger and holds no cap: the Ultra calls
+that make the tree would be spent where the bench's 80% and 100% stops cannot see them.
 
 Then start the stand-in, a sub-agent, with this brief (put the task's name in place of `feeds`):
 
@@ -80,4 +87,6 @@ first and Super on the next attempt. A run's repo, its run log and each round's 
 `~/graphene-bench/<date>/<task>-<config>-<run>/`; its rows are appended to
 `docs/test/runs-2026-09-25.jsonl`, and every Token Factory call to `docs/test/ledger-2026-09-25.jsonl`.
 At 80% of `GRAPHENE_SPEND_CAP_USD` (30 if unset) the bench starts no new run, and at 100% it stops
-between rounds; both exit 3, which ends the loop above.
+between rounds; both exit 3, which ends the loop above. So does stopping the bench (Ctrl-C, or a
+plain `kill` of its process, not `-9`): it stops its round, ends every executor that round started, and counts the
+run as far as it got, marked stopped.

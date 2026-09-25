@@ -12,8 +12,13 @@ The tiny task: three leaves under one goal, intent `app/**`.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -90,11 +95,13 @@ def task(tmp_path, monkeypatch):
     for mark in bench.MARKS:  # the suite may itself run inside an agent's session
         monkeypatch.delenv(mark, raising=False)
 
-    def tree(*ids: str) -> list[str]:
+    def tree(*ids: str, needs: dict[str, str] | None = None) -> list[str]:
         trees = tmp_path / "trees"
         trees.mkdir(exist_ok=True)
         text = "goal: a friendlier tiny app\n\n" + "".join(
-            f"- {LEAVES[i][0]}  [{i}]\n    scope: {LEAVES[i][1]}\n    check: {LEAVES[i][2]}\n" for i in ids
+            f"- {LEAVES[i][0]}  [{i}]\n    scope: {LEAVES[i][1]}\n    check: {LEAVES[i][2]}\n"
+            + (f"    needs: {needs[i]}\n" if i in (needs or {}) else "")
+            for i in ids
         )
         (trees / "tiny.plan").write_text(text)
         return ["tiny", "--tasks", str(tmp_path / "tasks"), "--trees", str(trees),
@@ -144,7 +151,8 @@ def test_one_lands_one_lands_after_its_offer_one_is_refused_and_the_rows_and_res
     counts = ("leaves", "landed", "handed_back", "failed", "landed_after_offer")
     assert [run[k] for k in counts] == [3, 1, 2, 0, 1]
     assert (run["offers_taken"], run["offers_refused"], run["checks_passing_at_base"]) == (1, 1, ["cfg"])
-    assert (run["accept"]["passed"], run["accept"]["failed"], run["quality"]) == (2, 0, None)
+    assert (run["accept"], run["quality"]) == ({"passed": 2, "failed": 0, "error": False}, None)
+    assert "says hello" not in (tmp_path / "rows.jsonl").read_text()  # a hidden check's name stays hidden
     assert run["rounds"] == 2 and not run["rounds_cap_hit"] and run["stopped"] is None
     assert run["dollars"] == round(sum(r["dollars"] for r in leaves.values()), 6)
     assert run["cost_per_landed_usd"] == run["dollars"]  # one leaf landed
@@ -174,7 +182,7 @@ def test_one_lands_one_lands_after_its_offer_one_is_refused_and_the_rows_and_res
     assert "- tiny · scripted · run 1 · `cfg`" in md.split("Checks that pass at the base commit")[1]
 
 
-def test_at_the_cap_a_run_stops_its_failed_leaf_says_why_and_at_80_percent_no_new_run_starts(
+def test_at_the_cap_a_run_stops_its_leaf_is_counted_stopped_and_at_80_percent_no_new_run_starts(
     task, fake, tmp_path, monkeypatch, capsys
 ):
     args = task("bye")
@@ -183,9 +191,9 @@ def test_at_the_cap_a_run_stops_its_failed_leaf_says_why_and_at_80_percent_no_ne
     assert bench.main([*run, "--run", "1"]) == 3
     leaves, row = rows_of(tmp_path / "rows.jsonl")
     bye = leaves["bye"]
-    assert bye["outcome"] == "failed" and "spend cap" in bye["why"] and bye["attempts"] == 3
+    assert bye["outcome"] == "stopped" and "spend cap" in bye["why"] and bye["attempts"] == 3
     assert (bye["offer"], bye["then"]) == ("w", "not run again")  # the denied write was still its offer
-    assert (row["failed"], row["landed"], row["cost_per_landed_usd"]) == (1, 0, None)
+    assert (row["failed"], row["other"], row["landed"], row["cost_per_landed_usd"]) == (0, 1, 0, None)
     assert row["stopped"] == "the spend cap"
     assert "stopped: the ledger is at" in capsys.readouterr().out
 
@@ -206,6 +214,7 @@ def test_a_round_past_its_timeout_is_stopped_and_its_leaf_counted_failed(task, t
     assert greet["outcome"] == "failed" and greet["why"].startswith("timeout")
     assert (greet["dollars"], greet["unpriced_attempts"], greet["prompt_version"]) == (0, 1, None)
     assert (run["failed"], run["accept"]["passed"], run["accept"]["failed"]) == (1, 0, 2)
+    assert run["unpriced_attempts"] == 1
 
 
 def test_with_no_token_factory_a_nemotron_run_is_not_started_and_nothing_is_counted(
@@ -228,20 +237,22 @@ def test_checks_only_names_a_check_that_passes_before_any_work_and_spends_nothin
     assert not (tmp_path / "rows.jsonl").exists() and not (tmp_path / "out").exists()
 
 
-def test_results_show_every_run_with_its_range_accept_beside_landed_in_the_order_run(tmp_path):
-    def run(config, n, landed, accept_passed, dollars):
-        return {"kind": "run", "task": "feeds", "config": config, "run": n, "planner": "nemotron",
-                "executor": f"nemotron --model {config}", "parallel": 4, "graphene_sha": "abc",
-                "prompt_version": 1,
-                "tree": "t", "leaves": 4, "landed": landed, "handed_back": 4 - landed, "failed": 0,
-                "not_started": 0, "other": 0,
-                "landed_after_offer": 0, "checks_passing_at_base": [], "dollars": dollars,
-                "cost_per_landed_usd": dollars / landed if landed else None, "rounds": 1,
-                "rounds_cap_hit": False,
-                "stopped": None, "quality": None,
-                "accept": {"passed": accept_passed, "failed": 2 - accept_passed, "details": []}}  # fmt: skip
+def run_row(config, n, landed, accept_passed, dollars, sha="abc", prompt=1, unpriced=0, leaves=4):
+    return {"kind": "run", "task": "feeds", "config": config, "run": n, "planner": "nemotron",
+            "executor": f"nemotron --model {config}", "parallel": 4, "graphene_sha": sha,
+            "prompt_version": prompt,
+            "tree": "t", "leaves": leaves, "landed": landed, "handed_back": leaves - landed, "failed": 0,
+            "not_started": 0, "other": 0,
+            "landed_after_offer": 0, "checks_passing_at_base": [], "dollars": dollars,
+            "unpriced_attempts": unpriced,
+            "cost_per_landed_usd": dollars / landed if landed and not unpriced else None, "rounds": 1,
+            "rounds_cap_hit": False,
+            "stopped": None, "quality": None,
+            "accept": {"passed": accept_passed, "failed": 2 - accept_passed, "error": False}}  # fmt: skip
 
-    rows = [run("super", 1, 1, 2, 0.5), run("nano", 1, 3, 1, 0.3), run("super", 2, 3, 2, 0.6)]
+
+def test_results_show_every_run_with_its_range_accept_beside_landed_in_the_order_run(tmp_path):
+    rows = [run_row("super", 1, 1, 2, 0.5), run_row("nano", 1, 3, 1, 0.3), run_row("super", 2, 3, 2, 0.6)]
     (tmp_path / "rows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     results.main(["--rows", str(tmp_path / "rows.jsonl"), "--out", str(tmp_path / "r.md")])
     md = (tmp_path / "r.md").read_text()
@@ -250,3 +261,133 @@ def test_results_show_every_run_with_its_range_accept_beside_landed_in_the_order
     night = md.split("## Over the night")[1]
     assert night.index("| 1 | super | feeds | 2 | 4/8 (50%) | 2 of 2 runs | $0.2750 |") < night.index(
         "| 2 | nano | feeds | 1 | 3/4 (75%) | 0 of 1 runs | $0.1000 |")  # fmt: skip
+
+
+def test_a_leaf_that_never_started_is_counted_not_started_with_what_it_waited_on(task, tmp_path):
+    args = task("greet", "bye", needs={"bye": "greet"})
+    crash = ["--config", "crash", "--executor", "bash -c 'exit 1' crash", "--parallel", "2"]
+    assert bench.main([*args, *crash]) == 0
+    leaves, run = rows_of(tmp_path / "rows.jsonl")
+    assert leaves["greet"]["outcome"] == "failed"
+    assert (leaves["bye"]["outcome"], leaves["bye"]["why"], leaves["bye"]["attempts"]) == (
+        "not started", "it waited on greet", 0)  # fmt: skip
+    assert (run["failed"], run["not_started"]) == (1, 1)
+
+
+def test_a_run_whose_last_round_ran_into_the_cap_is_stopped_and_its_leaves_are_not_failures(
+    task, tmp_path, monkeypatch
+):
+    args = task("greet", "cfg")
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", "0.00001")  # the first call spends more than this
+    with Fake([lambda body: call("view", path="app")] * 20) as f:  # it looks, and never offers anything
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        code = bench.main([*args, "--config", "capped", "--executor", f"nemotron --model {NANO}",
+                           "--parallel", "2"])  # fmt: skip
+    tf._listed.cache_clear()
+    assert code == 3
+    leaves, run = rows_of(tmp_path / "rows.jsonl")
+    for leaf in leaves.values():
+        assert leaf["outcome"] == "stopped" and leaf["why"].startswith("the spend cap is reached")
+    assert (run["stopped"], run["failed"], run["other"], run["rounds"]) == ("the spend cap", 0, 2, 1)
+    results.main(["--rows", str(tmp_path / "rows.jsonl"), "--out", str(tmp_path / "results.md")])
+    assert "- tiny · capped · run 1: stopped by the spend cap" in (tmp_path / "results.md").read_text()
+
+
+# the bench in a process of its own, so it can be sent SIGTERM; the tiny task put where it looks
+DRIVER = (
+    "import json, sys; sys.path.insert(0, sys.argv[1]); import bench, make_task; "
+    "make_task.TASKS['tiny'] = json.loads(sys.argv[2]); sys.exit(bench.main(sys.argv[3:]))"
+)
+
+
+def test_sigterm_stops_the_round_ends_its_executor_and_the_run_is_counted_as_stopped(task, tmp_path):
+    args = task("greet")
+    mark = tmp_path / "executor.pid"
+    started = subprocess.Popen(
+        [sys.executable, "-c", DRIVER, str(HERE), json.dumps(FILES), *args, "--config", "killed",
+         "--executor", f"bash -c 'echo $$ > {mark}; exec sleep 60' sleeper", "--parallel", "2"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True,
+    )  # fmt: skip
+    try:
+        until = time.monotonic() + 90
+        while not (mark.exists() and mark.read_text().strip()):
+            assert started.poll() is None and time.monotonic() < until, "the executor never started"
+            time.sleep(0.1)
+        executor = int(mark.read_text())
+        started.send_signal(signal.SIGTERM)
+        said, _ = started.communicate(timeout=180)
+        try:
+            os.kill(executor, 0)
+            left_running = True
+        except ProcessLookupError:
+            left_running = False
+    finally:  # whatever the bench left behind, gone
+        with contextlib.suppress(OSError):
+            os.killpg(started.pid, signal.SIGKILL)
+        with contextlib.suppress(OSError, ValueError):
+            os.kill(int(mark.read_text()), signal.SIGKILL)
+    assert started.returncode == 3, said
+    assert not left_running, "the executor outlived the bench"
+    leaves, run = rows_of(tmp_path / "rows.jsonl")
+    assert (leaves["greet"]["outcome"], leaves["greet"]["why"]) == bench.SIGNALLED
+    assert (run["stopped"], run["failed"], run["other"]) == ("a signal (SIGTERM or Ctrl-C)", 0, 1)
+
+
+def test_an_executor_whose_attempts_carry_no_usage_has_an_unknown_cost_never_zero(task, tmp_path):
+    args = task("greet")
+    lands = tmp_path / "lands.sh"  # a shell executor that does greet's work and says done: no usage rows
+    py = sys.executable
+    lands.write_text(
+        f"{py} -c \"import pathlib; p = pathlib.Path('app/greet.py'); "
+        f"p.write_text(p.read_text().replace('hi', 'hello'))\"\n"
+        f'exec {py} -c "{bench.CLI}" node done "$GRAPHENE_NODE"\n'
+    )
+    assert bench.main([*args, "--config", "shell", "--executor", f"sh {lands}", "--parallel", "2"]) == 0
+    leaves, run = rows_of(tmp_path / "rows.jsonl")
+    assert (leaves["greet"]["outcome"], leaves["greet"]["unpriced_attempts"]) == ("landed", 1)
+    assert (run["landed"], run["unpriced_attempts"], run["cost_per_landed_usd"]) == (1, 1, None)
+    results.main(["--rows", str(tmp_path / "rows.jsonl"), "--out", str(tmp_path / "results.md")])
+    md = (tmp_path / "results.md").read_text()
+    assert "| tiny | shell | 1 | 1 of 1 | 1/2 | none | 0 | 0 | 0 | 0 | unknown | 0 |" in md
+    assert "| 1 | shell | tiny | 1 | 1/1 (100%) | 0 of 1 runs | unknown |" in md
+
+
+def test_results_keep_apart_a_configuration_run_again_after_its_prompt_or_its_code_changed(tmp_path):
+    rows = [run_row("nano", 1, 2, 2, 0.2, leaves=10), run_row("nano", 2, 2, 2, 0.2, leaves=10),
+            run_row("nano", 3, 9, 2, 0.9, sha="bbb", prompt=2, leaves=10),
+            run_row("nano", 4, 9, 2, 0.9, sha="bbb", prompt=2, leaves=10)]  # fmt: skip
+    night = results.render(rows, "rows.jsonl").split("## Over the night")[1]
+    first = night.index("| 1 | nano (graphene abc, prompt 1, tree t) | feeds | 2 | 4/20 (20%) |")
+    assert first < night.index("| 2 | nano (graphene bbb, prompt 2, tree t) | feeds | 2 | 18/20 (90%) |")
+
+
+def test_the_graphene_that_ran_is_named_by_its_commit_and_each_different_edit_by_its_own_hash(tmp_path):
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "x.py").write_text("A = 1\n")
+    git("init", "-q")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "x", "--allow-empty")
+    git("add", "src/x.py")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+    clean = bench.graphene_sha(tmp_path)
+    (tmp_path / "src" / "x.py").write_text("A = 2\n")
+    one = bench.graphene_sha(tmp_path)
+    (tmp_path / "src" / "x.py").write_text("A = 3\n")
+    other = bench.graphene_sha(tmp_path)
+    assert len(clean) == 12 and one.startswith(clean + "-dirty-") and other.startswith(clean + "-dirty-")
+    assert one != other
+
+
+def test_the_tree_commands_send_the_planners_calls_to_the_nights_ledger_under_its_cap(tmp_path):
+    readme = (HERE / "trees" / "README.md").read_text()
+    once = readme.split("```sh\n")[1].split("```")[0]
+    line = once[once.index("printf") :].replace("~/graphene-trees/feeds-standin-tree-1/env.sh", '"$1"')
+    env = {k: v for k, v in os.environ.items() if k != "GRAPHENE_SPEND_CAP_USD"} | {"G": str(bench.ROOT)}
+    line += '. "$1"; echo "$GRAPHENE_LEDGER $GRAPHENE_SPEND_CAP_USD"'
+    said = subprocess.run(["bash", "-c", line, "_", str(tmp_path / "env.sh")], env=env, capture_output=True,
+                          text=True)  # fmt: skip
+    assert said.stdout.strip() == f"{bench.LEDGER} 30", said.stderr

@@ -5,7 +5,9 @@
 
 Per task and configuration, every run's number in the order the runs were made, then the range: a
 mean of three runs hides the run that went wrong. accept sits beside landed, because a configuration
-that lands more and passes accept less is worse.
+that lands more and passes accept less is worse. A configuration is its name, the graphene that ran,
+its executor prompt and its tree: a name run again after any of those changed is a row of its own.
+A run with an unpriced attempt has no cost per landed leaf: it is unknown, not $0.
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ HERE = Path(__file__).resolve().parent
 
 
 def spread(values: list, of: str = "", fmt=str) -> str:
-    """`3 · 5 · 4 of 6 (3–5)`: each run's value in run order, then the range when they differ."""
-    shown = " · ".join("—" if v is None else fmt(v) for v in values) + (f" of {of}" if of else "")
-    known = [v for v in values if v is not None]
+    """`3 · 5 · 4 of 6 (3–5)`: each run's value in run order, then the range when they differ. A word
+    in place of a value (`unknown`) is shown as it is, and left out of the range."""
+    shown = " · ".join("—" if v is None else v if isinstance(v, str) else fmt(v) for v in values)
+    shown += f" of {of}" if of else ""
+    known = [v for v in values if isinstance(v, (int, float))]
     if len(set(known)) > 1:
         shown += f" ({fmt(min(known))}–{fmt(max(known))})"
     return shown
@@ -45,9 +49,20 @@ def money(value: float) -> str:
 def render(rows: list[dict], source: str) -> str:
     runs = [r for r in rows if r["kind"] == "run"]
     leaves = [r for r in rows if r["kind"] == "leaf"]
-    groups: dict[tuple[str, str], list[dict]] = {}
+
+    def form(r: dict) -> tuple:
+        return r["task"], r["config"], r["graphene_sha"], r["prompt_version"], r["tree"]
+
+    groups: dict[tuple, list[dict]] = {}
     for r in runs:  # in the order they were run
-        groups.setdefault((r["task"], r["config"]), []).append(r)
+        groups.setdefault(form(r), []).append(r)
+
+    def name(r: dict) -> str:
+        """The configuration's name, and what set it apart when that name ran in more than one form."""
+        _, config, sha, prompt, tree = form(r)
+        alone = sum(k[:2] == form(r)[:2] for k in groups) == 1
+        return config if alone else f"{config} (graphene {sha}, prompt {prompt}, tree {tree})"
+
     out = [
         "# The Nemotron benchmark, 2026-09-25",
         "",
@@ -77,10 +92,11 @@ def render(rows: list[dict], source: str) -> str:
         "failed | not started, or other | $ per landed leaf | checks passing at base |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
-    for (task, config), rs in groups.items():
+    for rs in groups.values():
         sizes = sorted({r["leaves"] for r in rs})
+        costs = ["unknown" if r["unpriced_attempts"] else r["cost_per_landed_usd"] for r in rs]
         cells = [
-            task, config, str(len(rs)),
+            rs[0]["task"], name(rs[0]), str(len(rs)),
             spread([r["landed"] for r in rs], "/".join(map(str, sizes))),
             " · ".join(passed(r["accept"]) for r in rs),
             " · ".join(passed(r["quality"]) for r in rs),
@@ -88,7 +104,7 @@ def render(rows: list[dict], source: str) -> str:
             spread([r["landed_after_offer"] for r in rs]),
             spread([r["failed"] for r in rs]),
             spread([r["not_started"] + r["other"] for r in rs]),
-            spread([r["cost_per_landed_usd"] for r in rs], fmt=money),
+            spread(costs, fmt=money),
             spread([len(r["checks_passing_at_base"]) for r in rs]),
         ]  # fmt: skip
         out.append("| " + " | ".join(cells) + " |")
@@ -99,12 +115,13 @@ def render(rows: list[dict], source: str) -> str:
         "| # | config | task | runs | landed | accept passed in | $ per landed leaf |",
         "|---|---|---|---|---|---|---|",
     ]
-    for k, ((task, config), rs) in enumerate(groups.items(), 1):
+    for k, rs in enumerate(groups.values(), 1):
         landed, total = sum(r["landed"] for r in rs), sum(r["leaves"] for r in rs)
         dollars = sum(r["dollars"] for r in rs)
         share = f"{landed}/{total} ({100 * landed // total}%)" if total else "0/0"
         per = money(dollars / landed) if landed else "—"
-        out.append(f"| {k} | {config} | {task} | {len(rs)} | {share} | "
+        per = "unknown" if any(r["unpriced_attempts"] for r in rs) else per
+        out.append(f"| {k} | {name(rs[0])} | {rs[0]['task']} | {len(rs)} | {share} | "
                    f"{sum(clean(r['accept']) for r in rs)} of {len(rs)} runs | {per} |")  # fmt: skip
     out += ["", "## Every leaf that did not land by itself", ""]
     missed = [r for r in leaves if r["outcome"] != "landed"]
@@ -113,20 +130,20 @@ def render(rows: list[dict], source: str) -> str:
         paths = f" ({', '.join(r['offer_paths'])})" if r["offer_paths"] else ""
         then = f", then {r['then']}" if r["then"] else ""
         why = " ".join(str(r["why"]).split())[:160]
-        out.append(f"- {r['task']} · {r['config']} · run {r['run']} · `{r['leaf']}`: {r['outcome']}: {why}. "
+        out.append(f"- {r['task']} · {name(r)} · run {r['run']} · `{r['leaf']}`: {r['outcome']}: {why}. "
                    f"{offer}{paths}{then}")  # fmt: skip
     if not missed:
         out.append("None.")
     flagged = [(r, leaf) for r in runs for leaf in r["checks_passing_at_base"]]
     if flagged:
         out += ["", "## Checks that pass at the base commit (not checks: the tree needs fixing)", ""]
-        out += [f"- {r['task']} · {r['config']} · run {r['run']} · `{leaf}`" for r, leaf in flagged]
+        out += [f"- {r['task']} · {name(r)} · run {r['run']} · `{leaf}`" for r, leaf in flagged]
     stopped = [r for r in runs if r["stopped"] or r["rounds_cap_hit"]]
     if stopped:
         out += ["", "## Runs cut short", ""]
         for r in stopped:
-            said = f"stopped at {r['stopped']}" if r["stopped"] else f"its {r['rounds']} rounds were the cap"
-            out.append(f"- {r['task']} · {r['config']} · run {r['run']}: {said}")
+            said = f"stopped by {r['stopped']}" if r["stopped"] else f"its {r['rounds']} rounds were the cap"
+            out.append(f"- {r['task']} · {name(r)} · run {r['run']}: {said}")
     return "\n".join(out) + "\n"
 
 
