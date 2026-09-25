@@ -67,7 +67,7 @@ docs/proof/nemotron.sh ~/graphene-nemotron
   - `2926419`, macOS 3.13: the hook time-budget test, 163 ms against 150 on the runner. That is the
     directive's named environment test, left as it is.
   - `3b7da28`, macOS 3.12: a real race. The executor read its attempt number back from the log
-    before `run` had written it, so it could stay on Nano for attempt 2. Fixed at `46ac1c8`
+    before `run` had written it, so it could stay on Nano for attempt 2. Fixed at `07c73ab`
     (`GRAPHENE_TRY`), with a test that fails without the fix.
 - **The README changes, for you to put in your own words.** The opening and the hand-back copy are
   untouched. What changed:
