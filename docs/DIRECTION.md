@@ -668,6 +668,17 @@ change is named here.
 3. The check in a clean worktree of the leaf's commit (decision 48's real fix).
 4. Codex hooks, then the vendor's sandbox as a third layer for scope, as before.
 
+## What comes next, from 25 September
+
+1. A Token Factory key (and a Sandboxes project) on the machine that runs the next session. Then
+   `uv run python docs/test/access.py`: the real Nemotron ids, one tool call per model, and ConTree's
+   own timings. Every number that matters waits on this and nothing else.
+2. The four fixed trees (`docs/test/trees/README.md`), scored by `docs/test/score_tree.py`. Then the
+   benchmark on feeds and inventory (`docs/test/bench.py`), tuning one lever at a time until 80% land
+   with accept passing, and the held-out report and logs with the frozen configuration.
+3. The live demo run, the video to `docs/demo/STORYBOARD.md`, the demo page on Pages, and
+   `docs/HACKATHON.md` in your words, before 30 October.
+
 ## How this file is used
 
 An agent starting work here reads this file first, then `docs/HOW_IT_WORKS.md`. Where this file and
