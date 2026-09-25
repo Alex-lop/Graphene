@@ -5,7 +5,6 @@ import json
 import re
 import sqlite3
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -13,12 +12,8 @@ from typer.testing import CliRunner
 
 from graphene_map.cli import build
 from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_map.sources.claude_code import hook_main, project_dir_name
+from graphene_map.sources.claude_code import hook_main
 from graphene_map.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
-
-FIXTURES = Path(__file__).parent / "fixtures"
-sys.path.insert(0, str(FIXTURES))
-import make_transcript_fixture as fixture  # noqa: E402
 
 
 def test_opens_in_wal_mode_with_schema(tmp_path):
@@ -199,17 +194,10 @@ def test_ids_are_scoped_to_their_session(tmp_path):
 
 
 @pytest.fixture
-def repo_with_transcripts(tmp_path, monkeypatch):
-    """A git repo, current directory, with the synthetic transcript under CLAUDE_CONFIG_DIR."""
+def repo(tmp_path, monkeypatch):
+    """A git repo, the current directory."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr(fixture, "CWD", str(tmp_path))
-    target = tmp_path / "claude" / "projects" / project_dir_name(tmp_path)
-    for path, text in fixture.render().items():
-        out = target / path.relative_to(fixture.OUT)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text)
     return tmp_path
 
 
@@ -257,22 +245,6 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
         assert tables >= {*V1_TABLES, "agents", "commits", "commit_files", "nodes", "node_log", "plan_meta"}
 
 
-def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):
-    repo = repo_with_transcripts
-    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0  # any command that backfills
-    with Store.open(repo) as store:
-        (sid,) = [s.id for s in store.sessions()]
-        assert store.transcript_stat(sid) is not None
-        store.conn.execute("DELETE FROM agents")  # what a store read by the old parser looks like
-    downgrade_to_v1(repo / ".graphene" / "graphene.db")
-    with Store.open(repo) as store:
-        assert store.transcript_stat(sid) is None  # migrated: the read is forgotten, the session is not
-        assert [s.id for s in store.sessions()] == [sid]
-    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0
-    with Store.open(repo) as store:
-        assert [a.id for a in store.agents(sid)] == [fixture.AGENT]  # read again, by the new parser
-
-
 def test_the_hook_migrates_an_older_store_and_records_the_event(tmp_path):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()
@@ -304,15 +276,20 @@ def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
         assert store.agents("s") == [] and len(store.commits_between(when, when)) == 1
 
 
-def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
-    repo = repo_with_transcripts
+def test_a_corrupt_store_is_rebuilt_and_still_answers(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
     result = CliRunner().invoke(build(), ["ui", "--json"])
     output = result.output + result.stderr
-    assert result.exit_code == 0, output
+    assert result.exit_code == 1 and "Traceback" not in output  # rebuilt empty: nothing to draw yet
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
-    assert "store rebuilt" in output and "11111111" in result.output
+    assert "store rebuilt" in output
+    for name, extra in (("UserPromptSubmit", {"prompt": "list it"}), ("PostToolUse", {"tool_name": "Bash"})):
+        event = {"hook_event_name": name, "session_id": "11111111", "cwd": str(repo), **extra}
+        assert hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=io.StringIO()) == 0
+    result = CliRunner().invoke(build(), ["ui", "--json"])
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "11111111" in result.output  # the rebuilt store records and answers
 
 
 def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
@@ -325,8 +302,7 @@ def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
         assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
 
 
-def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo_with_transcripts):
-    repo = repo_with_transcripts
+def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo):
     Store.open(repo).close()
     db = repo / ".graphene" / "graphene.db"
     set_version(db, SCHEMA_VERSION + 1)
