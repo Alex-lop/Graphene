@@ -20,17 +20,22 @@ executor and reads it back.
 
 What a leaf's record on the page holds, from its log: who started it, each attempt, each refused
 `done` with the paths it was refused over, each check Graphene ran by its command and result, what
-had changed when it finished, that it landed and which paths it brought, and why it was handed back.
+had changed when it finished, that it landed and which paths it brought, why it was handed back, and
+what git said when it passed and its merge was refused. A leaf that came back reads `came back` and
+is listed as waiting on you, as in the terminal.
 
 What stays on the machine: what a check printed (a check is named by its command and its result),
 and anything after the first line of a reason (the reason `graphene run` hands a leaf back with
 quotes the refusal, and a failed check's output is under it); the page's token; the log's absolute
-paths (the leaf's worktree, the executor's output file, the checkout it was merged into).
+paths (the leaf's worktree, the executor's output file, the checkout it was merged into); and the
+checkout's path wherever a sentence names it (git's refusal of a merge, a file refused in a leaf's
+worktree): the page says the repository's name there instead.
 
 Read the page before you publish it. It does carry the person's name as the actor of their own
-acts (`GRAPHENE_PERSON`, else `USER`), the first word of `--with` as the executor's name (its
-command name, never its path), and every check command as it was written: a check that names an
-absolute path or a secret publishes it.
+acts (`GRAPHENE_PERSON`, else `USER`), the first word of `--with` as the executor's name in every
+act of its own and of the run's (its command name, never its path), and every check command as it
+was written: a check that names an absolute path outside the repository (the Python it runs, say)
+or a secret publishes it.
 
 The page's second screen, the record of a run, is drawn from Claude Code's sessions only. When the
 repository has none, that screen is shut and its button says why.

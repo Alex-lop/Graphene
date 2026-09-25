@@ -17,7 +17,8 @@ CLI = [sys.executable, "-c", "import sys; from graphene_map.cli import app; sys.
 # One executor for every leaf, as `graphene run --with` starts it: it writes the leaf's file and says
 # `done`, except where the loop should show. csv-reader first leaves a note outside its scope, so its
 # `done` is refused and the run sends it back; json-reader hands its leaf back with a reason; the
-# parser's check fails every time, printing something that must not leave the machine.
+# parser's check fails every time, printing something that must not leave the machine; yaml-reader
+# passes and does not land, because the person has a file of that name uncommitted in the checkout.
 EXECUTOR = f"""
 import os, pathlib, subprocess, sys
 node, here = os.environ["GRAPHENE_NODE"], pathlib.Path.cwd()
@@ -44,6 +45,9 @@ PLAN = f"""\
   - a json reader  [json-reader]
       scope: feeds/json_reader.py
       check: test -s feeds/json_reader.py
+  - a yaml reader  [yaml-reader]
+      scope: feeds/yaml_reader.py
+      check: test -s feeds/yaml_reader.py
   - the parser  [parser]
       scope: feeds/parser.py
       check: {sys.executable} -m feeds.parser
@@ -78,13 +82,14 @@ def exported(tmp_path_factory):
     git(repo, "commit", "-qm", "start")
     graphene(repo, config, "plan", "goal", "the feeds tool reads csv, xml and json")
     graphene(repo, config, "plan", "propose", "-", stdin=PLAN)
+    (repo / "feeds" / "yaml_reader.py").write_text("# the person's own, not committed yet\n")
     (tmp / "executor.py").write_text(EXECUTOR)
     executor = f"{sys.executable} {tmp / 'executor.py'}"
     said = graphene(repo, config, "run", "--parallel", "2", "--attempts", "2", "--with", executor)
-    assert "run: 2 done, 2 came back (json-reader, parser)" in said, said
+    assert "run: 2 done, 2 came back (json-reader, parser), 1 in review (yaml-reader)" in said, said
     page = tmp / "site" / "index.html"
     graphene(repo, config, "ui", "--export", str(page))
-    return page.read_text(encoding="utf-8")
+    return page.read_text(encoding="utf-8"), repo
 
 
 def inlined(page: str) -> dict:
@@ -93,22 +98,28 @@ def inlined(page: str) -> dict:
 
 
 def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_record(exported):
-    plan = inlined(exported)["plan"]
+    plan = inlined(exported[0])["plan"]
     at = {n["id"]: n for n in plan["nodes"]}
     assert plan["goal"] == "the feeds tool reads csv, xml and json"
-    assert list(at) == ["readers", "csv-reader", "xml-reader", "json-reader", "parser"]  # parents first
-    readers = at.pop("readers")
-    assert (readers["sub_goal"], readers["leaves_done"], readers["leaves_total"]) == (True, 2, 4)
+    assert list(at) == ["readers", "csv-reader", "xml-reader", "json-reader", "yaml-reader", "parser"]
+    readers = at.pop("readers")  # parents first
+    assert (readers["sub_goal"], readers["leaves_done"], readers["leaves_total"]) == (True, 2, 5)
     assert {i: n["state"] for i, n in at.items()} == {
-        "csv-reader": "done", "xml-reader": "done", "json-reader": "open", "parser": "open",
+        "csv-reader": "done", "xml-reader": "done", "json-reader": "open", "yaml-reader": "review",
+        "parser": "open",
     }  # fmt: skip
+    # a leaf that came back reads so, and waits on the person, as the terminal says (decision 42)
+    assert at["json-reader"]["display_state"] == at["parser"]["display_state"] == "came back"
+    assert [w["id"] for w in plan["waiting_on_person"]] == ["json-reader", "yaml-reader", "parser"]
     record = {i: [(e["kind"], e["said"]) for e in n["log"]] for i, n in at.items()}
     # who held it, what it was refused, the check Graphene ran, what changed, and that it landed
     csv = record["csv-reader"]
     assert [kind for kind, _ in csv][:3] == ["added", "started", "attempt"]
-    # held by the executor `run` started, named by its command and not by where it lives on this disk
+    # held by the executor `run` started, named by its command and not by where it lives on this disk,
+    # and by that one name in its own acts (its refused `done`) as in the run's
     held = f"run:{Path(sys.executable).name}"
     assert at["csv-reader"]["log"][1]["actor"] == at["csv-reader"]["executor"] == held
+    assert {e["actor"] for e in at["csv-reader"]["log"] if e["actor"].startswith("run:")} == {held}
     assert ("refused", "NOTES.md") in csv
     assert ("check_passed", "test -s feeds/csv_reader.py") in csv
     finished, landed = ("finished", "changed: feeds/csv_reader.py"), ("landed", "feeds/csv_reader.py")
@@ -116,6 +127,9 @@ def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_
     why = "the json reader needs feeds/parse.py, outside its scope"
     assert ("released", why) in record["json-reader"]
     assert at["json-reader"]["waits"][0] == f"handed back: {why}"
+    # yaml-reader passed, and git refused its merge: what git said is its record, the checkout by name
+    [(_, unlanded)] = [e for e in record["yaml-reader"] if e[0] == "unlanded"]
+    assert unlanded.startswith("git merge --no-ff --no-edit failed in feeds: error: The following untracked")
     # the parser came back after its check failed on both attempts, each run by the executor's own
     # `done` and again by the run: the page names the check, never what it printed
     assert record["parser"].count(("check_failed", f"{sys.executable} -m feeds.parser")) == 4
@@ -126,13 +140,15 @@ def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_
 
 
 def test_the_exported_page_fetches_nothing_holds_no_token_cannot_write_and_keeps_no_check_output(exported):
+    exported, repo = exported
     data = inlined(exported)
     assert "PRIVATE-4242" not in exported  # what the parser's check printed, four times, stays here
+    assert str(repo) not in exported  # and where the checkout is on this disk
     assert data["plan"]["token"] is None and data["plan"]["writable"] is False
     markup = re.sub(r"<script[^>]*>.*?</script>", "", exported, flags=re.S)  # the page, not its code
     assert not re.search(r'\b(src|href)="(?!data:)', markup)  # its script and style are inlined
-    assert data["runs"] == [] and data["graph"]["lanes"] == []  # no Claude Code session to draw a map of,
-    assert "no Claude Code session was recorded in this repo" in exported  # so the page keeps it shut
+    # no Claude Code session to draw a map of: the page keeps that screen shut (Plan.test.tsx)
+    assert data["runs"] == [] and data["graph"]["lanes"] == []
 
 
 def test_the_pages_workflow_publishes_the_demo_only_when_started_by_hand():

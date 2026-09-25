@@ -243,7 +243,8 @@ def run_node(
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on."""
     session = str(uuid.uuid4())
     # the command's name, never where it lives: the label is on the page an export publishes
-    who = P.Caller(f"run:{Path(shlex.split(template)[0]).name}", False, session)
+    name = Path(shlex.split(template)[0]).name
+    who = P.Caller(f"run:{name}", False, session)
     stop = stop or Stop()
     try:
         node = P.start(store, node_id, who, checkout)
@@ -264,7 +265,9 @@ def run_node(
                 session,
                 attempt > 1,
             )
+            # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session}
+            env["GRAPHENE_EXECUTOR"] = name
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
@@ -277,7 +280,7 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
-                P.release(store, node.id, who, f"the executor could not be started: {argv[0]}: {no.strerror}")
+                P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
                     "another executor with --with"

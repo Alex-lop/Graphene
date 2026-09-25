@@ -148,7 +148,8 @@ def caller(env: dict[str, str] | None = None, tty: bool | None = None) -> Caller
         return Caller(env["AI_AGENT"], False, None)
     mark = next((m for m in AGENT_MARKS if env.get(m)), None)
     if mark:
-        names = {"GRAPHENE_NODE": f"run:{env[mark]}", "GRAPHENE_PLANNER": "planner"}
+        run = f"run:{env.get('GRAPHENE_EXECUTOR') or env[mark]}"  # the executor's name, as `run` logs it
+        names = {"GRAPHENE_NODE": run, "GRAPHENE_PLANNER": "planner"}
         return Caller(names.get(mark, "an agent"), False, None)
     forced = env.get("GRAPHENE_AS")
     if forced:

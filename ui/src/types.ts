@@ -156,7 +156,7 @@ export interface Run {
 // -- the plan: a mirror of src/graphene_map/plan_view.py, which computes every position ------
 
 export type NodeState = "proposed" | "open" | "running" | "review" | "done";
-export type Shown = NodeState | "waiting" | "ready" | "sub-goal";
+export type Shown = NodeState | "waiting" | "ready" | "came back" | "sub-goal";
 
 export interface Entry {
   at: string;
@@ -182,7 +182,7 @@ export interface PlanNode {
   leaves_done: number; // a sub-goal's progress, in the leaves beneath it
   leaves_total: number;
   state: NodeState;
-  display_state: Shown; // an open node that cannot start yet is waiting, not ready
+  display_state: Shown; // an open node that cannot start yet is waiting, not ready; one handed back came back
   rev: number;
   executor: string | null;
   started_at: string | null;

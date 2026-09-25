@@ -235,7 +235,9 @@ Recording and deciding fail apart. If the gate crashes, the call goes through, t
 For each node an agent can reach, in order: Graphene starts the node itself, runs the executor
 command you gave (`--with`, default `claude -p --permission-mode acceptEdits --allowedTools
 'Bash(graphene *)'`: it may edit and run its own `done` and `release`) with the node's contract as
-its last argument and `GRAPHENE_NODE` in its environment, waits for the process to end,
+its last argument and `GRAPHENE_NODE` in its environment (and `GRAPHENE_EXECUTOR`, the command's
+name, so the executor's own `done` is logged as `run:<name>`, as the run's acts are), waits for the
+process to end,
 and then looks at the node, not at the exit code. If the executor ran `graphene node done` itself
 and the gate agreed, fine. If it handed the node back, the reason is printed and the run moves on.
 Otherwise Graphene runs the gate; refused, the executor is sent back with the refusal (Claude Code
@@ -548,7 +550,8 @@ sign-off fields the page prints where that mechanism ends (P5).
 commit subjects, prompts, each agent's task, and the plan with each node's whole log as its record.
 In the file a check is named by its command and result and never by what it printed, and a reason
 keeps only its first line (the reason `graphene run` hands a leaf back with quotes the refusal, and
-a failed check's output is under it). A run by executors that keep no records of their own is drawn
+a failed check's output is under it); where a sentence names the checkout's path, the file names the
+repository instead. A run by executors that keep no records of their own is drawn
 from those logs alone; the second screen, drawn from Claude Code's sessions, is shut when there are
 none. It carries no token and cannot write. `docs/demo/README.md` says how the demo page is made
 from it and hosted. Every piece of text reaches the page

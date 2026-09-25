@@ -178,13 +178,18 @@ def rolls_up(node: P.Node, nodes: list[P.Node], under: dict) -> tuple[int, int]:
     return sum(1 for n in beneath if n.state == P.DONE), len(beneath)
 
 
-def display_state(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> str:
-    """What the page labels the node: an open node that cannot start yet is waiting, not ready, and
-    one with children is a sub-goal, which nobody takes and which is done when its children are."""
+def display_state(
+    node: P.Node, by_id: dict[str, P.Node], under: dict | None = None, back: set[str] = frozenset()
+) -> str:
+    """What the page labels the node: an open node that cannot start yet is waiting, not ready, one
+    with children is a sub-goal, which nobody takes and which is done when its children are, and a
+    leaf in ``back`` (`plan.came_back`) came back, which waits on the person, as the terminal says."""
     if under and under.get(node.id):
         return "sub-goal" if node.state == P.OPEN else node.state
     if node.state != P.OPEN:
         return node.state
+    if node.id in back:
+        return "came back"
     return "waiting" if P.unmet(node, by_id) else "ready"
 
 
@@ -202,7 +207,9 @@ def came_back(store, node: P.Node, export: bool = False) -> list[str]:
     return []
 
 
-def waits(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> list[str]:
+def waits(
+    node: P.Node, by_id: dict[str, P.Node], under: dict | None = None, back: set[str] = frozenset()
+) -> list[str]:
     """Why this node is not moving, in plain sentences: what it needs from a person on its own
     account first, then what it waits on in the plan, then which person the rest of it waits for."""
     reasons: list[str] = []
@@ -211,9 +218,9 @@ def waits(node: P.Node, by_id: dict[str, P.Node], under: dict | None = None) -> 
     elif node.state == P.REVIEW:
         reasons.append("waits for a person's sign-off")
     for blocker in P.unmet(node, by_id):
-        reasons.append(
-            f"waits on {blocker.id} ({blocker.title}), which is {display_state(blocker, by_id, under)}"
-        )
+        shown = display_state(blocker, by_id, under, back)
+        state = "came back" if shown == "came back" else f"is {shown}"
+        reasons.append(f"waits on {blocker.id} ({blocker.title}), which {state}")
     # waits_on_person walks the whole chain above this node; its line about the node itself says
     # nothing the state and the lane do not already say, so only the ones upstream are kept.
     reasons += [r for r in P.waits_on_person(node, by_id) if not r.startswith(f"{node.id} ")]
@@ -232,8 +239,9 @@ def _said(detail: dict, export: bool = False) -> str:
     changed = detail.get("changed")  # an edit's field changes (a dict), or an ending's paths (a list)
     fields = changed.items() if isinstance(changed, dict) else ()
     paths = changed if isinstance(changed, list) else []
+    why = detail.get("why")  # a sentence, or the lines git refused a leaf's merge with (`unlanded`)
     said = (
-        detail.get("why")
+        (", ".join(why) if isinstance(why, list) else why)
         or detail.get("note")
         or detail.get("override")
         or ", ".join(detail.get("outside") or detail.get("paths") or [])
@@ -260,14 +268,17 @@ def node_log(store, node_id: str, export: bool = False) -> list[dict]:
     ]  # fmt: skip
 
 
-def waiting_on_person(nodes: list[P.Node], person: str) -> list[dict]:
-    """What is on the person right now: proposals to accept, sign-offs due, their own ready nodes."""
+def waiting_on_person(nodes: list[P.Node], person: str, back: set[str] = frozenset()) -> list[dict]:
+    """What is on the person right now: proposals to accept, sign-offs due, the leaves that came back
+    (``back``), their own ready nodes."""
     out = []
     for n in P.order(nodes):
         if n.state == P.PROPOSED:
             out.append({"id": n.id, "title": n.title, "why": f"accept it ({n.proposed_by} proposed it)"})
         elif n.state == P.REVIEW:
             out.append({"id": n.id, "title": n.title, "why": "sign it off"})
+        elif n.id in back:
+            out.append({"id": n.id, "title": n.title, "why": "see why it came back"})
     ready = {n.id for n in P.ready(nodes)}
     for n in P.order(nodes):
         if n.id in ready and n.owner == person:  # another person's node waits on them, not on you
@@ -289,7 +300,8 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
         repo=store.path.parent.parent.name, goal=P.goal(store), person=person, paused=P.paused(store)
     )
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
-    view.waiting_on_person = waiting_on_person(live, person)
+    back = {n.id for n in live if P.came_back(store, n)}  # the next move is the person's, as in the terminal
+    view.waiting_on_person = waiting_on_person(live, person, back)
     view.all_done = bool(live) and all(n.state == P.DONE for n in live)
     if checkout is not None and not any(n.state == P.RUNNING for n in live):
         try:
@@ -342,12 +354,12 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
                 leaves_done=done,
                 leaves_total=of,
                 state=n.state,
-                display_state=display_state(n, by_id, under),
+                display_state=display_state(n, by_id, under, back),
                 rev=n.rev,
                 executor=n.executor,
                 started_at=n.started_at,
                 finished_at=n.finished_at,
-                waits=came_back(store, n, export) + waits(n, by_id, under),
+                waits=came_back(store, n, export) + waits(n, by_id, under, back),
                 log=node_log(store, n.id, export),
                 lane=owner,
                 column=col,

@@ -258,8 +258,11 @@ def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_th
         P.propose(store, [node(id="n1", signoff=True)], alex)
         P.start(store, "n1", bot, repo)
         finish(store, repo, "n1", bot)
-        P.reopen(store, "n1", alex, "return a dict, not a list")
+        P.reopen(store, "n1", alex, "return a dict, not a list\nas PRIVATE-4242 printed it")
         assert "sent back: return a dict, not a list" in ui.export_html(store, [SID])
+        # to its first line, in the node's waits and in its record: a pasted output stays here
+        assert "PRIVATE-4242" in ui.payload(store, [SID])
+        assert "PRIVATE-4242" not in ui.export_html(store, [SID])
         P.start(store, "n1", bot, repo)
         P.release(store, "n1", bot, "the test asserts a list")
         assert "handed back: the test asserts a list" in ui.export_html(store, [SID])
