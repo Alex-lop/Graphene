@@ -2,8 +2,10 @@
 
 Queue item 9, its first paragraph and the first step of its second. Every line below was checked
 by a grep of `src/`, `tests/`, `docs/test/`, `docs/assets/`, `docs/proof/` and `docs/demo/` for
-the name, and by asking which command a person or an agent types reaches it. Five commits on the
-item's branch, each green on its own (the hook-budget exception is in its commit message).
+the name, and by asking which command a person or an agent types reaches it. Six commits on the
+item's branch, each green on its own (the hook-budget exception is in its commit message), and a
+seventh after review: the first version of this note said a subagent's task, closing words and
+worktree come only from transcripts, and that was wrong (below).
 
 ## What was decided about the transcripts
 
@@ -19,9 +21,16 @@ Nothing reads Claude Code's transcripts any more (`~/.claude/projects/`).
   the session runs. No command still needed the transcripts. Every Claude Code session in a repo
   where `graphene init` ran is recorded live, and `graphene node show` and the record pane never
   topped up anyway.
+- A subagent's task, prompt and spawn anchor are in the `Agent` call that spawned it, which names
+  it in its response (`agentId`); its closing words are in its `SubagentHandback` call. The hooks
+  record both calls, and the map reads them off (`graph._told_by_calls`), as the backfill's
+  `_finish_agent` did. Its worktree is asked of git's own files when `SubagentStart` and
+  `SubagentStop` arrive (`hooks.worktree_root`), so a command's list of changed files in a
+  `.claude/worktrees/` worktree maps to the repo's file, drawn as a copy (`record.changes`).
+  `tests/test_ingest_run.py` proves both from hook events alone.
 - What is lost: a session run before `init`, or without the hooks, is not on the map. A subagent's
-  task and closing words, its Workflow group and its worktree come only from transcripts, so they
-  are not added now. A store an earlier version filled keeps them, and the map still draws them.
+  Workflow group comes only from transcripts, so it is not added now. A store an earlier version
+  filled keeps it, and the map still draws it.
 
 ## The map
 
@@ -80,17 +89,22 @@ rendering half of `make_run_fixture.py`. The CLI tests of the map now record the
 
 | Module | Before | After | |
 | --- | --- | --- | --- |
-| `sources/claude_code.py` → `hooks.py` | 1007 | 411 | −596 |
+| `sources/claude_code.py` → `hooks.py` | 1007 | 415 | −592 |
 | `cli.py` | 485 | 421 | −64 |
 | `store.py` | 701 | 659 | −42 |
-| `graph.py` | 715 | 683 | −32 |
+| `graph.py` | 715 | 703 | −12 |
 | `model.py` | 88 | 81 | −7 |
 | `server.py` | 231 | 229 | −2 |
 | `executor.py`, `planner.py` | 566, 197 | 565, 196 | −1 each |
 | `gate.py` | 575 | 589 | +14 (`_NOT_A_PROMPT`, moved in) |
 | `attribute.py` → `shell.py` | 251 | 251 | 0 |
 | every other module | | | 0 |
-| total | 14017 | 13286 | −731 |
+| total | 14017 | 13310 | −707 |
+
+Before is `f3cc6aa`, where the item's branch was cut; after is that branch with the review's fix
+(`hooks.py` +4, `graph.py` +20), before `nemotron`'s later commits were merged in. On the merged
+tree the same modules differ from `nemotron`'s tip (`bd17cd0`) by the same amount: 14243 lines
+there, 13536 here.
 
 ## Also moved
 
@@ -104,9 +118,9 @@ reference to the old path is fixed (`docs/process/polish/screens.md`, `messages.
   it from `main`: the second paragraph's later steps, the lead's at the end of the run.
 - The schema is untouched (see the table): dropping the dead tables would break the additive
   migration rule and the stores already out there.
-- `record.py`'s worktree mapping (`worktree_roots`, `repo_path`) and the map's Workflow groups read
-  fields only a transcript ever filled (`agents.worktree`, `workflow_run`). They are kept, because a
-  store an earlier version filled still holds them and the page draws them. They are dead for any
-  store made from now on. Cut them when old stores no longer matter.
+- The map's Workflow groups read a field only a transcript ever filled (`workflow_run`). They are
+  kept, because a store an earlier version filled still holds it and the page draws it. They are
+  dead for any store made from now on. Cut them when old stores no longer matter.
+  (`record.py`'s worktree mapping is not: the hooks fill `agents.worktree`.)
 - `docs/PRODUCT_THESIS.md` still describes the backfill as it was. It is a dated thesis, left as
   written.
