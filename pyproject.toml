@@ -13,7 +13,8 @@ requires-python = ">=3.12"
 authors = [
   { name = "Alex Lopez", email = "alexlp2024@gmail.com" },
 ]
-keywords = ["claude-code", "codex", "coding-agents", "plan", "git", "hooks", "cli", "ai-agents"]
+keywords = ["nemotron", "nvidia", "token-factory", "claude-code", "codex", "coding-agents", "plan", "git", "hooks",
+            "cli", "ai-agents"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

@@ -266,3 +266,15 @@ def test_the_status_line_says_what_r_starts_when_init_chose_it(repo):
         assert "waiting on you: 0 · executors: none · R runs 1 ready · 0/1 done" in mid["status"]
     narrow, _ = watch(repo, [], size=(80, 24))
     assert "R: 1 ready · " in narrow["status"]  # at 80 columns the short form, unchanged
+
+
+def test_with_nemotron_chosen_init_reads_as_nemotron_and_the_choice_comes_first(repo, fake):
+    """A judge's first screen of the Nemotron demo was mostly Claude Code's settings. The choice is said
+    first, and with neither the planner nor the executor Claude Code, its hooks are one line."""
+    said = person("init", "--planner", "nemotron", "--executor", "nemotron").output
+    lines = [line for line in said.splitlines() if line.strip()]
+    assert lines[0].startswith("planner: nemotron --model")
+    assert any("the Claude Code hooks are in" in line for line in lines)
+    assert "bashEditDiffEnabled" not in said and "next Claude Code session" not in said
+    again = person("init", "--planner", "claude", "--executor", "claude").output
+    assert "next Claude Code session" in again  # with Claude Code as the planner, its lines come back

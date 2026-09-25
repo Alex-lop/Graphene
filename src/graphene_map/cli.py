@@ -297,9 +297,10 @@ def build():
         planner: str = typer.Option(None, help="The planner: nemotron, claude, codex or a command."),
         executor: str = typer.Option(None, help="The executor: nemotron, claude, codex or a command."),
     ) -> None:
-        """Install the Claude Code hooks (they hold agents to the plan and keep the record), and choose
-        this repo's planner and executor: asked at a terminal, the flags when not. `graphene run`, `ask`
-        and `node split` start them; `--with` overrides one command."""
+        """Choose this repo's planner and executor (NVIDIA Nemotron on Token Factory is offered first):
+        asked at a terminal, the flags when not; `graphene run`, `ask` and `node split` start them, and
+        `--with` overrides one command. Then install the Claude Code hooks, which hold a Claude Code
+        session to the plan and keep its record."""
         from . import plan as P
 
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
@@ -317,32 +318,35 @@ def build():
         # an agent is never asked, at a terminal or not: it would be choosing what the person runs
         asking = not given and who.person and sys.stdin.isatty() and sys.stdout.isatty()
         r = root()
+        with open_store(r) as store:  # the choice first: a question left unanswered installs nothing
+            chosen = choose(store, given, asking)
+            specs = [store.meta("planner") or "", store.meta("executor") or ""]
+            if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
+                store.set_meta("plan_first", "on")
+        say(chosen)
         try:
             added = install_hooks(r)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
-        if added:
-            say(f"hooks added to {settings}: {', '.join(added)}")
+        say("plan first is on: what you ask for becomes a tree before any code "
+            "(`graphene plan first off` turns it off)")  # fmt: skip
+        if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
+            say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
+                + ("" if added else " (already there)"))  # fmt: skip
         else:
-            say("hooks already installed")
-        with open_store(r) as store:  # a repository set up for Graphene plans first (`plan first off`)
-            if store.meta("plan_first") is None:
-                store.set_meta("plan_first", "on")
-            say("plan first is on: what you ask for in a session becomes a tree before any code "
-                "(`graphene plan first off` turns it off)")  # fmt: skip
-            say(choose(store, given, asking))
-        if settings.name == Path(SETTINGS).name:
+            say(f"hooks added to {settings}: {', '.join(added)}" if added else "hooks already installed")
+            if settings.name == Path(SETTINGS).name:
+                say(
+                    f"{settings} is your personal settings file (if your team shares .claude/, add that "
+                    "file to .gitignore)"
+                )
             say(
-                f"{settings} is your personal settings file (if your team shares .claude/, add that "
-                "file to .gitignore)"
+                "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
+                "you, ignores itself in git); then run `graphene`"
             )
-        say(
-            "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
-            "you, ignores itself in git); then run `graphene`"
-        )
-        if not shell_lists_enabled():
-            say(SHELL_LISTS_HINT)
+            if not shell_lists_enabled():
+                say(SHELL_LISTS_HINT)
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
