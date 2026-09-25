@@ -840,14 +840,16 @@ def test_a_check_runs_none_of_the_persons_git_hooks(store, repo):
     assert not ran.exists() and no_check_tree_left(store, repo)
 
 
-def slow_checkout(repo, said) -> None:
+def slow_checkout(repo, said, began=None) -> None:
     """Every checkout of the repo now takes a second and a half, and then writes ``said``: a stand-in
-    for a repository large enough that making a worktree takes a while (300,000 files: 39 s)."""
+    for a repository large enough that making a worktree takes a while (300,000 files: 39 s). With
+    ``began``, the checkout marks when it is under way, so a test can stop it in the middle."""
     (repo / ".gitattributes").write_text("*.slow filter=slow\n")
     (repo / "a.slow").write_text("slow\n")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "slow")
-    git(repo, "config", "filter.slow.smudge", f"sleep 1.5; touch {said}; cat")
+    mark = f"touch {began}; " if began else ""
+    git(repo, "config", "filter.slow.smudge", f"{mark}sleep 1.5; touch {said}; cat")
 
 
 def test_the_checks_time_limit_covers_making_its_worktree_and_what_git_started_ends_with_it(
@@ -868,11 +870,12 @@ def test_a_run_stopped_while_the_checks_worktree_is_made_stops_the_check(store, 
     """A stop (``end_checks``) that came while git made the check's worktree was lost: nothing was
     running yet for it to end, and the check ran to its end after the stop, and could pass."""
     checked_out, ran = repo / ".git" / "checked-out", repo / ".git" / "check.ran"
-    slow_checkout(repo, checked_out)
+    began = repo / ".git" / "checkout-began"
+    slow_checkout(repo, checked_out, began)
 
-    def stop_it():  # once git is writing the worktree
-        until = time.monotonic() + 20
-        while not list(repo.glob(".graphene/worktrees/.check-*/tree/.git")) and time.monotonic() < until:
+    def stop_it():  # once git is in the middle of checking the worktree out (it was once the .git file,
+        until = time.monotonic() + 20  # which one runner's git wrote only after the checkout: a race)
+        while not began.exists() and time.monotonic() < until:
             time.sleep(0.01)
         plan.end_checks()
 
