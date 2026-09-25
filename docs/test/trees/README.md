@@ -46,7 +46,8 @@ Then start the stand-in, a sub-agent, with this brief (put the task's name in pl
 >
 > 1. From the card alone, before you open any file of the repo, write the paragraph you would type
 >    to a colleague, with every constraint you still remember, into `../paragraph.txt`.
-> 2. `as_me graphene ask "$(cat ../paragraph.txt)" --with nemotron` (Nemotron Ultra proposes the tree).
+> 2. `as_me graphene ask "$(cat ../paragraph.txt)" --with nemotron` (Nemotron Ultra proposes the tree),
+>    then, once, `as_me graphene plan --text > ../proposed.plan`: what it proposed, before any prune.
 > 3. Prune it against the card: `as_me graphene plan --text > "$TMPDIR/before.txt"`, copy it to
 >    `"$TMPDIR/after.txt"`, delete the leaves you do not want and fix any scope or check that is
 >    wrong by the card, then `as_me env EDITOR="cp $TMPDIR/after.txt" graphene plan edit` and
@@ -90,3 +91,24 @@ At 80% of `GRAPHENE_SPEND_CAP_USD` (30 if unset) the bench starts no new run, an
 between rounds; both exit 3, which ends the loop above. So does stopping the bench (Ctrl-C, or a
 plain `kill` of its process, not `-9`): it stops its round, ends every executor that round started, and counts the
 run as far as it got, marked stopped.
+
+## Scoring a tree
+
+`docs/test/score_tree.py` scores a tree against its task, spending nothing: which intent globs no
+leaf's scope reaches, which scopes reach past them, which leaves share a path, and which checks pass
+at the base commit (with `--after`, which fail in a finished run's repo). It prints a short report and
+appends a row to `docs/test/trees/scores.jsonl` with the tree's hash, as the bench's rows carry it, and
+the planner's model and prompt version from the plan's log.
+
+Two trees per task, once the tree above is committed and never before: the report names intent
+globs, and a tree pruned against it would be scored against its own answer key.
+
+```sh
+cd $G
+T=~/graphene-trees/feeds-standin-tree-1     # the stand-in's run: its repo holds the plan's log
+# what Ultra proposed, before the prune: the planner's score
+uv run python docs/test/score_tree.py feeds --plan $T/proposed.plan --store $T/repo
+# the fixed tree the bench runs, and after a run, whether its checks pass there
+uv run python docs/test/score_tree.py feeds --store $T/repo
+uv run python docs/test/score_tree.py feeds --store $T/repo --after ~/graphene-bench/<date>/feeds-nano-1/repo
+```
