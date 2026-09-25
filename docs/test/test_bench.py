@@ -191,7 +191,8 @@ def test_at_the_cap_a_run_stops_its_leaf_is_counted_stopped_and_at_80_percent_no
     assert bench.main([*run, "--run", "1"]) == 3
     leaves, row = rows_of(tmp_path / "rows.jsonl")
     bye = leaves["bye"]
-    assert bye["outcome"] == "stopped" and "spend cap" in bye["why"] and bye["attempts"] == 3
+    # one attempt: at the cap the executor hands the leaf back itself, and the run does not try again
+    assert bye["outcome"] == "stopped" and "spend cap" in bye["why"] and bye["attempts"] == 1
     assert (bye["offer"], bye["then"]) == ("w", "not run again")  # the denied write was still its offer
     assert (row["failed"], row["other"], row["landed"], row["cost_per_landed_usd"]) == (0, 1, 0, None)
     assert row["stopped"] == "the spend cap"

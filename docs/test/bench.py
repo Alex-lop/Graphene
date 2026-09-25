@@ -210,6 +210,8 @@ def ended(hold: list[dict], stop: tuple[str, str] = TIMEOUT) -> tuple[str, str]:
     why = back[-1] if back else ""
     if why == STOPPED:
         return stop
+    if why.startswith("the executor stopped: the spend cap is reached"):  # the night's budget ended it
+        return "stopped", why.removeprefix("the executor stopped: ")
     tries = [k for k, e in enumerate(hold) if e["kind"] == "attempt"]
     last = hold[tries[-1] :] if tries else hold
     run = (hold[0]["actor"], hold[0]["session_id"])  # the run's own acts carry its name and the attempt's

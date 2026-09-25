@@ -159,8 +159,9 @@ def ask(
         printed = done.stdout.strip()
         text = proposal_in(printed)
         if not text.strip():
-            tail = printed[-300:] or done.stderr[-300:]
-            refusal = f"the planner printed no proposal (exit {done.returncode}): {tail}"
+            said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
+            tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
+            refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
             try:
                 with store.claim():
@@ -176,6 +177,8 @@ def ask(
                     for line in said_lines:
                         say(f"  {line[:300]}")
                 return said
+        if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
+            raise P.Refused(f"nothing was added. {refusal}")
         say(refusal)
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."

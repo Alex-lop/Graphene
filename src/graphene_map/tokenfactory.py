@@ -76,6 +76,9 @@ def _request(
                 continue
             raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as no:
+            slow = isinstance(no, TimeoutError) or "timed out" in str(no)
+            if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
+                tries = min(tries, attempt + 1)
             if attempt < tries:
                 time.sleep(wait)
                 wait *= 2
@@ -179,7 +182,9 @@ def chat(model: str, messages: list[dict], tools: list[dict] | None = None, tag:
         raise Unreachable(f"Token Factory sent no message: {json.dumps(said)[:300]}") from None
     usage = said.get("usage") or {}
     cost = dollars(usage, model)
-    out = {"message": message, "usage": usage, "dollars": cost, "seconds": round(took, 3), "model": model}
+    finish = (said.get("choices") or [{}])[0].get("finish_reason")
+    out = {"message": message, "usage": usage, "dollars": cost, "seconds": round(took, 3), "model": model,
+           "finish": finish}  # fmt: skip
     _write(_ledger(), {"at": time.time(), "tag": tag, "model": model, "usage": usage, "dollars": cost,
                        "seconds": out["seconds"]})  # fmt: skip
     record = os.environ.get("GRAPHENE_TOKENFACTORY_RECORD")

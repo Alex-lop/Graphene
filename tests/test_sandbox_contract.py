@@ -60,6 +60,8 @@ def test_its_answers_are_read_as_the_sdk_gives_them(monkeypatch):
         images = Images()
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
     box = sandbox.Contree()
     assert box.run("img-1", "echo hi", {"/tmp/f": b"x"}, 60) == ("img-2", 3, "out\nerr\n")
     assert box.read("img-2", "/work/a.py") == b"content"
@@ -67,3 +69,13 @@ def test_its_answers_are_read_as_the_sdk_gives_them(monkeypatch):
     assert calls[1][2] == {"shell": "echo hi", "files": {"/tmp/f": b"x"}, "timeout": 60, "disposable": False,
                            "truncate_output_at": sandbox.OUTPUT}  # fmt: skip
     assert box.ops == 3
+
+
+def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_the_token(
+    monkeypatch, tmp_path
+):
+    for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path))  # no saved profile
+    with pytest.raises(RuntimeError, match="ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID"):
+        sandbox.Contree()

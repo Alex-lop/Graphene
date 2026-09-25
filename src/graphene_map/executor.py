@@ -45,6 +45,7 @@ done refuses, read why, fix it, and call done again. If the leaf cannot be done 
 release with the reason and the paths you would need; the person decides. Keep each step small."""
 
 NUDGE = "Use a tool. When the leaf is done call done; if it cannot be done inside its scope, call release."
+CUT = "Your answer was cut off at the token limit. Think less, and call one tool."
 
 TOOLS = [
     {"type": "function", "function": {
@@ -77,6 +78,15 @@ TOOLS = [
             "why": {"type": "string"}, "wants": {"type": "array", "items": {"type": "string"}}},
             "required": ["why"]}}},
 ]  # fmt: skip
+
+# The names a small model was trained to call its tools by, and their arguments: a call spelled so is
+# the tool it means, not a wasted turn. TODO: which of these Nemotron uses is not measured yet.
+ALIASES = {"read_file": "view", "read": "view", "cat": "view", "open": "view", "str_replace": "edit",
+           "str_replace_editor": "edit", "replace": "edit", "write_file": "write", "create_file": "write",
+           "bash": "run", "shell": "run", "execute": "run", "finish": "done", "submit": "done"}  # fmt: skip
+ARGS = {"file_path": "path", "filePath": "path", "filename": "path", "file": "path", "old_str": "old",
+        "old_string": "old", "oldString": "old", "new_str": "new", "new_string": "new", "newString": "new",
+        "text": "content", "file_text": "content", "cmd": "command", "reason": "why"}  # fmt: skip
 
 VIEW_LINES = 400
 OUTPUT = 8_000  # characters of a command's output the model is shown: its tail, where the result is
@@ -127,6 +137,7 @@ class Leaf:
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
         self.finished = False
         self.refused = 0
+        self.wrote: dict[str, str] = {}  # path -> how: its own edit or write, or a command in a sandbox
 
     def _rel(self, path: str) -> tuple[str | None, str | None]:
         """The repo-relative path, or why a write there is refused before anything is touched."""
@@ -151,11 +162,18 @@ class Leaf:
 
     def view(self, path: str = ".", start: int | None = None, end: int | None = None) -> str:
         full = (self.place.root / path).resolve()
-        if not full.is_relative_to(self.place.root.resolve()):  # what is read is sent to the model
+        here = self.place.root.resolve()
+        if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
+        shown = P.in_tree(self.place.root)  # what git shows: never what it ignores (a .env), never .graphene/
+        rel = str(full.relative_to(here))
         if full.is_dir():
-            names = sorted(p.name + ("/" if p.is_dir() else "") for p in full.iterdir() if p.name != ".git")
+            prefix = "" if rel == "." else rel + "/"
+            rests = [f[len(prefix) :] for f in shown if f.startswith(prefix)]
+            names = sorted({r.split("/")[0] + ("/" if "/" in r else "") for r in rests})
             return "\n".join(names) or "(empty)"
+        if rel not in shown:
+            return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
         try:
             data = self.place.read(os.path.relpath(full, self.place.root))
             lines = data.decode("utf-8", "replace").split("\n")
@@ -179,6 +197,7 @@ class Leaf:
         if count != 1:
             return f"old is in {rel} {count} times; it must be exactly once (view the file, copy the lines)"
         self.place.write(rel, text.replace(old, new, 1).encode())
+        self.wrote[rel] = "edit"
         return f"edited {rel}"
 
     def write(self, path: str, content: str) -> str:
@@ -186,19 +205,24 @@ class Leaf:
         if no:
             return no
         self.place.write(rel, content.encode())
+        self.wrote[rel] = "edit"
         return f"wrote {rel} ({len(content.splitlines())} lines)"
 
     def run(self, command: str) -> str:
         code, out = self.place.run(command)
+        for rel in getattr(self.place, "brought", ()):  # what a command changed in the sandbox, brought here
+            self.wrote.setdefault(rel, "shell")
         tail = out[-OUTPUT:]
         cut = f"(first {len(out) - OUTPUT} characters not shown)\n" if len(out) > OUTPUT else ""
         return f"exit {code}\n{cut}{tail}"
 
     def _graphene(self, *args: str) -> str:
+        """`graphene …` for this leaf. It is Graphene's own process and keeps the key: a sandbox leaf's
+        check is forked in ConTree from there. The check itself never gets it (plan.run_check drops it
+        here; in a sandbox nothing of the environment goes in)."""
         cli = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
-        env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # the check runs model-written code
         said = subprocess.run([sys.executable, "-c", cli, *args], cwd=self.place.root, capture_output=True,
-                              text=True, env=env)  # fmt: skip
+                              text=True, env=dict(os.environ))  # fmt: skip
         return (said.stdout + said.stderr).strip()
 
     def done(self) -> str:
@@ -213,12 +237,14 @@ class Leaf:
         return said
 
     def call(self, name: str, arguments: str | dict | None) -> str:
+        name = ALIASES.get(name, name)
         tool = {"view": self.view, "edit": self.edit, "write": self.write, "run": self.run,
                 "done": self.done, "release": self.release}.get(name)  # fmt: skip
         if tool is None:
             return f"there is no tool {name!r}; the tools are view, edit, write, run, done, release"
         try:
             args = json.loads(arguments or "{}") if isinstance(arguments, str) else dict(arguments or {})
+            args = {ARGS.get(k, k): v for k, v in args.items()}
             return tool(**args)
         except (ValueError, TypeError) as no:
             return f"{name} could not take those arguments ({no}); send them as JSON with the named fields"
@@ -234,16 +260,29 @@ The tools: view(path, start?, end?), edit(path, old, new), write(path, content),
 release(why, wants?)."""
 
 
+_NATIVE_CALL = re.compile(r"<TOOLCALL>\s*(.*?)\s*</TOOLCALL>", re.DOTALL)
+
+
 def text_calls(content: str | None) -> list[dict]:
-    """Tool calls written as fenced text, for a model whose native calls misfire."""
-    out = []
-    for k, block in enumerate(_TEXT_CALL.findall(content or "")):
+    """Tool calls written as text: a fenced ```tool block (``--protocol text``), or Nemotron's own
+    `<TOOLCALL>[{"name": …, "arguments": {…}}]</TOOLCALL>` when a server hands it back as text."""
+    found: list[dict] = []
+    for block in _TEXT_CALL.findall(content or ""):
+        try:
+            found.append(json.loads(block))
+        except ValueError:
+            continue
+    for block in _NATIVE_CALL.findall(content or ""):
         try:
             said = json.loads(block)
+        except ValueError:
+            continue
+        found += said if isinstance(said, list) else [said]
+    out = []
+    for k, said in enumerate(found):
+        if isinstance(said, dict) and isinstance(said.get("name"), str):
             given = json.dumps(said.get("arguments") or {})
             out.append({"id": f"text_{k}", "function": {"name": said["name"], "arguments": given}})
-        except (ValueError, KeyError, TypeError):
-            continue
     return out
 
 
@@ -329,7 +368,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             bill["seconds"] += said["seconds"]
         message = said["message"]
         native = message.get("tool_calls") or []
-        calls = native or (text_calls(message.get("content")) if args.protocol == "text" else [])
+        calls = native or text_calls(message.get("content"))  # a native call handed back as text, too
         print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
         if message.get("content"):
             print(f"{tag}{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
@@ -342,7 +381,11 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if nudged > 2:
                 print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
                 return
-            messages.append({"role": "user", "content": NUDGE})
+            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
+            if cut and params.get("max_tokens"):
+                params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
+                print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
+            messages.append({"role": "user", "content": CUT if cut else NUDGE})
             continue
         for c in calls:
             name = c["function"]["name"]
@@ -392,8 +435,10 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
         copies.append(copy)
         if args.placement == "local":
             place = Local(copy)
-        else:  # the first fork's base is where the leaf's check is run from: any fork's is the same
-            place = _sandbox(copy, node, store, session, log=k == 0)
+        elif k == 0:  # the leaf's sandbox, made once; its check forks from it
+            place = _sandbox(copy, node, store, session, args, checkout=here)
+        else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
+            place = forks[0].place.fork(copy)
         forks.append(Fork(store, node, place, repo, session, check=node.check, won=won))
     def told(k: int) -> list[dict]:
         said = [dict(m) for m in messages]
@@ -414,6 +459,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     for t in threads:
         t.join()
     bill["refused_in_forks"] = sum(f.refused for f in forks)
+    bill["wrote_in_forks"] = {}
     try:
         winner = next((k for k, f in enumerate(forks) if f.passed), None)
         bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
@@ -425,6 +471,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 print(real.release(gave_up[0][0], wants), flush=True)
             print(f"no fork's check passed ({n} forks)", flush=True)
             return None
+        bill["wrote_in_forks"] = forks[winner].wrote  # the winner's writes are the leaf's
         after = _in_scope_state(copies[winner], node.scope)
         for rel in before.keys() - after.keys():
             (here / rel).unlink(missing_ok=True)
@@ -455,14 +502,13 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             try:
                 listed = tf.roles()
             except tf.Unreachable as no:
-                print(f"stopped: {no}", flush=True)
-                return 3
+                return stop(store, node, str(no))
             args.model = [listed[k] for k in ("nano", "super", "ultra") if k in listed][:1]
         if not args.model:
-            print("stopped: Token Factory lists no Nemotron model for this key", flush=True)
-            return 3
+            return stop(store, node, "Token Factory lists no Nemotron model for this key")
         ladder = args.model
-        model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
+        tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
+        model = ladder[min(tried, len(ladder)) - 1]
         first = [prompt]
         if args.map:
             files = P.in_tree(here)
@@ -488,26 +534,36 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                     said = leaf.done()
                     print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
                 return 0
-            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session)
+            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session, args)
             leaf = Leaf(store, node, place, repo, session)
             try:
                 converse(leaf, model, messages, args, params, bill, "")
             finally:
                 place.close()
             return 0
-        except (RuntimeError, ImportError, OSError) as no:
-            print(f"stopped: the sandbox could not be made: {no}", flush=True)
-            return 3
         except tf.Unreachable as no:
-            print(f"stopped: {no}", flush=True)
-            return 3
+            return stop(store, node, str(no))
+        except Exception as no:  # no sandbox, or ConTree's own errors: said to the person, not a traceback
+            return stop(store, node, f"{type(no).__name__}: {no}")
         finally:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
+            bill["wrote"] = {**bill.pop("wrote_in_forks", {}), **(leaf.wrote if leaf else {})}
             bill["dollars"] = round(bill["dollars"], 6)
             store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill)
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip
+
+
+def stop(store: Store, node: P.Node, why: str) -> int:
+    """The executor cannot work at all (no key, a refused key, no sandbox, the spend cap): it hands the
+    leaf back itself, with that reason, so the run does not send it round again to fail the same way,
+    and the person reads the cause instead of a check that failed on untouched code."""
+    if P.get(store, node.id).state == P.RUNNING:
+        here = Path.cwd()
+        Leaf(store, node, Local(here), repo_root(here), "").release(f"the executor stopped: {why}")
+    print(f"stopped: {why}", flush=True)
+    return 3
 
 
 def _brief(arguments) -> str:
@@ -518,19 +574,19 @@ def _brief(arguments) -> str:
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
-def _sandbox(here: Path, node: P.Node, store: Store, session: str, log: bool = True):
-    """The leaf's sandbox, and a note in its record of where it is, so that its check (whoever runs
-    `done`) runs in a fork of the same sandbox."""
+def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkout: Path | None = None):
+    """The leaf's sandbox, forked from its commit's checkpoint when another leaf made it, and a note in
+    its record of where it is, so that its check (whoever runs `done`) runs in a fork of the same."""
     from . import sandbox
 
     name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
-    place = sandbox.Sandbox(here, node.scope, sandbox.choose(name), store, node.id)
-    if not log:  # a fork's sandbox: the check that counts runs from the leaf's own
-        return place
+    box = sandbox.choose(name, args.image)
+    place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
+    shared = "forked from the commit's checkpoint" if place.reused else "made"
     store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
                    {"placement": "sandbox", "box": name, "image": place.base,
                     "seconds": round(place.timings[0], 3)})  # fmt: skip
-    print(f"sandbox ready ({name}, {place.timings[0]:.1f} s): image {place.base[:12]}", flush=True)
+    print(f"sandbox {shared} ({name}, {place.timings[0]:.1f} s): image {place.base[:19]}", flush=True)
     return place
 
 
@@ -549,6 +605,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--inline", type=int, default=0, help="inline the scope's files, up to N characters")
     parser.add_argument("--protocol", choices=("native", "text"), default="native")
     parser.add_argument("--forks", type=int, default=1, help="N conversations; the check picks")
+    parser.add_argument("--image", help="the sandbox's image (default python:3.12, with git and setpriv)")
+    parser.add_argument("--prepare", help="a command run once, as root, in the checkpoint (pip install -e .)")
     parser.add_argument("prompt")
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a stopped run: the bill is still written

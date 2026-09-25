@@ -2,6 +2,8 @@
 with tools that only read, prints the fenced plan block, and what it proposed is in the plan for the
 person to prune; the bill is in the plan's log."""
 
+import json
+
 import pytest
 from fake_tokenfactory import Fake, call
 
@@ -105,3 +107,37 @@ def test_named_planners():
     assert label(named("nemotron")) == "nemotron"
     assert named("claude") == named(None) and "--tools Read,Grep,Glob" in named(None)
     assert named("codex") == "codex exec --sandbox read-only"
+
+
+def test_a_planner_that_cannot_reach_token_factory_says_why_in_its_own_words(repo, monkeypatch):
+    """What the person reads when the key is missing: the planner's own last word, whole, not the
+    last 300 characters of what it printed, and not "the planner" twice."""
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    tf._listed.cache_clear()
+    said = []
+    with Store.open(repo) as store, pytest.raises(plan.Refused) as no:
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+    assert "no proposal (exit 3): stopped: NEBIUS_API_KEY is not set" in str(no.value)
+    assert said == ["asking the planner (nemotron)…"]  # asked once: again would fail the same way
+    assert "the planner printed" not in str(no.value)
+
+
+def test_a_bill_under_a_cent_is_never_shown_as_nothing():
+    from graphene_map.tui import money
+
+    assert money(0.0015) == "$0.0015" and money(0.034) == "$0.03" and money(0) == "$0.00"
+
+
+def test_what_git_ignores_is_never_read_and_so_never_sent(repo, fake):
+    """A judge had the planner read a git-ignored .env holding a secret, and send it to Token Factory."""
+    (repo / ".gitignore").write_text(".graphene/\n.env\n")
+    (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
+    f = fake([call("read", path=".env"), call("list", path="."), call("grep", pattern="SECRET"),
+              call("read", path=".graphene/graphene.db"), {"content": PROPOSAL}])  # fmt: skip
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+    sent = json.dumps(f.requests)
+    assert "do-not-send" not in sent and "SQLite" not in sent
+    results = [m["content"] for m in f.requests[-1]["messages"] if m["role"] == "tool"]
+    assert "git ignores it" in results[0] and ".env" not in results[1].split("\n")
+    assert results[2] == "(no match)"

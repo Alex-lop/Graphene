@@ -56,7 +56,8 @@ class Repo:
 
     def __init__(self, root: Path):
         self.root = root
-        self.files = P.tracked(root)
+        self.files = P.in_tree(root)  # what git shows: never what it ignores (a .env), never .graphene/
+        self.shown = set(self.files)
 
     def _inside(self, path: str) -> Path | None:
         full = (self.root / (path or ".")).resolve()
@@ -98,6 +99,8 @@ class Repo:
         full = self._inside(path)
         if full is None or not full.is_file():
             return f"{path} is not a file of this repository"
+        if str(full.relative_to(self.root.resolve())) not in self.shown:
+            return f"{path} is not read: git ignores it, and what is read is sent to the model"
         lines = full.read_text(encoding="utf-8", errors="replace").split("\n")
         first = max(1, start or 1)
         last = min(len(lines), end or first + READ_LINES - 1)
@@ -122,10 +125,10 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     try:
         model = args.model or tf.roles().get("ultra") or tf.roles().get("super")
     except tf.Unreachable as no:
-        print(f"the planner stopped: {no}", file=say)
+        print(f"stopped: {no}", file=say)
         return 3
     if not model:
-        print("the planner stopped: Token Factory lists no Nemotron Ultra or Super for this key", file=say)
+        print("stopped: Token Factory lists no Nemotron Ultra or Super for this key", file=say)
         return 3
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
     params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
@@ -144,8 +147,14 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             bill["dollars"] += said["dollars"]
             message = said["message"]
             calls = message.get("tool_calls") or []
+            if not calls and said.get("finish") == "length" and params["max_tokens"] < 32_768:
+                params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)  # cut off: ask again, with room
+                print(f"{step:>3} cut off at the token limit; again with {params['max_tokens']}", file=say)
+                continue
             if not calls:
                 answer = message.get("content") or ""
+                if said.get("finish") == "length":
+                    print("the answer was cut off at the token limit, even with more room", file=say)
                 break
             messages.append({"role": "assistant", "content": message.get("content") or "",
                              "tool_calls": calls})
@@ -157,7 +166,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             if step == args.steps - 1:
                 messages.append({"role": "user", "content": "Answer now with the proposal."})
     except tf.Unreachable as no:
-        print(f"the planner stopped: {no}", file=say)
+        print(f"stopped: {no}", file=say)
         return 3
     finally:
         bill["dollars"] = round(bill["dollars"], 6)

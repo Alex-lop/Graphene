@@ -3,6 +3,14 @@
 ## Unreleased (after 0.4.0)
 
 - The import package is `graphene_map`, matching the distribution (it was `graphene_debrief`). The command is still `graphene`, and installed hooks keep working. Anything that imported `graphene_debrief` imports `graphene_map`.
+- NVIDIA Nemotron on Nebius Token Factory, as planner and executor: `graphene ask --with nemotron` (Ultra, read-only tools) and `graphene run --with nemotron` (Nano, then Super on a refused attempt; `--forks N`; `--placement local|sandbox`). Model ids come from the live model list, and every call's usage is priced at its list price. Needs `NEBIUS_API_KEY`.
+- Token Factory Sandboxes: `pip install 'graphene-map[sandbox]'` (contree-sdk 0.3.6). A leaf's commands run as a user who can write only its scope, what a command makes outside it never comes back, and its check runs in a fork of the sandbox.
+- `graphene init` asks once which planner and executor a repository uses, Nemotron first; `run`, `ask`, `node split` and the screen use it, and `--with` overrides one command.
+- A check runs in a clean worktree of the leaf's state: nothing it writes lands in the executor's tree. No check gets the Token Factory key.
+- `graphene watch` folds: done subtrees fold, a folded row counts its leaves by state, a tall tree opens as its outline; `za zo zc zR zM zx`.
+- The bill: what the Nemotron planner and executors cost, at list price, in `graphene node show`, `graphene plan record`, the run's last line and the screen's status line.
+- `graphene ui --export` draws a `graphene run` from the store alone; `.github/workflows/pages.yml` publishes the demo page when started by hand.
+- Python 3.14 in CI; the store binds values to plain `?` only.
 
 Paragraph in, tree out, prune, run.
 - A paragraph typed into a session (240 characters or more) is asked for a tree before any code: the agent proposes it in the plan's text and stops, and its writes wait until a leaf is accepted. A line is still done at once; "just do it" skips the tree, and a short "no plan" lifts a wait. A new session is taught the text whether or not a plan exists yet.

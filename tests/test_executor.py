@@ -298,3 +298,101 @@ def test_the_check_graphene_runs_after_the_executor_never_gets_the_key(repo, fak
         said = store.node_log("greet", ("check_failed",))[-1]["detail"]["output"]
     assert "GRAPHENE_AS=agent:check" in said
     assert "NEBIUS_API_KEY" not in said and "fake-key" not in said
+
+
+def test_the_attempt_is_the_one_run_names_not_the_log_s_count(repo, fake, monkeypatch):
+    """`graphene run` writes an attempt's row only once the executor is running: an executor that read
+    the log for its attempt could read attempt 2 as 1 and stay on the ladder's first model (a CI run
+    on macOS did). The run names the attempt (GRAPHENE_TRY), and that is the one used."""
+    from graphene_map import executor
+
+    f = fake([call("release", why="just looking")] * 3)
+    plan_of(repo, leaf())
+    with Store.open(repo) as store:
+        plan.start(store, "greet", Caller("run:nemotron", False, "s-1"), repo)
+        store.log_node("greet", plan._now(), "attempt", "run:nemotron", "s-1", None, {"attempt": 1})
+    monkeypatch.setenv("GRAPHENE_NODE", "greet")
+    monkeypatch.setenv("GRAPHENE_ATTEMPT", "s-1")
+    monkeypatch.setenv("GRAPHENE_TRY", "2")  # the second attempt, whose row is not written yet
+    executor.main(["--model", NANO, "--model", SUPER, "the contract"])
+    assert f.requests[0]["model"] == SUPER
+
+
+def test_a_tool_called_by_another_common_name_is_the_tool_it_means(repo, fake):
+    fake([script({"greet": [
+        call("str_replace", file_path="app.py", old_str='"hi"', new_str='"hello"'),
+        call("bash", cmd=CHECK),
+        call("finish"),
+    ]})] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)
+    assert [n.id for n in done] == ["greet"]
+
+
+def test_a_wrong_key_comes_back_once_with_its_cause_and_no_check_runs(repo, fake, monkeypatch):
+    """The executor cannot work at all: it hands the leaf back itself, with the cause, and the run does
+    not send it round again to fail the same way on untouched code (a judge saw '3 attempts, the last
+    one refused: AssertionError', the 401 only in the log)."""
+    fake([call("done")] * 5)
+    monkeypatch.setenv("NEBIUS_API_KEY", "wrong")
+    plan_of(repo, leaf())
+    done, said = run_one(repo, attempts=3)
+    assert done == []
+    with Store.open(repo) as store:
+        why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
+        assert why.startswith("the executor stopped: Token Factory answered 401")
+        assert len(store.node_log("greet", ("attempt",))) == 1
+        assert store.node_log("greet", ("check_failed", "check_passed")) == []
+    back = "handed back by the executor: the executor stopped: Token Factory answered 401"
+    assert any(back in s for s in said)
+
+
+def test_graphenes_own_done_keeps_the_key_for_a_sandbox_check(repo, monkeypatch):
+    """`graphene node done` is Graphene's own process: a sandbox leaf's check is forked in ConTree from
+    there, which needs the key. (The check itself never gets it: see the test above it.)"""
+    from graphene_map import executor
+
+    seen = {}
+    monkeypatch.setenv("NEBIUS_API_KEY", "the-key")
+    monkeypatch.setattr(executor.subprocess, "run", lambda argv, **kw: seen.update(kw) or
+                        subprocess.CompletedProcess(argv, 0, "ok", ""))  # fmt: skip
+    plan_of(repo, leaf())
+    with Store.open(repo) as store:
+        node = plan.get(store, "greet")
+        executor.Leaf(store, node, executor.Local(repo), repo, "s")._graphene("node", "done", "greet")
+    assert seen["env"]["NEBIUS_API_KEY"] == "the-key"
+
+
+def test_a_reply_cut_off_at_the_token_limit_is_said_and_asked_again_with_more_room(repo, fake):
+    f = fake([script({"greet": [
+        {"content": "Let me think about greet at length", "_finish": "length"},
+        call("edit", path="app.py", old='"hi"', new='"hello"'),
+        call("done"),
+    ]})] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)
+    assert [n.id for n in done] == ["greet"]
+    assert f.requests[0]["max_tokens"] == 4096 and f.requests[1]["max_tokens"] == 8192
+    assert f.requests[1]["messages"][-1]["content"].startswith("Your answer was cut off at the token limit")
+
+
+def test_nemotrons_own_toolcall_text_is_read_as_its_calls(repo, fake):
+    def tag(name, **arguments):
+        return {"content": f"<TOOLCALL>{json.dumps([{'name': name, 'arguments': arguments}])}</TOOLCALL>"}
+
+    fake([script({"greet": [tag("edit", path="app.py", old='"hi"', new='"hello"'), tag("done")]})] * 5)
+    plan_of(repo, leaf())
+    done, _ = run_one(repo)  # the native protocol: a server that hands the call back as text still works
+    assert [n.id for n in done] == ["greet"]
+
+
+def test_the_executor_never_views_what_git_ignores(repo, fake):
+    (repo / ".gitignore").write_text(".graphene/\n__pycache__/\n.env\n")
+    (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
+    f = fake([script({"greet": [call("view", path=".env"), call("view", path="."),
+                                call("release", why="looked")]})] * 5)  # fmt: skip
+    plan_of(repo, leaf())
+    run_one(repo)
+    assert "do-not-send" not in json.dumps(f.requests)
+    shown = tool_results(f.requests[-1])
+    assert "git ignores it" in shown[0] and ".env" not in shown[1].split("\n") and "app.py" in shown[1]

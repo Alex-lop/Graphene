@@ -126,3 +126,40 @@ def test_every_way_out_is_refused_or_fails_and_every_way_in_succeeds(tmp_path, m
     changed = subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True,
                              text=True)  # fmt: skip
     assert sorted(line[3:] for line in changed.stdout.splitlines()) == ["app.py", "tests/test_new.py"]
+
+
+@needs_docker
+def test_forks_in_a_sandbox_share_one_checkpoint_and_the_passing_one_lands(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    root.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "T"]):
+        subprocess.run(["git", "-C", str(root), *args], check=True)
+    (root / ".gitignore").write_text(".graphene/\n__pycache__/\n")
+    (root / "app.py").write_text('def greet():\n    return "hi"\n')
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "s"], check=True)
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("GRAPHENE_SANDBOX", "docker")
+    check = "python3 -c 'import app; assert app.greet() == \"hello\"'"
+    wrong = call("edit", path="app.py", old='"hi"', new='"hey"')
+    right = call("edit", path="app.py", old='"hi"', new='"hello"')
+    scripts = {1: [wrong, call("done"), call("release", why="no")], 2: [right, call("done")]}
+
+    def reply(body):
+        k = next(k for k in scripts if f"This is fork {k} of" in body["messages"][0]["content"])
+        n = sum(1 for m in body["messages"] if m["role"] == "assistant")
+        return scripts[k][n] if n < len(scripts[k]) else {"content": "nothing more"}
+
+    with Fake([reply] * 20) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        with Store.open(root) as store:
+            leaf = {"id": "greet", "title": "hello", "scope": ["app.py"], "check": check}
+            plan.propose(store, [leaf], ALEX)
+            done = run_plan(store, root, named(f"nemotron --model {NANO} --placement sandbox --forks 2"), 1,
+                            None, lambda s: None, root / ".graphene" / "runs")  # fmt: skip
+    assert [n.id for n in done] == ["greet"]
+    assert (root / "app.py").read_text() == 'def greet():\n    return "hello"\n'
+    log = next((root / ".graphene" / "runs").glob("greet-*.txt")).read_text()
+    assert log.count("sandbox made") == 1 and "fork 2 of 2 passed its check" in log

@@ -286,7 +286,10 @@ def run_node(
                 attempt > 1,
             )
             # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
-            env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session}
+            # GRAPHENE_TRY: which attempt this is, told rather than read back from the log, whose row
+            # for it is written only once the process is running
+            env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session,
+                   "GRAPHENE_TRY": str(attempt)}  # fmt: skip
             env["GRAPHENE_EXECUTOR"] = name
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None

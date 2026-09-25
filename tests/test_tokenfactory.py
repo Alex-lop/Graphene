@@ -94,3 +94,18 @@ def test_a_recording_replays_and_holds_no_key(fake, tmp_path, monkeypatch):
         assert tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "q"}])["message"][
             "content"
         ] == "recorded answer"
+
+
+def test_a_completion_that_timed_out_is_tried_once_more_not_six_times(fake, monkeypatch):
+    fake([])
+    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    tries = []
+
+    def slow(req, timeout):
+        tries.append(req.get_method())
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(tf.urllib.request, "urlopen", slow)
+    with pytest.raises(tf.Unreachable, match="could not be reached"):
+        tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "q"}])
+    assert tries.count("POST") == 2

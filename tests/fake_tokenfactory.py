@@ -5,6 +5,7 @@ in this process or in a subprocess that `graphene run` starts.
 
 Each reply in the script is one of:
 - a dict: the assistant's message (``{"content": ...}`` or ``{"tool_calls": [...]}``), usage made up;
+  ``"_finish": "length"`` in it sets the finish reason (a reply cut off at the token limit);
 - a (message, usage) pair;
 - a callable taking the request body and returning either of those;
 - an int: answer with that HTTP status instead (a 429, a 500).
@@ -78,6 +79,8 @@ class Fake:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                if self.headers.get("Authorization", "") != "Bearer fake-key":
+                    return self._send(401, {"detail": "Couldn't authenticate. Reason: invalid token"})
                 with fake.lock:
                     fake.requests.append(body)
                     reply = fake.replies.pop(0) if fake.replies else {"content": "(the script ran out)"}
@@ -89,7 +92,9 @@ class Fake:
                 usage = usage or {"prompt_tokens": len(json.dumps(body["messages"])) // 4,
                                   "completion_tokens": len(json.dumps(message)) // 4}  # fmt: skip
                 usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-                finish = "tool_calls" if message.get("tool_calls") else "stop"
+                message = dict(message)
+                called = "tool_calls" if message.get("tool_calls") else "stop"
+                finish = message.pop("_finish", None) or called
                 if body.get("stream"):  # a harness (OpenCode, through the AI SDK) asks for server-sent events
                     return self._stream(body, message, usage, finish)
                 choice = {"index": 0, "message": {"role": "assistant", **message}, "finish_reason": finish}
