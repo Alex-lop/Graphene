@@ -657,10 +657,12 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
     checks = [r.refusals.last_check for _, r in records if r.refusals.last_check]
     passed = sum(1 for c in checks if c["result"] == "passed")
     refused = sum(len(r.refusals.denied) + len(r.refusals.breaches) for _, r in records)
+    failed = sum(r.refusals.checks_failed for _, r in records)
+    strays = sum(len(r.refusals.done) for _, r in records)
     lines.append(
-        f"    checks run by Graphene itself: {passed} of {len(checks)} passed at last run; "
-        f"{refused} write{_s(refused)} refused; "
-        f"{sum(len(r.refusals.done) for _, r in records)} `done` refused"
+        f"    checks run by Graphene itself: {passed} of {len(checks)} passed at last run, "
+        f"{failed} run{_s(failed)} failed on the way; {refused} write{_s(refused)} refused; "
+        f"{strays} `done` refused over paths outside a scope"
     )
     bills = [r.bill for _, r in records if r.bill]
     if bills:

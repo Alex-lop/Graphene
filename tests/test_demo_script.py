@@ -82,6 +82,7 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
                            capture_output=True, text=True).stdout.split("\n")  # fmt: skip
     assert "greet says hello (greet)" in graph and "bye says goodbye (farewell)" in graph
     assert "bill: $" in said and "at list price" in said  # the record's bill, at the end
+    assert "2 of 2 passed at last run, 0 runs failed on the way; 1 write refused" in said
     assert (tmp_path / "demo" / "words.py").read_text() == "HELLO = 'hello'\n"
     models = {r["model"] for r in f.requests}
     assert models == {"nvidia/Nemotron-3-Ultra-fake", "nvidia/Nemotron-3-Nano-fake"}
