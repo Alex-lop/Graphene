@@ -5,9 +5,10 @@
 **The blocker, first: this run has had no Token Factory key and no Sandboxes access.**
 - At 01:15 EDT `NEBIUS_API_KEY` was not set in the shell this run works in, and `GET /v1/models`
   answered `401 token is not present`. Neither ConTree's CLI nor its credentials are on the machine.
-- I checked again at every milestone. It was still unset at 03:40.
+- I checked again at every milestone. It was still unset at 04:10.
 - So everything is built against two stand-ins, and the first real run needs only the key:
-  - for Token Factory, a recorded fake endpoint (`tests/fake_tokenfactory.py`);
+  - for Token Factory, a scripted fake endpoint (`tests/fake_tokenfactory.py`; it can replay a
+    recording, and none exists yet);
   - for Sandboxes, a real Linux box, Docker, with the same users and permissions (`sandbox.Docker`).
 
 To give a run access: put `export NEBIUS_API_KEY=…` and `export NEBIUS_PROJECT_ID=…` in `~/.zshenv`,
@@ -30,6 +31,49 @@ What stands between you and the number, in order:
    puts accept beside landed.
 
 How the number moved over the night: nothing to move.
+
+## 1b. Three judges who had never seen the run (backlog 5)
+
+They were given the rules, the criteria and the branch, and could run anything that needs no key.
+
+- **Stage One:** pass, 3 of 3.
+- **Median scores:** Technological Implementation 3, Design 3, Potential Impact 3, Quality of the
+  Idea 4.
+- **Their caveat:** a strict screener could fail it on "runs on Token Factory", because nothing has
+  run live yet.
+
+They found real bugs, each reproduced. What I fixed, each with a test that fails without the fix:
+
+- **A sandbox leaf's `done` could not reach ConTree.** The executor stripped the key from its own
+  `graphene node done`, where the check is forked, so the SDK sent the variable's *name* as the
+  token. The first live run would have failed on every leaf.
+- **An executor that cannot work at all** (no key, a refused key, no sandbox, the spend cap) now
+  hands the leaf back itself, with the cause. Before, a wrong key came back as "3 attempts, the last
+  one refused: AssertionError".
+- **The planner's `read` sent a git-ignored `.env` to Token Factory.** The planner and the executor
+  now read only what git shows.
+- **The sandbox's file list was read from capped output.** In a big tree, in-scope files were
+  unlinked from the checkout (224 of 3,000). The list is now read back whole, or nothing changes.
+- **Guards for real reasoning models:** a reply cut off at the token limit, Nemotron's own
+  `<TOOLCALL>` text, and a POST retried after a 300 s timeout.
+- **Leaves at one commit now fork one checkpoint**, and `--forks` forks one sandbox. The thesis said
+  so, and the code did not: each fork uploaded again, and from a copy with no `.git` it packed
+  nothing. There are also `--image` and `--prepare`, so a repository whose check needs pytest can
+  pass in a sandbox.
+- **The draft submission's overclaims are gone.** It had said every tool call runs in the sandbox,
+  the stand-in was "recorded", and the pricing feedback was observed; the counts were stale.
+- **The README's 18/20 now sits beside the fair comparison:** the 23 September test, where a plain
+  paragraph also passed.
+
+Still open from their list:
+- **Yours:**
+  - the install line gets Nemotron only once PR #29 is merged;
+  - the GitHub About text and homepage still describe the old Taskmaster product;
+  - the demo URL and the video.
+- **Needs the key:** the live run, and a real repository.
+- **Not reproduced:** a "3 leaves" count.
+- **After the cut merges:** the Nemotron leaf's record, the parallel record's attribution, and init's
+  Claude-heavy output.
 
 ## 2. What you can run in five minutes
 
@@ -81,6 +125,13 @@ docs/proof/nemotron.sh ~/graphene-nemotron
   5. **Privacy:** two bullets replace "nothing leaves your machine". One says what Nemotron sends, and
      where the key never goes; the other says where the bill is.
   6. **Requirements:** a sentence on the key, the extra and Docker.
+  7. **What works today:** the 18/20 result now sits beside the 23 September comparison, where a
+     plain paragraph also passed 20 and 12 with less of the person's time.
+  8. **The table:** in the local placement a command can read, as well as write, what your user can.
+- **The GitHub repository's About text and homepage** still describe the pre-period "Taskmaster"
+  product. A judge meets them first. A line for it: "The shared plan between a person and their coding
+  agents: NVIDIA Nemotron plans and does the work on Nebius Token Factory, each leaf held to its files
+  in a Sandbox." Yours to set.
 - **`docs/HACKATHON.md`**, a draft: what Graphene is, how it uses the sponsor's tools, what changed
   during the Submission Period (from git: all of `src/` was written after it opened), and the feedback.
 - **Pages, PyPI, the video, Devpost:** yours, untouched. `pages.yml` runs only when you start it.
