@@ -105,3 +105,20 @@ def test_named_planners():
     assert label(named("nemotron")) == "nemotron"
     assert named("claude") == named(None) and "--tools Read,Grep,Glob" in named(None)
     assert named("codex") == "codex exec --sandbox read-only"
+
+
+def test_a_planner_that_cannot_reach_token_factory_says_why_in_its_own_words(repo, monkeypatch):
+    """What the person reads when the key is missing: the planner's own last word, whole, not the
+    last 300 characters of what it printed, and not "the planner" twice."""
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    tf._listed.cache_clear()
+    with Store.open(repo) as store, pytest.raises(plan.Refused) as no:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+    assert "no proposal (exit 3): stopped: NEBIUS_API_KEY is not set" in str(no.value)
+    assert "the planner printed" not in str(no.value)
+
+
+def test_a_bill_under_a_cent_is_never_shown_as_nothing():
+    from graphene_map.tui import money
+
+    assert money(0.0015) == "$0.0015" and money(0.034) == "$0.03" and money(0) == "$0.00"
