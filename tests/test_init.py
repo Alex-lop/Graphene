@@ -4,12 +4,14 @@ by `run`, `ask` and `node split` (and so by the screen's R, :ask and s) unless `
 for one command. Nemotron on Token Factory is offered first, with the ids the live list gives; what
 could not be reached is said in one line. Token Factory here is the recorded fake."""
 
+import importlib.util
 import os
 import pty
 import select
 import subprocess
 import sys
 import time
+import types
 
 import pytest
 from fake_tokenfactory import Fake
@@ -29,8 +31,7 @@ NO_KEY = "NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.neb
 
 
 @pytest.fixture
-def fake(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))  # no ConTree profile: the local placement
+def fake(monkeypatch):
     with Fake() as f:
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
@@ -145,22 +146,18 @@ def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo,
 
 
 def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, monkeypatch, tmp_path):
-    home = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(home))
-    assert not sandbox.sandbox_configured()  # the SDK is not installed
-    for name in ("contree_sdk", "contree_client"):
-        (tmp_path / "sdk" / name).mkdir(parents=True)
-        (tmp_path / "sdk" / name / "__init__.py").write_text("")
-    monkeypatch.syspath_prepend(str(tmp_path / "sdk"))
-    assert not sandbox.sandbox_configured()  # installed, and no token or profile
-    monkeypatch.setenv("CONTREE_TOKEN", "t")
-    assert sandbox.sandbox_configured()
-    monkeypatch.delenv("CONTREE_TOKEN")
-    (home / ".config" / "contree").mkdir(parents=True)
-    (home / ".config" / "contree" / "auth.ini").write_text("[default]\n")
-    assert sandbox.sandbox_configured()
+    if importlib.util.find_spec("contree_sdk") is None:  # the `sandbox` extra is not installed here
+        monkeypatch.setitem(sys.modules, "contree_sdk", types.ModuleType("contree_sdk"))
+    assert not sandbox.configured()  # a key and no project, and no profile
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
+    assert sandbox.configured()
     assert person("init").exit_code == 0
     assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement sandbox"
+    monkeypatch.delenv("NEBIUS_PROJECT_ID")
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "contree"))
+    (tmp_path / "contree").mkdir()
+    (tmp_path / "contree" / "auth.ini").write_text("[default]\n")  # a profile `contree auth` saved
+    assert sandbox.configured()
 
 
 def test_an_agent_does_not_choose_what_the_person_runs(repo):

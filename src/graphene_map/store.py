@@ -364,11 +364,11 @@ class Store:
     def did_something(self, session_id: str) -> bool:
         """Did this session leave a recorded write in the repo, or a commit credited to it?"""
         row = self.conn.execute(
-            """SELECT EXISTS (SELECT 1 FROM tool_events WHERE session_id = ?1 AND success IS NOT 0 AND (
+            """SELECT EXISTS (SELECT 1 FROM tool_events WHERE session_id = ? AND success IS NOT 0 AND (
                    (file_path IS NOT NULL AND file_path NOT LIKE '/%')
                    OR (tool = 'Bash' AND response LIKE '%"bashEditDiff"%')))
-               OR EXISTS (SELECT 1 FROM commits WHERE session_id = ?1)""",
-            (session_id,),
+               OR EXISTS (SELECT 1 FROM commits WHERE session_id = ?)""",
+            (session_id, session_id),
         ).fetchone()
         return bool(row[0])
 
@@ -558,8 +558,9 @@ class Store:
     def put_node(self, node: dict) -> None:
         self.conn.execute(
             """INSERT INTO nodes (id, seq, state, session_id, data)
-               VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM nodes), ?2, ?3, ?4)
-               ON CONFLICT (id) DO UPDATE SET state = ?2, session_id = ?3, data = ?4""",
+               VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM nodes), ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE
+               SET state = excluded.state, session_id = excluded.session_id, data = excluded.data""",
             (node["id"], node["state"], node.get("session_id"), json.dumps(node, ensure_ascii=False)),
         )
 

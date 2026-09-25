@@ -232,3 +232,50 @@ def test_started_by_hand_it_says_who_starts_it(tmp_path, monkeypatch):
     said = subprocess.run([sys.executable, "-m", "graphene_map.executor", "a prompt"], capture_output=True,
                           text=True, env=env)  # fmt: skip
     assert said.returncode == 2 and "started by `graphene run`" in said.stdout
+
+
+def by_fork(scripts: dict):
+    """A reply that answers fork k's conversation from scripts[k], by how far it has got."""
+
+    def reply(body):
+        k = next(k for k in scripts if f"This is fork {k} of" in body["messages"][0]["content"])
+        n = sum(1 for m in body["messages"] if m["role"] == "assistant")
+        return scripts[k][n] if n < len(scripts[k]) else {"content": "nothing more"}
+
+    return reply
+
+
+def test_forks_run_from_one_checkpoint_and_the_first_whose_check_passes_lands(repo, fake):
+    fake([by_fork({
+        1: [call("edit", path="app.py", old='"hi"', new='"hey"'), call("done"),
+            call("release", why="cannot tell what greet should say")],
+        2: [call("edit", path="app.py", old='"hi"', new='"hello"'), call("done")],
+        3: [call("write", path="other.py", content="x = 9\n"), call("release", why="wants other.py",
+                                                                        wants=["other.py"])],
+    })] * 40)  # fmt: skip
+    plan_of(repo, leaf())
+    done, said = run_one(repo, f"nemotron --model {NANO} --forks 3")
+    assert [n.id for n in done] == ["greet"]
+    assert (repo / "app.py").read_text() == 'def greet():\n    return "hello"\n'
+    assert (repo / "other.py").read_text() == "x = 1\n"
+    with Store.open(repo) as store:
+        bill = store.node_log("greet", ("usage",))[-1]["detail"]
+    assert bill["forks"] == 3 and bill["winner"] == 2 and bill["refused"] == 1
+    log = next((repo / ".graphene" / "runs").glob("greet-*.txt")).read_text()
+    assert "fork 2 of 3 passed its check" in log and "[fork 1]" in log and "[fork 3]" in log
+
+
+def test_when_every_fork_gives_up_the_leaf_comes_back_with_what_they_wanted(repo, fake):
+    fake([by_fork({
+        1: [call("release", why="the greeting is also in other.py", wants=["other.py"])],
+        2: [call("release", why="needs other.py too", wants=["other.py", "cli.py"])],
+    })] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo, f"nemotron --model {NANO} --forks 2")
+    assert done == []
+    with Store.open(repo) as store:
+        node = plan.get(store, "greet")
+        assert node.state == OPEN
+        released = store.node_log("greet", ("released",))[-1]["detail"]
+        assert released["why"] == "the greeting is also in other.py"
+        assert sorted(released["wants"]) == ["cli.py", "other.py"]

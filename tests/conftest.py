@@ -16,11 +16,12 @@ def utc(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def no_token_factory(monkeypatch):
-    """Nothing in the suite reaches the real Token Factory or Sandboxes, whatever the shell has: a test
-    that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
-    for name in ("NEBIUS_API_KEY", "GRAPHENE_TOKENFACTORY_URL", "CONTREE_TOKEN"):
+def no_token_factory(monkeypatch, tmp_path):
+    """Nothing in the suite reaches the real Token Factory or Sandboxes, whatever the shell or the home
+    directory has: a test that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
+    for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
 
 
 @pytest.fixture

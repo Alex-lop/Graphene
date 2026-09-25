@@ -24,6 +24,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development",
   "Topic :: Software Development :: Version Control :: Git",
 ]
@@ -32,6 +33,10 @@ dependencies = [
   "rich>=13",
   "textual>=8.2",
 ]
+
+[project.optional-dependencies]
+# Token Factory Sandboxes (ConTree), in beta: pinned, and spoken to only in src/graphene_map/sandbox.py
+sandbox = ["contree-sdk==0.3.6"]
 
 [project.urls]
 Homepage = "https://github.com/Alex-lop/Graphene"

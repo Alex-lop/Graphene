@@ -21,9 +21,13 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 from pathlib import Path
 
 from . import gate
@@ -281,6 +285,163 @@ def in_scope_files(root: Path, scope: list[str], budget: int) -> str:
     return "\n".join(out)
 
 
+class Fork(Leaf):
+    """One of N conversations on one leaf, in a copy of its checkout: its `done` runs the check in the
+    copy and does not finish the leaf; the first fork whose check passes is the one that lands."""
+
+    def __init__(self, *args, check: str | None, won: threading.Event):
+        super().__init__(*args)
+        self.check, self.won, self.passed = check, won, False
+        self.released: tuple[str, list[str]] | None = None
+
+    def done(self) -> str:
+        if not self.check:
+            self.passed = self.finished = True
+            return "this fork is finished (the leaf has no check)"
+        code, out = self.place.run(self.check)
+        if code != 0:
+            return f"the check failed in this fork (exit {code}):\n{out[-OUTPUT:]}"
+        self.passed = self.finished = True
+        self.won.set()
+        return "the check passed in this fork"
+
+    def release(self, why: str = "", wants: list[str] | None = None) -> str:
+        self.released, self.finished = (why or "(no reason given)", list(wants or [])), True
+        return "this fork gives up; the leaf is handed back only if every fork does"
+
+
+def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, bill: dict, tag: str,
+             stop: threading.Event | None = None) -> None:  # fmt: skip
+    """The loop: ask the model, run the tools it calls, until the leaf is finished, the model stops
+    calling tools three times, the steps run out, or ``stop`` is set (another fork won)."""
+    nudged = 0
+    for step in range(1, args.steps + 1):
+        if stop is not None and stop.is_set() and not leaf.finished:
+            print(f"{tag}{step:>3} stopped: another fork's check passed", flush=True)
+            return
+        _compact(messages)
+        said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
+                       **params)  # fmt: skip
+        with _BILL:
+            bill["calls"] += 1
+            bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
+            bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
+            bill["dollars"] += said["dollars"]
+            bill["seconds"] += said["seconds"]
+        message = said["message"]
+        native = message.get("tool_calls") or []
+        calls = native or (text_calls(message.get("content")) if args.protocol == "text" else [])
+        print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
+        if message.get("content"):
+            print(f"{tag}{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
+        kept = {"role": "assistant", "content": message.get("content") or ""}
+        if native:
+            kept["tool_calls"] = native
+        messages.append(kept)
+        if not calls:
+            nudged += 1
+            if nudged > 2:
+                print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
+                return
+            messages.append({"role": "user", "content": NUDGE})
+            continue
+        for c in calls:
+            name = c["function"]["name"]
+            began = time.monotonic()
+            result = leaf.call(name, c["function"].get("arguments"))
+            took = time.monotonic() - began
+            first_line = result.split("\n", 1)[0][:160]
+            brief = _brief(c["function"].get("arguments"))
+            print(f"{tag}{step:>3} {name} {brief} → {first_line} ({took:.2f} s)", flush=True)
+            if native:
+                messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
+            else:
+                messages.append({"role": "user", "content": f"Result of {name}:\n{result}"})
+            if leaf.finished:
+                return
+
+
+_BILL = threading.Lock()
+
+
+def _in_scope_state(root: Path, scope: list[str]) -> dict[str, bytes]:
+    out = {}
+    for base, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in (".git", ".graphene", "__pycache__")]
+        for name in names:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if P.in_scope(rel, scope) and not os.path.islink(os.path.join(base, name)):
+                out[rel] = Path(base, name).read_bytes()
+    return out
+
+
+def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, session: str, model: str,
+                  messages: list[dict], args, params: dict, bill: dict) -> Leaf | None:  # fmt: skip
+    """N conversations from one checkpoint of the leaf, each in a copy of its checkout; the first
+    whose check passes is copied into the checkout (what its scope covers, and nothing else). Returns
+    a leaf to finish here, or None when no fork passed (every one that gave up said why)."""
+    won = threading.Event()
+    before = _in_scope_state(here, node.scope)
+    copies, forks = [], []
+    for k in range(n):
+        copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
+        for rel in P.tracked(here):
+            src = here / rel
+            if src.is_file() and not src.is_symlink():
+                (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, copy / rel)
+        copies.append(copy)
+        if args.placement == "local":
+            place = Local(copy)
+        else:  # the first fork's base is where the leaf's check is run from: any fork's is the same
+            place = _sandbox(copy, node, store, session, log=k == 0)
+        forks.append(Fork(store, node, place, repo, session, check=node.check, won=won))
+    def told(k: int) -> list[dict]:
+        said = [dict(m) for m in messages]
+        said[0]["content"] += (f"\nThis is fork {k} of {n}: {n} attempts at this leaf run at once from the "
+                               "same checkout, and the first whose check passes lands.")  # fmt: skip
+        return said
+
+    def one(k: int, f: Fork) -> None:
+        with Store.open(repo) as mine:  # a thread, a connection
+            f.store = mine
+            if hasattr(f.place, "store"):
+                f.place.store = mine  # a sandbox logs its breaches
+            converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+
+    threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    bill["refused_in_forks"] = sum(f.refused for f in forks)
+    try:
+        winner = next((k for k, f in enumerate(forks) if f.passed), None)
+        bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
+        if winner is None:
+            gave_up = [f.released for f in forks if f.released]
+            if gave_up and len(gave_up) == n:
+                wants = sorted({w for _, ws in gave_up for w in ws})
+                real = Leaf(store, node, Local(here), repo, session)
+                print(real.release(gave_up[0][0], wants), flush=True)
+            print(f"no fork's check passed ({n} forks)", flush=True)
+            return None
+        after = _in_scope_state(copies[winner], node.scope)
+        for rel in before.keys() - after.keys():
+            (here / rel).unlink(missing_ok=True)
+        for rel, data in after.items():
+            if before.get(rel) != data:
+                (here / rel).parent.mkdir(parents=True, exist_ok=True)
+                (here / rel).write_bytes(data)
+        print(f"fork {winner + 1} of {n} passed its check; its work is in the leaf's checkout", flush=True)
+        return Leaf(store, node, Local(here), repo, session)
+    finally:
+        for f in forks:
+            f.place.close()
+        for copy in copies:
+            shutil.rmtree(copy, ignore_errors=True)
+
+
 def work(args: argparse.Namespace, prompt: str) -> int:
     node_id = os.environ.get("GRAPHENE_NODE")
     if not node_id:
@@ -303,8 +464,6 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             return 3
         ladder = args.model
         model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
-        place = Local(here) if args.placement == "local" else _sandbox(here, node, args)
-        leaf = Leaf(store, node, place, repo, session)
         first = [prompt]
         if args.map:
             files = P.tracked(here)
@@ -319,58 +478,37 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                   **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
         bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
                 "seconds": 0.0, "prompt": PROMPT_VERSION}  # fmt: skip
-        print(f"nemotron executor · {model} · {place.name} placement · leaf {node.id}", flush=True)
-        nudged = 0
+        where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
+        print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
+        leaf = None
         try:
-            for step in range(1, args.steps + 1):
-                _compact(messages)
-                said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=node.id,
-                               **params)  # fmt: skip
-                bill["calls"] += 1
-                bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
-                bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
-                bill["dollars"] += said["dollars"]
-                bill["seconds"] += said["seconds"]
-                message = said["message"]
-                native = message.get("tool_calls") or []
-                calls = native or (text_calls(message.get("content")) if args.protocol == "text" else [])
-                if message.get("content"):
-                    print(f"{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
-                kept = {"role": "assistant", "content": message.get("content") or ""}
-                if native:
-                    kept["tool_calls"] = native
-                messages.append(kept)
-                if not calls:
-                    nudged += 1
-                    if nudged > 2:
-                        print(f"{step:>3} stopped: no tool call three times", flush=True)
-                        break
-                    messages.append({"role": "user", "content": NUDGE})
-                    continue
-                for c in calls:
-                    name = c["function"]["name"]
-                    result = leaf.call(name, c["function"].get("arguments"))
-                    first_line = result.split("\n", 1)[0][:160]
-                    brief = _brief(c["function"].get("arguments"))
-                    print(f"{step:>3} {name} {brief} → {first_line}", flush=True)
-                    if native:
-                        messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
-                    else:
-                        messages.append({"role": "user", "content": f"Result of {name}:\n{result}"})
-                    if leaf.finished:
-                        return 0
+            if args.forks > 1:
+                leaf = fork_and_pick(args.forks, here, node, store, repo, session, model, messages, args,
+                                     params, bill)  # fmt: skip
+                if leaf is not None:
+                    said = leaf.done()
+                    print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
+                return 0
+            place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session)
+            leaf = Leaf(store, node, place, repo, session)
+            try:
+                converse(leaf, model, messages, args, params, bill, "")
+            finally:
+                place.close()
             return 0
+        except (RuntimeError, ImportError, OSError) as no:
+            print(f"stopped: the sandbox could not be made: {no}", flush=True)
+            return 3
         except tf.Unreachable as no:
             print(f"stopped: {no}", flush=True)
             return 3
         finally:
-            place.close()
-            bill["refused"] = leaf.refused
+            bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
             bill["dollars"] = round(bill["dollars"], 6)
             store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill)
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
-                  f"{leaf.refused} writes refused", flush=True)  # fmt: skip
+                  f"{bill['refused']} writes refused", flush=True)  # fmt: skip
 
 
 def _brief(arguments) -> str:
@@ -381,10 +519,20 @@ def _brief(arguments) -> str:
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
-def _sandbox(here: Path, node: P.Node, args: argparse.Namespace):
-    from .sandbox import Sandbox
+def _sandbox(here: Path, node: P.Node, store: Store, session: str, log: bool = True):
+    """The leaf's sandbox, and a note in its record of where it is, so that its check (whoever runs
+    `done`) runs in a fork of the same sandbox."""
+    from . import sandbox
 
-    return Sandbox(here, node.scope)
+    name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
+    place = sandbox.Sandbox(here, node.scope, sandbox.choose(name), store, node.id)
+    if not log:  # a fork's sandbox: the check that counts runs from the leaf's own
+        return place
+    store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
+                   {"placement": "sandbox", "box": name, "image": place.base,
+                    "seconds": round(place.timings[0], 3)})  # fmt: skip
+    print(f"sandbox ready ({name}, {place.timings[0]:.1f} s): image {place.base[:12]}", flush=True)
+    return place
 
 
 NAME = "nemotron"
@@ -401,6 +549,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--map", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--inline", type=int, default=0, help="inline the scope's files, up to N characters")
     parser.add_argument("--protocol", choices=("native", "text"), default="native")
+    parser.add_argument("--forks", type=int, default=1, help="N conversations; the check picks")
     parser.add_argument("prompt")
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a stopped run: the bill is still written

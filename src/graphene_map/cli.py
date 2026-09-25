@@ -244,8 +244,8 @@ def build():
         otherwise. The ids are the live list's, so a run is reproducible and nothing is guessed. Out of
         reach it is plain `nemotron`, which finds its models when it runs, and the second value says in
         one line what could not be reached. Asked once: offline, init must not wait a minute."""
+        from . import sandbox
         from . import tokenfactory as tf
-        from .sandbox import sandbox_configured
 
         unreached = tf.reach(tries=1)
         found = {} if unreached else tf.roles(tf.models(tries=1))
@@ -253,7 +253,7 @@ def build():
         def models(*sizes: str) -> str:
             return "".join(f" --model {shlex.quote(found[s])}" for s in sizes if s in found)
 
-        place = "sandbox" if sandbox_configured() else "local"
+        place = "sandbox" if sandbox.configured() else "local"
         ladder = f"nemotron{models('nano', 'super')} --placement {place}"
         return {"planner": f"nemotron{models('ultra')}", "executor": ladder}, unreached
 

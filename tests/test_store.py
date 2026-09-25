@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -358,3 +359,26 @@ def test_a_huge_error_keeps_its_ends_instead_of_being_lost_whole(tmp_path):
         )
         kept = store.events("s")[0].response["error"]
     assert kept.startswith("permission denied") and kept.endswith("the last line") and len(kept) < 10_000
+
+
+def test_values_are_bound_to_plain_question_marks_only(tmp_path, monkeypatch):
+    """Python 3.12.0 to 3.12.3 warn when a sequence is bound to a numbered ?1, and 3.14 refuses one
+    bound to a named :x. A plain ? is read the same way by every Python the package allows."""
+    bound = []
+
+    class Recording(sqlite3.Connection):
+        def execute(self, sql, parameters=(), /):
+            if parameters and not isinstance(parameters, dict):
+                bound.append(sql)
+            return super().execute(sql, parameters)
+
+    connect = sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: connect(*a, factory=Recording, **k))
+    with Store.open(tmp_path) as store:
+        store.put_node({"id": "a", "state": "open"})
+        store.put_node({"id": "b", "state": "open"})
+        store.put_node({"id": "a", "state": "done"})
+        assert store.node_row("a") == {"id": "a", "state": "done"}
+        assert store.node_seqs() == {"a": 1, "b": 2}  # an update keeps the node's place
+        assert store.did_something("s") is False
+    assert bound and [sql for sql in bound if re.search(r"\?\d|[:@$][A-Za-z_]", sql)] == []
