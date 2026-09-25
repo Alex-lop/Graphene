@@ -1,0 +1,24 @@
+ the plan of /private/tmp/graphene-fold/feeds                                   
+▼ ○ csv feeds import cleanly, and every bad row is named…   18/26 done          
+├ ▶ ✓ read every feed as rows                 reader        6 done              
+├ ▶ ✓ the dialects our suppliers send         dialects      5 done              
+├ ▶ ○ every row checked before it is…         validate      1 came back, 5 more 
+├ ▶ ✓ the bad rows report                     report        5 done              
+├ ▶ ○ one command imports a feed              cli           1 yours, 4 more     
+└ ▶ ? the importer documented                 docs          3 proposed          
+────────────────────────────────────────────────────────────────────────────────
+ csv feeds import cleanly, and every bad row is named with its line             
+ the goal · 18/26 done                                                          
+                                                                                
+ ✓ read every feed as rows                                  reader    done      
+ ✓ the dialects our suppliers send                          dialects  done      
+ ○ every row checked before it is imported                  validate  2/5 done  
+ ✓ the bad rows report                                      report    done      
+ ○ one command imports a feed                               cli       0/5 done  
+ ? the importer documented                                  docs      proposed  
+                                                                                
+ waiting  v-dupes came back · v-rules on v-dupes (came back) · cli-exit on      
+          cli-import (ready) · cli-progress on cli-import (ready) · cli-review  
+          is yours · v-empty and docs are proposed, for you to accept or prune  
+ you: 4 · 1 running · R: 2 ready · 18/26 done · plan first: on                  
+ y accept it all · E edit the plan as text · za fold all · ? help · q quit      
