@@ -113,7 +113,7 @@ def test_every_way_out_is_refused_or_fails_and_every_way_in_succeeds(tmp_path, m
         assert not out[name].startswith("exit 0"), (name, out[name])
     for name in ("new file beside", "new link"):
         assert "refused: this command changed" in out[name], (name, out[name])
-    assert set(breaches) >= {"tests/conftest.py", "leak"}
+    assert sorted(breaches) == ["leak", "tests/conftest.py"]  # the check's __pycache__ is nobody's change
     assert (root / "other.py").read_text() == "x = 1\n"
     assert (root / "tests" / "test_app.py").read_text() == "import app\n"
     assert not (root / "moved.py").exists() and not (root / "tests" / "conftest.py").exists()

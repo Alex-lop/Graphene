@@ -27,6 +27,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import gate
 from . import plan as P
 
 WORK = "/work"
@@ -169,7 +170,14 @@ class Docker:
     ConTree (`GRAPHENE_SANDBOX=docker`), with the same Linux users and permissions layer 2 rests on."""
 
     def __init__(self, image: str = IMAGE):
-        self.base, self.ops = image, 0
+        self.base, self.ops, self.made = image, 0, []
+
+    def forget(self, keep: set[str] = frozenset()) -> None:
+        """Remove the checkpoint images this box made, but ``keep``: nothing else prunes them."""
+        gone = [i for i in reversed(self.made) if i not in keep]
+        if gone:
+            self._docker("rmi", "-f", *gone)
+        self.made = [i for i in self.made if i in keep]
 
     def _docker(self, *args: str, data: bytes | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(["docker", *args], input=data, capture_output=True)
@@ -199,6 +207,7 @@ class Docker:
                 self._docker("kill", box)
                 return image, 124, "(the sandbox command ran out of time)"
             new = self._docker("commit", box).stdout.decode().strip()
+            self.made.append(new)
             return new, code, (ran.stdout + ran.stderr).decode("utf-8", "replace")
         finally:
             self._docker("rm", "-f", box)
@@ -227,7 +236,10 @@ def check_in_fork(name: str, image: str, root: Path, command: str, timeout: floa
             f"cd {WORK} && setpriv --reuid={USER} --regid={USER} --init-groups env -i HOME=/home/{USER} "
             f"PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 bash -c {shlex.quote(command)} 2>&1",
         ])  # fmt: skip
-        _, code, out = choose(name).run(image, script, {"/tmp/graphene/repo.tar": tar.read_bytes()}, timeout)
+        inside = choose(name)
+        _, code, out = inside.run(image, script, {"/tmp/graphene/repo.tar": tar.read_bytes()}, timeout)
+        if hasattr(inside, "forget"):
+            inside.forget()
         return code, out
     finally:
         tar.unlink(missing_ok=True)
@@ -301,6 +313,8 @@ class Sandbox:
         """What the command changed in the sandbox: what the scope covers comes here, what it does not
         is refused after the fact and removed from the sandbox before the next command."""
         changed = sorted(p for p in now.keys() | self.seen.keys() if now.get(p) != self.seen.get(p))
+        ignored = gate._ignored(self.root, changed)  # a check's __pycache__: nobody's change, as at done
+        changed = [p for p in changed if p not in ignored]
         refused = []
         for rel in changed:
             if not P.in_scope(rel, self.scope) or now.get(rel) == "link":
@@ -325,5 +339,7 @@ class Sandbox:
                 "back, and it is undone before your next command)")  # fmt: skip
 
     def close(self) -> None:
-        pass
+        """The checkpoints this sandbox made go, but the first: the leaf's check forks from it."""
+        if hasattr(self.box, "forget"):
+            self.box.forget({self.base})
 

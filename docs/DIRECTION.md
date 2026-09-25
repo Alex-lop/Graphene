@@ -433,8 +433,25 @@ change is named here.
       (`tests/test_escape.py`'s log).
     - ConTree's own latencies, and any number with a real model, are not measured: this shell had no
       key.
-    The other placement, a harness such as OpenCode inside the sandbox, is spiked in
-    `docs/test/spikes/harness_there/`; its numbers are there.
+
+    The other placement is spiked in `docs/test/spikes/harness_there/` (numbers in `RESULTS.md`).
+    OpenCode 1.18.31 runs headless inside the same Docker sandbox, against the same fake, on the same
+    leaf, three runs each, and it lands. What decided it:
+    - **The gate.** Here, a write outside the scope is refused in Graphene's words and logged as
+      `denied` (3 of 3). There, the operating system refuses it and Graphene never hears of it (0 of 3).
+    - **The model is told.** A breach made by a command is never told to the model inside OpenCode, and
+      the file stays in the sandbox for the rest of its run.
+    - **The key.** There, a command the model writes can read the key (3 of 3), and the sandbox needs
+      a network route to Token Factory.
+    - **Input size.** OpenCode sends 5.2 to 6.1 times the characters per leaf: its 9,000-character
+      system prompt and 12,500 characters of tool schemas on every call. With cheap models in bulk,
+      input tokens are the bill.
+    - **Wall time.** OpenCode's tools cost about 0.02 s inside the sandbox, against 2.3 s for each of
+      this loop's commands on Docker. But OpenCode pays about 5 s a leaf to start. The landing leaf
+      tied within noise (9.6 s against 8.9 s); the hand-back took 2.8 s here against 7.3 s there.
+
+    *What would change the call:* a ConTree round trip of many seconds, on leaves that run many
+    commands. That is the first number to take once access arrives.
 56. **No model id is written into Graphene: the live list names them.** `tokenfactory.roles` picks the
     Nemotron Ultra, Super and Nano out of `GET /v1/models` by name, the newest of each, a `-fast` twin
     second. The executor's default is the smallest listed, the planner's the largest. `graphene init`
