@@ -78,6 +78,8 @@ class Fake:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                if self.headers.get("Authorization", "") != "Bearer fake-key":
+                    return self._send(401, {"detail": "Couldn't authenticate. Reason: invalid token"})
                 with fake.lock:
                     fake.requests.append(body)
                     reply = fake.replies.pop(0) if fake.replies else {"content": "(the script ran out)"}

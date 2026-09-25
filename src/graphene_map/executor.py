@@ -205,10 +205,12 @@ class Leaf:
         return f"exit {code}\n{cut}{tail}"
 
     def _graphene(self, *args: str) -> str:
+        """`graphene …` for this leaf. It is Graphene's own process and keeps the key: a sandbox leaf's
+        check is forked in ConTree from there. The check itself never gets it (plan.run_check drops it
+        here; in a sandbox nothing of the environment goes in)."""
         cli = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
-        env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # the check runs model-written code
         said = subprocess.run([sys.executable, "-c", cli, *args], cwd=self.place.root, capture_output=True,
-                              text=True, env=env)  # fmt: skip
+                              text=True, env=dict(os.environ))  # fmt: skip
         return (said.stdout + said.stderr).strip()
 
     def done(self) -> str:
@@ -467,12 +469,10 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             try:
                 listed = tf.roles()
             except tf.Unreachable as no:
-                print(f"stopped: {no}", flush=True)
-                return 3
+                return stop(store, node, str(no))
             args.model = [listed[k] for k in ("nano", "super", "ultra") if k in listed][:1]
         if not args.model:
-            print("stopped: Token Factory lists no Nemotron model for this key", flush=True)
-            return 3
+            return stop(store, node, "Token Factory lists no Nemotron model for this key")
         ladder = args.model
         tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
         model = ladder[min(tried, len(ladder)) - 1]
@@ -508,12 +508,10 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             finally:
                 place.close()
             return 0
-        except (RuntimeError, ImportError, OSError) as no:
-            print(f"stopped: the sandbox could not be made: {no}", flush=True)
-            return 3
         except tf.Unreachable as no:
-            print(f"stopped: {no}", flush=True)
-            return 3
+            return stop(store, node, str(no))
+        except Exception as no:  # no sandbox, or ConTree's own errors: said to the person, not a traceback
+            return stop(store, node, f"{type(no).__name__}: {no}")
         finally:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
             bill["dollars"] = round(bill["dollars"], 6)
@@ -521,6 +519,17 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip
+
+
+def stop(store: Store, node: P.Node, why: str) -> int:
+    """The executor cannot work at all (no key, a refused key, no sandbox, the spend cap): it hands the
+    leaf back itself, with that reason, so the run does not send it round again to fail the same way,
+    and the person reads the cause instead of a check that failed on untouched code."""
+    if P.get(store, node.id).state == P.RUNNING:
+        here = Path.cwd()
+        Leaf(store, node, Local(here), repo_root(here), "").release(f"the executor stopped: {why}")
+    print(f"stopped: {why}", flush=True)
+    return 3
 
 
 def _brief(arguments) -> str:

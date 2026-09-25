@@ -327,3 +327,37 @@ def test_a_tool_called_by_another_common_name_is_the_tool_it_means(repo, fake):
     plan_of(repo, leaf())
     done, _ = run_one(repo)
     assert [n.id for n in done] == ["greet"]
+
+
+def test_a_wrong_key_comes_back_once_with_its_cause_and_no_check_runs(repo, fake, monkeypatch):
+    """The executor cannot work at all: it hands the leaf back itself, with the cause, and the run does
+    not send it round again to fail the same way on untouched code (a judge saw '3 attempts, the last
+    one refused: AssertionError', the 401 only in the log)."""
+    fake([call("done")] * 5)
+    monkeypatch.setenv("NEBIUS_API_KEY", "wrong")
+    plan_of(repo, leaf())
+    done, said = run_one(repo, attempts=3)
+    assert done == []
+    with Store.open(repo) as store:
+        why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
+        assert why.startswith("the executor stopped: Token Factory answered 401")
+        assert len(store.node_log("greet", ("attempt",))) == 1
+        assert store.node_log("greet", ("check_failed", "check_passed")) == []
+    back = "handed back by the executor: the executor stopped: Token Factory answered 401"
+    assert any(back in s for s in said)
+
+
+def test_graphenes_own_done_keeps_the_key_for_a_sandbox_check(repo, monkeypatch):
+    """`graphene node done` is Graphene's own process: a sandbox leaf's check is forked in ConTree from
+    there, which needs the key. (The check itself never gets it: see the test above it.)"""
+    from graphene_map import executor
+
+    seen = {}
+    monkeypatch.setenv("NEBIUS_API_KEY", "the-key")
+    monkeypatch.setattr(executor.subprocess, "run", lambda argv, **kw: seen.update(kw) or
+                        subprocess.CompletedProcess(argv, 0, "ok", ""))  # fmt: skip
+    plan_of(repo, leaf())
+    with Store.open(repo) as store:
+        node = plan.get(store, "greet")
+        executor.Leaf(store, node, executor.Local(repo), repo, "s")._graphene("node", "done", "greet")
+    assert seen["env"]["NEBIUS_API_KEY"] == "the-key"

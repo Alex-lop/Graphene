@@ -177,6 +177,8 @@ def ask(
                     for line in said_lines:
                         say(f"  {line[:300]}")
                 return said
+        if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
+            raise P.Refused(f"nothing was added. {refusal}")
         say(refusal)
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."

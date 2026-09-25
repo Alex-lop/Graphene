@@ -44,6 +44,11 @@ def configured() -> bool:
         import contree_sdk  # noqa: F401
     except ImportError:
         return False
+    return credentials()
+
+
+def credentials() -> bool:
+    """Has ConTree something to sign in with: a key and a project here, or a saved profile?"""
     env = os.environ
     home = Path(env.get("CONTREE_HOME") or Path.home() / ".config" / "contree")
     return bool(env.get("NEBIUS_API_KEY") and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
@@ -145,6 +150,9 @@ class Contree:
     def __init__(self, image: str = IMAGE):
         from contree_sdk import ContreeSync
 
+        if not credentials():  # else the SDK sends the variable's name as the token, and gets a 401
+            raise RuntimeError("ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID in the environment, or a "
+                               "profile saved by `contree auth`")  # fmt: skip
         self.sdk = ContreeSync()
         self.base = self.sdk.images.oci(image)
         self.ops = 1

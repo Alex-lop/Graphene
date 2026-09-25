@@ -112,9 +112,11 @@ def test_a_planner_that_cannot_reach_token_factory_says_why_in_its_own_words(rep
     last 300 characters of what it printed, and not "the planner" twice."""
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     tf._listed.cache_clear()
+    said = []
     with Store.open(repo) as store, pytest.raises(plan.Refused) as no:
-        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
     assert "no proposal (exit 3): stopped: NEBIUS_API_KEY is not set" in str(no.value)
+    assert said == ["asking the planner (nemotron)…"]  # asked once: again would fail the same way
     assert "the planner printed" not in str(no.value)
 
 
