@@ -289,11 +289,11 @@ class Store:
         """Open (creating) the repo's store. ``quick`` is the hook path: give up on a lock after 250 ms.
 
         The directory is private to the user and git-ignored on every open, not only by `init`,
-        because whichever command creates it fills it with transcript content.
+        because whichever command creates it fills it with what a session typed and ran.
 
         An older store is migrated in place by whoever opens it, the hook included (the steps only
         add tables and columns). Only a file SQLite cannot read is moved aside and replaced by an
-        empty one (the caller backfills it); ``rebuilt_from`` then holds the backup path. The hook
+        empty one; ``rebuilt_from`` then holds the backup path. The hook
         path never does that, and nobody touches a store a newer Graphene wrote: both raise
         ``StaleStore``.
         """
@@ -312,7 +312,7 @@ class Store:
             store = cls(path, timeout=timeout)
             store.rebuilt_from = str(backup.relative_to(repo_root))
         with contextlib.suppress(OSError):
-            os.chmod(path, 0o600)  # the file too, not only the directory: transcripts can hold secrets
+            os.chmod(path, 0o600)  # the file too, not only the directory: a recorded call can hold secrets
         return store
 
     def close(self) -> None:
@@ -371,27 +371,6 @@ class Store:
             (session_id, session_id),
         ).fetchone()
         return bool(row[0])
-
-    def transcript_stat(self, session_id: str) -> tuple[int, float] | None:
-        """Size and mtime of the transcript when this session was last read from it."""
-        row = self.conn.execute(
-            "SELECT transcript_size, transcript_mtime FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
-        return None if row is None or row[0] is None else (int(row[0]), float(row[1]))
-
-    def set_transcript_stat(self, session_id: str, stat: tuple[int, float]) -> None:
-        self.conn.execute(
-            "UPDATE sessions SET transcript_size = ?, transcript_mtime = ? WHERE id = ?",
-            (stat[0], stat[1], session_id),
-        )
-
-    def delete_session_data(self, session_id: str) -> None:
-        """Drop prompts, events and agents before a reload from the transcript. Commits are git's
-        and stay (the reload credits them again); stored explanations are left alone too."""
-        self.conn.execute("DELETE FROM tool_events WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM agents WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
-        self.conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
     # -- prompts ------------------------------------------------------------------------------
 
@@ -477,8 +456,8 @@ class Store:
     # -- agents and commits -------------------------------------------------------------------
 
     def upsert_agent(self, a: Agent) -> None:
-        """Insert, or fill in what a later record knows: a hook event sees the start, the transcript
-        the task, the handback the closing message."""
+        """Insert, or fill in what a later record knows: SubagentStart sees the start, SubagentStop
+        the end."""
         cols = [f for f in Agent.__slots__ if f not in ("id", "session_id")]
         self.conn.execute(
             f"INSERT INTO agents (id, session_id, {', '.join(cols)}) "

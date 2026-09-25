@@ -164,21 +164,6 @@ def test_explanations_and_debrief_runs(tmp_path):
         assert store.explanation("p1", "zzz") is None
 
 
-def test_delete_session_data_keeps_explanations(tmp_path):
-    with Store.open(tmp_path) as store:
-        store.upsert_session(Session(id="s", repo="r"))
-        store.add_prompt(Prompt(id="p1", session_id="s", ordinal=1, timestamp="t", text="x"))
-        store.add_event(
-            ToolEvent(id="e", session_id="s", prompt_id="p1", timestamp="t", tool="Bash", input={})
-        )
-        store.set_explanation("p1", "a.py", "text", "null", "t")
-        store.delete_session_data("s")
-        assert store.session("s") is None
-        assert store.prompts("s") == []
-        assert store.events("s") == []
-        assert store.explanation("p1", "a.py") == ("text", "null", None)
-
-
 def test_ids_are_scoped_to_their_session(tmp_path):
     with Store.open(tmp_path) as store:
         for sid in ("a", "b"):
@@ -272,8 +257,6 @@ def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
         (commit,) = store.commits_between("2026-03-01T09:00:00.000Z", "2026-03-01T10:00:00.000Z")
         assert (commit.session_id, commit.agent_id, commit.event_id) == ("s", "a1", "t9")
         assert commit.files == [("app/parser.py", "A")]
-        store.delete_session_data("s")
-        assert store.agents("s") == [] and len(store.commits_between(when, when)) == 1
 
 
 def test_a_corrupt_store_is_rebuilt_and_still_answers(repo):
@@ -321,7 +304,7 @@ def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_pa
     event = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(tmp_path)})
     assert hook_main(io.StringIO(event), cwd=tmp_path) == 0
     assert capsys.readouterr().out == ""
-    assert db.read_bytes() == before  # not rebuilt, not backfilled, not even written to
+    assert db.read_bytes() == before  # not rebuilt, not even written to
     assert list((tmp_path / ".graphene").glob("*.bak")) == []
     log = (tmp_path / ".graphene" / "ingest.log").read_text()
     assert "run graphene" in log and "Traceback" not in log

@@ -12,7 +12,7 @@ class Session:
     started_at: str | None = None
     ended_at: str | None = None
     head_at_start: str | None = None  # git HEAD when the session started; None when unknown
-    source: str = "hook"  # "hook" | "backfill"
+    source: str = "hook"  # "hook"; "backfill" in a store an earlier version filled from transcripts
     transcript_path: str | None = None
 
 

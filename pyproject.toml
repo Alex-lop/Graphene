@@ -66,4 +66,3 @@ ignore = ["B008"]  # typer.Option() in defaults is the Typer idiom
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "docs/test"]
-markers = ["slow: takes seconds, not milliseconds (backfill at scale); runs with the rest"]

@@ -31,7 +31,6 @@ def repo(tmp_path, monkeypatch):
     (static / "assets" / "app.css").write_text("body{margin:0}")
     (tmp_path / "secret.txt").write_text("not yours")
     monkeypatch.setattr(ui, "STATIC", static)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     root = tmp_path / "repo"
     root.mkdir()
     with Store.open(root) as store:

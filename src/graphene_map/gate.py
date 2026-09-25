@@ -54,7 +54,7 @@ def _rel(path: str, root: Path, cwd: str | None) -> str | None:
     from .sources.claude_code import _map_path  # here, not at the top: that module imports this one
 
     full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
-    rel = _map_path(full, root, cwd, None)
+    rel = _map_path(full, root)
     return None if os.path.isabs(rel) or rel.startswith("..") else rel
 
 
