@@ -23,12 +23,15 @@ keystroke instead of a restart.
   read) that run on your machine, and answers with the tree in Graphene's plan text
   (`src/graphene_map/planner.py`).
 - **Nemotron Nano, then Super, do the leaves.** `graphene run --parallel N` starts one Nemotron
-  executor per ready leaf (`src/graphene_map/executor.py`). The loop runs on your machine and calls
-  Token Factory, and every tool call it makes (view, edit, write, run) runs in the leaf's Token Factory
-  Sandbox. When a leaf's attempt is refused, the next attempt steps up to Super. `--forks N` runs N
-  conversations from one sandbox checkpoint and lets the check pick the first that passes.
-- **Sandboxes make a cheap model safe to use in bulk.** Each leaf gets a sandbox from the same
-  checkpoint of the repository. Inside it the executor's commands run as a user who can write only
+  executor per ready leaf (`src/graphene_map/executor.py`). Its loop runs on your machine and calls
+  Token Factory. Every command the model runs, and the leaf's check, run in the leaf's Token Factory
+  Sandbox. Its reads and edits act on the leaf's checkout here, after the scope check, and its edits
+  are pushed into the sandbox before its next command. When a leaf's attempt is refused, the next
+  attempt steps up to Super. `--forks N` runs N conversations, each in a fork of the leaf's sandbox,
+  and the check picks the first that passes.
+- **Sandboxes make a cheap model safe to use in bulk.** The repository is uploaded and set up once
+  for each commit, as a checkpoint. Every leaf started at that commit forks that checkpoint and adds
+  only its own permissions. Inside it the executor's commands run as a user who can write only
   the files the leaf's scope covers (`src/graphene_map/sandbox.py`). The executor's own write tools
   refuse a path outside the scope before writing it. A leaf is done only when Graphene runs the leaf's
   check itself, in a fresh fork of the sandbox, and git shows nothing outside the scope. What a
@@ -76,8 +79,8 @@ Pacific (16:00 UTC).
 - **25 September** (this branch): the Nemotron executor and planner on Token Factory, the sandbox
   placement with the escape test, `graphene init` offering Nemotron first, the check in a clean tree,
   folding, the bill, the benchmark, and the demo page.
-- **Size.** 295 commits since the period opened. `src/` is 13,919 lines of Python in 24 files (0 on
-  26 August).
+- **Size.** 320 commits since the period opened, at `a658e36`. `src/` is 14,181 lines of Python in 24
+  files (0 on 26 August).
 
 Commands: `git log --first-parent main --until='2026-08-26T16:00:00Z'`,
 `git rev-list --count --since='2026-08-26T16:00:00Z' HEAD`, and `git grep -c '' <rev> -- 'src/*.py'`.
@@ -90,9 +93,9 @@ Written from what this run actually hit. Where a thing is merely unverified, it 
    `ContreeSync` "just take an already-constructed `contree_client` client". On PyPI (checked
    2026-09-25), both `contree-sdk` 0.3.6 and 0.4.0.dev5 take `(config=None, *, base_url, token)`.
    We pinned 0.3.6 and built its auth from the environment.
-2. **`contree-sdk` 0.4.0.dev5 and `contree-cli` cannot be installed together.** The SDK needs
-   `contree-client~=0.2.1` and the CLI `~=0.4.0`, so a project that wants both gets an unsolvable
-   resolution.
+2. **`contree-sdk` 0.4.0.dev5 and the latest `contree-cli` (0.9.4) cannot be installed together.**
+   The SDK needs `contree-client~=0.2.1` and the CLI `~=0.4.0`, so the resolution is unsolvable.
+   `contree-cli` 0.9.3 does install beside it.
 3. **The project variable has three names.** The CLI's auth page reads `NEBIUS_AI_PROJECT`. The SDK's
    `IAMAuth` reads `NEBIUS_PROJECT_ID`, and so does the mini-swe-agent page. The token is
    `NEBIUS_API_KEY` in both, which is good.
@@ -102,15 +105,17 @@ Written from what this run actually hit. Where a thing is merely unverified, it 
 5. **There is no run-as-user option.** For an agent sandbox the useful default is "the agent's commands
    are not root". Graphene drops privileges with `setpriv` inside the image, which works, but a
    `user=` on `run` (or a documented pattern) would make the safe thing the easy thing.
-6. **Pricing in the verbose model list is excellent.** `GET /v1/models?verbose=true` returns a price
-   per token for every model, so every call's `usage` can be priced exactly, per leaf, with nothing
-   hard-coded. We would like the docs to say whether those prices are the list prices billed.
-7. **The rate-limit headers are well documented.** Per-model limits for the Nemotron models were not
+6. **Pricing in the model list, as the docs describe it, is exactly what an agent needs.** The docs
+   show `GET /v1/models?verbose=true` returning a price per token for every model, so every call's
+   `usage` can be priced per leaf, with nothing hard-coded. *Not yet observed:* this run had no key, so
+   the field's presence and its units (per token, as documented) are unverified. We would like the docs
+   to say whether those are the prices billed.
+7. **The SDK has no way to delete a checkpoint.** An agent that runs every command with
+   `disposable=False` leaves one image per command; the SDK (0.3.6) has no delete, and the overview
+   says untagged images are kept 180 days.
+8. **The rate-limit headers are well documented.** Per-model limits for the Nemotron models were not
    visible without a key. *Not verified:* whether Nemotron's function calling is reliable enough at
    Nano size to do without a text fallback. The executor has one (`--protocol text`) in case.
-8. **An agent reading the rules gets a 403.** The Devpost pages answered a plain HTTP client with
-   403 and needed a browser user agent. That matters for an agent reading the rules on a person's
-   behalf.
 
 ## The demo
 

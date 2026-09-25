@@ -133,7 +133,10 @@ tests of Graphene's own:
 - **The tree runs in parallel and lands.** Accepted as proposed, `graphene run --parallel 4` did all
   four leaves in 50 seconds, each a merge on the branch. The result passes 18 of the task's 20 hidden
   acceptance checks (the 2 it misses want something the paragraph never said) and 12 of its 12
-  held-out checks, against 10 and 0 for the repository as it was. (One run.)
+  held-out checks, against 10 and 0 for the repository as it was. (One run.) The fair comparison is
+  a plain paragraph to the same agent, and in the stand-in test of 23 September that also passed 20
+  and 12, with less of the person's (modelled) time; a tree did not show a measured gain there
+  (`docs/test/results-2026-09-23.md`).
 - **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools and
   none of your MCP servers, and what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
 - **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors
@@ -144,7 +147,7 @@ tests of Graphene's own:
   in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
   agents tried to break it: what they found is fixed, and each finding has a test.
 
-What it is not yet: the Nemotron planner and executor have run only against a recorded stand-in for
+What it is not yet: the Nemotron planner and executor have run only against a scripted stand-in for
 Token Factory and a Docker stand-in for Sandboxes, not against the services themselves (the tests in
 `tests/test_executor.py` and `tests/test_escape.py` are that evidence). The hooks are for Claude Code
 only (the plan, `run` and the worktrees work with any executor that has a shell); the page
@@ -159,7 +162,7 @@ before a write, and how:
 | Executor | Before the write | While it runs | At `done` |
 | --- | --- | --- | --- |
 | Nemotron, in a sandbox | its edit and write tools refuse a path outside the scope | its commands run as a user who can write only the scope; what a command makes outside it never comes back | Graphene's check, in a fork of the sandbox, and git |
-| Nemotron, local | the same tools refuse | nothing: a command can write where your user can | the check, and git |
+| Nemotron, local | the same tools refuse | nothing: a command can write (and read) where your user can | the check, and git |
 | Claude Code, with the hooks | the hook denies a write tool or a shell write it can read, outside the scope | nothing more | the check, and git |
 | Codex, or any command | nothing | its own sandbox, if you give it one | the check, and git |
 | You | nothing | nothing | the check, and git |
