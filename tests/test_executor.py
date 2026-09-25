@@ -298,3 +298,21 @@ def test_the_check_graphene_runs_after_the_executor_never_gets_the_key(repo, fak
         said = store.node_log("greet", ("check_failed",))[-1]["detail"]["output"]
     assert "GRAPHENE_AS=agent:check" in said
     assert "NEBIUS_API_KEY" not in said and "fake-key" not in said
+
+
+def test_the_attempt_is_the_one_run_names_not_the_log_s_count(repo, fake, monkeypatch):
+    """`graphene run` writes an attempt's row only once the executor is running: an executor that read
+    the log for its attempt could read attempt 2 as 1 and stay on the ladder's first model (a CI run
+    on macOS did). The run names the attempt (GRAPHENE_TRY), and that is the one used."""
+    from graphene_map import executor
+
+    f = fake([call("release", why="just looking")] * 3)
+    plan_of(repo, leaf())
+    with Store.open(repo) as store:
+        plan.start(store, "greet", Caller("run:nemotron", False, "s-1"), repo)
+        store.log_node("greet", plan._now(), "attempt", "run:nemotron", "s-1", None, {"attempt": 1})
+    monkeypatch.setenv("GRAPHENE_NODE", "greet")
+    monkeypatch.setenv("GRAPHENE_ATTEMPT", "s-1")
+    monkeypatch.setenv("GRAPHENE_TRY", "2")  # the second attempt, whose row is not written yet
+    executor.main(["--model", NANO, "--model", SUPER, "the contract"])
+    assert f.requests[0]["model"] == SUPER

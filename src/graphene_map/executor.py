@@ -463,7 +463,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             print("stopped: Token Factory lists no Nemotron model for this key", flush=True)
             return 3
         ladder = args.model
-        model = ladder[min(attempt_number(store, node), len(ladder)) - 1]
+        tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
+        model = ladder[min(tried, len(ladder)) - 1]
         first = [prompt]
         if args.map:
             files = P.in_tree(here)
