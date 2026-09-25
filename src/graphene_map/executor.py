@@ -162,11 +162,18 @@ class Leaf:
 
     def view(self, path: str = ".", start: int | None = None, end: int | None = None) -> str:
         full = (self.place.root / path).resolve()
-        if not full.is_relative_to(self.place.root.resolve()):  # what is read is sent to the model
+        here = self.place.root.resolve()
+        if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
+        shown = P.in_tree(self.place.root)  # what git shows: never what it ignores (a .env), never .graphene/
+        rel = str(full.relative_to(here))
         if full.is_dir():
-            names = sorted(p.name + ("/" if p.is_dir() else "") for p in full.iterdir() if p.name != ".git")
+            prefix = "" if rel == "." else rel + "/"
+            rests = [f[len(prefix) :] for f in shown if f.startswith(prefix)]
+            names = sorted({r.split("/")[0] + ("/" if "/" in r else "") for r in rests})
             return "\n".join(names) or "(empty)"
+        if rel not in shown:
+            return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
         try:
             data = self.place.read(os.path.relpath(full, self.place.root))
             lines = data.decode("utf-8", "replace").split("\n")

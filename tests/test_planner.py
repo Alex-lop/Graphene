@@ -2,6 +2,8 @@
 with tools that only read, prints the fenced plan block, and what it proposed is in the plan for the
 person to prune; the bill is in the plan's log."""
 
+import json
+
 import pytest
 from fake_tokenfactory import Fake, call
 
@@ -124,3 +126,18 @@ def test_a_bill_under_a_cent_is_never_shown_as_nothing():
     from graphene_map.tui import money
 
     assert money(0.0015) == "$0.0015" and money(0.034) == "$0.03" and money(0) == "$0.00"
+
+
+def test_what_git_ignores_is_never_read_and_so_never_sent(repo, fake):
+    """A judge had the planner read a git-ignored .env holding a secret, and send it to Token Factory."""
+    (repo / ".gitignore").write_text(".graphene/\n.env\n")
+    (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
+    f = fake([call("read", path=".env"), call("list", path="."), call("grep", pattern="SECRET"),
+              call("read", path=".graphene/graphene.db"), {"content": PROPOSAL}])  # fmt: skip
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+    sent = json.dumps(f.requests)
+    assert "do-not-send" not in sent and "SQLite" not in sent
+    results = [m["content"] for m in f.requests[-1]["messages"] if m["role"] == "tool"]
+    assert "git ignores it" in results[0] and ".env" not in results[1].split("\n")
+    assert results[2] == "(no match)"

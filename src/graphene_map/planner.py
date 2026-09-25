@@ -57,7 +57,8 @@ class Repo:
 
     def __init__(self, root: Path):
         self.root = root
-        self.files = P.tracked(root)
+        self.files = P.in_tree(root)  # what git shows: never what it ignores (a .env), never .graphene/
+        self.shown = set(self.files)
 
     def _inside(self, path: str) -> Path | None:
         full = (self.root / (path or ".")).resolve()
@@ -99,6 +100,8 @@ class Repo:
         full = self._inside(path)
         if full is None or not full.is_file():
             return f"{path} is not a file of this repository"
+        if str(full.relative_to(self.root.resolve())) not in self.shown:
+            return f"{path} is not read: git ignores it, and what is read is sent to the model"
         lines = full.read_text(encoding="utf-8", errors="replace").split("\n")
         first = max(1, start or 1)
         last = min(len(lines), end or first + READ_LINES - 1)

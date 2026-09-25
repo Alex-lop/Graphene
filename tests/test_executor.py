@@ -384,3 +384,15 @@ def test_nemotrons_own_toolcall_text_is_read_as_its_calls(repo, fake):
     plan_of(repo, leaf())
     done, _ = run_one(repo)  # the native protocol: a server that hands the call back as text still works
     assert [n.id for n in done] == ["greet"]
+
+
+def test_the_executor_never_views_what_git_ignores(repo, fake):
+    (repo / ".gitignore").write_text(".graphene/\n__pycache__/\n.env\n")
+    (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
+    f = fake([script({"greet": [call("view", path=".env"), call("view", path="."),
+                                call("release", why="looked")]})] * 5)  # fmt: skip
+    plan_of(repo, leaf())
+    run_one(repo)
+    assert "do-not-send" not in json.dumps(f.requests)
+    shown = tool_results(f.requests[-1])
+    assert "git ignores it" in shown[0] and ".env" not in shown[1].split("\n") and "app.py" in shown[1]
