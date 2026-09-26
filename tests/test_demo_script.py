@@ -68,7 +68,7 @@ def reply(body, scripts=SCRIPTS):
 
 def script(tmp_path, answer, prune: str, **more: str):
     """nemotron.sh on the tiny repository against the fake, answered by ``answer``: the finished script,
-    all it said, and the fake."""
+    all it said in the order a terminal shows it (stderr where it was said), and the fake."""
     make = tmp_path / "make_tiny.py"
     make.write_text(MAKE)
     with Fake([answer] * 60) as f:
@@ -77,9 +77,9 @@ def script(tmp_path, answer, prune: str, **more: str):
         env |= f.env() | {"MAKE_REPO": f"{sys.executable} {make}", "PARAGRAPH": "make the app friendlier",
                           "PRUNE": prune, "HOME": str(tmp_path),
                           "GRAPHENE_PERSON": "the script"} | more  # fmt: skip  (whoever prunes and accepts)
-        done = subprocess.run(["bash", str(SCRIPT), str(tmp_path / "demo")], capture_output=True, text=True,
-                              env=env, timeout=300)  # fmt: skip
-    return done, done.stdout + done.stderr, f
+        done = subprocess.run(["bash", str(SCRIPT), str(tmp_path / "demo")], stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, env=env, timeout=300)  # fmt: skip
+    return done, done.stdout, f
 
 
 @pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
@@ -92,6 +92,10 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     assert done.returncode == 0, said
     assert "$ graphene init --planner nemotron --executor nemotron" in said
     assert "$ graphene node widen greet" in said  # the came-back leaf's offer, taken
+    # what SHOW_DEMO prints reads as the terminal did: each step's notes under it, none after the bill
+    at = said.index("$ graphene node widen greet")
+    widen = said[at : said.index("$ graphene run", at)]
+    assert "(the plan of ~/demo)" in widen and said.rindex("(the plan of") < said.index("$ git log --graph")
     graph = subprocess.run(["git", "-C", str(tmp_path / "demo"), "log", "--merges", "--format=%s"],
                            capture_output=True, text=True).stdout.split("\n")  # fmt: skip
     assert "greet says hello (greet)" in graph and "bye says goodbye (farewell)" in graph
