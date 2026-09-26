@@ -28,6 +28,7 @@ Read what that writes before committing it (tests/test_demo.py checks it holds n
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import signal
@@ -35,15 +36,20 @@ import sqlite3
 import subprocess
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+
+from textual.widgets import Static
 
 from . import __version__
 from . import plan as P
 from . import tokenfactory as tf
 from .store import Store
+from .tui import Help, Watch, fit
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
-ENDED = "ended: this is its last frame"
+ENDED = "ended: last frame"
+REFUSED = "a replay: nothing runs here"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused")  # read
@@ -154,12 +160,14 @@ def _snapshot(conn: sqlite3.Connection, after: int) -> tuple[dict, list[dict], d
 
 
 def load(path: Path) -> tuple[dict, list[dict]]:
-    """A recording's first line, and its changes, each with ``at``: when the replay applies it (the first at
-    once, each wait after it as recorded, or LONG seconds for a longer one) and ``cut``: how many times
-    faster that wait is played (0 when it is not cut)."""
+    """A recording's first line, with ``day``: the day it was recorded, local as the screen's clocks are;
+    and its changes, each with ``at``: when the replay applies it (the first at once, each wait after it
+    as recorded, or LONG seconds for a longer one) and ``cut``: how many times faster that wait is played
+    (0 when it is not cut). A file that is not a recording is a ValueError."""
     head, *lines = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
-    if not isinstance(head, dict) or "graphene demo" not in head:
+    if not isinstance(head, dict) or not {"graphene demo", "recorded", "shown", "repository"} <= head.keys():
         raise ValueError("it is not a recording `graphene demo --record` made")
+    head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
     at, was = 0.0, lines[0]["t"] if lines else 0.0
     for line in lines:
         gap, was = line["t"] - was, line["t"]
@@ -209,9 +217,11 @@ def apply(store: Store, line: dict, repo: Path) -> None:
 
 def banner(head: dict, state: str = "") -> list[tuple[str, str]]:
     """A replay's top line, in pieces, whole ones dropped from the end when it is narrow: that it is a
-    replay and whether a model made it, then where the replay is, then which run and when."""
-    when = f"{head.get('repository', 'demo')}, recorded {str(head.get('recorded', ''))[:10]}"
-    return [(f"replay · {head.get('shown', '')}", "bold"), *([(state, "")] if state else []), (when, "dim")]
+    replay, whether a model made it and on which day, never dropped; then a wait cut short or its end;
+    then whose plan it was. At 80 columns only the last is left off."""
+    first = f"replay · {head['shown']} · {head['day']}"
+    whose = f"the plan of {head['repository']}"
+    return [(first, "bold"), *([(state, "")] if state else []), (whose, "dim")]
 
 
 def last_frame(repo: Path, lines: list[dict]) -> None:
@@ -219,3 +229,63 @@ def last_frame(repo: Path, lines: list[dict]) -> None:
     with Store.open(repo) as store:
         for line in lines:
             apply(store, line, repo)
+
+
+class Replay(Watch):
+    """`graphene watch` over a recording: its changes applied to the replay's own store on the recorded
+    clock, the top line saying what it is, and every key that would change the plan or start anything
+    answered with one line, nothing done. Moving, folding, the record, the output and the help work."""
+
+    def __init__(self, repo: Path, head: dict, lines: list[dict]) -> None:
+        super().__init__(repo, lambda: Store.open(repo), every=1.0)
+        self.head, self.lines, self.next, self.began = head, lines, 0, 0.0
+        self.files, self.files_at = [], math.inf  # what git tracked is the recording's, never asked here
+
+    def on_mount(self) -> None:
+        self.began = time.monotonic()
+        self.play()  # the first change is there when the screen is first drawn
+        super().on_mount()
+        self.set_interval(0.1, self.play)
+
+    def play(self) -> None:
+        """Apply what is due by the replay's clock, and draw the screen again when anything was."""
+        due = time.monotonic() - self.began
+        if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
+            return
+        with Store.open(self.root_path) as store:
+            while self.next < len(self.lines) and self.lines[self.next]["at"] <= due:
+                apply(store, self.lines[self.next], self.root_path)
+                self.files = self.lines[self.next].get("tracked", self.files)
+                self.next += 1
+        self.refresh_plan()
+
+    def draw(self, store) -> None:
+        """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short
+        and by how much, or its end, then which run and when."""
+        super().draw(store)
+        cut = self.lines[self.next]["cut"] if self.next < len(self.lines) else 0
+        state = ENDED if self.next == len(self.lines) else f"×{round(cut, 1):g}: a wait, cut" if cut else ""
+        self.query_one("#where", Static).update(fit(banner(self.head, state), max(self.size.width - 2, 20)))
+
+    def refuse(self, *_) -> None:
+        self.message = REFUSED
+        self.say_status()
+
+    # every key that would change the plan or start anything, and every way a key reaches a command
+    action_add = action_edit = action_drop = action_yes = action_split = action_undo = refuse
+    action_run = action_release_or_reopen = action_offer = action_plan_first = action_visual = refuse
+    did = background = edit_with = stop_runs = refuse
+
+    def action_line(self, kind: str) -> None:
+        if kind == ":":  # `/` searches; `:` would run a command
+            return self.refuse()
+        super().action_line(kind)
+
+    def action_help_or_ask(self) -> None:
+        self.push_screen(Help())  # the help everywhere: on a leaf that came back it would start a planner
+
+    def keys(self) -> list[str]:
+        """What the keys do here, for the bottom line: only those that work in a replay."""
+        if self.view == "contract":
+            return ["j k move", "Enter record", "l output", "za fold", "? help", "q quit"]
+        return ["? help" if k[0] == "?" else k for k in super().keys() if k[:2] not in ("w ", "b ", "n ")]

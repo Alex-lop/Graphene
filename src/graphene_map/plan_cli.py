@@ -438,14 +438,16 @@ def register(cli: typer.Typer, root, open_store, fail):
     @cli.command()
     def demo(
         recording: Path = typer.Argument(None, help="A recording --record made; Graphene's own if left out."),
+        once: bool = typer.Option(False, "--once", help="Print where the replay ends, and leave."),
         record: Path = typer.Option(
             None, "--record", help="Record this repository's plan into this file as a run goes, until Ctrl-C."
         ),
     ) -> None:
-        """Where a recorded run ended, printed as `graphene watch --once` prints a plan, saying it is a
+        """A recorded run, replayed in `graphene watch` exactly as it happened, the top line saying it is a
         replay and whether a model or a scripted stand-in made it. It needs no key, no network and no
-        Docker, and nothing in it runs. `--record FILE` makes one from the repository it is started in:
-        the plan's store over the run, never a key or a path of yours."""
+        Docker, and nothing in it runs: a key that would change the plan or start anything says so. `--once`
+        prints where it ends. `--record FILE` makes one from the repository it is started in: the plan's
+        store over the run, never a key or a path of yours."""
         import contextlib
         import tempfile
 
@@ -464,6 +466,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 repo = D.repository(Path(tmp), head)
             except (OSError, subprocess.CalledProcessError) as no:
                 fail(f"graphene demo makes a git repository for the replay, and could not: {no}", 1)
+            if not once and sys.stdout.isatty():
+                D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
+                return
             D.last_frame(repo, lines)
             out(" · ".join(text for text, _ in D.banner(head, D.ENDED)))
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
