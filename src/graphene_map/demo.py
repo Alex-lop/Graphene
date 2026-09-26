@@ -22,7 +22,8 @@ and from a live run on Token Factory, with NEBIUS_API_KEY set, with
 
     RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh
 
-Read what that writes before committing it (tests/test_demo.py checks it holds no path and no key).
+Read what that writes before committing it: tests/test_demo.py checks it holds no path and no key, and
+names tonight's leaves, which a new recording changes.
 """
 
 from __future__ import annotations

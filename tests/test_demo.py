@@ -41,12 +41,14 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
-def test_the_recording_graphene_ships_is_the_stand_ins_and_holds_no_path_and_no_key():
-    """Made by tests/test_demo_script.py against the scripted fake, it says so, and carries no absolute path
-    (the run's was a temporary directory, its home another) and nothing shaped like a key."""
+def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no_key():
+    """Tonight's was made by tests/test_demo_script.py against the scripted fake, and says so; a live one
+    recorded in its place says it ran live. Neither carries an absolute path (the run's was a temporary
+    directory, its home another) or anything shaped like a key."""
     said = demo.SHIPPED.read_text(encoding="utf-8")
     head, lines = demo.load(demo.SHIPPED)
-    assert head["stand_in"] is True and head["shown"] == "a scripted stand-in, not Nemotron" and lines
+    assert head["shown"] == ("a scripted stand-in, not Nemotron" if head["stand_in"] else "as it ran, live")
+    assert lines
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
@@ -76,7 +78,8 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     head, _ = demo.load(demo.SHIPPED)
     first, *rest = said.stdout.splitlines()
     day = head["recorded"][:10]
-    assert first == f"replay · a scripted stand-in, not Nemotron · {day} · {demo.ENDED} · the plan of demo"
+    assert first == f"replay · {head['shown']} · {day} · {demo.ENDED} · the plan of {head['repository']}"
+    assert ("stand-in" in first) == head["stand_in"]  # tonight's is the stand-in's: "a scripted stand-in"
     assert "the plan: a friendlier app" in rest and "2 leaves, 2 done, 0 running" in said.stdout
     assert [r.split() for r in rest if r.startswith("    ✓")] == [
         ["✓", "greet", "says", "hello", "greet", "done", "·", "app.py,", "words.py"],
@@ -126,7 +129,8 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
     asyncio.run(go())
     day = head["recorded"][:10]
-    assert seen["where"] == f"replay · a scripted stand-in, not Nemotron · {day} · ended: last frame"
+    assert seen["where"] == f"replay · {head['shown']} · {day} · ended: last frame"
+    assert ("stand-in" in seen["where"]) == head["stand_in"]
     assert seen["cursor"] == "greet" and "record" in seen["record"] and "holds" in seen["record"]
     assert "the check" in seen["record"] and "passed" in seen["record"]
     # the replay has the plan's log and none of the run's git history: never "no commit was made"
