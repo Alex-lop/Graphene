@@ -284,6 +284,8 @@ class Replay(Watch):
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
         self.refresh_plan()
+        if self.next == len(self.lines):  # the end: every fold open (zR), so the last frame shows every leaf
+            self.tree.action_open_all()
 
     def draw(self, store) -> None:
         """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short

@@ -287,6 +287,25 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
     assert seen["help"] == "Help"
 
 
+def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
+    """It ended on the finished sub-goal folded to one row, "2 done": the last frame showed almost nothing.
+    When the last change is applied every fold opens, as zR opens them, and every leaf is a row."""
+    monkeypatch.setattr(demo, "LONG", 0.01)
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(200):
+                if app.next == len(app.lines):
+                    break
+                await pilot.pause(0.05)
+            await pilot.pause()
+            return [app.tree.get_node_at_line(k).data for k in range(app.tree.last_line + 1)]
+
+    assert asyncio.run(go()) == [None, "friendly", "greet", "farewell"]
+
+
 def test_a_search_line_edited_into_a_command_is_refused_in_one_line(tmp_path, monkeypatch):
     """`/` opens the search line; with its / erased, Enter ran the line as a command, and the replay's
     refusal of `did(argv, keep=True)` was a TypeError that closed the screen. A line that is not a search

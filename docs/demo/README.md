@@ -58,9 +58,10 @@ Nemotron" when any did not or does not say, and "a run with no model calls on re
 none. A key that would change the plan or start anything (`y d e E a A s R r P w b n : x u V`) says
 "a replay: nothing runs here" and does nothing; moving, folding, `/`, Enter (the record), `l` (the
 output) and `?` work. A wait longer than 3 s is played in 3 s, and the top line says by how much (`×10:
-a wait, cut`). At the end the screen stays on the last frame and says so. `graphene demo --once` prints
-that last frame instead, as `graphene watch --once` prints a plan. The replay has a temporary
-repository of its own, removed when the screen closes.
+a wait, cut`). At the end every fold opens (as `zR` opens them), so every leaf is a row, and the
+screen stays on that last frame and says so. `graphene demo --once` prints the last frame instead, as
+`graphene watch --once` prints a plan. The replay has a temporary repository of its own, removed when
+the screen closes, when its terminal closes, or on TERM.
 
 A recording is the plan's store over the run, not the model's calls, which a replay would have to
 run: the nodes, their log, the settings the screen reads, each executor's output, and what git
