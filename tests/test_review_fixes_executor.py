@@ -75,3 +75,13 @@ def test_arguments_that_are_json_but_not_an_object_or_hold_a_null_are_said_to_th
     assert (repo / "app.py").read_text() == 'def greet():\n    return "hi"\n'
     with Store.open(repo) as store:  # the model's own reason, not the executor's stop
         assert store.node_log("greet", ("released",))[-1]["detail"]["why"] == "looked"
+
+
+@pytest.mark.parametrize("forks", [1, 2])
+def test_wants_sent_as_one_string_is_one_path(repo, fake, forks):
+    """`"wants": "other.py"` handed the leaf back offering to widen its scope to o, t, h, e, r …"""
+    fake([call("release", why="the greeting is also in other.py", wants="other.py")] * 10)
+    plan_of(repo, leaf())
+    run_one(repo, f"nemotron --model {NANO} --forks {forks}")
+    with Store.open(repo) as store:
+        assert store.node_log("greet", ("released",))[-1]["detail"]["wants"] == ["other.py"]

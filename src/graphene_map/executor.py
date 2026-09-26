@@ -238,7 +238,8 @@ class Leaf:
         self.finished = P.get(self.store, self.node.id).state in (P.DONE, P.REVIEW)
         return said
 
-    def release(self, why: str = "", wants: list[str] | None = None) -> str:
+    def release(self, why: str = "", wants: list[str] | str | None = None) -> str:
+        wants = [wants] if isinstance(wants, str) else wants  # one path, not its letters
         said = self._graphene("node", "release", self.node.id, "--why", why or "(no reason given)",
                               *[a for w in wants or [] for a in ("--wants", w)])  # fmt: skip
         self.finished = P.get(self.store, self.node.id).state != P.RUNNING
@@ -361,7 +362,8 @@ class Fork(Leaf):
             return "this fork is finished (the leaf has no check)"
         return "the check passed in this fork" + ("" if self.passed else ", and another fork's passed first")
 
-    def release(self, why: str = "", wants: list[str] | None = None) -> str:
+    def release(self, why: str = "", wants: list[str] | str | None = None) -> str:
+        wants = [wants] if isinstance(wants, str) else wants  # one path, not its letters
         self.released, self.finished = (why or "(no reason given)", list(wants or [])), True
         return "this fork gives up; the leaf is handed back only if every fork does"
 
