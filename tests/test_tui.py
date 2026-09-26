@@ -1503,3 +1503,16 @@ def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bil
     rows = [{"kind": "started", "detail": {}}, {"kind": "placement", "detail": made},
             {"kind": "placement", "detail": ended}]  # fmt: skip
     assert sandbox(rows) == ended
+
+
+def test_the_record_says_which_fork_won_and_why_each_other_one_did_not(repo):
+    forked(repo, ["lost", "passed", "gave up", "check failed"], box={"ops": 5, "seconds": 3.25})
+    for size in SIZES:
+        seen, _ = at(repo, "greet", size, keys=["enter"])
+        record = " ".join(seen["detail"].split())
+        assert re.search(r"^forks$", seen["detail"], re.M), seen["detail"]
+        said = [f"fork 2 of 4 won: {WHY['passed']} · Nemotron-3-Nano-fake · 5 operations, 3.2 s",
+                f"fork 1 of 4 lost: {WHY['lost']}", f"fork 3 of 4 gave up: {WHY['gave up']}",
+                f"fork 4 of 4 check failed: {WHY['check failed']}"]  # fmt: skip
+        assert all(s in record for s in said), (size, record)
+        assert [record.index(s) for s in said] == sorted(record.index(s) for s in said)  # the winner first

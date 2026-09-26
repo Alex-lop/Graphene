@@ -1728,6 +1728,17 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
             inner.field("changed", "nothing")
         for line in inner.render().split():
             pane.line(Text("     ") + line)
+    ran = forks(store.node_log(node.id, ("started", "model", "fork")))
+    if ran:  # its last attempt's forks: the one that won first, then why each other one did not
+        pane.gap()
+        pane.text("forks", "bold")
+        for f in sorted(ran, key=lambda f: f["state"] != "passed"):
+            word = "won" if f["state"] == "passed" else f["state"]
+            said = Text.assemble(f"fork {f['fork']} of {f['of']}  ", (word, _look(f["state"])[1]))
+            said.append((f": {f['why']}" if f.get("why") else "") + " · " + _short(f["model"]))
+            if "ops" in f and f["state"] != "running":
+                said.append(f" · {f['ops']} operations, {f['seconds']:.1f} s")
+            pane.text(said, indent=2)
     check = record.refusals.last_check
     pane.gap()
     pane.text("the check", "bold")
