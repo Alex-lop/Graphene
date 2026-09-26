@@ -113,6 +113,15 @@ def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_s
     assert [line["plan_meta"] for line in lines if "plan_meta" in line] == [{"goal": "a goal recorded"}]
 
 
+def test_recording_into_a_directory_that_is_not_there_is_refused_in_one_line(tmp_path):
+    """It was a traceback; it is one line and exit 1, as `graphene ui --export` says it."""
+    out = tmp_path / "no" / "such" / "rec.jsonl"
+    done = subprocess.run([*CLI, "demo", "--record", str(out)], cwd=git_repo(tmp_path / "repo"),
+                          capture_output=True, text=True, timeout=60)  # fmt: skip
+    said = f"cannot write {out}: No such file or directory\n"
+    assert (done.returncode, done.stdout, done.stderr) == (1, "", said)
+
+
 def test_output_written_a_few_bytes_at_a_time_loses_the_key_and_the_paths_whole(tmp_path):
     """The key and the paths were taken out of each look's new output alone, so a line an executor wrote
     across two looks (a streaming agent, a buffer flushed mid-line) kept them in pieces. The recorder takes

@@ -454,7 +454,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         from . import demo as D
 
         if record is not None:
-            n = D.record(root(), record)
+            try:
+                n = D.record(root(), record)
+            except OSError as no:
+                fail(f"cannot write {record}: {no.strerror or no}", 1)
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
         try:
