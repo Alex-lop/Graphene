@@ -234,6 +234,21 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     assert not list((tmp_path / "tmp").iterdir())
 
 
+def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
+    """It printed "finished; `graphene plan archive` puts it away", a command for the replay's repository,
+    which is gone by then. Everything else is what `graphene watch --once` prints of the same store."""
+    head, lines = demo.load(demo.SHIPPED)
+    repo = demo.repository(tmp_path, head)
+    demo.last_frame(repo, lines)
+    monkeypatch.chdir(repo)
+    watched = CliRunner().invoke(build(), ["watch", "--once"]).stdout.splitlines()
+    banner, *replayed = CliRunner().invoke(build(), ["demo", "--once"]).stdout.splitlines()
+    hint = "2 leaves, 2 done, 0 running · finished; `graphene plan archive` puts it away"
+    assert hint in watched and banner.startswith("replay · ")
+    finished = "2 leaves, 2 done, 0 running · finished"
+    assert replayed == [finished if line == hint else line for line in watched]
+
+
 def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(tmp_path, monkeypatch):
     """The banner names it a replay of a scripted stand-in and its day; Enter shows a leaf's record; R, y
     and every other key that would change the plan or start anything say one line and start nothing."""
