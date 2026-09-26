@@ -23,7 +23,7 @@ from test_executor import (  # noqa: F401
     tool_results,
 )
 
-from graphene_map import executor
+from graphene_map import executor, sandbox
 from graphene_map import tokenfactory as tf
 from graphene_map.run import _alive
 from graphene_map.store import Store
@@ -152,3 +152,53 @@ def test_a_winning_fork_never_deletes_or_overwrites_what_git_ignores(repo, fake)
     assert (repo / ".env").read_text() == "AWS_SECRET_ACCESS_KEY=do-not-send\n"
     assert (repo / "data" / "big.csv").read_text() == "1,2,3\n"
     assert not (repo / "data" / "new.csv").exists()
+
+
+def test_a_fork_reads_what_git_shows_and_what_it_wrote_and_never_what_git_ignores(repo, fake):
+    """A fork's copy has no .git, so git there showed nothing: every fork was blind ("is not read: git
+    ignores it or it is not there", and `view .` said "(empty)")."""
+    ignoring(repo)
+    f = fake([by_fork({
+        1: [call("view", path="app.py"), call("view", path="."), call("view", path=".env"),
+            call("write", path="new.py", content="x = 2\n"), call("view", path="new.py"),
+            call("release", why="looked")],
+        2: [call("release", why="looked too")],
+    })] * 20)  # fmt: skip
+    plan_of(repo, leaf(scope=("app.py", "new.py")))
+    run_one(repo, f"nemotron --model {NANO} --forks 2")
+    said = tool_results([r for r in f.requests if "This is fork 1 of" in r["messages"][0]["content"]][-1])
+    assert said[0].split("\n")[1:2] == ['    2      return "hi"'], said
+    assert said[1].split("\n") == [".gitignore", "app.py", "other.py"]
+    assert said[2].startswith(".env is not read: git ignores it")
+    assert said[4] == "    1  x = 2\n    2  "
+    assert "do-not-send" not in json.dumps(f.requests)
+
+
+class Pyc:
+    """A box whose command leaves a Python cache beside app.py, as a check that imports it does."""
+
+    image, ops = sandbox.IMAGE, 0
+    made = "0\n" + "1" * 40 + "  ./app.py\n"
+    lists = {"granted": made, "ran": made + "2" * 40 + "  ./__pycache__/app.cpython-312.pyc\n"}
+
+    def start(self, tar, script, timeout):
+        return "made", 0, ""
+
+    def run(self, image, script, files, timeout):
+        return ("granted" if image == "made" else "ran"), 0, ""
+
+    def read(self, image, path):
+        return (self.lists[image] + sandbox.END + "\n").encode()
+
+
+def test_a_forks_sandbox_asks_git_in_the_checkout_so_a_python_cache_is_nobodys_change(repo, tmp_path):
+    """A fork's sandbox asked git in its copy, which has no .git, what it ignores: nothing, so every
+    Python check was a breach (__pycache__/*.pyc) and the model was told its command was refused."""
+    copies = [tmp_path / "fork1", tmp_path / "fork2"]
+    for copy in copies:
+        copy.mkdir()
+        (copy / "app.py").write_text((repo / "app.py").read_text())
+    first = sandbox.Sandbox(copies[0], ["app.py"], Pyc(), checkout=repo)  # as fork_and_pick makes fork 1's
+    for place in (first, first.fork(copies[1])):  # and every other fork's, from its checkpoint
+        code, out = place.run("python3 -c 'import app'")
+        assert code == 0 and "refused" not in out and place.strays == set()

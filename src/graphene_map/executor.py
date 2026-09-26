@@ -146,6 +146,7 @@ class Leaf:
 
     def __init__(self, store: Store, node: P.Node, place, repo: Path, session: str):
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
+        self.source = place.root  # the git checkout its files come from (a fork's copy has no .git)
         self.finished = False
         self.ended = ""  # how its conversation ended (converse says)
         self.refused = 0
@@ -177,7 +178,7 @@ class Leaf:
         here = self.place.root.resolve()
         if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
-        shown = P.in_tree(self.place.root)  # what git shows: never what it ignores (a .env), never .graphene/
+        shown = _shown(self.place.root, self.source)  # never what git ignores (a .env), never .graphene/
         rel = str(full.relative_to(here))
         if full.is_dir():
             prefix = "" if rel == "." else rel + "/"
@@ -187,7 +188,7 @@ class Leaf:
         if rel not in shown:
             return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
         try:
-            data = self.place.read(os.path.relpath(full, self.place.root))
+            data = self.place.read(rel)  # not relative to the root as given: a fork's copy is behind a link
             lines = data.decode("utf-8", "replace").split("\n")
         except OSError as no:
             return f"cannot read {path}: {no.strerror}"
@@ -344,9 +345,9 @@ class Fork(Leaf):
     """One of N conversations on one leaf, in a copy of its checkout: its `done` runs the check in the
     copy and does not finish the leaf; the first fork whose check passes is the one that lands."""
 
-    def __init__(self, *args, check: str | None, won: threading.Event):
+    def __init__(self, *args, check: str | None, won: threading.Event, source: Path):
         super().__init__(*args)
-        self.check, self.won, self.passed = check, won, False
+        self.check, self.won, self.passed, self.source = check, won, False, source
         self.released: tuple[str, list[str]] | None = None
         self.why: str | None = None  # why it gave up, when it did
         self.failed: Exception | None = None  # what stopped it: Token Factory, or the sandbox
@@ -507,7 +508,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
             place = _sandbox(copy, node, store, session, args, checkout=here)
         else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
             place = forks[0].place.fork(copy)
-        forks.append(Fork(store, node, place, repo, session, check=node.check, won=won))
+        forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, source=here))
     def told(k: int) -> list[dict]:
         said = [dict(m) for m in messages]
         said[0]["content"] += (f"\nThis is fork {k} of {n}: {n} attempts at this leaf run at once from the "

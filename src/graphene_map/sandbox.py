@@ -352,7 +352,7 @@ class Sandbox:
         """``root``: where the executor's edits land here; ``checkout``: the git checkout its files come
         from, when that is not ``root`` (a fork's copy has no .git of its own)."""
         self.root, self.scope, self.store, self.node_id = root, scope, store, node_id
-        source = checkout or root
+        source = self.checkout = checkout or root  # where git is asked what it shows and ignores
         self.box = Capped(box if box is not None else choose())
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
@@ -468,7 +468,7 @@ class Sandbox:
         """What the command changed in the sandbox: what the scope covers comes here, what it does not
         is refused after the fact and removed from the sandbox before the next command."""
         changed = sorted(p for p in now.keys() | self.seen.keys() if now.get(p) != self.seen.get(p))
-        ignored = gate._ignored(self.root, changed)  # a check's __pycache__: nobody's change, as at done
+        ignored = gate._ignored(self.checkout, changed)  # a check's __pycache__: nobody's change, as at done
         changed = [p for p in changed if p not in ignored]
         refused, self.brought = [], []
         for rel in changed:
