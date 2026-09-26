@@ -194,7 +194,7 @@ service itself.)
 | --- | --- |
 | 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `docs/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `docs/test/spikes/harness_there/RESULTS.md` (stand-ins) |
-| fifty operations at once; a peak of 50, or 56 without the slots | `tests/test_faults.py` (a counting fake box) |
+| fifty operations at once; a peak of 50, or 56 without the slots | `tests/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
 | 13,540 lines, none before the period; 181 and 343 commits | git, the commands above |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
 
