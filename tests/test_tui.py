@@ -1418,6 +1418,31 @@ def test_a_leaf_with_forks_shows_each_under_it_in_the_one_row_grammar(repo):
         assert seen["sideways"] == 0
 
 
+def test_forks_that_arrive_on_an_open_screen_are_drawn_and_fold_away_with_their_finished_leaf(repo, finish):
+    """A screen reads the store every second: the rows come in as the executor writes them, the cursor
+    stays on a fork's row as its state changes, and goes to the leaf when the finished leaf folds."""
+    forked(repo, [])
+
+    async def before(app, pilot):
+        def tree():
+            app.refresh_plan()
+            rows = shown(app, app.query_one("#tree").scrollable_content_region)
+            return [r.rstrip() for r in rows if r.strip()]
+
+        forked(repo, ["running", "running"])
+        assert any(r.endswith("fork 1  running") for r in tree())
+        for key in ("j", "j"):
+            await pilot.press(key)
+        forked(repo, ["lost", "passed"])
+        rows = tree()
+        assert any(r.endswith("fork 1  lost") for r in rows) and app.tree.cursor_node.data == ("greet", 1)
+        with Store.open(repo) as store:
+            finish(store, repo, "greet", NEMOTRON)
+        assert "fork 1" not in " ".join(tree()) and app.tree.cursor_node.data == "greet"
+
+    watch(repo, [], before=before)
+
+
 def test_every_key_on_a_fork_row_acts_on_its_leaf_or_says_why_not(repo, monkeypatch):
     """A fork is not a node, and no command takes one: on its row each key is its leaf's, the bottom
     line says so, and nothing crashes."""
