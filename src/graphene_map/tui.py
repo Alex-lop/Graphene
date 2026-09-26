@@ -6,9 +6,11 @@ person's $EDITOR, and a run or a planner started from here is its own process, w
 this screen is closed. The left pane is the tree, the goal its first row; the right one (below it,
 when the terminal is narrow) is the node under the cursor. A row reads the same everywhere (the
 tree, the node pane, `graphene plan`): glyph, title cut at a word, id, and the word its state reads
-as (`plan.reads`), in the colour of who has the move (`plan.look`). The top line says whose plan
-this is in the words every write ends with; the bottom two say what waits on the person, and what
-the last key did or what the keys do on the node under the cursor.
+as (`plan.reads`), in the colour of who has the move (`plan.look`). Under a leaf the Nemotron
+executor forked, each fork is a row in the same grammar (its model, which fork, its state); a fork
+is not a node, and a key on its row acts on its leaf. The top line says whose plan this is in the
+words every write ends with; the bottom two say what waits on the person, and what the last key
+did (or a step up the ladder, once) or what the keys do on the node under the cursor.
 """
 
 from __future__ import annotations

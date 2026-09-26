@@ -12,6 +12,11 @@ for one tool call at a time (view, edit, write, run, done, release) and runs it.
 3. `done` is Graphene's own (`graphene node done`): git and the check decide, never the model.
 
 The key stays in this process: a command the model runs gets an environment without it.
+
+What a screen shows of it is written on the leaf's log as it happens: each attempt's model as the attempt
+begins (`model`; on a step up the ladder, with the model before and why), each fork's state when it
+starts and when it ends (`fork`), and in a sandbox its checkpoint, operations and seconds (`placement`,
+and on each fork's row).
 """
 
 from __future__ import annotations
