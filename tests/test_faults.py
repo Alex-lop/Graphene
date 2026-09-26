@@ -5,6 +5,7 @@ leaf comes back with its cause in its record, the run goes on, nothing is left r
 pane says what happened."""
 
 import re
+import subprocess
 import threading
 import time
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import pytest
 from fake_faults import Box, everywhere
 from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
+from test_sandbox_state import needs_docker
 
 from graphene_map import plan, sandbox, tui
 from graphene_map import tokenfactory as tf
@@ -249,6 +251,54 @@ def test_a_check_that_hangs_is_stopped_with_all_it_started_and_the_leaf_comes_ba
 # -- the sandbox --------------------------------------------------------------------------------------------
 
 SANDBOXED = f"nemotron --model {NANO} --placement sandbox"
+
+
+def test_a_sandbox_that_goes_away_mid_leaf_comes_back_with_its_cause(repo, fake, monkeypatch, tmp_path):
+    everywhere(monkeypatch, tmp_path, FAULTS_BOX="fake", FAULTS_RAISE="uname -a")
+    _, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    why = came_back_with(repo, said, "the sandbox stopped answering mid-leaf (ConnectionResetError: the "
+                         "sandbox went away); nothing of this command was brought back: run the leaf again")
+    assert why.startswith("the executor stopped: ")
+
+
+def test_a_sandbox_operation_killed_mid_leaf_comes_back_with_its_cause(repo, fake, monkeypatch, tmp_path):
+    """Killed (137) with no list of files, the leaf went on in a sandbox nobody could vouch for."""
+    everywhere(monkeypatch, tmp_path, FAULTS_BOX="fake", FAULTS_KILL="uname -a")
+    _, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    came_back_with(repo, said, "the sandbox's operation was killed mid-leaf (exit 137: out of memory, or "
+                   "stopped)")  # fmt: skip
+
+
+@needs_docker
+def test_a_docker_sandbox_killed_mid_leaf_comes_back_leaving_no_container(repo, fake, monkeypatch, tmp_path):
+    """The same, in the Docker stand-in: the container running the model's `sleep 30` is killed."""
+    here = everywhere(monkeypatch, tmp_path, FAULTS_BOX="killed", FAULTS_KILL="sleep 30")
+    monkeypatch.setenv("GRAPHENE_SANDBOX", "docker")
+    try:
+        _, said = run_two(repo, fake, call("run", command="sleep 30"), SANDBOXED)
+        came_back_with(repo, said, "the sandbox's operation was killed mid-leaf (exit 137")
+        made = (here / "containers").read_text().split()
+        left = subprocess.run(["docker", "ps", "-aq", "--no-trunc"], capture_output=True, text=True).stdout
+        assert made and not set(made) & set(left.split())
+    finally:
+        images = (here / "images").read_text().split() if (here / "images").exists() else []
+        subprocess.run(["docker", "rmi", "-f", *images], capture_output=True) if images else None
+
+
+def test_a_command_the_box_stopped_for_time_says_so_and_brings_nothing_back(repo, monkeypatch, tmp_path):
+    """The box's own time limit hands back the image it was given: its list of files was the last
+    command's, and was read as this one's (exit 0)."""
+    everywhere(monkeypatch, tmp_path)
+
+    class OutOfTime(Box):
+        def run(self, image, script, files, timeout):
+            if "sleep 999" in script:
+                return image, 124, "(the sandbox command ran out of time)"  # as sandbox.Docker does
+            return super().run(image, script, files, timeout)
+
+    place = sandbox.Sandbox(repo, ["app.py"], OutOfTime())
+    code, out = place.run("sleep 999")
+    assert code == 124 and "ran out of time" in out and "nothing was brought back from this command" in out
 
 
 def test_no_more_than_fifty_sandbox_operations_run_at_once(monkeypatch, tmp_path):

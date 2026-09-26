@@ -440,12 +440,20 @@ class Sandbox:
             f"tail -c {OUTPUT} /tmp/graphene.out",  # what the model is shown: its tail, capped anyway
         ]
         began = time.monotonic()
-        image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
-        self.timings.append(time.monotonic() - began)
         try:
-            state = _state(self.box.read(image, STATE).decode("utf-8", "replace"))
+            image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
+        except Exception as no:  # the service's own error, or a box gone mid-leaf: the leaf comes back
+            raise RuntimeError(f"the sandbox stopped answering mid-leaf ({type(no).__name__}: {no}); nothing "
+                               "of this command was brought back: run the leaf again") from no  # fmt: skip
+        self.timings.append(time.monotonic() - began)
+        stale = image == self.image  # no new image (the box's own time limit): its list is the last command's
+        try:
+            state = None if stale else _state(self.box.read(image, STATE).decode("utf-8", "replace"))
         except Exception as no:  # a box that cannot be read now: nothing is taken as changed
             state, output = None, f"{output}\n({type(no).__name__}: {no})"
+        if state is None and code > 128:  # a signal ended the sandbox's own script, not only the command
+            raise RuntimeError(f"the sandbox's operation was killed mid-leaf (exit {code}: out of memory, or "
+                               "stopped); nothing of this command was brought back: run the leaf again")
         if state is None:  # fail closed: without the whole list, no file is taken as deleted or changed
             self.image = image
             return code or 1, (f"{output}\n(the sandbox's list of files did not come back whole; nothing "
