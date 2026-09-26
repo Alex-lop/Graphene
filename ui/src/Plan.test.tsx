@@ -33,6 +33,7 @@ const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   finished_at: null,
   waits: [],
   log: [],
+  forks: [],
   lane: "agent",
   column: 0,
   row: 0,
@@ -77,6 +78,31 @@ test("the tree is indented by depth, and a sub-goal counts its leaves instead of
   expect(html.indexOf('data-tree="signin"')).toBeLessThan(html.indexOf('data-tree="api"'));
   expect(html).not.toContain('data-tree="typed"'); // a done aside folds into one line below the tree
   expect(html).toContain("✓ 1 done from a prompt");
+});
+
+test("under a leaf that forked, the tree of sandboxes: each fork, its model and how it ended, the winner marked", () => {
+  const forked: Plan = {
+    ...plan,
+    nodes: [
+      node("greet", {
+        state: "done",
+        display_state: "done",
+        forks: [
+          { fork: 1, of: 2, model: "nvidia/Nemotron-3-Nano-fake", state: "check failed", why: "its check failed (exit 1)", checkpoint: "made", ops: 6, seconds: 4.25 },
+          { fork: 2, of: 2, model: "nvidia/Nemotron-3-Nano-fake", state: "passed", why: "its check passed first", checkpoint: "forked", ops: 4, seconds: 2 },
+        ],
+      }),
+      node("schema"),
+    ],
+  };
+  const html = renderToStaticMarkup(<PlanTree plan={forked} picked={null} onPick={() => undefined} />);
+  const under = html.slice(html.indexOf('data-tree="greet"'), html.indexOf('data-tree="schema"'));
+  expect(under).toContain('data-forks="greet"'); // inside the leaf's own item: a level in, not a node
+  expect(under).toMatch(/data-fork="1" data-state="check failed">.*<b>fork 1 of 2<\/b><span class="what">Nemotron-3-Nano-fake/);
+  expect(under).toContain("its check failed (exit 1) · sandbox made, 6 operations, 4.3 s");
+  expect(under).toMatch(/data-fork="2" data-state="passed"><button type="button" class="row fork won">.*✓ won/);
+  expect(under).toContain("sandbox forked from the checkpoint, 4 operations, 2.0 s");
+  expect(html.slice(html.indexOf('data-tree="schema"'))).not.toContain("data-fork"); // a leaf that did not fork
 });
 
 test("a node's detail opens with the path from the goal down to it, root first", () => {
