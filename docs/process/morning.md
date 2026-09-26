@@ -145,6 +145,12 @@ Frozen: nothing yet, since the configuration is frozen only after tuning.
     `graphene demo --once` prints the replay, and the demo script passes end to end against the
     scripted stand-in with the wheel's `graphene` (`docs/test/wheel_smoke.sh`).
   - `graphene demo` in a pseudo-terminal (the replay lane, by hand).
+  - **CI: green on all seven jobs at `cfc045e`** (Linux and macOS, Python 3.12, 3.13 and 3.14, and
+    the page). That is the last commit that changes code; later commits touch only this file.
+    One earlier run (`b7df68c`, macOS 3.12) failed on a timing race in a test this branch did not
+    touch: `test_parallel`'s "at once" gave its two scripted leaves a fixed 0.6 s to overlap, and
+    the runner took longer to make the second worktree. The two leaves now wait for each other to
+    begin, and the assertion is unchanged (`cfc045e`).
 - **Not verified:** anything on Token Factory or in ConTree. That covers the real model ids and
   prices, Nemotron's tool calls, ConTree's users, output cap and timings, the thirty-leaf run at
   `--parallel 8` (only against a counting fake box), and every number the directive calls live.
