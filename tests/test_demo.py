@@ -138,6 +138,31 @@ def test_output_written_a_few_bytes_at_a_time_loses_the_key_and_the_paths_whole(
     assert text == hidden
 
 
+def test_a_sandbox_image_is_taken_out_in_words_the_leafs_pane_shows_whole(tmp_path):
+    """Where a sandbox's image was, the recording said "[a sandbox image]", and the leaf's pane cuts an
+    image to 12 characters: "image [a sandbox i". What it says there now fits."""
+    from types import SimpleNamespace
+
+    from graphene_map.tui import Pane, _attempt
+
+    repo, image = git_repo(tmp_path / "repo"), "sha256:" + "3f2a1b9c" * 8
+    made = {"placement": "sandbox", "box": "docker", "image": image, "checkpoint": "made"}
+
+    def during():
+        with Store.open(repo) as store:
+            store.log_node("greet", plan._now(), "placement", "run:nemotron", None, None, made)
+        time.sleep(1)
+
+    head, lines = recorded(repo, tmp_path / "rec.jsonl", during)
+    assert "3f2a1b9c" not in (tmp_path / "rec.jsonl").read_text()
+    (tmp_path / "replay").mkdir()
+    replay, pane = demo.repository(tmp_path / "replay", head), Pane(60)
+    demo.last_frame(replay, lines)
+    with Store.open(replay) as store:
+        _attempt(pane, store, SimpleNamespace(id="greet"))
+    assert "sandbox made, image (not kept)" in " ".join(pane.render().plain.split())
+
+
 def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token_factory(tmp_path):
     """The label came from the recorder's own environment, so a run against the fake recorded from a second
     terminal replayed "as it ran, live". It comes from the run: live only when the recorder saw it so and

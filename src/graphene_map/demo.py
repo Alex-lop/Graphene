@@ -142,8 +142,8 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
                 seen[table] = now
             for row in rows:  # a sandbox's image is its id: out of this line and every one after it
                 image = json.loads(row["detail"] or "{}").get("image") if row["kind"] == "placement" else None
-                if image:
-                    said += [(i, "[a sandbox image]") for i in dict.fromkeys((image, image[:19]))]
+                if image:  # words the leaf's pane shows whole (it cuts an image to 12 characters)
+                    said += [(i, "(not kept)") for i in dict.fromkeys((image, image[:19]))]
             if rows:
                 change["node_log"], last = [hide(r) for r in rows], rows[-1]["id"]
             if conn is not None and (rows or tracked is None):  # a leaf lands by a commit, which the log says
