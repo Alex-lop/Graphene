@@ -100,14 +100,18 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
     conn, last, read, seen, tracked, n = None, 0, {}, {}, None, 0
     with open(out, "w", encoding="utf-8") as f:
         f.write(json.dumps(head) + "\n")
+        f.flush()  # on disk at once: a recorder stopped before the store appears has still said what it is
         while True:
             stopping = stop.wait(every)  # and one look after it, for what was written as it was told
             change: dict = {}
             outputs = {}  # read before the store: a line printed after a write is then never ahead of it
             for path in sorted(runs.glob("*")):
-                with open(path, "rb") as log:
-                    log.seek(read.get(path.name, 0))
-                    new = log.read()
+                try:
+                    with open(path, "rb") as log:
+                        log.seek(read.get(path.name, 0))
+                        new = log.read()
+                except OSError:  # not a file, or gone: the recording goes on without it
+                    continue
                 if new or path.name not in read:
                     outputs[path.name] = new.decode("utf-8", "replace")
                     read[path.name] = read.get(path.name, 0) + len(new)

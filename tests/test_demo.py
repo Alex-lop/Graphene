@@ -6,9 +6,12 @@ import asyncio
 import json
 import re
 import shutil
+import signal
 import socket
 import subprocess
+import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -52,6 +55,30 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
+
+
+def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
+    """`graphene demo --record` started before `graphene init` (as nemotron.sh starts it) waits for the
+    store; a thing under .graphene/runs it cannot read does not stop it; TERM ends it with what it saw."""
+    repo, out = tmp_path / "repo", tmp_path / "rec.jsonl"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    code = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
+    recorder = subprocess.Popen([sys.executable, "-c", code, "demo", "--record", str(out)], cwd=repo,
+                                stderr=subprocess.PIPE, text=True)  # fmt: skip
+    for _ in range(100):  # its first line is written before it waits for anything
+        if out.exists() and out.read_text():
+            break
+        time.sleep(0.1)
+    (repo / ".graphene" / "runs" / "a-directory").mkdir(parents=True)
+    with Store.open(repo) as store:
+        store.set_meta("goal", "a goal recorded")
+    time.sleep(1)
+    recorder.send_signal(signal.SIGTERM)
+    assert recorder.wait(timeout=20) == 0, recorder.stderr.read()
+    head, lines = demo.load(out)
+    assert head["repository"] == "repo" and head["stand_in"] is False  # no stand-in's endpoint was set
+    assert [line["plan_meta"] for line in lines if "plan_meta" in line] == [{"goal": "a goal recorded"}]
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="builds the wheel as CI does, with uv")
