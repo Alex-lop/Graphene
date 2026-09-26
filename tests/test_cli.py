@@ -3,6 +3,7 @@
 import io
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -38,10 +39,13 @@ def no_forced_colour(monkeypatch):
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path, tmp_path_factory, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # not your own Claude Code settings
+    path = tmp_path_factory.mktemp("bin")  # git alone: init finds no agent here, whatever this machine has
+    (path / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(path))
     return tmp_path
 
 
