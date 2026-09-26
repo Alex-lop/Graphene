@@ -63,6 +63,13 @@ META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "pla
 ALNUM = "[A-Za-z0-9]"
 KEY = re.compile(rf"(?<!{ALNUM})(?={ALNUM}*[A-Z])(?={ALNUM}*[a-z])(?={ALNUM}*[0-9]){ALNUM}{{20}}")
 WORD = re.compile(r"[\w.\-]{20,}", re.ASCII)
+# base64, which a word above ends at a / or a + (an AWS secret access key): 30 or more of its letters with a
+# capital, a small letter, a digit and a / or a +, and its padding. A . - or _ breaks it, so a path is kept
+# unless 30 of its characters in a row are letters, digits and slashes alone.
+B64 = "[A-Za-z0-9+/]"
+BASE64 = re.compile(
+    rf"(?<!{B64})(?={B64}*[A-Z])(?={B64}*[a-z])(?={B64}*[0-9])(?={B64}*[+/]){B64}{{30,}}=*"
+)
 REMOVED = "[removed: shaped like a key]"
 
 
@@ -83,7 +90,7 @@ def hider(root: Path) -> tuple:
         for text, instead in said:  # as written, and as JSON writes it inside a node's or a log row's detail
             for form in {text, json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}:
                 value = value.replace(form, instead)
-        return WORD.sub(lambda word: REMOVED if KEY.search(word[0]) else word[0], value)
+        return WORD.sub(lambda word: REMOVED if KEY.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
 
     return hide, said
 

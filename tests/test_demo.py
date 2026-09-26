@@ -67,6 +67,20 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
+def test_a_base64_secret_with_a_slash_or_a_plus_goes_whole(tmp_path, monkeypatch):
+    """A key-shaped word ends at a slash, so a base64 secret with a / or a + in it (an AWS secret access key)
+    was kept in pieces. A run of 30 or more base64 characters with a capital, a small letter, a digit and a
+    / or a + goes whole; a sha, a uuid, an id, a log's name and a model's name stay."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hide, _ = demo.hider(tmp_path / "work" / "feeds")
+    aws, plus = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "c2VjcmV0+c2VjcmV0L3NlY3JldA9zZWNyZXQ=="
+    kept = ("greet-20260926T034451-1106252f-1.txt nvidia/Llama-3_1-Nemotron-Ultra-253B-v1 "
+            "9f86d081884c7d659a2f3aa1b3c4d5e6f7a8b9c0 123e4567-e89b-12d3-a456-426614174000 "
+            "{repo}/.graphene/runs/greet nvidia/Nemotron-3-Nano-fake")  # fmt: skip
+    said = hide(f"AWS_SECRET_ACCESS_KEY={aws} then {plus}; {kept}")
+    assert said == f"AWS_SECRET_ACCESS_KEY={demo.REMOVED} then {demo.REMOVED}; {kept}"
+
+
 def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no_key():
     """Tonight's was made by tests/test_demo_script.py against the scripted fake, and says so; a live one
     recorded in its place says it ran live. Neither carries an absolute path (the run's was a temporary
@@ -78,6 +92,7 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
+    assert not demo.BASE64.search(said)
 
 
 def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
