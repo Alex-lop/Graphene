@@ -435,6 +435,40 @@ def register(cli: typer.Typer, root, open_store, fail):
         r = root()
         watch_tui(r, lambda: open_store(r), every)
 
+    @cli.command()
+    def demo(
+        recording: Path = typer.Argument(None, help="A recording --record made; Graphene's own if left out."),
+        record: Path = typer.Option(
+            None, "--record", help="Record this repository's plan into this file as a run goes, until Ctrl-C."
+        ),
+    ) -> None:
+        """Where a recorded run ended, printed as `graphene watch --once` prints a plan, saying it is a
+        replay and whether a model or a scripted stand-in made it. It needs no key, no network and no
+        Docker, and nothing in it runs. `--record FILE` makes one from the repository it is started in:
+        the plan's store over the run, never a key or a path of yours."""
+        import contextlib
+        import tempfile
+
+        from . import demo as D
+
+        if record is not None:
+            n = D.record(root(), record)
+            typer.echo(f"recorded {n} changes to {record}", err=True)
+            return
+        try:
+            head, lines = D.load(recording or D.SHIPPED)
+        except (OSError, ValueError, KeyError) as no:
+            fail(f"cannot replay {recording or D.SHIPPED}: {no}", 1)
+        with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
+            try:
+                repo = D.repository(Path(tmp), head)
+            except (OSError, subprocess.CalledProcessError) as no:
+                fail(f"graphene demo makes a git repository for the replay, and could not: {no}", 1)
+            D.last_frame(repo, lines)
+            out(" · ".join(text for text, _ in D.banner(head, D.ENDED)))
+            with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
+                watch(everything=False, every=1.0, once=True)
+
     @plan_cli.command()
     def propose(
         file: str = typer.Argument(..., help="A file of the plan's text; '-' reads it from a pipe."),

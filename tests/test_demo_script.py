@@ -1,7 +1,8 @@
 """docs/proof/nemotron.sh, end to end against the recorded fake: the Nemotron path from nothing to
 `git log --graph` reading as the tree, and the bill. The script is the demo; this runs it on a tiny
 repository instead of feeds, with a scripted Ultra planner and scripted Nano executors, so every
-command in it is known to work before a key spends anything on it."""
+command in it is known to work before a key spends anything on it. It records the run as it goes
+(RECORD), and the recording replays to where the run ended: `graphene demo` ships the one made here."""
 
 import json
 import os
@@ -13,6 +14,9 @@ from pathlib import Path
 
 import pytest
 from fake_tokenfactory import Fake, call
+
+from graphene_map import demo, plan, run
+from graphene_map.store import Store
 
 SCRIPT = Path(__file__).resolve().parents[1] / "docs" / "proof" / "nemotron.sh"
 MAKE = textwrap.dedent('''\
@@ -65,10 +69,11 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     make.write_text(MAKE)
     with Fake([reply] * 60) as f:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("GRAPHENE_", "CLAUDE", "CODEX"))}
-        print_it = env.pop("SHOW_DEMO", None)
+        print_it, ship = env.pop("SHOW_DEMO", None), env.pop("RECORD_DEMO", None)
         env |= f.env() | {"MAKE_REPO": f"{sys.executable} {make}", "PARAGRAPH": "make the app friendlier",
                           "PRUNE": "sed -i.bak -e 's#app.py, words.py#app.py#'",
-                          "HOME": str(tmp_path)}  # fmt: skip
+                          "HOME": str(tmp_path), "RECORD": str(tmp_path / "demo.jsonl"),
+                          "GRAPHENE_PERSON": "the script"}  # fmt: skip  (whoever prunes and accepts: this)
         env.pop("NEBIUS_PROJECT_ID", None)
         done = subprocess.run(["bash", str(SCRIPT), str(tmp_path / "demo")], capture_output=True, text=True,
                               env=env, timeout=300)  # fmt: skip
@@ -87,3 +92,18 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     models = {r["model"] for r in f.requests}
     assert models == {"nvidia/Nemotron-3-Ultra-fake", "nvidia/Nemotron-3-Nano-fake"}
     assert json.dumps(f.requests).count("fake-key") == 0
+    # the run was recorded, and its replay ends where the run did: a stand-in's, saying so
+    recorded = (tmp_path / "demo.jsonl").read_text()
+    head, lines = demo.load(tmp_path / "demo.jsonl")
+    assert head["stand_in"] is True and "stand-in" in head["shown"] and head["repository"] == "demo"
+    (tmp_path / "replay").mkdir()
+    replay = demo.repository(tmp_path / "replay", head)
+    demo.last_frame(replay, lines)
+    ended = dict.fromkeys(("friendly", "greet", "farewell"), "done")
+    with Store.open(replay) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == ended
+        tail = run.live(store, plan.get(store, "greet"))["log"]
+    assert tail.startswith(str(replay)) and "nemotron executor" in Path(tail).read_text()  # `l`, replayed
+    assert str(tmp_path) not in recorded and "{repo}/.graphene/worktrees/greet" in recorded
+    if ship:  # RECORD_DEMO=src/graphene_map/demo.jsonl: the recording `graphene demo` ships, made again
+        shutil.copy(tmp_path / "demo.jsonl", ship)
