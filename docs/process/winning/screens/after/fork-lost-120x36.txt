@@ -1,0 +1,36 @@
+ the plan of ~/feeds
+▼ ○ a friendlier app                     0/2 done │ greet says hello
+├ ▼ ● greet says hello         greet     running  │ greet · running
+│ ├   · Nemotron-3-Nano-fake   fork 1    lost     │ executor  nemotron, started by graphene run
+│ ├   ✓ Nemotron-3-Nano-fake   fork 2    passed   │ model     Nemotron-3-Nano-fake
+│ └   ● Nemotron-3-Nano-fake   fork 3    running  │ worktree  none: it works in the repository itself
+└   ○ bye says goodbye         farewell  ready    │ last      [fork 1] 3 stopped: another fork's check passed · 0 s
+                                                  │           ago
+                                                  │
+                                                  │ why       a friendlier app
+                                                  │ scope     app.py
+                                                  │ check     python3 -c 'import app; assert app.greet() == "hello"'
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+ waiting on you: 0 · executors: 1 running · R runs 1 ready · 0/2 done · plan first: on (P)
+ l output · x release · Enter record · ? help · q quit

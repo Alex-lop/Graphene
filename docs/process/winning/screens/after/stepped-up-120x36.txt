@@ -1,0 +1,36 @@
+ the plan of ~/feeds
+▼ ○ a friendlier app                      1/2 done │ a friendlier app
+├ ▶ ✓ greet says hello          greet     done     │ the goal · 1/2 done
+└ ▼ ● bye says goodbye          farewell  running  │
+  ├   ● Nemotron-3-Super-fake   fork 1    running  │ ✓ greet says hello                              greet     done
+  ├   ● Nemotron-3-Super-fake   fork 2    running  │ ● bye says goodbye                              farewell  running
+  └   ● Nemotron-3-Super-fake   fork 3    running  │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+                                                   │
+ you: 0 · 1 running · none ready · 1/2 done · plan first: on · $0.0005
+ farewell stepped up to Nemotron-3-Super-fake: attempt 1 refused: farewell is not done: `python3 -c 'import bye…
