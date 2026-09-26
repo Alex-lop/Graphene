@@ -332,36 +332,56 @@ class Fork(Leaf):
         super().__init__(*args)
         self.check, self.won, self.passed = check, won, False
         self.released: tuple[str, list[str]] | None = None
+        self.failed: int | None = None  # the exit code of its last check, when that one failed
 
     def done(self) -> str:
+        if self.check:
+            code, out = self.place.run(self.check)
+            if code != 0:
+                self.failed = code
+                return f"the check failed in this fork (exit {code}):\n{out[-OUTPUT:]}"
+        with _SHARED:  # one fork is the first to pass, and only that one lands
+            self.passed = not self.won.is_set()
+            self.won.set()
+        self.finished = True
         if not self.check:
-            self.passed = self.finished = True
             return "this fork is finished (the leaf has no check)"
-        code, out = self.place.run(self.check)
-        if code != 0:
-            return f"the check failed in this fork (exit {code}):\n{out[-OUTPUT:]}"
-        self.passed = self.finished = True
-        self.won.set()
-        return "the check passed in this fork"
+        return "the check passed in this fork" + ("" if self.passed else ", and another fork's passed first")
 
     def release(self, why: str = "", wants: list[str] | None = None) -> str:
         self.released, self.finished = (why or "(no reason given)", list(wants or [])), True
         return "this fork gives up; the leaf is handed back only if every fork does"
 
+    def outcome(self, ended: str) -> tuple[str, str]:
+        """How this fork ended, as its row on the leaf says it, and why: passed, lost (another fork
+        passed first), gave up (its reason), check failed (then how its conversation ended), or how its
+        conversation ended when no check ran: no tool call, out of steps."""
+        if self.passed:
+            return "passed", "its check passed first" if self.check else "it finished first (it has no check)"
+        if self.released:
+            return "gave up", self.released[0]
+        if ended == "stopped" or self.finished:
+            return "lost", "another fork's check passed first"
+        said = {"no tool call": "it stopped calling tools", "out of steps": "it ran out of steps"}[ended]
+        if self.failed is not None:
+            return "check failed", f"its check failed (exit {self.failed}), then {said}"
+        return ended, said
+
 
 def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, bill: dict, tag: str,
-             stop: threading.Event | None = None) -> None:  # fmt: skip
+             stop: threading.Event | None = None) -> str:  # fmt: skip
     """The loop: ask the model, run the tools it calls, until the leaf is finished, the model stops
-    calling tools three times, the steps run out, or ``stop`` is set (another fork won)."""
+    calling tools three times, the steps run out, or ``stop`` is set (another fork won). Returns which:
+    finished, no tool call, out of steps, stopped."""
     nudged = 0
     for step in range(1, args.steps + 1):
         if stop is not None and stop.is_set() and not leaf.finished:
             print(f"{tag}{step:>3} stopped: another fork's check passed", flush=True)
-            return
+            return "stopped"
         _compact(messages)
         said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
-        with _BILL:
+        with _SHARED:
             bill["calls"] += 1
             bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
@@ -381,7 +401,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             nudged += 1
             if nudged > 2:
                 print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
-                return
+                return "no tool call"
             cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
             if cut and params.get("max_tokens"):
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
@@ -401,10 +421,11 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             else:
                 messages.append({"role": "user", "content": f"Result of {name}:\n{result}"})
             if leaf.finished:
-                return
+                return "finished"
+    return "out of steps"
 
 
-_BILL = threading.Lock()
+_SHARED = threading.Lock()  # what the forks share: the bill, and which of them passed first
 
 
 def _in_scope_state(root: Path, scope: list[str]) -> dict[str, bytes]:
@@ -452,7 +473,17 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
             f.store = mine
             if hasattr(f.place, "store"):
                 f.place.store = mine  # a sandbox logs its breaches
-            converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+
+            def note(state: str, why: str = "") -> None:  # its row on the leaf as it happens: the screen's
+                said = {"fork": k + 1, "of": n, "model": model, "state": state, "why": why, **_box(f.place)}
+                mine.log_node(node.id, P._now(), "fork", f"run:{NAME}", session or None, None, said)
+
+            note("running")
+            try:
+                note(*f.outcome(converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)))
+            except Exception as no:  # Token Factory out of reach, the spend cap: on its row, then as ever
+                note("stopped", f"{type(no).__name__}: {no}")
+                raise
 
     threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
     for t in threads:
@@ -514,7 +545,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         before = ladder[min(tried - 1, len(ladder)) - 1] if tried > 1 else model
         if before != model:  # a step up the ladder: from which model, and why (the refusal run handed over)
             refusal = prompt.partition(REFUSED)[2].strip().split("\n", 1)[0].rstrip(":")
-            step |= {"from": before, "why": f"attempt {tried - 1} refused" + (f": {refusal}" if refusal else "")}
+            why = f"attempt {tried - 1} refused" + (f": {refusal}" if refusal else "")
+            step |= {"from": before, "why": why}
         store.log_node(node.id, P._now(), "model", f"run:{NAME}", session or None, None, step)
         first = [prompt]
         if args.map:
@@ -549,6 +581,10 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                 converse(leaf, model, messages, args, params, bill, "")
             finally:
                 place.close()
+                if hasattr(place, "base"):  # its operations and seconds, now that the attempt is over
+                    noted = store.node_log(node.id, ("placement",))[-1]["detail"]
+                    store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
+                                   noted | _box(place))  # fmt: skip
             return 0
         except tf.Unreachable as no:
             return stop(store, node, str(no))
@@ -593,10 +629,18 @@ def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkou
     place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
     shared = "forked from the commit's checkpoint" if place.reused else "made"
     store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
-                   {"placement": "sandbox", "box": name, "image": place.base,
-                    "seconds": round(place.timings[0], 3)})  # fmt: skip
+                   {"placement": "sandbox", "box": name, **_box(place)})  # fmt: skip
     print(f"sandbox {shared} ({name}, {place.timings[0]:.1f} s): image {place.base[:19]}", flush=True)
     return place
+
+
+def _box(place) -> dict:
+    """A sandbox as the leaf's log keeps it: the image it started from, whether that checkpoint was made
+    for it or forked from one, and the operations and seconds it has taken; nothing for the local one."""
+    if not hasattr(place, "base"):
+        return {}
+    return {"image": place.base, "checkpoint": "forked" if place.reused else "made", "ops": place.ops,
+            "seconds": round(sum(place.timings), 3)}  # fmt: skip
 
 
 NAME = "nemotron"

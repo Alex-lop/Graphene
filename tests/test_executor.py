@@ -250,12 +250,14 @@ def test_started_by_hand_it_says_who_starts_it(tmp_path, monkeypatch):
 
 
 def by_fork(scripts: dict):
-    """A reply that answers fork k's conversation from scripts[k], by how far it has got."""
+    """A reply that answers fork k's conversation from scripts[k], by how far it has got (a step that is
+    a function is called with the request)."""
 
     def reply(body):
         k = next(k for k in scripts if f"This is fork {k} of" in body["messages"][0]["content"])
         n = sum(1 for m in body["messages"] if m["role"] == "assistant")
-        return scripts[k][n] if n < len(scripts[k]) else {"content": "nothing more"}
+        step = scripts[k][n] if n < len(scripts[k]) else {"content": "nothing more"}
+        return step(body) if callable(step) else step
 
     return reply
 
@@ -278,6 +280,41 @@ def test_forks_run_from_one_checkpoint_and_the_first_whose_check_passes_lands(re
     assert bill["forks"] == 3 and bill["winner"] == 2 and bill["refused"] == 1
     log = next((repo / ".graphene" / "runs").glob("greet-*.txt")).read_text()
     assert "fork 2 of 3 passed its check" in log and "[fork 1]" in log and "[fork 3]" in log
+
+
+def test_each_forks_state_is_in_the_leafs_log_as_it_happens(repo, fake):
+    """Only the usage row at the end said `forks` and `winner`: a screen reading the store saw nothing of
+    them while they ran. Each fork now logs its row when it starts and when it ends, and how it ended."""
+    import threading
+
+    quiet = threading.Event()  # fork 2 calls done only once fork 1 has ended: no race decides the states
+
+    def last_word(body):
+        quiet.set()
+        return {"content": "I am not sure what else to do"}
+
+    def after_fork_1(body):
+        quiet.wait(30)
+        return call("done")
+
+    fake([by_fork({
+        1: [call("edit", path="app.py", old='"hi"', new='"hey"'), call("done"), {"content": "hm"},
+            {"content": "hm"}, last_word],
+        2: [call("edit", path="app.py", old='"hi"', new='"hello"'), after_fork_1],
+    })] * 20)  # fmt: skip
+    plan_of(repo, leaf())
+    done, _ = run_one(repo, f"nemotron --model {NANO} --forks 2")
+    assert [n.id for n in done] == ["greet"]
+    with Store.open(repo) as store:
+        log = store.node_log("greet", ("fork", "usage"))
+    rows = [(e["detail"]["fork"], e["detail"]["state"]) for e in log if e["kind"] == "fork"]
+    assert sorted(rows[:2]) == [(1, "running"), (2, "running")]
+    assert rows[2:] == [(1, "check failed"), (2, "passed")]  # fork 1 ended first, and its row said so then
+    assert log[-1]["kind"] == "usage"  # every fork's row was written as it happened, before the bill
+    ended = {e["detail"]["fork"]: e["detail"] for e in log if e["kind"] == "fork"}
+    assert ended[1] == {"fork": 1, "of": 2, "model": NANO, "state": "check failed",
+                        "why": "its check failed (exit 1), then it stopped calling tools"}  # fmt: skip
+    assert ended[2] == {"fork": 2, "of": 2, "model": NANO, "state": "passed", "why": "its check passed first"}
 
 
 def test_when_every_fork_gives_up_the_leaf_comes_back_with_what_they_wanted(repo, fake):
