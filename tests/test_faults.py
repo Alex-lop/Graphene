@@ -7,6 +7,7 @@ pane says what happened."""
 import threading
 from types import SimpleNamespace
 
+import pytest
 from fake_faults import everywhere
 from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
@@ -156,3 +157,62 @@ def test_a_completion_that_never_answers_comes_back_and_the_run_goes_on(repo, fa
     _, said = run_two(repo, fake, never)
     why = came_back_with(repo, said, "Token Factory could not be reached")
     assert "no answer in 1 s, asked 2 times: try again later, or ask for a shorter answer" in why
+
+
+def test_a_429_storm_that_meets_every_fork_comes_back_once_with_its_cause(repo, fake, monkeypatch, tmp_path):
+    """A fork is a thread: Token Factory's refusal there was a traceback in the log, and the leaf went
+    round the run's attempts to be refused for a change nobody made."""
+    everywhere(monkeypatch, tmp_path)
+    _, said = run_two(repo, fake, 429, f"nemotron --model {NANO} --forks 2")
+    why = came_back_with(repo, said, "Token Factory answered 429 to POST /chat/completions")
+    assert why.startswith("the executor stopped: ")
+
+
+LATER = "or name a larger model with another --model"
+NOT_JSON = {"content": None, "tool_calls": [{"id": "call_1", "type": "function",
+            "function": {"name": "edit", "arguments": '{"path": "app.py", "old": '}}]}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "fault, steps, told, cause",
+    [
+        ({"content": "Let me think about greet at length", "_finish": "length"}, 40,
+         "Your answer was cut off at the token limit",
+         "the model answered three times without calling a tool, the last cut off at the token limit (16384 "
+         f"tokens): raise --max-tokens, {LATER}"),
+        ({"content": "app.py looks fine to me."}, 40, "Use a tool.",
+         f"the model answered three times without calling a tool: {LATER}"),
+        (NOT_JSON, 3, "edit could not take those arguments",
+         "the model used all 3 steps without finishing (the last it was told: edit could not take those"),
+        (call("frobnicate", path="app.py"), 3, "there is no tool 'frobnicate'",
+         "the model used all 3 steps without finishing (the last it was told: there is no tool 'frobnicate'"),
+    ],
+    ids=["cut off", "text only", "arguments not JSON", "no such tool"],
+)  # fmt: skip
+def test_a_model_that_misfires_is_told_and_when_it_gives_up_the_leaf_comes_back_saying_why(
+    repo, fake, fault, steps, told, cause
+):
+    f, said = run_two(repo, fake, fault, f"nemotron --model {NANO} --steps {steps}")
+    why = came_back_with(repo, said, cause)
+    assert why.startswith("the executor stopped: the model ")  # not a check refused on untouched code
+    asked = [r for r in f.requests if "greet (revision" in r["messages"][1]["content"]]
+    assert len(asked) == 3 and all(told in r["messages"][-1]["content"] for r in asked[1:])  # told, and on
+
+
+def test_a_model_that_gives_up_on_a_lower_rung_goes_up_the_ladder_before_the_leaf_comes_back(repo, fake):
+    f = fake([{"content": "nothing to do here, I think"}] * 20)
+    plan_of(repo, leaf())
+    done, _ = run_one(repo, f"nemotron --model {NANO} --model {SUPER}", attempts=3)
+    assert done == []
+    assert [r["model"] for r in f.requests] == [NANO] * 3 + [SUPER] * 3  # the run judged, and climbed
+    with Store.open(repo) as store:
+        why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
+        assert len(store.node_log("greet", ("attempt",))) == 2  # the last rung is not sent round again
+    assert why == f"the executor stopped: the model answered three times without calling a tool: {LATER}"
+
+
+def test_forks_that_all_give_up_come_back_saying_why_each_did(repo, fake):
+    text = {"content": "app.py looks fine to me."}
+    _, said = run_two(repo, fake, text, f"nemotron --model {NANO} --forks 2")
+    why = came_back_with(repo, said, "no fork's check passed (2 forks): fork 1: the model answered three")
+    assert "; fork 2: the model answered three times without calling a tool" in why

@@ -46,6 +46,7 @@ release with the reason and the paths you would need; the person decides. Keep e
 
 NUDGE = "Use a tool. When the leaf is done call done; if it cannot be done inside its scope, call release."
 CUT = "Your answer was cut off at the token limit. Think less, and call one tool."
+LARGER = "or name a larger model with another --model"  # what a person can do when the model gives up
 
 TOOLS = [
     {"type": "function", "function": {
@@ -331,6 +332,8 @@ class Fork(Leaf):
         super().__init__(*args)
         self.check, self.won, self.passed = check, won, False
         self.released: tuple[str, list[str]] | None = None
+        self.why: str | None = None  # why it gave up, when it did
+        self.failed: Exception | None = None  # what stopped it: Token Factory, or the sandbox
 
     def done(self) -> str:
         if not self.check:
@@ -349,14 +352,15 @@ class Fork(Leaf):
 
 
 def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, bill: dict, tag: str,
-             stop: threading.Event | None = None) -> None:  # fmt: skip
+             stop: threading.Event | None = None) -> str | None:  # fmt: skip
     """The loop: ask the model, run the tools it calls, until the leaf is finished, the model stops
-    calling tools three times, the steps run out, or ``stop`` is set (another fork won)."""
-    nudged = 0
+    calling tools three times, the steps run out, or ``stop`` is set (another fork won). Returns why
+    the model gave up, in words and with what a person can do about it, or None when it did not."""
+    nudged, told = 0, ""
     for step in range(1, args.steps + 1):
         if stop is not None and stop.is_set() and not leaf.finished:
             print(f"{tag}{step:>3} stopped: another fork's check passed", flush=True)
-            return
+            return None
         _compact(messages)
         said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
@@ -378,10 +382,13 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         messages.append(kept)
         if not calls:
             nudged += 1
+            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
             if nudged > 2:
                 print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
-                return
-            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
+                if cut:
+                    return (f"the model answered three times without calling a tool, the last cut off at the "
+                            f"token limit ({params.get('max_tokens')} tokens): raise --max-tokens, {LARGER}")
+                return f"the model answered three times without calling a tool: {LARGER}"
             if cut and params.get("max_tokens"):
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
                 print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
@@ -399,8 +406,11 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
                 messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
             else:
                 messages.append({"role": "user", "content": f"Result of {name}:\n{result}"})
+            told = first_line
             if leaf.finished:
-                return
+                return None
+    last = f" (the last it was told: {told})" if told else ""
+    return f"the model used all {args.steps} steps without finishing{last}: raise --steps, {LARGER}"
 
 
 _BILL = threading.Lock()
@@ -418,10 +428,12 @@ def _in_scope_state(root: Path, scope: list[str]) -> dict[str, bytes]:
 
 
 def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, session: str, model: str,
-                  messages: list[dict], args, params: dict, bill: dict) -> Leaf | None:  # fmt: skip
+                  messages: list[dict], args, params: dict, bill: dict) -> Leaf | str:  # fmt: skip
     """N conversations from one checkpoint of the leaf, each in a copy of its checkout; the first
     whose check passes is copied into the checkout (what its scope covers, and nothing else). Returns
-    a leaf to finish here, or None when no fork passed (every one that gave up said why)."""
+    a leaf to finish here or, when no fork passed, why each did not (when every fork handed the leaf
+    back, it is handed back). When a fault stopped every fork (Token Factory, the sandbox), the first
+    fork's is raised, as it is without forks."""
     won = threading.Event()
     before = _in_scope_state(here, node.scope)
     copies, forks = [], []
@@ -451,7 +463,12 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
             f.store = mine
             if hasattr(f.place, "store"):
                 f.place.store = mine  # a sandbox logs its breaches
-            converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+            try:
+                f.why = converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+            except Exception as no:  # in a thread of its own: said in its reason, never a traceback
+                f.failed = no
+                f.why = str(no) if isinstance(no, tf.Unreachable) else f"{type(no).__name__}: {no}"
+                print(f"[fork {k + 1}] stopped: {f.why}", flush=True)
 
     threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
     for t in threads:
@@ -469,8 +486,12 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 wants = sorted({w for _, ws in gave_up for w in ws})
                 real = Leaf(store, node, Local(here), repo, session)
                 print(real.release(gave_up[0][0], wants), flush=True)
+            if all(f.failed for f in forks):
+                raise forks[0].failed
             print(f"no fork's check passed ({n} forks)", flush=True)
-            return None
+            why = [f"fork {k + 1}: {f.why or 'handed it back: ' + f.released[0]}"
+                   for k, f in enumerate(forks) if f.why or f.released]  # fmt: skip
+            return f"no fork's check passed ({n} forks): " + "; ".join(why)
         bill["wrote_in_forks"] = forks[winner].wrote  # the winner's writes are the leaf's
         after = _in_scope_state(copies[winner], node.scope)
         for rel in before.keys() - after.keys():
@@ -527,20 +548,23 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
         leaf = None
         try:
+            last = tried >= len(ladder)  # the ladder's last rung: a next attempt asks the same model
             if args.forks > 1:
-                leaf = fork_and_pick(args.forks, here, node, store, repo, session, model, messages, args,
-                                     params, bill)  # fmt: skip
-                if leaf is not None:
-                    said = leaf.done()
-                    print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
+                picked = fork_and_pick(args.forks, here, node, store, repo, session, model, messages, args,
+                                       params, bill)  # fmt: skip
+                if isinstance(picked, str):
+                    return gave_up(store, node, picked, last)
+                leaf = picked
+                said = leaf.done()
+                print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
                 return 0
             place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session, args)
             leaf = Leaf(store, node, place, repo, session)
             try:
-                converse(leaf, model, messages, args, params, bill, "")
+                why = converse(leaf, model, messages, args, params, bill, "")
             finally:
                 place.close()
-            return 0
+            return gave_up(store, node, why, last)
         except tf.Unreachable as no:
             return stop(store, node, str(no))
         except Exception as no:  # no sandbox, or ConTree's own errors: said to the person, not a traceback
@@ -553,6 +577,24 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip
+
+
+def gave_up(store: Store, node: P.Node, why: str | None, last: bool) -> int:
+    """The model gave up (``why``) and did not hand the leaf back. On the ladder's ``last`` rung, with
+    nothing changed inside the scope, the executor hands it back with that reason, as it does when it
+    cannot work at all (``stop``): the same model sent round again fails the same way, and a check run
+    on untouched code says nothing. Otherwise the run's boundary decides: the check may pass on what
+    was done, or the next rung tries, told why the last attempt was not accepted."""
+    if why is None:
+        return 0
+    print(f"gave up: {why}", flush=True)
+    node = P.get(store, node.id)
+    if not last or node.state != P.RUNNING:
+        return 0
+    changed = P.changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+    if any(P.in_scope(p, node.scope) for p in changed):
+        return 0
+    return stop(store, node, why)
 
 
 def stop(store: Store, node: P.Node, why: str) -> int:
