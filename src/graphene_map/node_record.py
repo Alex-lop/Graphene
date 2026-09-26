@@ -138,6 +138,20 @@ def bill(log: list[dict]) -> dict | None:
     return out
 
 
+def _hold(log: list[dict]) -> list[dict]:
+    """The rows of the node's last hold: after its last `started`."""
+    return log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
+
+
+def forks(log: list[dict]) -> list[dict]:
+    """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
+    model, its state and why, and in a sandbox its checkpoint, operations and seconds."""
+    rows = _hold(log)
+    rows = rows[max((k for k, e in enumerate(rows) if e["kind"] == "model"), default=-1) + 1 :]
+    last = {e["detail"]["fork"]: e["detail"] for e in rows if e["kind"] == "fork"}
+    return [last[k] for k in sorted(last)]
+
+
 def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []

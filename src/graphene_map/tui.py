@@ -42,7 +42,7 @@ from textual.widgets._tree import TOGGLE_STYLE
 from . import plan as P
 from . import plan_text as T
 from . import run as R
-from .node_record import bill
+from .node_record import bill, forks
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
@@ -102,6 +102,19 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
 OFFERED = {"w": "w widen", "b": "b sibling", "n": "n wait"}
 FOLDED = 20  # the columns a folded row's count of states takes, as a rule: whole states, the rest "n more"
 WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waiting", "to fill in", "done")
+# A fork's words (executor.Fork.outcome), its glyph and its colour, whose move as a node's are: running is
+# the executor's, passed is done work, and a fork that ended any other way is nobody's move (dim): what
+# is next is its leaf's row, which came back to the person when every fork failed
+FORK = {"passed": ("✓", "green"), "lost": ("·", "dim"), "check failed": ("✗", "dim"), "gave up": ("↩", "dim"),
+        "no tool call": ("·", "dim"), "out of steps": ("·", "dim"), "stopped": ("·", "dim")}  # fmt: skip
+
+
+def _look(word: str) -> tuple[str, str]:
+    return FORK.get(word) or P.look(word)
+
+
+def _short(model: str) -> str:
+    return model.rsplit("/", 1)[-1]  # a model's name, as the bill says it
 
 
 def _cli(argv: list[str]) -> tuple[int, str]:
@@ -133,7 +146,7 @@ def row(
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
     what the row may take; an id is never cut, the title gives way. ``inside``: a folded row's
     count of its leaves by state, in the word's column, each state in its own colour."""
-    colour = P.look(word)[1] if word else ""
+    colour = _look(word)[1] if word else ""
     title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), 4)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
         title_w += 2 + ids if ids else 0
@@ -576,6 +589,7 @@ class Watch(App):
         self.by_id: dict[str, P.Node] = {}
         self.under: dict = {}
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
+        self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
 
     # -- the screen ----------------------------------------------------------------------------------
 
@@ -606,8 +620,9 @@ class Watch(App):
         return self.query_one("#tree", PlanTree)
 
     def selected(self) -> str | None:
+        """The node under the cursor; on a fork's row, its leaf: every key acts on the leaf there."""
         node = self.tree.cursor_node
-        return node.data if node is not None else None
+        return _node(node.data) if node is not None else None
 
     def on_goal(self) -> bool:
         return self.tree.show_root and self.tree.cursor_node is self.tree.root
@@ -623,8 +638,8 @@ class Watch(App):
         out = []
         for line in range(low, high + 1):
             node = self.tree.get_node_at_line(line)
-            if node is not None and node.data:
-                out.append(node.data)
+            if node is not None and node.data and _node(node.data) not in out:
+                out.append(_node(node.data))
         return out
 
     def read(self, what: Callable, default=None):
@@ -666,6 +681,11 @@ class Watch(App):
             if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
         ]
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
+        logs: dict[str, list[dict]] = {}
+        for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
+            logs.setdefault(e["node_id"], []).append(e)
+        held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
+        self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, [])))}
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
@@ -679,6 +699,7 @@ class Watch(App):
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
+        shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine]
         tree = self.tree
         with self.prevent(Tree.NodeHighlighted):  # the tree moved, not the person
             show = bool(nodes or goal or proposed)
@@ -717,7 +738,11 @@ class Watch(App):
             for n in nodes
         }
         rows[None] = (P.look(goal_word)[0], goal_word, goal, "", True, folded(None))
-        ids = max((len(n.id) for n in nodes), default=0)
+        for i, mine in self.forks.items():  # a fork's row: its model where a title goes, which fork for an id
+            for f in mine:
+                word, model = f["state"], _short(f["model"])
+                rows[(i, f["fork"])] = (_look(word)[0], word, model, f"fork {f['fork']}", False, "")
+        ids = max(len(r[3]) for r in rows.values())
         words = max(len(r[5] or r[1]) for r in rows.values())  # what each row shows in the word's column
         chosen = frozenset(self.chosen()) if self.anchor is not None else frozenset()
         if (rows, ids, words, chosen) != (tree.rows, tree.ids, tree.words, tree.chosen):
@@ -736,7 +761,9 @@ class Watch(App):
             return
         if width >= WIDE:
             need = max(
-                (2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes), default=30
+                [2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes]
+                + [2 * (len(P.above(by_id[i], by_id)) + 2) + 4 + len(_short(f["model"]))
+                   for i, mine in self.forks.items() for f in mine], default=30
             ) + 2 + ids + 2 + words + 2  # fmt: skip
             sized = ("wide", max(30, min(need, width - PANE - 3)))
         else:
@@ -768,6 +795,7 @@ class Watch(App):
         y = tree.scroll_y
         was_open = {n.data for n in _walk(tree.root) if n.is_expanded}
         cursor, at_goal = self.selected(), tree.cursor_node is tree.root
+        row_at = tree.cursor_node.data if tree.cursor_node is not None else None  # a fork's row stays
         tree.clear()
         placed, finished, new = {}, set(), []
         by_id = {n.id: n for n in nodes}
@@ -775,14 +803,21 @@ class Watch(App):
         while queue:
             node = queue.pop(0)
             parent = placed.get(node.parent) if node.parent in by_id else tree.root
-            has_kids = bool(under.get(node.id))
+            has_kids, mine = bool(under.get(node.id)), self.forks.get(node.id, [])
             if has_kids and all(c.state == P.DONE for c in P.below(node.id, nodes)):
+                finished.add(node.id)
+            if mine and node.state == P.DONE:  # its forks are history, folded as a finished subtree is
                 finished.add(node.id)
             # a subtree folds when it finishes and opens when it stops being finished (a leaf in it
             # reopened, a new one added); otherwise it stays as the person left it
             moved = node.id not in self.known or (node.id in finished) != (node.id in self.complete)
             opened = node.id not in finished if moved else node.id in was_open
-            placed[node.id] = parent.add(Text(node.title), data=node.id, expand=opened, allow_expand=has_kids)
+            placed[node.id] = parent.add(
+                Text(node.title), data=node.id, expand=opened, allow_expand=has_kids or bool(mine)
+            )
+            for f in mine:  # its forks: rows, not nodes (no command takes one); their keys are the leaf's
+                fork = (node.id, f["fork"])
+                placed[fork] = placed[node.id].add_leaf(Text(f"fork {f['fork']}"), data=fork)
             if node.id not in self.known:
                 new.append(placed[node.id])
             queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
@@ -792,8 +827,8 @@ class Watch(App):
         self.known, self.complete = {n.id for n in nodes}, finished
         self.outline(new)  # when the screen opens every node is new; later, what a planner adds
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
-        if cursor in placed and not at_goal:
-            tree.cursor_line = placed[cursor].line
+        if (row_at in placed or cursor in placed) and not at_goal:
+            tree.cursor_line = placed.get(row_at, placed.get(cursor)).line
         elif tree.cursor_line < 0:
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
@@ -892,14 +927,15 @@ class Watch(App):
             keys = ["y accept it all"] if self.counts.get("you") else ["R run all ready"]
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
             return [*keys, "E edit the plan as text", fold, *tail]
-        word = self.word(self.selected())
+        word, node = self.word(self.selected()), self.tree.cursor_node
+        fork = node.data if node is not None and isinstance(node.data, tuple) else None
+        on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
-            return [*offers, "? ask the planner", "Enter record", "q quit"]
-        node = self.tree.cursor_node
+            return [*on, *offers, "? ask the planner", "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
-            return [*shut, *KEYS[word], *tail]
+            return [*on, *shut, *KEYS[word], *tail]
         return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
@@ -1284,6 +1320,11 @@ def _walk(node):
     for child in node.children:
         yield child
         yield from _walk(child)
+
+
+def _node(data):
+    """A row's node id: a fork's row is (its leaf, its number), and stands for its leaf."""
+    return data[0] if isinstance(data, tuple) else data
 
 
 def _sentence(argv: list[str]) -> list[str]:
