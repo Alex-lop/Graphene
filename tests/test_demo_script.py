@@ -53,31 +53,40 @@ SCRIPTS = {
                           call("run", command=GREET_CHECK), call("done")],
     "farewell (revision": [call("edit", path="bye.py", old="'bye'", new="'goodbye'"), call("done")],
 }  # fmt: skip
+# no prune: greet keeps words.py in its scope, and both leaves land on the first run
+IN_ONE_GO = {"planner": SCRIPTS["planner"], "greet (revision": SCRIPTS["greet (revision 3"],
+             "farewell (revision": SCRIPTS["farewell (revision"]}  # fmt: skip
 
 
-def reply(body):
+def reply(body, scripts=SCRIPTS):
     first = body["messages"][1]["content"] if len(body["messages"]) > 1 else ""
-    key = "planner" if "Ultra" in body["model"] else next((k for k in SCRIPTS if k in first), None)
-    steps = SCRIPTS.get(key, [])
+    key = "planner" if "Ultra" in body["model"] else next((k for k in scripts if k in first), None)
+    steps = scripts.get(key, [])
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
     return steps[k] if k < len(steps) else {"content": "nothing more"}
 
 
-@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
-def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
+def script(tmp_path, answer, prune: str, **more: str):
+    """nemotron.sh on the tiny repository against the fake, answered by ``answer``: the finished script,
+    all it said, and the fake."""
     make = tmp_path / "make_tiny.py"
     make.write_text(MAKE)
-    with Fake([reply] * 60) as f:
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("GRAPHENE_", "CLAUDE", "CODEX"))}
-        print_it, ship = env.pop("SHOW_DEMO", None), env.pop("RECORD_DEMO", None)
+    with Fake([answer] * 60) as f:
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("GRAPHENE_", "CLAUDE", "CODEX"))
+               and k not in ("SHOW_DEMO", "RECORD_DEMO", "NEBIUS_PROJECT_ID")}  # fmt: skip
         env |= f.env() | {"MAKE_REPO": f"{sys.executable} {make}", "PARAGRAPH": "make the app friendlier",
-                          "PRUNE": "sed -i.bak -e 's#app.py, words.py#app.py#'",
-                          "HOME": str(tmp_path), "RECORD": str(tmp_path / "demo.jsonl"),
-                          "GRAPHENE_PERSON": "the script"}  # fmt: skip  (whoever prunes and accepts: this)
-        env.pop("NEBIUS_PROJECT_ID", None)
+                          "PRUNE": prune, "HOME": str(tmp_path),
+                          "GRAPHENE_PERSON": "the script"} | more  # fmt: skip  (whoever prunes and accepts)
         done = subprocess.run(["bash", str(SCRIPT), str(tmp_path / "demo")], capture_output=True, text=True,
                               env=env, timeout=300)  # fmt: skip
-    said = done.stdout + done.stderr
+    return done, done.stdout + done.stderr, f
+
+
+@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
+def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
+    print_it, ship = os.environ.get("SHOW_DEMO"), os.environ.get("RECORD_DEMO")
+    prune = "sed -i.bak -e 's#app.py, words.py#app.py#'"
+    done, said, f = script(tmp_path, reply, prune, RECORD=str(tmp_path / "demo.jsonl"))
     if print_it:
         print(said)
     assert done.returncode == 0, said
@@ -107,3 +116,14 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     assert str(tmp_path) not in recorded and "{repo}/.graphene/worktrees/greet" in recorded
     if ship:  # RECORD_DEMO=src/graphene_map/demo.jsonl: the recording `graphene demo` ships, made again
         shutil.copy(tmp_path / "demo.jsonl", ship)
+
+
+@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
+def test_when_no_leaf_comes_back_the_script_still_ends_with_the_graph_and_the_bill(tmp_path):
+    """The second `graphene run` ran whatever came back, and with nothing back it said "nothing to run",
+    exit 1, which `set -e` made the script's end, before `git log --graph` and the bill."""
+    done, said, _ = script(tmp_path, lambda body: reply(body, IN_ONE_GO), "true")
+    assert done.returncode == 0, said
+    assert "$ graphene node widen" not in said and said.count("$ graphene run --parallel 4") == 1
+    assert "$ git log --graph --oneline" in said and "bill: $" in said
+    assert "2 of 2 passed at last run, 0 runs failed on the way" in said
