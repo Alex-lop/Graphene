@@ -74,7 +74,8 @@ def _request(
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}") from None
+            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}"
+                              f"{_then(no.code, attempt)}") from None  # fmt: skip
         except (urllib.error.URLError, TimeoutError, OSError) as no:
             slow = isinstance(no, TimeoutError) or "timed out" in str(no)
             if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
@@ -83,8 +84,23 @@ def _request(
                 time.sleep(wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory could not be reached at {base()}: {no}") from None
+            then = _then(0, attempt, timeout) if slow and method == "POST" else ""
+            raise Unreachable(f"Token Factory could not be reached at {base()}: {no}{then}") from None
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _then(code: int, tried: int, timeout: float = 0) -> str:
+    """What a person can do next, after ``tried`` tries ended in ``code`` (0: no answer in time)."""
+    times = "once" if tried == 1 else f"{tried} times"
+    if code == 429:
+        return (f" (asked {times}: Token Factory limits how fast this key may ask; wait a minute and run "
+                "again, or run fewer leaves at once)")  # fmt: skip
+    if code >= 500:
+        return f" (asked {times}: the fault is on Token Factory's side; try again later)"
+    if code == 0:
+        return (f" (no answer in {timeout:g} s, asked {times}: try again later, or ask for a shorter answer "
+                "with --max-tokens)")  # fmt: skip
+    return ""
 
 
 @lru_cache(maxsize=4)

@@ -4,11 +4,18 @@ Factory retires models on notice, and Sandboxes are in beta. Every fault here en
 leaf comes back with its cause in its record, the run goes on, nothing is left running, and the node
 pane says what happened."""
 
-from fake_tokenfactory import MODELS, Fake, call
-from test_executor import NANO, SUPER, fake, leaf, plan_of, repo, run_one, script  # noqa: F401
+import threading
+from types import SimpleNamespace
 
+from fake_faults import everywhere
+from fake_tokenfactory import MODELS, Fake, call
+from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
+
+from graphene_map import plan, tui
 from graphene_map import tokenfactory as tf
-from graphene_map.ask import ask, named
+from graphene_map.ask import ask
+from graphene_map.ask import named as planner
+from graphene_map.run import _alive, named, run_parallel
 from graphene_map.store import Store
 
 ULTRA = "nvidia/Nemotron-3-Ultra-fake"
@@ -45,7 +52,7 @@ def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_o
     with Fake([{"content": proposal}], models=no_ultra) as f, Store.open(repo) as store:
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
-        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+        ask(store, repo, "make it say hello", planner("nemotron"), say=said.append)
     assert f.requests[0]["model"] == SUPER
     [line] = [s for s in said if "Ultra" in s]
     assert line.strip() == (f"Token Factory lists no Nemotron Ultra; the planner uses {SUPER}, the largest "
@@ -61,3 +68,91 @@ def test_an_executor_given_a_retired_id_uses_the_nearest_listed_and_its_log_says
     log = next((repo / ".graphene" / "runs").glob("greet-*.txt")).read_text()
     said = "nvidia/Nemotron-3-Nano-retired is not in Token Factory's list (retired?); the executor uses"
     assert f"{said} {NANO} instead" in log
+
+
+# -- the faults: each hits greet, while farewell lands beside it -----------------------------------------
+
+BYE = "python3 -c 'import bye; assert bye.bye() == \"goodbye\"'"
+
+
+def faulty(fault):
+    """A reply: greet's conversation meets ``fault`` (a reply, or a callable of the request, as the fake
+    takes them), and farewell's lands."""
+    lands = script({"farewell": [call("edit", path="bye.py", old='"bye"', new='"goodbye"'), call("done")]})
+
+    def reply(body):
+        if "greet (revision" in body["messages"][1]["content"]:
+            return fault(body) if callable(fault) else fault
+        return lands(body)
+
+    return reply
+
+
+def run_two(repo, fake, fault, spec=f"nemotron --model {NANO}", greet=None):
+    """greet and farewell at once, each in its worktree, as `graphene run --parallel 2` runs them."""
+    (repo / "bye.py").write_text('def bye():\n    return "bye"\n')
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "bye")
+    plan_of(repo, greet or leaf(), leaf("farewell", ("bye.py",), BYE))
+    f = fake([faulty(fault)] * 200)
+    said = []
+    run_parallel(lambda: Store.open(repo), repo, repo, 2, named(spec), say=said.append,
+                 logs=repo / ".graphene" / "runs")  # fmt: skip
+    return f, said
+
+
+def pane(repo, node_id: str) -> str:
+    """The node pane `graphene watch` draws for it (``tui.detail``), its words run together."""
+    with Store.open(repo) as store:
+        nodes = plan.nodes(store)
+        back = {n.id for n in nodes if plan.came_back(store, n)}
+        words = {n.id: plan.reads(n, nodes, back) for n in nodes}
+        s = SimpleNamespace(nodes=nodes, by_id={n.id: n for n in nodes}, under=plan.kids(nodes, drawn=True),
+                            words=words, root_path=repo)  # fmt: skip
+        return " ".join(str(tui.detail(store, s.by_id[node_id], s)).split())
+
+
+def came_back_with(repo, said: list[str], cause: str) -> str:
+    """greet came back with ``cause`` in its record, in what the run said and on its pane; farewell
+    landed; no executor is left running; nothing printed a traceback. Returns greet's reason."""
+    with Store.open(repo) as store:
+        assert plan.get(store, "greet").state == plan.OPEN
+        assert plan.get(store, "farewell").state == plan.DONE  # the run went on
+        why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
+        pids = [e["detail"]["pid"] for e in store.node_log(kinds=("attempt",))]
+    assert cause in why, why
+    assert any(s.startswith("greet ") and cause in s for s in said), said
+    shown = pane(repo, "greet")
+    assert "greet · came back" in shown and " ".join(cause.split()) in shown, shown
+    assert not [p for p in pids if _alive(p)]
+    logs = "".join(p.read_text() for p in (repo / ".graphene" / "runs").glob("greet-*.txt"))
+    assert "Traceback" not in logs
+    return why
+
+
+def test_a_429_storm_comes_back_with_what_to_do_and_the_run_goes_on(repo, fake, monkeypatch, tmp_path):
+    everywhere(monkeypatch, tmp_path)  # no wait through the backoff, in the executor's process too
+    f, said = run_two(repo, fake, 429)
+    why = came_back_with(repo, said, "Token Factory answered 429 to POST /chat/completions")
+    assert why.startswith("the executor stopped: ")
+    assert f"asked {tf.TRIES} times: Token Factory limits how fast this key may ask; wait a minute" in why
+    assert sum("greet (revision" in r["messages"][1]["content"] for r in f.requests) == tf.TRIES
+
+
+def test_5xx_errors_come_back_saying_whose_fault_it_is_and_the_run_goes_on(repo, fake, monkeypatch, tmp_path):
+    everywhere(monkeypatch, tmp_path)
+    _, said = run_two(repo, fake, 503)
+    why = came_back_with(repo, said, "Token Factory answered 503 to POST /chat/completions")
+    assert f"asked {tf.TRIES} times: the fault is on Token Factory's side; try again later" in why
+
+
+def test_a_completion_that_never_answers_comes_back_and_the_run_goes_on(repo, fake, monkeypatch, tmp_path):
+    everywhere(monkeypatch, tmp_path, FAULTS_TIMEOUT=1)  # a second, in every executor, not 300
+
+    def never(body):
+        threading.Event().wait(3)  # longer than the executor waits
+        return {"content": "too late"}
+
+    _, said = run_two(repo, fake, never)
+    why = came_back_with(repo, said, "Token Factory could not be reached")
+    assert "no answer in 1 s, asked 2 times: try again later, or ask for a shorter answer" in why
