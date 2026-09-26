@@ -12,11 +12,17 @@ for one tool call at a time (view, edit, write, run, done, release) and runs it.
 3. `done` is Graphene's own (`graphene node done`): git and the check decide, never the model.
 
 The key stays in this process: a command the model runs gets an environment without it.
+
+What a screen shows of it is written on the leaf's log as it happens: each attempt's model as the attempt
+begins (`model`; on a step up the ladder, with the model before and why), each fork's state when it
+starts and when it ends (`fork`), and in a sandbox its checkpoint, operations and seconds (`placement`,
+and on each fork's row).
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -33,6 +39,7 @@ from pathlib import Path
 from . import gate
 from . import plan as P
 from . import tokenfactory as tf
+from .run import GRACE, REFUSED
 from .store import Store, repo_root
 
 PROMPT_VERSION = 1
@@ -46,6 +53,7 @@ release with the reason and the paths you would need; the person decides. Keep e
 
 NUDGE = "Use a tool. When the leaf is done call done; if it cannot be done inside its scope, call release."
 CUT = "Your answer was cut off at the token limit. Think less, and call one tool."
+LARGER = "or name a larger model with another --model"  # what a person can do when the model gives up
 
 TOOLS = [
     {"type": "function", "function": {
@@ -103,6 +111,7 @@ class Local:
 
     def __init__(self, root: Path):
         self.root = root
+        self.proc: subprocess.Popen | None = None  # the command running now
 
     def read(self, rel: str) -> bytes:
         return (self.root / rel).read_bytes()
@@ -114,7 +123,7 @@ class Local:
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
         env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # model-written code never sees the key
-        proc = subprocess.Popen(
+        proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
         )  # fmt: skip
@@ -124,7 +133,17 @@ class Local:
             os.killpg(proc.pid, signal.SIGKILL)
             out, _ = proc.communicate()
             return 124, out.decode("utf-8", "replace") + f"\n(stopped after {timeout} s)"
+        except BaseException:  # a stopped run: nothing the model started outlives it
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
         return proc.returncode, out.decode("utf-8", "replace")
+
+    def halt(self) -> None:
+        """The run was stopped while a fork's thread waits on its command: end it, and all it started."""
+        if self.proc is not None and self.proc.returncode is None:
+            with contextlib.suppress(OSError):  # it ended just now
+                os.killpg(self.proc.pid, signal.SIGKILL)
 
     def close(self) -> None:
         pass
@@ -135,7 +154,9 @@ class Leaf:
 
     def __init__(self, store: Store, node: P.Node, place, repo: Path, session: str):
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
+        self.source = place.root  # the git checkout its files come from (a fork's copy has no .git)
         self.finished = False
+        self.ended = ""  # how its conversation ended (converse says)
         self.refused = 0
         self.wrote: dict[str, str] = {}  # path -> how: its own edit or write, or a command in a sandbox
 
@@ -165,7 +186,7 @@ class Leaf:
         here = self.place.root.resolve()
         if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
-        shown = P.in_tree(self.place.root)  # what git shows: never what it ignores (a .env), never .graphene/
+        shown = _shown(self.place.root, self.source)  # never what git ignores (a .env), never .graphene/
         rel = str(full.relative_to(here))
         if full.is_dir():
             prefix = "" if rel == "." else rel + "/"
@@ -175,7 +196,7 @@ class Leaf:
         if rel not in shown:
             return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
         try:
-            data = self.place.read(os.path.relpath(full, self.place.root))
+            data = self.place.read(rel)  # not relative to the root as given: a fork's copy is behind a link
             lines = data.decode("utf-8", "replace").split("\n")
         except OSError as no:
             return f"cannot read {path}: {no.strerror}"
@@ -230,7 +251,8 @@ class Leaf:
         self.finished = P.get(self.store, self.node.id).state in (P.DONE, P.REVIEW)
         return said
 
-    def release(self, why: str = "", wants: list[str] | None = None) -> str:
+    def release(self, why: str = "", wants: list[str] | str | None = None) -> str:
+        wants = [wants] if isinstance(wants, str) else wants  # one path, not its letters
         said = self._graphene("node", "release", self.node.id, "--why", why or "(no reason given)",
                               *[a for w in wants or [] for a in ("--wants", w)])  # fmt: skip
         self.finished = P.get(self.store, self.node.id).state != P.RUNNING
@@ -244,9 +266,13 @@ class Leaf:
             return f"there is no tool {name!r}; the tools are view, edit, write, run, done, release"
         try:
             args = json.loads(arguments or "{}") if isinstance(arguments, str) else dict(arguments or {})
-            args = {ARGS.get(k, k): v for k, v in args.items()}
+            if isinstance(args, str):  # encoded twice
+                args = json.loads(args or "{}")
+            if not isinstance(args, dict):
+                return f"{name} takes a JSON object of named fields"
+            args = {ARGS.get(k, k): v for k, v in args.items() if v is not None}  # null: not given
             return tool(**args)
-        except (ValueError, TypeError) as no:
+        except (ValueError, TypeError, AttributeError) as no:  # a field of the wrong type, too
             return f"{name} could not take those arguments ({no}); send them as JSON with the named fields"
 
 
@@ -327,40 +353,75 @@ class Fork(Leaf):
     """One of N conversations on one leaf, in a copy of its checkout: its `done` runs the check in the
     copy and does not finish the leaf; the first fork whose check passes is the one that lands."""
 
-    def __init__(self, *args, check: str | None, won: threading.Event):
+    def __init__(self, *args, check: str | None, won: threading.Event, halted: threading.Event, source: Path):
         super().__init__(*args)
-        self.check, self.won, self.passed = check, won, False
+        self.check, self.won, self.passed, self.source = check, won, False, source
+        self.halted = halted  # the run was stopped (won is set with it, so the fork stops at its next step)
+        self.over = False  # its last row is written, by itself or for it
         self.released: tuple[str, list[str]] | None = None
+        self.why: str | None = None  # why it gave up, when it did
+        self.failed: Exception | None = None  # what stopped it: Token Factory, or the sandbox
+        self.check_failed: int | None = None  # the exit code of its last check, when that one failed
 
     def done(self) -> str:
+        if self.check:
+            code, out = self.place.run(self.check)
+            if code != 0:
+                self.check_failed = code
+                return f"the check failed in this fork (exit {code}):\n{out[-OUTPUT:]}"
+        with _SHARED:  # one fork is the first to pass, and only that one lands
+            self.passed = not self.won.is_set()
+            self.won.set()
+        self.finished = True
         if not self.check:
-            self.passed = self.finished = True
             return "this fork is finished (the leaf has no check)"
-        code, out = self.place.run(self.check)
-        if code != 0:
-            return f"the check failed in this fork (exit {code}):\n{out[-OUTPUT:]}"
-        self.passed = self.finished = True
-        self.won.set()
-        return "the check passed in this fork"
+        return "the check passed in this fork" + ("" if self.passed else ", and another fork's passed first")
 
-    def release(self, why: str = "", wants: list[str] | None = None) -> str:
+    def release(self, why: str = "", wants: list[str] | str | None = None) -> str:
+        wants = [wants] if isinstance(wants, str) else wants  # one path, not its letters
         self.released, self.finished = (why or "(no reason given)", list(wants or [])), True
         return "this fork gives up; the leaf is handed back only if every fork does"
 
+    def outcome(self) -> tuple[str, str]:
+        """How this fork ended, as its row on the leaf says it, and why: passed, lost (another fork
+        passed first), gave up (its reason), check failed (then how its conversation ended), or how its
+        conversation ended when no check ran: no tool call, out of steps."""
+        if self.passed:
+            return "passed", "its check passed first" if self.check else "it finished first (it has no check)"
+        if self.released:
+            return "gave up", self.released[0]
+        if self.ended == "stopped" or self.finished:
+            return "lost", "another fork's check passed first"
+        said = {"no tool call": "it stopped calling tools", "out of steps": "it ran out of steps"}[self.ended]
+        if self.check_failed is not None:
+            return "check failed", f"its check failed (exit {self.check_failed}), then {said}"
+        return self.ended, said
+
 
 def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, bill: dict, tag: str,
-             stop: threading.Event | None = None) -> None:  # fmt: skip
+             stop: threading.Event | None = None) -> str | None:  # fmt: skip
     """The loop: ask the model, run the tools it calls, until the leaf is finished, the model stops
-    calling tools three times, the steps run out, or ``stop`` is set (another fork won)."""
-    nudged = 0
+    calling tools three times, the steps run out, or ``stop`` is set (another fork won, or the run was
+    stopped: a fork's ``halted``). Returns why the model gave up, in words and with what a person can do
+    about it, or None when it did not; how the loop ended is left in ``leaf.ended``: finished, no tool
+    call, out of steps, stopped."""
+    nudged, told = 0, ""
+
+    def stopped() -> bool:  # read at each step, and before each tool: nothing starts after a stop
+        if stop is None or not stop.is_set() or leaf.finished:
+            return False
+        why = "the run was stopped" if leaf.halted.is_set() else "another fork's check passed"
+        print(f"{tag}{step:>3} stopped: {why}", flush=True)
+        leaf.ended = "stopped"
+        return True
+
     for step in range(1, args.steps + 1):
-        if stop is not None and stop.is_set() and not leaf.finished:
-            print(f"{tag}{step:>3} stopped: another fork's check passed", flush=True)
-            return
+        if stopped():
+            return None
         _compact(messages)
         said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
-        with _BILL:
+        with _SHARED:
             bill["calls"] += 1
             bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
@@ -378,16 +439,22 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         messages.append(kept)
         if not calls:
             nudged += 1
+            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
             if nudged > 2:
                 print(f"{tag}{step:>3} stopped: no tool call three times", flush=True)
-                return
-            cut = said.get("finish") == "length"  # a reasoning model that ran out of room is not done
+                leaf.ended = "no tool call"
+                if cut:
+                    return (f"the model answered three times without calling a tool, the last cut off at the "
+                            f"token limit ({params.get('max_tokens')} tokens): raise --max-tokens, {LARGER}")
+                return f"the model answered three times without calling a tool: {LARGER}"
             if cut and params.get("max_tokens"):
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
                 print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
             messages.append({"role": "user", "content": CUT if cut else NUDGE})
             continue
         for c in calls:
+            if stopped():
+                return None
             name = c["function"]["name"]
             began = time.monotonic()
             result = leaf.call(name, c["function"].get("arguments"))
@@ -399,68 +466,130 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
                 messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
             else:
                 messages.append({"role": "user", "content": f"Result of {name}:\n{result}"})
+            told = first_line
             if leaf.finished:
-                return
+                leaf.ended = "finished"
+                return None
+    leaf.ended = "out of steps"
+    last = f" (the last it was told: {told})" if told else ""
+    return f"the model used all {args.steps} steps without finishing{last}: raise --steps, {LARGER}"
 
 
-_BILL = threading.Lock()
+_SHARED = threading.Lock()  # what the forks share: the bill, and which of them passed first
+STOPPED_FORK = "the run was stopped before this fork ended"
 
 
-def _in_scope_state(root: Path, scope: list[str]) -> dict[str, bytes]:
-    out = {}
+def _shown(root: Path, source: Path) -> list[str]:
+    """What git in ``source``, the leaf's checkout, shows of the files under ``root`` (69): there, what
+    it tracks or does not ignore; under a fork's copy, which has no .git of its own, the files there (what
+    git showed, and what the fork wrote) that git in the checkout does not ignore."""
+    if root == source:
+        return P.in_tree(root)
+    found = []
     for base, dirs, names in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in (".git", ".graphene", "__pycache__")]
-        for name in names:
-            rel = os.path.relpath(os.path.join(base, name), root)
-            if P.in_scope(rel, scope) and not os.path.islink(os.path.join(base, name)):
-                out[rel] = Path(base, name).read_bytes()
+        dirs[:] = [d for d in dirs if d not in (".git", *gate.OURS)]
+        found += [os.path.relpath(os.path.join(base, name), root) for name in names]
+    ignored = gate._ignored(source, found)
+    return sorted(set(found) - ignored)
+
+
+def _in_scope_state(root: Path, scope: list[str], source: Path) -> dict[str, bytes]:
+    """The files under ``root`` that the scope covers and git in ``source`` shows, links and caches left
+    out: what git ignores (a .env, a .venv, data/) is never copied from a fork, nor deleted for one."""
+    out = {}
+    for rel in _shown(root, source):
+        path = root / rel
+        skip = {".git", *gate.OURS, "__pycache__"} & set(Path(rel).parts)
+        if P.in_scope(rel, scope) and not skip and path.is_file() and not path.is_symlink():
+            out[rel] = path.read_bytes()
     return out
 
 
 def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, session: str, model: str,
-                  messages: list[dict], args, params: dict, bill: dict) -> Leaf | None:  # fmt: skip
+                  messages: list[dict], args, params: dict, bill: dict) -> Leaf | str:  # fmt: skip
     """N conversations from one checkpoint of the leaf, each in a copy of its checkout; the first
     whose check passes is copied into the checkout (what its scope covers, and nothing else). Returns
-    a leaf to finish here, or None when no fork passed (every one that gave up said why)."""
-    won = threading.Event()
-    before = _in_scope_state(here, node.scope)
+    a leaf to finish here or, when no fork passed, why each did not (when every fork handed the leaf
+    back, it is handed back). When a fault stopped every fork (Token Factory, the sandbox), the first
+    fork's is raised, as it is without forks."""
+    won, halted = threading.Event(), threading.Event()
+    before = _in_scope_state(here, node.scope, here)
     copies, forks = [], []
-    for k in range(n):
-        copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
-        for rel in P.in_tree(here):
-            src = here / rel
-            if src.is_file() and not src.is_symlink():
-                (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, copy / rel)
-        copies.append(copy)
-        if args.placement == "local":
-            place = Local(copy)
-        elif k == 0:  # the leaf's sandbox, made once; its check forks from it
-            place = _sandbox(copy, node, store, session, args, checkout=here)
-        else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
-            place = forks[0].place.fork(copy)
-        forks.append(Fork(store, node, place, repo, session, check=node.check, won=won))
+
     def told(k: int) -> list[dict]:
         said = [dict(m) for m in messages]
         said[0]["content"] += (f"\nThis is fork {k} of {n}: {n} attempts at this leaf run at once from the "
                                "same checkout, and the first whose check passes lands.")  # fmt: skip
         return said
 
+    def note(to: Store, k: int, f: Fork, state: str, why: str = "") -> None:  # its row, as it happens
+        said = {"fork": k + 1, "of": n, "model": model, "state": state, "why": why, **_box(f.place)}
+        to.log_node(node.id, P._now(), "fork", f"run:{NAME}", session or None, None, said)
+
+    def ended(to: Store, k: int, f: Fork, state: str, why: str) -> None:
+        """A fork's last row, written once: how it ended, or "stopped" once the run was stopped."""
+        with _SHARED:
+            if f.over:
+                return
+            f.over = True
+        note(to, k, f, *(("stopped", STOPPED_FORK) if halted.is_set() else (state, why)))
+
     def one(k: int, f: Fork) -> None:
         with Store.open(repo) as mine:  # a thread, a connection
             f.store = mine
             if hasattr(f.place, "store"):
                 f.place.store = mine  # a sandbox logs its breaches
-            converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+            note(mine, k, f, "running")
+            try:
+                f.why = converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
+            except Exception as no:  # in a thread of its own: its reason and its row, never a traceback
+                said = _relative(str(no), f.place.root)
+                f.why = said if isinstance(no, tf.Unreachable) else f"{type(no).__name__}: {said}"
+                f.failed = no if isinstance(no, tf.Unreachable) else RuntimeError(
+                    f.why.removeprefix("RuntimeError: "))  # raised as the leaf's, which names its type once
+                print(f"[fork {k + 1}] stopped: {f.why}", flush=True)
+                ended(mine, k, f, "stopped", f.why)
+                return
+            ended(mine, k, f, *f.outcome())
 
-    threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    bill["refused_in_forks"] = sum(f.refused for f in forks)
-    bill["wrote_in_forks"] = {}
-    try:
+    try:  # opened before the first copy: a sandbox that cannot be made leaves no copy behind
+        for k in range(n):
+            copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
+            copies.append(copy)
+            for rel in P.in_tree(here):
+                src = here / rel
+                if src.is_file() and not src.is_symlink():
+                    (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, copy / rel)
+            if args.placement == "local":
+                place = Local(copy)
+            elif k == 0:  # the leaf's sandbox, made once; its check forks from it
+                place = _sandbox(copy, node, store, session, args, checkout=here)
+            else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
+                place = forks[0].place.fork(copy)
+            forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, halted=halted,
+                              source=here))  # fmt: skip
+        threads = [threading.Thread(target=one, args=(k, f), daemon=True) for k, f in enumerate(forks)]
+        try:
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        except BaseException:  # the run was stopped (TERM, Ctrl-C): only this thread heard it
+            halted.set()
+            won.set()  # each fork reads it at its next step, and before its next tool
+            for f in forks:
+                f.place.halt()  # what it runs now: a command, a container
+            until = time.monotonic() + GRACE / 2  # inside the time the run gives this process to end
+            for t in threads:
+                if t.is_alive():
+                    t.join(max(0.0, until - time.monotonic()))
+            for k, f in enumerate(forks):  # a fork still in a call to Token Factory is left, and said so
+                ended(store, k, f, "stopped", STOPPED_FORK)
+            raise
+        finally:  # what they spent is in the bill already, shared; and what they were refused
+            bill["refused_in_forks"] = sum(f.refused for f in forks)
+        bill["wrote_in_forks"] = {}
         winner = next((k for k, f in enumerate(forks) if f.passed), None)
         bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
         if winner is None:
@@ -469,10 +598,14 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 wants = sorted({w for _, ws in gave_up for w in ws})
                 real = Leaf(store, node, Local(here), repo, session)
                 print(real.release(gave_up[0][0], wants), flush=True)
+            if all(f.failed for f in forks):
+                raise forks[0].failed
             print(f"no fork's check passed ({n} forks)", flush=True)
-            return None
+            why = [f"fork {k + 1}: {f.why or 'handed it back: ' + f.released[0]}"
+                   for k, f in enumerate(forks) if f.why or f.released]  # fmt: skip
+            return f"no fork's check passed ({n} forks): " + "; ".join(why)
         bill["wrote_in_forks"] = forks[winner].wrote  # the winner's writes are the leaf's
-        after = _in_scope_state(copies[winner], node.scope)
+        after = _in_scope_state(copies[winner], node.scope, here)
         for rel in before.keys() - after.keys():
             (here / rel).unlink(missing_ok=True)
         for rel, data in after.items():
@@ -498,17 +631,24 @@ def work(args: argparse.Namespace, prompt: str) -> int:
     session = os.environ.get("GRAPHENE_ATTEMPT", "")
     with Store.open(repo) as store:
         node = P.get(store, node_id)
-        if not args.model:  # the smallest Nemotron the live list has
-            try:
-                listed = tf.roles()
-            except tf.Unreachable as no:
-                return stop(store, node, str(no))
-            args.model = [listed[k] for k in ("nano", "super", "ultra") if k in listed][:1]
+        try:  # the ids the live list has: the smallest Nemotron by default, a retired one's nearest
+            args.model, said = tf.resolve(args.model, "executor")
+        except tf.Unreachable as no:
+            return stop(store, node, str(no))
+        for line in said:
+            print(line, flush=True)
         if not args.model:
             return stop(store, node, "Token Factory lists no Nemotron model for this key")
         ladder = args.model
         tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
         model = ladder[min(tried, len(ladder)) - 1]
+        step = {"attempt": tried, "model": model}
+        before = ladder[min(tried - 1, len(ladder)) - 1] if tried > 1 else model
+        if before != model:  # a step up the ladder: from which model, and why (the refusal run handed over)
+            refusal = prompt.partition(REFUSED)[2].strip().split("\n", 1)[0].rstrip(":")
+            why = f"attempt {tried - 1} refused" + (f": {refusal}" if refusal else "")
+            step |= {"from": before, "why": why}
+        store.log_node(node.id, P._now(), "model", f"run:{NAME}", session or None, None, step)
         first = [prompt]
         if args.map:
             files = P.in_tree(here)
@@ -522,29 +662,38 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
                   **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
         bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
-                "seconds": 0.0, "prompt": PROMPT_VERSION}  # fmt: skip
+                "seconds": 0.0, "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
         where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
         print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
+        if "from" in step:
+            print(f"stepped up from {before}: {step['why']}", flush=True)
         leaf = None
         try:
+            last = tried >= len(ladder)  # the ladder's last rung: a next attempt asks the same model
             if args.forks > 1:
-                leaf = fork_and_pick(args.forks, here, node, store, repo, session, model, messages, args,
-                                     params, bill)  # fmt: skip
-                if leaf is not None:
-                    said = leaf.done()
-                    print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
+                picked = fork_and_pick(args.forks, here, node, store, repo, session, model, messages, args,
+                                       params, bill)  # fmt: skip
+                if isinstance(picked, str):
+                    return gave_up(store, node, picked, last)
+                leaf = picked
+                said = leaf.done()
+                print(f"done → {(said.splitlines() or [''])[0]}", flush=True)
                 return 0
             place = Local(here) if args.placement == "local" else _sandbox(here, node, store, session, args)
             leaf = Leaf(store, node, place, repo, session)
             try:
-                converse(leaf, model, messages, args, params, bill, "")
+                why = converse(leaf, model, messages, args, params, bill, "")
             finally:
                 place.close()
-            return 0
+                if hasattr(place, "base"):  # its operations and seconds, now that the attempt is over
+                    noted = store.node_log(node.id, ("placement",))[-1]["detail"]
+                    store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
+                                   noted | _box(place))  # fmt: skip
+            return gave_up(store, node, why, last)
         except tf.Unreachable as no:
             return stop(store, node, str(no))
         except Exception as no:  # no sandbox, or ConTree's own errors: said to the person, not a traceback
-            return stop(store, node, f"{type(no).__name__}: {no}")
+            return stop(store, node, _relative(f"{type(no).__name__}: {no}", here))
         finally:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
             bill["wrote"] = {**bill.pop("wrote_in_forks", {}), **(leaf.wrote if leaf else {})}
@@ -553,6 +702,23 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip
+
+
+def gave_up(store: Store, node: P.Node, why: str | None, last: bool) -> int:
+    """The model gave up (``why``) and did not hand the leaf back. On the ladder's ``last`` rung, with
+    nothing changed inside the scope, the executor hands it back with that reason, as it does when it
+    cannot work at all (``stop``): the same model sent round again fails the same way, and a check run
+    on untouched code says nothing. Otherwise the run's boundary decides: the check may pass on what
+    was done, or the next rung tries, told why the last attempt was not accepted."""
+    if why is None:
+        return 0
+    node = P.get(store, node.id)
+    if last and node.state == P.RUNNING:
+        changed = P.changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+        if not any(P.in_scope(p, node.scope) for p in changed):
+            return stop(store, node, why)
+    print(f"gave up: {why}", flush=True)
+    return 0
 
 
 def stop(store: Store, node: P.Node, why: str) -> int:
@@ -566,11 +732,23 @@ def stop(store: Store, node: P.Node, why: str) -> int:
     return 3
 
 
+def _relative(said: str, root: Path) -> str:
+    """``said`` with ``root`` (the checkout, or a fork's copy of it) taken out, so a path in it is the
+    repository's: an error's text is a leaf's reason, and the page never carries a path to the
+    checkout (64)."""
+    for where in sorted({str(root), str(root.resolve())}, key=len, reverse=True):  # /private/var, /var
+        said = said.replace(where + os.sep, "").replace(where, ".")
+    return said
+
+
 def _brief(arguments) -> str:
     try:
         said = json.loads(arguments) if isinstance(arguments, str) else dict(arguments or {})
+        said = json.loads(said) if isinstance(said, str) else said  # encoded twice
     except ValueError:
         return "(arguments not JSON)"
+    if not isinstance(said, dict):
+        return "(arguments not an object)"
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
@@ -584,10 +762,18 @@ def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkou
     place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
     shared = "forked from the commit's checkpoint" if place.reused else "made"
     store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
-                   {"placement": "sandbox", "box": name, "image": place.base,
-                    "seconds": round(place.timings[0], 3)})  # fmt: skip
+                   {"placement": "sandbox", "box": name, **_box(place)})  # fmt: skip
     print(f"sandbox {shared} ({name}, {place.timings[0]:.1f} s): image {place.base[:19]}", flush=True)
     return place
+
+
+def _box(place) -> dict:
+    """A sandbox as the leaf's log keeps it: the image it started from, whether that checkpoint was made
+    for it or forked from one, and the operations and seconds it has taken; nothing for the local one."""
+    if not hasattr(place, "base"):
+        return {}
+    return {"image": place.base, "checkpoint": "forked" if place.reused else "made", "ops": place.ops,
+            "seconds": round(sum(place.timings), 3)}  # fmt: skip
 
 
 NAME = "nemotron"
@@ -609,8 +795,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prepare", help="a command run once, as root, in the checkpoint (pip install -e .)")
     parser.add_argument("prompt")
     args = parser.parse_args(argv)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a stopped run: the bill is still written
+    signal.signal(signal.SIGTERM, _stopped)  # a stopped run: the forks' rows and the bill are still written
     return work(args, args.prompt)
+
+
+def _stopped(*_) -> None:
+    """TERM, heard once: a parallel run sends it twice (its stop, and the leaf's own worker), and the
+    second must not cut short what the first began (a traceback, forks without their last row)."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    sys.exit(143)
 
 
 def template(spec: str) -> str:

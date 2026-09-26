@@ -10,6 +10,7 @@
 # price; the bill is the last thing it prints. EXECUTOR overrides the executor spec (the frozen
 # configuration), e.g. EXECUTOR='nemotron --model <nano id> --model <super id>'. MAKE_REPO, PARAGRAPH and
 # PRUNE replace the feeds task, its paragraph and its scripted prune (the tests run it on a tiny repo).
+# RECORD=<file> records the plan's store over the whole run, for `graphene demo <file>` to replay.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR=${1:-$HOME/graphene-nemotron}
@@ -18,9 +19,14 @@ DIR=${1:-$HOME/graphene-nemotron}
 command -v graphene >/dev/null || { echo "graphene is not on PATH" >&2; exit 1; }
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID AI_AGENT GRAPHENE_AS   # the person runs this, not an agent
 step() { printf '\n\033[1m$ %s\033[0m\n' "$*"; "$@"; }
+case ${RECORD:-} in ''|/*) ;; *) RECORD=$PWD/$RECORD ;; esac   # from where this was started
 
 ${MAKE_REPO:-python3 $HERE/../test/make_task.py feeds} "$DIR" > /dev/null
 cd "$DIR"
+if [ -n "${RECORD:-}" ]; then   # it waits for the store `graphene init` makes, and stops when this ends
+  graphene demo --record "$RECORD" & recorder=$!
+  trap 'kill -TERM $recorder; wait $recorder' EXIT
+fi
 step graphene init --planner nemotron --executor "${EXECUTOR:-nemotron}"
 
 step graphene ask "${PARAGRAPH:-Look at this repo. I want the new Northwind XML feed to load the same way \
@@ -41,10 +47,13 @@ came_back() {  # the ids whose note in the plan's text says they came back (a no
   graphene plan --text | awk '/\[[a-z0-9-]+\]/ { match($0, /\[[a-z0-9-]+\]/); id = substr($0, RSTART + 1, RLENGTH - 2) }
                               /^ *# came back/ { print id }'
 }
-for id in $(came_back); do
+back=$(came_back)
+for id in $back; do
   step graphene node widen "$id"
 done
-step graphene run --parallel 4
+if [ -n "$back" ]; then   # with nothing back, a second run has nothing to run, and says so with exit 1
+  step graphene run --parallel 4
+fi
 
 step git log --graph --oneline
 step graphene plan record

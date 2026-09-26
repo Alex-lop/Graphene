@@ -6,7 +6,7 @@
 import { useState, type FormEvent, type ReactElement } from "react";
 
 import { STATE, STATE_COLOUR, clip, clock, stamp, why, type View } from "./model";
-import type { Plan, PlanNode, Shown } from "./types";
+import type { Fork, Plan, PlanNode, Shown } from "./types";
 
 const PAD_X = 132; // the lane-name gutter, which is the page's own margin, not a position
 const PAD_Y = 16;
@@ -26,6 +26,15 @@ const words = (text: string): string[] => text.split(/[\s,]+/).filter(Boolean);
 
 /** A sub-goal's progress, in the leaves beneath it: the same count the terminal prints. */
 const rolled = (node: PlanNode): string => `${node.leaves_done}/${node.leaves_total} done`;
+
+/** A fork's colour, as the terminal's: running is the executor's, passed is done work, any other end
+ * is nobody's move. */
+const forkColour = (state: string): string => (state === "passed" ? "var(--pass)" : state === "running" ? "var(--a1)" : "var(--neutral)");
+
+/** What a fork's sandbox took, when it ran in one; nothing while it runs, as the terminal's record: the
+ * row it wrote as it began carries the operations it started with. */
+const sandboxed = (fork: Fork): string =>
+  fork.ops === undefined || fork.state === "running" ? "" : ` · sandbox ${fork.checkpoint === "forked" ? "forked from the checkpoint" : "made"}, ${fork.ops} operations, ${(fork.seconds ?? 0).toFixed(1)} s`;
 
 const Shape = ({ state, colour }: { state: Shown; colour: string }): ReactElement => {
   switch (state) {
@@ -156,7 +165,9 @@ export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: st
 /** The plan as a tree: a node under the one it helps achieve, indented by the depth Python computed.
  * A sub-goal carries no scope and no check of its own, so it says how many of the leaves beneath it
  * are done. Leaves made from a prompt and already finished fold into one line, as the terminal folds
- * them: they are a record of what was typed, not work anyone is waiting on. */
+ * them: they are a record of what was typed, not work anyone is waiting on. Under a leaf that forked
+ * are its forks, the tree of sandboxes: each fork's model, how it ended and why, the winner marked;
+ * a fork is not a node, so picking one picks its leaf. */
 export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string) => void }): ReactElement {
   const shown = plan.nodes.filter((n) => !(n.aside && n.state === "done"));
   const folded = plan.nodes.length - shown.length;
@@ -176,6 +187,27 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
                 {node.aside ? " · typed into a session" : ""}
               </span>
             </button>
+            {node.forks.length > 0 && (
+              <ul className="forks" data-forks={node.id}>
+                {node.forks.map((fork) => (
+                  <li key={fork.fork} data-fork={fork.fork} data-state={fork.state}>
+                    <button type="button" className={fork.state === "passed" ? "row fork won" : "row fork"} onClick={() => onPick(node.id)}>
+                      <span className="state" style={{ color: forkColour(fork.state) }}>
+                        {fork.state === "passed" ? "✓ won" : fork.state}
+                      </span>
+                      <b>
+                        fork {fork.fork} of {fork.of}
+                      </b>
+                      <span className="what">{fork.model.split("/").pop()}</span>
+                      <span className="muted">
+                        {fork.why}
+                        {sandboxed(fork)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>

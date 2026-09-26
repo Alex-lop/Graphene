@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import plan as P
+from .node_record import forks
 
 NODE_W = 200
 NODE_H = 76
@@ -36,6 +37,8 @@ LANE_GAP = 20
 LOG_TAIL = 12  # log entries kept per node, newest last; the page polls, so every entry is paid for every 2 s
 SAID_CAP = 400  # a check's output is up to 2000 characters; the inspector shows its head
 STATES = (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW, P.DONE)  # a dropped node is not drawn, as in the terminal
+# what the page says of a fork; never its image, which is the sandbox's own id on the provider's service
+FORK_KEYS = ("fork", "of", "model", "state", "why", "checkpoint", "ops", "seconds")
 
 # Every one of these is a mechanism that stops somewhere, printed where the control is. They are
 # the same holes the hooks' docstring and the README name, in the words a person reads.
@@ -88,6 +91,7 @@ class ViewNode:
     finished_at: str | None
     waits: list[str]
     log: list[dict]
+    forks: list[dict]  # its last attempt's forks, as executor.fork_and_pick logged them (FORK_KEYS)
     lane: str
     column: int
     row: int
@@ -268,6 +272,13 @@ def node_log(store, node_id: str, export: bool = False) -> list[dict]:
     ]  # fmt: skip
 
 
+def _forks(store, node: P.Node, export: bool) -> list[dict]:
+    """The tree of sandboxes under a leaf: its last attempt's forks, each its number, model, state and
+    why (in an export, its first line), and its sandbox's checkpoint, operations and seconds."""
+    return [{k: f[k] for k in FORK_KEYS if k in f} | {"why": _cut(f.get("why", ""), export)[:SAID_CAP]}
+            for f in forks(store.node_log(node.id, ("started", "model", "fork")), node.state)]  # fmt: skip
+
+
 def waiting_on_person(nodes: list[P.Node], person: str, back: set[str] = frozenset()) -> list[dict]:
     """What is on the person right now: proposals to accept, sign-offs due, the leaves that came back
     (``back``), their own ready nodes."""
@@ -361,6 +372,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
                 finished_at=n.finished_at,
                 waits=came_back(store, n, export) + waits(n, by_id, under, back),
                 log=node_log(store, n.id, export),
+                forks=_forks(store, n, export),
                 lane=owner,
                 column=col,
                 row=row,

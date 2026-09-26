@@ -3,8 +3,9 @@
 A planner writes nothing, so its tools run here, against the repository, and only read: list, read,
 grep, glob. It is started the way `graphene ask` starts any planner, with the prompt as its last
 argument and GRAPHENE_PLANNER set, and it prints its answer: the fenced ``plan`` block that ``ask.py``
-already reads, with any sentence after it. Only stdout is the answer; what it did and what it cost go
-to stderr, and the bill into the plan's log.
+already reads, with any sentence after it, and a line when the model it used is not the one it was given
+(``tokenfactory.resolve``). Only stdout is the answer; what it did and what it cost go to stderr, and
+the bill into the plan's log.
 """
 
 from __future__ import annotations
@@ -122,21 +123,22 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     here = Path.cwd()
     repo = Repo(here)
     say = sys.stderr
-    try:
-        model = args.model or tf.roles().get("ultra") or tf.roles().get("super")
+    try:  # the id the live list has: the largest Nemotron by default, a retired one's nearest
+        chosen, instead = tf.resolve([args.model] if args.model else [], "planner")
     except tf.Unreachable as no:
         print(f"stopped: {no}", file=say)
         return 3
-    if not model:
-        print("stopped: Token Factory lists no Nemotron Ultra or Super for this key", file=say)
+    if not chosen:
+        print("stopped: Token Factory lists no Nemotron model for this key", file=say)
         return 3
+    model = chosen[0]
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
     params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
               **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
     bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
-            "prompt": PROMPT_VERSION}  # fmt: skip
+            "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
     print(f"nemotron planner · {model}", file=say, flush=True)
-    answer = ""
+    answer, stopped = "", None
     try:
         for step in range(1, args.steps + 1):
             last = step == args.steps
@@ -166,8 +168,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             if step == args.steps - 1:
                 messages.append({"role": "user", "content": "Answer now with the proposal."})
     except tf.Unreachable as no:
-        print(f"stopped: {no}", file=say)
-        return 3
+        stopped = no
     finally:
         bill["dollars"] = round(bill["dollars"], 6)
         print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
@@ -177,13 +178,19 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                 store.log_node("*", P._now(), "usage", "planner:nemotron", None, None, bill)
         except Exception as no:  # the answer matters more than its bill
             print(f"(the bill was not recorded: {no})", file=say)
+    if stopped is not None:  # its last line, after the bill: `graphene ask` says the last line it printed
+        print(f"stopped: {stopped}", file=say)
+        return 3
     print(answer)
+    if answer.strip():  # after the proposal, where `graphene ask` shows what the planner says
+        for line in instead:
+            print(line)
     return 0 if answer.strip() else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="graphene-nemotron-planner", description=__doc__.split("\n")[0])
-    parser.add_argument("--model", help="a model id from Token Factory's list (default: the Nemotron Ultra)")
+    parser.add_argument("--model", help="a model id in Token Factory's list (default: the largest Nemotron)")
     parser.add_argument("--steps", type=int, default=30, help="model calls at most")
     parser.add_argument("--temperature", type=float, default=0.3)
     parser.add_argument("--max-tokens", type=int, default=8192)

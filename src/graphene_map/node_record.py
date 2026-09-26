@@ -108,6 +108,11 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         window.commits = [c.sha for c in mine]
         inside |= {c.sha: c for c in mine}
         _fill(window, node, mine, root, at)
+    coverage = _coverage(store, node, windows, list(inside.values()), at)
+    # git's silence is "none was made" only where git has the commit a hold started from: a replay's
+    # repository (graphene demo), or a store beside another clone, has none of the run's history
+    unknown = [w for w in windows if w.base_sha and not _has(root, w.base_sha)]
+    coverage["commits_unread"] = not inside and bool(unknown)
     return NodeRecord(
         node.id,
         node.title,
@@ -117,11 +122,20 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         P.done_means(node),
         at,
         windows,
-        _coverage(store, node, windows, list(inside.values()), at),
+        coverage,
         _refusals(log),
         _acts(log),
         bill(log),
     )
+
+
+def _has(root: str | Path, sha: str) -> bool:
+    try:
+        said = subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{sha}^{{commit}}"],
+                              capture_output=True, timeout=20)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return said.returncode == 0
 
 
 def bill(log: list[dict]) -> dict | None:
@@ -135,16 +149,65 @@ def bill(log: list[dict]) -> dict | None:
     out["dollars"] = round(sum(r.get("dollars") or 0 for r in rows), 6)
     out["models"] = sorted({r["model"] for r in rows if r.get("model")})
     out["attempts"] = len(rows)
+    out["endpoint"] = _whose(rows)
     return out
+
+
+def _whose(rows: list[dict]) -> str:
+    """Token Factory's usage only when every row says so; else a stand-in's (a row from before rows
+    said who answered is not credited to Token Factory either)."""
+    return "token factory" if all(r.get("endpoint") == "token factory" for r in rows) else "a stand-in"
+
+
+def _hold(log: list[dict]) -> list[dict]:
+    """The rows of the node's last hold: after its last `started`."""
+    return log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
+
+
+def models(log: list[dict]) -> list[dict]:
+    """The model each attempt of the node's last hold ran on, as its Nemotron executor noted it when the
+    attempt began: the attempt, the model, and on a step up the model before (``from``) and ``why``."""
+    return [e["detail"] for e in _hold(log) if e["kind"] == "model"]
+
+
+def forks(log: list[dict], state: str = P.RUNNING) -> list[dict]:
+    """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
+    model, its state and why, and in a sandbox its checkpoint, operations and seconds. ``state`` is the
+    node's: on a node that no longer runs, a fork whose last row says running had its executor stopped
+    under it (`:stop`, Ctrl-C) before it wrote its end. It reads stopped, without the counts it started
+    with."""
+    rows = _hold(log)
+    rows = rows[max((k for k, e in enumerate(rows) if e["kind"] == "model"), default=-1) + 1 :]
+    last = {e["detail"]["fork"]: e["detail"] for e in rows if e["kind"] == "fork"}
+    said = [last[k] for k in sorted(last)]
+    if state == P.RUNNING:
+        return said
+    stopped = {"state": "stopped", "why": "its executor was stopped before this fork ended"}
+    return [f if f["state"] != "running" else
+            {k: v for k, v in f.items() if k not in ("ops", "seconds")} | stopped for f in said]  # fmt: skip
+
+
+def sandbox(log: list[dict]) -> dict | None:
+    """The node's sandbox in its last hold, as its last `placement` row says it: the image, whether that
+    checkpoint was made or forked, its operations and seconds; when it forked, its forks' added up."""
+    rows = [e["detail"] for e in _hold(log) if e["kind"] == "placement"]
+    if not rows:
+        return None
+    mine = [f for f in forks(log) if "ops" in f]
+    if not mine:
+        return rows[-1]
+    seconds = round(sum(f["seconds"] for f in mine), 3)
+    return rows[-1] | {"ops": sum(f["ops"] for f in mine), "seconds": seconds, "forks": len(mine)}
 
 
 def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []
     models = ", ".join(m.rsplit("/", 1)[-1] for m in b["models"])
+    whose = "Token Factory's" if b.get("endpoint") == "token factory" else "a stand-in's"
     return [f"{indent}bill: ${b['dollars']:.4f} at list price · {b['calls']} model call{_s(b['calls'])} · "
             f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out · {models} "
-            "(Token Factory's usage)"]  # fmt: skip
+            f"({whose} usage)"]  # fmt: skip
 
 
 def to_dict(record: NodeRecord) -> dict:
@@ -561,7 +624,10 @@ def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
         )
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
-    if not k:
+    if not k and counts.get("commits_unread"):
+        lines.append("    git here has not got the commit its windows started from, so what was committed "
+                     "inside them cannot be read (a replay, or a store beside another clone)")  # fmt: skip
+    elif not k:
         lines.append("    no commit was made inside its windows, so there is no commit to grade")
     elif counts["computed"]:
         lines.append(
@@ -669,5 +735,6 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         kinds = ("calls", "prompt_tokens", "completion_tokens", "dollars")
         total = {k: sum(b[k] for b in bills) for k in kinds}
         total["models"] = sorted({m for b in bills for m in b["models"]})
+        total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")
     return lines

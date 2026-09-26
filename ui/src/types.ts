@@ -189,6 +189,7 @@ export interface PlanNode {
   finished_at: string | null;
   waits: string[]; // why it is not moving, in sentences
   log: Entry[];
+  forks: Fork[]; // its last attempt's forks, from one checkpoint: the one that passed is what landed
   lane: string;
   column: number;
   row: number;
@@ -196,6 +197,19 @@ export interface PlanNode {
   y: number;
   width: number;
   height: number;
+}
+
+// One of N conversations on a leaf (`--forks N`), as the leaf's log says it ended. No image id: that is
+// the sandbox's own id on the provider's service, and the page never carries it.
+export interface Fork {
+  fork: number;
+  of: number;
+  model: string;
+  state: string; // running, passed, lost, check failed, gave up, no tool call, out of steps, stopped
+  why: string;
+  checkpoint?: "made" | "forked"; // in a sandbox: the checkpoint it ran from
+  ops?: number;
+  seconds?: number;
 }
 
 export interface PlanLane {

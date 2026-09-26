@@ -18,6 +18,14 @@ WORKER = """
 import json, os, pathlib, sys, time
 node, here = os.environ["GRAPHENE_NODE"], pathlib.Path.cwd()
 began = time.time()
+beside = pathlib.Path(sys.argv[1]).parent
+(beside / f"began-{node}").touch()
+together = (beside / "together").read_text().split() if (beside / "together").exists() else []
+until = began + 30  # the leaves named in `together` wait for each other to begin, however slow the machine
+while node in together and time.time() < until and not all(
+        (beside / f"began-{n}").exists() for n in together
+):
+    time.sleep(0.05)
 time.sleep(0.6)
 seen = sorted(p.name for p in here.glob("*.txt"))
 (here / f"{node}.txt").write_text(f"{node} saw {seen}\\n")
@@ -75,6 +83,7 @@ def test_leaves_run_at_once_in_their_own_worktrees_land_as_merges_and_done_rolls
     with Store.open(repo) as store:
         plan.set_goal(store, "three files", ALEX)
         plan.propose(store, tree, ALEX)
+    (repo.parent / "together").write_text("a b")  # each waits, 30 s at most, for the other to begin
     done, ran, said = go(repo)
     assert [n.id for n in done] == ["a", "b", "c"] or [n.id for n in done] == ["b", "a", "c"]
     assert ran["a"]["began"] < ran["b"]["ended"] and ran["b"]["began"] < ran["a"]["ended"]  # at once

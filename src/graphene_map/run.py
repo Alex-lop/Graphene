@@ -235,8 +235,11 @@ def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[st
         "the scope it needs. Do not start any other node.",
     ]
     if refusal:
-        lines += ["", "Your last attempt was not accepted:", refusal]
+        lines += ["", REFUSED, refusal]
     return "\n".join(lines)
+
+
+REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads what follows: why it stepped up
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
