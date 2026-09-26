@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "graphene-map"
-version = "0.4.0"
+version = "0.5.0"
 description = "A plan you and your coding agents share: nodes with a goal, a scope and a check, which you shape and the agents are held to, with a record of what was done for each."
 readme = "README.md"
 license = "Apache-2.0"

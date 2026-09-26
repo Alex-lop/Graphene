@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased (after 0.4.0)
+## 0.5.0 (not published yet: the tag is Alex's)
+
+Graphene on Nemotron. The Nemotron path has run only against a scripted stand-in for Token Factory and a
+Docker stand-in for Sandboxes; nothing in this release has been run live yet.
+
+- `graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no network, and
+  runs nothing: every key that would change the plan or start a process says so. `graphene demo --once`
+  prints its last frame. `graphene demo --record FILE` records a run's store (not the model's calls),
+  taking out paths, keys and sandbox ids. The wheel ships a recording, and it says on screen that it is a
+  scripted stand-in until the live run replaces it. Needs git.
+- `graphene init` lists what it finds here (`claude` or `codex` on the PATH, a Token Factory key), each
+  with what it needs, and none comes first: Enter takes a choice only when exactly one is found. Without a
+  terminal, an unset choice gets the one thing found, or stays unset and says why.
+- Forks and the model ladder are visible. Each fork is a row under its leaf in `graphene watch` (its
+  model, which fork, its state), a step up to a larger model is named on the bottom line and in the leaf's
+  pane, the pane shows the leaf's sandbox (its checkpoint, operations and seconds) and its bill, the record
+  says which fork won and why each other one did not, and the exported page draws each leaf's forks.
+- The Nemotron path survives what the judging period can throw at it: a model id the live list no longer
+  has falls back within the Nemotron family and says which instead of which; a 429 storm, 5xx errors, a
+  timeout, a reply cut off, a malformed or text-only tool call, a sandbox killed or gone mid-leaf and a
+  check that hangs each bring the leaf back with its cause and what to do, the run goes on, and nothing is
+  left running; no more than fifty sandbox operations run at once from one machine.
+- The first fork whose check passes is the one that lands, decided under a lock.
+- A record read where git has not got a hold's starting commit says its commits cannot be read.
+- The README says what Graphene on Nemotron claims, directly under the opening, offers two paths (the agent
+  you have, or Nemotron through Token Factory), and gives judges ten lines to test it.
 
 - The import package is `graphene_map`, matching the distribution (it was `graphene_debrief`). The command is still `graphene`, and installed hooks keep working. Anything that imported `graphene_debrief` imports `graphene_map`.
 - NVIDIA Nemotron on Nebius Token Factory, as planner and executor: `graphene ask --with nemotron` (Ultra, read-only tools) and `graphene run --with nemotron` (Nano, then Super on a refused attempt; `--forks N`; `--placement local|sandbox`). Model ids come from the live model list, and every call's usage is priced at its list price. Needs `NEBIUS_API_KEY`.
