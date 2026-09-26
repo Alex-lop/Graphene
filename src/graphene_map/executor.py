@@ -33,6 +33,7 @@ from pathlib import Path
 from . import gate
 from . import plan as P
 from . import tokenfactory as tf
+from .run import REFUSED
 from .store import Store, repo_root
 
 PROMPT_VERSION = 1
@@ -509,6 +510,12 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         ladder = args.model
         tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
         model = ladder[min(tried, len(ladder)) - 1]
+        step = {"attempt": tried, "model": model}
+        before = ladder[min(tried - 1, len(ladder)) - 1] if tried > 1 else model
+        if before != model:  # a step up the ladder: from which model, and why (the refusal run handed over)
+            refusal = prompt.partition(REFUSED)[2].strip().split("\n", 1)[0].rstrip(":")
+            step |= {"from": before, "why": f"attempt {tried - 1} refused" + (f": {refusal}" if refusal else "")}
+        store.log_node(node.id, P._now(), "model", f"run:{NAME}", session or None, None, step)
         first = [prompt]
         if args.map:
             files = P.in_tree(here)
@@ -525,6 +532,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                 "seconds": 0.0, "prompt": PROMPT_VERSION}  # fmt: skip
         where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
         print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
+        if "from" in step:
+            print(f"stepped up from {before}: {step['why']}", flush=True)
         leaf = None
         try:
             if args.forks > 1:

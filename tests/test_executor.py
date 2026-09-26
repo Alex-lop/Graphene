@@ -192,6 +192,13 @@ def test_a_refused_attempt_climbs_the_ladder_with_the_refusal_in_hand(repo, fake
     second = next(r for r in f.requests if r["model"] == SUPER)
     assert "Your last attempt was not accepted" in second["messages"][1]["content"]
     assert any("attempt 1 refused" in s for s in said)
+    with Store.open(repo) as store:  # each attempt's model as it began, and the step up logged as one
+        kinds = [e["kind"] for e in store.node_log("greet", ("model", "usage"))]
+        steps = [e["detail"] for e in store.node_log("greet", ("model",))]
+    assert kinds == ["model", "usage", "model", "usage"]  # before its model calls, not with the bill
+    assert steps[0] == {"attempt": 1, "model": NANO}
+    assert steps[1] == {"attempt": 2, "model": SUPER, "from": NANO,
+                        "why": f"attempt 1 refused: greet is not done: `{CHECK}` failed"}  # fmt: skip
 
 
 def test_a_model_whose_native_calls_misfire_can_speak_fenced_text(repo, fake):
