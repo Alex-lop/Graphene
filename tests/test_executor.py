@@ -127,7 +127,8 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
     with Store.open(repo) as store:
         shown = "\n".join(render(node_record(store, repo, plan.get(store, "greet"))))
         assert f"bill: ${bill['detail']['dollars']:.4f} at list price · 4 model calls" in shown
-        assert "Nemotron-3-Nano-fake (Token Factory's usage)" in shown
+        assert "Nemotron-3-Nano-fake (a stand-in's usage)" in shown  # the fake is not Token Factory
+        assert bill["detail"]["endpoint"] == "a stand-in"
         assert summary(store, 0).endswith(f"; ${bill['detail']['dollars']:.4f} at list price")
 
 

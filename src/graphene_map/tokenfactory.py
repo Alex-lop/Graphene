@@ -51,6 +51,13 @@ def base() -> str:
     return os.environ.get("GRAPHENE_TOKENFACTORY_URL", BASE).rstrip("/") + "/"
 
 
+def endpoint() -> str:
+    """Who answered, as a usage row says it: "token factory", or "a stand-in" when
+    GRAPHENE_TOKENFACTORY_URL points anywhere else (the tests' fake, a proxy). Never the URL itself: it
+    could name a host of the person's."""
+    return "token factory" if base() == BASE else "a stand-in"
+
+
 def _request(
     method: str, path: str, body: dict | None = None, timeout: float = 60, tries: int = TRIES
 ) -> tuple[dict, dict]:

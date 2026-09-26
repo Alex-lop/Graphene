@@ -662,7 +662,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
                   **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
         bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
-                "seconds": 0.0, "prompt": PROMPT_VERSION}  # fmt: skip
+                "seconds": 0.0, "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
         where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
         print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
         if "from" in step:

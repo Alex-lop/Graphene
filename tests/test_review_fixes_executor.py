@@ -31,6 +31,9 @@ from test_sandbox_state import needs_docker
 
 from graphene_map import executor, plan, run, sandbox
 from graphene_map import tokenfactory as tf
+from graphene_map.ask import ask
+from graphene_map.ask import named as planner
+from graphene_map.node_record import bill, bill_line, node_record, render, rolled_up
 from graphene_map.plan import Caller
 from graphene_map.plan_view import build_plan_view
 from graphene_map.run import _alive
@@ -330,3 +333,48 @@ def test_a_run_stopped_while_forks_work_stops_each_fork_says_so_and_leaves_nothi
             boxes, images = made.read_text().split(), (made.parent / "images")
             docker("rm", "-f", *boxes) if boxes else None
             docker("rmi", "-f", *images.read_text().split()) if images.exists() else None
+
+
+def test_a_stand_ins_usage_is_never_credited_to_token_factory(repo, fake):
+    """A usage row could not tell a stand-in from Token Factory: the record's bill line credited the
+    scripted fake's numbers to Token Factory ("(Token Factory's usage)")."""
+    proposal = {"content": "```plan\n? say hello  [hello]\n    scope: app.py\n    check: true\n```"}
+    work = script({"greet": [call("edit", path="app.py", old='"hi"', new='"hello"'), call("done")]})
+    planned = lambda body: "You are the planner" in body["messages"][0]["content"]  # noqa: E731
+    fake([lambda body: proposal if planned(body) else work(body)] * 10)
+    plan_of(repo, leaf())
+    run_one(repo)
+    with Store.open(repo) as store:
+        ask(store, repo, "and say hello", planner("nemotron"), say=lambda s: None)
+        rows = [e["detail"] for e in store.node_log(kinds=("usage",))]
+        greet = plan.get(store, "greet")
+        lines = [*render(node_record(store, repo, greet)), *rolled_up(store, repo, [greet]),
+                 *bill_line(bill(store.node_log("*", ("usage",))))]  # fmt: skip
+    assert [r["endpoint"] for r in rows] == ["a stand-in", "a stand-in"]  # the executor's, the planner's
+    billed = [line for line in lines if "at list price" in line]
+    assert len(billed) == 3 and all(line.endswith("(a stand-in's usage)") for line in billed)
+    assert "Token Factory's usage" not in "\n".join(lines)
+
+
+def test_the_bill_line_credits_token_factory_only_when_every_row_it_adds_up_says_so(repo, monkeypatch):
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
+    assert tf.endpoint() == "token factory"
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", tf.BASE.rstrip("/"))
+    assert tf.endpoint() == "token factory"
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "https://tokenfactory.example.org/v1/")
+    assert tf.endpoint() == "a stand-in"  # never the URL itself: it could name a host of the person's
+    plan_of(repo, leaf())
+    row = {"model": NANO, "calls": 1, "prompt_tokens": 10, "completion_tokens": 5, "dollars": 0.001}
+    with Store.open(repo) as store:
+        plan.start(store, "greet", Caller("run:nemotron", False, "s-1"), repo)
+
+        def said(detail: dict) -> tuple[str, str]:  # the leaf's record, and the rolled-up record
+            store.log_node("greet", plan._now(), "usage", "run:nemotron", "s-1", None, detail)
+            greet = plan.get(store, "greet")
+            return bill_line(bill(store.node_log("greet")))[0], rolled_up(store, repo, [greet])[-1]
+
+        assert all(s.endswith("(Token Factory's usage)") for s in said(row | {"endpoint": "token factory"}))
+        assert all(s.endswith("(a stand-in's usage)") for s in said(row | {"endpoint": "a stand-in"}))
+    with Store.open(repo) as store:  # a row from before the endpoint was said is not credited either
+        store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None, row)
+        assert bill_line(bill(store.node_log("*", ("usage",))))[0].endswith("(a stand-in's usage)")
