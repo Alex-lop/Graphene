@@ -121,6 +121,34 @@ def test_output_written_a_few_bytes_at_a_time_loses_the_key_and_the_paths_whole(
     assert text == hidden
 
 
+def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token_factory(tmp_path):
+    """The label came from the recorder's own environment, so a run against the fake recorded from a second
+    terminal replayed "as it ran, live". It comes from the run: live only when the recorder saw it so and
+    every `usage` row says Token Factory; a stand-in when any does not, or does not say (a row recorded
+    before rows said); and a run with no model call on record says that."""
+    live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
+            "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
+    stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
+
+    def usage(**where):
+        return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
+
+    tf, fake = usage(endpoint="token factory"), usage(endpoint="a stand-in")
+    cases = [
+        (live, [[tf], [], [tf]], "as it ran, live"),
+        (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
+        (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
+        (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),
+        (live, [[]], "a run with no model calls on record"),
+        (stand_in, [[]], "a run with no model calls on record"),
+    ]
+    for head, rows, shown in cases:
+        recording = tmp_path / "r.jsonl"
+        lines = [head, *({"t": k / 10, "node_log": some} for k, some in enumerate(rows))]
+        recording.write_text("\n".join(json.dumps(line) for line in lines))
+        assert (demo.load(recording)[0]["shown"], rows) == (shown, rows)
+
+
 @pytest.mark.skipif(shutil.which("uv") is None, reason="builds the wheel as CI does, with uv")
 def test_the_built_wheel_carries_the_recording(tmp_path):
     source = Path(__file__).resolve().parents[1]

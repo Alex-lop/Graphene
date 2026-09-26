@@ -3,11 +3,12 @@ that makes one.
 
 A recording is the plan's store over a run, not the model's calls: replaying the calls would run their
 tools, which is model-written code. Its first line says what was recorded, when, by which Graphene, and
-whether it was live or a stand-in, in the words the screen shows. Each line after it is one change, seen
-within a fifth of a second: the seconds since the recorder started, the rows of `nodes` that changed or
-went, the new rows of `node_log`, the `plan_meta` keys the screen reads that changed, what each executor
-wrote to its output under `.graphene/runs/` since the last look (the screen's `l`), and what git tracks
-once a leaf has landed (the check a contract names is judged against it). The repository's path is
+whether the recorder's terminal was pointed at Token Factory; the replay says "live" only when that is so
+and every model call the run logged (its `usage` rows) says it went there. Each line after it is one
+change, seen within a fifth of a second: the seconds since the recorder started, the rows of `nodes` that
+changed or went, the new rows of `node_log`, the `plan_meta` keys the screen reads that changed, what each
+executor wrote to its output under `.graphene/runs/` since the last look (the screen's `l`), and what git
+tracks once a leaf has landed (the check a contract names is judged against it). The repository's path is
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
@@ -51,6 +52,8 @@ from .tui import Help, Watch, fit
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
 REFUSED = "a replay: nothing runs here"
+LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
+NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused")  # read
@@ -91,10 +94,9 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
-    stand_in = tf.base() != tf.BASE  # the tests' fake, or any endpoint that is not Token Factory
-    shown = "a scripted stand-in, not Nemotron" if stand_in else "as it ran, live"
+    stand_in = tf.base() != tf.BASE  # this terminal's view; the replay decides from the run's usage rows
     head = {"graphene demo": 1, "recorded": P._now(), "graphene": __version__, "repository": root.name,
-            "stand_in": stand_in, "shown": shown}  # fmt: skip
+            "stand_in": stand_in, "shown": STAND_IN if stand_in else LIVE}  # fmt: skip
     db, runs, began = root / ".graphene" / "graphene.db", root / ".graphene" / "runs", time.monotonic()
     hide, said = hider(root)
     conn, last, read, seen, tracked, n = None, 0, {}, {}, None, 0
@@ -170,11 +172,18 @@ def load(path: Path) -> tuple[dict, list[dict]]:
     """A recording's first line, with ``day``: the day it was recorded, local as the screen's clocks are;
     and its changes, each with ``at``: when the replay applies it (the first at once, each wait after it
     as recorded, or LONG seconds for a longer one) and ``cut``: how many times faster that wait is played
-    (0 when it is not cut). A file that is not a recording is a ValueError."""
+    (0 when it is not cut); ``shown``, what made it, is decided from the run. A file that is not a
+    recording is a ValueError."""
     head, *lines = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
     if not isinstance(head, dict) or not {"graphene demo", "recorded", "shown", "repository"} <= head.keys():
         raise ValueError("it is not a recording `graphene demo --record` made")
     head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
+    # the run says what made it, not the terminal that recorded it: live only when every model call on
+    # record says it went to Token Factory (a row from before rows said so is a stand-in's)
+    calls = [json.loads(r["detail"] or "{}") for line in lines for r in line.get("node_log") or []
+             if r["kind"] == "usage"]  # fmt: skip
+    live = not head.get("stand_in", True) and all(c.get("endpoint") == "token factory" for c in calls)
+    head["shown"] = NO_CALLS if not calls else LIVE if live else STAND_IN
     at, was = 0.0, lines[0]["t"] if lines else 0.0
     for line in lines:
         gap, was = line["t"] - was, line["t"]
