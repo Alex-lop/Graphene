@@ -105,6 +105,23 @@ test("under a leaf that forked, the tree of sandboxes: each fork, its model and 
   expect(html.slice(html.indexOf('data-tree="schema"'))).not.toContain("data-fork"); // a leaf that did not fork
 });
 
+test("a fork still running shows no count: its row holds the operations it started with, and the terminal waits too", () => {
+  const running: Plan = {
+    ...plan,
+    nodes: [
+      node("greet", {
+        state: "running",
+        display_state: "running",
+        forks: [{ fork: 1, of: 1, model: "nvidia/Nemotron-3-Nano-fake", state: "running", why: "", checkpoint: "forked", ops: 0, seconds: 0 }],
+      }),
+    ],
+  };
+  const html = renderToStaticMarkup(<PlanTree plan={running} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/data-fork="1" data-state="running">.*<b>fork 1 of 1<\/b>/);
+  expect(html).not.toContain("operations");
+  expect(html).not.toContain("0.0 s");
+});
+
 test("a node's detail opens with the path from the goal down to it, root first", () => {
   const html = renderToStaticMarkup(
     <PlanInspector plan={plan} picked="api" write={async () => null} />,
