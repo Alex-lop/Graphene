@@ -10,7 +10,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 from fake_tokenfactory import call
-from test_executor import NANO, fake, git, leaf, plan_of, repo, run_one, script, tool_results  # noqa: F401
+from test_executor import (  # noqa: F401
+    NANO,
+    by_fork,
+    fake,
+    git,
+    leaf,
+    plan_of,
+    repo,
+    run_one,
+    script,
+    tool_results,
+)
 
 from graphene_map import executor
 from graphene_map import tokenfactory as tf
@@ -113,3 +124,31 @@ def test_a_stopped_executor_leaves_nothing_the_models_command_started_running(tm
     for p in left:
         os.kill(p, signal.SIGKILL)
     assert len(started) == 2 and left == []
+
+
+def ignoring(repo):
+    """The repository ignores a secret and a data directory, as most do, and both are on disk."""
+    (repo / ".gitignore").write_text(".graphene/\n__pycache__/\n.env\ndata/\n")
+    git(repo, "commit", "-qam", "ignore the secret and the data")
+    (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
+    (repo / "data").mkdir()
+    (repo / "data" / "big.csv").write_text("1,2,3\n")
+
+
+def test_a_winning_fork_never_deletes_or_overwrites_what_git_ignores(repo, fake):
+    """The state before the forks was every file on disk in the scope, the ignored ones too; a fork's
+    copy holds only what git shows, so a winner under `**` unlinked .env and data/ from the checkout, and
+    copied in the .env its own command wrote."""
+    ignoring(repo)
+    fake([by_fork({
+        1: [call("run", command="echo from-the-fork > .env; echo new > data/new.csv"),
+            call("edit", path="app.py", old='"hi"', new='"hello"'), call("done")],
+        2: [call("release", why="leaving it to fork 1")],
+    })] * 20)  # fmt: skip
+    plan_of(repo, leaf(scope=("**",)))
+    done, _ = run_one(repo, f"nemotron --model {NANO} --forks 2")
+    assert [n.id for n in done] == ["greet"]
+    assert (repo / "app.py").read_text() == 'def greet():\n    return "hello"\n'
+    assert (repo / ".env").read_text() == "AWS_SECRET_ACCESS_KEY=do-not-send\n"
+    assert (repo / "data" / "big.csv").read_text() == "1,2,3\n"
+    assert not (repo / "data" / "new.csv").exists()

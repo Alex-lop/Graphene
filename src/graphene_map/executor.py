@@ -457,14 +457,29 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
 _SHARED = threading.Lock()  # what the forks share: the bill, and which of them passed first
 
 
-def _in_scope_state(root: Path, scope: list[str]) -> dict[str, bytes]:
-    out = {}
+def _shown(root: Path, source: Path) -> list[str]:
+    """What git in ``source``, the leaf's checkout, shows of the files under ``root`` (69): there, what
+    it tracks or does not ignore; under a fork's copy, which has no .git of its own, the files there (what
+    git showed, and what the fork wrote) that git in the checkout does not ignore."""
+    if root == source:
+        return P.in_tree(root)
+    found = []
     for base, dirs, names in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in (".git", ".graphene", "__pycache__")]
-        for name in names:
-            rel = os.path.relpath(os.path.join(base, name), root)
-            if P.in_scope(rel, scope) and not os.path.islink(os.path.join(base, name)):
-                out[rel] = Path(base, name).read_bytes()
+        dirs[:] = [d for d in dirs if d not in (".git", *gate.OURS)]
+        found += [os.path.relpath(os.path.join(base, name), root) for name in names]
+    ignored = gate._ignored(source, found)
+    return sorted(set(found) - ignored)
+
+
+def _in_scope_state(root: Path, scope: list[str], source: Path) -> dict[str, bytes]:
+    """The files under ``root`` that the scope covers and git in ``source`` shows, links and caches left
+    out: what git ignores (a .env, a .venv, data/) is never copied from a fork, nor deleted for one."""
+    out = {}
+    for rel in _shown(root, source):
+        path = root / rel
+        skip = {".git", *gate.OURS, "__pycache__"} & set(Path(rel).parts)
+        if P.in_scope(rel, scope) and not skip and path.is_file() and not path.is_symlink():
+            out[rel] = path.read_bytes()
     return out
 
 
@@ -476,7 +491,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     back, it is handed back). When a fault stopped every fork (Token Factory, the sandbox), the first
     fork's is raised, as it is without forks."""
     won = threading.Event()
-    before = _in_scope_state(here, node.scope)
+    before = _in_scope_state(here, node.scope, here)
     copies, forks = [], []
     for k in range(n):
         copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
@@ -543,7 +558,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                    for k, f in enumerate(forks) if f.why or f.released]  # fmt: skip
             return f"no fork's check passed ({n} forks): " + "; ".join(why)
         bill["wrote_in_forks"] = forks[winner].wrote  # the winner's writes are the leaf's
-        after = _in_scope_state(copies[winner], node.scope)
+        after = _in_scope_state(copies[winner], node.scope, here)
         for rel in before.keys() - after.keys():
             (here / rel).unlink(missing_ok=True)
         for rel, data in after.items():
