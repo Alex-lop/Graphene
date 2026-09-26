@@ -142,14 +142,15 @@ def _cli(argv: list[str]) -> tuple[int, str]:
 
 
 def row(
-    glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside=""
+    glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside="",
+    least=4,
 ) -> Text:
     """One row: glyph, the title cut at a word, the id (dim) and the state word in its colour, in
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
-    what the row may take; an id is never cut, the title gives way. ``inside``: a folded row's
-    count of its leaves by state, in the word's column, each state in its own colour."""
+    what the row may take; an id is never cut, the title gives way, to ``least`` columns. ``inside``:
+    a folded row's count of its leaves by state, in the word's column, each state in its own colour."""
     colour = _look(word)[1] if word else ""
-    title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), 4)
+    title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), least)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
         title_w += 2 + ids if ids else 0
     out = Text()
@@ -417,7 +418,10 @@ class PlanTree(Tree[str]):
             return super().render_label(node, base_style, style)
         wide = self._room(node)
         glyph, word, title, node_id, bold, folded = said
-        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded)
+        # a fork's row is a level below its leaf's: its title (the model's name) gives way further, so
+        # its id and word stay in their columns as deep as its leaf's do
+        least = 1 if isinstance(node.data, tuple) else 4
+        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least)
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)

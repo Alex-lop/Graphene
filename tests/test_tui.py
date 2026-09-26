@@ -1471,6 +1471,35 @@ def test_a_leaf_with_forks_shows_each_under_it_in_the_one_row_grammar(repo):
         assert seen["sideways"] == 0
 
 
+def test_fork_rows_keep_the_row_grammar_as_deep_as_the_node_rows_do(repo):
+    """At 120x36 the forks of a leaf deep in the tree, with a long id, had their ids and words two
+    columns right of every other row's, and a word cut to "check fail": a fork's row is a level below
+    its leaf's, and its title (the model's name) stopped giving way at four columns, as a node's does.
+    It gives way to one now: as deep as the node rows hold, ids stay under ids and words under words."""
+    alex = plan.Caller("alex", True)
+    deep, words = "say-hello-to-each-user-by-name", ["check failed", "running", "lost"]
+    with Store.open(repo) as store:
+        plan.set_goal(store, "a friendlier app, all the way down", alex)
+        parts = [{"id": f"d{k}", "title": f"the part number {k} of it", "parent": f"d{k - 1}"}
+                 for k in range(1, 9)]  # fmt: skip
+        del parts[0]["parent"]  # eight sub-goals, one in the other: the leaf is nine levels down
+        plan.propose(store, [*parts, {"id": deep, "title": "say hello to each user", "parent": "d8",
+                                      "scope": ["api.py"], "check": "true"}], alex)  # fmt: skip
+        plan.start(store, deep, NEMOTRON, repo)
+        store.log_node(deep, plan._now(), "model", NEMOTRON.label, None, None, {"attempt": 1, "model": NANO})
+        for k, state in enumerate(words, 1):
+            said = {"fork": k, "of": 3, "model": NANO, "state": state, "why": ""}
+            store.log_node(deep, plan._now(), "fork", NEMOTRON.label, None, None, said)
+    seen, _ = watch(repo, [], size=(120, 36))
+    rows = rows_of(seen)
+    leaf = next(k for k, r in enumerate(rows) if f"  {deep}  " in r)
+    ids, word = rows[leaf].index(f"  {deep}  ") + 2, rows[leaf].index("running")
+    assert all(r.index(f"  d{k}  ") + 2 == ids for k, r in enumerate(rows[1:leaf], 1)), rows  # the nodes hold
+    for k, (r, said) in enumerate(zip(rows[leaf + 1 :], words, strict=True), 1):
+        assert r.index(f"fork {k}") == ids and r.index(said, ids) == word and r.endswith(said), rows
+    assert seen["sideways"] == 0
+
+
 def test_forks_that_arrive_on_an_open_screen_are_drawn_and_fold_away_with_their_finished_leaf(repo, finish):
     """A screen reads the store every second: the rows come in as the executor writes them, the cursor
     stays on a fork's row as its state changes, and goes to the leaf when the finished leaf folds."""
