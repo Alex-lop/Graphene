@@ -66,7 +66,12 @@ def _request(
         req.add_header("Content-Type", "application/json")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read() or b"{}"), dict(resp.headers)
+                answer, headers = resp.read(), dict(resp.headers)
+            try:
+                return json.loads(answer or b"{}"), headers
+            except ValueError:  # a sign-in page, a proxy's: not Token Factory speaking
+                raise Unreachable(f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
+                                  "GRAPHENE_TOKENFACTORY_URL?") from None  # fmt: skip
         except urllib.error.HTTPError as no:
             said = no.read().decode("utf-8", "replace")[:300]
             if (no.code == 429 or no.code >= 500) and attempt < tries:
