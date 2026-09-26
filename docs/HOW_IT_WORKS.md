@@ -393,12 +393,17 @@ largest Nemotron the list has; its bill goes into the plan's log.
 ## P4c. Which planner and which executor
 
 `graphene init` chooses both, once per repository, and keeps them in the store's meta (`planner`,
-`executor`), each spelled as `--with` takes it. At a terminal it asks the person, numbered: Nemotron
-on Token Factory first and the default, then Claude Code, Codex, or a command of your own (read as
-`--with` reads one; one that cannot be read is said so and asked again). Run again, it shows what is
-set, and Enter keeps it. Without a terminal it takes `--planner` and `--executor` and changes only
-what they name; with neither it keeps what is set, and gives what is not Nemotron when Token Factory
-answers, else Claude Code.
+`executor`), each spelled as `--with` takes it. It offers what it finds here: `claude` or `codex` on
+the PATH, and Nemotron on Token Factory when `NEBIUS_API_KEY` is set and the model list answers with
+a Nemotron model. At a terminal it lists every choice by name: Claude Code, Codex, Nemotron on Token
+Factory, then a command of your own (read as `--with` reads one; one that cannot be read is said so
+and asked again). Each says what it needs and whether it was found here (`found`, `not found`, or
+`not reached` for a key Token Factory did not answer). None is offered first: Enter keeps what is set,
+else takes the one choice found when exactly one is, and otherwise the person types a number; one not
+found can still be typed. Without a terminal it takes `--planner` and `--executor` and changes only
+what they name; with neither it keeps what is set, gives what is not the one thing found when exactly
+one is, and with none or several found leaves it unset and says so in one line (with nothing set,
+`run` and `ask` start Claude Code, as they did before `init` chose).
 
 Nemotron, chosen at the terminal or as plain `nemotron` in a flag, is written with the ids Token
 Factory's model list gave: the largest of Ultra and Super plans (`nemotron --model <ultra>`), as the
@@ -414,7 +419,7 @@ be reached (no key, a refused key, no answer, no Nemotron listed) is one line.
 `--with` overrides it for one command. Choosing is the person's, since what is chosen runs with the
 person's permissions and spends on their key: an agent's `--planner` or `--executor` is refused, and
 an agent is never asked, at a terminal or not. An agent's plain `graphene init` still fills a choice
-that is not set with the offer above. The screen's status line names what `R` starts (`R runs 3 ready
+that is not set, with the one thing found here when exactly one is. The screen's status line names what `R` starts (`R runs 3 ready
 with nemotron`) only where the long form still fits with it.
 
 ## P5. Where each mechanism ends
