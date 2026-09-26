@@ -51,17 +51,23 @@ def test_a_retired_id_falls_back_within_the_family_and_says_which_instead_of_whi
 
 
 def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_one_line(repo, monkeypatch):
-    proposal = "```plan\n? say hello  [hello]\n    scope: app.py\n    check: true\n```"
+    proposal = "```plan\n? say hello  [{}]\n    scope: app.py\n    check: true\n```"
     no_ultra = [m for m in MODELS if "Ultra" not in m["id"]]
-    said = []
-    with Fake([{"content": proposal}], models=no_ultra) as f, Store.open(repo) as store:
+    said, again = [], []
+    replies = [{"content": proposal.format("hello")}, {"content": proposal.format("hello-again")}]
+    with Fake(replies, models=no_ultra) as f, Store.open(repo) as store:
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         ask(store, repo, "make it say hello", planner("nemotron"), say=said.append)
-    assert f.requests[0]["model"] == SUPER
+        # the id `graphene init` wrote when Ultra was listed
+        ask(store, repo, "and again", planner(f"nemotron --model {ULTRA}"), say=again.append)
+    assert [r["model"] for r in f.requests] == [SUPER, SUPER]
     [line] = [s for s in said if "Ultra" in s]
     assert line.strip() == (f"Token Factory lists no Nemotron Ultra; the planner uses {SUPER}, the largest "
                             "Nemotron listed")  # fmt: skip
+    [line] = [s.strip() for s in again if "Ultra" in s]
+    assert line.startswith(f"{ULTRA} is not in Token Factory's list (retired?); the planner uses {SUPER} "
+                           "instead, the Nemotron Super listed, the nearest size.")  # fmt: skip
 
 
 def test_a_planner_in_a_429_storm_adds_nothing_and_says_what_to_do(repo, fake, monkeypatch, tmp_path):
