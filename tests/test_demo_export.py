@@ -151,6 +151,42 @@ def test_the_exported_page_fetches_nothing_holds_no_token_cannot_write_and_keeps
     assert data["runs"] == [] and data["graph"]["lanes"] == []
 
 
+def test_the_export_draws_each_leafs_forks_and_never_a_sandboxs_image(tmp_path):
+    """The tree of sandboxes: under a leaf, its last attempt's forks as the Nemotron executor logged them,
+    the one that passed marked by its state, each with its sandbox's checkpoint, operations and seconds.
+    Never the image (the sandbox's own id on the provider's service), nor more of a reason than its first
+    line (decision 64)."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    repo = tmp_path / "feeds"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    image, nano = "3f2a1b9c-0d4e-4f6a-8b8c-9d0e1f2a3b4c", "nvidia/Nemotron-3-Nano-fake"
+    run = plan.Caller("run:nemotron", False, "5e55")
+    with Store.open(repo) as store:
+        plan.set_goal(store, "say hello", plan.Caller("alex", True))
+        plan.propose(store, [{"id": "greet", "title": "hello", "scope": ["app.py"], "check": "true"}],
+                     plan.Caller("alex", True))  # fmt: skip
+        plan.start(store, "greet", run, repo)
+        store.log_node("greet", plan._now(), "model", run.label, None, None, {"attempt": 1, "model": nano})
+        ends = [("gave up", "it needs other.py\nPRIVATE-4242 from what it read", "made"),
+                ("passed", "its check passed first", "forked")]  # fmt: skip
+        for k, (state, why, checkpoint) in enumerate(ends, 1):
+            store.log_node("greet", plan._now(), "fork", run.label, run.session_id, None,
+                           {"fork": k, "of": 2, "model": nano, "state": state, "why": why, "image": image,
+                            "checkpoint": checkpoint, "ops": 5 + k, "seconds": 3.5})  # fmt: skip
+        page = ui.export_html(store, [])
+    [greet] = inlined(page)["plan"]["nodes"]
+    assert greet["forks"] == [
+        {"fork": 1, "of": 2, "model": nano, "state": "gave up", "why": "it needs other.py",
+         "checkpoint": "made", "ops": 6, "seconds": 3.5},
+        {"fork": 2, "of": 2, "model": nano, "state": "passed", "why": "its check passed first",
+         "checkpoint": "forked", "ops": 7, "seconds": 3.5},
+    ]  # fmt: skip
+    assert image not in page and "PRIVATE-4242" not in page
+
+
 def test_the_pages_workflow_publishes_the_demo_only_when_started_by_hand():
     """Nothing deploys by itself: Pages is the owner's to enable, and the workflow's to run on request."""
     workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "pages.yml").read_text()
