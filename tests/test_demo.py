@@ -3,9 +3,11 @@ recorder is run end to end by tests/test_demo_script.py, on the scripted stand-i
 ships is the one made there, and says so."""
 
 import asyncio
+import contextlib
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import socket
@@ -274,6 +276,38 @@ def test_a_search_line_edited_into_a_command_is_refused_in_one_line(tmp_path, mo
     said, running = asyncio.run(go())
     assert said == [(typed, demo.REFUSED) for typed in ("plan", "undo", "ui", "run", "stop")]
     assert running and started == []
+
+
+@pytest.mark.parametrize("sig", [signal.SIGHUP, signal.SIGTERM])
+def test_the_replays_repository_goes_when_its_terminal_closes_or_it_is_killed(tmp_path, sig):
+    """The temporary repository stayed in TMPDIR when the terminal closed (HUP) or on TERM: both ended the
+    process before the directory was removed. While the replay runs, both are a normal exit."""
+    import fcntl
+    import pty
+    import struct
+    import termios
+
+    (tmp_path / "tmp").mkdir()
+    main, tty = pty.openpty()
+    fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    env = os.environ | {"TMPDIR": str(tmp_path / "tmp"), "TERM": "xterm-256color"}
+    proc = subprocess.Popen([*CLI, "demo"], cwd=tmp_path, stdin=tty, stdout=tty, stderr=tty, env=env)
+    os.close(tty)
+    said, end = b"", time.monotonic() + 60
+    while b"replay" not in said and time.monotonic() < end and select.select([main], [], [], 1)[0]:
+        said += os.read(main, 65536)
+    assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # the screen is up, over its repo
+    if sig == signal.SIGHUP:
+        os.close(main)  # the terminal is gone, as when its window closes
+    proc.send_signal(sig)
+    while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
+        with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
+            if not os.read(main, 65536):
+                break
+    proc.wait(timeout=30)
+    if sig != signal.SIGHUP:
+        os.close(main)
+    assert list((tmp_path / "tmp").iterdir()) == []
 
 
 def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(tmp_path):

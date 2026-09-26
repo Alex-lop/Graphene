@@ -29,6 +29,7 @@ names tonight's leaves, which a new recording changes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -266,6 +267,8 @@ class Replay(Watch):
 
     def on_mount(self) -> None:
         self.began = time.monotonic()
+        for sig in (signal.SIGHUP, signal.SIGTERM):  # its terminal closed, or a kill: an exit, which removes
+            asyncio.get_running_loop().add_signal_handler(sig, self.exit)  # the replay's repository
         self.play()  # the first change is there when the screen is first drawn
         super().on_mount()
         self.set_interval(0.1, self.play)
