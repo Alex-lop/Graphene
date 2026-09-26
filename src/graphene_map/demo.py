@@ -10,6 +10,19 @@ wrote to its output under `.graphene/runs/` since the last look (the screen's `l
 once a leaf has landed (the check a contract names is judged against it). The repository's path is
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
+
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 25 September 2026, when no
+Token Factory key existed, by docs/proof/nemotron.sh on a tiny repository against the scripted fake
+(tests/fake_tokenfactory.py), and its first line says it is a scripted stand-in, which the screen shows.
+It is made again from the fake with
+
+    RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
+
+and from a live run on Token Factory, with NEBIUS_API_KEY set, with
+
+    RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh
+
+Read what that writes before committing it (tests/test_demo.py checks it holds no path and no key).
 """
 
 from __future__ import annotations
