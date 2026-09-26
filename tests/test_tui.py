@@ -1494,6 +1494,40 @@ def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leaf
     )
 
 
+def test_a_step_up_waits_for_a_free_bottom_line_and_none_is_lost(repo):
+    """The news of a step up replaced what a command had just said, a failure included, and of two
+    leaves that stepped up between refreshes only the last was ever said. Now each is said when the
+    bottom line is free, one at a time, while its leaf runs."""
+    forked(repo, [])  # greet, attempt 1 on Nano
+    other = plan.Caller("run:nemotron", False, "5e56-run-session")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", other, repo)
+
+    def up(node_id: str) -> None:
+        step = {"attempt": 2, "model": SUPER, "from": NANO, "why": f"{node_id} refused"}
+        with Store.open(repo) as store:
+            store.log_node(node_id, plan._now(), "model", NEMOTRON.label, None, None, step)
+
+    async def before(app, pilot):
+        async def bottom(*keys: str) -> str:
+            for key in keys:
+                await pilot.press(key)
+                await pilot.pause()
+            app.refresh_plan()
+            return str(app.query_one("#status").render()).splitlines()[1]
+
+        assert (await bottom("j", "s")).startswith("✗ greet is running")  # a command's refusal
+        up("greet")
+        up("schema")  # both between two refreshes
+        assert (await bottom()).startswith("✗ greet is running")  # what the command said stays
+        assert (await bottom("k")).startswith("greet stepped up to Nemotron-3-Super-fake: greet refused")
+        assert (await bottom()).startswith("greet stepped up")  # said until the person moves on
+        assert (await bottom("j")).startswith("schema stepped up to Nemotron-3-Super-fake: schema refused")
+        assert "stepped up" not in await bottom("j")  # each said once: the keys again
+
+    watch(repo, [], before=before)
+
+
 def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bill(repo, finish, monkeypatch):
     """The pane said nothing of where a leaf ran. Now: the checkpoint it made or forked (its image, short),
     and once the attempt is over, the operations and seconds its sandbox took (its forks', added up)."""

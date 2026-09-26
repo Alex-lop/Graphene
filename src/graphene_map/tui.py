@@ -689,10 +689,12 @@ class Watch(App):
             logs.setdefault(e["node_id"], []).append(e)
         held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
         self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, []), n.state))}
-        for n in held:  # a step up the ladder is news: the bottom line says it once, while its leaf runs
+        # a step up the ladder is news: the bottom line says it once, while its leaf runs, and only when
+        # nothing else is said there; one that is not said yet waits for the line to be free
+        for n in held:
             step = (models(logs.get(n.id, [])) or [{}])[-1]
             news = (n.id, n.started_at, step.get("attempt"))
-            if n.state == P.RUNNING and step.get("from") and news not in self.heard:
+            if n.state == P.RUNNING and step.get("from") and news not in self.heard and not self.message:
                 self.heard.add(news)
                 self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
