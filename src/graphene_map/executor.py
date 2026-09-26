@@ -587,14 +587,13 @@ def gave_up(store: Store, node: P.Node, why: str | None, last: bool) -> int:
     was done, or the next rung tries, told why the last attempt was not accepted."""
     if why is None:
         return 0
-    print(f"gave up: {why}", flush=True)
     node = P.get(store, node.id)
-    if not last or node.state != P.RUNNING:
-        return 0
-    changed = P.changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
-    if any(P.in_scope(p, node.scope) for p in changed):
-        return 0
-    return stop(store, node, why)
+    if last and node.state == P.RUNNING:
+        changed = P.changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
+        if not any(P.in_scope(p, node.scope) for p in changed):
+            return stop(store, node, why)
+    print(f"gave up: {why}", flush=True)
+    return 0
 
 
 def stop(store: Store, node: P.Node, why: str) -> int:
