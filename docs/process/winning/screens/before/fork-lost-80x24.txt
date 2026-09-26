@@ -1,0 +1,24 @@
+ the plan of ~/feeds
+▼ ○ a friendlier app                                                   0/2 done
+├   ● greet says hello                                       greet     running
+└   ○ bye says goodbye                                       farewell  ready
+────────────────────────────────────────────────────────────────────────────────
+ greet says hello
+ greet · running
+ executor  nemotron, started by graphene run
+ worktree  none: it works in the repository itself
+ last      [fork 1] 3 stopped: another fork's check passed · 0 s ago
+
+ why       a friendlier app
+ scope     app.py
+ check     python3 -c 'import app; assert app.greet() == "hello"'
+
+
+
+
+
+
+
+
+ you: 0 · 1 running · R: 1 ready · 0/2 done · plan first: on
+ l output · x release · Enter record · ? help · q quit

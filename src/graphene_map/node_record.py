@@ -138,6 +138,39 @@ def bill(log: list[dict]) -> dict | None:
     return out
 
 
+def _hold(log: list[dict]) -> list[dict]:
+    """The rows of the node's last hold: after its last `started`."""
+    return log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
+
+
+def models(log: list[dict]) -> list[dict]:
+    """The model each attempt of the node's last hold ran on, as its Nemotron executor noted it when the
+    attempt began: the attempt, the model, and on a step up the model before (``from``) and ``why``."""
+    return [e["detail"] for e in _hold(log) if e["kind"] == "model"]
+
+
+def forks(log: list[dict]) -> list[dict]:
+    """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
+    model, its state and why, and in a sandbox its checkpoint, operations and seconds."""
+    rows = _hold(log)
+    rows = rows[max((k for k, e in enumerate(rows) if e["kind"] == "model"), default=-1) + 1 :]
+    last = {e["detail"]["fork"]: e["detail"] for e in rows if e["kind"] == "fork"}
+    return [last[k] for k in sorted(last)]
+
+
+def sandbox(log: list[dict]) -> dict | None:
+    """The node's sandbox in its last hold, as its last `placement` row says it: the image, whether that
+    checkpoint was made or forked, its operations and seconds; when it forked, its forks' added up."""
+    rows = [e["detail"] for e in _hold(log) if e["kind"] == "placement"]
+    if not rows:
+        return None
+    mine = [f for f in forks(log) if "ops" in f]
+    if not mine:
+        return rows[-1]
+    seconds = round(sum(f["seconds"] for f in mine), 3)
+    return rows[-1] | {"ops": sum(f["ops"] for f in mine), "seconds": seconds, "forks": len(mine)}
+
+
 def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []

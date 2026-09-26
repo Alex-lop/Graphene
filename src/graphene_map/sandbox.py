@@ -389,6 +389,7 @@ class Sandbox:
         if state is None:
             raise RuntimeError("the sandbox was made, and its list of files did not come back whole")
         self.seen = state[1]
+        self.ops = self.box.ops  # what making it took: the box is its own until it forks
 
     def _key(self, checkout: Path, prepare: str | None) -> str | None:
         """Where the checkpoint of this checkout's commit is kept, or None when the checkout is not
@@ -409,7 +410,7 @@ class Sandbox:
         other = object.__new__(Sandbox)
         other.__dict__.update(self.__dict__)
         other.root, other.pushed, other.strays, other.timings = root, set(), set(), []
-        other.image, other.seen = self.base, dict(self.seen)
+        other.image, other.seen, other.ops, other.reused = self.base, dict(self.seen), 0, True
         return other
 
     def read(self, rel: str) -> bytes:
@@ -446,6 +447,7 @@ class Sandbox:
             raise RuntimeError(f"the sandbox stopped answering mid-leaf ({type(no).__name__}: {no}); nothing "
                                "of this command was brought back: run the leaf again") from no  # fmt: skip
         self.timings.append(time.monotonic() - began)
+        self.ops += 2  # the command, and its list of files read back
         stale = image == self.image  # no new image (the box's own time limit): its list is the last command's
         try:
             state = None if stale else _state(self.box.read(image, STATE).decode("utf-8", "replace"))
@@ -480,6 +482,7 @@ class Sandbox:
             else:
                 local.parent.mkdir(parents=True, exist_ok=True)
                 local.write_bytes(self.box.read(self.image, f"{WORK}/{rel}"))
+                self.ops += 1
         self.seen = {k: v for k, v in now.items() if k not in refused} | {
             k: self.seen[k] for k in refused if k in self.seen}  # fmt: skip
         if not refused:

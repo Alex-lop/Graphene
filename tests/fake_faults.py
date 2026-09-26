@@ -65,8 +65,10 @@ class Box:
     does; one holding FAULTS_KILL ends as a killed one does: exit 137, and no list of files."""
 
     image = sandbox.IMAGE
+    ops = 0  # the box's count of its operations, as Contree and Docker keep it
 
     def _op(self, script: str = "") -> None:
+        self.ops += 1
         if _holds(script, "FAULTS_RAISE"):
             raise ConnectionResetError("the sandbox went away")
         inflight = Path(os.environ["FAULTS"]) / "inflight"

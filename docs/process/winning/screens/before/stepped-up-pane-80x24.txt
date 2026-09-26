@@ -1,0 +1,24 @@
+ the plan of ~/feeds
+▼ ○ a friendlier app                                                   1/2 done
+├   ✓ greet says hello                                       greet     done
+└   ● bye says goodbye                                       farewell  running
+────────────────────────────────────────────────────────────────────────────────
+ bye says goodbye
+ farewell · running
+ executor  nemotron, started by graphene run
+ worktree  none: it works in the repository itself
+ last      nemotron executor · nvidia/Nemotron-3-Super-fake · local, 3 forks
+           placement · leaf farewell · 1 s ago
+
+ why       a friendlier app
+ scope     bye.py
+ check     python3 -c 'import bye; assert bye.bye() == "goodbye"'
+ bill      $0.0003 at list price · 11 calls · Nemotron-3-Nano-fake
+
+
+
+
+
+
+ you: 0 · 1 running · none ready · 1/2 done · plan first: on · $0.0005
+ l output · x release · Enter record · ? help · q quit
