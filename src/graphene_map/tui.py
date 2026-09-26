@@ -142,14 +142,15 @@ def _cli(argv: list[str]) -> tuple[int, str]:
 
 
 def row(
-    glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside=""
+    glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside="",
+    least=4,
 ) -> Text:
     """One row: glyph, the title cut at a word, the id (dim) and the state word in its colour, in
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
-    what the row may take; an id is never cut, the title gives way. ``inside``: a folded row's
-    count of its leaves by state, in the word's column, each state in its own colour."""
+    what the row may take; an id is never cut, the title gives way, to ``least`` columns. ``inside``:
+    a folded row's count of its leaves by state, in the word's column, each state in its own colour."""
     colour = _look(word)[1] if word else ""
-    title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), 4)
+    title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), least)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
         title_w += 2 + ids if ids else 0
     out = Text()
@@ -417,7 +418,10 @@ class PlanTree(Tree[str]):
             return super().render_label(node, base_style, style)
         wide = self._room(node)
         glyph, word, title, node_id, bold, folded = said
-        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded)
+        # a fork's row is a level below its leaf's: its title (the model's name) gives way further, so
+        # its id and word stay in their columns as deep as its leaf's do
+        least = 1 if isinstance(node.data, tuple) else 4
+        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least)
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)
@@ -688,11 +692,13 @@ class Watch(App):
         for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
             logs.setdefault(e["node_id"], []).append(e)
         held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
-        self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, [])))}
-        for n in held:  # a step up the ladder is news: the bottom line says it once, while its leaf runs
+        self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, []), n.state))}
+        # a step up the ladder is news: the bottom line says it once, while its leaf runs, and only when
+        # nothing else is said there; one that is not said yet waits for the line to be free
+        for n in held:
             step = (models(logs.get(n.id, [])) or [{}])[-1]
             news = (n.id, n.started_at, step.get("attempt"))
-            if n.state == P.RUNNING and step.get("from") and news not in self.heard:
+            if n.state == P.RUNNING and step.get("from") and news not in self.heard and not self.message:
                 self.heard.add(news)
                 self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
@@ -836,10 +842,13 @@ class Watch(App):
         self.known, self.complete = {n.id for n in nodes}, finished
         self.outline(new)  # when the screen opens every node is new; later, what a planner adds
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
-        # the row it was on; a fork's row folded away with its finished leaf: that leaf
-        here = [placed[k] for k in (row_at, cursor) if k in placed and placed[k].line >= 0]
-        if here and not at_goal:
-            tree.cursor_line = here[0].line
+        # the row it was on; one that folded away (a fork's row with its finished leaf, a leaf with its
+        # finished sub-goal): the first row above it still shown, as vim does
+        here = placed.get(row_at) or placed.get(cursor)
+        while here is not None and here.line < 0:
+            here = here.parent
+        if here is not None and not at_goal:
+            tree.cursor_line = here.line
         elif tree.cursor_line < 0:
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
@@ -1732,7 +1741,7 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
             inner.field("changed", "nothing")
         for line in inner.render().split():
             pane.line(Text("     ") + line)
-    ran = forks(store.node_log(node.id, ("started", "model", "fork")))
+    ran = forks(store.node_log(node.id, ("started", "model", "fork")), node.state)
     if ran:  # its last attempt's forks: the one that won first, then why each other one did not
         pane.gap()
         pane.text("forks", "bold")

@@ -31,9 +31,10 @@ const rolled = (node: PlanNode): string => `${node.leaves_done}/${node.leaves_to
  * is nobody's move. */
 const forkColour = (state: string): string => (state === "passed" ? "var(--pass)" : state === "running" ? "var(--a1)" : "var(--neutral)");
 
-/** What a fork's sandbox took, when it ran in one. */
+/** What a fork's sandbox took, when it ran in one; nothing while it runs, as the terminal's record: the
+ * row it wrote as it began carries the operations it started with. */
 const sandboxed = (fork: Fork): string =>
-  fork.ops === undefined ? "" : ` · sandbox ${fork.checkpoint === "forked" ? "forked from the checkpoint" : "made"}, ${fork.ops} operations, ${(fork.seconds ?? 0).toFixed(1)} s`;
+  fork.ops === undefined || fork.state === "running" ? "" : ` · sandbox ${fork.checkpoint === "forked" ? "forked from the checkpoint" : "made"}, ${fork.ops} operations, ${(fork.seconds ?? 0).toFixed(1)} s`;
 
 const Shape = ({ state, colour }: { state: Shown; colour: string }): ReactElement => {
   switch (state) {

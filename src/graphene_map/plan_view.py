@@ -272,11 +272,11 @@ def node_log(store, node_id: str, export: bool = False) -> list[dict]:
     ]  # fmt: skip
 
 
-def _forks(store, node_id: str, export: bool) -> list[dict]:
+def _forks(store, node: P.Node, export: bool) -> list[dict]:
     """The tree of sandboxes under a leaf: its last attempt's forks, each its number, model, state and
     why (in an export, its first line), and its sandbox's checkpoint, operations and seconds."""
     return [{k: f[k] for k in FORK_KEYS if k in f} | {"why": _cut(f.get("why", ""), export)[:SAID_CAP]}
-            for f in forks(store.node_log(node_id, ("started", "model", "fork")))]  # fmt: skip
+            for f in forks(store.node_log(node.id, ("started", "model", "fork")), node.state)]  # fmt: skip
 
 
 def waiting_on_person(nodes: list[P.Node], person: str, back: set[str] = frozenset()) -> list[dict]:
@@ -372,7 +372,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
                 finished_at=n.finished_at,
                 waits=came_back(store, n, export) + waits(n, by_id, under, back),
                 log=node_log(store, n.id, export),
-                forks=_forks(store, n.id, export),
+                forks=_forks(store, n, export),
                 lane=owner,
                 column=col,
                 row=row,

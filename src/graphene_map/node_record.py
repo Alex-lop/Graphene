@@ -170,13 +170,21 @@ def models(log: list[dict]) -> list[dict]:
     return [e["detail"] for e in _hold(log) if e["kind"] == "model"]
 
 
-def forks(log: list[dict]) -> list[dict]:
+def forks(log: list[dict], state: str = P.RUNNING) -> list[dict]:
     """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
-    model, its state and why, and in a sandbox its checkpoint, operations and seconds."""
+    model, its state and why, and in a sandbox its checkpoint, operations and seconds. ``state`` is the
+    node's: on a node that no longer runs, a fork whose last row says running had its executor stopped
+    under it (`:stop`, Ctrl-C) before it wrote its end. It reads stopped, without the counts it started
+    with."""
     rows = _hold(log)
     rows = rows[max((k for k, e in enumerate(rows) if e["kind"] == "model"), default=-1) + 1 :]
     last = {e["detail"]["fork"]: e["detail"] for e in rows if e["kind"] == "fork"}
-    return [last[k] for k in sorted(last)]
+    said = [last[k] for k in sorted(last)]
+    if state == P.RUNNING:
+        return said
+    stopped = {"state": "stopped", "why": "its executor was stopped before this fork ended"}
+    return [f if f["state"] != "running" else
+            {k: v for k, v in f.items() if k not in ("ops", "seconds")} | stopped for f in said]  # fmt: skip
 
 
 def sandbox(log: list[dict]) -> dict | None:

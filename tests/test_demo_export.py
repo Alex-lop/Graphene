@@ -187,6 +187,35 @@ def test_the_export_draws_each_leafs_forks_and_never_a_sandboxs_image(tmp_path):
     assert image not in page and "PRIVATE-4242" not in page
 
 
+def test_the_export_draws_a_fork_its_stopped_run_left_running_as_stopped(tmp_path):
+    """:stop or Ctrl-C mid-fork hands the leaf back before the fork threads write their end: the page
+    drew such a fork running, with the counts it started with. It is stopped, and why; no count."""
+    from graphene_map import plan
+    from graphene_map.run import STOPPED
+    from graphene_map.store import Store
+
+    repo = tmp_path / "feeds"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    nano, run = "nvidia/Nemotron-3-Nano-fake", plan.Caller("run:nemotron", False, "5e55")
+    with Store.open(repo) as store:
+        plan.set_goal(store, "say hello", plan.Caller("alex", True))
+        plan.propose(store, [{"id": "greet", "title": "hello", "scope": ["app.py"], "check": "true"}],
+                     plan.Caller("alex", True))  # fmt: skip
+        plan.start(store, "greet", run, repo)
+        store.log_node("greet", plan._now(), "model", run.label, None, None, {"attempt": 1, "model": nano})
+        store.log_node("greet", plan._now(), "fork", run.label, run.session_id, None,
+                       {"fork": 1, "of": 1, "model": nano, "state": "running", "why": "", "image": "x",
+                        "checkpoint": "made", "ops": 0, "seconds": 0.0})  # fmt: skip
+        plan.release(store, "greet", run, STOPPED)
+        page = ui.export_html(store, [])
+    [greet] = inlined(page)["plan"]["nodes"]
+    why = "its executor was stopped before this fork ended"
+    assert greet["forks"] == [
+        {"fork": 1, "of": 1, "model": nano, "state": "stopped", "why": why, "checkpoint": "made"}
+    ]
+
+
 def test_the_pages_workflow_publishes_the_demo_only_when_started_by_hand():
     """Nothing deploys by itself: Pages is the owner's to enable, and the workflow's to run on request."""
     workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "pages.yml").read_text()
