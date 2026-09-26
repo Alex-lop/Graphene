@@ -214,6 +214,7 @@ class Docker:
 
     def __init__(self, image: str = IMAGE):
         self.base, self.image, self.ops, self.made = image, image, 0, []
+        self.running: set[str] = set()  # the containers running a command now
 
     def forget(self, keep: set[str] = frozenset()) -> None:
         """Remove the checkpoint images this box made, but ``keep``: nothing else prunes them."""
@@ -234,6 +235,7 @@ class Docker:
         if made.returncode != 0:
             return image, 125, made.stderr.decode("utf-8", "replace")
         box = made.stdout.decode().strip()
+        self.running.add(box)
         try:
             if files:
                 buf = io.BytesIO()
@@ -253,7 +255,15 @@ class Docker:
             self.made.append(new)
             return new, code, (ran.stdout + ran.stderr).decode("utf-8", "replace")
         finally:
+            self.running.discard(box)
             self._docker("rm", "-f", box)
+
+    def halt(self) -> None:
+        """The run was stopped while a fork's thread waits on a container: kill it (its command ignores
+        the TERM docker passes on, as the first process in the container), and ``run`` removes it."""
+        # ponytail: a container made but not yet started when this runs still starts
+        for box in list(self.running):
+            self._docker("kill", box)
 
     def read(self, image: str, path: str) -> bytes:
         self.ops += 1
@@ -352,7 +362,7 @@ class Sandbox:
         """``root``: where the executor's edits land here; ``checkout``: the git checkout its files come
         from, when that is not ``root`` (a fork's copy has no .git of its own)."""
         self.root, self.scope, self.store, self.node_id = root, scope, store, node_id
-        source = checkout or root
+        source = self.checkout = checkout or root  # where git is asked what it shows and ignores
         self.box = Capped(box if box is not None else choose())
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
@@ -468,7 +478,7 @@ class Sandbox:
         """What the command changed in the sandbox: what the scope covers comes here, what it does not
         is refused after the fact and removed from the sandbox before the next command."""
         changed = sorted(p for p in now.keys() | self.seen.keys() if now.get(p) != self.seen.get(p))
-        ignored = gate._ignored(self.root, changed)  # a check's __pycache__: nobody's change, as at done
+        ignored = gate._ignored(self.checkout, changed)  # a check's __pycache__: nobody's change, as at done
         changed = [p for p in changed if p not in ignored]
         refused, self.brought = [], []
         for rel in changed:
@@ -494,6 +504,12 @@ class Sandbox:
         return ("\n(refused: this command changed " + ", ".join(refused[:8])
                 + (" and more" if len(refused) > 8 else "") + " outside the leaf's scope; it is not brought "
                 "back, and it is undone before your next command)")  # fmt: skip
+
+    def halt(self) -> None:
+        """The run was stopped while a fork's thread waits on this sandbox: the box ends what it runs."""
+        # ponytail: ConTree's operation is not cancelled; it ends at its own time limit
+        if hasattr(self.box, "halt"):
+            self.box.halt()
 
     def close(self) -> None:
         """The checkpoints this sandbox made go, but its first (the leaf's check forks from it) and the

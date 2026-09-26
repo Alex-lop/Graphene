@@ -149,7 +149,14 @@ def bill(log: list[dict]) -> dict | None:
     out["dollars"] = round(sum(r.get("dollars") or 0 for r in rows), 6)
     out["models"] = sorted({r["model"] for r in rows if r.get("model")})
     out["attempts"] = len(rows)
+    out["endpoint"] = _whose(rows)
     return out
+
+
+def _whose(rows: list[dict]) -> str:
+    """Token Factory's usage only when every row says so; else a stand-in's (a row from before rows
+    said who answered is not credited to Token Factory either)."""
+    return "token factory" if all(r.get("endpoint") == "token factory" for r in rows) else "a stand-in"
 
 
 def _hold(log: list[dict]) -> list[dict]:
@@ -189,9 +196,10 @@ def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []
     models = ", ".join(m.rsplit("/", 1)[-1] for m in b["models"])
+    whose = "Token Factory's" if b.get("endpoint") == "token factory" else "a stand-in's"
     return [f"{indent}bill: ${b['dollars']:.4f} at list price · {b['calls']} model call{_s(b['calls'])} · "
             f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out · {models} "
-            "(Token Factory's usage)"]  # fmt: skip
+            f"({whose} usage)"]  # fmt: skip
 
 
 def to_dict(record: NodeRecord) -> dict:
@@ -719,5 +727,6 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         kinds = ("calls", "prompt_tokens", "completion_tokens", "dollars")
         total = {k: sum(b[k] for b in bills) for k in kinds}
         total["models"] = sorted({m for b in bills for m in b["models"]})
+        total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")
     return lines
