@@ -3,6 +3,8 @@
 fake (and, where it says so, the Docker stand-in): each test fails on the code before its fix."""
 
 import json
+import os
+import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -10,7 +12,9 @@ import pytest
 from fake_tokenfactory import call
 from test_executor import NANO, fake, git, leaf, plan_of, repo, run_one, script, tool_results  # noqa: F401
 
+from graphene_map import executor
 from graphene_map import tokenfactory as tf
+from graphene_map.run import _alive
 from graphene_map.store import Store
 
 
@@ -85,3 +89,27 @@ def test_wants_sent_as_one_string_is_one_path(repo, fake, forks):
     run_one(repo, f"nemotron --model {NANO} --forks {forks}")
     with Store.open(repo) as store:
         assert store.node_log("greet", ("released",))[-1]["detail"]["wants"] == ["other.py"]
+
+
+def test_a_stopped_executor_leaves_nothing_the_models_command_started_running(tmp_path):
+    """The model's command runs in a session of its own (its time limit stops all it started): a run
+    stopped while it ran (TERM is SystemExit in the executor) left it running, able to write into the
+    checkout after the leaf was handed back."""
+    pids = tmp_path / "pids"
+
+    def stopped(*_):
+        raise SystemExit(143)  # what the executor's TERM handler raises
+
+    was = signal.signal(signal.SIGALRM, stopped)
+    signal.setitimer(signal.ITIMER_REAL, 1.0)
+    try:
+        with pytest.raises(SystemExit):
+            executor.Local(tmp_path).run(f"echo $$ >> {pids}; sleep 60 & echo $! >> {pids}; wait")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, was)
+    started = [int(p) for p in pids.read_text().split()]
+    left = [p for p in started if _alive(p)]
+    for p in left:
+        os.kill(p, signal.SIGKILL)
+    assert len(started) == 2 and left == []

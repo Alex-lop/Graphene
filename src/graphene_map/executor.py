@@ -131,6 +131,10 @@ class Local:
             os.killpg(proc.pid, signal.SIGKILL)
             out, _ = proc.communicate()
             return 124, out.decode("utf-8", "replace") + f"\n(stopped after {timeout} s)"
+        except BaseException:  # a stopped run: nothing the model started outlives it
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
         return proc.returncode, out.decode("utf-8", "replace")
 
     def close(self) -> None:
