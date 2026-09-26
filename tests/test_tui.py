@@ -1196,6 +1196,59 @@ def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopene
     watch(repo, [], before=before)
 
 
+def test_a_row_that_folds_away_with_its_finished_sub_goal_leaves_the_cursor_on_that_sub_goal(repo):
+    """The leaf under the cursor, or one of its fork rows, folded away when its sub-goal finished on
+    screen, and the cursor went to a row that had nothing to do with it. Now it goes up to the first
+    row still shown, the folded sub-goal, as vim does."""
+    import subprocess
+
+    def forking(store):  # docs held by the Nemotron executor, forked: a row for each fork under it
+        plan.start(store, "docs", NEMOTRON, repo)
+        nano = {"attempt": 1, "model": NANO}
+        store.log_node("docs", plan._now(), "model", NEMOTRON.label, None, None, nano)
+        for k in (1, 2):
+            said = {"fork": k, "of": 2, "model": NANO, "state": "running", "why": ""}
+            store.log_node("docs", plan._now(), "fork", NEMOTRON.label, None, None, said)
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        forking(store)
+
+    def docs_done(store):  # its forks' leaf finishes, and with it the API
+        (repo / "README.md").write_text("users come back with their ids\n")
+        plan.finish(store, "docs", NEMOTRON, checkout=repo)
+        git = ["git", "-c", "user.email=t@e.com", "-c", "user.name=T"]
+        subprocess.run([*git, "add", "README.md"], cwd=repo, check=True)
+        subprocess.run([*git, "commit", "-qm", "docs"], cwd=repo, check=True)
+
+    async def before(app, pilot):
+        async def then(act, *keys):
+            for key in keys:
+                await pilot.press(key)
+                await pilot.pause()
+            here = app.tree.cursor_node.data
+            with Store.open(repo) as store:
+                act(store)
+            app.refresh_plan()
+            await pilot.pause()
+            return here, app.tree.cursor_node.data
+
+        # the goal, api, ids, docs, its fork 1, its fork 2
+        assert await then(docs_done, *"jjjjj") == (("docs", 2), "api")
+        assert await then(lambda s: plan.reopen(s, "docs", alex, "the example is wrong")) == ("api", "api")
+        landed = await then(lambda s: land(repo, s, "docs", "README.md", "ids, with an example\n"), "j", "j")
+        assert landed == ("docs", "api")
+
+    alex = plan.Caller("alex", True)
+    for size in SIZES:
+        watch(repo, [], size=size, before=before)
+        with Store.open(repo) as store:  # as it was, for the next size
+            plan.reopen(store, "docs", alex, "again")
+            forking(store)
+
+
 def test_zx_folds_as_the_screen_opened_and_keeps_the_cursor_in_sight(repo):
     """vim's zx: the folds as they were when the screen opened, then the row under the cursor shown."""
     api_done(repo)

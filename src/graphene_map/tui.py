@@ -838,10 +838,13 @@ class Watch(App):
         self.known, self.complete = {n.id for n in nodes}, finished
         self.outline(new)  # when the screen opens every node is new; later, what a planner adds
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
-        # the row it was on; a fork's row folded away with its finished leaf: that leaf
-        here = [placed[k] for k in (row_at, cursor) if k in placed and placed[k].line >= 0]
-        if here and not at_goal:
-            tree.cursor_line = here[0].line
+        # the row it was on; one that folded away (a fork's row with its finished leaf, a leaf with its
+        # finished sub-goal): the first row above it still shown, as vim does
+        here = placed.get(row_at) or placed.get(cursor)
+        while here is not None and here.line < 0:
+            here = here.parent
+        if here is not None and not at_goal:
+            tree.cursor_line = here.line
         elif tree.cursor_line < 0:
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
