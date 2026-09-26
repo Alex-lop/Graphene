@@ -47,10 +47,13 @@ came_back() {  # the ids whose note in the plan's text says they came back (a no
   graphene plan --text | awk '/\[[a-z0-9-]+\]/ { match($0, /\[[a-z0-9-]+\]/); id = substr($0, RSTART + 1, RLENGTH - 2) }
                               /^ *# came back/ { print id }'
 }
-for id in $(came_back); do
+back=$(came_back)
+for id in $back; do
   step graphene node widen "$id"
 done
-step graphene run --parallel 4
+if [ -n "$back" ]; then   # with nothing back, a second run has nothing to run, and says so with exit 1
+  step graphene run --parallel 4
+fi
 
 step git log --graph --oneline
 step graphene plan record

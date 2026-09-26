@@ -172,9 +172,10 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     FOLD = 12  # lines of tree the plain print shows before finished leaves fold into their sub-goal
 
-    def plan_lines(store, who: P.Caller, everything: bool = False) -> list[str]:
+    def plan_lines(store, who: P.Caller, everything: bool = False, archive: bool = True) -> list[str]:
         """The plan as a tree, for a person and an agent alike: what waits on the person first, then
-        the goal, then the tree folded to what is still moving. ``everything`` unfolds it."""
+        the goal, then the tree folded to what is still moving. ``everything`` unfolds it; without
+        ``archive`` a finished plan is not told how to put it away (a replay's repository is gone)."""
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         if not alive:
             return [NO_PLAN]
@@ -205,7 +206,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             if n.state == P.OPEN and under.get(n.id) and all(c.state == P.DONE for c in under[n.id])
         ]
         if not P.paused(store) and leaves and count[P.DONE] == len(leaves) and not stuck:
-            head += " · finished; `graphene plan archive` puts it away"
+            head += " · finished" + ("; `graphene plan archive` puts it away" if archive else "")
         lines.append(head)
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
@@ -396,6 +397,18 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(f"  (it said: {was})")
         said_where()
 
+    def print_once(who: P.Caller, everything: bool, archive: bool = True) -> None:
+        """`graphene watch --once`: the plan, then what just happened."""
+        with open_store(root()) as store:
+            lines = plan_lines(store, who, everything, archive)
+            recent = store.node_log()[-6:]
+        for line in lines:
+            out(line)
+        if recent:
+            out("\njust now")
+            for e in recent:
+                out(log_line(e, with_node=8))
+
     @cli.command()
     def watch(
         everything: bool = typer.Option(
@@ -412,16 +425,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         do not want to give up."""
         who = P.caller()
         if once or not sys.stdout.isatty():
-            with open_store(root()) as store:
-                lines = plan_lines(store, who, everything)
-                recent = store.node_log()[-6:]
-            for line in lines:
-                out(line)
-            if recent:
-                out("\njust now")
-                for e in recent:
-                    out(log_line(e, with_node=8))
-            return
+            return print_once(who, everything)
         try:
             from .tui import run as watch_tui
         except ImportError as missing:  # an install from before the screen: code new, dependencies old
@@ -454,7 +458,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         from . import demo as D
 
         if record is not None:
-            n = D.record(root(), record)
+            try:
+                n = D.record(root(), record)
+            except OSError as no:
+                fail(f"cannot write {record}: {no.strerror or no}", 1)
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
         try:
@@ -472,7 +479,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             D.last_frame(repo, lines)
             out(" · ".join(text for text, _ in D.banner(head, D.ENDED)))
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
-                watch(everything=False, every=1.0, once=True)
+                print_once(P.caller(), everything=False, archive=False)
 
     @plan_cli.command()
     def propose(

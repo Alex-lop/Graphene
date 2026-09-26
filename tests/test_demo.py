@@ -3,8 +3,11 @@ recorder is run end to end by tests/test_demo_script.py, on the scripted stand-i
 ships is the one made there, and says so."""
 
 import asyncio
+import contextlib
 import json
+import os
 import re
+import select
 import shutil
 import signal
 import socket
@@ -26,6 +29,28 @@ JWT = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0"
     ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 )
+CLI = [sys.executable, "-c", "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"]
+
+
+def git_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    return path
+
+
+def recorded(repo: Path, out: Path, during, env=None) -> tuple[dict, list[dict]]:
+    """`graphene demo --record` started in ``repo`` (as nemotron.sh starts it), ``during()`` once it has
+    written its first line, then TERM: the recording it made."""
+    recorder = subprocess.Popen([*CLI, "demo", "--record", str(out)], cwd=repo, stderr=subprocess.PIPE,
+                                text=True, env=env)  # fmt: skip
+    for _ in range(100):  # its first line is written before it waits for anything
+        if out.exists() and out.read_text():
+            break
+        time.sleep(0.1)
+    during()
+    recorder.send_signal(signal.SIGTERM)
+    assert recorder.wait(timeout=20) == 0, recorder.stderr.read()
+    return demo.load(out)
 
 
 def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_path, monkeypatch):
@@ -44,6 +69,20 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
+def test_a_base64_secret_with_a_slash_or_a_plus_goes_whole(tmp_path, monkeypatch):
+    """A key-shaped word ends at a slash, so a base64 secret with a / or a + in it (an AWS secret access key)
+    was kept in pieces. A run of 30 or more base64 characters with a capital, a small letter, a digit and a
+    / or a + goes whole; a sha, a uuid, an id, a log's name and a model's name stay."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hide, _ = demo.hider(tmp_path / "work" / "feeds")
+    aws, plus = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "c2VjcmV0+c2VjcmV0L3NlY3JldA9zZWNyZXQ=="
+    kept = ("greet-20260926T034451-1106252f-1.txt nvidia/Llama-3_1-Nemotron-Ultra-253B-v1 "
+            "9f86d081884c7d659a2f3aa1b3c4d5e6f7a8b9c0 123e4567-e89b-12d3-a456-426614174000 "
+            "{repo}/.graphene/runs/greet nvidia/Nemotron-3-Nano-fake")  # fmt: skip
+    said = hide(f"AWS_SECRET_ACCESS_KEY={aws} then {plus}; {kept}")
+    assert said == f"AWS_SECRET_ACCESS_KEY={demo.REMOVED} then {demo.REMOVED}; {kept}"
+
+
 def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no_key():
     """Tonight's was made by tests/test_demo_script.py against the scripted fake, and says so; a live one
     recorded in its place says it ran live. Neither carries an absolute path (the run's was a temporary
@@ -55,30 +94,110 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
+    assert not demo.BASE64.search(said)
 
 
 def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
     """`graphene demo --record` started before `graphene init` (as nemotron.sh starts it) waits for the
     store; a thing under .graphene/runs it cannot read does not stop it; TERM ends it with what it saw."""
-    repo, out = tmp_path / "repo", tmp_path / "rec.jsonl"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    code = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
-    recorder = subprocess.Popen([sys.executable, "-c", code, "demo", "--record", str(out)], cwd=repo,
-                                stderr=subprocess.PIPE, text=True)  # fmt: skip
-    for _ in range(100):  # its first line is written before it waits for anything
-        if out.exists() and out.read_text():
-            break
-        time.sleep(0.1)
-    (repo / ".graphene" / "runs" / "a-directory").mkdir(parents=True)
-    with Store.open(repo) as store:
-        store.set_meta("goal", "a goal recorded")
-    time.sleep(1)
-    recorder.send_signal(signal.SIGTERM)
-    assert recorder.wait(timeout=20) == 0, recorder.stderr.read()
-    head, lines = demo.load(out)
+    repo = git_repo(tmp_path / "repo")
+
+    def during():
+        (repo / ".graphene" / "runs" / "a-directory").mkdir(parents=True)
+        with Store.open(repo) as store:
+            store.set_meta("goal", "a goal recorded")
+        time.sleep(1)
+
+    head, lines = recorded(repo, tmp_path / "rec.jsonl", during)
     assert head["repository"] == "repo" and head["stand_in"] is False  # no stand-in's endpoint was set
     assert [line["plan_meta"] for line in lines if "plan_meta" in line] == [{"goal": "a goal recorded"}]
+
+
+def test_recording_into_a_directory_that_is_not_there_is_refused_in_one_line(tmp_path):
+    """It was a traceback; it is one line and exit 1, as `graphene ui --export` says it."""
+    out = tmp_path / "no" / "such" / "rec.jsonl"
+    done = subprocess.run([*CLI, "demo", "--record", str(out)], cwd=git_repo(tmp_path / "repo"),
+                          capture_output=True, text=True, timeout=60)  # fmt: skip
+    said = f"cannot write {out}: No such file or directory\n"
+    assert (done.returncode, done.stdout, done.stderr) == (1, "", said)
+
+
+def test_output_written_a_few_bytes_at_a_time_loses_the_key_and_the_paths_whole(tmp_path):
+    """The key and the paths were taken out of each look's new output alone, so a line an executor wrote
+    across two looks (a streaming agent, a buffer flushed mid-line) kept them in pieces. The recorder takes
+    whole lines, and the rest on its last look; a character is never cut in two."""
+    repo, key = git_repo(tmp_path / "repo"), "v1.a-secret-not-shaped-like-a-key"
+    said = f"calling with {key} in {repo}/src\nwrote {repo}/app.py → café\nthe last words, with no end"
+    runs = repo / ".graphene" / "runs"
+    runs.mkdir(parents=True)
+
+    def stream():  # 3 bytes every 30 ms: the recorder looks every 200 ms, so most looks end mid-line
+        with open(runs / "greet-1.txt", "wb") as log:
+            data = said.encode()
+            for k in range(0, len(data), 3):
+                log.write(data[k : k + 3])
+                log.flush()
+                time.sleep(0.03)
+
+    _, lines = recorded(repo, tmp_path / "rec.jsonl", stream, env=os.environ | {"NEBIUS_API_KEY": key})
+    text = "".join(line["runs"].get("greet-1.txt", "") for line in lines if "runs" in line)
+    hidden = said.replace(key, "[removed]")
+    for path in (str(repo.resolve()), str(repo)):
+        hidden = hidden.replace(path, "{repo}")
+    assert text == hidden
+
+
+def test_a_sandbox_image_is_taken_out_in_words_the_leafs_pane_shows_whole(tmp_path):
+    """Where a sandbox's image was, the recording said "[a sandbox image]", and the leaf's pane cuts an
+    image to 12 characters: "image [a sandbox i". What it says there now fits."""
+    from types import SimpleNamespace
+
+    from graphene_map.tui import Pane, _attempt
+
+    repo, image = git_repo(tmp_path / "repo"), "sha256:" + "3f2a1b9c" * 8
+    made = {"placement": "sandbox", "box": "docker", "image": image, "checkpoint": "made"}
+
+    def during():
+        with Store.open(repo) as store:
+            store.log_node("greet", plan._now(), "placement", "run:nemotron", None, None, made)
+        time.sleep(1)
+
+    head, lines = recorded(repo, tmp_path / "rec.jsonl", during)
+    assert "3f2a1b9c" not in (tmp_path / "rec.jsonl").read_text()
+    (tmp_path / "replay").mkdir()
+    replay, pane = demo.repository(tmp_path / "replay", head), Pane(60)
+    demo.last_frame(replay, lines)
+    with Store.open(replay) as store:
+        _attempt(pane, store, SimpleNamespace(id="greet"))
+    assert "sandbox made, image (not kept)" in " ".join(pane.render().plain.split())
+
+
+def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token_factory(tmp_path):
+    """The label came from the recorder's own environment, so a run against the fake recorded from a second
+    terminal replayed "as it ran, live". It comes from the run: live only when the recorder saw it so and
+    every `usage` row says Token Factory; a stand-in when any does not, or does not say (a row recorded
+    before rows said); and a run with no model call on record says that."""
+    live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
+            "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
+    stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
+
+    def usage(**where):
+        return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
+
+    tf, fake = usage(endpoint="token factory"), usage(endpoint="a stand-in")
+    cases = [
+        (live, [[tf], [], [tf]], "as it ran, live"),
+        (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
+        (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
+        (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),
+        (live, [[]], "a run with no model calls on record"),
+        (stand_in, [[]], "a run with no model calls on record"),
+    ]
+    for head, rows, shown in cases:
+        recording = tmp_path / "r.jsonl"
+        lines = [head, *({"t": k / 10, "node_log": some} for k, some in enumerate(rows))]
+        recording.write_text("\n".join(json.dumps(line) for line in lines))
+        assert (demo.load(recording)[0]["shown"], rows) == (shown, rows)
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="builds the wheel as CI does, with uv")
@@ -113,6 +232,21 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
         ["✓", "bye", "says", "goodbye", "farewell", "done", "·", "bye.py"],
     ]
     assert not list((tmp_path / "tmp").iterdir())
+
+
+def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
+    """It printed "finished; `graphene plan archive` puts it away", a command for the replay's repository,
+    which is gone by then. Everything else is what `graphene watch --once` prints of the same store."""
+    head, lines = demo.load(demo.SHIPPED)
+    repo = demo.repository(tmp_path, head)
+    demo.last_frame(repo, lines)
+    monkeypatch.chdir(repo)
+    watched = CliRunner().invoke(build(), ["watch", "--once"]).stdout.splitlines()
+    banner, *replayed = CliRunner().invoke(build(), ["demo", "--once"]).stdout.splitlines()
+    hint = "2 leaves, 2 done, 0 running · finished; `graphene plan archive` puts it away"
+    assert hint in watched and banner.startswith("replay · ")
+    finished = "2 leaves, 2 done, 0 running · finished"
+    assert replayed == [finished if line == hint else line for line in watched]
 
 
 def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(tmp_path, monkeypatch):
@@ -166,6 +300,82 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
     assert [key for key, said, screen in seen["said"] if (said, screen) != (demo.REFUSED, "Screen")] == []
     assert states() == seen["before"] and started == []
     assert seen["help"] == "Help"
+
+
+def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
+    """It ended on the finished sub-goal folded to one row, "2 done": the last frame showed almost nothing.
+    When the last change is applied every fold opens, as zR opens them, and every leaf is a row."""
+    monkeypatch.setattr(demo, "LONG", 0.01)
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(200):
+                if app.next == len(app.lines):
+                    break
+                await pilot.pause(0.05)
+            await pilot.pause()
+            return [app.tree.get_node_at_line(k).data for k in range(app.tree.last_line + 1)]
+
+    assert asyncio.run(go()) == [None, "friendly", "greet", "farewell"]
+
+
+def test_a_search_line_edited_into_a_command_is_refused_in_one_line(tmp_path, monkeypatch):
+    """`/` opens the search line; with its / erased, Enter ran the line as a command, and the replay's
+    refusal of `did(argv, keep=True)` was a TypeError that closed the screen. A line that is not a search
+    is refused with the one line, and nothing starts."""
+    monkeypatch.setattr(demo, "LONG", 0.01)
+    head, lines = demo.load(demo.SHIPPED)
+    app, started = demo.Replay(demo.repository(tmp_path, head), head, lines), []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, *_, **__: started.append(args))
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            said = []
+            for typed in ("plan", "undo", "ui", "run", "stop"):
+                await pilot.press("/")
+                await pilot.pause()
+                await pilot.press("backspace", *typed, "enter")
+                await pilot.pause()
+                said.append((typed, str(app.query_one("#status").render()).splitlines()[-1]))
+            return said, app.is_running
+
+    said, running = asyncio.run(go())
+    assert said == [(typed, demo.REFUSED) for typed in ("plan", "undo", "ui", "run", "stop")]
+    assert running and started == []
+
+
+@pytest.mark.parametrize("sig", [signal.SIGHUP, signal.SIGTERM])
+def test_the_replays_repository_goes_when_its_terminal_closes_or_it_is_killed(tmp_path, sig):
+    """The temporary repository stayed in TMPDIR when the terminal closed (HUP) or on TERM: both ended the
+    process before the directory was removed. While the replay runs, both are a normal exit."""
+    import fcntl
+    import pty
+    import struct
+    import termios
+
+    (tmp_path / "tmp").mkdir()
+    main, tty = pty.openpty()
+    fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    env = os.environ | {"TMPDIR": str(tmp_path / "tmp"), "TERM": "xterm-256color"}
+    proc = subprocess.Popen([*CLI, "demo"], cwd=tmp_path, stdin=tty, stdout=tty, stderr=tty, env=env)
+    os.close(tty)
+    said, end = b"", time.monotonic() + 60
+    while b"replay" not in said and time.monotonic() < end and select.select([main], [], [], 1)[0]:
+        said += os.read(main, 65536)
+    assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # the screen is up, over its repo
+    if sig == signal.SIGHUP:
+        os.close(main)  # the terminal is gone, as when its window closes
+    proc.send_signal(sig)
+    while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
+        with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
+            if not os.read(main, 65536):
+                break
+    proc.wait(timeout=30)
+    if sig != signal.SIGHUP:
+        os.close(main)
+    assert list((tmp_path / "tmp").iterdir()) == []
 
 
 def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(tmp_path):
