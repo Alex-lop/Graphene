@@ -1541,3 +1541,36 @@ def test_the_record_says_which_fork_won_and_why_each_other_one_did_not(repo):
                 f"fork 4 of 4 check failed: {WHY['check failed']}"]  # fmt: skip
         assert all(s in record for s in said), (size, record)
         assert [record.index(s) for s in said] == sorted(record.index(s) for s in said)  # the winner first
+
+
+def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
+    """:stop or Ctrl-C mid-fork: the run hands the leaf back, and the fork threads end before they write
+    their end. Its forks read running, in the executor's yellow, on its row and in its record, while
+    nothing ran. Now they read stopped (dim: nobody's move), and the record says why, with no count."""
+    from rich.style import Style
+
+    from graphene_map.run import STOPPED
+    from graphene_map.tui import _walk
+
+    forked(repo, ["running", "running"], box={"checkpoint": "forked", "ops": 0, "seconds": 0.0})
+    with Store.open(repo) as store:
+        plan.release(store, "greet", NEMOTRON, STOPPED)
+
+    async def before(app, pilot):
+        for node in _walk(app.tree.root):
+            if isinstance(node.data, tuple):
+                spans = " ".join(str(s.style) for s in app.tree.render_label(node, Style(), Style()).spans)
+                assert "yellow" not in spans and "dim" in spans, spans
+
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size, before=before)
+        rows = rows_of(seen)
+        leaf = next(k for k, r in enumerate(rows) if "  greet " in r)
+        assert rows[leaf].endswith("came back")
+        for k, r in enumerate(rows[leaf + 1 : leaf + 3], 1):
+            assert r.endswith(f"fork {k}  stopped"), rows
+        assert not any(r.endswith("running") for r in rows), rows
+        seen, _ = at(repo, "greet", size, keys=["enter"])
+        record = " ".join(seen["detail"].split())
+        said = "fork 1 of 2 stopped: its executor was stopped before this fork ended · Nemotron-3-Nano-fake"
+        assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record

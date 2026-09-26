@@ -688,7 +688,7 @@ class Watch(App):
         for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
             logs.setdefault(e["node_id"], []).append(e)
         held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
-        self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, [])))}
+        self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, []), n.state))}
         for n in held:  # a step up the ladder is news: the bottom line says it once, while its leaf runs
             step = (models(logs.get(n.id, [])) or [{}])[-1]
             news = (n.id, n.started_at, step.get("attempt"))
@@ -1732,7 +1732,7 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
             inner.field("changed", "nothing")
         for line in inner.render().split():
             pane.line(Text("     ") + line)
-    ran = forks(store.node_log(node.id, ("started", "model", "fork")))
+    ran = forks(store.node_log(node.id, ("started", "model", "fork")), node.state)
     if ran:  # its last attempt's forks: the one that won first, then why each other one did not
         pane.gap()
         pane.text("forks", "bold")
