@@ -317,10 +317,15 @@ a leaf; `--about <id>` asks it about a leaf that came back.
 OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key in
 `NEBIUS_API_KEY`. The key is sent in one header and written nowhere. No model id is written into
 Graphene: `tokenfactory.roles` reads the NVIDIA Nemotron models from the live list (`GET /v1/models`),
-by size (Ultra, Super, Nano). Every call's usage is priced at the list price that same list gives. It
+by size (Ultra, Super, Nano). Token Factory retires models on notice, so an id `graphene init` wrote or
+`--model` gave may leave the list: it falls back within the family (`tokenfactory.resolve`), to the
+listed Nemotron of its size, else the nearest size (the larger of two as near), and one line says
+which was used instead of which. Every call's usage is priced at the list price that same list gives. It
 goes into the leaf's record as a `usage` row (calls, tokens in and out, dollars, writes refused) and,
 when `GRAPHENE_LEDGER` names a file, into that ledger, which `GRAPHENE_SPEND_CAP_USD` caps: at the cap
 the next call is refused before it is sent. A 429 or a 5xx is waited out (`Retry-After`, else doubling).
+When the tries run out, or a completion has had no answer in time twice, the refusal says how many
+tries and what to do next (wait, run fewer leaves at once, try again later).
 
 **The executor** is started by `graphene run` like any other: in the leaf's checkout, with
 `GRAPHENE_NODE` and the contract as its last argument. Its loop runs here. It asks a model for one
@@ -335,7 +340,11 @@ whose native calls misfire; Nemotron's own `<TOOLCALL>` text is read in either p
 called by another common name (`read_file`, `str_replace`, `bash`) is the tool it means. A reply cut
 off at the token limit is asked again with more room. `view` reads only what git shows. A command the
 model runs, and every check, get an environment without the key. An executor that cannot work at all
-(no key, a refused key, no sandbox, the spend cap) hands the leaf back itself, with the cause.
+(no key, a refused key, no sandbox, the spend cap, Token Factory's refusals after their tries) hands the
+leaf back itself, with the cause. So does a model that gives up (it stopped calling tools three times,
+or used all its steps) on the ladder's last rung with nothing changed inside the scope, with why in
+words; otherwise the run's boundary decides, and the next rung tries. A fault in one fork is that
+fork's reason; when no fork passes, each fork's reason is said.
 
 **The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
 SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). Without
@@ -363,7 +372,11 @@ uncommitted work of its own gets a checkpoint of its own. Each fork then gets it
 edits land here after the scope check, and are pushed into the sandbox before its next command. After
 each command, the command's exit code and a list of every file under `/work` with its hash are
 written to a file in the sandbox, closed by an end line, and read back whole. Never from the command's
-output, which is capped. A list that does not come back whole changes nothing here.
+output, which is capped. A list that does not come back whole changes nothing here. A box that raises
+mid-leaf, or an operation killed by a signal with no list, hands the leaf back with the cause. No more
+than fifty operations run at once from this machine (`sandbox.CAP`, the Sandboxes beta's limit): each
+holds one of fifty lock files that every Graphene process of the user shares, since each executor of
+`graphene run --parallel`, each of its forks and each `graphene node done` runs operations of its own.
 
 What the scope covers is brought back here. Anything else, such as a new file in a shared directory
 or a link, is never brought back, and neither is what git ignores (a check's `__pycache__`). Such a
