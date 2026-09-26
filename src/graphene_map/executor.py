@@ -515,8 +515,10 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
             try:
                 f.why = converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
             except Exception as no:  # in a thread of its own: its reason and its row, never a traceback
-                f.failed = no
-                f.why = str(no) if isinstance(no, tf.Unreachable) else f"{type(no).__name__}: {no}"
+                said = _relative(str(no), f.place.root)
+                f.why = said if isinstance(no, tf.Unreachable) else f"{type(no).__name__}: {said}"
+                f.failed = no if isinstance(no, tf.Unreachable) else RuntimeError(
+                    f.why.removeprefix("RuntimeError: "))  # raised as the leaf's, which names its type once
                 print(f"[fork {k + 1}] stopped: {f.why}", flush=True)
                 note("stopped", f.why)
                 return
@@ -648,7 +650,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         except tf.Unreachable as no:
             return stop(store, node, str(no))
         except Exception as no:  # no sandbox, or ConTree's own errors: said to the person, not a traceback
-            return stop(store, node, f"{type(no).__name__}: {no}")
+            return stop(store, node, _relative(f"{type(no).__name__}: {no}", here))
         finally:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
             bill["wrote"] = {**bill.pop("wrote_in_forks", {}), **(leaf.wrote if leaf else {})}
@@ -685,6 +687,15 @@ def stop(store: Store, node: P.Node, why: str) -> int:
         Leaf(store, node, Local(here), repo_root(here), "").release(f"the executor stopped: {why}")
     print(f"stopped: {why}", flush=True)
     return 3
+
+
+def _relative(said: str, root: Path) -> str:
+    """``said`` with ``root`` (the checkout, or a fork's copy of it) taken out, so a path in it is the
+    repository's: an error's text is a leaf's reason, and the page never carries a path to the
+    checkout (64)."""
+    for where in sorted({str(root), str(root.resolve())}, key=len, reverse=True):  # /private/var, /var
+        said = said.replace(where + os.sep, "").replace(where, ".")
+    return said
 
 
 def _brief(arguments) -> str:
