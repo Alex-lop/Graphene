@@ -38,6 +38,25 @@ So far this path has run only against a scripted stand-in for Token Factory and 
 Sandboxes. [docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory,
 Sandboxes and Nemotron, and how to test it.
 
+## For judges
+
+No key, no Docker, and no model is called:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+graphene demo              # a recorded run, replayed in graphene watch
+graphene demo --once       # its last state, printed
+git clone https://github.com/Alex-lop/Graphene && cd Graphene
+SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
+```
+
+With a key for Token Factory (it spends at list price, and prints the bill at the end):
+
+```
+export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
+docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
+```
+
 ## You are here
 
 ```

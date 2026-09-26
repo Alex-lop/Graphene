@@ -123,3 +123,22 @@ Written from what this run actually hit. Where a thing is merely unverified, it 
 - `docs/demo/STORYBOARD.md`: the three-minute video.
 - `docs/demo/README.md`: the static, read-only demo page and the Pages workflow. It runs only when
   started by hand.
+
+## Testing instructions
+
+No key, no Docker, and no model is called:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+graphene demo              # a recorded run, replayed in graphene watch
+graphene demo --once       # its last state, printed
+git clone https://github.com/Alex-lop/Graphene && cd Graphene
+SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
+```
+
+With a key for Token Factory (it spends at list price, and prints the bill at the end):
+
+```
+export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
+docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
+```
