@@ -37,8 +37,22 @@ says which one.
 
 ## The first ten minutes
 
-You need git, a repository with some work to do in it (one of your own), and a key for Nebius
-Token Factory. Install and set up the repository, once:
+You need git and a repository with some work to do in it (one of your own). Install and set up the
+repository once, on either of two paths. `graphene init` asks once which planner and which executor
+this repository uses. It lists what it finds here (`claude` or `codex` on the PATH, a Token Factory
+key), each with what it needs, and none comes first. `--with` names another for a single command.
+
+### With the agent you have (no key)
+
+Claude Code or Codex plans and executes, started as you, with your permissions:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+cd ~/src/your-repo
+graphene init
+```
+
+### On Nemotron through Token Factory (a key)
 
 ```
 uv tool install 'graphene-map[sandbox] @ git+https://github.com/Alex-lop/Graphene'
@@ -47,13 +61,12 @@ cd ~/src/your-repo
 graphene init
 ```
 
-`graphene init` asks once which planner and which executor this repository uses, and offers
-NVIDIA Nemotron on Token Factory first. Nemotron 3 Ultra plans the tree. A Nemotron Nano does each
-leaf, and a Super takes over when Nano's attempt is refused. Each leaf runs in a Token Factory
-Sandbox forked from the same checkpoint of your repository (in a worktree of its own when Sandboxes
-are not set up), and the leaf's check decides. With Nemotron, ask for what you want with `:ask` in
-`graphene watch` or `graphene ask "…"` at the shell. Claude Code and Codex can plan and execute
-instead, as before: choose them at `init`, or name one for a single command with `--with`.
+Nemotron 3 Ultra plans the tree. A Nemotron Nano does each leaf, and a Super takes over when Nano's
+attempt is refused. Each leaf runs in a Token Factory Sandbox forked from the same checkpoint of
+your repository (in a worktree of its own when Sandboxes are not set up), and the leaf's check
+decides. Ask for what you want with `:ask` in `graphene watch` or `graphene ask "…"` at the shell.
+
+### Then, on either path
 
 With Claude Code as the planner, open two panes in WezTerm: your agent on the left, the plan on the
 right (it reads best at 80 columns or more, so give the window room). In the pane you are in:
