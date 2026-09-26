@@ -498,12 +498,12 @@ def work(args: argparse.Namespace, prompt: str) -> int:
     session = os.environ.get("GRAPHENE_ATTEMPT", "")
     with Store.open(repo) as store:
         node = P.get(store, node_id)
-        if not args.model:  # the smallest Nemotron the live list has
-            try:
-                listed = tf.roles()
-            except tf.Unreachable as no:
-                return stop(store, node, str(no))
-            args.model = [listed[k] for k in ("nano", "super", "ultra") if k in listed][:1]
+        try:  # the ids the live list has: the smallest Nemotron by default, a retired one's nearest
+            args.model, said = tf.resolve(args.model, "executor")
+        except tf.Unreachable as no:
+            return stop(store, node, str(no))
+        for line in said:
+            print(line, flush=True)
         if not args.model:
             return stop(store, node, "Token Factory lists no Nemotron model for this key")
         ladder = args.model
