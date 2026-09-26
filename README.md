@@ -22,6 +22,22 @@ each is held to its leaf's files and its check.
 
 ![graphene watch, at 80 columns](docs/assets/watch.gif)
 
+## Graphene on Nemotron
+
+The claim: **Graphene makes a cheap open model safe to hand real work.**
+
+The chart that tests it goes here: the same paragraph and the same model, with the tree and without
+it, measured in correctness, the person's attention and dollars. It comes from the evidence run,
+which has not happened yet, so there is no number here.
+
+Nemotron 3 Ultra plans the tree through Nebius Token Factory. Nemotron Nano does the leaves, each in
+a Token Factory Sandbox forked from one checkpoint of your repository, and Super takes a second
+attempt. The check, which Graphene runs itself, decides what lands.
+
+So far this path has run only against a scripted stand-in for Token Factory and a Docker stand-in for
+Sandboxes. [docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory,
+Sandboxes and Nemotron, and how to test it.
+
 ## You are here
 
 ```
