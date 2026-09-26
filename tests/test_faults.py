@@ -4,16 +4,17 @@ Factory retires models on notice, and Sandboxes are in beta. Every fault here en
 leaf comes back with its cause in its record, the run goes on, nothing is left running, and the node
 pane says what happened."""
 
+import re
 import threading
 import time
 from types import SimpleNamespace
 
 import pytest
-from fake_faults import everywhere
+from fake_faults import Box, everywhere
 from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
 
-from graphene_map import plan, tui
+from graphene_map import plan, sandbox, tui
 from graphene_map import tokenfactory as tf
 from graphene_map.ask import ask
 from graphene_map.ask import named as planner
@@ -243,3 +244,60 @@ def test_a_check_that_hangs_is_stopped_with_all_it_started_and_the_leaf_comes_ba
     while [p for p in started if _alive(p)] and time.monotonic() < until:
         time.sleep(0.1)
     assert not [p for p in started if _alive(p)]
+
+
+# -- the sandbox --------------------------------------------------------------------------------------------
+
+SANDBOXED = f"nemotron --model {NANO} --placement sandbox"
+
+
+def test_no_more_than_fifty_sandbox_operations_run_at_once(monkeypatch, tmp_path):
+    """Sixty at once from threads: fifty run, ten wait for a slot. A slot is a lock file, so it holds
+    across processes too (the thirty-leaf run below)."""
+    here = everywhere(monkeypatch, tmp_path, FAULTS_OP=1)
+    box = sandbox.Capped(Box())
+    threads = [threading.Thread(target=box.run, args=("image", "true", {}, 60)) for _ in range(60)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    counts = [int(n) for n in (here / "counts").read_text().split()]
+    assert len(counts) == 60 and max(counts) == sandbox.CAP
+
+
+def test_thirty_leaves_at_parallel_8_with_7_forks_stay_inside_the_cap_and_each_ends_cleanly(
+    repo, fake, monkeypatch, tmp_path
+):
+    """The directive's "--parallel 8 on a thirty-leaf plan, inside the cap", against the fakes: Token
+    Factory is the recorded fake, and the sandbox is a box that is nowhere (fake_faults.Box: every
+    command and check exits 0 and changes nothing, and each operation takes half a second), not Docker,
+    which at 56 conversations at once would take minutes on this machine. Eight executors of seven
+    forks are more conversations than the cap has slots. What this shows is the cap across processes
+    and how the run ends; the checks here prove nothing. The live run, on Token Factory and in real
+    Sandboxes, is still owed: it needs a key and a Sandboxes project."""
+    here = everywhere(monkeypatch, tmp_path, FAULTS_BOX="fake", FAULTS_OP=0.5)
+    ids = [f"n{k:02}" for k in range(30)]
+    back = set(ids[4::5])  # every fifth leaf: each of its forks hands it back
+
+    def reply(body):
+        node = re.search(r"^(n\d\d) \(revision", body["messages"][1]["content"], re.M).group(1)
+        steps = [call("release", why="it needs the schema too", wants=["schema.py"])] if node in back else [
+            call("write", path=f"{node}.py", content="x = 1\n"), call("run", command="true"),
+            call("run", command="true"), call("done")]
+        k = sum(m["role"] == "assistant" for m in body["messages"])
+        return steps[k] if k < len(steps) else {"content": "nothing more"}
+
+    plan_of(repo, *(leaf(i, (f"{i}.py",), "true") for i in ids))
+    fake([reply] * 5000)
+    run_parallel(lambda: Store.open(repo), repo, repo, 8, named(f"{SANDBOXED} --forks 7"), say=lambda s: None,
+                 logs=repo / ".graphene" / "runs")  # fmt: skip
+    counts = [int(n) for n in (here / "counts").read_text().split()]
+    assert max(counts) <= sandbox.CAP
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        pids = [e["detail"]["pid"] for e in store.node_log(kinds=("attempt",))]
+        whys = {i: store.node_log(i, ("released",))[-1]["detail"]["why"] for i in back}
+    assert {i for i, s in states.items() if s == plan.DONE} == set(ids) - back
+    assert {i for i, s in states.items() if s == plan.OPEN} == back
+    assert set(whys.values()) == {"it needs the schema too"}
+    assert not [p for p in pids if _alive(p)]
