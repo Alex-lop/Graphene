@@ -141,9 +141,9 @@ nebius-token-factory · token-factory-sandboxes (contree-sdk) · react · vite �
 The Submission Period opened on 26 August 2026 at 09:00 Pacific (16:00 UTC). The repository's first
 commit is 10 August 2026.
 
-- **Every line in `src/` was written after the period opened.** `git blame` over the 13,540 lines of
-  Python in `src/` at `94ce837` dates none of them before 2026-08-26 16:00 UTC. (It is checked again
-  at the end of each run.)
+- **Every line in `src/` was written after the period opened.** `git blame` over the 14,474 lines of
+  Python in `src/` at `0334168` dates none of them before 2026-08-26 16:00 UTC (checked at the end of
+  the run of 26 September; at its start, `94ce837`, it was 13,540 lines, also none).
 - **Before the period** (last commit `cc50a62`, 26 August 06:32 EDT), the repository was a different
   product, *Graphene Taskmaster*, with its model path on Gemini through Vertex AI. It was reset to an
   empty package on 17 September (`c8a8f6c`), and none of that code survives.
@@ -152,7 +152,7 @@ commit is 10 August 2026.
   23 September: paragraph in, tree out, prune, run. 24 September: polish. 25 September: Nemotron on
   Token Factory and the sandbox placement. 25 to 26 September: failure paths, forks on screen, the
   replay, and the front door.
-- 181 commits predate the period, and 343 were made after it opened, at `94ce837`.
+- 181 commits predate the period, and 421 were made after it opened, at `0334168`.
 
 Commands: `git rev-list --count --until='2026-08-26T16:00:00Z' HEAD`, `git rev-list --count
 --since='2026-08-26T16:00:00Z' HEAD`, and `git blame --line-porcelain` over `git ls-files 'src/*.py'`,
@@ -195,7 +195,7 @@ service itself.)
 | 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `docs/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `docs/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | fifty operations at once; a peak of 50, or 56 without the slots | `tests/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
-| 13,540 lines, none before the period; 181 and 343 commits | git, the commands above |
+| 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
 
 ## Testing instructions
