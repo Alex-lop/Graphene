@@ -47,3 +47,35 @@ starts it (Actions, then Pages, then Run workflow), and stops before publishing 
 `docs/demo/index.html` is there and is a read-only export. Pages is not enabled for this
 repository: enabling it (Settings, then Pages, then Source: GitHub Actions) and running the
 workflow are the owner's. The page would then be at `https://alex-lop.github.io/Graphene/`.
+
+## The replay in the terminal: `graphene demo`
+
+`graphene demo` replays a recorded run in `graphene watch`, as it happened, for someone with no key.
+It needs no key, no network and no Docker, only git, and nothing in it runs. The top line says it is
+a replay, whether a model or the scripted stand-in made it, and the day. A key that would change the
+plan or start anything (`y d e E a A s R r P w b n : x u V`) says "a replay: nothing runs here" and
+does nothing; moving, folding, `/`, Enter (the record), `l` (the output) and `?` work. A wait longer
+than 3 s is played in 3 s, and the top line says by how much (`×10: a wait, cut`). At the end the
+screen stays on the last frame and says so. `graphene demo --once` prints that last frame instead, as
+`graphene watch --once` prints a plan. The replay has a temporary repository of its own, removed when
+the screen closes.
+
+A recording is the plan's store over the run, not the model's calls, which a replay would have to
+run: the nodes, their log, the settings the screen reads, each executor's output, and what git
+tracked. The repository's path is written `{repo}` and the home directory `~`; the key and the
+project in the environment, a sandbox's image, and anything shaped like a key are taken out.
+
+A replay does not have the repository's git history. A leaf's record there counts what git said had
+changed when each hold ended, which the log keeps, and says its commits cannot be read; the live
+record counts the commits too.
+
+The recording Graphene ships, `src/graphene_map/demo.jsonl`, was made on 25 September 2026 with the
+scripted stand-in, because no key existed that night: `docs/proof/nemotron.sh` on a tiny repository,
+as `tests/test_demo_script.py` runs it. To record the live demo run in its place, from this
+repository's root with `NEBIUS_API_KEY` set:
+
+    RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh
+
+or, in the repository of any run, `graphene demo --record <file>` in a second terminal until Ctrl-C.
+Read the file before committing it; `uv run pytest tests/test_demo.py` checks it holds no path and
+nothing shaped like a key, and names the leaves of the recording it expects.
