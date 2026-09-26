@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-24, by the agent that ran the polish directive.*
+2026-09-26, by the agent that ran the winning directive.*
 
 ## What Graphene is
 
@@ -587,6 +587,143 @@ change is named here.
     had the planner send a git-ignored secret to Token Factory. *The hole, written down:* in the local
     placement a command the model runs can read what your user can, and its output goes to the model.
 
+## Decisions taken on 2026-09-25, night (the winning directive)
+
+Taken by the agent that ran `docs/process/directives/WINNING_DIRECTIVE.md`, each with its evidence.
+This session had no Token Factory key, so the directive's "if access fails" branch was in force:
+nothing below ran live, and every test named here runs against the scripted fake
+(`tests/fake_tokenfactory.py`) and, for sandboxes, the Docker stand-in. Strike any of them. Where one
+changes a decision above, the old one is left as written and the change is named here.
+
+70. **`graphene init` offers what it finds, each choice with what it needs, and none comes first.
+    This revises decision 61.** Found here means `claude` or `codex` on the PATH, or a
+    `NEBIUS_API_KEY` for which Token Factory's model list answers with a Nemotron model (one try of
+    at most 10 s, as before).
+    - **At a terminal** every choice is listed by name (Claude Code, Codex, Nemotron on Token
+      Factory, a command of your own), each with what it needs and `found`, `not found` or `not
+      reached`. Enter keeps what is set. With nothing set, Enter takes a choice only when exactly one
+      is found; with two or more, or none, the person types a number.
+    - **Without a terminal** what is set is kept and the flags change only what they name. An unset
+      choice gets the one thing found when exactly one is; with none or several it stays unset, and
+      one line says so and that `run` and `ask` start Claude Code until it is chosen.
+    - `init --help` says none is offered first.
+
+    *Why:* the directive's front door. A user who has an agent never meets a signup first, and
+    Nemotron is a path of its own, not one `--with` among three. A default only where there is one
+    thing to take is the only default that is not a fiat. *Evidence:* nine cases in
+    `tests/test_init.py`, each failing on the code before.
+71. **A model the live list no longer has falls back within the Nemotron family, in one line saying
+    which instead of which** (`tokenfactory.resolve`). A listed id is used as it is. A Nemotron id
+    the list lacks gets the listed Nemotron of the same size (the newest, a `-fast` twin second),
+    else the nearest size, and the larger of two equally near, so a ladder's upper rung stays above
+    its lower one. An id that names no Nemotron size is kept, and Token Factory's own answer says
+    what is wrong. With no id, the planner gets the largest listed and the executor the smallest; the
+    planner now plans with Nano when Nano is all there is. *Why:* `init` writes ids into a
+    repository's config (56, 61), and Token Factory retires models on notice before judging ends on
+    15 December. *Evidence:* the three `resolve` tests in `tests/test_faults.py`, including a list
+    that has lost Ultra.
+72. **Token Factory's refusals, and a model that gives up, come back with the cause and what to do.
+    This extends decision 68.** After the retries, a 429 says the key is being limited (wait a
+    minute, or run fewer leaves at once), a 5xx that the fault is Token Factory's, a completion that
+    never answers to try again or ask for less with `--max-tokens`. A model that answers three times
+    without a tool call, or uses all its steps (which covers arguments that are not JSON and tools
+    that do not exist), is told each time and goes on; when it gives up on the ladder's last rung
+    with nothing changed in its scope, the leaf comes back with why ("raise --max-tokens", "raise
+    --steps", "or name a larger model with another --model"). On a lower rung the next rung climbs.
+    A fault inside a fork is that fork's reason, never a traceback. The planner prints its stop
+    reason after its bill, so `graphene ask` shows it. *Why:* before, the run checked untouched code
+    and the leaf came back as "3 attempts, the last one refused: … AssertionError". *Evidence:*
+    `tests/test_faults.py` (each at `--parallel 2`: the other leaf lands, no executor is left alive,
+    the node pane shows the cause).
+73. **A sandbox that goes away or is killed mid-leaf brings the leaf back; a hung check is stopped
+    with everything it started.** A box that raises becomes "the sandbox stopped answering
+    mid-leaf …: run the leaf again"; an exit above 128 with no file list "the sandbox's operation was
+    killed mid-leaf". A command the box stopped for time used to be read with the previous command's
+    file list; it is now "the list did not come back whole" (exit 124, nothing brought back). The hung
+    check's words now say it was stopped with everything it started, and that a check must end by
+    itself; the limit stays 1800 s with no new setting. *Evidence:* four sandbox tests (one kills a
+    real Docker container mid-leaf and finds nothing left) and the hung-check test in
+    `tests/test_faults.py`. The fault tests reach the executor's own processes through a
+    `sitecustomize` the test writes (`tests/fake_faults.py`), not through a hook in the product.
+74. **No more than fifty sandbox operations run at once from this machine.** `sandbox.CAP = 50`
+    lock files under the temp directory, one per slot, held with `flock` around every start, run
+    and read (`sandbox.Capped`), and let go by the kernel however the process ends. *Why there:*
+    under `graphene run --parallel` each executor is a process, its forks are threads, and each
+    `done` forks its check from another process; a semaphore in one process bounds none of it.
+    *Ceiling:* one machine, not an account used from two. *Evidence:* thirty leaves at `--parallel 8
+    --forks 7` against a counting fake box peaked at 50 operations, and at 56 with the slots taken
+    out. The live thirty-leaf run is still owed.
+75. **What happens to each fork and each attempt's model is written on the leaf's log as it
+    happens.** Two new kinds: `model`, one row as each attempt begins, which carries `from` and `why`
+    when the attempt runs on a different model than the one before (that row is the escalation); and
+    `fork`, a row when each fork starts and one when it ends (its model, its state and why, and in a
+    sandbox its checkpoint, operations and seconds). `placement` gains the checkpoint and the
+    operations. The fork that lands is the first whose check passes, in time, decided under a lock:
+    a row that says passed never loses afterwards. *Evidence:* the ladder and fork tests in
+    `tests/test_executor.py`; the sandbox rows in `tests/test_escape.py` (Docker).
+76. **Forks and a step up, on the screen and the page.**
+    - **Rows.** A leaf that forked has a row for each fork under it, in the one row grammar: the
+      model's short name where a title goes (a model id has no spaces, and would be cut), `fork k`
+      where an id goes, and its state in the word column.
+    - **States and colours.** running (yellow), passed (green), lost, check failed, gave up, no
+      tool call, out of steps, stopped (dim: nobody's move).
+    - **Keys.** Every key on a fork row acts on its leaf, and the bottom line says so. A done
+      leaf's forks fold away.
+    - **A step up** is said once on the bottom line (`farewell stepped up to <model>: attempt 1
+      refused: …`) and in the leaf's pane, under `model`.
+    - **The pane and the record.** The pane has a `sandbox` line (made, or forked from the
+      commit's checkpoint; the image; operations and seconds once the attempt is over). The record
+      (Enter) has a `forks` section: the winner, then why each other one did not win.
+    - **The page.** The exported page draws each leaf's forks under it, the winner marked, and
+      never carries a sandbox's image id (decision 64).
+
+    *Evidence:* the pilot tests in `tests/test_tui.py`, `tests/test_demo_export.py`,
+    `ui/src/Plan.test.tsx`, and the before and after screens at 80×24 and 120×36 in
+    `docs/process/winning/screens/` (made against the scripted fake, and they say so).
+77. **`graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no
+    network, and runs nothing.**
+    - **What a recording holds.** `graphene demo --record FILE` records the plan's store over a run,
+      not the model's calls, which would be model-written code to replay. That is one JSON line per
+      change (nodes, new log rows, the plan_meta keys the screen reads, each executor's new output,
+      `git ls-files` when the log moved), after a line saying what it is, when, which Graphene, and
+      whether it was a stand-in.
+    - **What is taken out.** The repository's path becomes `{repo}`, the home directory `~`, the
+      key's and the project's values `[removed]`, and a sandbox's image id is dropped. So is any
+      word shaped like a key.
+    - **The screen.** The replay is a `Watch` subclass (`demo.py`; `tui.py` is untouched). Waits
+      over 3 s are cut and the top line says by how much. The top line always says it is a replay,
+      and whether of a scripted stand-in. Every key that would change the plan or start anything
+      says "a replay: nothing runs here".
+    - **`--once`** prints the last frame, through `graphene watch --once`.
+    - **The shipped recording** is tonight's scripted fake, because no key existed, and it says so on
+      screen. `RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh` replaces it with the
+      live run.
+    - **It needs git** (a real `git init`, so no git command climbs into a parent repository).
+
+    *Evidence:* `tests/test_demo.py` (with sockets refused and no key; at 80×24, 17 keys refused
+    while no process starts; the shipped file holds no path and nothing shaped like a key; the wheel
+    carries it) and `tests/test_demo_script.py`. By hand, the wheel ran `graphene demo --once` in a
+    clean `python:3.12` container with no network.
+78. **A record read where git has not got a hold's starting commit says its commits cannot be read**,
+    never "no commit was made inside its holds". *Why:* in a replay (or a store beside another
+    clone) that sentence was false about leaves that landed by a commit, against the record's own
+    rule that nothing inferred is shown as a fact. *Evidence:* the replay's pilot test.
+79. **The README's front door: "Graphene on Nemotron" and "For judges" directly under the opening,
+    and two paths in the first ten minutes.** The opening, "You are here" and the hand-back copy are
+    byte-identical to `ebf7a95`. The first section gives the claim and where the chart will go
+    (saying it does not exist yet, with no number). The paths are "with the agent you have (no key)"
+    and "on Nemotron through Token Factory (a key)". The judges' ten lines put the no-key path first
+    (`graphene demo`, then `docs/proof/nemotron.sh` against the scripted stand-in through
+    `tests/test_demo_script.py`), and are repeated in `docs/HACKATHON.md`.
+    - **What the field changed** (`docs/process/field.md`, item 11). Forking N candidates from one
+      checkpoint and letting the tests pick is the Coding track's most common pattern: at least ten
+      public entries do it, several live with SWE-bench numbers. So no surface says Graphene is the
+      only one to fork sandboxes, to escalate Nano to Super, or to "map a tree onto a tree of
+      sandboxes".
+    - **What stays Graphene's own**, as far as the field shows: we found no other entry where a
+      person prunes the plan an agent proposed before anything runs, and none that measures the
+      tree against the paragraph, with the same model, in the person's attention.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -631,8 +768,9 @@ change is named here.
   (decision 57).
 - With Nemotron named, the prompts about your repository and the files the model reads go to Token
   Factory, and in a sandbox the leaf's checkout goes to Sandboxes (decision 54).
-- An agent's plain `graphene init` fills a choice that is not set with Graphene's offer; it cannot name
-  another. A script that writes the store directly can change what `R` starts.
+- An agent's plain `graphene init` fills a choice that is not set with the one thing found here, when
+  exactly one is (decision 70); it cannot name another. A script that writes the store directly can
+  change what `R` starts.
 - A check runs in a clean worktree with nothing git ignores in it, so a check that relies on an
   ignored environment (`.venv/bin/pytest`, `node_modules`) must make its own there.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
@@ -678,6 +816,17 @@ change is named here.
    with accept passing, and the held-out report and logs with the frozen configuration.
 3. The live demo run, the video to `docs/demo/STORYBOARD.md`, the demo page on Pages, and
    `docs/HACKATHON.md` in your words, before 30 October.
+
+## What comes next, from 26 September
+
+1. The key on the machine that runs the next session (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID` in
+   `~/.zshenv`), and `! uv run python docs/test/access.py` typed by you in the session, so the harness
+   sees you run it. Everything the winning directive calls live waits on that and nothing else:
+   first contact (item 1), the pre-registered evidence (item 2), the live demo run and its
+   recording for `graphene demo` (items 4 and 7), the real repository (item 5), the feature built
+   on Nemotron (item 6) and the judges' seats on the real video (item 10).
+2. Then the directive's queue from item 1, in its lanes. The faults (72 to 74), the screen (75, 76)
+   and the replay (77) are built and waiting for live data.
 
 ## How this file is used
 
