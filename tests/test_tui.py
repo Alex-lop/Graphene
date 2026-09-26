@@ -1448,3 +1448,22 @@ def test_every_key_on_a_fork_row_acts_on_its_leaf_or_says_why_not(repo, monkeypa
     forked(repo, ["running"])
     seen, _ = watch(repo, [*on_fork, "d"])
     assert "graphene node drop greet" in seen["status"] and states(repo)["greet"] == "dropped"
+
+
+def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leafs_pane(repo):
+    """--model given twice stepped up on attempt 2 and nothing on screen named it. At 80x24, with the
+    cursor on the goal (nobody pointed at the leaf), the bottom line says it; the leaf's pane keeps it."""
+    forked(repo, [])  # attempt 1, on Nano
+    seen, _ = watch(repo, [])
+    assert "stepped up" not in seen["status"]
+    why = "attempt 1 refused: greet is not done: `true` failed"
+    with Store.open(repo) as store:  # the executor's row for attempt 2, as it began
+        store.log_node("greet", plan._now(), "model", NEMOTRON.label, NEMOTRON.session_id, None,
+                       {"attempt": 2, "model": SUPER, "from": NANO, "why": why})  # fmt: skip
+    seen, _ = watch(repo, [])
+    said = "greet stepped up to Nemotron-3-Super-fake: attempt 1 refused"
+    assert seen["cursor"] is None and seen["status"].splitlines()[1].startswith(said)
+    seen, _ = watch(repo, ["j"])
+    assert f"model Nemotron-3-Super-fake, stepped up from Nemotron-3-Nano-fake: {why}" in " ".join(
+        seen["detail"].split()
+    )

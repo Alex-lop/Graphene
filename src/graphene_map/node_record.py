@@ -143,6 +143,12 @@ def _hold(log: list[dict]) -> list[dict]:
     return log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
 
 
+def models(log: list[dict]) -> list[dict]:
+    """The model each attempt of the node's last hold ran on, as its Nemotron executor noted it when the
+    attempt began: the attempt, the model, and on a step up the model before (``from``) and ``why``."""
+    return [e["detail"] for e in _hold(log) if e["kind"] == "model"]
+
+
 def forks(log: list[dict]) -> list[dict]:
     """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
     model, its state and why, and in a sandbox its checkpoint, operations and seconds."""

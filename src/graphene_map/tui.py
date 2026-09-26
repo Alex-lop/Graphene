@@ -42,7 +42,7 @@ from textual.widgets._tree import TOGGLE_STYLE
 from . import plan as P
 from . import plan_text as T
 from . import run as R
-from .node_record import bill, forks
+from .node_record import bill, forks, models
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
@@ -590,6 +590,7 @@ class Watch(App):
         self.under: dict = {}
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
+        self.heard: set = set()  # the steps up the ladder the bottom line has said
 
     # -- the screen ----------------------------------------------------------------------------------
 
@@ -686,6 +687,12 @@ class Watch(App):
             logs.setdefault(e["node_id"], []).append(e)
         held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
         self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, [])))}
+        for n in held:  # a step up the ladder is news: the bottom line says it once, while its leaf runs
+            step = (models(logs.get(n.id, [])) or [{}])[-1]
+            news = (n.id, n.started_at, step.get("attempt"))
+            if n.state == P.RUNNING and step.get("from") and news not in self.heard:
+                self.heard.add(news)
+                self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
@@ -991,7 +998,9 @@ class Watch(App):
         return said if keep else code
 
     @on(Tree.NodeHighlighted)
-    def moved(self) -> None:
+    def moved(self, event: Tree.NodeHighlighted) -> None:
+        if event.node is not self.tree.cursor_node:  # a row of the tree before it was laid out again
+            return
         if self.view == "said":
             self.view = "contract"
         self.message = ""  # the person moved on: the bottom line says what the keys do here
@@ -1518,6 +1527,8 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     pane.gap()
     _why(pane, store, node, s.by_id)
     _contract(pane, store, node, s, s.root_path, files)
+    if word in ("came back", "review", "done"):
+        _attempt(pane, store, node)
     spent = bill(store.node_log(node.id, ("usage",)))
     if spent:
         models = ", ".join(m.rsplit("/", 1)[-1] for m in spent["models"])
@@ -1596,6 +1607,7 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
         agent = label.startswith(("claude:", "codex:", "planner"))
         who += f", {'which' if agent else 'who'} took it with graphene node start"
     pane.field("executor", who)
+    _attempt(pane, store, node)
     pane.field("worktree", _where(node.checkout, s.root_path))
     age, colour = ago(seen.get("idle"))
     last = seen.get("last") or "nothing yet"
@@ -1605,6 +1617,15 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
         pane.text(
             "its output is the session's, not Graphene's: l shows the tool calls its hooks recorded", "dim"
         )
+
+
+def _attempt(pane: Pane, store, node: P.Node) -> None:
+    """The model its last attempt ran on, as its Nemotron executor noted it; after a step up the
+    ladder, from which model and why."""
+    step = (models(store.node_log(node.id, ("started", "model"))) or [None])[-1]
+    if step:
+        up = f", stepped up from {_short(step['from'])}: {step['why']}" if step.get("from") else ""
+        pane.field("model", _short(step["model"]) + up)
 
 
 def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
