@@ -208,6 +208,9 @@ def build():
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
 
     WHO = ("planner", "executor")
+    # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs
+    AGENTS = (("claude", "Claude Code", "claude on the PATH"), ("codex", "Codex", "codex on the PATH"),
+              ("nemotron", "Nemotron on Token Factory", "NEBIUS_API_KEY"))  # fmt: skip
 
     def unreadable(command: str) -> str | None:
         """Why a planner or an executor cannot be started as written (`--with` splits it as a shell does)."""
@@ -242,22 +245,31 @@ def build():
         said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
         return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached
 
-    def asked_once(offer: dict[str, str], said: str, now: dict) -> dict[str, str]:
-        """At a terminal: numbered, Nemotron first and the default. Enter keeps what is set; a command
+    def asked_once(offer: dict[str, str], said: str, now: dict, found: list[str]) -> dict[str, str]:
+        """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
+        keeps what is set; with nothing set it takes the one choice found, when exactly one is, and
+        otherwise a number is typed (any of them: what is not found yet can still be chosen). A command
         of your own that cannot be read is said so, and asked again."""
         kept = any(now.values())
         if kept:
-            say(" · ".join(f"{k} now: {now[k] or 'claude'}" for k in WHO))
+            say(" · ".join(f"{k} now: {now[k] or 'not chosen'}" for k in WHO))
         where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
         say("which planner and executor for this repo?")
-        say(f"  1  Nemotron on Token Factory: {said},")
-        for line in (f"     {where}", "  2  Claude Code", "  3  Codex", "  4  a command of your own"):
-            say(line)
-        picks = {"1": offer, "2": dict.fromkeys(WHO, "claude"), "3": dict.fromkeys(WHO, "codex"), "4": {}}
+        picks = {"4": {}}
+        for n, (word, name, needs) in enumerate(AGENTS, 1):
+            picks[str(n)] = offer if word == "nemotron" else dict.fromkeys(WHO, word)
+            state = "found" if word in found else "not found"
+            if word == "nemotron" and word not in found and os.environ.get("NEBIUS_API_KEY"):
+                state = "not reached"  # the key is here; the line above says what did not answer
+            say(f"  {n}  {name:<27}needs {needs:<20}{state}")
+        say(f"     {said}, {where}")  # what Nemotron would be, under its line
+        say(f"  4  {'a command of your own':<27}that takes the prompt last")
+        one = [str(n) for n, (word, _, _) in enumerate(AGENTS, 1) if word in found]
+        default = one[0] if len(one) == 1 and not kept else ""
         if kept:
             picks[""] = {}
         ask = "choose (Enter keeps them)" if kept else "choose"
-        while (picked := typer.prompt(ask, default="" if kept else "1", show_default=not kept)) not in picks:
+        while (picked := typer.prompt(ask, default=default, show_default=bool(default))) not in picks:
             say("choose 1, 2, 3 or 4")
         if picked != "4":
             return picks[picked]
@@ -271,36 +283,51 @@ def build():
         return {k: typer.prompt(f"the {k}, {what}", value_proc=readable) for k in WHO}
 
     def choose(store, given: dict[str, str], asking: bool) -> str:
-        """The planner and the executor, kept in the store's meta as `--with` reads them. Asking, the
-        person chooses at the terminal; else what is set is kept, and what is not gets Nemotron when
-        Token Factory answers, else Claude Code. The flags change only what they name, and plain
-        `nemotron` among them is the offer, ids and all. Returns what is set, in one line."""
+        """The planner and the executor, kept in the store's meta as `--with` reads them. Found here:
+        `claude` or `codex` on the PATH, and Nemotron when Token Factory answers the key. Asking, the
+        person chooses at the terminal; else what is set is kept, and what is not gets what is found
+        when exactly one thing is, and stays unset, said in one line, when none or several are. The
+        flags change only what they name, and plain `nemotron` among them is the offer, ids and all.
+        Returns what is set, in one line."""
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
-        offer, said, unreached = {}, "", None
+        offer, said, unreached, found = {}, "", None, []
         if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
             offer, said, unreached = nemotron()
             if unreached:
                 say(unreached)
+            found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
         if asking:
-            given = asked_once(offer, said, now)
+            given = asked_once(offer, said, now, found)
         else:
             plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
-            given = {**{k: "claude" if unreached else offer[k] for k in missing}, **given, **plain}
+            one = {} if len(found) != 1 else offer if found[0] == "nemotron" else dict.fromkeys(WHO, found[0])
+            if missing and not one:  # nothing to pick from, or more than one: a script picks none
+                names = " and ".join(name for w, name, _ in AGENTS if w in found)
+                none = "no claude or codex is on the PATH, and no key that Token Factory answers"
+                why = f"{names} are found here" if names else none
+                who = " and ".join(f"the {k}" for k in missing)
+                say(f"{who} {'are' if missing[1:] else 'is'} not chosen: {why}; "
+                    "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
+                    "then `run` and `ask` start Claude Code")  # fmt: skip
+            given = {**{k: one[k] for k in missing if one}, **given, **plain}
         for k, v in given.items():
             store.set_meta(k, v)
-        told = " · ".join(f"{k}: {store.meta(k) or 'claude'}" for k in WHO)
+        told = " · ".join(f"{k}: {store.meta(k) or 'not chosen'}" for k in WHO)
         return f"{told}  (`graphene init` changes them; --with changes one command)"
 
     @cli.command()
     def init(
-        planner: str = typer.Option(None, help="The planner: nemotron, claude, codex or a command."),
-        executor: str = typer.Option(None, help="The executor: nemotron, claude, codex or a command."),
+        planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
+        executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
     ) -> None:
-        """Choose this repo's planner and executor (NVIDIA Nemotron on Token Factory is offered first):
-        asked at a terminal, the flags when not; `graphene run`, `ask` and `node split` start them, and
-        `--with` overrides one command. Then install the Claude Code hooks, which hold a Claude Code
-        session to the plan and keep its record."""
+        """Choose this repo's planner and executor from what is found here: `claude` or `codex` on the
+        PATH, or NEBIUS_API_KEY for NVIDIA Nemotron on Token Factory. None is offered first. At a
+        terminal it asks once, each choice with what it needs, and Enter takes one only when exactly
+        one is found; without a terminal the flags choose, and a choice not made gets what is found
+        when exactly one thing is. `graphene run`, `ask` and `node split` start them, and `--with`
+        overrides one command. Then install the Claude Code hooks, which hold a Claude Code session to
+        the plan and keep its record."""
         from . import plan as P
 
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
@@ -320,7 +347,7 @@ def build():
         r = root()
         with open_store(r) as store:  # the choice first: a question left unanswered installs nothing
             chosen = choose(store, given, asking)
-            specs = [store.meta("planner") or "", store.meta("executor") or ""]
+            specs = [store.meta(k) or "claude" for k in WHO]  # what `run` and `ask` start when none is set
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
                 store.set_meta("plan_first", "on")
         say(chosen)
