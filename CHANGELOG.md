@@ -23,6 +23,11 @@ Docker stand-in for Sandboxes; nothing in this release has been run live yet.
   check that hangs each bring the leaf back with its cause and what to do, the run goes on, and nothing is
   left running; no more than fifty sandbox operations run at once from one machine.
 - The first fork whose check passes is the one that lands, decided under a lock.
+- Forks read what git shows in the leaf's checkout (they were blind: a fork's copy has no `.git`), and a
+  winning fork never deletes or copies what git ignores (it used to delete a `.env` under a `**` scope).
+  A stopped run stops its forks and the model's commands, writes each fork's row as stopped, and bills
+  what they spent. A usage row says whether Token Factory or a stand-in answered, and the bill credits
+  Token Factory only when every row says so.
 - A record read where git has not got a hold's starting commit says its commits cannot be read.
 - The README says what Graphene on Nemotron claims, directly under the opening, offers two paths (the agent
   you have, or Nemotron through Token Factory), and gives judges ten lines to test it.

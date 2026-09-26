@@ -724,6 +724,56 @@ changes a decision above, the old one is left as written and the change is named
       person prunes the plan an agent proposed before anything runs, and none that measures the
       tree against the paragraph, with the same model, in the person's attention.
 
+80. **What the closing review changed.** Five adversaries went over the branch, one on each of
+    the executor, the replay, the screen, the claims and a stranger's first ten minutes, each with a
+    skeptic who reproduced every finding from scratch. That gave 36 findings, all collected before
+    any was fixed: 27 confirmed and 9 refuted. The 27 were fixed in three worktrees, plus two refuted
+    ones that went against the directive's intent (init's key line, the replay's last frame). Each fix
+    has a test that fails on `47f633c`, most of them in `tests/test_review_fixes_executor.py`,
+    `tests/test_demo.py` and `tests/test_tui.py`. The ones that change a decision above:
+    - **Forks (60, 69).** A fork reads what git shows in the leaf's checkout, plus what it wrote,
+      and never what git ignores. Before, every fork was blind, because its copy has no `.git`. A
+      winning fork lands only what git shows in its scope: it used to delete every git-ignored file
+      in the scope from the checkout (a `.env` under `**`). A fork's sandbox asks git in the
+      checkout, so a check's `__pycache__` is no longer a breach. A tool's error names its path in
+      the repository, never the fork's temporary copy, so the page never carries it (64).
+    - **A stopped run (33, 75).** Ctrl-C while forks work stops each fork at its next step and
+      ends the command or container it was running. It writes each fork's row as stopped, bills
+      what the forks spent, and prints no traceback. A fork row left `running` on a leaf that is
+      not running reads `stopped`, on the screen, in the record and on the page. In the local
+      placement, a stopped executor ends the model's command and all it started; before, that
+      command could still write into the checkout after the hand-back.
+    - **A misfiring model (72).** Arguments encoded twice are read once more. Arguments that are
+      not an object, and null or wrongly typed fields, are said to the model, which goes on. An
+      answer that is not JSON (a portal, a proxy, a wrong `GRAPHENE_TOKENFACTORY_URL`) is one line.
+      A `wants` sent as one string is one path.
+    - **Who answered (58).** Every usage row carries `endpoint`: `token factory` when the call went
+      to Token Factory, else `a stand-in`, never the URL. The bill says "Token Factory's usage" only
+      when every row it adds up says so.
+    - **The replay (77).**
+      - It says a run was live only when every model call on record went to Token Factory. Before,
+        it read the recorder's own environment, so a stand-in recorded from a second terminal read
+        "live".
+      - The recorder takes an executor's output a whole line at a time, so a key or a path split
+        across two looks is still taken out, and a base64 secret with a `/` or a `+` goes whole.
+      - A search line edited into a command is refused.
+      - The temporary repository goes when the terminal closes.
+      - The last frame opens every fold.
+      - `--once` leaves out the plan's next-step hint, which named a repository already deleted.
+    - **The screen (76).** A step up is said when the bottom line is free, so it never hides a
+      command's result, and none is lost. A row that folds away with its finished sub-goal leaves
+      the cursor on that sub-goal, not on a stranger. Fork rows keep the row grammar as deep as the
+      node rows do. The page gives no operation count for a fork still running.
+    - **Init (70).** A person who does not choose Nemotron meets no word of its key. The menu's
+      row says what Nemotron needs, and the key's line comes only once Nemotron is chosen without
+      one, or when a key is set and Token Factory did not answer.
+
+    Still open, by choice:
+    - The judges' install line installs `main`, which has no `graphene demo` until PR #30 merges.
+      That is right after the merge, and the Devpost text must go out after it.
+    - ConTree's image lookup runs outside the fifty-slot cap. It is a lookup, not an operation.
+    - A replay has no git history (78).
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
