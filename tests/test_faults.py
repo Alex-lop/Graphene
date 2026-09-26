@@ -64,6 +64,18 @@ def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_o
                             "Nemotron listed")  # fmt: skip
 
 
+def test_a_planner_in_a_429_storm_adds_nothing_and_says_what_to_do(repo, fake, monkeypatch, tmp_path):
+    everywhere(monkeypatch, tmp_path)
+    fake([429] * 20)
+    with Store.open(repo) as store, pytest.raises(plan.Refused) as no:
+        ask(store, repo, "make it say hello", planner("nemotron"), say=lambda s: None)
+    said = str(no.value)
+    assert said.startswith("nothing was added. no proposal (exit 3): stopped: Token Factory answered 429")
+    assert f"(asked {tf.TRIES} times: Token Factory limits how fast this key may ask; wait a minute" in said
+    with Store.open(repo) as store:
+        assert plan.nodes(store) == []
+
+
 def test_an_executor_given_a_retired_id_uses_the_nearest_listed_and_its_log_says_so(repo, fake):
     f = fake([script({"greet": [call("edit", path="app.py", old='"hi"', new='"hello"'), call("done")]})] * 5)
     plan_of(repo, leaf())

@@ -138,7 +138,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
             "prompt": PROMPT_VERSION}  # fmt: skip
     print(f"nemotron planner · {model}", file=say, flush=True)
-    answer = ""
+    answer, stopped = "", None
     try:
         for step in range(1, args.steps + 1):
             last = step == args.steps
@@ -168,8 +168,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             if step == args.steps - 1:
                 messages.append({"role": "user", "content": "Answer now with the proposal."})
     except tf.Unreachable as no:
-        print(f"stopped: {no}", file=say)
-        return 3
+        stopped = no
     finally:
         bill["dollars"] = round(bill["dollars"], 6)
         print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
@@ -179,6 +178,9 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                 store.log_node("*", P._now(), "usage", "planner:nemotron", None, None, bill)
         except Exception as no:  # the answer matters more than its bill
             print(f"(the bill was not recorded: {no})", file=say)
+    if stopped is not None:  # its last line, after the bill: `graphene ask` says the last line it printed
+        print(f"stopped: {stopped}", file=say)
+        return 3
     print(answer)
     if answer.strip():  # after the proposal, where `graphene ask` shows what the planner says
         for line in instead:
