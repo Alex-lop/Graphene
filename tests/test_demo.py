@@ -4,6 +4,7 @@ ships is the one made there, and says so."""
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import signal
@@ -26,6 +27,28 @@ JWT = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0"
     ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 )
+CLI = [sys.executable, "-c", "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"]
+
+
+def git_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    return path
+
+
+def recorded(repo: Path, out: Path, during, env=None) -> tuple[dict, list[dict]]:
+    """`graphene demo --record` started in ``repo`` (as nemotron.sh starts it), ``during()`` once it has
+    written its first line, then TERM: the recording it made."""
+    recorder = subprocess.Popen([*CLI, "demo", "--record", str(out)], cwd=repo, stderr=subprocess.PIPE,
+                                text=True, env=env)  # fmt: skip
+    for _ in range(100):  # its first line is written before it waits for anything
+        if out.exists() and out.read_text():
+            break
+        time.sleep(0.1)
+    during()
+    recorder.send_signal(signal.SIGTERM)
+    assert recorder.wait(timeout=20) == 0, recorder.stderr.read()
+    return demo.load(out)
 
 
 def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_path, monkeypatch):
@@ -60,25 +83,42 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
 def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
     """`graphene demo --record` started before `graphene init` (as nemotron.sh starts it) waits for the
     store; a thing under .graphene/runs it cannot read does not stop it; TERM ends it with what it saw."""
-    repo, out = tmp_path / "repo", tmp_path / "rec.jsonl"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    code = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
-    recorder = subprocess.Popen([sys.executable, "-c", code, "demo", "--record", str(out)], cwd=repo,
-                                stderr=subprocess.PIPE, text=True)  # fmt: skip
-    for _ in range(100):  # its first line is written before it waits for anything
-        if out.exists() and out.read_text():
-            break
-        time.sleep(0.1)
-    (repo / ".graphene" / "runs" / "a-directory").mkdir(parents=True)
-    with Store.open(repo) as store:
-        store.set_meta("goal", "a goal recorded")
-    time.sleep(1)
-    recorder.send_signal(signal.SIGTERM)
-    assert recorder.wait(timeout=20) == 0, recorder.stderr.read()
-    head, lines = demo.load(out)
+    repo = git_repo(tmp_path / "repo")
+
+    def during():
+        (repo / ".graphene" / "runs" / "a-directory").mkdir(parents=True)
+        with Store.open(repo) as store:
+            store.set_meta("goal", "a goal recorded")
+        time.sleep(1)
+
+    head, lines = recorded(repo, tmp_path / "rec.jsonl", during)
     assert head["repository"] == "repo" and head["stand_in"] is False  # no stand-in's endpoint was set
     assert [line["plan_meta"] for line in lines if "plan_meta" in line] == [{"goal": "a goal recorded"}]
+
+
+def test_output_written_a_few_bytes_at_a_time_loses_the_key_and_the_paths_whole(tmp_path):
+    """The key and the paths were taken out of each look's new output alone, so a line an executor wrote
+    across two looks (a streaming agent, a buffer flushed mid-line) kept them in pieces. The recorder takes
+    whole lines, and the rest on its last look; a character is never cut in two."""
+    repo, key = git_repo(tmp_path / "repo"), "v1.a-secret-not-shaped-like-a-key"
+    said = f"calling with {key} in {repo}/src\nwrote {repo}/app.py → café\nthe last words, with no end"
+    runs = repo / ".graphene" / "runs"
+    runs.mkdir(parents=True)
+
+    def stream():  # 3 bytes every 30 ms: the recorder looks every 200 ms, so most looks end mid-line
+        with open(runs / "greet-1.txt", "wb") as log:
+            data = said.encode()
+            for k in range(0, len(data), 3):
+                log.write(data[k : k + 3])
+                log.flush()
+                time.sleep(0.03)
+
+    _, lines = recorded(repo, tmp_path / "rec.jsonl", stream, env=os.environ | {"NEBIUS_API_KEY": key})
+    text = "".join(line["runs"].get("greet-1.txt", "") for line in lines if "runs" in line)
+    hidden = said.replace(key, "[removed]")
+    for path in (str(repo.resolve()), str(repo)):
+        hidden = hidden.replace(path, "{repo}")
+    assert text == hidden
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="builds the wheel as CI does, with uv")

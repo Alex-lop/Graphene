@@ -112,6 +112,8 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
                         new = log.read()
                 except OSError:  # not a file, or gone: the recording goes on without it
                     continue
+                if not stopping:  # whole lines, the rest at the next look: a key or a path written across
+                    new = new[: new.rfind(b"\n") + 1]  # two looks is taken out whole, and no character is cut
                 if new or path.name not in read:
                     outputs[path.name] = new.decode("utf-8", "replace")
                     read[path.name] = read.get(path.name, 0) + len(new)
