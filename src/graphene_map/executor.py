@@ -252,9 +252,13 @@ class Leaf:
             return f"there is no tool {name!r}; the tools are view, edit, write, run, done, release"
         try:
             args = json.loads(arguments or "{}") if isinstance(arguments, str) else dict(arguments or {})
-            args = {ARGS.get(k, k): v for k, v in args.items()}
+            if isinstance(args, str):  # encoded twice
+                args = json.loads(args or "{}")
+            if not isinstance(args, dict):
+                return f"{name} takes a JSON object of named fields"
+            args = {ARGS.get(k, k): v for k, v in args.items() if v is not None}  # null: not given
             return tool(**args)
-        except (ValueError, TypeError) as no:
+        except (ValueError, TypeError, AttributeError) as no:  # a field of the wrong type, too
             return f"{name} could not take those arguments ({no}); send them as JSON with the named fields"
 
 
@@ -663,8 +667,11 @@ def stop(store: Store, node: P.Node, why: str) -> int:
 def _brief(arguments) -> str:
     try:
         said = json.loads(arguments) if isinstance(arguments, str) else dict(arguments or {})
+        said = json.loads(said) if isinstance(said, str) else said  # encoded twice
     except ValueError:
         return "(arguments not JSON)"
+    if not isinstance(said, dict):
+        return "(arguments not an object)"
     return " ".join(str(said.get(k))[:80] for k in ("path", "command", "why") if said.get(k))
 
 
