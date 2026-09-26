@@ -108,6 +108,11 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         window.commits = [c.sha for c in mine]
         inside |= {c.sha: c for c in mine}
         _fill(window, node, mine, root, at)
+    coverage = _coverage(store, node, windows, list(inside.values()), at)
+    # git's silence is "none was made" only where git has the commit a hold started from: a replay's
+    # repository (graphene demo), or a store beside another clone, has none of the run's history
+    unknown = [w for w in windows if w.base_sha and not _has(root, w.base_sha)]
+    coverage["commits_unread"] = not inside and bool(unknown)
     return NodeRecord(
         node.id,
         node.title,
@@ -117,11 +122,20 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         P.done_means(node),
         at,
         windows,
-        _coverage(store, node, windows, list(inside.values()), at),
+        coverage,
         _refusals(log),
         _acts(log),
         bill(log),
     )
+
+
+def _has(root: str | Path, sha: str) -> bool:
+    try:
+        said = subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{sha}^{{commit}}"],
+                              capture_output=True, timeout=20)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return said.returncode == 0
 
 
 def bill(log: list[dict]) -> dict | None:
@@ -561,7 +575,10 @@ def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
         )
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
-    if not k:
+    if not k and counts.get("commits_unread"):
+        lines.append("    git here has not got the commit its windows started from, so what was committed "
+                     "inside them cannot be read (a replay, or a store beside another clone)")  # fmt: skip
+    elif not k:
         lines.append("    no commit was made inside its windows, so there is no commit to grade")
     elif counts["computed"]:
         lines.append(

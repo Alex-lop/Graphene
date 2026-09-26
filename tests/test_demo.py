@@ -129,6 +129,9 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
     assert seen["where"] == f"replay · a scripted stand-in, not Nemotron · {day} · ended: last frame"
     assert seen["cursor"] == "greet" and "record" in seen["record"] and "holds" in seen["record"]
     assert "the check" in seen["record"] and "passed" in seen["record"]
+    # the replay has the plan's log and none of the run's git history: never "no commit was made"
+    record = " ".join(seen["record"].split())
+    assert "no commit was made" not in record and "committed inside them cannot be read" in record
     assert [key for key, said, screen in seen["said"] if (said, screen) != (demo.REFUSED, "Screen")] == []
     assert states() == seen["before"] and started == []
     assert seen["help"] == "Help"
