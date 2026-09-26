@@ -66,6 +66,19 @@ there is no live recording to replay in CI. What is ready for the moment a key e
   other entry where a person prunes the plan an agent proposed before anything runs, and none that
   measures the tree against the paragraph in the person's attention. No surface in the repository
   makes a claim the field falsifies (decision 79).
+- **The closing review** (decision 80). Five adversaries covered the executor, the replay, the
+  screen, the claims and a stranger's first ten minutes, and a skeptic reproduced each finding. That
+  gave 36 findings, all collected before any was fixed: 27 confirmed and all fixed, plus two refuted
+  ones fixed because they went against the directive's intent. Each fix has a test that fails
+  before it. The two that mattered most were on the fork path, which predates tonight and which
+  item 3 now puts on screen:
+  - a winning fork deleted git-ignored files in its scope from the checkout (a `.env` under `**`);
+  - every fork was blind: `view` said each file "is not there".
+  Also fixed:
+  - a stopped run left forks calling Token Factory, unbilled, and containers behind;
+  - a stand-in recorded from a second terminal replayed as "live";
+  - a key split across two looks survived in a recording;
+  - `graphene init`'s first line, on the no-key path, was a signup pointer.
 - **Not built tonight, because each needs the key:** the video (item 4), the demo page export of a
   live run (item 7), the real repository (item 5), the feature built on Nemotron (item 6), and the
   judges' seats on the real video and text (item 10).
@@ -73,7 +86,9 @@ there is no live recording to replay in CI. What is ready for the moment a key e
 ## 4. What only you can do, in order
 
 1. **The key, two minutes** (the commands at the top). Everything live waits on it.
-2. **PR #30 → main** (draft), when CI is green: five minutes to read the merges and decisions 70-79.
+2. **PR #30 → main** (draft), when CI is green: ten minutes for the merges and decisions 70-80.
+   Merge it before anything from `docs/HACKATHON.md` goes into Devpost: the judges' install line
+   installs `main`, which has no `graphene demo` until then.
 3. **The GitHub About text and homepage**, two minutes. They still describe the old Taskmaster
    product, and a judge meets them first. A line for it: "A plan you and your coding agents share, as
    a tree: NVIDIA Nemotron plans and does the leaves on Nebius Token Factory, each held to its files
@@ -85,7 +100,7 @@ there is no live recording to replay in CI. What is ready for the moment a key e
 
 ## 5. Decisions from 70, each with its evidence
 
-All are in `docs/DIRECTION.md`, and each names its tests:
+All are in `docs/DIRECTION.md`, and each names its tests (80 is the review):
 
 - **70.** `init` offers what it finds, none first (revises 61).
 - **71.** A retired model falls back within the family.
@@ -97,8 +112,9 @@ All are in `docs/DIRECTION.md`, and each names its tests:
 - **77.** The replay.
 - **78.** A record without git's history says so.
 - **79.** The front door, and what the field changed.
+- **80.** What the closing review changed.
 
-Read 70, 74 and 77 first.
+Read 70, 74, 77 and 80 first.
 
 ## 6. The plan to 30 October
 
@@ -122,7 +138,8 @@ Frozen: nothing yet, since the configuration is frozen only after tuning.
 ## Verified, and not
 
 - **Verified here:**
-  - The suite on the merged branch (see the last section for the count); ruff clean.
+  - The suite: 832 passed, nothing skipped, at the merge of the review fixes (`56cfc02`); ruff clean;
+    the page's 23 UI tests pass, and the committed page equals its build.
   - The wheel, built at 0.5.0, installed offline in clean `python:3.12`, `3.13` and `3.14`
     containers with `--network none` and no key. On each, `graphene --version` says 0.5.0,
     `graphene demo --once` prints the replay, and the demo script passes end to end against the
@@ -144,9 +161,10 @@ git checkout main && git reset --hard ebf7a95
 ## State of every branch
 
 - **`submission`:** this run, pushed; draft PR.
-- **The four lane branches**, `worktree-wf_54a10577-161-1` to `-4` (faults, forks, demo, front), are
-  merged into `submission`. Their worktrees are under `.claude/worktrees/`, and the branches are
-  kept (`git branch -d` drops them).
+- **The four lane branches**, `worktree-wf_54a10577-161-1` to `-4` (faults, forks, demo, front),
+  and the three review-fix branches, `worktree-wf_187a44e6-dfa-1` to `-3` (executor, replay,
+  screen), are merged into `submission`. Their worktrees are under `.claude/worktrees/`, and the
+  branches are kept (`git branch -d` drops them).
 - **`main` (GitHub):** `ebf7a95`, untouched. Local `main`: `6cece1c`, behind, untouched.
 - **Everything else** is as it was.
 - **Left running, not mine:** a fake Token Factory server from the Nemotron run's judges,
