@@ -9,6 +9,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+from fake_faults import everywhere
 from fake_tokenfactory import call
 from test_executor import (  # noqa: F401
     NANO,
@@ -202,3 +203,21 @@ def test_a_forks_sandbox_asks_git_in_the_checkout_so_a_python_cache_is_nobodys_c
     for place in (first, first.fork(copies[1])):  # and every other fork's, from its checkpoint
         code, out = place.run("python3 -c 'import app'")
         assert code == 0 and "refused" not in out and place.strays == set()
+
+
+def test_forks_whose_sandbox_cannot_be_made_leave_no_copy_of_the_checkout_behind(
+    repo, fake, monkeypatch, tmp_path
+):
+    """The copies were made before the try that removes them: a sandbox that could not be made left
+    fork 1's copy of the checkout in the temp directory."""
+    everywhere(monkeypatch, tmp_path, FAULTS_BOX="fake", FAULTS_RAISE="useradd")  # the checkpoint's setup
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setenv("TMPDIR", str(temp))  # the executor's
+    fake([call("release", why="never asked")] * 5)
+    plan_of(repo, leaf())
+    run_one(repo, f"nemotron --model {NANO} --placement sandbox --forks 2")
+    with Store.open(repo) as store:
+        why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
+    assert why == "the executor stopped: ConnectionResetError: the sandbox went away"
+    assert list(temp.glob("graphene-greet-fork*")) == []

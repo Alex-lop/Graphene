@@ -494,21 +494,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     won = threading.Event()
     before = _in_scope_state(here, node.scope, here)
     copies, forks = [], []
-    for k in range(n):
-        copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
-        for rel in P.in_tree(here):
-            src = here / rel
-            if src.is_file() and not src.is_symlink():
-                (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, copy / rel)
-        copies.append(copy)
-        if args.placement == "local":
-            place = Local(copy)
-        elif k == 0:  # the leaf's sandbox, made once; its check forks from it
-            place = _sandbox(copy, node, store, session, args, checkout=here)
-        else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
-            place = forks[0].place.fork(copy)
-        forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, source=here))
+
     def told(k: int) -> list[dict]:
         said = [dict(m) for m in messages]
         said[0]["content"] += (f"\nThis is fork {k} of {n}: {n} attempts at this leaf run at once from the "
@@ -536,14 +522,29 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 return
             note(*f.outcome())
 
-    threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    bill["refused_in_forks"] = sum(f.refused for f in forks)
-    bill["wrote_in_forks"] = {}
-    try:
+    try:  # opened before the first copy: a sandbox that cannot be made leaves no copy behind
+        for k in range(n):
+            copy = Path(tempfile.mkdtemp(prefix=f"graphene-{node.id}-fork{k + 1}-"))
+            copies.append(copy)
+            for rel in P.in_tree(here):
+                src = here / rel
+                if src.is_file() and not src.is_symlink():
+                    (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, copy / rel)
+            if args.placement == "local":
+                place = Local(copy)
+            elif k == 0:  # the leaf's sandbox, made once; its check forks from it
+                place = _sandbox(copy, node, store, session, args, checkout=here)
+            else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
+                place = forks[0].place.fork(copy)
+            forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, source=here))
+        threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        bill["refused_in_forks"] = sum(f.refused for f in forks)
+        bill["wrote_in_forks"] = {}
         winner = next((k for k, f in enumerate(forks) if f.passed), None)
         bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
         if winner is None:
