@@ -251,6 +251,31 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
     assert seen["help"] == "Help"
 
 
+def test_a_search_line_edited_into_a_command_is_refused_in_one_line(tmp_path, monkeypatch):
+    """`/` opens the search line; with its / erased, Enter ran the line as a command, and the replay's
+    refusal of `did(argv, keep=True)` was a TypeError that closed the screen. A line that is not a search
+    is refused with the one line, and nothing starts."""
+    monkeypatch.setattr(demo, "LONG", 0.01)
+    head, lines = demo.load(demo.SHIPPED)
+    app, started = demo.Replay(demo.repository(tmp_path, head), head, lines), []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, *_, **__: started.append(args))
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            said = []
+            for typed in ("plan", "undo", "ui", "run", "stop"):
+                await pilot.press("/")
+                await pilot.pause()
+                await pilot.press("backspace", *typed, "enter")
+                await pilot.pause()
+                said.append((typed, str(app.query_one("#status").render()).splitlines()[-1]))
+            return said, app.is_running
+
+    said, running = asyncio.run(go())
+    assert said == [(typed, demo.REFUSED) for typed in ("plan", "undo", "ui", "run", "stop")]
+    assert running and started == []
+
+
 def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(tmp_path):
     """The recorded pace, except that a wait of more than LONG seconds is played in LONG: a 30 s wait in 3 s
     is ×10, and the top line says so while it plays."""

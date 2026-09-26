@@ -290,9 +290,15 @@ class Replay(Watch):
         state = ENDED if self.next == len(self.lines) else f"×{round(cut, 1):g}: a wait, cut" if cut else ""
         self.query_one("#where", Static).update(fit(banner(self.head, state), max(self.size.width - 2, 20)))
 
-    def refuse(self, *_) -> None:
+    def refuse(self, *_, **__) -> None:
         self.message = REFUSED
         self.say_status()
+
+    def ran(self, text: str) -> None:
+        """The line `/` opened: a search, or (its / erased) a command, refused."""
+        super().ran(text if text.startswith("/") else "")  # closes the line; nothing else for ""
+        if not text.startswith("/"):
+            self.refuse()
 
     # every key that would change the plan or start anything, and every way a key reaches a command
     action_add = action_edit = action_drop = action_yes = action_split = action_undo = refuse
