@@ -134,8 +134,10 @@ def test_at_a_terminal_each_choice_says_what_it_needs_and_enter_takes_the_one_fo
 @pytest.mark.parametrize("agent, number", [("claude", 1), ("codex", 2)])
 def test_at_a_terminal_with_only_claude_or_only_codex_found_enter_takes_it(repo, on_path, agent, number):
     on_path(agent)  # and no key
-    shown = menu(at_terminal(repo, ["init"], ""))
+    said = at_terminal(repo, ["init"], "")
+    shown = menu(said)
     assert shown[number - 1].endswith("  found") and shown[2].endswith("needs NEBIUS_API_KEY      not found")
+    assert NO_KEY not in said  # a person with an agent meets no signup: the row says what Nemotron needs
     assert shown[-1] == f"choose [{number}]: "
     assert chosen(repo) == {"planner": agent, "executor": agent}
 
@@ -152,7 +154,7 @@ def test_at_a_terminal_with_two_found_enter_takes_neither_and_the_person_types_o
 def test_at_a_terminal_with_nothing_found_each_is_listed_with_what_it_needs(repo, on_path):
     on_path()  # no key, and no claude or codex
     said = at_terminal(repo, ["init"], "", "3")
-    assert f"{NO_KEY}\n" in said  # what Token Factory needs, in its one line
+    assert said.index(NO_KEY) > said.index("choose: ")  # what Token Factory needs, once it is chosen
     assert menu(said)[:3] == [
         "  1  Claude Code                needs claude on the PATH  not found",
         "  2  Codex                      needs codex on the PATH   not found",
@@ -206,7 +208,7 @@ def test_without_a_terminal_an_unset_choice_gets_the_one_thing_found_here(repo, 
         on_path(agent)
         unset(repo)
         said = person("init")
-        assert [line for line in said.output.splitlines() if "NEBIUS_API_KEY" in line] == [NO_KEY]
+        assert "NEBIUS_API_KEY" not in said.output  # Nemotron is not chosen: no word of its key
         assert chosen(repo) == {"planner": agent, "executor": agent}
         assert f"planner: {agent} · executor: {agent}" in said.output and "not chosen" not in said.output
 

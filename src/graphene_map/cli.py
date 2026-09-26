@@ -294,7 +294,7 @@ def build():
         offer, said, unreached, found = {}, "", None, []
         if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
             offer, said, unreached = nemotron()
-            if unreached:
+            if unreached and os.environ.get("NEBIUS_API_KEY"):  # a key that did not answer: before the choice
                 say(unreached)
             found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
         if asking:
@@ -311,6 +311,9 @@ def build():
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
                     "then `run` and `ask` start Claude Code")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain}
+        if unreached and not os.environ.get("NEBIUS_API_KEY"):
+            if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
+                say(unreached)
         for k, v in given.items():
             store.set_meta(k, v)
         told = " · ".join(f"{k}: {store.meta(k) or 'not chosen'}" for k in WHO)
