@@ -5,6 +5,7 @@ leaf comes back with its cause in its record, the run goes on, nothing is left r
 pane says what happened."""
 
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -113,16 +114,17 @@ def pane(repo, node_id: str) -> str:
         return " ".join(str(tui.detail(store, s.by_id[node_id], s)).split())
 
 
-def came_back_with(repo, said: list[str], cause: str) -> str:
-    """greet came back with ``cause`` in its record, in what the run said and on its pane; farewell
-    landed; no executor is left running; nothing printed a traceback. Returns greet's reason."""
+def came_back_with(repo, said: list[str], cause: str, run_says: str | None = None) -> str:
+    """greet came back with ``cause`` in its record and on its pane, and the run said so (``run_says``,
+    else the cause); farewell landed; no executor is left running; nothing printed a traceback.
+    Returns greet's reason."""
     with Store.open(repo) as store:
         assert plan.get(store, "greet").state == plan.OPEN
         assert plan.get(store, "farewell").state == plan.DONE  # the run went on
         why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
         pids = [e["detail"]["pid"] for e in store.node_log(kinds=("attempt",))]
     assert cause in why, why
-    assert any(s.startswith("greet ") and cause in s for s in said), said
+    assert any(s.startswith("greet ") and (run_says or cause) in s for s in said), said
     shown = pane(repo, "greet")
     assert "greet · came back" in shown and " ".join(cause.split()) in shown, shown
     assert not [p for p in pids if _alive(p)]
@@ -216,3 +218,28 @@ def test_forks_that_all_give_up_come_back_saying_why_each_did(repo, fake):
     _, said = run_two(repo, fake, text, f"nemotron --model {NANO} --forks 2")
     why = came_back_with(repo, said, "no fork's check passed (2 forks): fork 1: the model answered three")
     assert "; fork 2: the model answered three times without calling a tool" in why
+
+
+def test_a_check_that_hangs_is_stopped_with_all_it_started_and_the_leaf_comes_back_saying_so(
+    repo, fake, monkeypatch, tmp_path
+):
+    """CHECK_TIMEOUT is 1800 s; here it is a second, in the run and in the executor's own `done`."""
+    everywhere(monkeypatch, tmp_path, FAULTS_CHECK_TIMEOUT=1)
+    pids = tmp_path / "check.pids"
+    hangs = leaf(check=f"echo $$ >> {pids}; sleep 600 & echo $! >> {pids}; wait")
+    steps = [call("edit", path="app.py", old='"hi"', new='"hello"'), call("done")]
+
+    def works_then_waits(body):
+        k = sum(m["role"] == "assistant" for m in body["messages"])
+        return steps[k] if k < len(steps) else {"content": "its check never ends; I stop here"}
+
+    _, said = run_two(repo, fake, works_then_waits, greet=hangs)
+    why = came_back_with(repo, said, "timed out after 1 s, and was stopped with everything it started: a "
+                         "check must end by itself", run_says="greet came back after 3 attempts")  # fmt: skip
+    assert why.startswith("3 attempts, the last one refused: greet is not done: `echo $$")
+    started = [int(p) for p in pids.read_text().split()]
+    assert len(started) >= 4  # a bash and its sleep, for each check the run and the executor ran
+    until = time.monotonic() + 10
+    while [p for p in started if _alive(p)] and time.monotonic() < until:
+        time.sleep(0.1)
+    assert not [p for p in started if _alive(p)]
