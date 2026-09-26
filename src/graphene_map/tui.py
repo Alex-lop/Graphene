@@ -42,7 +42,7 @@ from textual.widgets._tree import TOGGLE_STYLE
 from . import plan as P
 from . import plan_text as T
 from . import run as R
-from .node_record import bill, forks, models
+from .node_record import bill, forks, models, sandbox
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
@@ -1607,7 +1607,7 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
         agent = label.startswith(("claude:", "codex:", "planner"))
         who += f", {'which' if agent else 'who'} took it with graphene node start"
     pane.field("executor", who)
-    _attempt(pane, store, node)
+    _attempt(pane, store, node, running=True)
     pane.field("worktree", _where(node.checkout, s.root_path))
     age, colour = ago(seen.get("idle"))
     last = seen.get("last") or "nothing yet"
@@ -1619,13 +1619,23 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
         )
 
 
-def _attempt(pane: Pane, store, node: P.Node) -> None:
-    """The model its last attempt ran on, as its Nemotron executor noted it; after a step up the
-    ladder, from which model and why."""
-    step = (models(store.node_log(node.id, ("started", "model"))) or [None])[-1]
+def _attempt(pane: Pane, store, node: P.Node, running: bool = False) -> None:
+    """The model its last attempt ran on, as its Nemotron executor noted it (after a step up the
+    ladder, from which model and why), and its sandbox: the checkpoint it made or forked, and once
+    the attempt is over, the operations and seconds it took (its forks', added up)."""
+    log = store.node_log(node.id, ("started", "model", "fork", "placement"))
+    step = (models(log) or [None])[-1]
     if step:
         up = f", stepped up from {_short(step['from'])}: {step['why']}" if step.get("from") else ""
         pane.field("model", _short(step["model"]) + up)
+    box = sandbox(log)
+    if box:
+        made = "forked from the commit's checkpoint" if box.get("checkpoint") == "forked" else "made"
+        said = f"{made}, image {box['image'].removeprefix('sha256:')[:12]}"
+        if not running and "ops" in box:
+            said += f" · {box['ops']} operations · {box['seconds']:.1f} s"
+            said += f" in its {box['forks']} forks" if box.get("forks") else ""
+        pane.field("sandbox", said)
 
 
 def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:

@@ -158,6 +158,19 @@ def forks(log: list[dict]) -> list[dict]:
     return [last[k] for k in sorted(last)]
 
 
+def sandbox(log: list[dict]) -> dict | None:
+    """The node's sandbox in its last hold, as its last `placement` row says it: the image, whether that
+    checkpoint was made or forked, its operations and seconds; when it forked, its forks' added up."""
+    rows = [e["detail"] for e in _hold(log) if e["kind"] == "placement"]
+    if not rows:
+        return None
+    mine = [f for f in forks(log) if "ops" in f]
+    if not mine:
+        return rows[-1]
+    seconds = round(sum(f["seconds"] for f in mine), 3)
+    return rows[-1] | {"ops": sum(f["ops"] for f in mine), "seconds": seconds, "forks": len(mine)}
+
+
 def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []

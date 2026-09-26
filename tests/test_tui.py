@@ -1467,3 +1467,39 @@ def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leaf
     assert f"model Nemotron-3-Super-fake, stepped up from Nemotron-3-Nano-fake: {why}" in " ".join(
         seen["detail"].split()
     )
+
+
+def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bill(repo, finish, monkeypatch):
+    """The pane said nothing of where a leaf ran. Now: the checkpoint it made or forked (its image, short),
+    and once the attempt is over, the operations and seconds its sandbox took (its forks', added up)."""
+    from graphene_map.node_record import sandbox
+
+    image = "sha256:3f2a1b9c0d4e5f6a7b8c9d0e"
+    made = {"placement": "sandbox", "box": "docker", "image": image, "checkpoint": "made", "ops": 4,
+            "seconds": 7.5}  # fmt: skip
+    box = {"image": image, "checkpoint": "forked"}
+    forked(repo, [])
+    with Store.open(repo) as store:
+        store.log_node("greet", plan._now(), "placement", NEMOTRON.label, None, None, made)
+    forked(repo, ["running", "running"], box=box | {"ops": 0, "seconds": 0.0}, attempt=1)
+    seen, _ = watch(repo, ["j"])  # running: its checkpoint, and no count until the attempt is over
+    flat = " ".join(seen["detail"].split())
+    assert "sandbox made, image 3f2a1b9c0d4e" in flat and "operations" not in flat, seen["detail"]
+    with Store.open(repo) as store:
+        for k, (state, ops, seconds) in enumerate([("passed", 9, 12.25), ("lost", 3, 4.0)], 1):
+            said = {"fork": k, "of": 2, "model": NANO, "state": state, "why": WHY[state], "ops": ops}
+            store.log_node("greet", plan._now(), "fork", NEMOTRON.label, None, None,
+                           said | box | {"seconds": seconds})  # fmt: skip
+        store.log_node("greet", plan._now(), "usage", NEMOTRON.label, None, None,
+                       {"model": NANO, "calls": 7, "dollars": 0.0031, "forks": 2, "winner": 1})  # fmt: skip
+        monkeypatch.setattr(plan, "sandboxed", lambda store, node: None)  # its check here: no sandbox to fork
+        finish(store, repo, "greet", NEMOTRON)
+    for size in SIZES:
+        seen, _ = at(repo, "greet", size)
+        flat = " ".join(seen["detail"].split())
+        assert "sandbox made, image 3f2a1b9c0d4e · 12 operations · 16.2 s in its 2 forks" in flat, size
+        assert "bill $0.0031 at list price · 7 calls · Nemotron-3-Nano-fake" in flat
+    ended = made | {"ops": 14, "seconds": 23.4}  # a leaf that did not fork: its row at the attempt's end
+    rows = [{"kind": "started", "detail": {}}, {"kind": "placement", "detail": made},
+            {"kind": "placement", "detail": ended}]  # fmt: skip
+    assert sandbox(rows) == ended
