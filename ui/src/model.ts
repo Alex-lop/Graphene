@@ -273,6 +273,7 @@ export const STATE: Record<Shown, string> = {
   open: "open",
   waiting: "waiting",
   ready: "ready",
+  "came back": "came back",
   running: "running",
   review: "waiting on a sign-off",
   done: "done",
@@ -284,6 +285,7 @@ export const STATE_COLOUR: Record<Shown, string> = {
   open: "var(--neutral)",
   waiting: "var(--neutral)",
   ready: "var(--accent)",
+  "came back": "var(--ask)", // it waits on the person, as a sign-off does
   running: "var(--a1)",
   review: "var(--ask)",
   done: "var(--pass)",

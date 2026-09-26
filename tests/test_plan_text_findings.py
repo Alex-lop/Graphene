@@ -7,9 +7,9 @@ import pytest
 from test_plan import ALEX, BOT, repo, store  # noqa: F401  (fixtures)
 from test_plan_text import TREE, shaped, store_ctx, without  # noqa: F401
 
-from graphene_debrief import plan
-from graphene_debrief import plan_text as T
-from graphene_debrief.plan import (  # noqa: F401
+from graphene_map import plan
+from graphene_map import plan_text as T
+from graphene_map.plan import (  # noqa: F401
     DONE,
     DROPPED,
     OPEN,
@@ -19,7 +19,7 @@ from graphene_debrief.plan import (  # noqa: F401
     Caller,
     Refused,
 )
-from graphene_debrief.store import Store  # noqa: F401
+from graphene_map.store import Store  # noqa: F401
 
 
 # finding 0 (fixed)
@@ -728,7 +728,7 @@ def test_plan_edit_with_nobody_at_a_terminal_is_refused_at_once_and_spawns_no_ed
 
     from test_plan_cli import AGENT_ENV, agent, runner
 
-    from graphene_debrief.cli import build
+    from graphene_map.cli import build
 
     for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "GRAPHENE_AS", "GITHUB_ACTIONS",
                  "CODEX_SESSION_ID", "CODEX_SANDBOX", "EDITOR", "VISUAL", *plan.AGENT_MARKS):  # fmt: skip

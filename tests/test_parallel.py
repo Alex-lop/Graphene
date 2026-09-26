@@ -8,10 +8,10 @@ import sys
 
 import pytest
 
-from graphene_debrief import plan
-from graphene_debrief.plan import DONE, REVIEW, Caller
-from graphene_debrief.run import run_parallel
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.plan import DONE, REVIEW, Caller
+from graphene_map.run import run_parallel
+from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
 WORKER = """
@@ -129,6 +129,25 @@ def test_when_the_persons_own_work_is_in_the_way_nothing_of_theirs_is_touched_an
     assert "graphene/a" in git_in(repo, "branch")  # the work is kept, on its branch
 
 
+def test_what_a_check_writes_is_in_no_leafs_commit_and_nowhere_in_the_checkout(repo):
+    """A leaf's check and its sub-goal's each run in a worktree of their own, cut from the state they
+    check. Run in place, the leaf's check's edit to a file in its scope was committed as the leaf's
+    work, and the sub-goal's check left its files in the person's checkout."""
+    writes = "test -s a.txt && echo check >> a.txt && echo check > by_the_check.txt"
+    tree = [{"id": "g", "title": "g", "check": f"{writes} > g.txt", "children": [leaf("a", check=writes)]}]
+    with Store.open(repo) as store:
+        plan.propose(store, tree, ALEX)
+    done, _, said = go(repo)
+    assert [n.id for n in done] == ["a"], said
+    leafs_commit = "HEAD^2"  # what was merged
+    assert git_in(repo, "show", "--name-only", "--format=", leafs_commit).split() == ["a.txt"]
+    by_executor = git_in(repo, "show", f"{leafs_commit}:a.txt")
+    assert by_executor.startswith("a saw") and "check" not in by_executor
+    assert git_in(repo, "status", "--porcelain") == "" and (repo / "a.txt").read_text() == by_executor
+    with Store.open(repo) as store:
+        assert plan.get(store, "g").state == DONE
+
+
 def test_more_leaves_than_workers_every_one_lands(repo):
     """A review ran 8 leaves on 4 workers: 3 were refused over a sibling's file that Graphene itself
     had merged meanwhile. A leaf that starts after another has landed must not answer for it."""
@@ -200,7 +219,7 @@ def test_what_a_killed_run_left_behind_does_not_stop_the_next(repo):
 
 
 def test_scopes_that_could_meet_are_kept_apart_even_when_no_tracked_file_shows_it():
-    from graphene_debrief.run import may_collide
+    from graphene_map.run import may_collide
 
     assert may_collide(["**/*.py"], ["src/**"]) and may_collide(["src"], ["src/api/x.py"])
     assert may_collide(["shared.txt", "x.txt"], ["shared.txt"])

@@ -1,4 +1,4 @@
-// The contract the page draws: a mirror of src/graphene_debrief/graph.py, which is the source of
+// The contract the page draws: a mirror of src/graphene_map/graph.py, which is the source of
 // truth. Every position here was computed in Python. The page adds `dy` and `extra` when the
 // person opens a group or a directory, and decides no order and no size of its own.
 
@@ -153,10 +153,10 @@ export interface Run {
   files: number;
 }
 
-// -- the plan: a mirror of src/graphene_debrief/plan_view.py, which computes every position ------
+// -- the plan: a mirror of src/graphene_map/plan_view.py, which computes every position ------
 
 export type NodeState = "proposed" | "open" | "running" | "review" | "done";
-export type Shown = NodeState | "waiting" | "ready" | "sub-goal";
+export type Shown = NodeState | "waiting" | "ready" | "came back" | "sub-goal";
 
 export interface Entry {
   at: string;
@@ -182,7 +182,7 @@ export interface PlanNode {
   leaves_done: number; // a sub-goal's progress, in the leaves beneath it
   leaves_total: number;
   state: NodeState;
-  display_state: Shown; // an open node that cannot start yet is waiting, not ready
+  display_state: Shown; // an open node that cannot start yet is waiting, not ready; one handed back came back
   rev: number;
   executor: string | null;
   started_at: string | null;

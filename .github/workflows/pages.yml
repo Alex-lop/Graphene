@@ -1,0 +1,36 @@
+# Publishes docs/demo/ (the demo run's page, made as docs/demo/README.md says) to GitHub Pages.
+# Started by hand only (Actions > Pages > Run workflow): nothing here deploys by itself. Pages has to
+# be enabled for the repository first (Settings > Pages > Source: GitHub Actions); that is the owner's.
+name: Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The demo page is there, and is one read-only file
+        run: |
+          test -s docs/demo/index.html
+          grep -q '"token": null' docs/demo/index.html
+          grep -q '"writable": false' docs/demo/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/demo
+      - id: deployment
+        uses: actions/deploy-pages@v4

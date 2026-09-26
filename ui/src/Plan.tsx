@@ -1,5 +1,5 @@
 // The plan: what will be done, by whom, inside which paths, and what it waits for. Every position
-// comes from src/graphene_debrief/plan_view.py; the page adds the gutter it draws lane names in and
+// comes from src/graphene_map/plan_view.py; the page adds the gutter it draws lane names in and
 // nothing else. Every control here changes what an agent may do, through one function in plan.py,
 // and where that mechanism stops the sentence saying so is printed next to the control.
 
@@ -46,26 +46,37 @@ const Shape = ({ state, colour }: { state: Shown; colour: string }): ReactElemen
   }
 };
 
-export function Toggle({ view, onView, planned }: { view: View; onView: (v: View) => void; planned: number }): ReactElement {
+// The record screen is drawn from Claude Code's sessions only. A run by any other executor has none,
+// and what it did is in each node's own record, on the plan: a screen of zeros would say otherwise.
+const UNRECORDED = "no Claude Code session was recorded in this repo; what each executor did is in its node's record, on the plan";
+
+export function Toggle({ view, onView, planned, recorded }: { view: View; onView: (v: View) => void; planned: number; recorded: number }): ReactElement {
   return (
     <div className="toggle" role="group" aria-label="what the page shows">
       <button type="button" className={view === "plan" ? "on" : ""} aria-pressed={view === "plan"} disabled={planned === 0} onClick={() => onView("plan")}>
         the plan
       </button>
-      <button type="button" className={view === "record" ? "on" : ""} aria-pressed={view === "record"} onClick={() => onView("record")}>
+      <button
+        type="button"
+        className={view === "record" ? "on" : ""}
+        aria-pressed={view === "record"}
+        disabled={recorded === 0}
+        title={recorded === 0 ? UNRECORDED : undefined}
+        onClick={() => onView("record")}
+      >
         the record
       </button>
     </div>
   );
 }
 
-export function PlanHeader({ plan, view, onView }: { plan: Plan; view: View; onView: (v: View) => void }): ReactElement {
+export function PlanHeader({ plan, view, onView, recorded }: { plan: Plan; view: View; onView: (v: View) => void; recorded: number }): ReactElement {
   const counts = Object.entries(plan.counts).filter(([, n]) => n > 0);
   return (
     <header className="header" data-testid="header">
       <div className="run">
         <h1>{plan.repo || "this repo"}</h1>
-        <Toggle view={view} onView={onView} planned={plan.nodes.length} />
+        <Toggle view={view} onView={onView} planned={plan.nodes.length} recorded={recorded} />
         <span>
           {plan.nodes.length} node{plan.nodes.length === 1 ? "" : "s"}
           {counts.length > 0 ? ` · ${counts.map(([state, n]) => `${n} ${STATE[state as Shown]}`).join(" · ")}` : ""}

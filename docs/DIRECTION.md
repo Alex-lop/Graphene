@@ -399,6 +399,194 @@ left as written and the change is named here.
     `:ask add a --dry-run flag` took the flag for ask's own option; the offers lost their commands at
     120 columns; `graphene watch` spawned by a harness as a person ran with the agent's marks.
 
+## Decisions taken on 2026-09-25 (the Nemotron directive)
+
+Taken by the agent that ran `docs/process/directives/NEMOTRON_DIRECTIVE.md`, each with its evidence.
+Strike any of them. Where one changes a decision above, the old one is left as written and the
+change is named here.
+
+53. **The import package is `graphene_map`, matching the distribution. This changes decision 11's
+    last sentence.** Not `graphene`: that import name belongs to the GraphQL library on PyPI, and a
+    person with both installed gets whichever wins. The command stays `graphene`, so hooks already
+    installed (`graphene ingest hook`) keep working. Dated records (`docs/test/results-*`,
+    `docs/test/findings/`, the diary in `docs/process/`) keep the old name, because they describe
+    what was there then.
+54. **Graphene calls a model when you name its Nemotron planner or executor. This changes decision 9,
+    as amended on 23 September.** `--with nemotron` is Graphene's own code calling Nebius Token Factory
+    with your `NEBIUS_API_KEY`. The key is read from the environment at each call and written nowhere:
+    not in the store, a log, the ledger, a recording or a sandbox. What leaves the machine is the
+    prompts about the repository, the files the model asks to read, and, in a sandbox, the leaf's
+    checkout. Claude Code and Codex are started exactly as before. *Why:* the directive makes Nemotron
+    how Graphene works, and a planner or executor that is Graphene's own code is the only way to hold it
+    before the write (55). *Evidence:* `tests/test_executor.py` shows a command the model runs has
+    `GRAPHENE_NODE` in its environment and no key. `tests/test_tokenfactory.py` shows the ledger and a
+    recording hold no key.
+55. **The placement is "the loop here, the tools there."** Graphene's loop runs on this machine and
+    calls Token Factory. Every tool call runs in the leaf's placement: its checkout, or a Token Factory
+    Sandbox. *Why, with the evidence:*
+    - Only a loop of ours can refuse a write before it happens. The edit and write tools do
+      (`gate.scope_refused`, the hook's own words, not a copy).
+    - The refusal is logged where the hand-back's offers are read from, so a leaf that comes back
+      offers `w` for exactly the path it was refused (`tests/test_executor.py`).
+    - The key never enters the machine where model-written code runs.
+    - In the Docker stand-in, a command took 1.3 to 2.3 s and making the sandbox 7.5 s
+      (`tests/test_escape.py`'s log).
+    - ConTree's own latencies, and any number with a real model, are not measured: this shell had no
+      key.
+
+    The other placement is spiked in `docs/test/spikes/harness_there/` (numbers in `RESULTS.md`).
+    OpenCode 1.18.31 runs headless inside the same Docker sandbox, against the same fake, on the same
+    leaf, three runs each, and it lands. What decided it:
+    - **The gate.** Here, a write outside the scope is refused in Graphene's words and logged as
+      `denied` (3 of 3). There, the operating system refuses it and Graphene never hears of it (0 of 3).
+    - **The model is told.** A breach made by a command is never told to the model inside OpenCode, and
+      the file stays in the sandbox for the rest of its run.
+    - **The key.** There, a command the model writes can read the key (3 of 3), and the sandbox needs
+      a network route to Token Factory.
+    - **Input size.** OpenCode sends 5.2 to 6.1 times the characters per leaf: its 9,000-character
+      system prompt and 12,500 characters of tool schemas on every call. With cheap models in bulk,
+      input tokens are the bill.
+    - **Wall time.** OpenCode's tools cost about 0.02 s inside the sandbox, against 2.3 s for each of
+      this loop's commands on Docker. But OpenCode pays about 5 s a leaf to start. The landing leaf
+      tied within noise (9.6 s against 8.9 s); the hand-back took 2.8 s here against 7.3 s there.
+
+    *What would change the call:* a ConTree round trip of many seconds, on leaves that run many
+    commands. That is the first number to take once access arrives.
+56. **No model id is written into Graphene: the live list names them.** `tokenfactory.roles` picks the
+    Nemotron Ultra, Super and Nano out of `GET /v1/models` by name, the newest of each, a `-fast` twin
+    second. The executor's default is the smallest listed, the planner's the largest. `graphene init`
+    writes the ids it saw into the repo's config, so a run can be repeated. *Evidence:* none from the
+    live list tonight (no key). The picking is tested on a list shaped like the documented one.
+57. **Layer 2 is directory-grained, and what it cannot stop never comes back.** In a sandbox the
+    leaf's user owns the scope's files and whole-scope directories. In a directory where the scope
+    names a file it may create files (sticky bit), and nowhere else. POSIX grants "may create" per
+    directory, not per name. So a command there can make a file the scope does not name: it is never
+    brought back to the checkout, it is logged as a breach and removed before the next command, and the
+    check, which runs from the checkout, never sees it. *Evidence:* `tests/test_escape.py`. A redirect,
+    `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink over the file and `chmod` all exit non-zero.
+    A new `tests/conftest.py` and a link out are made, refused and never brought back. Every in-scope
+    write succeeds.
+58. **The bill is Token Factory's own usage at its list price.** Each call's `usage`, priced by the
+    `pricing` the verbose model list gives, goes into a `usage` row per attempt in the leaf's record,
+    per planner call in the plan's log, and into a ledger when one is named. The ledger's cap refuses
+    the next call at 100%, before it is sent.
+59. **The ConTree SDK is pinned at 0.3.6, and ConTree is spoken to in one class.** The docs' Getting
+    Started describes an SDK that takes a `contree_client` client. No release does that: 0.3.6 and
+    0.4.0.dev5 both take a config or a token. 0.4.0.dev5 also needs `contree-client~=0.2` where the CLI
+    needs `~=0.4`. `tests/test_sandbox_contract.py` binds every call Graphene makes to the pinned
+    SDK's signatures.
+60. **A leaf can be forked: N conversations from one checkpoint, and the check picks** (`--forks N`).
+    The first fork whose check passes is copied in, what its scope covers and nothing else, and
+    Graphene's own `done` decides. When every fork gives up, the leaf comes back with every path they
+    wanted. *Why:* the directive's thesis is "fork it again, or step up a size, and let the check
+    decide." `--model` given twice is the step up. Whether forks pay for themselves is a number for the
+    benchmark, not tonight.
+61. **`graphene init` chooses the planner and the executor, once per repository, and the person
+    chooses.** Both are kept in the store's meta, keys `planner` and `executor`, beside `plan_first`.
+    Each is a `--with` spec: `nemotron --model <ultra>`,
+    `nemotron --model <nano> --model <super> --placement local|sandbox`, `claude`, `codex`, or a
+    command.
+    - **At a terminal** it asks, numbered: Nemotron on Token Factory first and the default, then
+      Claude Code, Codex, and a command of the person's own. Run again, it shows what is set and
+      Enter keeps it.
+    - **Without a terminal**, `--planner` and `--executor` change only what they name. With neither,
+      what is set is kept, and what is not gets Nemotron when Token Factory answers, else Claude Code.
+    - **Nemotron is written with the ids the live list gave** (56): the largest of Ultra and Super
+      plans, and the two smallest listed do the leaves. The sandbox placement is chosen when ConTree
+      is configured. When Token Factory is out of reach it writes plain `nemotron`, and one line says
+      what could not be reached, after one try of at most 10 s.
+    - **Who uses it.** `run`, `ask` and `node split` (so `R`, `:ask` and `s`) start what is set, and
+      `--with` overrides one command. An agent's flags are refused, and an agent is never asked. The
+      status line names the executor after R only where the long form still fits it.
+
+    *Why:* one visible, reproducible choice per repository. It is the person's, because it runs
+    with their permissions and spends on their key. *Evidence:* `tests/test_init.py`, against the
+    fake and with no key.
+62. **The check runs in a clean worktree of the leaf's state. This changes decision 48.** How:
+    - Graphene commits the checkout as git sees it, committed or not, on no branch, through a
+      temporary index.
+    - It cuts a worktree from that commit under `.graphene/worktrees/` and runs the check there,
+      with the check's time limit and its stop covering the making of the worktree too.
+    - It removes the worktree however the check ends.
+
+    Nothing a check writes lands in the executor's tree, is counted as its change, or is committed with
+    its leaf. It is one function, `plan.run_check`, for a leaf's `done`, a sub-goal's roll-up and a
+    prompt leaf's close. For a leaf that worked in a sandbox, the check runs in a fork of the sandbox
+    instead (57).
+
+    Decision 48's move-aside is deleted, and its rule stays: new untracked files outside the scope
+    are left out of the check's tree, and what the check makes again is not counted. Nothing git
+    ignores is linked in. The review found that a `uv run` check re-pointed the checkout's `.venv` at
+    the temporary tree and then lost it. So a check makes its own environment: `uv run` builds one in
+    the tree, and a check that calls `.venv/bin/pytest` directly fails there.
+
+    No check gets `NEBIUS_API_KEY`. The check `graphene run` ran after an executor ended used to
+    inherit it. *Evidence:* the tests named in `beb6164`, `4213b6f` and
+    `test_the_check_graphene_runs_after_the_executor_never_gets_the_key` each fail on the code
+    before them.
+63. **Folding in `graphene watch`: vim's keys, and a folded row that counts.**
+    - **The keys.** `za` folds or unfolds (on the goal, all of it), `zo` and `zc` open and close,
+      `zR` and `zM` open and fold everything, and `zx` puts back the folds the screen opened with.
+    - **What folds by itself.** A subtree whose leaves are all done folds when the screen opens, and
+      when it finishes on screen. A tree taller than its pane (at 80×24, the ten rows above the node
+      pane) opens as its outline, one row a sub-goal. A sub-goal that arrives into such a tree while
+      the screen is open comes in folded. A fold the person makes stays until something inside it
+      changes.
+    - **The folded row.** It keeps decision 41's glyph, title and id. Its word column says how many
+      leaves are inside and in which states, whose move first: `6 done`, `1 came back, 4 more`.
+
+    *Evidence:* the before and after screens in `docs/process/nemotron/folding/`: thirty leaves at
+    80×24 were ten rows of one sub-goal, and are now seven rows that say where the person's move is.
+    *The cost you may strike:* folding a row whose count is wider than every word shown moves the ids
+    by up to about ten columns.
+64. **The demo URL is one file**: `graphene ui --export docs/demo/index.html`, run in the demo run's
+    repository. The page is drawn from `.graphene/` alone, so a run by executors that keep no records
+    of their own (Nemotron through `graphene run`) is drawn in full: the tree, each leaf's state and
+    its log as its record. It never carries what a check printed, a path to the checkout or the
+    executor, or a token. `.github/workflows/pages.yml` publishes `docs/demo/` and runs only when
+    started by hand; enabling Pages is yours.
+65. **The benchmark plays the person by one rule.** It takes a leaf's widen offer only when every
+    path it adds is inside the task's `intent_globs.txt`, refuses any other, and never takes `b`: a
+    sibling whose check is `true` would land and be counted as a leaf of the tree. A leaf that came
+    back without an offer it could take is not run again, since a free retry would inflate the
+    landed share. Rows are grouped by task, configuration, Graphene's sha, the executor's prompt
+    version and the tree, and accept is printed beside landed.
+66. **Graphene reads no Claude Code transcript, and the session-era modules are cut to what the plan,
+    the gate, the record and the page use. This finishes decision 25's follow-up.** `graphene ui` and
+    its page draw what the store holds: the plan, and the sessions the hooks recorded while they ran.
+    `graphene ingest --backfill` is gone; `graphene ingest hook` is not.
+    - **Renamed for what they do:** `shell.py` (was `attribute.py`) and `hooks.py` (was
+      `sources/claude_code.py`). `repo_root` lives in `store.py`, so the Nemotron executor no longer
+      imports the Claude Code module.
+    - **Deleted:** the session card's store methods and the `--since` picker. Their tables stay,
+      since migrations only add.
+    - **Size:** `src/graphene_map` lost 731 lines.
+
+    *Why:* no command needed the transcripts. Every session in a repository where `graphene init`
+    ran is recorded live by the hooks that hold it to the plan. And a stranger's Graphene should not
+    read their home directory.
+
+    *What it gives up:* a session run before `init`, or without the hooks, is not on the map, and a
+    Workflow's grouping of subagents is not drawn. A subagent's task, closing words and worktree
+    are read from what the hooks recorded (the review found them lost at first).
+
+    The map of what was kept, moved and deleted is `docs/process/nemotron/cut.md`.
+67. **A leaf in a sandbox forks its commit's checkpoint.** The repository is uploaded and set up once
+    for each clean commit, `--prepare` included, and kept in the store's meta. Every leaf at that
+    commit forks it and adds only its own scope's permissions. `--forks N` forks one sandbox. A leaf
+    with uncommitted work of its own gets a checkpoint of its own. *Why:* the thesis is "each leaf
+    runs in a Sandbox forked from the same checkpoint", and the judges found that each leaf and each
+    fork uploaded and set up again. *Evidence:* two leaves at one commit, the second made with two
+    operations (`tests/test_sandbox_state.py`).
+68. **An executor that cannot work at all hands its leaf back itself, with the cause** (no key, a
+    refused key, no sandbox, ConTree's own errors, the spend cap). *Why:* the run then does not send
+    it round again to fail the same way and run its check on untouched code. A judge saw a wrong key
+    come back as "3 attempts, the last one refused: AssertionError".
+69. **Only what git shows is read and sent.** The planner's `read` and the executor's `view` refuse a
+    file git ignores (a `.env`) and `.graphene/`. The sandbox takes only what git shows. *Why:* a judge
+    had the planner send a git-ignored secret to Token Factory. *The hole, written down:* in the local
+    placement a command the model runs can read what your user can, and its output goes to the model.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -437,6 +625,16 @@ left as written and the change is named here.
   it proposes after your prompt is accepted as yours, and the log says so.
 - A commit is the repository moving (decision 47): an agent that commits what it wrote outside every
   leaf, between leaves, is not seen at the next start.
+- The Nemotron executor in the local placement is held before the write by its tools only. A command
+  it runs can write anywhere your user can, and is caught at `done`, by git. In a sandbox a command
+  can make a new file in a directory where the scope names a file; it never reaches your checkout
+  (decision 57).
+- With Nemotron named, the prompts about your repository and the files the model reads go to Token
+  Factory, and in a sandbox the leaf's checkout goes to Sandboxes (decision 54).
+- An agent's plain `graphene init` fills a choice that is not set with Graphene's offer; it cannot name
+  another. A script that writes the store directly can change what `R` starts.
+- A check runs in a clean worktree with nothing git ignores in it, so a check that relies on an
+  ignored environment (`.venv/bin/pytest`, `node_modules`) must make its own there.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
 
@@ -469,6 +667,17 @@ left as written and the change is named here.
 2. The page gets the screen's row grammar and palette, then the tree's prune and run.
 3. The check in a clean worktree of the leaf's commit (decision 48's real fix).
 4. Codex hooks, then the vendor's sandbox as a third layer for scope, as before.
+
+## What comes next, from 25 September
+
+1. A Token Factory key (and a Sandboxes project) on the machine that runs the next session. Then
+   `uv run python docs/test/access.py`: the real Nemotron ids, one tool call per model, and ConTree's
+   own timings. Every number that matters waits on this and nothing else.
+2. The four fixed trees (`docs/test/trees/README.md`), scored by `docs/test/score_tree.py`. Then the
+   benchmark on feeds and inventory (`docs/test/bench.py`), tuning one lever at a time until 80% land
+   with accept passing, and the held-out report and logs with the frozen configuration.
+3. The live demo run, the video to `docs/demo/STORYBOARD.md`, the demo page on Pages, and
+   `docs/HACKATHON.md` in your words, before 30 October.
 
 ## How this file is used
 

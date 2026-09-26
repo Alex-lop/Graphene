@@ -9,11 +9,11 @@ import sys
 import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
 
-from graphene_debrief import ask as A
-from graphene_debrief import plan
-from graphene_debrief.cli import build
-from graphene_debrief.plan import PROPOSED, Caller, Refused
-from graphene_debrief.store import Store
+from graphene_map import ask as A
+from graphene_map import plan
+from graphene_map.cli import build
+from graphene_map.plan import PROPOSED, Caller, Refused
+from graphene_map.store import Store
 
 GOOD = """
 import json, os, sys
@@ -124,7 +124,7 @@ def test_the_planner_writes_nothing_and_takes_no_leaf(repo, monkeypatch):
             plan.start(store, "ids", Caller("planner:claude", False, "p1"), repo)
     import io
 
-    from graphene_debrief.sources.claude_code import hook_main
+    from graphene_map.hooks import hook_main
 
     event = {"session_id": "p1", "cwd": str(repo), "hook_event_name": "PreToolUse", "tool_name": "Write",
              "tool_input": {"file_path": str(repo / "api.py"), "content": "x"}}  # fmt: skip
@@ -230,7 +230,7 @@ def test_the_planner_is_refused_a_write_before_anything_is_accepted(repo, monkey
     """`ask` is first used on an empty plan, and there the hooks let a planner with write tools write."""
     import io
 
-    from graphene_debrief.sources.claude_code import hook_main
+    from graphene_map.hooks import hook_main
 
     def told(command):
         monkeypatch.setenv("GRAPHENE_PLANNER", "1")

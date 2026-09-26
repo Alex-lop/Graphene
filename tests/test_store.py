@@ -2,22 +2,18 @@
 
 import io
 import json
+import re
 import sqlite3
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from graphene_debrief.cli import build
-from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_debrief.sources.claude_code import hook_main, project_dir_name
-from graphene_debrief.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
-
-FIXTURES = Path(__file__).parent / "fixtures"
-sys.path.insert(0, str(FIXTURES))
-import make_transcript_fixture as fixture  # noqa: E402
+from graphene_map.cli import build
+from graphene_map.hooks import hook_main
+from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
+from graphene_map.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
 
 def test_opens_in_wal_mode_with_schema(tmp_path):
@@ -156,33 +152,6 @@ def test_a_huge_write_keeps_its_path_and_its_content_column(tmp_path):
     assert back.new_content == content  # the diff is computed from this column, so it is kept whole
 
 
-def test_explanations_and_debrief_runs(tmp_path):
-    with Store.open(tmp_path) as store:
-        assert store.last_debrief_run() is None
-        run = store.add_debrief_run(["s1", "s2"], "t")
-        assert store.last_debrief_run() == run
-        store.set_explanation("p1", "a.py", "Edited a.py", "null", "t")
-        assert store.explanation("p1", "a.py") == ("Edited a.py", "null", None)
-        store.set_explanation("p1", "a.py", "Better", "claude", "t2", "haiku")
-        assert store.explanation("p1", "a.py") == ("Better", "claude", "haiku")
-        assert store.explanation("p1", "zzz") is None
-
-
-def test_delete_session_data_keeps_explanations(tmp_path):
-    with Store.open(tmp_path) as store:
-        store.upsert_session(Session(id="s", repo="r"))
-        store.add_prompt(Prompt(id="p1", session_id="s", ordinal=1, timestamp="t", text="x"))
-        store.add_event(
-            ToolEvent(id="e", session_id="s", prompt_id="p1", timestamp="t", tool="Bash", input={})
-        )
-        store.set_explanation("p1", "a.py", "text", "null", "t")
-        store.delete_session_data("s")
-        assert store.session("s") is None
-        assert store.prompts("s") == []
-        assert store.events("s") == []
-        assert store.explanation("p1", "a.py") == ("text", "null", None)
-
-
 def test_ids_are_scoped_to_their_session(tmp_path):
     with Store.open(tmp_path) as store:
         for sid in ("a", "b"):
@@ -198,17 +167,10 @@ def test_ids_are_scoped_to_their_session(tmp_path):
 
 
 @pytest.fixture
-def repo_with_transcripts(tmp_path, monkeypatch):
-    """A git repo, current directory, with the synthetic transcript under CLAUDE_CONFIG_DIR."""
+def repo(tmp_path, monkeypatch):
+    """A git repo, the current directory."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr(fixture, "CWD", str(tmp_path))
-    target = tmp_path / "claude" / "projects" / project_dir_name(tmp_path)
-    for path, text in fixture.render().items():
-        out = target / path.relative_to(fixture.OUT)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text)
     return tmp_path
 
 
@@ -256,22 +218,6 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
         assert tables >= {*V1_TABLES, "agents", "commits", "commit_files", "nodes", "node_log", "plan_meta"}
 
 
-def test_migrating_makes_the_next_command_read_the_transcripts_again(repo_with_transcripts):
-    repo = repo_with_transcripts
-    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0  # any command that backfills
-    with Store.open(repo) as store:
-        (sid,) = [s.id for s in store.sessions()]
-        assert store.transcript_stat(sid) is not None
-        store.conn.execute("DELETE FROM agents")  # what a store read by the old parser looks like
-    downgrade_to_v1(repo / ".graphene" / "graphene.db")
-    with Store.open(repo) as store:
-        assert store.transcript_stat(sid) is None  # migrated: the read is forgotten, the session is not
-        assert [s.id for s in store.sessions()] == [sid]
-    assert CliRunner().invoke(build(), ["ui", "--json"]).exit_code == 0
-    with Store.open(repo) as store:
-        assert [a.id for a in store.agents(sid)] == [fixture.AGENT]  # read again, by the new parser
-
-
 def test_the_hook_migrates_an_older_store_and_records_the_event(tmp_path):
     (tmp_path / ".git").mkdir()
     Store.open(tmp_path).close()
@@ -299,19 +245,22 @@ def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
         (commit,) = store.commits_between("2026-03-01T09:00:00.000Z", "2026-03-01T10:00:00.000Z")
         assert (commit.session_id, commit.agent_id, commit.event_id) == ("s", "a1", "t9")
         assert commit.files == [("app/parser.py", "A")]
-        store.delete_session_data("s")
-        assert store.agents("s") == [] and len(store.commits_between(when, when)) == 1
 
 
-def test_a_corrupt_store_is_rebuilt_and_still_answers(repo_with_transcripts):
-    repo = repo_with_transcripts
+def test_a_corrupt_store_is_rebuilt_and_still_answers(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
     result = CliRunner().invoke(build(), ["ui", "--json"])
     output = result.output + result.stderr
-    assert result.exit_code == 0, output
+    assert result.exit_code == 1 and "Traceback" not in output  # rebuilt empty: nothing to draw yet
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
-    assert "store rebuilt" in output and "11111111" in result.output
+    assert "store rebuilt" in output
+    for name, extra in (("UserPromptSubmit", {"prompt": "list it"}), ("PostToolUse", {"tool_name": "Bash"})):
+        event = {"hook_event_name": name, "session_id": "11111111", "cwd": str(repo), **extra}
+        assert hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=io.StringIO()) == 0
+    result = CliRunner().invoke(build(), ["ui", "--json"])
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "11111111" in result.output  # the rebuilt store records and answers
 
 
 def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
@@ -324,8 +273,7 @@ def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
         assert (tmp_path / ".graphene" / name).read_text() == f"not a database {n}"
 
 
-def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo_with_transcripts):
-    repo = repo_with_transcripts
+def test_the_cli_refuses_a_store_from_a_newer_graphene_in_one_line_and_leaves_it_alone(repo):
     Store.open(repo).close()
     db = repo / ".graphene" / "graphene.db"
     set_version(db, SCHEMA_VERSION + 1)
@@ -344,7 +292,7 @@ def test_the_hook_skips_a_store_from_a_newer_graphene_and_leaves_it_alone(tmp_pa
     event = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(tmp_path)})
     assert hook_main(io.StringIO(event), cwd=tmp_path) == 0
     assert capsys.readouterr().out == ""
-    assert db.read_bytes() == before  # not rebuilt, not backfilled, not even written to
+    assert db.read_bytes() == before  # not rebuilt, not even written to
     assert list((tmp_path / ".graphene").glob("*.bak")) == []
     log = (tmp_path / ".graphene" / "ingest.log").read_text()
     assert "run graphene" in log and "Traceback" not in log
@@ -358,3 +306,26 @@ def test_a_huge_error_keeps_its_ends_instead_of_being_lost_whole(tmp_path):
         )
         kept = store.events("s")[0].response["error"]
     assert kept.startswith("permission denied") and kept.endswith("the last line") and len(kept) < 10_000
+
+
+def test_values_are_bound_to_plain_question_marks_only(tmp_path, monkeypatch):
+    """Python 3.12.0 to 3.12.3 warn when a sequence is bound to a numbered ?1, and 3.14 refuses one
+    bound to a named :x. A plain ? is read the same way by every Python the package allows."""
+    bound = []
+
+    class Recording(sqlite3.Connection):
+        def execute(self, sql, parameters=(), /):
+            if parameters and not isinstance(parameters, dict):
+                bound.append(sql)
+            return super().execute(sql, parameters)
+
+    connect = sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: connect(*a, factory=Recording, **k))
+    with Store.open(tmp_path) as store:
+        store.put_node({"id": "a", "state": "open"})
+        store.put_node({"id": "b", "state": "open"})
+        store.put_node({"id": "a", "state": "done"})
+        assert store.node_row("a") == {"id": "a", "state": "done"}
+        assert store.node_seqs() == {"a": 1, "b": 2}  # an update keeps the node's place
+        assert store.did_something("s") is False
+    assert bound and [sql for sql in bound if re.search(r"\?\d|[:@$][A-Za-z_]", sql)] == []

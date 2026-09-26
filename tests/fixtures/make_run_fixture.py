@@ -1,4 +1,4 @@
-"""Generate the synthetic *run* fixture under tests/fixtures/run.
+"""The synthetic *run*: one invented scenario, loaded into a store as the ground truth of the map.
 
 One invented run on 2026-03-02 that exercises everything the graph has to draw: a main agent, a
 Workflow group of six subagents, two plain `Agent` subagents, two worktrees (one inside the repo,
@@ -7,13 +7,10 @@ one outside it), a second top-level session in the outside worktree, heredoc wri
 record at all, a check that fails then passes, a refused call, a write outside the repo, two agents
 on one file in overlapping windows, and a `TaskCreate` list.
 
-The scenario is said once, as `Turn` and `CommitSpec` data. The transcripts (`render`), the hook
-events (`hook_events`), the real git repo (`build_repo`), the ground truth (`expected`) and the
-direct store load (`load`) are all derived from it. Nothing here reads a clock, a random source or
-the real machine: rendering twice is byte-identical, and every path is invented.
-
-Run ``uv run python tests/fixtures/make_run_fixture.py`` to rewrite tests/fixtures/run;
-tests/test_run_fixture.py checks the checked-in copy against this module.
+The scenario is said once, as `Turn` and `CommitSpec` data. The hook events (`hook_events`), the
+real git repo (`build_repo`), the ground truth (`expected`) and the direct store load (`load`) are
+all derived from it. Nothing here reads a clock, a random source or the real machine: deriving
+twice gives the same data, and every path is invented.
 
 Commits in S1's window, and the agent each belongs to::
 
@@ -37,23 +34,19 @@ Coverage for S1 over the 12 distinct paths in those commits::
     window           1   pyproject.toml                (committed in the window by no agent)
     nothing          1   pyproject.toml                (a `window` file counts as nothing)
 
-Two traps are deliberate. `gitBranch` reads "main" on every record, w3's worktree records included,
-because concurrent agents contaminate it: the worktree branch is only in the meta.json. And w4's
-`bashEditDiff` names one of the three files it generated, with `moreFiles: 2` for the rest.
+One trap is deliberate: w4's `bashEditDiff` names one of the three files it generated, with
+`moreFiles: 2` for the rest.
 """
 
 from __future__ import annotations
 
-import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from make_transcript_fixture import bash_ok, edit_result
-
-from graphene_debrief.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_debrief.sources.claude_code import project_dir_name
+from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
 
 ROOT = "/home/dev/project"
 ELSEWHERE = "/home/dev/wt/api"
@@ -63,7 +56,6 @@ P1 = "aaaaaaaa-1111-4111-8111-111111111111"
 P2 = "bbbbbbbb-2222-4222-8222-222222222222"
 RUN = "wf_ab12cd34-ef5"
 DATE = "2026-03-02"
-OUT = Path(__file__).parent / "run"
 MODEL = "claude-fable-5-1"
 WT_REL = ".claude/worktrees/agent-w3"
 W3_BRANCH = "worktree-agent-w3"
@@ -175,10 +167,6 @@ PROMPT_TEXT = {
     S2: ("In this worktree, make the API return dictionaries instead of lists, and lint it with a subagent."),
 }
 PROMPT_ID = {S1: P1, S2: P2}
-FINAL_TEXT = {
-    S1: "The modules, the guide and the API are in. The API is on a branch of its own.",
-    S2: "The API returns dictionaries now and ruff is clean.",
-}
 DENIAL = (
     "This command was denied by the Claude Code auto mode classifier. Reason: [pushes to a shared remote]"
 )
@@ -207,19 +195,29 @@ TASKS = (
     ("task-2", "Verify util and core", "Verifying the modules"),
     ("task-3", "Write the guide and add the HTTP API", "Writing the guide and the API"),
 )
-JOURNAL_KEYS = {
-    W1: "3f2a9c15b04e7d8861ca0b2e4d97f350",
-    W2: "8b1d4e6a2c90f57341ab8c6d0e2f9174",
-    W3: "c40f8a71d2e6b39508f1a4c72d6b0e95",
-    W4: "5e7b2d91a8c034f61b9d7e02c53a8f46",
-    W5: "9a3c7e05b1d84f2760ce5b93a07d1f28",
-    W6: "24d8f36b9e01a75c48b2d06f1e93c7a5",
-}
 
 
 def stamp(hms: str) -> str:
-    """``"09:01:10"`` -> the transcript timestamp for it."""
+    """``"09:01:10"`` -> the recorded timestamp for it."""
     return f"{DATE}T{hms}.000Z"
+
+
+def bash_ok(stdout: str) -> dict:
+    """What Claude Code reports for a Bash call that exited 0."""
+    return {"stdout": stdout, "stderr": "", "interrupted": False, "isImage": False, "noOutputExpected": False}
+
+
+def edit_result(path: str, old: str, new: str, original: str) -> dict:
+    """What Claude Code reports for an Edit call."""
+    return {
+        "filePath": path,
+        "oldString": old,
+        "newString": new,
+        "originalFile": original,
+        "replaceAll": False,
+        "structuredPatch": [],
+        "userModified": False,
+    }
 
 
 def git_date(hms: str) -> str:
@@ -239,15 +237,15 @@ def short(name: str) -> str:
 
 @dataclass(frozen=True)
 class Step:
-    """One recorded tool call: how it appears in the transcript, and what the store must hold."""
+    """One recorded tool call: what Claude Code reports of it, and what the store must hold."""
 
     id: str
-    at: str  # the assistant record that made the call
-    done: str  # the user record that carries its result
+    at: str  # when the call was made
+    done: str  # when its result came back
     tool: str
     input: dict
-    text: str  # the tool_result block's own content
-    result: object = None  # toolUseResult; None renders a record without that key
+    text: str  # the result's own text
+    result: object = None  # the structured result (the hook's tool_response); None when there is none
     ok: bool = True
     path: str | None = None  # what the store's file_path must be
     old: str | None = None
@@ -271,13 +269,9 @@ class Turn:
     prompt: str | None = None
     phase: str | None = None
     worktree: str | None = None
-    worktree_branch: str | None = None
-    spawned_with_worktree: bool = False
     parent_tool_use_id: str | None = None
     workflow_run: str | None = None
-    journal_key: str | None = None
     closing: str | None = None
-    directory: str = ""  # where its files sit under the projects folder; "" for a main agent
 
 
 @dataclass(frozen=True)
@@ -538,8 +532,6 @@ def _workflow_turn(agent: str, **kwargs) -> Turn:
         session=S1,
         type="workflow-agent",
         workflow_run=RUN,
-        journal_key=JOURNAL_KEYS[agent],
-        directory=f"{S1}/subagents/workflows/{RUN}",
         **kwargs,
     )
 
@@ -547,7 +539,6 @@ def _workflow_turn(agent: str, **kwargs) -> Turn:
 def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
     """Every agent of the run, in a stable order: S1's main agent, its eight subagents, then S2's."""
     wt3 = f"{root}/{WT_REL}"
-    plain = f"{S1}/subagents"
 
     main1 = Turn(
         id=None,
@@ -584,7 +575,7 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
                     "runId": RUN,
                     "summary": "Four agents built the modules, two verified them.",
                     "transcriptDir": (
-                        f"/home/dev/.claude/projects/{project_dir_name(Path(root))}"
+                        f"/home/dev/.claude/projects/{re.sub(r'[^A-Za-z0-9]', '-', root)}"
                         f"/{S1}/subagents/workflows/{RUN}"
                     ),
                     "scriptPath": f"{root}/.claude/workflows/build-the-tool.py",
@@ -712,8 +703,6 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
         prompt=TASK_W3,
         phase="Build",
         worktree=wt3,
-        worktree_branch=W3_BRANCH,
-        spawned_with_worktree=True,
         started="09:01:14",
         ended="09:05:20",
         closing=CLOSE_W3,
@@ -879,7 +868,6 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
         started="09:30:10",
         ended="09:36:00",
         closing=CLOSE_A1,
-        directory=plain,
         steps=(
             _edit_step(
                 "toolu_a1_edit",
@@ -926,12 +914,9 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
         prompt=TASK_A2,
         parent_tool_use_id="toolu_ag2",
         worktree=elsewhere,
-        worktree_branch=API_BRANCH,
-        spawned_with_worktree=True,
         started="09:30:15",
         ended="09:40:00",
         closing=CLOSE_A2,
-        directory=plain,
         steps=(
             Step(
                 id="toolu_a2_write",
@@ -1004,11 +989,9 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
         prompt=TASK_SH,
         parent_tool_use_id="toolu_s2_agent",
         worktree=elsewhere,
-        worktree_branch=API_BRANCH,
         started="09:36:00",
         ended="09:37:30",
         closing=CLOSE_SH,
-        directory=f"{S2}/subagents",
         steps=(
             Step(
                 id="toolu_sh_lint",
@@ -1024,146 +1007,6 @@ def _scenario(root: str, elsewhere: str) -> tuple[Turn, ...]:
     )
 
     return (main1, w1, w2, w3, w4, w5, w6, a1, a2, main2, helper)
-
-
-# -- transcripts ----------------------------------------------------------------------------------
-
-
-def _record(turn: Turn, kind: str, hms: str, **extra) -> dict:
-    record = {
-        "parentUuid": None,
-        "isSidechain": turn.id is not None,
-        "userType": "external",
-        "cwd": turn.cwd,
-        "sessionId": turn.session,
-        "version": "2.1.274",
-        "gitBranch": "main",  # contaminated on purpose: w3 and a2 are not on main
-        "type": kind,
-        "uuid": f"u-{turn.id or 'main'}-{hms.replace(':', '')}",
-        "timestamp": stamp(hms),
-    }
-    if turn.id is not None:
-        record["agentId"] = turn.id
-    record.update(extra)
-    return record
-
-
-def _step_records(turn: Turn, step: Step) -> list[dict]:
-    block = {"tool_use_id": step.id, "type": "tool_result", "content": step.text}
-    if not step.ok:
-        block["is_error"] = True
-    result = _record(
-        turn,
-        "user",
-        step.done,
-        promptId=PROMPT_ID[turn.session],
-        message={"role": "user", "content": [block]},
-    )
-    if step.result is not None:
-        result["toolUseResult"] = step.result
-    call = _record(
-        turn,
-        "assistant",
-        step.at,
-        requestId=f"req-{step.id}",
-        message={
-            "model": MODEL,
-            "id": f"msg-{step.id}",
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "tool_use", "id": step.id, "name": step.tool, "input": step.input}],
-            "stop_reason": "tool_use",
-            "usage": {"input_tokens": 10, "output_tokens": 20},
-        },
-    )
-    return [call, result]
-
-
-def _turn_records(turn: Turn) -> list[dict]:
-    opening = {"promptSource": "typed", "origin": {"kind": "human"}} if turn.id is None else {}
-    text = PROMPT_TEXT[turn.session] if turn.id is None else turn.prompt
-    records = [
-        _record(
-            turn,
-            "user",
-            turn.started,
-            promptId=PROMPT_ID[turn.session],
-            message={"role": "user", "content": text},
-            **opening,
-        )
-    ]
-    for step in turn.steps:
-        records.extend(_step_records(turn, step))
-    if turn.id is None:
-        records.append(
-            _record(
-                turn,
-                "assistant",
-                turn.ended,
-                message={
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": FINAL_TEXT[turn.session]}],
-                },
-            )
-        )
-    return records
-
-
-def _meta(turn: Turn) -> dict:
-    """The ``agent-<id>.meta.json`` sibling. A Workflow agent has no ``toolUseId``: only the
-    ``wf_`` directory name, which is the parent Workflow call's ``runId``, ties it to that call."""
-    if turn.workflow_run:
-        meta = {
-            "agentType": turn.type,
-            "description": turn.task,
-            "requestNonInteractive": True,
-            "requestShape": "prompt",
-            "spawnDepth": 1,
-            "workflowPhase": turn.phase,
-        }
-    else:
-        meta = {
-            "agentType": turn.type,
-            "description": turn.task,
-            "toolUseId": turn.parent_tool_use_id,
-            "spawnDepth": 1,
-            "requestShape": "prompt",
-            "requestNonInteractive": True,
-        }
-    if turn.spawned_with_worktree:
-        meta["spawnedWithWorktree"] = True
-        meta["worktreePath"] = turn.worktree
-        if not turn.workflow_run:
-            meta["worktreeBranch"] = turn.worktree_branch
-    return meta
-
-
-def _journal(turns: tuple[Turn, ...]) -> str:
-    """The Workflow run's journal: starts, then results as they came back. It holds no labels."""
-    workflow = [t for t in turns if t.workflow_run]
-    lines = [{"type": "started", "agentId": t.id, "key": f"v2:{t.journal_key}"} for t in workflow]
-    lines += [
-        {"type": "result", "agentId": t.id, "key": f"v2:{t.journal_key}", "result": t.closing}
-        for t in sorted(workflow, key=lambda t: t.ended)
-    ]
-    return "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
-
-
-def render(root: str = ROOT, elsewhere: str = ELSEWHERE) -> dict[str, str]:
-    """Relative path under a Claude ``projects/`` directory -> file text."""
-    turns = _scenario(root, elsewhere)
-    folder = {S1: project_dir_name(Path(root)), S2: project_dir_name(Path(elsewhere))}
-    out: dict[str, str] = {}
-    for turn in turns:
-        text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in _turn_records(turn))
-        if turn.id is None:
-            out[f"{folder[turn.session]}/{turn.session}.jsonl"] = text
-            continue
-        stem = f"{folder[turn.session]}/{turn.directory}/agent-{turn.id}"
-        out[f"{stem}.jsonl"] = text
-        out[f"{stem}.meta.json"] = json.dumps(_meta(turn), ensure_ascii=False, indent=2) + "\n"
-    out[f"{folder[S1]}/{S1}/subagents/workflows/{RUN}/journal.jsonl"] = _journal(turns)
-    return dict(sorted(out.items()))
 
 
 # -- hook events ----------------------------------------------------------------------------------
@@ -1480,15 +1323,3 @@ def load(store, root: str = ROOT, elsewhere: str = ELSEWHERE) -> None:
             store.add_event(event)
         for commit in _commits():
             store.add_commit(commit)
-
-
-def main() -> None:
-    for rel, text in render().items():
-        path = OUT / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        print(f"wrote {path}")
-
-
-if __name__ == "__main__":
-    main()

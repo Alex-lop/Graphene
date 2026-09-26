@@ -9,9 +9,9 @@ import sys
 
 from test_plan_cli import agent, person, repo  # noqa: F401  (fixtures)
 
-from graphene_debrief import plan
-from graphene_debrief.store import Store
-from graphene_debrief.tui import Watch
+from graphene_map import plan
+from graphene_map.store import Store
+from graphene_map.tui import Watch
 
 TREE = """\
 goal: users come back with their ids
@@ -398,7 +398,7 @@ def test_colon_stop_reaches_a_parallel_run_by_the_pid_and_start_its_lock_names(r
     reaching a parallel run started from another terminal."""
     import subprocess
 
-    from graphene_debrief import run as R
+    from graphene_map import run as R
 
     # its own SIGINT handler: a CI step may start with SIGINT ignored, and a child inherits that
     # (and only after it says so: a SIGINT before that is ignored, which raced on Linux CI)
@@ -431,8 +431,8 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
     proposed(repo)
     child = (
         "import asyncio, subprocess, types\n"
-        "from graphene_debrief import tui\n"
-        "from graphene_debrief.store import Store\n"
+        "from graphene_map import tui\n"
+        "from graphene_map.store import Store\n"
         f"repo = {str(repo)!r}\n"
         "real = subprocess.Popen\n"  # the run is a sleep, so the screen's own git calls stay real
         "tui.subprocess = types.SimpleNamespace(Popen=lambda argv, **kw: real(['sleep', '20'], **kw),\n"
@@ -454,7 +454,7 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
 
 # Recheck 29 (fixed)
 def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, monkeypatch):
-    from graphene_debrief import server
+    from graphene_map import server
 
     served = []
     monkeypatch.setattr(server, "make_server", lambda *a, **k: served.append(a))
@@ -467,7 +467,7 @@ def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, 
 
 # Recheck 30 (fixed)
 def test_a_node_moved_under_a_later_one_is_drawn_under_it(repo):
-    from graphene_debrief.tui import _walk
+    from graphene_map.tui import _walk
 
     proposed(repo)
     person("plan", "accept")
@@ -515,7 +515,7 @@ def test_escape_ends_a_search_so_n_takes_the_offer_again(repo):
 def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
     from test_plan_cli import runner
 
-    from graphene_debrief.cli import build
+    from graphene_map.cli import build
 
     person_proposes = runner.invoke(  # the person's own tree: no planner named, the longest top line
         build(), ["plan", "propose", "-"], env={"GRAPHENE_AS": "person:alex"}, input=TREE
@@ -532,7 +532,7 @@ def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
 # Recheck 36 (fixed)
 def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, monkeypatch):
     proposed(repo)
-    monkeypatch.setattr("graphene_debrief.tui.time.strftime", lambda _: "20260923-040553")  # one second
+    monkeypatch.setattr("graphene_map.tui.time.strftime", lambda _: "20260923-040553")  # one second
 
     async def before(app, pilot):
         app.background(["node", "show", "docs"])
@@ -656,9 +656,9 @@ def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
     import subprocess
     from pathlib import Path
 
-    import graphene_debrief
+    import graphene_map
 
-    root = Path(graphene_debrief.__file__).resolve().parents[2]
+    root = Path(graphene_map.__file__).resolve().parents[2]
     listed = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True)
     held = set(listed.stdout.split())
     links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)", (root / "README.md").read_text(encoding="utf-8"))
@@ -679,7 +679,7 @@ def every_state(repo):
     import subprocess
     import time
 
-    from graphene_debrief.model import ToolEvent
+    from graphene_map.model import ToolEvent
 
     def commit():
         subprocess.run(
@@ -750,9 +750,9 @@ def test_every_row_reads_in_one_grammar_at_80_and_120(repo):
     words = {"api": "0/5 done", "ids": "running", "docs": "came back", "more": "waiting",
              "later": "to fill in", "mine": "yours", "schema": "1/3 done", "rule": "review", "table": "done",
              "ready1": "ready", "idea": "proposed"}  # fmt: skip
-    for size in SIZES:
-        seen, app = watch(repo, [], size=size)
-        end, _ = watch(repo, ["G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
+    for size in SIZES:  # all open: at 80x24 its twelve rows are taller than the pane, and fold
+        seen, app = watch(repo, ["z", "R"], size=size)
+        end, _ = watch(repo, ["z", "R", "G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
         rows = [r.rstrip() for r in [*seen["tree"], *end["tree"]] if r.strip()]
         assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/8 done"), rows
         mine = {i: next(r for r in rows if f"  {i} " in r + " ") for i in words}
@@ -881,7 +881,7 @@ def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
 def test_colour_says_who_has_the_move_and_red_is_only_a_command_that_failed(repo):
     from rich.style import Style
 
-    from graphene_debrief.tui import _walk
+    from graphene_map.tui import _walk
 
     every_state(repo)
     palette = {word: plan.look(word)[1] for word in ("came back", "review", "yours", "running", "proposed")}
@@ -1085,3 +1085,275 @@ def test_search_finds_a_row_by_the_word_its_state_reads_as(repo):
     every_state(repo)
     seen, _ = watch(repo, ["slash", *"came back", "enter"])
     assert seen["cursor"] == "docs"
+
+
+# -- folding (the Nemotron directive, item 7): a thirty-leaf plan at 80x24 --------------------------
+
+
+def land(repo, store, node_id, path, text):
+    """A leaf done by an executor, its work committed, as a run leaves it."""
+    import subprocess
+
+    plan.start(store, node_id, RUN, repo)
+    (repo / path).write_text(text)
+    plan.finish(store, node_id, RUN, checkout=repo)
+    git = ["git", "-c", "user.email=t@e.com", "-c", "user.name=T"]
+    subprocess.run([*git, "add", path], cwd=repo, check=True)
+    subprocess.run([*git, "commit", "-qm", node_id], cwd=repo, check=True)
+
+
+def api_done(repo):
+    """TREE accepted, and both leaves under the API done: a finished subtree beside a ready leaf."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        land(repo, store, "docs", "README.md", "users come back with their ids\n")
+
+
+def rows_of(seen):
+    return [r.rstrip() for r in seen["tree"] if r.strip()]
+
+
+def test_a_finished_subtree_opens_folded_and_its_row_counts_its_leaves(repo):
+    """A folded row read `done` or `2/5 done`, the same as open: nothing said what was inside. Now its
+    word, in the word's column, is how many leaves are inside and in which states."""
+    api_done(repo)
+    for size in SIZES:
+        seen, _ = watch(repo, ["j"], size=size)
+        rows = rows_of(seen)
+        api, schema = (next(r for r in rows if title in r) for title in ("the API", "the schema"))
+        assert "▶ ✓ the API" in api and api.endswith("  2 done"), rows
+        assert not any("users returns ids" in r for r in rows)
+        assert api.index("  api ") == schema.index("  schema ")  # ids under ids
+        assert api.index("2 done") == schema.index("ready")  # words under words
+        assert "za unfold" in seen["status"]
+        opened, _ = watch(repo, ["j", "z", "o"], size=size)
+        rows = rows_of(opened)
+        assert next(r for r in rows if "the API" in r).endswith("  done")  # open: its own word again
+        assert any("users returns ids" in r for r in rows) and "za unfold" not in opened["status"]
+        goal, _ = watch(repo, ["z", "a"], size=size)  # the goal's row folds like any other: every leaf
+        assert rows_of(goal) == [rows_of(goal)[0]] and rows_of(goal)[0].endswith("  1 ready, 2 done")
+        assert "za unfold" in goal["status"]
+
+
+def test_a_folded_row_says_whose_move_is_inside_first_and_counts_the_rest(repo):
+    """The states inside, as many as fit whole, whose move first (the person's, then the executors'),
+    the rest as `n more`; each state in its own colour, the glyph the node's own."""
+    from graphene_map.tui import inside, row
+
+    assert inside(["done"] * 12) == "12 done"
+    assert inside(["done", "running", "done", "done"]) == "1 running, 3 done"
+    assert inside(["done", "running", "came back", "waiting", "proposed", "done"]) == "1 came back, 5 more"
+    label = row("○", "0/5 done", "the API", "api", 60, 3, 19, inside="1 came back, 4 more")
+    styles = {label.plain[s.start : s.end].strip(): str(s.style) for s in label.spans}
+    assert styles.get("1 came back") == "magenta" and "4 more" not in styles and "○" not in styles
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = watch(repo, ["j", "z", "c"], size=size)  # the API: running, came back, waiting, …
+        rows = rows_of(seen)
+        api = next(r for r in rows if "the API" in r)
+        assert api.endswith("  1 came back, 4 more") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
+        assert rows[0].index("1/8 done") == api.index("1 came back")  # the goal's word, above it
+        seen, _ = at(repo, "schema", size, keys=["z", "c"])
+        schema = next(r for r in rows_of(seen) if "  schema " in r)
+        assert schema.endswith("  1 review, 2 more"), schema
+
+
+def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopened(repo):
+    """It folded only when the screen opened: a sub-goal that finished while you watched stayed open,
+    with all its leaves. A fold you make yourself stays until something inside changes."""
+    from graphene_map.tui import _walk
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+
+    async def before(app, pilot):
+        def api():
+            return next(n for n in _walk(app.tree.root) if n.data == "api")
+
+        async def then(act):
+            with Store.open(repo) as store:
+                act(store)
+            app.refresh_plan()
+            await pilot.pause()
+
+        assert api().is_expanded  # docs is still to do
+        await then(lambda s: land(repo, s, "docs", "README.md", "ids\n"))
+        assert not api().is_expanded  # it finished while the screen was open
+        await then(lambda s: plan.reopen(s, "docs", plan.Caller("alex", True), "the example is wrong"))
+        assert api().is_expanded  # something inside moved: open again
+        await then(lambda s: land(repo, s, "docs", "README.md", "ids, with an example\n"))
+        assert not api().is_expanded
+        app.tree.move_cursor(api())
+        for key in ("z", "o"):
+            await pilot.press(key)
+        await then(lambda s: plan.start(s, "schema", RUN, repo))  # something else moves: a rebuild
+        assert api().is_expanded  # the person opened it: it stays open
+
+    watch(repo, [], before=before)
+
+
+def test_zx_folds_as_the_screen_opened_and_keeps_the_cursor_in_sight(repo):
+    """vim's zx: the folds as they were when the screen opened, then the row under the cursor shown."""
+    api_done(repo)
+    seen, _ = watch(repo, ["z", "R", "z", "x"])
+    rows = rows_of(seen)
+    assert next(r for r in rows if "the API" in r).endswith("  2 done")
+    assert not any("users returns ids" in r for r in rows)
+    seen, _ = watch(repo, ["z", "R", "j", "j", "z", "x"])  # on ids, inside the finished subtree
+    assert seen["cursor"] == "ids" and any("users returns ids" in r for r in rows_of(seen))
+
+
+def six_parts(store, by=None, parts=range(6)):
+    """The goal, and sub-goals of five leaves each: accepted when a person proposes them, else the
+    planner's tree, proposed."""
+    alex = plan.Caller("alex", True)
+    plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
+    plan.propose(store, [
+        item
+        for s in parts
+        for item in ({"id": f"s{s}", "title": f"the part number {s} of the importer"}, *(
+            {"id": f"s{s}-{k}", "title": f"leaf {k} of part {s}", "parent": f"s{s}",
+             "scope": [f"f{s}{k}.py"], "check": "true"} for k in range(5)))
+    ], by or alex)  # fmt: skip
+
+
+def thirty(repo):
+    """Six sub-goals of five leaves: one finished, one with a leaf that came back, one with a
+    proposal under it, three ready."""
+    with Store.open(repo) as store:
+        six_parts(store)
+        for k in range(5):
+            land(repo, store, f"s0-{k}", f"f0{k}.py", "x\n")
+        plan.start(store, "s1-0", SESSION, repo)
+        plan.release(store, "s1-0", SESSION, "it needs the sku table, which is outside its scope")
+        plan.propose(store, [{"id": "s2-new", "title": "an empty row is skipped", "parent": "s2",
+                              "scope": ["n.py"], "check": "true"}], SESSION)  # fmt: skip
+
+
+def test_a_thirty_leaf_plan_reads_at_80x24_as_its_outline(repo):
+    """A tree taller than the screen, finished subtrees folded, opens as its outline: each sub-goal one
+    row that counts what is inside, what waits on the person first, and the goal's pane names it. At
+    120x36 it fits, and opens with only the finished subtree folded."""
+    thirty(repo)
+    seen, _ = watch(repo, [])
+    rows = rows_of(seen)
+    words = ["5 done", "1 came back, 4 ready", "1 proposed, 5 ready", "5 ready", "5 ready", "5 ready"]
+    words = {f"s{s}": w for s, w in enumerate(words)}
+    assert len(rows) == 7 and seen["sideways"] == 0, rows  # the goal and its six sub-goals, whole
+    for i, word in words.items():
+        mine = next(r for r in rows if f"  {i} " in r)
+        assert mine.lstrip("├└│ ").startswith("▶") and mine.endswith(f"  {word}"), (i, mine)
+    assert "s1-0 came back" in " ".join(" ".join(seen["side"]).split())
+    wide, _ = watch(repo, [], size=(120, 36))
+    rows = rows_of(wide)
+    assert len(rows) == 1 + 6 + 5 * 5 + 1 and any("leaf 0 of part 1" in r for r in rows)
+    assert next(r for r in rows if "  s0 " in r).endswith("  5 done")
+
+
+def test_the_outline_is_measured_against_the_tree_pane_not_the_screen(repo):
+    """The outline's rule compared the tree with the whole screen (21 rows at 80x24), but below 110
+    columns the tree has half of it (10 rows): thirty leaves with four parts done are 17 rows, and the
+    leaf that came back, in the last part, opened out of sight."""
+    with Store.open(repo) as store:
+        six_parts(store)
+        for s in range(4):
+            for k in range(5):
+                land(repo, store, f"s{s}-{k}", f"f{s}{k}.py", "x\n")
+        plan.start(store, "s5-4", SESSION, repo)
+        plan.release(store, "s5-4", SESSION, "it needs the sku table, which is outside its scope")
+    seen, _ = watch(repo, [])
+    rows = rows_of(seen)
+    assert len(rows) == 7 and rows[-1].endswith("  1 came back, 4 ready"), rows
+    wide, _ = watch(repo, [], size=(120, 36))  # 17 rows fit its 33: only the finished parts fold
+    rows = rows_of(wide)
+    assert len(rows) == 17 and rows[-1].endswith("  came back"), rows
+
+
+def test_a_plan_that_arrives_while_the_screen_is_open_reads_as_it_would_have_opened(repo):
+    """The outline was drawn only when the screen opened: a plan landing on an open screen (the
+    planner's, the demo's) came in whole, ten rows of 33 in sight at 80x24. A sub-goal that arrives in
+    a tree taller than its pane comes in folded; one the person opened stays open."""
+    from graphene_map.tui import _walk
+
+    alex = plan.Caller("alex", True)
+    with Store.open(repo) as store:
+        plan.set_goal(store, "csv feeds import cleanly, and every bad row is named", alex)
+
+    async def arrive(app, pilot):
+        thirty(repo)
+        app.refresh_plan()
+        await pilot.pause()
+
+    seen, _ = watch(repo, [], before=arrive)
+    fresh, _ = watch(repo, [])
+    assert rows_of(seen) == rows_of(fresh) and len(rows_of(seen)) == 7, rows_of(seen)
+    got = {}
+
+    async def grow(app, pilot):
+        for key in ["slash", *"s1", "enter", "escape", "z", "o"]:  # the part with the leaf that came back
+            await pilot.press(key)
+        with Store.open(repo) as store:
+            six_parts(store, SESSION, parts=[6])  # the planner proposes one part more
+        app.refresh_plan()
+        await pilot.pause()
+        got.update({n.data: n.is_expanded for n in _walk(app.tree.root) if n.data in ("s1", "s6")})
+        got["s6 says"] = app.tree.rows["s6"][5]  # below the pane's last row: what its row reads
+
+    watch(repo, [], before=grow)
+    assert got == {"s1": True, "s6": False, "s6 says": "5 proposed"}
+
+
+def test_a_leaf_with_a_proposal_under_it_is_counted_and_shown_as_the_leaf_it_is(repo):
+    """A leaf with an executor's proposal under it (`node add --parent`) is still a leaf. Its folded
+    sub-goal left it out of the count, and said `1 proposed, 4 ready` of a part whose leaf came back;
+    and the outline folded the leaf too, so opening its sub-goal still hid the proposal."""
+    thirty(repo)
+    with Store.open(repo) as store:
+        plan.start(store, "s3-0", SESSION, repo)
+        plan.propose(store, [{"id": "s3-0a", "title": "the sku table first", "parent": "s3-0",
+                              "scope": ["sku.py"], "check": "true"}], SESSION)  # fmt: skip
+        plan.release(store, "s3-0", SESSION, "it needs the sku table, proposed under it")
+    seen, _ = watch(repo, [])
+    assert next(r for r in rows_of(seen) if "  s3 " in r).endswith("  1 came back, 5 more")
+    seen, _ = at(repo, "s3", (80, 24), keys=["z", "o"])
+    assert any("  s3-0a " in r and r.endswith("  proposed") for r in rows_of(seen)), rows_of(seen)
+
+
+def test_help_lists_the_fold_keys(repo):
+    proposed(repo)
+    for size in SIZES:
+
+        async def before(app, pilot):
+            await pilot.press("question_mark")
+            await pilot.pause()
+            text = "\n".join(shown(app, app.screen.query_one("#help").region))
+            for key in ("za", "zo zc", "zR zM", "zx"):
+                assert key in text, (key, text)
+
+        watch(repo, [], size=size, before=before)
+    from graphene_map.tui import HELP
+
+    fold = dict(dict(HELP)["fold"])
+    assert "counts the leaves inside" in fold["zo zc"] and "as it opened" in fold["zx"]
+
+
+def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
+    """What the Nemotron executors cost, from Token Factory's usage at list price: the plan's in the
+    status line, the leaf's in its pane. Nothing is said about a bill where no model was called."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    plain, _ = watch(repo, ["j"], size=(120, 36))
+    assert "list price" not in plain["status"] and "bill" not in plain["detail"]
+    with Store.open(repo) as store:
+        for dollars in (0.0101, 0.0022):
+            store.log_node("ids", plan._now(), "usage", "run:nemotron", None, None,
+                           {"model": "nvidia/Nemotron-3-Nano-fake", "calls": 3, "prompt_tokens": 900,
+                            "completion_tokens": 80, "dollars": dollars})  # fmt: skip
+        store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
+                       {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
+    seen, _ = watch(repo, ["j"], size=(120, 36))
+    assert seen["status"].splitlines()[0].endswith("$0.03 at list price")  # the planner's and the leaf's
+    assert "bill $0.0123 at list price · 6 calls · Nemotron-3-Nano-fake" in " ".join(seen["detail"].split())

@@ -1,8 +1,0 @@
-{
-  "agentType": "general-purpose",
-  "description": "Write the user guide",
-  "toolUseId": "toolu_ag1",
-  "spawnDepth": 1,
-  "requestShape": "prompt",
-  "requestNonInteractive": true
-}

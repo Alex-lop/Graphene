@@ -15,13 +15,22 @@ def utc(monkeypatch):
     time.tzset()
 
 
+@pytest.fixture(autouse=True)
+def no_token_factory(monkeypatch, tmp_path):
+    """Nothing in the suite reaches the real Token Factory or Sandboxes, whatever the shell or the home
+    directory has: a test that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
+    for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
+
+
 @pytest.fixture
 def finish():
     """Do a node's work and finish it: a node with nothing changed inside its scope is not done, so
     a test that only needs a node finished writes one line inside the first glob of its scope."""
     from pathlib import Path
 
-    from graphene_debrief import plan
+    from graphene_map import plan
 
     def _finish(store, repo, node_id, who, **kwargs):
         node = plan.get(store, node_id)

@@ -36,7 +36,7 @@ export function Header({
     <header className="header" data-testid="header">
       <div className="run">
         <h1>{run.repo || "this repo"}</h1>
-        <Toggle view={view} onView={onView} planned={planned} />
+        <Toggle view={view} onView={onView} planned={planned} recorded={run.sessions.length} />
         <code className="ref">{ids || "no session"}</code>
         <span>
           {between(run.started ?? run.t0, run.ended ?? run.t1)} <span className="muted">{zone(run.t0)}</span>

@@ -18,8 +18,8 @@ sys.path.insert(0, str(REPO / "tests" / "fixtures"))
 
 import make_run_fixture as run  # noqa: E402
 
-from graphene_debrief.server import export_html, make_server  # noqa: E402
-from graphene_debrief.store import Store  # noqa: E402
+from graphene_map.server import export_html, make_server  # noqa: E402
+from graphene_map.store import Store  # noqa: E402
 
 
 def main(argv: list[str]) -> None:

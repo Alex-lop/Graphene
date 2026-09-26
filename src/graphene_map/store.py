@@ -1,0 +1,659 @@
+"""SQLite store at .graphene/graphene.db. Hooks write concurrently, so WAL + busy timeout."""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import sqlite3
+from functools import lru_cache
+from pathlib import Path
+
+from .model import Agent, Commit, Prompt, Session, ToolEvent
+
+TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
+RESPONSE_CAP = 256 * 1024
+STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
+KEEP = 4 * 1024
+CONTENT_CAP = 2 * 1024 * 1024
+SCHEMA_VERSION = 4  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  repo TEXT NOT NULL,
+  started_at TEXT,
+  ended_at TEXT,
+  head_at_start TEXT,
+  source TEXT NOT NULL,
+  transcript_path TEXT,
+  transcript_size INTEGER,
+  transcript_mtime REAL
+);
+CREATE TABLE IF NOT EXISTS prompts (
+  id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (session_id, id),
+  UNIQUE (session_id, ordinal)
+);
+CREATE TABLE IF NOT EXISTS tool_events (
+  id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  prompt_id TEXT,
+  timestamp TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  input TEXT NOT NULL,
+  response TEXT,
+  success INTEGER,
+  agent_id TEXT,
+  file_path TEXT,
+  old_content TEXT,
+  new_content TEXT,
+  PRIMARY KEY (session_id, id)
+);
+CREATE INDEX IF NOT EXISTS tool_events_by_session ON tool_events (session_id, timestamp);
+CREATE TABLE IF NOT EXISTS explanations (
+  prompt_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  text TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  model TEXT,
+  PRIMARY KEY (prompt_id, path)
+);
+CREATE TABLE IF NOT EXISTS debrief_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_ids TEXT NOT NULL,
+  timestamp TEXT NOT NULL
+);
+"""
+
+# Additive only: a step adds tables and columns and never drops or rewrites one. Step n takes a
+# store from version n-1 to n; SCHEMA above is version 1 and stays as it was.
+MIGRATIONS: dict[int, tuple[str, ...]] = {
+    2: (
+        "ALTER TABLE tool_events ADD COLUMN cwd TEXT",
+        """CREATE TABLE agents (
+             id TEXT NOT NULL,
+             session_id TEXT NOT NULL,
+             parent_tool_use_id TEXT,
+             parent_agent_id TEXT,
+             type TEXT,
+             task TEXT,
+             prompt TEXT,
+             cwd TEXT,
+             worktree TEXT,
+             workflow_run TEXT,
+             phase TEXT,
+             label TEXT,
+             depth INTEGER,
+             started_at TEXT,
+             ended_at TEXT,
+             closing TEXT,
+             source TEXT NOT NULL DEFAULT 'claude-code',
+             PRIMARY KEY (session_id, id)
+           )""",
+        """CREATE TABLE commits (
+             sha TEXT PRIMARY KEY,
+             committed_at TEXT NOT NULL,
+             subject TEXT NOT NULL,
+             session_id TEXT,
+             agent_id TEXT,
+             event_id TEXT,
+             origin_sha TEXT
+           )""",
+        "CREATE INDEX commits_by_time ON commits (committed_at)",
+        """CREATE TABLE commit_files (
+             sha TEXT NOT NULL,
+             path TEXT NOT NULL,
+             status TEXT,
+             PRIMARY KEY (sha, path)
+           )""",
+        # Sessions read before this version have no agents, no cwd and no worktree mapping. Forget
+        # only that their transcripts were read, so the next command reads again those that still
+        # exist; a session whose transcript is gone has no file to be re-read from and stays as it is.
+        "UPDATE sessions SET transcript_size = NULL, transcript_mtime = NULL",
+    ),
+    # The plan. A node is one JSON document (plan.Node), so its contract can grow a field without a
+    # step here; the two columns beside it are the ones the hook asks for on every agent event.
+    3: (
+        """CREATE TABLE IF NOT EXISTS nodes (
+             id TEXT PRIMARY KEY,
+             seq INTEGER NOT NULL,
+             state TEXT NOT NULL,
+             session_id TEXT,
+             data TEXT NOT NULL
+           )""",
+        "CREATE INDEX IF NOT EXISTS nodes_by_state ON nodes (state)",
+        """CREATE TABLE IF NOT EXISTS node_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             node_id TEXT NOT NULL,
+             timestamp TEXT NOT NULL,
+             kind TEXT NOT NULL,
+             actor TEXT,
+             session_id TEXT,
+             agent_id TEXT,
+             detail TEXT
+           )""",
+        "CREATE INDEX IF NOT EXISTS node_log_by_node ON node_log (node_id, id)",
+        "CREATE TABLE IF NOT EXISTS plan_meta (key TEXT PRIMARY KEY, value TEXT)",
+    ),
+    # 4: no table changes. A node is one JSON document and gained `parent` and `aside`; the number
+    # goes up so that a 0.3 graphene refuses the store in words instead of failing on a field it
+    # does not know.
+    4: (),
+}
+
+
+def repo_root(start: Path) -> Path:
+    """The repository whose store a directory belongs to: the nearest ancestor containing .git,
+    else ``start`` itself; inside a linked worktree, the main repo's root, so what an agent does in a
+    worktree (a hook event, a Nemotron executor's call) lands in the repo's own store."""
+    for candidate in (start, *start.parents):
+        main = worktree_main(str(candidate))
+        if main is not None:
+            return Path(main) if main else candidate
+    return start
+
+
+@lru_cache(maxsize=4096)
+def worktree_main(directory: str) -> str | None:
+    """The main repo root of the checkout rooted at ``directory``: in a linked worktree ``.git`` is a
+    file naming the admin directory, whose ``commondir`` names the common ``.git``, whose parent is
+    that root. ``""`` when the checkout is its own repo (a clone, or a submodule, whose admin
+    directory has no ``commondir``), None when the directory is no checkout at all. Stdlib only: the
+    hook path must not spawn git."""
+    dot = os.path.join(directory, ".git")
+    if not os.path.exists(dot):
+        return None
+    if os.path.isdir(dot):
+        return ""
+    try:
+        with open(dot, encoding="utf-8") as f:
+            gitdir = f.read().partition("gitdir:")[2].strip()
+        admin = gitdir if os.path.isabs(gitdir) else os.path.join(directory, gitdir)
+        with open(os.path.join(admin, "commondir"), encoding="utf-8") as f:
+            return os.path.dirname(os.path.normpath(os.path.join(admin, f.read().strip())))
+    except OSError:
+        return ""
+
+
+class StaleStore(Exception):
+    """The file on disk cannot be used as it is, and ``tag`` says why: ``corrupt`` for a file SQLite
+    will not read (the CLI moves that one aside), ``newer`` for a store a later Graphene wrote
+    (left exactly where it is)."""
+
+    def __init__(self, tag: str) -> None:
+        super().__init__(tag)
+        self.tag = tag
+
+
+def set_aside(path: Path, tag: str) -> Path:
+    """Move an unusable store and its WAL sidecars out of the way; never overwrite an older backup."""
+    backup = path.with_name(f"{path.name}.{tag}.bak")
+    n = 2
+    while backup.exists():
+        backup = path.with_name(f"{path.name}.{tag}.{n}.bak")
+        n += 1
+    os.replace(path, backup)
+    for sidecar in ("-wal", "-shm"):  # else SQLite would replay them into the new file
+        side = Path(str(path) + sidecar)
+        if side.exists():
+            os.replace(side, Path(str(backup) + sidecar))
+    return backup
+
+
+def ignore_store_dir(root: Path) -> bool:
+    """Make .graphene/ ignore itself with a `.gitignore` of its own (the .venv/ trick), so the repo's
+    own .gitignore is never touched. Returns True when the file was written."""
+    path = root / ".graphene" / ".gitignore"
+    if path.exists():
+        return False
+    path.parent.mkdir(exist_ok=True)
+    path.write_text("*\n", encoding="utf-8")
+    return True
+
+
+# Values kept whole however long they are: the vendor's list of files a command changed, what it
+# says about the git operation and the interrupt, and the error text of a failed call.
+RESPONSE_KEPT = frozenset({"bashEditDiff", "gitOperation", "interrupted", "is_interrupt"})
+# The same on the way in: a path or a name is never cut, however deep in the payload it sits.
+INPUT_KEPT = frozenset({"file_path", "notebook_path", "path", "description", "subagent_type"})
+
+
+def _trim(text: str) -> str:
+    """A long string as its head and its tail. The tail is the point: agents run
+    `git commit -q … && git log --oneline -1`, so the new SHA is on the very last line."""
+    if len(text) <= STRING_CAP:
+        return text
+    return f"{text[:KEEP]}\n… [{len(text) - 2 * KEEP} chars omitted] …\n{text[-KEEP:]}"
+
+
+def _trimmed(value: object, kept: frozenset[str]) -> object:
+    """``_trim`` every string in a payload, except the values of the keys named in ``kept``."""
+    if isinstance(value, str):
+        return _trim(value)
+    if isinstance(value, dict):
+        return {k: v if k in kept else _trimmed(v, kept) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_trimmed(v, kept) for v in value]
+    return value
+
+
+def capped_json(value: object, cap: int = RESPONSE_CAP) -> str | None:
+    """Serialise a tool response: long output strings keep their head and tail, then the vendor's
+    change list loses its hunks (never its paths), and only then the response is given up whole."""
+    if value is None:
+        return None
+    value = _trimmed(value, RESPONSE_KEPT)
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    if len(text) <= cap:
+        return text
+    if isinstance(value, dict) and isinstance(value.get("bashEditDiff"), dict):
+        value = {**value, "bashEditDiff": _without_hunks(value["bashEditDiff"])}
+        text = json.dumps(value, ensure_ascii=False, default=str)
+        if len(text) <= cap:
+            return text
+    return json.dumps({"truncated": True, "bytes": len(text)})
+
+
+def _without_hunks(diff: dict) -> dict:
+    """The change list minus the diff bodies: which files changed is what the records read."""
+    if not isinstance(diff.get("files"), list):
+        return diff
+    kept = [{k: v for k, v in f.items() if k != "hunks"} if isinstance(f, dict) else f for f in diff["files"]]
+    return {**diff, "files": kept}
+
+
+def _content(text: object) -> str | None:
+    return text if isinstance(text, str) and len(text) <= CONTENT_CAP else None
+
+
+class Store:
+    def __init__(self, path: Path, timeout: float = 5.0) -> None:
+        self.path = path
+        self.rebuilt_from: str | None = None  # set by open() when this store replaced an unusable one
+        self.conn = sqlite3.connect(path, timeout=timeout, isolation_level=None)
+        self.conn.row_factory = sqlite3.Row
+        try:
+            self.conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+            if self._version() > SCHEMA_VERSION:
+                raise StaleStore("newer")
+            if self._version() < SCHEMA_VERSION:
+                self._migrate()
+        except sqlite3.DatabaseError as exc:
+            self.conn.close()
+            if isinstance(exc, sqlite3.OperationalError):
+                raise  # a locked database is fine, just busy: never move that aside
+            raise StaleStore("corrupt") from exc
+        except BaseException:
+            self.conn.close()
+            raise
+
+    def _version(self) -> int:
+        return int(self.conn.execute("PRAGMA user_version").fetchone()[0])
+
+    def _migrate(self) -> None:
+        """Bring an older store up to date in place. Version 0 is a new file or a store from before
+        versioning, whose tables are version 1's. One transaction, and the version is read again
+        inside it, so two processes opening an old store at once apply each step once."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            version = self._version()
+            if version < 1:
+                for statement in SCHEMA.split(";"):
+                    if statement.strip():
+                        self.conn.execute(statement)
+            for step in range(max(version, 1) + 1, SCHEMA_VERSION + 1):
+                for statement in MIGRATIONS[step]:
+                    self.conn.execute(statement)
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        self.conn.execute("COMMIT")
+
+    @classmethod
+    def open(cls, repo_root: Path, quick: bool = False) -> Store:
+        """Open (creating) the repo's store. ``quick`` is the hook path: give up on a lock after 250 ms.
+
+        The directory is private to the user and git-ignored on every open, not only by `init`,
+        because whichever command creates it fills it with what a session typed and ran.
+
+        An older store is migrated in place by whoever opens it, the hook included (the steps only
+        add tables and columns). Only a file SQLite cannot read is moved aside and replaced by an
+        empty one; ``rebuilt_from`` then holds the backup path. The hook
+        path never does that, and nobody touches a store a newer Graphene wrote: both raise
+        ``StaleStore``.
+        """
+        directory = repo_root / ".graphene"
+        directory.mkdir(exist_ok=True)
+        os.chmod(directory, 0o700)
+        ignore_store_dir(repo_root)
+        path = directory / "graphene.db"
+        timeout = 0.25 if quick else TIMEOUT
+        try:
+            store = cls(path, timeout=timeout)
+        except StaleStore as stale:
+            if quick or stale.tag != "corrupt":
+                raise
+            backup = set_aside(path, stale.tag)
+            store = cls(path, timeout=timeout)
+            store.rebuilt_from = str(backup.relative_to(repo_root))
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)  # the file too, not only the directory: a recorded call can hold secrets
+        return store
+
+    def close(self) -> None:
+        self.conn.close()
+
+    @contextlib.contextmanager
+    def transaction(self):
+        """Group writes (the store is autocommit otherwise): all or nothing, one WAL append."""
+        self.conn.execute("BEGIN")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        self.conn.execute("COMMIT")
+
+    def __enter__(self) -> Store:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    # -- sessions -----------------------------------------------------------------------------
+
+    def upsert_session(self, s: Session) -> None:
+        """Insert, or fill in blanks on an existing row. Never overwrites a known start/HEAD."""
+        self.conn.execute(
+            """INSERT INTO sessions (id, repo, started_at, ended_at, head_at_start, source, transcript_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE SET
+                 started_at = COALESCE(sessions.started_at, excluded.started_at),
+                 ended_at = COALESCE(excluded.ended_at, sessions.ended_at),
+                 head_at_start = COALESCE(sessions.head_at_start, excluded.head_at_start),
+                 transcript_path = COALESCE(excluded.transcript_path, sessions.transcript_path)""",
+            (s.id, s.repo, s.started_at, s.ended_at, s.head_at_start, s.source, s.transcript_path),
+        )
+
+    def end_session(self, session_id: str, timestamp: str) -> None:
+        self.conn.execute("UPDATE sessions SET ended_at = ? WHERE id = ?", (timestamp, session_id))
+
+    def session(self, session_id: str) -> Session | None:
+        row = self.conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        return _session(row) if row else None
+
+    def sessions(self) -> list[Session]:
+        rows = self.conn.execute("SELECT * FROM sessions ORDER BY started_at, id").fetchall()
+        return [_session(r) for r in rows]
+
+    def did_something(self, session_id: str) -> bool:
+        """Did this session leave a recorded write in the repo, or a commit credited to it?"""
+        row = self.conn.execute(
+            """SELECT EXISTS (SELECT 1 FROM tool_events WHERE session_id = ? AND success IS NOT 0 AND (
+                   (file_path IS NOT NULL AND file_path NOT LIKE '/%')
+                   OR (tool = 'Bash' AND response LIKE '%"bashEditDiff"%')))
+               OR EXISTS (SELECT 1 FROM commits WHERE session_id = ?)""",
+            (session_id, session_id),
+        ).fetchone()
+        return bool(row[0])
+
+    # -- prompts ------------------------------------------------------------------------------
+
+    def add_prompt(self, p: Prompt) -> None:
+        self.conn.execute(
+            "INSERT OR IGNORE INTO prompts (id, session_id, ordinal, timestamp, text) VALUES (?, ?, ?, ?, ?)",
+            (p.id, p.session_id, p.ordinal, p.timestamp, p.text),
+        )
+
+    def next_ordinal(self, session_id: str) -> int:
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM prompts WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        return int(row[0])
+
+    def prompts(self, session_id: str) -> list[Prompt]:
+        rows = self.conn.execute(
+            "SELECT * FROM prompts WHERE session_id = ? ORDER BY ordinal", (session_id,)
+        ).fetchall()
+        return [_prompt(r) for r in rows]
+
+    def prompt(self, session_id: str, prompt_id: str) -> Prompt | None:
+        row = self.conn.execute(
+            "SELECT * FROM prompts WHERE session_id = ? AND id = ?", (session_id, prompt_id)
+        ).fetchone()
+        return _prompt(row) if row else None
+
+    def latest_prompt_id(self, session_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT id FROM prompts WHERE session_id = ? ORDER BY ordinal DESC LIMIT 1", (session_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+    # -- tool events --------------------------------------------------------------------------
+
+    def add_event(self, e: ToolEvent) -> None:
+        self.conn.execute(
+            """INSERT OR REPLACE INTO tool_events
+               (id, session_id, prompt_id, timestamp, tool, input, response, success, agent_id,
+                file_path, old_content, new_content, cwd)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                e.id,
+                e.session_id,
+                e.prompt_id,
+                e.timestamp,
+                e.tool,
+                json.dumps(_trimmed(e.input, INPUT_KEPT), ensure_ascii=False, default=str),
+                # A Read's response is the file it read: nothing here ever reads it back, and on
+                # the author's store those copies were 10 MB of 73 MB.
+                None if e.tool == "Read" else capped_json(e.response),
+                None if e.success is None else int(e.success),
+                e.agent_id,
+                e.file_path,
+                _content(e.old_content),
+                _content(e.new_content),
+                e.cwd,
+            ),
+        )
+
+    def events(self, session_id: str) -> list[ToolEvent]:
+        rows = self.conn.execute(
+            "SELECT * FROM tool_events WHERE session_id = ? ORDER BY timestamp, rowid", (session_id,)
+        ).fetchall()
+        return [_event(r) for r in rows]
+
+    def last_events(self, session_id: str, count: int = 1) -> list[dict]:
+        """The session's latest tool calls, newest last: what a running executor did lately."""
+        rows = self.conn.execute(
+            "SELECT timestamp, tool, input, file_path, success FROM tool_events WHERE session_id = ? "
+            "ORDER BY timestamp DESC, rowid DESC LIMIT ?",
+            (session_id, count),
+        ).fetchall()
+        return [{**dict(r), "input": json.loads(r["input"])} for r in reversed(rows)]
+
+    def event_count(self, session_id: str) -> int:
+        return int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM tool_events WHERE session_id = ?", (session_id,)
+            ).fetchone()[0]
+        )
+
+    # -- agents and commits -------------------------------------------------------------------
+
+    def upsert_agent(self, a: Agent) -> None:
+        """Insert, or fill in what a later record knows: SubagentStart sees the start, SubagentStop
+        the end."""
+        cols = [f for f in Agent.__slots__ if f not in ("id", "session_id")]
+        self.conn.execute(
+            f"INSERT INTO agents (id, session_id, {', '.join(cols)}) "
+            f"VALUES (?, ?, {', '.join('?' for _ in cols)}) ON CONFLICT (session_id, id) DO UPDATE SET "
+            + ", ".join(f"{c} = COALESCE(excluded.{c}, agents.{c})" for c in cols),
+            (a.id, a.session_id, *(getattr(a, c) for c in cols)),
+        )
+
+    def agents(self, session_id: str) -> list[Agent]:
+        rows = self.conn.execute(
+            "SELECT * FROM agents WHERE session_id = ? ORDER BY started_at, id", (session_id,)
+        ).fetchall()
+        return [Agent(**{f: r[f] for f in Agent.__slots__}) for r in rows]
+
+    def add_commit(self, c: Commit) -> None:
+        """Insert a commit and its files, or credit one already known: the first credit stands."""
+        self.conn.execute(
+            """INSERT INTO commits (sha, committed_at, subject, session_id, agent_id, event_id, origin_sha)
+               VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (sha) DO UPDATE SET
+                 session_id = COALESCE(commits.session_id, excluded.session_id),
+                 agent_id = IIF(commits.session_id IS NULL, excluded.agent_id, commits.agent_id),
+                 event_id = IIF(commits.session_id IS NULL, excluded.event_id, commits.event_id),
+                 origin_sha = COALESCE(commits.origin_sha, excluded.origin_sha)""",
+            (c.sha, c.committed_at, c.subject, c.session_id, c.agent_id, c.event_id, c.origin_sha),
+        )
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO commit_files (sha, path, status) VALUES (?, ?, ?)",
+            [(c.sha, path, status) for path, status in c.files],
+        )
+
+    def commits_between(self, start: str, end: str) -> list[Commit]:
+        """Commits whose commit time lies in the window, oldest first, each with its files."""
+        rows = self.conn.execute(
+            "SELECT * FROM commits WHERE committed_at >= ? AND committed_at <= ? ORDER BY committed_at, sha",
+            (start, end),
+        ).fetchall()
+        return [
+            Commit(
+                **{f: r[f] for f in Commit.__slots__ if f != "files"},
+                files=[
+                    (f["path"], f["status"])
+                    for f in self.conn.execute(
+                        "SELECT path, status FROM commit_files WHERE sha = ? ORDER BY path", (r["sha"],)
+                    )
+                ],
+            )
+            for r in rows
+        ]
+
+    # -- the plan -----------------------------------------------------------------------------
+
+    @contextlib.contextmanager
+    def claim(self):
+        """A read-modify-write on the plan that two executors may race for: the write lock is taken
+        before the read, so the second one sees what the first one did. Inside a claim already (a
+        text edit is many operations, applied all or none) it joins that one."""
+        if self.conn.in_transaction:
+            yield
+            return
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        self.conn.execute("COMMIT")
+
+    def node_rows(self, states: tuple[str, ...] | None = None) -> list[dict]:
+        where = f"WHERE state IN ({', '.join('?' for _ in states)})" if states else ""
+        rows = self.conn.execute(f"SELECT data FROM nodes {where} ORDER BY seq", states or ()).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def node_row(self, node_id: str) -> dict | None:
+        row = self.conn.execute("SELECT data FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def put_node(self, node: dict) -> None:
+        self.conn.execute(
+            """INSERT INTO nodes (id, seq, state, session_id, data)
+               VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM nodes), ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE
+               SET state = excluded.state, session_id = excluded.session_id, data = excluded.data""",
+            (node["id"], node["state"], node.get("session_id"), json.dumps(node, ensure_ascii=False)),
+        )
+
+    def node_seqs(self) -> dict[str, int]:
+        """Each node's place in the plan's order: siblings are drawn, and run, in this order."""
+        return {r[0]: r[1] for r in self.conn.execute("SELECT id, seq FROM nodes")}
+
+    def set_seq(self, node_id: str, seq: int) -> None:
+        self.conn.execute("UPDATE nodes SET seq = ? WHERE id = ?", (seq, node_id))
+
+    def node_count(self) -> int:
+        return int(self.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
+
+    def log_node(
+        self,
+        node_id: str,
+        timestamp: str,
+        kind: str,
+        actor: str | None = None,
+        session_id: str | None = None,
+        agent_id: str | None = None,
+        detail: dict | None = None,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO node_log (node_id, timestamp, kind, actor, session_id, agent_id, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (node_id, timestamp, kind, actor, session_id, agent_id, json.dumps(detail) if detail else None),
+        )
+
+    def node_log(self, node_id: str | None = None, kinds: tuple[str, ...] | None = None) -> list[dict]:
+        clauses, args = [], []
+        if node_id is not None:
+            clauses.append("node_id = ?")
+            args.append(node_id)
+        if kinds:
+            clauses.append(f"kind IN ({', '.join('?' for _ in kinds)})")
+            args.extend(kinds)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(f"SELECT * FROM node_log {where} ORDER BY id", args).fetchall()
+        return [{**dict(r), "detail": json.loads(r["detail"]) if r["detail"] else {}} for r in rows]
+
+    def meta(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT value FROM plan_meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str | None) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO plan_meta (key, value) VALUES (?, ?)", (key, value))
+
+
+def _session(r: sqlite3.Row) -> Session:
+    return Session(
+        id=r["id"],
+        repo=r["repo"],
+        started_at=r["started_at"],
+        ended_at=r["ended_at"],
+        head_at_start=r["head_at_start"],
+        source=r["source"],
+        transcript_path=r["transcript_path"],
+    )
+
+
+def _prompt(r: sqlite3.Row) -> Prompt:
+    return Prompt(
+        id=r["id"], session_id=r["session_id"], ordinal=r["ordinal"], timestamp=r["timestamp"], text=r["text"]
+    )
+
+
+def _event(r: sqlite3.Row) -> ToolEvent:
+    return ToolEvent(
+        id=r["id"],
+        session_id=r["session_id"],
+        prompt_id=r["prompt_id"],
+        timestamp=r["timestamp"],
+        tool=r["tool"],
+        input=json.loads(r["input"]),
+        response=json.loads(r["response"]) if r["response"] else None,
+        success=None if r["success"] is None else bool(r["success"]),
+        agent_id=r["agent_id"],
+        file_path=r["file_path"],
+        old_content=r["old_content"],
+        new_content=r["new_content"],
+        cwd=r["cwd"],
+    )

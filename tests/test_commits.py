@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.commits import credit, sync_commits, window
-from graphene_debrief.graph import build_graph, to_json
-from graphene_debrief.model import Commit, ToolEvent
-from graphene_debrief.record import changes, coverage
-from graphene_debrief.store import Store
+from graphene_map.commits import credit, sync_commits, window
+from graphene_map.graph import build_graph, to_json
+from graphene_map.model import Commit, ToolEvent
+from graphene_map.record import changes, coverage
+from graphene_map.store import Store
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import make_run_fixture as run  # noqa: E402

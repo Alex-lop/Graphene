@@ -1,8 +1,0 @@
-{
-  "agentType": "workflow-agent",
-  "description": "Build the parser",
-  "requestNonInteractive": true,
-  "requestShape": "prompt",
-  "spawnDepth": 1,
-  "workflowPhase": "Build"
-}

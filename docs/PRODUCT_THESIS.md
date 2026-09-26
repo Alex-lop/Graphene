@@ -483,7 +483,7 @@ coordinates, which answers the researcher's "long tail" argument for a library),
 (a directory is a contiguous row range, so selecting a region is selecting rows). The build step
 earns its place through `tsc --noEmit` as an acceptance gate on 1,500 lines written unattended, and
 through real DOM selectors for Playwright. Built assets are committed under
-`src/graphene_debrief/ui/static/` (not `dist/`, which `.gitignore` excludes), ship in the wheel with no
+`src/graphene_map/ui/static/` (not `dist/`, which `.gitignore` excludes), ship in the wheel with no
 config change, need no Node at install or run time, and CI fails if `npm run build` changes them.
 *Runner-up:* `@xyflow/react` 12.11 (MIT, 132 KB with React) if the design ever moves to free-form
 cards; it never computes layout, which suits us, but its value is dragging and connecting, which we

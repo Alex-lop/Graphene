@@ -8,10 +8,10 @@ import pytest
 from test_gate import ALEX, BOT, SID, bash, hook, reason, repo, write  # noqa: F401  (repo is a fixture)
 from typer.testing import CliRunner
 
-from graphene_debrief import plan
-from graphene_debrief.cli import build
-from graphene_debrief.plan import DONE, DROPPED, OPEN, PROPOSED, Caller
-from graphene_debrief.store import Store
+from graphene_map import plan
+from graphene_map.cli import build
+from graphene_map.plan import DONE, DROPPED, OPEN, PROPOSED, Caller
+from graphene_map.store import Store
 
 OTHER = Caller("claude:0ther000", False, "0ther000-session")
 AGENT = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SID}  # the shell of the session the hook sees

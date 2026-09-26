@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from graphene_debrief.sources.claude_code import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
-from graphene_debrief.store import Store, ignore_store_dir
+from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
+from graphene_map.store import Store, ignore_store_dir
 
 T0 = "2026-01-01T10:00:00.000Z"
 T1 = "2026-01-01T10:00:01.000Z"

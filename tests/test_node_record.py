@@ -11,12 +11,12 @@ import subprocess
 
 import pytest
 
-from graphene_debrief import node_record as NR
-from graphene_debrief import plan
-from graphene_debrief.commits import sync_commits
-from graphene_debrief.plan import Caller
-from graphene_debrief.sources.claude_code import hook_main, ingest_hook_event
-from graphene_debrief.store import Store
+from graphene_map import node_record as NR
+from graphene_map import plan
+from graphene_map.commits import sync_commits
+from graphene_map.hooks import hook_main, ingest_hook_event
+from graphene_map.plan import Caller
+from graphene_map.store import Store
 
 S1 = "aaaa1111-0000-4000-8000-000000000001"
 S2 = "bbbb2222-0000-4000-8000-000000000002"
@@ -425,8 +425,8 @@ def test_what_was_refused_is_counted_from_the_log(store, repo):
     refused = NR.node_record(store, repo, plan.get(store, "n1"), at=T(5)).refusals
     assert refused.denied == ["src/db/schema.py"]
     assert refused.breaches == ["src/db/schema.py"]
-    # the first `done` ran the check too: notes.txt, a file git does not track, was set aside in case
-    # the check made it, and the check failed there as well
+    # the first `done` ran the check too: notes.txt, a file git does not track, was left out of the
+    # check's worktree in case the check made it, and the check failed there as well
     assert (refused.stops, refused.done, refused.checks_failed) == (1, [["notes.txt"]], 2)
     assert refused.last_check["result"] == "passed"
 

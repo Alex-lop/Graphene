@@ -1,4 +1,4 @@
-"""The synthetic run fixture from tests/fixtures/make_run_fixture.py: it renders the same bytes
+"""The synthetic run fixture from tests/fixtures/make_run_fixture.py: it derives the same data
 every time, it invents every path, its SHAs are the ones a real git repo produces, and what
 ``load()`` puts in a store is the ground truth the graph golden is built from."""
 
@@ -12,16 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from graphene_debrief.sources.claude_code import parse_transcript
-from graphene_debrief.store import Store
+from graphene_map.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 sys.path.insert(0, str(FIXTURES))
 import make_run_fixture as run  # noqa: E402
 
-RUN_DIR = FIXTURES / "run"
 S1, S2 = run.S1, run.S2
-ROOT = Path(run.ROOT)
 SHA7 = re.compile(r"\b[0-9a-f]{7}\b")
 
 
@@ -37,22 +34,12 @@ def git(root, *args):
     return proc.stdout
 
 
-# 1 -- the checked-in copy, and determinism ------------------------------------------------------
+# 1 -- determinism ------------------------------------------------------------------------------
 
 
-def test_checked_in_copy_matches_its_generator():
-    rendered = run.render()
-    on_disk = {
-        str(p.relative_to(RUN_DIR)): p.read_text(encoding="utf-8")
-        for p in sorted(RUN_DIR.rglob("*"))
-        if p.is_file()
-    }
-    assert on_disk == rendered, "tests/fixtures/run is stale: run the generator"
-
-
-def test_rendering_twice_is_byte_identical():
-    assert run.render() == run.render()
+def test_deriving_twice_gives_the_same_data():
     assert run.hook_events() == run.hook_events()
+    assert run.expected() == run.expected()
 
 
 def test_every_timestamp_is_distinct_within_an_agent():
@@ -68,7 +55,6 @@ def test_every_timestamp_is_distinct_within_an_agent():
 def test_nothing_comes_from_this_machine():
     user = getpass.getuser()
     blobs = [
-        *run.render().values(),
         json.dumps(run.hook_events(), default=str),
         json.dumps(run.expected(), default=str),
         json.dumps(run.SHAS),
@@ -112,7 +98,7 @@ def test_the_repo_agrees_with_the_expected_commits(repo):
         assert git(root, "log", "-1", "--format=%s", commit.sha).strip() == commit.subject
 
 
-# 4 -- the SHA prefixes the transcripts embed ----------------------------------------------------
+# 4 -- the SHA prefixes the recorded calls embed -------------------------------------------------
 
 
 def test_rendered_sha_prefixes_belong_to_the_right_commit():
@@ -125,11 +111,13 @@ def test_rendered_sha_prefixes_belong_to_the_right_commit():
                 assert run.short(step.origin) in json.dumps(step.input)
 
 
-def test_no_rendered_hex_token_is_a_stray_sha():
+def test_no_recorded_hex_token_is_a_stray_sha():
     prefixes = {sha[:7] for sha in run.SHAS.values()}
-    for path, text in run.render().items():
-        for token in SHA7.findall(text):
-            assert token in prefixes, f"{path} holds {token}, which is no commit of this run"
+    for turn in run._scenario(run.ROOT, run.ELSEWHERE):
+        said = [turn.prompt, turn.task, turn.closing]
+        for step in turn.steps:
+            for token in SHA7.findall(json.dumps([*said, step.input, step.text, step.result], default=str)):
+                assert token in prefixes, f"{step.id} holds {token}, which is no commit of this run"
 
 
 # 5 -- the store ---------------------------------------------------------------------------------
@@ -210,19 +198,7 @@ def test_a_write_outside_the_repo_keeps_only_its_path(store):
     assert outside.response is None and outside.new_content is None
 
 
-# 6 -- the current parser still understands the records ------------------------------------------
-
-
-def test_the_parser_reads_every_rendered_transcript(tmp_path):
-    for rel, text in run.render().items():
-        path = tmp_path / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    for rel in run.render():
-        if rel.endswith(".jsonl") and "/subagents/" not in rel:
-            parsed = parse_transcript(tmp_path / rel, ROOT)
-            assert len(parsed.prompts) == 1
-            assert parsed.events and all(e.tool != "unknown" for e in parsed.events)
+# 6 -- what the hooks deliver --------------------------------------------------------------------
 
 
 def test_hook_events_carry_what_the_hooks_deliver():

@@ -9,10 +9,10 @@ import urllib.request
 
 import pytest
 
-from graphene_debrief import plan as P
-from graphene_debrief import server as ui
-from graphene_debrief.model import Prompt, Session, ToolEvent
-from graphene_debrief.store import Store
+from graphene_map import plan as P
+from graphene_map import server as ui
+from graphene_map.model import Prompt, Session, ToolEvent
+from graphene_map.store import Store
 
 SID = "aaaaaaaa-0000-4000-8000-000000000000"
 QUIET = "bbbbbbbb-0000-4000-8000-000000000000"
@@ -31,7 +31,6 @@ def repo(tmp_path, monkeypatch):
     (static / "assets" / "app.css").write_text("body{margin:0}")
     (tmp_path / "secret.txt").write_text("not yours")
     monkeypatch.setattr(ui, "STATIC", static)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     root = tmp_path / "repo"
     root.mkdir()
     with Store.open(root) as store:
@@ -247,7 +246,8 @@ def test_what_a_check_printed_never_leaves_the_machine_in_an_export(repo):
         page = ui.export_html(store, [SID])
     assert "hunter2" in json.loads(live)["plan"]["nodes"][0]["log"][-1]["said"]  # the person sees it
     assert "hunter2" not in page.replace("echo TOKEN-sk-live-hunter2; exit 1", "")  # the file does not
-    assert '"log": []' in page
+    # the log goes as the node's record (the demo page is drawn from it), the failed check by its command
+    assert '"kind": "check_failed", "actor": "claude:x", "said": "echo TOKEN-sk-live-hunter2; exit 1"' in page
 
 
 def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_them(repo, finish):
@@ -257,8 +257,11 @@ def test_the_words_a_node_came_back_with_are_the_plans_and_the_export_carries_th
         P.propose(store, [node(id="n1", signoff=True)], alex)
         P.start(store, "n1", bot, repo)
         finish(store, repo, "n1", bot)
-        P.reopen(store, "n1", alex, "return a dict, not a list")
+        P.reopen(store, "n1", alex, "return a dict, not a list\nas PRIVATE-4242 printed it")
         assert "sent back: return a dict, not a list" in ui.export_html(store, [SID])
+        # to its first line, in the node's waits and in its record: a pasted output stays here
+        assert "PRIVATE-4242" in ui.payload(store, [SID])
+        assert "PRIVATE-4242" not in ui.export_html(store, [SID])
         P.start(store, "n1", bot, repo)
         P.release(store, "n1", bot, "the test asserts a list")
         assert "handed back: the test asserts a list" in ui.export_html(store, [SID])
