@@ -18,6 +18,7 @@ yet (checked 2026-09-25), and the version is pinned in the ``sandbox`` extra.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import io
 import os
@@ -26,6 +27,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import gate
@@ -264,6 +266,57 @@ def choose(name: str | None = None, image: str | None = None):
     return Docker(image or IMAGE) if name == "docker" else Contree(image or IMAGE)
 
 
+CAP = 50  # sandbox operations at once: the Sandboxes beta's own cap
+POOL = Path(tempfile.gettempdir()) / f"graphene-sandbox-ops-{os.getuid()}"  # a lock file a slot
+
+
+@contextmanager
+def _slot():
+    """One of CAP slots for a sandbox operation, shared by every Graphene process of this user on this
+    machine: a lock file a slot, held with flock while the operation runs, and let go by the kernel
+    however its process ends. A lock inside one process would not bound a run: under `graphene run
+    --parallel` each leaf's executor is a process of its own, its forks are threads, and each `graphene
+    node done` forks the check from a process of its own too."""
+    # ponytail: one machine's bound; two machines on one account can still pass fifty between them
+    POOL.mkdir(parents=True, exist_ok=True)
+    while True:
+        for k in range(CAP):
+            held = open(POOL / str(k), "a")  # noqa: SIM115 (closed below, which lets the lock go)
+            try:
+                fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                held.close()
+                continue
+            try:
+                yield
+            finally:
+                held.close()
+            return
+        time.sleep(0.05)
+
+
+class Capped:
+    """A box whose every operation holds one of the CAP slots while it runs (``_slot``)."""
+
+    def __init__(self, box):
+        self.box = box
+
+    def __getattr__(self, name: str):  # the box's image, its count of operations, its forget
+        return getattr(self.box, name)
+
+    def start(self, *args):
+        with _slot():
+            return self.box.start(*args)
+
+    def run(self, *args):
+        with _slot():
+            return self.box.run(*args)
+
+    def read(self, *args):
+        with _slot():
+            return self.box.read(*args)
+
+
 def check_in_fork(name: str, image: str, root: Path, command: str, timeout: float = 1800,
                   leave_out: list[str] = ()) -> tuple[int, str]:  # fmt: skip
     """A leaf's check in a fresh fork of the image its sandbox started from, holding the leaf's checkout
@@ -279,7 +332,7 @@ def check_in_fork(name: str, image: str, root: Path, command: str, timeout: floa
             f"cd {WORK} && setpriv --reuid={USER} --regid={USER} --init-groups env -i HOME=/home/{USER} "
             f"PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 bash -c {shlex.quote(command)} 2>&1",
         ])  # fmt: skip
-        inside = choose(name)
+        inside = Capped(choose(name))
         _, code, out = inside.run(image, script, {"/tmp/graphene/repo.tar": tar.read_bytes()}, timeout)
         if hasattr(inside, "forget"):
             inside.forget()
@@ -300,7 +353,7 @@ class Sandbox:
         from, when that is not ``root`` (a fork's copy has no .git of its own)."""
         self.root, self.scope, self.store, self.node_id = root, scope, store, node_id
         source = checkout or root
-        self.box = box if box is not None else choose()
+        self.box = Capped(box if box is not None else choose())
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
         self.timings: list[float] = []
@@ -387,12 +440,20 @@ class Sandbox:
             f"tail -c {OUTPUT} /tmp/graphene.out",  # what the model is shown: its tail, capped anyway
         ]
         began = time.monotonic()
-        image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
-        self.timings.append(time.monotonic() - began)
         try:
-            state = _state(self.box.read(image, STATE).decode("utf-8", "replace"))
+            image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
+        except Exception as no:  # the service's own error, or a box gone mid-leaf: the leaf comes back
+            raise RuntimeError(f"the sandbox stopped answering mid-leaf ({type(no).__name__}: {no}); nothing "
+                               "of this command was brought back: run the leaf again") from no  # fmt: skip
+        self.timings.append(time.monotonic() - began)
+        stale = image == self.image  # no new image (the box's own time limit): its list is the last command's
+        try:
+            state = None if stale else _state(self.box.read(image, STATE).decode("utf-8", "replace"))
         except Exception as no:  # a box that cannot be read now: nothing is taken as changed
             state, output = None, f"{output}\n({type(no).__name__}: {no})"
+        if state is None and code > 128:  # a signal ended the sandbox's own script, not only the command
+            raise RuntimeError(f"the sandbox's operation was killed mid-leaf (exit {code}: out of memory, or "
+                               "stopped); nothing of this command was brought back: run the leaf again")
         if state is None:  # fail closed: without the whole list, no file is taken as deleted or changed
             self.image = image
             return code or 1, (f"{output}\n(the sandbox's list of files did not come back whole; nothing "

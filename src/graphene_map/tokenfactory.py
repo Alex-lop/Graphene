@@ -74,7 +74,8 @@ def _request(
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}") from None
+            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}"
+                              f"{_then(no.code, attempt)}") from None  # fmt: skip
         except (urllib.error.URLError, TimeoutError, OSError) as no:
             slow = isinstance(no, TimeoutError) or "timed out" in str(no)
             if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
@@ -83,8 +84,23 @@ def _request(
                 time.sleep(wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory could not be reached at {base()}: {no}") from None
+            then = _then(0, attempt, timeout) if slow and method == "POST" else ""
+            raise Unreachable(f"Token Factory could not be reached at {base()}: {no}{then}") from None
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _then(code: int, tried: int, timeout: float = 0) -> str:
+    """What a person can do next, after ``tried`` tries ended in ``code`` (0: no answer in time)."""
+    times = "once" if tried == 1 else f"{tried} times"
+    if code == 429:
+        return (f" (asked {times}: Token Factory limits how fast this key may ask; wait a minute and run "
+                "again, or run fewer leaves at once)")  # fmt: skip
+    if code >= 500:
+        return f" (asked {times}: the fault is on Token Factory's side; try again later)"
+    if code == 0:
+        return (f" (no answer in {timeout:g} s, asked {times}: try again later, or ask for a shorter answer "
+                "with --max-tokens)")  # fmt: skip
+    return ""
 
 
 @lru_cache(maxsize=4)
@@ -106,6 +122,12 @@ def models(tries: int = TRIES) -> list[Model]:
 ROLES = ("ultra", "super", "nano")
 
 
+def _size(model_id: str) -> str | None:
+    """The Nemotron size an id names (ultra, super or nano), or None when it names none."""
+    name = model_id.lower()
+    return next((r for r in ROLES if r in name), None) if "nemotron" in name else None
+
+
 def roles(listed: list[Model] | None = None) -> dict[str, str]:
     """The NVIDIA Nemotron models in the live list, by size: ``{"ultra": id, "super": id, "nano": id}``
     for those that are there. Where one size is listed twice, the newest wins; a "-fast" variant is a
@@ -113,16 +135,56 @@ def roles(listed: list[Model] | None = None) -> dict[str, str]:
     listed = models() if listed is None else listed
     found: dict[str, Model] = {}
     for m in listed:
-        name = m.id.lower()
-        if "nemotron" not in name:
-            continue
-        size = next((r for r in ROLES if r in name), None)
+        size = _size(m.id)
         if size is None:
             continue
-        rank = (not name.endswith("-fast"), m.created)
+        rank = (not m.id.lower().endswith("-fast"), m.created)
         if size not in found or rank > (not found[size].id.lower().endswith("-fast"), found[size].created):
             found[size] = m
     return {r: found[r].id for r in ROLES if r in found}
+
+
+def resolve(given: list[str], role: str, listed: list[Model] | None = None) -> tuple[list[str], list[str]]:
+    """The model ids ``role`` (the planner or the executor) uses, and one line for each that is not
+    the one it was given or would have had. Token Factory retires models on notice, so an id `graphene
+    init` wrote into a repository, or one given with --model, can leave the list before the run that
+    names it. The rule stays within the family:
+
+    - an id the live list has is used as it is;
+    - an id it lacks that names a Nemotron size is replaced by the listed Nemotron of that size that
+      ``roles`` picks (the newest), else by the nearest size listed, the larger of two as near: a
+      ladder's rung above stays above, and the check still decides what lands;
+    - an id that names no Nemotron size, or any id while no Nemotron is listed, is kept: Token
+      Factory's own answer then says what is wrong with it;
+    - with no id given, the planner has the largest Nemotron listed and the executor the smallest, and
+      a line says so when that is not Ultra or Nano.
+
+    An empty list back means no Nemotron is listed at all."""
+    listed = models() if listed is None else listed
+    found, ids = roles(listed), {m.id for m in listed}
+    rank = ROLES[::-1].index  # nano 0, super 1, ultra 2
+    sizes = sorted(found, key=rank)
+    if not given:
+        if not sizes:
+            return [], []
+        planner = role == "planner"
+        size, wanted, most = (sizes[-1], "ultra", "largest") if planner else (sizes[0], "nano", "smallest")
+        if size == wanted:
+            return [found[size]], []
+        return [found[size]], [f"Token Factory lists no Nemotron {wanted.title()}; the {role} uses "
+                               f"{found[size]}, the {most} Nemotron listed"]  # fmt: skip
+    out, said = [], []
+    for g in given:
+        size = _size(g)
+        if g in ids or size is None or not sizes:
+            out.append(g)
+            continue
+        near = min(sizes, key=lambda s: (abs(rank(s) - rank(size)), -rank(s)))
+        which = f"the Nemotron {near.title()} listed" + ("" if near == size else ", the nearest size")
+        out.append(found[near])
+        said.append(f"{g} is not in Token Factory's list (retired?); the {role} uses {found[near]} instead, "
+                    f"{which}. `graphene init --{role} nemotron` writes the ids listed now")  # fmt: skip
+    return out, said
 
 
 def price(model_id: str) -> Model:

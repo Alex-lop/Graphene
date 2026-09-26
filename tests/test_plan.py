@@ -861,7 +861,9 @@ def test_the_checks_time_limit_covers_making_its_worktree_and_what_git_started_e
     checked_out = repo / ".git" / "checked-out"
     slow_checkout(repo, checked_out)
     monkeypatch.setattr(plan, "CHECK_TIMEOUT", 0.5)
-    assert plan.run_check("true", repo) == (False, "timed out after 0.5 s", [])
+    ran_out = ("timed out after 0.5 s, and was stopped with everything it started: a check must end by "
+               "itself (one that waits for input, or serves, never does)")
+    assert plan.run_check("true", repo) == (False, ran_out, [])
     time.sleep(2)  # longer than the checkout would have taken
     assert not checked_out.exists() and no_check_tree_left(store, repo)
 
