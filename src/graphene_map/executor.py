@@ -22,6 +22,7 @@ and on each fork's row).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -38,7 +39,7 @@ from pathlib import Path
 from . import gate
 from . import plan as P
 from . import tokenfactory as tf
-from .run import REFUSED
+from .run import GRACE, REFUSED
 from .store import Store, repo_root
 
 PROMPT_VERSION = 1
@@ -110,6 +111,7 @@ class Local:
 
     def __init__(self, root: Path):
         self.root = root
+        self.proc: subprocess.Popen | None = None  # the command running now
 
     def read(self, rel: str) -> bytes:
         return (self.root / rel).read_bytes()
@@ -121,7 +123,7 @@ class Local:
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
         env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # model-written code never sees the key
-        proc = subprocess.Popen(
+        proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
         )  # fmt: skip
@@ -136,6 +138,12 @@ class Local:
             proc.wait()
             raise
         return proc.returncode, out.decode("utf-8", "replace")
+
+    def halt(self) -> None:
+        """The run was stopped while a fork's thread waits on its command: end it, and all it started."""
+        if self.proc is not None and self.proc.returncode is None:
+            with contextlib.suppress(OSError):  # it ended just now
+                os.killpg(self.proc.pid, signal.SIGKILL)
 
     def close(self) -> None:
         pass
@@ -345,9 +353,11 @@ class Fork(Leaf):
     """One of N conversations on one leaf, in a copy of its checkout: its `done` runs the check in the
     copy and does not finish the leaf; the first fork whose check passes is the one that lands."""
 
-    def __init__(self, *args, check: str | None, won: threading.Event, source: Path):
+    def __init__(self, *args, check: str | None, won: threading.Event, halted: threading.Event, source: Path):
         super().__init__(*args)
         self.check, self.won, self.passed, self.source = check, won, False, source
+        self.halted = halted  # the run was stopped (won is set with it, so the fork stops at its next step)
+        self.over = False  # its last row is written, by itself or for it
         self.released: tuple[str, list[str]] | None = None
         self.why: str | None = None  # why it gave up, when it did
         self.failed: Exception | None = None  # what stopped it: Token Factory, or the sandbox
@@ -391,14 +401,22 @@ class Fork(Leaf):
 def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, bill: dict, tag: str,
              stop: threading.Event | None = None) -> str | None:  # fmt: skip
     """The loop: ask the model, run the tools it calls, until the leaf is finished, the model stops
-    calling tools three times, the steps run out, or ``stop`` is set (another fork won). Returns why
-    the model gave up, in words and with what a person can do about it, or None when it did not; how
-    the loop ended is left in ``leaf.ended``: finished, no tool call, out of steps, stopped."""
+    calling tools three times, the steps run out, or ``stop`` is set (another fork won, or the run was
+    stopped: a fork's ``halted``). Returns why the model gave up, in words and with what a person can do
+    about it, or None when it did not; how the loop ended is left in ``leaf.ended``: finished, no tool
+    call, out of steps, stopped."""
     nudged, told = 0, ""
+
+    def stopped() -> bool:  # read at each step, and before each tool: nothing starts after a stop
+        if stop is None or not stop.is_set() or leaf.finished:
+            return False
+        why = "the run was stopped" if leaf.halted.is_set() else "another fork's check passed"
+        print(f"{tag}{step:>3} stopped: {why}", flush=True)
+        leaf.ended = "stopped"
+        return True
+
     for step in range(1, args.steps + 1):
-        if stop is not None and stop.is_set() and not leaf.finished:
-            print(f"{tag}{step:>3} stopped: another fork's check passed", flush=True)
-            leaf.ended = "stopped"
+        if stopped():
             return None
         _compact(messages)
         said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
@@ -435,6 +453,8 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             messages.append({"role": "user", "content": CUT if cut else NUDGE})
             continue
         for c in calls:
+            if stopped():
+                return None
             name = c["function"]["name"]
             began = time.monotonic()
             result = leaf.call(name, c["function"].get("arguments"))
@@ -456,6 +476,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
 
 
 _SHARED = threading.Lock()  # what the forks share: the bill, and which of them passed first
+STOPPED_FORK = "the run was stopped before this fork ended"
 
 
 def _shown(root: Path, source: Path) -> list[str]:
@@ -491,7 +512,7 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
     a leaf to finish here or, when no fork passed, why each did not (when every fork handed the leaf
     back, it is handed back). When a fault stopped every fork (Token Factory, the sandbox), the first
     fork's is raised, as it is without forks."""
-    won = threading.Event()
+    won, halted = threading.Event(), threading.Event()
     before = _in_scope_state(here, node.scope, here)
     copies, forks = [], []
 
@@ -501,17 +522,24 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                                "same checkout, and the first whose check passes lands.")  # fmt: skip
         return said
 
+    def note(to: Store, k: int, f: Fork, state: str, why: str = "") -> None:  # its row, as it happens
+        said = {"fork": k + 1, "of": n, "model": model, "state": state, "why": why, **_box(f.place)}
+        to.log_node(node.id, P._now(), "fork", f"run:{NAME}", session or None, None, said)
+
+    def ended(to: Store, k: int, f: Fork, state: str, why: str) -> None:
+        """A fork's last row, written once: how it ended, or "stopped" once the run was stopped."""
+        with _SHARED:
+            if f.over:
+                return
+            f.over = True
+        note(to, k, f, *(("stopped", STOPPED_FORK) if halted.is_set() else (state, why)))
+
     def one(k: int, f: Fork) -> None:
         with Store.open(repo) as mine:  # a thread, a connection
             f.store = mine
             if hasattr(f.place, "store"):
                 f.place.store = mine  # a sandbox logs its breaches
-
-            def note(state: str, why: str = "") -> None:  # its row on the leaf as it happens: the screen's
-                said = {"fork": k + 1, "of": n, "model": model, "state": state, "why": why, **_box(f.place)}
-                mine.log_node(node.id, P._now(), "fork", f"run:{NAME}", session or None, None, said)
-
-            note("running")
+            note(mine, k, f, "running")
             try:
                 f.why = converse(f, model, told(k + 1), args, params, bill, f"[fork {k + 1}] ", won)
             except Exception as no:  # in a thread of its own: its reason and its row, never a traceback
@@ -520,9 +548,9 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 f.failed = no if isinstance(no, tf.Unreachable) else RuntimeError(
                     f.why.removeprefix("RuntimeError: "))  # raised as the leaf's, which names its type once
                 print(f"[fork {k + 1}] stopped: {f.why}", flush=True)
-                note("stopped", f.why)
+                ended(mine, k, f, "stopped", f.why)
                 return
-            note(*f.outcome())
+            ended(mine, k, f, *f.outcome())
 
     try:  # opened before the first copy: a sandbox that cannot be made leaves no copy behind
         for k in range(n):
@@ -539,13 +567,28 @@ def fork_and_pick(n: int, here: Path, node: P.Node, store: Store, repo: Path, se
                 place = _sandbox(copy, node, store, session, args, checkout=here)
             else:  # every other fork, from the same checkpoint: nothing uploaded or set up again
                 place = forks[0].place.fork(copy)
-            forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, source=here))
-        threads = [threading.Thread(target=one, args=(k, f)) for k, f in enumerate(forks)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        bill["refused_in_forks"] = sum(f.refused for f in forks)
+            forks.append(Fork(store, node, place, repo, session, check=node.check, won=won, halted=halted,
+                              source=here))  # fmt: skip
+        threads = [threading.Thread(target=one, args=(k, f), daemon=True) for k, f in enumerate(forks)]
+        try:
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        except BaseException:  # the run was stopped (TERM, Ctrl-C): only this thread heard it
+            halted.set()
+            won.set()  # each fork reads it at its next step, and before its next tool
+            for f in forks:
+                f.place.halt()  # what it runs now: a command, a container
+            until = time.monotonic() + GRACE / 2  # inside the time the run gives this process to end
+            for t in threads:
+                if t.is_alive():
+                    t.join(max(0.0, until - time.monotonic()))
+            for k, f in enumerate(forks):  # a fork still in a call to Token Factory is left, and said so
+                ended(store, k, f, "stopped", STOPPED_FORK)
+            raise
+        finally:  # what they spent is in the bill already, shared; and what they were refused
+            bill["refused_in_forks"] = sum(f.refused for f in forks)
         bill["wrote_in_forks"] = {}
         winner = next((k for k, f in enumerate(forks) if f.passed), None)
         bill["forks"], bill["winner"] = n, None if winner is None else winner + 1
@@ -752,8 +795,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prepare", help="a command run once, as root, in the checkpoint (pip install -e .)")
     parser.add_argument("prompt")
     args = parser.parse_args(argv)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a stopped run: the bill is still written
+    signal.signal(signal.SIGTERM, _stopped)  # a stopped run: the forks' rows and the bill are still written
     return work(args, args.prompt)
+
+
+def _stopped(*_) -> None:
+    """TERM, heard once: a parallel run sends it twice (its stop, and the leaf's own worker), and the
+    second must not cut short what the first began (a traceback, forks without their last row)."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    sys.exit(143)
 
 
 def template(spec: str) -> str:

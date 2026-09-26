@@ -2,10 +2,14 @@
 """What the closing review found in the executor, the client and the sandbox, each against the recorded
 fake (and, where it says so, the Docker stand-in): each test fails on the code before its fix."""
 
+import contextlib
 import json
 import os
 import signal
+import subprocess
+import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -23,9 +27,11 @@ from test_executor import (  # noqa: F401
     script,
     tool_results,
 )
+from test_sandbox_state import needs_docker
 
-from graphene_map import executor, sandbox
+from graphene_map import executor, plan, run, sandbox
 from graphene_map import tokenfactory as tf
+from graphene_map.plan import Caller
 from graphene_map.plan_view import build_plan_view
 from graphene_map.run import _alive
 from graphene_map.store import Store
@@ -246,3 +252,81 @@ def test_a_tools_error_names_its_path_in_the_repository_never_where_the_checkout
     assert why == "the executor stopped: " + ("RuntimeError: " if forks > 1 else "") + said
     assert [e["why"] for e in ended] == [said] * (forks if forks > 1 else 0)
     assert "graphene-greet-fork" not in page and str(repo.resolve()) not in page and str(repo) not in page
+
+
+STOPPED = "the run was stopped before this fork ended"
+
+
+def docker(*args: str) -> str:
+    return subprocess.run(["docker", *args], capture_output=True, text=True).stdout
+
+
+@pytest.mark.parametrize("placement", ["local", pytest.param("sandbox", marks=needs_docker)])
+def test_a_run_stopped_while_forks_work_stops_each_fork_says_so_and_leaves_nothing_running(
+    repo, fake, monkeypatch, tmp_path, placement
+):
+    """TERM on a forked leaf (its run stopped, as `graphene run` stops an executor): only the main
+    thread saw it. The forks went on calling Token Factory, unbilled, until the run killed the executor
+    ten seconds later; their rows stayed "running"; the model's commands, and in the Docker sandbox the
+    forks' containers, were left behind; and a parallel run's second TERM could print a traceback."""
+    pids, temp = tmp_path / "pids", tmp_path / "temp"
+    temp.mkdir()
+    made = None
+    if placement == "sandbox":  # the Docker stand-in, which writes down the containers it makes
+        made = everywhere(monkeypatch, tmp_path, FAULTS_BOX="killed") / "containers"
+        monkeypatch.setenv("GRAPHENE_SANDBOX", "docker")
+    command = "sleep 60" if made else f"echo $$ >> {pids}; exec sleep 60"
+    f = fake([by_fork({k: [call("run", command=command), call("done")] for k in (1, 2)})] * 10)
+    plan_of(repo, leaf())
+    with Store.open(repo) as store:
+        plan.start(store, "greet", Caller("run:nemotron", False, "s-1"), repo)
+    env = {**os.environ, "GRAPHENE_NODE": "greet", "GRAPHENE_ATTEMPT": "s-1", "GRAPHENE_TRY": "1",
+           "TMPDIR": str(temp)}  # fmt: skip
+    argv = [sys.executable, "-m", "graphene_map.executor", "--model", NANO, "--forks", "2", "--placement",
+            placement, "the contract"]  # fmt: skip
+    proc = subprocess.Popen(argv, cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            start_new_session=True)  # fmt: skip
+
+    def working() -> int:  # how many forks are in their command now
+        if made is None:
+            return len(pids.read_text().split()) if pids.exists() else 0
+        boxes = made.read_text().split() if made.exists() else []
+        return docker("inspect", "-f", "{{.State.Running}}", *boxes).split().count("true") if boxes else 0
+
+    try:
+        until = time.monotonic() + 120
+        while working() < 2 and proc.poll() is None and time.monotonic() < until:
+            time.sleep(0.1)
+        assert working() == 2
+        os.killpg(proc.pid, signal.SIGTERM)  # the run stops it; a parallel run sends TERM twice
+        time.sleep(0.02)  # while the first is being handled
+        with contextlib.suppress(OSError):  # it ended already
+            os.killpg(proc.pid, signal.SIGTERM)
+        run._end(proc)  # what the run does next: waits its grace for the executor to end, then kills it
+        out = proc.stdout.read().decode()
+        assert proc.returncode == 143, out  # it ended by itself, inside the run's grace: not killed
+        assert "Traceback" not in out, out
+        with Store.open(repo) as store:
+            last = {e["detail"]["fork"]: e["detail"] for e in store.node_log("greet", ("fork",))}
+            bill = store.node_log("greet", ("usage",))[-1]["detail"]
+        assert [(last[k]["state"], last[k]["why"]) for k in (1, 2)] == [("stopped", STOPPED)] * 2
+        assert bill["calls"] == len(f.requests) == 2  # what the forks spent before they stopped, billed
+        assert list(temp.glob("graphene-greet-fork*")) == []
+        if made is None:
+            started = [int(p) for p in pids.read_text().split()]
+            until = time.monotonic() + 5
+            while [p for p in started if _alive(p)] and time.monotonic() < until:
+                time.sleep(0.1)
+            assert not [p for p in started if _alive(p)]
+        else:
+            assert not set(made.read_text().split()) & set(docker("ps", "-aq", "--no-trunc").split())
+    finally:
+        with contextlib.suppress(OSError):  # it ended already
+            os.killpg(proc.pid, signal.SIGKILL)
+        for p in (pids.read_text().split() if pids.exists() else []):
+            with contextlib.suppress(OSError):  # it ended already
+                os.kill(int(p), signal.SIGKILL)
+        if made is not None:
+            boxes, images = made.read_text().split(), (made.parent / "images")
+            docker("rm", "-f", *boxes) if boxes else None
+            docker("rmi", "-f", *images.read_text().split()) if images.exists() else None
