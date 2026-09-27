@@ -1,11 +1,41 @@
 # Changelog
 
-## Unreleased (after 0.4.0)
+## 0.5.0 (not published yet: the tag is Alex's)
+
+Graphene on Nemotron. The Nemotron path has run only against a scripted stand-in for Token Factory and a
+Docker stand-in for Sandboxes; nothing in this release has been run live yet.
+
+- `graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no network, and
+  runs nothing: every key that would change the plan or start a process says so. `graphene demo --once`
+  prints its last frame. `graphene demo --record FILE` records a run's store (not the model's calls),
+  taking out paths, keys and sandbox ids. The wheel ships a recording, and it says on screen that it is a
+  scripted stand-in until the live run replaces it. Needs git.
+- `graphene init` lists what it finds here (`claude` or `codex` on the PATH, a Token Factory key), each
+  with what it needs, and none comes first: Enter takes a choice only when exactly one is found. Without a
+  terminal, an unset choice gets the one thing found, or stays unset and says why.
+- Forks and the model ladder are visible. Each fork is a row under its leaf in `graphene watch` (its
+  model, which fork, its state), a step up to a larger model is named on the bottom line and in the leaf's
+  pane, the pane shows the leaf's sandbox (its checkpoint, operations and seconds) and its bill, the record
+  says which fork won and why each other one did not, and the exported page draws each leaf's forks.
+- The Nemotron path survives what the judging period can throw at it: a model id the live list no longer
+  has falls back within the Nemotron family and says which instead of which; a 429 storm, 5xx errors, a
+  timeout, a reply cut off, a malformed or text-only tool call, a sandbox killed or gone mid-leaf and a
+  check that hangs each bring the leaf back with its cause and what to do, the run goes on, and nothing is
+  left running; no more than fifty sandbox operations run at once from one machine.
+- The first fork whose check passes is the one that lands, decided under a lock.
+- Forks read what git shows in the leaf's checkout (they were blind: a fork's copy has no `.git`), and a
+  winning fork never deletes or copies what git ignores (it used to delete a `.env` under a `**` scope).
+  A stopped run stops its forks and the model's commands, writes each fork's row as stopped, and bills
+  what they spent. A usage row says whether Token Factory or a stand-in answered, and the bill credits
+  Token Factory only when every row says so.
+- A record read where git has not got a hold's starting commit says its commits cannot be read.
+- The README says what Graphene on Nemotron claims, directly under the opening, offers two paths (the agent
+  you have, or Nemotron through Token Factory), and gives judges ten lines to test it.
 
 - The import package is `graphene_map`, matching the distribution (it was `graphene_debrief`). The command is still `graphene`, and installed hooks keep working. Anything that imported `graphene_debrief` imports `graphene_map`.
 - NVIDIA Nemotron on Nebius Token Factory, as planner and executor: `graphene ask --with nemotron` (Ultra, read-only tools) and `graphene run --with nemotron` (Nano, then Super on a refused attempt; `--forks N`; `--placement local|sandbox`). Model ids come from the live model list, and every call's usage is priced at its list price. Needs `NEBIUS_API_KEY`.
 - Token Factory Sandboxes: `pip install 'graphene-map[sandbox]'` (contree-sdk 0.3.6). A leaf's commands run as a user who can write only its scope, what a command makes outside it never comes back, and its check runs in a fork of the sandbox.
-- `graphene init` asks once which planner and executor a repository uses, Nemotron first; `run`, `ask`, `node split` and the screen use it, and `--with` overrides one command.
+- `graphene init` asks once which planner and executor a repository uses (as above: what it finds, none first); `run`, `ask`, `node split` and the screen use it, and `--with` overrides one command.
 - A check runs in a clean worktree of the leaf's state: nothing it writes lands in the executor's tree. No check gets the Token Factory key.
 - `graphene watch` folds: done subtrees fold, a folded row counts its leaves by state, a tall tree opens as its outline; `za zo zc zR zM zx`.
 - The bill: what the Nemotron planner and executors cost, at list price, in `graphene node show`, `graphene plan record`, the run's last line and the screen's status line.

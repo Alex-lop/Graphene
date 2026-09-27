@@ -489,3 +489,22 @@ def test_the_record_is_json_and_every_line_is_whole(store, repo):
     as_dict = NR.to_dict(record)
     assert json.loads(json.dumps(as_dict))["windows"][0]["session_id"] == S1
     assert all(line == line.rstrip() and "…" not in line for line in NR.render(record))
+
+
+def test_a_fork_still_running_on_a_leaf_that_is_not_reads_stopped():
+    """:stop or Ctrl-C mid-fork ends the fork threads before they write their end, so the leaf came back
+    and its forks still said running while nothing ran. Read against the leaf's state, such a fork was
+    stopped; the counts on its row are the ones it started with, so none is given. One that ended says
+    what it said."""
+    box = {"checkpoint": "forked", "ops": 0, "seconds": 0.0}
+    running = {"fork": 1, "of": 2, "model": "m", "state": "running", "why": ""} | box
+    ended = {"fork": 2, "of": 2, "model": "m", "state": "gave up", "why": "it needs x"} | box | {"ops": 3}
+    rows = [{"kind": "started", "detail": {}}, {"kind": "model", "detail": {"attempt": 1, "model": "m"}},
+            {"kind": "fork", "detail": running}, {"kind": "fork", "detail": ended}]  # fmt: skip
+    assert NR.forks(rows, plan.RUNNING) == [running, ended]  # it runs: as written
+    for state in (plan.OPEN, plan.DONE, plan.REVIEW):
+        assert NR.forks(rows, state) == [
+            {"fork": 1, "of": 2, "model": "m", "state": "stopped",
+             "why": "its executor was stopped before this fork ended", "checkpoint": "forked"},
+            ended,
+        ]  # fmt: skip

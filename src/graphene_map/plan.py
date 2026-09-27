@@ -687,7 +687,8 @@ def run_check(
             code, out, err = _ended(command, tree, env, began)
             made = [p for p in leave_out if os.path.lexists(tree / p)]
     except subprocess.TimeoutExpired:
-        return False, f"timed out after {CHECK_TIMEOUT} s", []
+        return False, (f"timed out after {CHECK_TIMEOUT:g} s, and was stopped with everything it started: a "
+                       "check must end by itself (one that waits for input, or serves, never does)"), []
     except (Refused, OSError) as no:  # it never ran, which is no pass
         return False, f"the check could not be run: {no}", []
     text = (out + err).strip()

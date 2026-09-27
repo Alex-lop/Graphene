@@ -22,6 +22,41 @@ each is held to its leaf's files and its check.
 
 ![graphene watch, at 80 columns](docs/assets/watch.gif)
 
+## Graphene on Nemotron
+
+The claim: **Graphene makes a cheap open model safe to hand real work.**
+
+The chart that tests it goes here: the same paragraph and the same model, with the tree and without
+it, measured in correctness, the person's attention and dollars. It comes from the evidence run,
+which has not happened yet, so there is no number here.
+
+Nemotron 3 Ultra plans the tree through Nebius Token Factory. Nemotron Nano does the leaves, each in
+a Token Factory Sandbox forked from one checkpoint of your repository, and Super takes a second
+attempt. The check, which Graphene runs itself, decides what lands.
+
+So far this path has run only against a scripted stand-in for Token Factory and a Docker stand-in for
+Sandboxes. [docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory,
+Sandboxes and Nemotron, and how to test it.
+
+## For judges
+
+No key, no Docker, and no model is called:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+graphene demo              # a recorded run, replayed in graphene watch
+graphene demo --once       # its last state, printed
+git clone https://github.com/Alex-lop/Graphene && cd Graphene
+SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
+```
+
+With a key for Token Factory (it spends at list price, and prints the bill at the end):
+
+```
+export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
+docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
+```
+
 ## You are here
 
 ```
@@ -37,8 +72,22 @@ says which one.
 
 ## The first ten minutes
 
-You need git, a repository with some work to do in it (one of your own), and a key for Nebius
-Token Factory. Install and set up the repository, once:
+You need git and a repository with some work to do in it (one of your own). Install and set up the
+repository once, on either of two paths. `graphene init` asks once which planner and which executor
+this repository uses. It lists what it finds here (`claude` or `codex` on the PATH, a Token Factory
+key), each with what it needs, and none comes first. `--with` names another for a single command.
+
+### With the agent you have (no key)
+
+Claude Code or Codex plans and executes, started as you, with your permissions:
+
+```
+uv tool install git+https://github.com/Alex-lop/Graphene
+cd ~/src/your-repo
+graphene init
+```
+
+### On Nemotron through Token Factory (a key)
 
 ```
 uv tool install 'graphene-map[sandbox] @ git+https://github.com/Alex-lop/Graphene'
@@ -47,13 +96,12 @@ cd ~/src/your-repo
 graphene init
 ```
 
-`graphene init` asks once which planner and which executor this repository uses, and offers
-NVIDIA Nemotron on Token Factory first. Nemotron 3 Ultra plans the tree. A Nemotron Nano does each
-leaf, and a Super takes over when Nano's attempt is refused. Each leaf runs in a Token Factory
-Sandbox forked from the same checkpoint of your repository (in a worktree of its own when Sandboxes
-are not set up), and the leaf's check decides. With Nemotron, ask for what you want with `:ask` in
-`graphene watch` or `graphene ask "…"` at the shell. Claude Code and Codex can plan and execute
-instead, as before: choose them at `init`, or name one for a single command with `--with`.
+Nemotron 3 Ultra plans the tree. A Nemotron Nano does each leaf, and a Super takes over when Nano's
+attempt is refused. Each leaf runs in a Token Factory Sandbox forked from the same checkpoint of
+your repository (in a worktree of its own when Sandboxes are not set up), and the leaf's check
+decides. Ask for what you want with `:ask` in `graphene watch` or `graphene ask "…"` at the shell.
+
+### Then, on either path
 
 With Claude Code as the planner, open two panes in WezTerm: your agent on the left, the plan on the
 right (it reads best at 80 columns or more, so give the window room). In the pane you are in:

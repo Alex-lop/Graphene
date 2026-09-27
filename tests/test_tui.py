@@ -1196,6 +1196,59 @@ def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopene
     watch(repo, [], before=before)
 
 
+def test_a_row_that_folds_away_with_its_finished_sub_goal_leaves_the_cursor_on_that_sub_goal(repo):
+    """The leaf under the cursor, or one of its fork rows, folded away when its sub-goal finished on
+    screen, and the cursor went to a row that had nothing to do with it. Now it goes up to the first
+    row still shown, the folded sub-goal, as vim does."""
+    import subprocess
+
+    def forking(store):  # docs held by the Nemotron executor, forked: a row for each fork under it
+        plan.start(store, "docs", NEMOTRON, repo)
+        nano = {"attempt": 1, "model": NANO}
+        store.log_node("docs", plan._now(), "model", NEMOTRON.label, None, None, nano)
+        for k in (1, 2):
+            said = {"fork": k, "of": 2, "model": NANO, "state": "running", "why": ""}
+            store.log_node("docs", plan._now(), "fork", NEMOTRON.label, None, None, said)
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        forking(store)
+
+    def docs_done(store):  # its forks' leaf finishes, and with it the API
+        (repo / "README.md").write_text("users come back with their ids\n")
+        plan.finish(store, "docs", NEMOTRON, checkout=repo)
+        git = ["git", "-c", "user.email=t@e.com", "-c", "user.name=T"]
+        subprocess.run([*git, "add", "README.md"], cwd=repo, check=True)
+        subprocess.run([*git, "commit", "-qm", "docs"], cwd=repo, check=True)
+
+    async def before(app, pilot):
+        async def then(act, *keys):
+            for key in keys:
+                await pilot.press(key)
+                await pilot.pause()
+            here = app.tree.cursor_node.data
+            with Store.open(repo) as store:
+                act(store)
+            app.refresh_plan()
+            await pilot.pause()
+            return here, app.tree.cursor_node.data
+
+        # the goal, api, ids, docs, its fork 1, its fork 2
+        assert await then(docs_done, *"jjjjj") == (("docs", 2), "api")
+        assert await then(lambda s: plan.reopen(s, "docs", alex, "the example is wrong")) == ("api", "api")
+        landed = await then(lambda s: land(repo, s, "docs", "README.md", "ids, with an example\n"), "j", "j")
+        assert landed == ("docs", "api")
+
+    alex = plan.Caller("alex", True)
+    for size in SIZES:
+        watch(repo, [], size=size, before=before)
+        with Store.open(repo) as store:  # as it was, for the next size
+            plan.reopen(store, "docs", alex, "again")
+            forking(store)
+
+
 def test_zx_folds_as_the_screen_opened_and_keeps_the_cursor_in_sight(repo):
     """vim's zx: the folds as they were when the screen opened, then the row under the cursor shown."""
     api_done(repo)
@@ -1357,3 +1410,283 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
     seen, _ = watch(repo, ["j"], size=(120, 36))
     assert seen["status"].splitlines()[0].endswith("$0.03 at list price")  # the planner's and the leaf's
     assert "bill $0.0123 at list price · 6 calls · Nemotron-3-Nano-fake" in " ".join(seen["detail"].split())
+
+
+# -- the forks, the step up and the sandbox (what the Nemotron executor writes on the leaf's log) -----
+
+NANO, SUPER = "nvidia/Nemotron-3-Nano-fake", "nvidia/Nemotron-3-Super-fake"
+NEMOTRON = plan.Caller("run:nemotron", False, "5e55-run-session")
+WHY = {"lost": "another fork's check passed first", "passed": "its check passed first",
+       "check failed": "its check failed (exit 1), then it stopped calling tools",
+       "gave up": "the greeting is also in other.py"}  # fmt: skip
+
+
+def forked(repo, states, model=NANO, box=None, attempt=1):
+    """A leaf held by the Nemotron executor, with its model's row and a row for each fork in ``states``,
+    as executor.fork_and_pick writes them; ``box``: each fork's sandbox, as its rows carry it."""
+    alex = plan.Caller("alex", True)
+    with Store.open(repo) as store:
+        if not plan.goal(store):
+            plan.set_goal(store, "a friendlier app", alex)
+            leaves = [{"id": "greet", "title": "say hello", "scope": ["api.py"], "check": "true"},
+                      {"id": "schema", "title": "the schema", "scope": ["schema.py"], "check": "true"}]
+            plan.propose(store, leaves, alex)
+            plan.start(store, "greet", NEMOTRON, repo)
+        store.log_node("greet", plan._now(), "model", NEMOTRON.label, NEMOTRON.session_id, None,
+                       {"attempt": attempt, "model": model})  # fmt: skip
+        for k, state in enumerate(states, 1):
+            said = {"fork": k, "of": len(states), "model": model, "state": state, "why": WHY.get(state, "")}
+            store.log_node("greet", plan._now(), "fork", NEMOTRON.label, NEMOTRON.session_id, None,
+                           said | (box or {}))  # fmt: skip
+
+
+def test_a_leaf_with_forks_shows_each_under_it_in_the_one_row_grammar(repo):
+    """fork_and_pick ran N conversations and only the bill at the end said so. Each fork is now a row
+    under its leaf: its model where a title goes, which fork where an id goes, its state in the word's
+    column and colour (a fork that lost is nobody's move: dim; red is still only a failed command)."""
+    from rich.style import Style
+
+    from graphene_map.tui import _walk
+
+    forked(repo, ["running", "lost", "check failed"])
+
+    async def before(app, pilot):
+        for node in _walk(app.tree.root):
+            if isinstance(node.data, tuple):
+                spans = app.tree.render_label(node, Style(), Style()).spans
+                word = app.forks["greet"][node.data[1] - 1]["state"]
+                colour = {"running": "yellow", "lost": "dim", "check failed": "dim"}[word]
+                assert colour in " ".join(str(s.style) for s in spans) and "red" not in str(spans), word
+
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size, before=before)
+        rows = [r.rstrip() for r in seen["tree"] if r.strip()]
+        leaf = next(k for k, r in enumerate(rows) if "  greet " in r)
+        forks = rows[leaf + 1 : leaf + 4]
+        assert rows[leaf].endswith("running")
+        for k, (r, word) in enumerate(zip(forks, ["running", "lost", "check failed"], strict=True), 1):
+            assert "Nemotron-3-Nano-fake" in r and r.endswith(word), (size, r)
+            assert r.index(f"fork {k}") == rows[leaf].index("  greet ") + 2  # which fork, in the id's column
+            assert r.index(word) == rows[leaf].index("running")  # its state, in the word's column
+        assert seen["sideways"] == 0
+
+
+def test_fork_rows_keep_the_row_grammar_as_deep_as_the_node_rows_do(repo):
+    """At 120x36 the forks of a leaf deep in the tree, with a long id, had their ids and words two
+    columns right of every other row's, and a word cut to "check fail": a fork's row is a level below
+    its leaf's, and its title (the model's name) stopped giving way at four columns, as a node's does.
+    It gives way to one now: as deep as the node rows hold, ids stay under ids and words under words."""
+    alex = plan.Caller("alex", True)
+    deep, words = "say-hello-to-each-user-by-name", ["check failed", "running", "lost"]
+    with Store.open(repo) as store:
+        plan.set_goal(store, "a friendlier app, all the way down", alex)
+        parts = [{"id": f"d{k}", "title": f"the part number {k} of it", "parent": f"d{k - 1}"}
+                 for k in range(1, 9)]  # fmt: skip
+        del parts[0]["parent"]  # eight sub-goals, one in the other: the leaf is nine levels down
+        plan.propose(store, [*parts, {"id": deep, "title": "say hello to each user", "parent": "d8",
+                                      "scope": ["api.py"], "check": "true"}], alex)  # fmt: skip
+        plan.start(store, deep, NEMOTRON, repo)
+        store.log_node(deep, plan._now(), "model", NEMOTRON.label, None, None, {"attempt": 1, "model": NANO})
+        for k, state in enumerate(words, 1):
+            said = {"fork": k, "of": 3, "model": NANO, "state": state, "why": ""}
+            store.log_node(deep, plan._now(), "fork", NEMOTRON.label, None, None, said)
+    seen, _ = watch(repo, [], size=(120, 36))
+    rows = rows_of(seen)
+    leaf = next(k for k, r in enumerate(rows) if f"  {deep}  " in r)
+    ids, word = rows[leaf].index(f"  {deep}  ") + 2, rows[leaf].index("running")
+    assert all(r.index(f"  d{k}  ") + 2 == ids for k, r in enumerate(rows[1:leaf], 1)), rows  # the nodes hold
+    for k, (r, said) in enumerate(zip(rows[leaf + 1 :], words, strict=True), 1):
+        assert r.index(f"fork {k}") == ids and r.index(said, ids) == word and r.endswith(said), rows
+    assert seen["sideways"] == 0
+
+
+def test_forks_that_arrive_on_an_open_screen_are_drawn_and_fold_away_with_their_finished_leaf(repo, finish):
+    """A screen reads the store every second: the rows come in as the executor writes them, the cursor
+    stays on a fork's row as its state changes, and goes to the leaf when the finished leaf folds."""
+    forked(repo, [])
+
+    async def before(app, pilot):
+        def tree():
+            app.refresh_plan()
+            rows = shown(app, app.query_one("#tree").scrollable_content_region)
+            return [r.rstrip() for r in rows if r.strip()]
+
+        forked(repo, ["running", "running"])
+        assert any(r.endswith("fork 1  running") for r in tree())
+        for key in ("j", "j"):
+            await pilot.press(key)
+        forked(repo, ["lost", "passed"])
+        rows = tree()
+        assert any(r.endswith("fork 1  lost") for r in rows) and app.tree.cursor_node.data == ("greet", 1)
+        with Store.open(repo) as store:
+            finish(store, repo, "greet", NEMOTRON)
+        assert "fork 1" not in " ".join(tree()) and app.tree.cursor_node.data == "greet"
+
+    watch(repo, [], before=before)
+
+
+def test_every_key_on_a_fork_row_acts_on_its_leaf_or_says_why_not(repo, monkeypatch):
+    """A fork is not a node, and no command takes one: on its row each key is its leaf's, the bottom
+    line says so, and nothing crashes."""
+    forked(repo, ["running", "running"])
+    started = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    monkeypatch.setenv("EDITOR", "true")  # an editor that changes nothing
+    on_fork = ["j", "j"]  # the goal, greet, its fork 1
+    seen, _ = watch(repo, on_fork)
+    assert seen["cursor"] == "greet" and "greet · running" in seen["detail"]
+    assert seen["status"].splitlines()[1].startswith("fork 1: keys act on greet · l output · x release")
+    seen, _ = watch(repo, [*on_fork, "enter"])
+    assert seen["detail"].startswith("record · it scrolls") and "greet · running" in seen["detail"]
+    seen, _ = watch(repo, [*on_fork, "l"])
+    assert "greet · output of attempt" in seen["detail"]
+    for key, said in [("y", "graphene plan accept greet"), ("s", "greet is running"),
+                      ("w", "greet has no 'w'"), ("b", "greet has no 'b'"), ("n", "greet has no 'n'"),
+                      ("e", "graphene node edit greet"), ("E", "graphene plan edit greet")]:  # fmt: skip
+        seen, _ = watch(repo, [*on_fork, key])
+        assert said in seen["status"], (key, seen["status"])
+    watch(repo, [*on_fork, "r"])
+    watch(repo, [*on_fork, "a", "escape", "A", "escape", "V", "escape", "z", "a", "question_mark", "escape"])
+    assert started == [["run", "--parallel", "4", "--node", "greet"]]
+    seen, _ = watch(repo, [*on_fork, "x"])
+    assert "graphene node release greet" in seen["status"] and states(repo)["greet"] == "open"
+    with Store.open(repo) as store:  # held again, and d on its fork's row drops the leaf, as on the leaf's
+        plan.start(store, "greet", NEMOTRON, repo)
+    forked(repo, ["running"])
+    seen, _ = watch(repo, [*on_fork, "d"])
+    assert "graphene node drop greet" in seen["status"] and states(repo)["greet"] == "dropped"
+
+
+def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leafs_pane(repo):
+    """--model given twice stepped up on attempt 2 and nothing on screen named it. At 80x24, with the
+    cursor on the goal (nobody pointed at the leaf), the bottom line says it; the leaf's pane keeps it."""
+    forked(repo, [])  # attempt 1, on Nano
+    seen, _ = watch(repo, [])
+    assert "stepped up" not in seen["status"]
+    why = "attempt 1 refused: greet is not done: `true` failed"
+    with Store.open(repo) as store:  # the executor's row for attempt 2, as it began
+        store.log_node("greet", plan._now(), "model", NEMOTRON.label, NEMOTRON.session_id, None,
+                       {"attempt": 2, "model": SUPER, "from": NANO, "why": why})  # fmt: skip
+    seen, _ = watch(repo, [])
+    said = "greet stepped up to Nemotron-3-Super-fake: attempt 1 refused"
+    assert seen["cursor"] is None and seen["status"].splitlines()[1].startswith(said)
+    seen, _ = watch(repo, ["j"])
+    assert f"model Nemotron-3-Super-fake, stepped up from Nemotron-3-Nano-fake: {why}" in " ".join(
+        seen["detail"].split()
+    )
+
+
+def test_a_step_up_waits_for_a_free_bottom_line_and_none_is_lost(repo):
+    """The news of a step up replaced what a command had just said, a failure included, and of two
+    leaves that stepped up between refreshes only the last was ever said. Now each is said when the
+    bottom line is free, one at a time, while its leaf runs."""
+    forked(repo, [])  # greet, attempt 1 on Nano
+    other = plan.Caller("run:nemotron", False, "5e56-run-session")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", other, repo)
+
+    def up(node_id: str) -> None:
+        step = {"attempt": 2, "model": SUPER, "from": NANO, "why": f"{node_id} refused"}
+        with Store.open(repo) as store:
+            store.log_node(node_id, plan._now(), "model", NEMOTRON.label, None, None, step)
+
+    async def before(app, pilot):
+        async def bottom(*keys: str) -> str:
+            for key in keys:
+                await pilot.press(key)
+                await pilot.pause()
+            app.refresh_plan()
+            return str(app.query_one("#status").render()).splitlines()[1]
+
+        assert (await bottom("j", "s")).startswith("✗ greet is running")  # a command's refusal
+        up("greet")
+        up("schema")  # both between two refreshes
+        assert (await bottom()).startswith("✗ greet is running")  # what the command said stays
+        assert (await bottom("k")).startswith("greet stepped up to Nemotron-3-Super-fake: greet refused")
+        assert (await bottom()).startswith("greet stepped up")  # said until the person moves on
+        assert (await bottom("j")).startswith("schema stepped up to Nemotron-3-Super-fake: schema refused")
+        assert "stepped up" not in await bottom("j")  # each said once: the keys again
+
+    watch(repo, [], before=before)
+
+
+def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bill(repo, finish, monkeypatch):
+    """The pane said nothing of where a leaf ran. Now: the checkpoint it made or forked (its image, short),
+    and once the attempt is over, the operations and seconds its sandbox took (its forks', added up)."""
+    from graphene_map.node_record import sandbox
+
+    image = "sha256:3f2a1b9c0d4e5f6a7b8c9d0e"
+    made = {"placement": "sandbox", "box": "docker", "image": image, "checkpoint": "made", "ops": 4,
+            "seconds": 7.5}  # fmt: skip
+    box = {"image": image, "checkpoint": "forked"}
+    forked(repo, [])
+    with Store.open(repo) as store:
+        store.log_node("greet", plan._now(), "placement", NEMOTRON.label, None, None, made)
+    forked(repo, ["running", "running"], box=box | {"ops": 0, "seconds": 0.0}, attempt=1)
+    seen, _ = watch(repo, ["j"])  # running: its checkpoint, and no count until the attempt is over
+    flat = " ".join(seen["detail"].split())
+    assert "sandbox made, image 3f2a1b9c0d4e" in flat and "operations" not in flat, seen["detail"]
+    with Store.open(repo) as store:
+        for k, (state, ops, seconds) in enumerate([("passed", 9, 12.25), ("lost", 3, 4.0)], 1):
+            said = {"fork": k, "of": 2, "model": NANO, "state": state, "why": WHY[state], "ops": ops}
+            store.log_node("greet", plan._now(), "fork", NEMOTRON.label, None, None,
+                           said | box | {"seconds": seconds})  # fmt: skip
+        store.log_node("greet", plan._now(), "usage", NEMOTRON.label, None, None,
+                       {"model": NANO, "calls": 7, "dollars": 0.0031, "forks": 2, "winner": 1})  # fmt: skip
+        monkeypatch.setattr(plan, "sandboxed", lambda store, node: None)  # its check here: no sandbox to fork
+        finish(store, repo, "greet", NEMOTRON)
+    for size in SIZES:
+        seen, _ = at(repo, "greet", size)
+        flat = " ".join(seen["detail"].split())
+        assert "sandbox made, image 3f2a1b9c0d4e · 12 operations · 16.2 s in its 2 forks" in flat, size
+        assert "bill $0.0031 at list price · 7 calls · Nemotron-3-Nano-fake" in flat
+    ended = made | {"ops": 14, "seconds": 23.4}  # a leaf that did not fork: its row at the attempt's end
+    rows = [{"kind": "started", "detail": {}}, {"kind": "placement", "detail": made},
+            {"kind": "placement", "detail": ended}]  # fmt: skip
+    assert sandbox(rows) == ended
+
+
+def test_the_record_says_which_fork_won_and_why_each_other_one_did_not(repo):
+    forked(repo, ["lost", "passed", "gave up", "check failed"], box={"ops": 5, "seconds": 3.25})
+    for size in SIZES:
+        seen, _ = at(repo, "greet", size, keys=["enter"])
+        record = " ".join(seen["detail"].split())
+        assert re.search(r"^forks$", seen["detail"], re.M), seen["detail"]
+        said = [f"fork 2 of 4 won: {WHY['passed']} · Nemotron-3-Nano-fake · 5 operations, 3.2 s",
+                f"fork 1 of 4 lost: {WHY['lost']}", f"fork 3 of 4 gave up: {WHY['gave up']}",
+                f"fork 4 of 4 check failed: {WHY['check failed']}"]  # fmt: skip
+        assert all(s in record for s in said), (size, record)
+        assert [record.index(s) for s in said] == sorted(record.index(s) for s in said)  # the winner first
+
+
+def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
+    """:stop or Ctrl-C mid-fork: the run hands the leaf back, and the fork threads end before they write
+    their end. Its forks read running, in the executor's yellow, on its row and in its record, while
+    nothing ran. Now they read stopped (dim: nobody's move), and the record says why, with no count."""
+    from rich.style import Style
+
+    from graphene_map.run import STOPPED
+    from graphene_map.tui import _walk
+
+    forked(repo, ["running", "running"], box={"checkpoint": "forked", "ops": 0, "seconds": 0.0})
+    with Store.open(repo) as store:
+        plan.release(store, "greet", NEMOTRON, STOPPED)
+
+    async def before(app, pilot):
+        for node in _walk(app.tree.root):
+            if isinstance(node.data, tuple):
+                spans = " ".join(str(s.style) for s in app.tree.render_label(node, Style(), Style()).spans)
+                assert "yellow" not in spans and "dim" in spans, spans
+
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size, before=before)
+        rows = rows_of(seen)
+        leaf = next(k for k, r in enumerate(rows) if "  greet " in r)
+        assert rows[leaf].endswith("came back")
+        for k, r in enumerate(rows[leaf + 1 : leaf + 3], 1):
+            assert r.endswith(f"fork {k}  stopped"), rows
+        assert not any(r.endswith("running") for r in rows), rows
+        seen, _ = at(repo, "greet", size, keys=["enter"])
+        record = " ".join(seen["detail"].split())
+        said = "fork 1 of 2 stopped: its executor was stopped before this fork ended · Nemotron-3-Nano-fake"
+        assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record

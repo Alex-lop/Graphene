@@ -27,6 +27,7 @@ jobs:
           uv venv smoke
           uv pip install --python smoke/bin/python "$GITHUB_WORKSPACE"/dist/*.whl
           ./smoke/bin/graphene --version
+          ./smoke/bin/graphene demo --once   # the replay a judge with no key runs: from the wheel alone
 
   ui:
     runs-on: ubuntu-latest

@@ -122,6 +122,9 @@ def test_every_way_out_is_refused_or_fails_and_every_way_in_succeeds(tmp_path, m
     assert (root / "app.py").read_text() == 'def greet():\n    return "hello"\n# ok\n'
     assert (root / "tests" / "test_new.py").read_text() == "def test_new():\n    pass\n"
     assert placed and placed[-1]["detail"]["box"] == "docker"
+    made, ended = placed[0]["detail"], placed[-1]["detail"]  # as it was made, and when the attempt ended
+    assert made["checkpoint"] == "made" and ended["image"] == made["image"]
+    assert ended["ops"] > made["ops"] > 0 and ended["seconds"] > made["seconds"] > 0
     assert checked[-1]["detail"]["output"].strip() == "leaf"  # Graphene's own check ran in the sandbox
     changed = subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True,
                              text=True)  # fmt: skip
@@ -159,7 +162,11 @@ def test_forks_in_a_sandbox_share_one_checkpoint_and_the_passing_one_lands(tmp_p
             plan.propose(store, [leaf], ALEX)
             done = run_plan(store, root, named(f"nemotron --model {NANO} --placement sandbox --forks 2"), 1,
                             None, lambda s: None, root / ".graphene" / "runs")  # fmt: skip
+            forks = {e["detail"]["fork"]: e["detail"] for e in store.node_log("greet", ("fork",))}
     assert [n.id for n in done] == ["greet"]
+    assert (forks[1]["checkpoint"], forks[2]["checkpoint"]) == ("made", "forked")  # fork 2 from fork 1's
+    assert forks[1]["image"] == forks[2]["image"] and forks[2]["state"] == "passed"
+    assert all(f["ops"] > 0 and f["seconds"] > 0 for f in forks.values())
     assert (root / "app.py").read_text() == 'def greet():\n    return "hello"\n'
     log = next((root / ".graphene" / "runs").glob("greet-*.txt")).read_text()
     assert log.count("sandbox made") == 1 and "fork 2 of 2 passed its check" in log

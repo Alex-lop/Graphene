@@ -3,6 +3,7 @@
 import io
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -38,10 +39,13 @@ def no_forced_colour(monkeypatch):
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path, tmp_path_factory, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # not your own Claude Code settings
+    path = tmp_path_factory.mktemp("bin")  # git alone: init finds no agent here, whatever this machine has
+    (path / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(path))
     return tmp_path
 
 
@@ -80,7 +84,7 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == ["plan", "node", "watch", "ask", "run", "init", "ui"]  # the plan, then the map
+    assert commands == ["plan", "node", "watch", "ask", "run", "init", "ui", "demo"]  # plan, map, replay
     assert "ingest" not in text  # the hooks call it; nobody types it
     assert "graphene node show" in text  # what was done for one node is where the record lives now
 
