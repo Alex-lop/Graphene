@@ -34,7 +34,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         except P.Refused as no:
             fail(str(no), 1)
         with open_store(root()) as store:
-            shown = S.render(store)
+            shown = opened = S.render(store)
         path = T.edit_path(root(), "config")
         path.write_text(shown, encoding="utf-8")
         first = True
@@ -58,10 +58,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             try:
                 with open_store(root()) as store:
                     before = S.render(store)
-                    after = S.apply(store, saved, who)
+                    after = S.apply(store, saved, who, opened)
             except P.Refused as no:
                 if not sys.stdin.isatty():
                     fail(f"{no}. Nothing was applied; your text is kept in {path}", 1)
+                if "changed by someone else" in str(no):  # the next save is judged against what they say now
+                    with open_store(root()) as store:
+                        opened = S.render(store)
                 shown = T._annotated(saved, str(no))
                 path.write_text(shown, encoding="utf-8")
                 first = False

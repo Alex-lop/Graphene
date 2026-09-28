@@ -76,9 +76,11 @@ def _glob(no: int, glob: str) -> str:
     return bare
 
 
-def apply(store, text: str, who: P.Caller) -> list[str]:
+def apply(store, text: str, who: P.Caller, opened: str | None = None) -> list[str]:
     """Read the whole text, then write every setting it names (one left out is cleared) in one
-    claim; a line that cannot be read refuses all of it. Person-only. Returns the text as stored."""
+    claim; a line that cannot be read refuses all of it. Person-only. ``opened``: the text the editor
+    was opened on; when the settings no longer render as it, someone else changed them meanwhile and
+    the save is refused, never written over theirs. Returns the text as stored."""
     P._person_only(who, "changing Graphene's settings")
     got: dict[str, list[str]] = {"protected": [], "readonly": [], "never": []}
     said_size = None
@@ -108,6 +110,11 @@ def apply(store, text: str, who: P.Caller) -> list[str]:
                 raise P.Refused(f"line {no}: {key}: needs globs, comma-separated, none empty")
             got[key] += [_glob(no, g) for g in globs if _glob(no, g) not in got[key]]
     with store.claim():
+        now_said = render(store)
+        if opened is not None and now_said != opened:
+            now = "; ".join(line for line in now_said.splitlines() if not line.startswith("#"))
+            raise P.Refused(f"the settings were changed by someone else since this text was opened; they now "
+                            f"say: {now}. Keep what you want of theirs and save again")  # fmt: skip
         was = {k: _list(store, k) for k in got} | {"size": size(store)}
         for key, values in got.items():
             store.set_meta(f"settings:{key}", json.dumps(values) if values else None)

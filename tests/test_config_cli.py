@@ -120,3 +120,18 @@ def test_an_agent_cannot_edit_and_no_editor_opens(repo, monkeypatch, tmp_path):
     assert "is the person's to do" in edited.stderr
     assert not (repo / "opened").exists()
     assert config(env=AGENT_ENV).exit_code == 0  # anyone may read them
+
+
+def test_a_save_from_a_text_another_writer_has_since_changed_is_refused(repo, monkeypatch, tmp_path):
+    other = (
+        "from graphene_map import settings as S, plan as P\n"
+        "from graphene_map.store import Store\n"
+        f"with Store.open(__import__('pathlib').Path({str(repo)!r})) as st:\n"
+        "    S.apply(st, 'protected: secrets/**\\n', P.Caller('alex', True))\n"
+        "text = text.replace('size: auto\\n', 'never: add a dependency\\nsize: auto\\n')"
+    )
+    editor(monkeypatch, tmp_path, other)
+    edited = config("edit")
+    assert edited.exit_code == 1 and "changed by someone else" in edited.stderr
+    assert "protected: secrets/**" in edited.stderr  # what they say now, so it can be kept
+    assert stored(repo) == (["secrets/**"], [], [], "auto")
