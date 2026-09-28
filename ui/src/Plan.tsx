@@ -239,8 +239,10 @@ export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; l
       <span data-testid="critical">
         {plan.critical.length > 0 ? `critical path: ${plan.critical.join(" → ")}` : "no critical path: nothing waits on anything"}
       </span>
-      <span data-testid="at-once">
-        {plan.at_once.length} at once{plan.at_once.length > 0 ? `: ${plan.at_once.join(", ")}` : ""}
+      <span data-testid="at-once" title={plan.at_once.join(", ")}>
+        {plan.at_once.length} at once
+        {plan.at_once.length > 0 && `: ${plan.at_once.slice(0, 5).join(", ")}`}
+        {plan.at_once.length > 5 && ` and ${plan.at_once.length - 5} more`}
       </span>
     </div>
   );
@@ -250,6 +252,14 @@ export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; l
  * where it stays readable and is dragged (a layout the viewer picked though it is far too wide). A
  * drawing only taller than its pane starts at 1 and pans down. */
 export const startScale = (width: number, pane: number): number => Math.max(Math.min(1, pane / width), 0.6);
+
+/** Which events move the drawing: d3-zoom's own rule (no right button, no ctrl but a pinch's wheel),
+ * and on a touch screen only two fingers, so one finger still scrolls the page past the drawing. */
+export const panFilter = (event: Event): boolean => {
+  const e = event as Event & { ctrlKey?: boolean; button?: number; touches?: { length: number } };
+  if (e.type === "touchstart") return (e.touches?.length ?? 0) > 1;
+  return (!e.ctrlKey || e.type === "wheel") && !e.button;
+};
 
 /** A drawing larger than its pane pans and zooms with d3-zoom, as the record's map does; one that
  * fits is drawn as it is. The pane is measured, so a static render draws it whole. */
@@ -274,6 +284,7 @@ function Pan({ width, height, label, onClear, children }: { width: number; heigh
     if (!node || !larger) return setT(zoomIdentity);
     const fit = Math.min(1, pw / width, ph / height);
     const behaviour = zoom<SVGSVGElement, unknown>()
+      .filter(panFilter)
       .extent([
         [0, 0],
         [pw, ph],
@@ -291,16 +302,19 @@ function Pan({ width, height, label, onClear, children }: { width: number; heigh
     };
   }, [larger, pw, ph, width, height]);
   return (
-    <div className="plan-canvas" ref={box} data-pans={larger}>
-      <svg ref={svg} width={larger ? pw : width} height={larger ? ph : height} aria-label={label} onClick={onClear}>
-        <defs>
-          <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
-            <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
-          </marker>
-        </defs>
-        <g transform={t.toString()}>{children}</g>
-      </svg>
-    </div>
+    <>
+      {larger && <p className="pan-hint muted">two fingers move and zoom the drawing; one scrolls the page</p>}
+      <div className="plan-canvas" ref={box} data-pans={larger}>
+        <svg ref={svg} width={larger ? pw : width} height={larger ? ph : height} aria-label={label} onClick={onClear}>
+          <defs>
+            <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
+              <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
+            </marker>
+          </defs>
+          <g transform={t.toString()}>{children}</g>
+        </svg>
+      </div>
+    </>
   );
 }
 

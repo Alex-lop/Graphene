@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
 import { layoutFor, shownLayout, type Mode } from "./model";
-import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, startScale } from "./Plan";
+import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, panFilter, startScale } from "./Plan";
 import type { Plan, PlanEdge, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
@@ -236,4 +236,19 @@ test("a box's id line is cut to the box like its title, so a long id never runs 
   const long: Plan = { ...plan, nodes: [node("a-thirty-one-character-long-id1")] };
   const html = renderToStaticMarkup(<PlanTopDown plan={long} picked={null} onPick={() => undefined} />);
   expect(html).toMatch(/class="who">a-thirty-one-character-lon[^<]*…<title>a-thirty-one-character-long-id1 · any agent · revision 1<\/title>/);
+});
+
+test("the at-once line names at most five leaves and then how many more", () => {
+  const many: Plan = { ...feeds, at_once: ["a", "b", "c", "d", "e", "f", "g", "h"] };
+  const html = renderToStaticMarkup(<LayoutBar plan={many} {...shownLayout(many, null, 2000)} onLayout={() => undefined} />);
+  expect(html).toContain("8 at once: a, b, c, d, e and 3 more");
+  expect(html).toMatch(/title="a, b, c, d, e, f, g, h"/); // all of them, on hover
+});
+
+test("on a phone one finger scrolls the page and two pan and zoom the drawing; a mouse drags it", () => {
+  const touch = (n: number) => ({ type: "touchstart", touches: { length: n } }) as unknown as Event;
+  expect(panFilter(touch(1))).toBe(false);
+  expect(panFilter(touch(2))).toBe(true);
+  expect(panFilter({ type: "mousedown", button: 0 } as unknown as Event)).toBe(true);
+  expect(panFilter({ type: "mousedown", button: 2 } as unknown as Event)).toBe(false); // the context menu
 });
