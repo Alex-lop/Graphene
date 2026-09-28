@@ -671,3 +671,14 @@ def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_rea
     system, prompt = (" ".join(m["content"].split()) for m in f.requests[0]["messages"][:2])
     assert "carries the then: lines that make that change (goal, scope, check, drop, leaf)" in system
     assert RULE in prompt
+
+
+def test_an_ask_that_puts_up_board_items_names_the_board_as_what_waits(repo, tmp_path, monkeypatch):
+    """Walk 2026-09-28: an ask that put up 5 board items ended by pointing only at the tree, and
+    typed at watch's `:` it told the person to open the screen they were on."""
+    said = planned(repo, tmp_path)
+    assert "the board waits on you (5): `graphene board`, or `graphene watch`" in said.stdout
+    assert "prune it: `graphene watch`" in said.stdout  # a leaf was proposed too
+    monkeypatch.setenv("GRAPHENE_WATCH", "")
+    again = planned(repo, tmp_path)
+    assert "at the top, y takes, d drops" in again.stdout and "`graphene watch`" not in again.stdout

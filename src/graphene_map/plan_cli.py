@@ -857,9 +857,19 @@ def register(cli: typer.Typer, root, open_store, fail):
             said = ask(store, checkout(), sentence, template, about, split, out, size)
             for line in said:
                 out(line)
-            if said:
-                out("prune it: `graphene watch` (y accepts, d drops), or `graphene plan edit`")
-            return list(getattr(said, "ids", []))
+            ids, (waits, _) = list(getattr(said, "ids", [])), B.waiting(store)
+            here = "GRAPHENE_WATCH" in os.environ  # typed at `graphene watch`'s `:`: the screen is open
+            if said and waits:  # what waits on the person is named first, where they would find it
+                hint = "at the top, y takes, d drops" if here else "`graphene board`, or `graphene watch`"
+                out(f"the board waits on you ({waits}): {hint}")
+            if ids or (said and not waits):
+                hint = (
+                    "y accepts, d drops"
+                    if here
+                    else "`graphene watch` (y accepts, d drops), or `graphene plan edit`"
+                )
+                out(f"prune it: {hint}")
+            return ids
 
         proposed = run(go)
         warn_unreachable(proposed or [])
