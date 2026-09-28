@@ -80,3 +80,12 @@ def test_a_saved_size_and_the_flag_tell_the_planner_the_same_thing_once(repo):
         settings.apply(store, "size: finer\n", ME)
         saved = A.prompt_for(store, "add ids", root=repo)
     assert saved == flagged and "wants a finer plan" not in saved  # the numbers carry the size, once
+
+
+def test_a_split_or_a_follow_up_is_not_told_how_big_the_whole_tree_should_be(repo):
+    with Store.open(repo) as store:
+        settings.apply(store, "size: coarser\n", ME)
+        A.P.propose(store, [{"id": "ids1", "title": "ids", "scope": ["api.py"], "check": "true"}], ME)
+        for split in (True, False):
+            prompt = A.prompt_for(store, "add ids", about="ids1", split=split, root=repo)
+            assert "cut the tree into" not in prompt and ("Split ids1" in prompt) == split

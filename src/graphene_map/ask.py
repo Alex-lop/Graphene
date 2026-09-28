@@ -118,7 +118,7 @@ def prompt_for(
     conditions = settings.conditions_for_planner(store)  # the size is said once, by sizing.measure
     if conditions:
         lines += ["The person's standing conditions:", conditions, ""]
-    if root is not None:
+    if root is not None and about is None:  # a split or a follow-up is about one node, not the whole tree
         files = P.tracked(root) if files is None else files
         lines += [sizing.measure(root, sentence, files, size or settings.size(store)), ""]
     lines.append(RULES)
