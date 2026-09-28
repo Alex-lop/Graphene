@@ -211,6 +211,9 @@ def build():
     from .board_cli import register as board
 
     board(cli, root, open_store, fail)
+    from .talk import register as talk
+
+    talk(cli, root, open_store, fail)
 
     from . import config_cli, key_cli, keys
     from . import settings as S
