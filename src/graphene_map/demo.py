@@ -300,6 +300,7 @@ class Replay(Watch):
     # every key that would change the plan or start anything, and every way a key reaches a command
     action_add = action_edit = action_drop = action_yes = action_split = action_undo = refuse
     action_run = action_release_or_reopen = action_offer = action_plan_first = action_visual = refuse
+    action_board = action_reask = refuse  # every key on a board item answers it or puts up a note
     did = background = edit_with = stop_runs = refuse
 
     def action_line(self, kind: str) -> None:

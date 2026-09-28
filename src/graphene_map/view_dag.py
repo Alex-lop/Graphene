@@ -101,24 +101,30 @@ def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
 
 
 def note(nodes: list[P.Node], words: dict[str, str]) -> str:
-    """What the graph says at a glance, for the bottom line: `3 at once now · 2 wait · 1 running · 1 on
-    you · 4 done · critical path: a > b > c (3)`. Every leaf is counted once, so the counts add up to
-    the leaves drawn; "wait" is every other leaf not done. A path of one leaf is no path."""
+    """What the graph says at a glance, for the bottom line, the critical path first so 80 columns
+    never cut it: `critical ━ a > b > c (3) · 2 ready · 1 more once accepted · 2 wait · 1 running ·
+    1 on you · 4 done`. "ready" is what `R` starts, the status line's own count; "once accepted" is
+    a proposal that could start as soon as it is; "wait" is every other leaf not done. Every leaf is
+    counted once, so the counts add up to the leaves drawn. A path of one leaf is no path."""
     g = _graph(nodes)
     if not g.leaves:
         return "no leaves yet"
     if all(words.get(n.id) == "done" for n in g.leaves):
         return "every leaf done"
-    now = [i for i in at_once(nodes, words) if words.get(i, "") not in KINDS]  # one that came back is on you
-    count = dict.fromkeys(["at once", "wait", "running", "on you", "done"], 0)
+    now = set(at_once(nodes, words))
+    count = dict.fromkeys(["ready", "once accepted", "wait", "running", "on you", "done"], 0)
     for n in g.leaves:
-        count[KINDS.get(words.get(n.id, "")) or ("at once" if n.id in now else "wait")] += 1
-    ready = all(words.get(i) == "ready" for i in now)
-    said = [f"{count['at once']} at once{' now' if now and ready else ''}", f"{count['wait']} wait"]
-    said += [f"{count[k]} {k}" for k in ("running", "on you", "done") if count[k]]
+        word = words.get(n.id, "")
+        later = "once accepted" if n.id in now and word == "proposed" else "wait"
+        count[KINDS.get(word) or ("ready" if word == "ready" else later)] += 1
     path = critical_path(nodes)
     shown = path if len(path) <= 4 else [*path[:2], "…", path[-1]]
-    return " · ".join(said + ([f"critical path: {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []))
+    said = [f"critical ━ {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []
+    said.append(f"{count['ready']} ready" if count["ready"] else "none ready")
+    if count["once accepted"]:
+        said.append(f"{count['once accepted']}{' more' if count['ready'] else ''} once accepted")
+    said += [f"{count[k]} {k}" for k in ("wait", "running", "on you", "done") if count[k] or k == "wait"]
+    return " · ".join(said)
 
 
 # -- where everything goes ---------------------------------------------------------------------------

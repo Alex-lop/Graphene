@@ -41,6 +41,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Static, Tree
 from textual.widgets._tree import TOGGLE_STYLE
 
+from . import board_rows as BR
 from . import plan as P
 from . import plan_text as T
 from . import run as R
@@ -49,49 +50,40 @@ from .node_record import bill, forks, models, sandbox
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
+HELP_WIDE = 72  # a help row's columns: from twice this the groups sit in two columns
 PANE = 44  # beside the tree, the node pane keeps at least this many columns
 QUIET = 120  # seconds without a sign of life before a running leaf reads "quiet for n min"
 WRAP = Console(width=400, color_system=None)  # only for Text.wrap: styled text wrapped at words
 
 HELP = (
     ("move", (
-        ("j k", "down, up"), ("gg G", "the goal, the last row"), ("/", "search; n the next match"),
+        ("j k", "down, up"), ("gg G / n", "the goal, the last row; search, the next match"),
         ("Esc", "ends a search, a selection, a pane"),
         ("Tab", "the next view that fits (graphene watch --view)"),
         ("h l", "in a view: the node to the left, to the right"),
     )),
-    ("fold", (("za", "fold or unfold here (on the goal: all)"),
-              ("zo zc", "unfold, fold; a folded row counts the leaves inside by state"),
-              ("zR zM", "all open, all closed"), ("zx", "as it opened: what is done folded, the rest open"))),
+    ("fold", (("za zo zc", "fold or unfold, unfold, fold (on the goal: all)"),
+              ("zR zM zx", "all open, all closed, as it opened"))),
     ("shape", (
-        ("y", "accept a proposal; sign off a leaf in review; your own leaf is done"),
-        ("d", "drop"), ("e", "edit its contract in $EDITOR"), ("E", "edit it with what is under it, as text"),
-        ("a A", "add a sibling, a child"), ("s", "the planner splits it into leaves"),
-        ("u", "undo your last act on the plan"), ("V", "select several, then y or d"),
-        ("?", "on a node: ask the planner why, split, merge the selection (V), another way, or your words"),
+        ("y d", "accept, sign off, it is done; drop"), ("e E", "edit it in $EDITOR; with what is under it"),
+        ("a A s", "add a sibling, a child; the planner splits it"),
+        ("?", "ask the planner why, split, merge, another way"),
+        ("+ -", "the plan asked again, finer, coarser"), ("V u", "select several, then y or d; undo"),
+        ("m", "seen: what changes after it reads + or ~"),
     )),
-    ("run", (
-        ("R", "run every ready leaf"), ("r", "run the ready leaves under this one"),
-        ("x", "release a running leaf; send back one in review; reopen a done one"),
-        ("P", "plan first on or off: a session proposes a tree before any code"),
-    )),
-    ("see", (("Enter", "the record: who held it, what changed, the check"), ("l", "the executor's output"),
-             ("ctrl-d ctrl-u", "scroll the pane"),
-             ("m", "seen: from here on, a row someone else changes reads + or ~ before its id"))),
-    ("a leaf that came back", (
-        ("w", "widen its scope to what it wanted"), ("b", "a sibling leaf for that, which it waits on"),
-        ("n", "wait on the leaves its reason names"), ("?", "ask the planner what would let it be done"),
-    )),
-    (":", (
-        (":<command>", "any graphene command, as you would type it (:node show x, :plan log)"),
-        (":ask <what>", "the planner proposes it"), (":stop", "stops a run started here"),
-        ("? on the goal", "this help"), ("q", "quit; a run started here goes on"),
-    )),
+    ("run", (("R r", "run every ready leaf; the ready ones under this"),
+             ("x", "release it; send it back; reopen it"), ("P", "plan first on or off"))),
+    ("see", (("Enter l", "the record; the executor's output"), ("ctrl-d -u", "scroll the pane"))),
+    ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
+                   ("?", "ask the planner what would let it be done"))),
+    ("board", (("y 1..9", "take the default, confirm, agree; pick one"),
+               ("d p", "drop it; park it (p again: unpark)"), ("Enter a", "answer in your words; a note"))),
+    (":", ((":<command>", "any graphene command (:ask, :stop, :node set)"),
+           ("q", "quit; a run started here goes on"))),
 )  # fmt: skip
-HELP_END = (
-    "Every key is a graphene command, and the bottom line says which it ran. Two agents work here: "
-    "the planner proposes the tree (a session, or :ask), the executors do its leaves (R, r)."
-)
+HELP_END = "Every key is a graphene command; the bottom line says which it ran."
+# the glyphs and colours every row, view and pane uses, the help's first line
+LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
 EMPTY = (
     "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the tree "
     "here. Or :ask <what you want>. ? lists the keys."
@@ -117,7 +109,7 @@ FORK = {"passed": ("✓", "green"), "lost": ("·", "dim"), "check failed": ("✗
 
 
 def _look(word: str) -> tuple[str, str]:
-    return FORK.get(word) or P.look(word)
+    return FORK.get(word) or BR.LOOK.get(word) or P.look(word)  # board: an item's word
 
 
 def _short(model: str) -> str:
@@ -155,7 +147,7 @@ def row(
     what the row may take; an id is never cut, the title gives way, to ``least`` columns. ``inside``:
     a folded row's count of its leaves by state, in the word's column, each state in its own colour.
     ``mark``: `+` or `~` in the gap before the id, when it changed since the person last looked."""
-    colour = _look(word)[1] if word else ""
+    colour = _look(word or glyph)[1]  # board: its fold row has no word, and its glyph's colour
     title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), least)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
         title_w += 2 + ids if ids else 0
@@ -338,25 +330,43 @@ class Ask(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+def legend(wide: int) -> Text:
+    """The glyphs and colours, one line: what each state reads as, and the graph's heavy line; where
+    the words do not fit, the person's move (magenta: yours, review, came back) as one."""
+    looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
+    short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
+    for form in (looks, short):
+        out = Text()
+        for glyph, colour, word in form:
+            out.append(glyph, colour).append(f" {word}  ")
+        out.append("━", "bold").append(" critical path" if form is looks else " critical")
+        if out.cell_len <= wide or form is short:
+            return out
+    return out
+
+
 def help_text(groups, wide: int) -> Text:
+    """The keys, a row each: the group's name on its first row, the keys, what they do, cut at a word
+    rather than wrapped, so a group is as tall as its keys."""
     out = Pane(wide)
+    names = max(len(name) for name, _ in groups) + 2
+    keys = max(len(k) for _, rows in groups for k, _ in rows) + 2
     for name, rows in groups:
-        keys = max(len(k) for k, _ in rows) + 2
-        out.gap()
-        out.text(name, "bold")
-        for key, what in rows:
-            lines = list(Text(what).wrap(WRAP, wide - keys - 2))
-            out.line(Text.assemble("  ", (key.ljust(keys), "bold"), lines[0]))
-            for more in lines[1:]:
-                out.line(Text.assemble(" " * (keys + 2), more))
+        for k, (key, what) in enumerate(rows):
+            head = (name if k == 0 else "").ljust(names)
+            what = T.elide(what, wide - names - keys)
+            out.line(Text.assemble((head, "dim"), (key.ljust(keys), "bold"), what))
     return out.render()
 
 
-def help_groups() -> tuple:
-    """HELP, less the keys of the views when the outline is the only one."""
-    if len(V.VIEWS) > 1:
-        return HELP
-    return tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+def help_groups(settings: list[str] = ()) -> tuple:
+    """HELP, less the keys of the views when the outline is the only one, then the settings
+    (`settings.lines_for_screen`), a row each, as `graphene config` shows them."""
+    groups = HELP
+    if len(V.VIEWS) <= 1:
+        groups = tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+    said = [tuple(line.split(": ", 1)) for line in settings[:-1] if ": " in line]
+    return (*groups, ("settings", tuple(said))) if said else groups
 
 
 class Help(ModalScreen[None]):
@@ -377,22 +387,28 @@ class Help(ModalScreen[None]):
     }
     Help #help { width: auto; height: auto; }
     Help #help > Static { width: auto; padding: 0 1; }
-    Help #end { width: auto; padding: 1 1 0 1; color: $text-muted; }
+    Help #end { width: auto; padding: 0 1; color: $text-muted; }
+    Help #legend { width: auto; padding: 0 1; }
     """
 
     def compose(self) -> ComposeResult:
+        from .settings import lines_for_screen
+
         width = self.app.size.width
-        two = width >= WIDE
-        column = min(56, (width - 10) // 2) if two else max(width - 8, 30)
+        said = self.app.read(lines_for_screen, []) if hasattr(self.app, "read") else []
+        groups = help_groups(said)
+        two = width >= 2 * HELP_WIDE + 10
+        column = HELP_WIDE if two else max(width - 8, 30)
         with VerticalScroll():
+            yield Static(legend(column * (2 if two else 1)), id="legend")
             with Horizontal(id="help"):
-                groups = help_groups()
                 if two:
-                    yield Static(help_text(groups[:3], column))
-                    yield Static(help_text(groups[3:], column))
+                    yield Static(help_text(groups[:5], column))
+                    yield Static(help_text(groups[5:], column))
                 else:
                     yield Static(help_text(groups, column))
-            yield Static(Text("\n".join(textwrap.wrap(HELP_END, column * (2 if two else 1)))), id="end")
+            end = f"{HELP_END} {said[-1]}." if said else HELP_END
+            yield Static(Text("\n".join(textwrap.wrap(end, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
         self.query_one(VerticalScroll).scroll_relative(y=lines, animate=False)
@@ -618,7 +634,7 @@ class Watch(App):
     #main.-stacked #view { width: 100%; }
     #main.-stacked #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
     #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
-    #status { height: 2; background: $boost; padding: 0 1; }
+    #status { height: 2; background: $boost; padding: 0 1; }  /* 3 while a command has spoken */
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
     #line.-open { display: block; }
     """
@@ -649,8 +665,13 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("m", "seen", show=False),
+        Binding("plus", "reask('finer')", show=False),
+        Binding("minus", "reask('coarser')", show=False),
         Binding("ctrl+d", "page(1)", show=False),
         Binding("ctrl+u", "page(-1)", show=False),
+        # board: on an item p parks it and 1..9 picks an option (y d a Enter answer it too, see action_board)
+        Binding("p", "board('p')", show=False),
+        *(Binding(str(n), f"board('{n}')", show=False) for n in range(1, 10)),
     ]
 
     def __init__(self, root: Path, open_store: Callable, every: float = 1.0, view: str | None = None) -> None:
@@ -684,6 +705,9 @@ class Watch(App):
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
         self.heard: set = set()  # the steps up the ladder the bottom line has said
+        self.board = BR.Board()  # board: the items shown as rows above the tree
+        self.opened: list[str] = []  # board: the open items' ids when the tree was last built
+        self.skips: set[tuple[str, int]] = set()  # the views Tab went past, and at what width, said once
 
     # -- the screen ----------------------------------------------------------------------------------
 
@@ -747,8 +771,8 @@ class Watch(App):
         out = []
         for line in range(low, high + 1):
             node = self.tree.get_node_at_line(line)
-            if node is not None and node.data and _node(node.data) not in out:
-                out.append(_node(node.data))
+            if node is not None and node.data and _node(node.data) and _node(node.data) not in out:
+                out.append(_node(node.data))  # a board row is no node: skipped
         return out
 
     def read(self, what: Callable, default=None):
@@ -775,6 +799,7 @@ class Watch(App):
 
     def draw(self, store) -> None:
         nodes = V.shown(store)
+        self.board = BR.read(store)
         goal, proposed = P.goal(store), store.meta("goal:proposed")
         by_id = {n.id: n for n in nodes}
         under = P.kids(nodes, drawn=True)
@@ -807,6 +832,7 @@ class Watch(App):
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
+            "board": len(self.board.open),  # they wait on the person too: `you: 1 + 5 on the board`
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
@@ -816,10 +842,10 @@ class Watch(App):
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
-        shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine]
+        shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine] + self.board.shape()
         tree = self.tree
         with self.prevent(Tree.NodeHighlighted):  # the tree moved, not the person
-            show = bool(nodes or goal or proposed)
+            show = bool(nodes or goal or proposed or self.board)
             if tree.show_root != show:
                 tree.show_root = show
             tree.display = show and self.drawn is None  # no plan yet: the pane says so, across the screen
@@ -864,6 +890,7 @@ class Watch(App):
             for f in mine:
                 word, model = f["state"], _short(f["model"])
                 rows[(i, f["fork"])] = (_look(word)[0], word, model, f"fork {f['fork']}", False, "")
+        rows.update(BR.rows(self.board))
         ids = max(len(r[3]) for r in rows.values())
         words = max(len(r[5] or r[1]) for r in rows.values())  # what each row shows in the word's column
         chosen = frozenset(self.chosen()) if self.anchor is not None else frozenset()
@@ -896,13 +923,13 @@ class Watch(App):
         view = V.VIEWS.get(name)
         if view is None:
             return None
-        width, height = self.view_room()
-        drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+        (width, height), goal = self.view_room(), BR.goal(self.goal_text, self.board)  # board: its count
+        drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
             was, self.here = self.here, self.stand_in(drawn)
             if was in self.by_id and self.here is not None:
                 self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
-            drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+            drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
         return drawn
 
     def stand_in(self, drawn: V.Drawn) -> str | None:
@@ -996,10 +1023,12 @@ class Watch(App):
         if self.mapped is not None and self.mapped[1] == here:  # on a stand-in: the node the person was on
             here = self.mapped[0]
         self.mapped = None
+        skipped = []
         for name in [*names[names.index(was) + 1 :], "outline"]:
             self.here = here
             if name == "outline" or self.draw_view(name) is not None:
                 break
+            skipped.append(name)
         self.showing, self.here, self.anchor = name, here, None
         if self.view == "said":
             self.view = "contract"
@@ -1009,6 +1038,13 @@ class Watch(App):
         note = self.drawn.note if self.drawn is not None else ""
         if name == was == "outline":
             note = f"no other view fits at {self.size.width} columns" if len(names) > 1 else "the only view"
+        # a view Tab went past is said once a width (what the view shows is then on the line above):
+        # the stand-ins never learned the tree was there at 80 columns
+        news = [v for v in skipped if (v, self.size.width) not in self.skips]
+        self.skips.update((v, self.size.width) for v in news)
+        if news:
+            verb = "do" if len(news) > 1 else "does"
+            note = f"the {' and the '.join(news)} {verb} not fit at {self.size.width} columns"
         self.message = f"graphene watch --view {name}" + (f": {note}" if note else "")
         self.say_status()
 
@@ -1039,7 +1075,7 @@ class Watch(App):
             need = max(
                 [2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes]
                 + [2 * (len(P.above(by_id[i], by_id)) + 2) + 4 + len(_short(f["model"]))
-                   for i, mine in self.forks.items() for f in mine], default=30
+                   for i, mine in self.forks.items() for f in mine] + BR.widths(self.board), default=30
             ) + 2 + ids + 2 + words + 2  # fmt: skip
             sized = ("wide", max(30, min(need, width - PANE - 3)))
         else:
@@ -1075,6 +1111,7 @@ class Watch(App):
         tree.clear()
         placed, finished, new = {}, set(), []
         by_id = {n.id: n for n in nodes}
+        placed.update(self.board_rows(was_open))  # board: its rows, under the goal and before the tree
         queue = [n for n in nodes if n.parent not in by_id]  # the tops, then each one's children
         while queue:
             node = queue.pop(0)
@@ -1097,7 +1134,7 @@ class Watch(App):
             if node.id not in self.known:
                 new.append(placed[node.id])
             queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
-        tree.root.allow_expand = bool(nodes)
+        tree.root.allow_expand = bool(nodes or self.board)
         if self.shape is None:
             tree.root.expand()  # the goal's row starts open
         self.known, self.complete = {n.id for n in nodes}, finished
@@ -1106,6 +1143,11 @@ class Watch(App):
         # the row it was on; one that folded away (a fork's row with its finished leaf, a leaf with its
         # finished sub-goal): the first row above it still shown, as vim does
         here = placed.get(row_at) or placed.get(cursor)
+        was, self.opened = self.opened, [it["id"] for it in self.board.open]
+        to = BR.landing(was, self.board, row_at, at_goal or self.shape is None)  # board: onto the next item
+        if to is not None:
+            top = next((n.id for n in nodes if n.parent not in by_id), None)
+            here, at_goal = placed.get(top if to == BR.TREE else to), False
         while here is not None and here.line < 0:
             here = here.parent
         if here is not None and not at_goal:
@@ -1150,19 +1192,23 @@ class Watch(App):
         self.refresh_plan()
 
     def say_status(self) -> None:
-        """Two lines, each fitted at a word: the plan (what waits on the person, the executors, what
-        R would start, how much is done, plan first), then the moment (what the last command said,
-        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end. What
-        R starts, when `graphene init` chose it, is named only where the long form still fits with it."""
+        """Two lines, each fitted at a word, and more when there is something to say: the plan (what
+        waits on the person, the executors, what R would start, how much is done, plan first), what the
+        keys do on the row under the cursor, in a view what it shows at a glance (the graph's critical
+        path), then what the last command said. The keys never give way to what a command said: after
+        an answer on the board the cursor is on the next item, and its keys are what is next. The short
+        forms at 80 columns; whole pieces drop off the end. What R starts, when `graphene init` chose
+        it, is named only where the long form still fits with it."""
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
         c = self.counts or {"you": 0, "running": 0, "ready": 0, "done": "0/0 done", "first": False}
-        you = "magenta" if c["you"] else ""
+        board = f" + {c['board']} on the board" if c.get("board") else ""
+        you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
         first = "on" if c["first"] else "off"
         long = [
-            (f"waiting on you: {c['you']}", you),
+            (f"waiting on you: {c['you']}{board}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
@@ -1170,7 +1216,7 @@ class Watch(App):
             *([(f"{money(c['spent'])} at list price", "dim")] if c.get("spent") is not None else []),
         ]
         short = [
-            (f"you: {c['you']}", you),
+            (f"you: {c['you']}{board}", you),
             (f"{c['running']} running", busy),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
@@ -1180,14 +1226,19 @@ class Watch(App):
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
+        lines = [top, fit([(k, "") for k in self.keys()], room)]
         said = self.busy or self.message
+        note = self.drawn.note if self.drawn is not None else ""
+        if note and note not in said:  # a view's glance stays in sight whatever a command said after it
+            lines.append(Text(T.elide(note, room)))
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))
             if bottom.plain.startswith("✗"):  # red is for a command that failed, and only its mark
                 bottom.stylize("red", 0, 1)
-        else:
-            bottom = fit([(k, "") for k in self.keys()], room)
-        self.query_one("#status", Static).update(Text.assemble(top, "\n", bottom))
+            lines.append(bottom)
+        status = self.query_one("#status", Static)
+        status.styles.height = len(lines)
+        status.update(Text("\n").join(lines))
 
     def keys(self) -> list[str]:
         """What the keys do on the row under the cursor, for the bottom line. In a view the outline's
@@ -1211,6 +1262,15 @@ class Watch(App):
             return ["ctrl-d ctrl-u scroll", "l back", *tail]
         if self.view == "said":
             return ["ctrl-d ctrl-u scroll", "Esc back", *tail]
+        row = self.board_row()
+        if row is not None:  # board: what each key would do on this item, in words
+            item = self.board.get(row)
+            if item is not None:
+                return [*BR.hints(item, max(self.size.width - 2, 20)), *tail]
+            if row == BR.STANDING:
+                return ["standing conditions: graphene config shows them", *tail]
+            fold = ["za fold" if self.tree.cursor_node.is_expanded else "za unfold"] if row == BR.FOLD else []
+            return [*fold, "a note", *tail]
         if not self.nodes:
             return [":ask what you want", *tail]
         if self.on_goal():
@@ -1242,6 +1302,8 @@ class Watch(App):
             return
         if self.view == "said":
             return  # what a `:` command printed stays until the cursor moves
+        if self.board_row() is not None:  # board: the item whole
+            return pane.update(BR.pane(self.board, self.board_row(), self.by_id, wide))
         if node_id is None or store.node_row(node_id) is None:
             pane.update(goal_pane(store, self, wide))
             return
@@ -1402,6 +1464,8 @@ class Watch(App):
         self.action_offer("n")
 
     def action_add(self, child: bool) -> None:
+        if self.board_row() is not None:
+            return self.action_board("a")
         node_id = self.selected()
         parent = node_id if child else self.read(lambda s: P.get(s, node_id).parent if node_id else None)
 
@@ -1438,6 +1502,8 @@ class Watch(App):
     def action_yes(self) -> None:
         """y: accept a proposal (or the selection); on a leaf in review, sign it off; on a person's
         own leaf, it is done; on the goal, accept all that is proposed."""
+        if self.anchor is None and self.board_row() is not None:
+            return self.action_board("y")
         word = self.word(self.selected())
         if self.anchor is None and word == "review":
             return self.background(["node", "signoff", self.selected()])  # runs the roll-up check: minutes
@@ -1456,6 +1522,8 @@ class Watch(App):
         self.refresh_plan()
 
     def action_drop(self) -> None:
+        if self.anchor is None and self.board_row() is not None:
+            return self.action_board("d")
         ids = self.chosen()
         if ids:
             self.did(["node", "drop", *ids], quiet=True)  # one act too, all or none
@@ -1472,6 +1540,17 @@ class Watch(App):
 
     def action_undo(self) -> None:
         self.did(["plan", "undo"])
+
+    def action_reask(self, size: str) -> None:
+        """+ and -: the last sentence asked of the planner, asked again for a finer or a coarser tree,
+        which takes the place of the proposals still waiting (graphene ask --finer, --coarser)."""
+        from .ask import reask_argv
+
+        argv = self.read(lambda s: reask_argv(s, size))
+        if argv is None:
+            self.message = f"✗ graphene ask --{size}: no plan was asked for yet (:ask what you want)"
+            return self.say_status()
+        self.background(["ask", f"--{size}", *argv[2:-1]])  # the flag first: a cut line still names it
 
     def action_run(self, here: bool) -> None:
         node_id = self.selected()
@@ -1506,6 +1585,8 @@ class Watch(App):
         self.refresh_plan()
 
     def action_record(self) -> None:
+        if self.board_row() is not None:
+            return self.action_board("enter")
         if self.on_goal():  # the goal has no record of its own: its pane already says what is under it
             return
         self.view = "contract" if self.view == "record" else "record"
@@ -1588,6 +1669,55 @@ class Watch(App):
         count = self.changed[1]
         return [(f"{count} changed since you last looked", "magenta"), ("graphene plan changes", ""),
                 ("m seen", "")] if count else []  # fmt: skip
+
+    # -- the board, as rows above the tree (board_rows.py) --------------------------------------------
+
+    def board_rows(self, was_open: set) -> dict:
+        """The board's rows, put under the goal before the tree is: the line of standing conditions,
+        each open item, then the fold that holds what is settled, parked or dropped."""
+        root, placed, board = self.tree.root, {}, self.board
+        if board.standing:
+            placed[BR.STANDING] = root.add_leaf(Text(""), data=BR.STANDING)
+        for item in board.open:
+            placed[BR.Row("item", item["id"])] = root.add_leaf(Text(""), data=BR.Row("item", item["id"]))
+        if board.folded:
+            fold = placed[BR.FOLD] = root.add(Text(""), data=BR.FOLD, expand=BR.FOLD in was_open)
+            for item in board.folded:
+                placed[BR.Row("item", item["id"])] = fold.add_leaf(Text(""), data=BR.Row("item", item["id"]))
+        return placed
+
+    def board_row(self) -> BR.Row | None:
+        """The board row under the outline's cursor, if it is on one."""
+        node = self.tree.cursor_node if self.drawn is None else None
+        return node.data if node is not None and isinstance(node.data, BR.Row) else None
+
+    def action_board(self, key: str) -> None:
+        """A key on a board row: y d p 1..9 run the `graphene board` command for the item (board_rows.
+        argv), Enter answers it in words, a puts up a note; on the fold row Enter opens or closes it.
+        On a node (no board row here) p and the digits do nothing."""
+        row = self.board_row()
+        item = self.board.get(row)
+        if key == "a":
+            about = (item or {}).get("about")
+
+            def noted(words: str | None) -> None:
+                if words:
+                    self.did(["board", "note", words, *(["--about", about] if about else [])])
+
+            where = f"about {about}" if about else "for the whole plan"
+            return self.push_screen(Ask(f"a note of yours {where}: told to executors as you write it"), noted)
+        if item is None:
+            if row == BR.FOLD and key == "enter":
+                self.tree.cursor_node.toggle()
+            return
+        if key == "enter":
+
+            def answered(words: str | None) -> None:
+                if words:
+                    self.did(["board", "answer", item["id"], words])
+
+            return self.push_screen(Ask(f"answer {item['id']} in your own words: {item['text']}"), answered)
+        self.did(BR.argv(item, key))
 
     # -- what runs on its own ------------------------------------------------------------------------
 
@@ -1672,6 +1802,8 @@ def _walk(node):
 
 def _node(data):
     """A row's node id: a fork's row is (its leaf, its number), and stands for its leaf."""
+    if isinstance(data, BR.Row):  # board: an item's row stands for no node
+        return None
     return data[0] if isinstance(data, tuple) else data
 
 
