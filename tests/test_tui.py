@@ -9,7 +9,7 @@ import sys
 
 from test_plan_cli import agent, person, repo  # noqa: F401  (fixtures)
 
-from graphene_map import plan
+from graphene_map import plan, settings
 from graphene_map.store import Store
 from graphene_map.tui import Watch
 
@@ -315,22 +315,36 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
 
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
     """Recheck: at 80 columns the help was 106 wide from x=0, and its last 26 columns were cut off with
-    no way to scroll to them. It is grouped as the README groups the keys: two columns at 120, one at
-    80, and it closes on ?, Esc or q."""
+    no way to scroll to them. The stand-ins then found it 5 screens long at 80x24 with no legend. It
+    opens on a line of the glyphs and colours, a key a row with its group's name beside it and no row
+    wrapped, then the settings (`graphene config`): one screen at 120x36, two at 80x24. One column
+    below 154 columns; it closes on ?, Esc or q."""
     proposed(repo)
-    for size in ((80, 24), (120, 40)):
+    with Store.open(repo) as store:
+        settings.apply(store, "protected: secrets/**\nsize: finer\n", plan.Caller("alex", True))
+    # a condition taken on the board: its settings row once had a label so long every key's words were cut
+    risk = "risk: vendored  [vendor]\n    default: d\n    then: condition vendor/**\n"
+    agent("plan", "propose", "-", input=risk)
+    assert person("board", "take", "vendor").exit_code == 0
+    for size, screens in (((80, 24), 2), ((120, 36), 1), ((160, 40), 1)):
 
-        async def before(app, pilot, width=size[0]):
+        async def before(app, pilot, width=size[0], high=size[1], screens=screens):
             await pilot.press("question_mark")
             await pilot.pause()
             text, box = app.screen.query_one("#help").region, app.screen.query_one("VerticalScroll").region
             assert text.right <= width and abs(box.x - (width - box.right)) <= 1, (width, text, box)
-            rows = shown(app, text)
-            assert "zR zM" in "\n".join(rows)
-            assert len(app.screen.query("#help > Static")) == (2 if width >= 110 else 1)
-            if width >= 110:  # side by side: the first group of each column on one row
-                assert any("move" in r and "run" in r for r in rows), rows
-                assert "plan first on or off" in "\n".join(rows)
+            legend = shown(app, app.screen.query_one("#legend").region)[0]
+            assert legend.strip().startswith("◇") and "? proposed" in legend and "━ critical" in legend
+            columns = [str(s.render()) for s in app.screen.query("#help > Static")]
+            rows = [r.rstrip() for r in columns[0].splitlines()]  # the first column is the taller
+            said = "\n".join(columns)
+            for key in ("zR zM", "+ -", "y 1..9", "size", "protected"):
+                assert key in said, (key, said)
+            assert "secrets/**" in said and "finer" in said and "vendor/**" in said
+            assert not any(r.rstrip().endswith("…") for r in rows)  # every row whole, none cut or wrapped
+            assert len(app.screen.query("#help > Static")) == (2 if width >= 154 else 1)
+            whole = len(rows) + 2  # and the legend and the last line, inside the border
+            assert whole <= screens * (high - 2), (whole, width)
 
         watch(repo, [], size=size, before=before)
     for key in ("question_mark", "escape", "q"):
@@ -524,8 +538,9 @@ def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
     with Store.open(repo) as store:
         plan.start(store, "schema", plan.Caller("claude:aaaa1111", False, "aaaa1111-session"), repo)
     seen, _ = watch(repo, ["j", "j", "d"])
-    top, bottom = seen["status"].splitlines()
+    top, keys, bottom = seen["status"].splitlines()
     assert len(top) <= 78  # 80 columns less the padding: it does not wrap onto the message's row
+    assert keys.startswith("R run all ready")  # the keys stay while the command's words show
     assert bottom.startswith("✗ graphene node drop ids: docs waits on ids")
 
 
@@ -913,7 +928,8 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
         app.message = long
         app.say_status()
         await pilot.pause()
-        bottom = str(app.query_one("#status").render()).splitlines()[1]
+        keys, bottom = str(app.query_one("#status").render()).splitlines()[1:]
+        assert keys.startswith("y accept it all")  # a third line for what a command said: the keys stay
         assert len(bottom) <= 78 and bottom.endswith("…") and long.startswith(bottom[:-1] + " ")  # at a word
 
     watch(repo, [], before=said)
@@ -1391,7 +1407,7 @@ def test_help_lists_the_fold_keys(repo):
     from graphene_map.tui import HELP
 
     fold = dict(dict(HELP)["fold"])
-    assert "counts the leaves inside" in fold["zo zc"] and "as it opened" in fold["zx"]
+    assert "unfold, fold" in fold["za zo zc"] and "as it opened" in fold["zR zM zx"]
 
 
 def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
@@ -1569,7 +1585,7 @@ def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leaf
                        {"attempt": 2, "model": SUPER, "from": NANO, "why": why})  # fmt: skip
     seen, _ = watch(repo, [])
     said = "greet stepped up to Nemotron-3-Super-fake: attempt 1 refused"
-    assert seen["cursor"] is None and seen["status"].splitlines()[1].startswith(said)
+    assert seen["cursor"] is None and seen["status"].splitlines()[-1].startswith(said)
     seen, _ = watch(repo, ["j"])
     assert f"model Nemotron-3-Super-fake, stepped up from Nemotron-3-Nano-fake: {why}" in " ".join(
         seen["detail"].split()
@@ -1596,7 +1612,7 @@ def test_a_step_up_waits_for_a_free_bottom_line_and_none_is_lost(repo):
                 await pilot.press(key)
                 await pilot.pause()
             app.refresh_plan()
-            return str(app.query_one("#status").render()).splitlines()[1]
+            return str(app.query_one("#status").render()).splitlines()[-1]
 
         assert (await bottom("j", "s")).startswith("✗ greet is running")  # a command's refusal
         up("greet")

@@ -213,18 +213,20 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
         "note": sentence, "command": command, "reason": why, "rev": node.rev if node else None,
         "endpoint": endpoint})  # fmt: skip
     grown = [g for g in add if g not in scope]
-    spelled = node is not None and not remove and "goal" not in changes  # all of it in the board's forms
+    spelled = node is not None and not remove  # all of it in the board's forms
     # ponytail: a glob holding a comma is split by the board's reader; quote-aware when one turns up
     then = ((f"scope {target} + {shlex.join(grown)}",) if spelled and grown else ()) + (
-        (f"check {target}: {changes['check']}",) if spelled and "check" in changes else ())  # fmt: skip
+        (f"check {target}: {changes['check']}",) if spelled and "check" in changes else ()) + (
+        (f'goal {target} + "{sentence}"',) if spelled and "goal" in changes else ())  # fmt: skip
     return Offer(target, command, why, endpoint, then)
 
 
 def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> dict | None:
     """Place a note and put the offer on the board, for a board screen to call outside a claim: a `note`
     item by note:nemotron about the leaf, waiting on the person. Its default, taken, makes the change
-    when the board can spell all of it (scope NODE + GLOB, check NODE: COMMAND); a change it cannot (a
-    goal, a glob taken out, a new leaf) is the command in the default's words, for the person to run.
+    when the board can spell all of it (scope NODE + GLOB, check NODE: COMMAND, goal NODE + TEXT); a
+    change it cannot (a glob taken out, a new leaf) is the command in the default's words, for the
+    person to run. Put up by shaper:nemotron, as the other shaping prototypes' items are.
     Returns the item, or None when nothing is offered (``say`` hears why)."""
     try:  # a screen calls it: a model it cannot reach is one line, not a raise
         offer = route(store, root, sentence, say)
@@ -233,11 +235,11 @@ def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lamb
         return None
     if offer is None:
         return None
-    from . import board as B  # lane A's board: here once the coordinator merges it
+    from . import board as B
 
     default = f"take it: {'; '.join(offer.then)}" if offer.then else f"run it yourself: {offer.command}"
     text = f"you said '{_shown(sentence)}'; {offer.said()}"
-    return B.add(store, "note", text, P.Caller(WHO, False), default, list(offer.then),
+    return B.add(store, "note", text, P.Caller("shaper:nemotron", False), default, list(offer.then),
                  about=None if offer.target == NEW else offer.target)  # fmt: skip
 
 

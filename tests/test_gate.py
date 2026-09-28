@@ -545,3 +545,5 @@ def test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up(repo):
             ("question", "q-id"),
             ("assume", "a-id"),
         ]
+        board.pick(store, "q-id", 1, plan.Caller("alex", True))  # the option's then: line reaches the leaf
+        assert plan.get(store, "leaf-id").goal.endswith(". what the leaf does instead, in a sentence")

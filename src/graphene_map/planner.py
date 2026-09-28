@@ -24,7 +24,7 @@ from . import plan as P
 from . import tokenfactory as tf
 from .store import Store, repo_root
 
-PROMPT_VERSION = 2  # 2: the board (questions with a default, assumptions, risks, leave-outs)
+PROMPT_VERSION = 3  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -32,7 +32,10 @@ coding agents will do, which the person prunes before anything runs. Read the re
 shows it is done. Ask instead of guessing, and bring only what the repository cannot answer: for each
 thing the request leaves open that the code cannot settle, put a question on the board with the default
 you would assume, and say what you assumed, the risks you see and what you would leave out, at most
-about five, most important first. Never ask what a file answers; plan on the file. Then answer with the
+about five, most important first. Never ask what a file answers; plan on the file. Write each leaf as
+the default has it; every option, and every default the leaves do not already follow, that changes what
+a leaf does, which files it may touch or how it is checked carries the then: lines that make that change
+(goal, scope, check, drop, leaf), so the person's choice changes the tree. Then answer with the
 proposal in the form the request gives, and nothing else but one or two sentences after it. You write
 no file and run nothing."""
 

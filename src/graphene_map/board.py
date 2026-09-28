@@ -9,10 +9,12 @@ effects in the plan's own words (``then:``), applied as the person's edit when i
 
     scope NODE + GLOB, …      NODE's scope takes in the globs
     check NODE: COMMAND       NODE's check becomes the command
+    goal NODE + TEXT          NODE's goal ends with the sentence (the person's words, not the model's)
     drop NODE                 NODE leaves the plan
     leaf TITLE under NODE     a proposed leaf under NODE (beside it, when NODE is a leaf), for the
                               person to fill in or prune
-    condition GLOB            recorded for the settings (``conditions``); nothing enforces it yet
+    condition GLOB            no leaf may write the glob: the settings' read-only list reads it
+                              (``conditions``), so the gate refuses the write and a scope over it
 
 The board lives in the one store, as the plan_meta key ``board`` (a JSON list, in the order the
 items were put up), so `graphene plan undo` puts back an answer with everything it changed. Every
@@ -40,13 +42,17 @@ _TOLD = {"question": "", "assume": "assumed: ", "risk": "risk: ", "leave out": "
 _EFFECTS = (
     ("scope", re.compile(r"scope\s+(?P<node>[^\s+]+)\s*\+\s*(?P<arg>.+)")),
     ("check", re.compile(r"check\s+(?P<node>[^\s:]+)\s*:\s*(?P<arg>.+)")),
+    ("goal", re.compile(r"goal\s+(?P<node>[^\s+]+)\s*\+\s*(?P<arg>.+)")),
     ("drop", re.compile(r"drop\s+(?P<node>\S+)")),
     # a quoted title is whole ("profile under load"); unquoted, the last "under NODE" names the node
     ("leaf", re.compile(r"leaf\s+(?P<arg>\"[^\"]*\"|'[^']*'|.+?)(?:\s+under\s+(?P<node>\S+))?")),
     ("condition", re.compile(r"condition\s+(?P<arg>.+)")),
 )
 ORPHAN = "delete them with the item's line to drop it, or put its line back"
-FORMS = "scope NODE + GLOB, check NODE: COMMAND, drop NODE, leaf TITLE under NODE, or condition GLOB"
+FORMS = (
+    "scope NODE + GLOB, check NODE: COMMAND, goal NODE + TEXT, drop NODE, leaf TITLE under NODE, or "
+    "condition GLOB"
+)
 
 
 def _one(text: str | None) -> str:
@@ -153,9 +159,9 @@ def dropped(store) -> list[str]:
 
 
 def conditions(store) -> list[str]:
-    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen.
-    The one seam for the settings: nothing reads it yet but `graphene board --json`, so nothing may
-    say a condition is enforced until the settings' read-only list is wired to it."""
+    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen:
+    the settings' read-only list reads them (``settings.readonly``), so the gate refuses a write to one
+    and the plan a scope over one, until `plan undo` takes the answer back."""
     return [c for it in items(store) if it["state"] in DECIDED for c in it.get("conditions", [])]
 
 
@@ -172,9 +178,16 @@ def effect(line: str, no: int = 0) -> tuple[str, str | None, str | list[str]]:
         if found:
             node = (found.groupdict().get("node") or "").strip("[]`") or None
             arg = found["arg"] if "arg" in found.groupdict() else ""
-            if verb in ("scope", "condition"):
+            if verb == "condition":  # a read-only glob, read as `graphene config` reads one
+                from . import settings as S
+
+                try:
+                    return verb, node, [S._glob(no, g) for g in T._words(arg or "", no)]
+                except P.Refused as bad:
+                    raise P.Refused(str(bad).removeprefix("line 0: ")) from None
+            if verb == "scope":
                 return verb, node, T._words(arg or "", no)
-            if verb == "leaf" and len(arg) > 1 and arg[0] == arg[-1] and arg[0] in "'\"":
+            if verb in ("leaf", "goal") and len(arg) > 1 and arg[0] == arg[-1] and arg[0] in "'\"":
                 arg = arg[1:-1]
             return verb, node, (arg or "").strip()
     raise P.Refused(f"then: {line!r} is not read; an effect is {FORMS}")
@@ -199,6 +212,12 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
     if verb == "check":
         P.edit(store, node_id, {"check": what}, who, now, files)
         return f"{node_id}: check is now {what}"
+    if verb == "goal":
+        goal = P.goal_plus(P.get(store, node_id).goal, what)
+        if goal is None:
+            return f"{node_id}: its goal says it already"
+        P.edit(store, node_id, {"goal": goal}, who, now, files)
+        return f"{node_id}: goal + {what}"
     if verb == "drop":
         P.drop(store, node_id, who, now)
         return f"dropped {node_id}"
@@ -213,7 +232,7 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
             return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
     conditions += what
-    return f"recorded: condition {', '.join(what)}, for the settings"  # nothing enforces it yet
+    return f"no leaf may write {', '.join(what)} (read-only, as `graphene config` shows)"
 
 
 # -- the acts -------------------------------------------------------------------------------------
