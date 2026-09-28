@@ -46,7 +46,7 @@ def rows(store) -> list[str]:
             out += [f"    {line}" for line in rest]
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
-                out += ["      changed: " + T.elide(line, WIDE - 15) for line in item["became"]]
+                out += ["      " + T.elide(_became(line), WIDE - 6) for line in item["became"]]
                 continue
             if item["default"] or item["then"]:
                 out += [*_hang("      default: ", item["default"] or ""), *_then(item["then"])]
@@ -81,6 +81,11 @@ def _hang(head: str, text: str) -> list[str]:
     return [f"{head}{first}".rstrip(), *(" " * len(head) + line for line in rest)]
 
 
+def _became(line: str) -> str:
+    """What an answer did: a change to the plan, or a condition only recorded (nothing enforces it)."""
+    return line if line.startswith("recorded:") else f"changed: {line}"
+
+
 def _then(effects: list[str]) -> list[str]:
     return ["         then: " + T.elide(line, WIDE - 15) for line in effects]
 
@@ -106,7 +111,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         answer = f" → {item['answer']}" if item.get("answer") else ""
         out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
-            out(f"  changed: {line}")
+            out(f"  {_became(line)}")
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.callback()

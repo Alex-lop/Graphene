@@ -12,7 +12,7 @@ effects in the plan's own words (``then:``), applied as the person's edit when i
     drop NODE                 NODE leaves the plan
     leaf TITLE under NODE     a proposed leaf under NODE (beside it, when NODE is a leaf), for the
                               person to fill in or prune
-    condition GLOB            a condition every plan runs under (``conditions``)
+    condition GLOB            recorded for the settings (``conditions``); nothing enforces it yet
 
 The board lives in the one store, as the plan_meta key ``board`` (a JSON list, in the order the
 items were put up), so `graphene plan undo` puts back an answer with everything it changed. Every
@@ -140,7 +140,9 @@ def dropped(store) -> list[str]:
 
 
 def conditions(store) -> list[str]:
-    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen."""
+    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen.
+    The one seam for the settings: nothing reads it yet but `graphene board --json`, so nothing may
+    say a condition is enforced until the settings' read-only list is wired to it."""
     return [c for it in items(store) if it["state"] in DECIDED for c in it.get("conditions", [])]
 
 
@@ -198,7 +200,7 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
             return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
     conditions += what
-    return f"condition {', '.join(what)}"
+    return f"recorded: condition {', '.join(what)}, for the settings"  # nothing enforces it yet
 
 
 # -- the acts -------------------------------------------------------------------------------------

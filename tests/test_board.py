@@ -516,3 +516,14 @@ def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(rep
         said = T.apply(store, "risk: A planner item  added later  [later]\n", PLANNER, None)
         assert said == ["not put up again: A planner item added later (the person dropped it as later)"]
         assert [it["state"] for it in B.items(store)] == ["dropped"]
+
+
+def test_a_condition_is_said_to_be_recorded_for_the_settings_never_changed(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "risk: vendored  [vendor]\n    default: leave it\n    then: condition vendor/**\n",
+                PLANNER, None)  # fmt: skip
+    took = person("board", "take", "vendor")
+    assert took.stdout.splitlines()[1:] == ["  recorded: condition vendor/**, for the settings"]
+    assert "      recorded: condition vendor/**, for the settings" in person("board").stdout
+    with Store.open(repo) as store:
+        assert B.conditions(store) == ["vendor/**"]  # the seam the settings read
