@@ -356,7 +356,10 @@ def run_node(
                 said = first.rstrip(":") + (f" · {paths}" if paths else "")
                 say(f"{node.id} attempt {attempt} refused: {said}")
         tries = f"{attempts} attempt{'s' if attempts != 1 else ''}"
-        P.release(store, node.id, who, f"{tries}, the last one refused: {refusal}")
+        # the refusal for the person: its `graphene node release` step was the executor's to take
+        told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
+        crashed = f"; the executor itself exited {code}" if code else ""
+        P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
         say(f"{node.id} came back after {tries}")
         return None
     except KeyboardInterrupt:

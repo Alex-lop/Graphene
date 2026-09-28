@@ -173,3 +173,18 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
         plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
         plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
         assert summary(store, mark) == "run: n2 released by you, ready again"
+
+
+def test_a_hand_back_tells_the_person_the_refusal_not_the_executors_instruction_and_a_crash(repo):
+    """Walk 2026-09-28: the came-back reason carried `or say why: graphene node release …`, an
+    instruction to the executor, and hid that the executor itself had crashed (exit 1)."""
+    with Store.open(repo) as store:
+        plan.propose(store, [users_node()], ALEX)
+        run_plan(
+            store, repo, executor(repo, STUBBORN + "; raise SystemExit(1)"), attempts=1, say=lambda _: None
+        )
+        [released] = store.node_log("n1", ("released",))
+    why = released["detail"]["why"]
+    assert why.startswith("1 attempt, the last one refused: n1 is not done") and "schema.py" in why
+    assert "graphene node release" not in why and "say why" not in why
+    assert why.endswith("; the executor itself exited 1")
