@@ -475,3 +475,41 @@ def test_the_log_says_values_in_words_not_python(repo):
     accepted = agent("plan", "propose", "-", input="- b  [b]\n    scope: schema.py\n    check: true\n")
     assert accepted.exit_code == 0
     assert person("plan", "accept").stdout.splitlines()[0] == "accepted b"
+
+
+def test_node_set_adds_to_a_scope_or_a_goal_without_retyping_it(repo):
+    """`--goal` replaced the goal, so one sentence more was the whole goal pasted back (as-the-person.md,
+    finding 3; the evaluation's "editing without an editor"): --add-scope and --add-goal add to them."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true", "--goal", "ids")
+    added = person("node", "set", "l1", "--add-scope", "schema.py", "--add-scope", "api.py",
+                   "--add-goal", "Keep the order.")  # fmt: skip
+    assert added.exit_code == 0, added.output
+    assert "  scope: api.py → api.py, schema.py" in added.stdout
+    assert "  goal: ids → ids. Keep the order." in added.stdout
+    again = person("node", "set", "l1", "--add-scope", "schema.py", "--add-goal", "keep the order.")
+    assert "l1 is unchanged (revision 2)" in again.stdout  # what it says already is not said twice
+    both = person("node", "set", "l1", "--goal", "x", "--add-goal", "y")
+    assert (both.exit_code, both.stderr) == (2, "--goal replaces the goal and --add-goal adds to it: one or "
+                                                "the other\n")  # fmt: skip
+    assert person("plan", "undo").exit_code == 0
+    [shown] = json.loads(person("plan", "--json").stdout)["nodes"]
+    assert (shown["goal"], shown["scope"]) == ("ids", ["api.py"])
+
+
+def test_a_leaf_that_came_back_reads_came_back_in_every_view_and_in_the_next_line(repo):
+    """The evaluation's side finding: `graphene plan --view` ended "next: v-dupes (…) is ready", where the
+    screen called that leaf "came back"."""
+    text = "goal: g\n- api work  [api]\n    scope: api.py\n    check: true\n"
+    as_alex = {"GRAPHENE_AS": "person:alex"}
+    proposed = runner.invoke(build(), ["plan", "propose", "-"], input=text, env=as_alex)
+    assert proposed.exit_code == 0, proposed.output
+    person("plan", "accept")
+    agent("node", "start", "api")
+    agent("node", "release", "api", "--why", "cannot")
+    for view in ("outline", "dag", "tree"):
+        drawn = person("plan", "--view", view, "--width", "120", "--height", "36").stdout
+        [row] = [line for line in drawn.splitlines() if "↩ api" in line]  # its glyph
+        assert "ready" not in row, (view, drawn)  # and its word; the graph's count says "none ready"
+    assert "came back" in person("plan", "--view", "outline").stdout
+    said = agent("plan", "--view", "outline").stdout.splitlines()[-1]
+    assert said.startswith("next: api (api work) came back (`graphene node show api`): `graphene node start")

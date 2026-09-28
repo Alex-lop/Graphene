@@ -315,7 +315,8 @@ def test_the_standing_clauses_go_on_the_board_as_notes_about_their_leaf(repo, fa
         C.cover(store, say=lambda s: None)
         said = C.to_board(store, add)
         assert put[0] == {
-            "kind": "note", "by": "shaper:nemotron", "agent": True, "about": "xml-wiring", "then": [],
+            "kind": "note", "by": "shaper:nemotron", "agent": True, "about": "xml-wiring",
+            "then": ['goal xml-wiring + "Load the XML feed into items"'],
             "text": f"you said 'Load the XML feed into items'; no leaf carries it{C.STAND_IN}",
             "default": "add it to the end of xml-wiring's goal",
         }  # fmt: skip
@@ -331,3 +332,29 @@ def test_the_standing_clauses_go_on_the_board_as_notes_about_their_leaf(repo, fa
         put.clear()
         C.to_board(store, add)
         assert [p["about"] for p in put] == [None]  # taken: its leaf carries it now
+
+
+def test_the_cover_flag_puts_the_uncovered_clauses_on_the_board_after_an_ask(
+    repo, fake, monkeypatch, tmp_path
+):
+    """GRAPHENE_SHAPE=cover: after `graphene ask`, each clause no leaf carries is an item by
+    shaper:nemotron, said to be read by a stand-in here; taking it ends its leaf's goal with the clause."""
+    import sys
+
+    from graphene_map import board as B
+    from graphene_map.ask import ask
+
+    script = tmp_path / "planner.py"
+    block = "```plan\\n? wire the reader  [xml-wiring]\\n    scope: app.py\\n    check: true\\n```"
+    script.write_text(f'print("{block}")')
+    clause = {"text": "Load the XML feed into items", "leaf": None, "nearest": "xml-wiring"}
+    fake([nano({"clauses": [clause]})])
+    monkeypatch.setenv("GRAPHENE_SHAPE", "cover")
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "Load the XML feed into items.", f"{sys.executable} {script}", say=said.append)
+        [item] = B.items(store)
+        assert (item["by"], item["about"]) == ("shaper:nemotron", "xml-wiring")
+        assert item["text"].endswith(C.STAND_IN) and "cover: put on the board: 1" in said
+        B.take(store, item["id"], P.Caller("alex", True))
+        assert P.get(store, "xml-wiring").goal == "Load the XML feed into items"

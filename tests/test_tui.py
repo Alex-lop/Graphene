@@ -322,6 +322,10 @@ def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
     proposed(repo)
     with Store.open(repo) as store:
         settings.apply(store, "protected: secrets/**\nsize: finer\n", plan.Caller("alex", True))
+    # a condition taken on the board: its settings row once had a label so long every key's words were cut
+    risk = "risk: vendored  [vendor]\n    default: d\n    then: condition vendor/**\n"
+    agent("plan", "propose", "-", input=risk)
+    assert person("board", "take", "vendor").exit_code == 0
     for size, screens in (((80, 24), 2), ((120, 36), 1), ((160, 40), 1)):
 
         async def before(app, pilot, width=size[0], high=size[1], screens=screens):
@@ -336,7 +340,7 @@ def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
             said = "\n".join(columns)
             for key in ("zR zM", "+ -", "y 1..9", "size", "protected"):
                 assert key in said, (key, said)
-            assert "secrets/**" in said and "finer" in said
+            assert "secrets/**" in said and "finer" in said and "vendor/**" in said
             assert not any(r.rstrip().endswith("…") for r in rows)  # every row whole, none cut or wrapped
             assert len(app.screen.query("#help > Static")) == (2 if width >= 154 else 1)
             whole = len(rows) + 2  # and the legend and the last line, inside the border
