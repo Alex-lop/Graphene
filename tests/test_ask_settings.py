@@ -53,3 +53,10 @@ def test_finer_sizes_this_ask_only(repo, tmp_path, monkeypatch):
 def test_finer_and_coarser_together_are_refused(repo):
     got = person("ask", "add ids", "--finer", "--coarser")
     assert got.exit_code == 2 and "not both" in got.output
+
+
+def test_the_planner_is_told_never_to_read_a_protected_path(repo):
+    with Store.open(repo) as store:
+        settings.apply(store, "protected: secrets/**\n", ME)
+        prompt = A.prompt_for(store, "add ids", root=repo)
+    assert "Never read these paths either: secrets/**." in prompt

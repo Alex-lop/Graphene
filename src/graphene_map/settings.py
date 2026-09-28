@@ -46,6 +46,8 @@ def conditions_for_planner(store) -> str:
     lines = []
     if protected(store):
         lines.append(f"No scope may include these paths: {', '.join(protected(store))}.")
+        # a Codex planner, or a Claude Code one where the hooks are not installed, is refused nothing
+        lines.append(f"Never read these paths either: {', '.join(protected(store))}.")
     if readonly(store):
         lines.append(f"No leaf may write these paths: {', '.join(readonly(store))}.")
     lines += [f"Never propose this: {n}" for n in never(store)]
