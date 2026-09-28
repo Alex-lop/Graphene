@@ -60,3 +60,15 @@ def test_the_planner_is_told_never_to_read_a_protected_path(repo):
         settings.apply(store, "protected: secrets/**\n", ME)
         prompt = A.prompt_for(store, "add ids", root=repo)
     assert "Never read these paths either: secrets/**." in prompt
+
+
+def test_asking_again_finer_replaces_the_planners_last_proposal(repo, tmp_path, monkeypatch):
+    first = person("ask", "add ids", "--with", planner(tmp_path, GOOD, monkeypatch))
+    assert first.exit_code == 0, first.output
+    finer = GOOD.replace("[users-api]", "[users-api2]").replace("[ids]", "[ids2]")
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, finer, monkeypatch))
+    assert again.exit_code == 0, again.output
+    with Store.open(repo) as store:
+        pending = sorted(n.id for n in A.P.nodes(store) if n.state == "proposed")
+    assert pending == ["ids2", "users-api2"]  # one tree to prune, not two side by side
+    assert "replaces the tree you proposed last" in said(tmp_path)

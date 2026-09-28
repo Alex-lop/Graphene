@@ -141,6 +141,21 @@ def proposal_in(said: str) -> str:
     return said[start.start() :] if start else ""
 
 
+def _replace_last(store) -> list[str]:
+    """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
+    to prune in their place, not a second beside them. Returns the ids dropped."""
+    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
+    ids = {n.id for n in pending}
+    dropped = []
+    for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
+        try:
+            P.drop(store, n.id, P.caller())
+            dropped.append(n.id)
+        except P.Refused:
+            pass  # something accepted waits on it: it stays, and the person sees both
+    return dropped
+
+
 def ask(
     store,
     root: Path,
@@ -165,6 +180,10 @@ def ask(
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size)
+    if size and about is None and not split and _replace_last(store):  # asked again, finer or coarser
+        asked = prompt = prompt.replace(
+            RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
+            "dropped, so propose the whole tree afresh.\n\n" + RULES)  # fmt: skip
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
