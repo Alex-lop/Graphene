@@ -29,6 +29,7 @@ from . import tokenfactory as tf
 
 MAX_TOKENS = 2048  # Nano reasons before it answers: a cut-off answer is said to be one
 TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
+WHY = 300  # characters of the model's reason that are kept: a sentence, not a page
 NEW, NONE = "(new)", "(none)"  # the answers that are no leaf: no leaf's id has brackets
 WHO = "note:nemotron"  # the actor of its rows; each usage row's `endpoint` says who answered
 SYSTEM = """\
@@ -114,6 +115,7 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
     try:
         a = json.loads(said["message"].get("content") or "")
         target, why = str(a["target"]).strip(), _shown(a.get("why") or "")
+        why = why if len(why) <= WHY else why[: WHY - 1] + "…"
     except (ValueError, KeyError, TypeError, AttributeError):
         say("the model's answer is not the JSON it was asked for; nothing is offered")
         return None

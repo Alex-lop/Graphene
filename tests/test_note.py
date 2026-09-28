@@ -260,3 +260,13 @@ def test_a_note_neither_widens_a_leaf_to_the_whole_repo_nor_empties_it(repo, fak
     assert offer is None and said == ["** takes in every file git tracks; nothing is offered"]
     offer, said, _, _ = routed(repo)
     assert offer is None and said == ["it would leave ids no file git tracks; nothing is offered"]
+
+
+def test_a_long_reason_is_cut_to_one_short_line(repo, fake):
+    planned(repo)
+    fake([answer("ids", goal_add=True, why="so " * 70_000)])
+    offer, _, _, _ = routed(repo)
+    assert len(offer.why) <= note.WHY and offer.why.endswith("…")
+    with Store.open(repo) as store:
+        [row] = store.node_log("ids", ("suggested",))
+    assert row["detail"]["reason"] == offer.why
