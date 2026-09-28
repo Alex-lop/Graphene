@@ -21,10 +21,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import board as B
-from . import cover
+from . import cover, precheck
 from . import plan as P
 from . import plan_text as T
-from . import precheck
 from .run import _splits, command_for
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP

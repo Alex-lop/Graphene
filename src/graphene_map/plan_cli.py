@@ -16,13 +16,12 @@ from pathlib import Path
 import typer
 
 from . import board as B
-from . import cover
+from . import cover, precheck
 from . import gate as G
 from . import note as N
 from . import plan as P
 from . import plan_text as T
 from . import views as V
-from . import precheck
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
 NO_PLAN = (
