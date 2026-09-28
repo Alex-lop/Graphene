@@ -90,9 +90,10 @@ def test_why_lands_on_the_board_as_the_planners_note_about_the_node(repo, talker
         and "ids is there so the API returns ids before" in board
         and "\n    the docs describe them" in board  # wrapped whole under its row
     )
-    assert person("board", "drop", "why-ids").exit_code == 0  # and dismissable
     again = person("talk", "why", "ids", "--with", talker)  # a second answer is a second note, not refused
     assert again.exit_code == 0 and "why-ids-2" in again.stdout
+    # and dismissable; once dropped, the same words are not put up again (the board's rule for drops)
+    assert person("board", "drop", "why-ids").exit_code == 0
     assert runner.invoke(build(), ["talk", "why", "ids", "--with", talker], env=AGENT_ENV).exit_code == 1
 
 
