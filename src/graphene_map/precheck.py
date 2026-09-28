@@ -37,6 +37,9 @@ SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict
     "verdict": {"type": "string", "enum": ["red-right-reason", "environment", "typo", "other"]},
     "why": {"type": "string"}}}  # fmt: skip
 QUICK = 30  # seconds Nano gets for one reading, asked once: it runs behind `ask`, and must not wait a minute
+# an escape sequence (CSI, OSC) or any other control character: what a check or a model wrote must not
+# move the person's cursor, clear a line or draw a verdict of its own over the real one
+_CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|[\x00-\x1f\x7f-\x9f]")
 _MISSING = re.compile(r"No module named '?([\w.]+)")
 
 
@@ -220,11 +223,16 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
                 model = no if isinstance(no, tf.Unreachable) else model
                 found, why = "red", f"not read: {' '.join(str(no).split())}"
             read[key] = (found, why, by)
-        detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": why,
-                  "exit": code, "where": where, "by": by}  # fmt: skip
+        detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": _plain(why),
+                  "exit": code, "where": where, "by": by and _plain(by)}  # fmt: skip
         store.log_node(node.id, P._now(), "precheck", "graphene:precheck", None, None, detail)
         out.append((node, detail))
     return out
+
+
+def _plain(text) -> str:
+    """One line, with no escape sequence or control character in it."""
+    return " ".join(_CONTROL.sub(" ", str(text)).split())
 
 
 def _gist(text: str) -> str:
@@ -241,8 +249,8 @@ def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
     for node, d in rows:
         mark = " " if d["verdict"] in QUIET else "!"
         where = f" · {d['where']}" if d.get("where") not in (None, "here") else ""
-        by = f" (read by {d['by']})" if d.get("by") else ""
-        lines.append(f"{mark} {node.id:<16} {SAID[d['verdict']]:<26} {d['why']}{by}{where}")
+        by = f" (read by {_plain(d['by'])})" if d.get("by") else ""
+        lines.append(f"{mark} {node.id:<16} {SAID[d['verdict']]:<26} {_plain(d['why'])}{by}{where}")
     if any(d["verdict"] not in QUIET for _, d in rows):
         lines.append("! a check that passes now, or is red for another reason, cannot tell the work is done: "
                      "`graphene node set <id> --check '…'`")  # fmt: skip

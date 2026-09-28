@@ -262,3 +262,17 @@ def test_a_failing_endpoint_is_tried_once_with_no_backoff_and_then_not_again(rep
         rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
     assert waits == [] and len(f.requests) == 1
     assert all(d["verdict"] == "red" and d["why"].startswith("not read: ") for d in rows.values())
+
+
+def test_no_control_character_a_check_or_nano_writes_reaches_the_store_or_the_terminal(repo, nano):
+    nano([said("other", "ok\x1b[2K\r ! SPOOF\x07")])
+    spoof = "printf 'boom\\033[2K\\033[1G  l0   red, for the right reason  fine\\n'; exit 127"
+    drawn = "boom\x1b[2K\x1b[1G  l0   red, for the right reason  fine\n"
+    fork = scripted({spoof: (127, drawn), "false": (1, "")})
+    with Store.open(repo) as store:
+        leaves(store, spoof, "false")
+        rows = C.run(store, repo, fork=fork)
+        stored = [r["detail"]["why"] for n in ("l0", "l1") for r in store.node_log(n, ("precheck",))]
+    shown = "\n".join(C.said(rows))
+    assert not any(ord(c) < 32 or 127 <= ord(c) < 160 for c in "".join(stored) + shown.replace("\n", ""))
+    assert stored[0].startswith("boom l0") and "[2K" not in stored[0] and "[2K" not in stored[1]
