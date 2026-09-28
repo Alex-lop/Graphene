@@ -131,3 +131,19 @@ def test_when_no_leaf_comes_back_the_script_still_ends_with_the_graph_and_the_bi
     assert "$ graphene node widen" not in said and said.count("$ graphene run --parallel 4") == 1
     assert "$ git log --graph --oneline" in said and "bill: $" in said
     assert "2 of 2 passed at last run, 0 runs failed on the way" in said
+
+
+@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
+def test_a_leaf_back_without_asking_for_paths_still_ends_with_the_graph_and_the_bill(tmp_path):
+    """A leaf that comes back because its check keeps failing asked for no path: there is nothing to widen,
+    and `graphene node widen` refuses. The script says so and goes on to `git log --graph` and the bill."""
+
+    def answer(body):
+        first = body["messages"][1]["content"] if len(body["messages"]) > 1 else ""
+        return call("done") if "farewell (revision" in first else reply(body, IN_ONE_GO)
+
+    done, said, _ = script(tmp_path, answer, "true")
+    assert done.returncode == 0, said
+    assert "$ graphene node widen farewell" in said and "farewell asked for no path" in said
+    assert said.count("$ graphene run --parallel 4") == 1  # nothing was widened: nothing new to run
+    assert "$ git log --graph --oneline" in said and "bill: $" in said

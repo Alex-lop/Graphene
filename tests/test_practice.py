@@ -371,3 +371,18 @@ def test_the_dry_run_and_the_live_ladder_never_share_a_state(tmp_path):
     for args in (["status"], ["2"]):  # and the live ladder refuses the dry run's
         done = ladder(tmp_path, *args, **dry)
         assert done.returncode == 2 and "the dry run's" in done.stdout, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("landed", [0, 1])
+def test_the_demo_rung_passes_only_when_a_leaf_landed(tmp_path, monkeypatch, capsys, landed):
+    """Rung 7 with nemotron.sh and the replay stubbed: a demo that ran to the bill with nothing landed is
+    a FAIL that says so, and a PASS says how many leaves landed. Nothing runs."""
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setattr(practice.Rung, "sh", lambda r, args, cwd, timeout=900, **more: (0, "bill: $0.01"))
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"one": "done" if landed else "open", "two": "open"})
+    assert practice.climb(7) == ("PASS" if landed else "FAIL")
+    said = capsys.readouterr().out
+    if landed:
+        assert "1 of 2 leaves landed" in said
+    else:
+        assert "nothing landed" in said and "the model did not finish the work" in said

@@ -424,15 +424,21 @@ def demo_run(r: Rung) -> str:
     more = {"EXECUTOR": "nemotron --placement sandbox"} if DRY else {}
     if DRY and not docker_runs():
         raise Failed(NO_DOCKER)
-    code, out = r.sh(["bash", str(ROOT / "docs" / "proof" / "nemotron.sh"), str(r.where("demo"))], ROOT, 3600,
+    repo = r.where("demo")
+    code, out = r.sh(["bash", str(ROOT / "docs" / "proof" / "nemotron.sh"), str(repo)], ROOT, 3600,
                      RECORD=str(rec), **more)  # fmt: skip
     if code or "bill: $" not in out:
         raise Failed(f"nemotron.sh did not reach the bill (exit {code}): {last(out)}")
+    states = leaves(repo)
+    landed = sum(s == P.DONE for s in states.values())
+    if not landed:
+        raise Failed(f"the demo ran to the bill, and nothing landed: {len(states)} leaves, in {repo}")
     back, shown = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     if back:
         raise Failed(f"the recording does not replay: {last(shown)}")
     bills = [ln.strip() for ln in out.splitlines() if "bill: $" in ln]
-    return f"the demo ran to the bill; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
+    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed"
+    return f"{ran}; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
 
 
 # number: (name, what it may spend in dollars at list price, how long it takes live, the rung)

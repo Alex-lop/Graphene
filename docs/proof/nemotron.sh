@@ -42,16 +42,17 @@ step graphene plan accept
 step graphene run --parallel 4
 
 # A leaf that came back offers its fix; take `w` (widen its scope to what it asked for), as a person
-# pressing w in `graphene watch` would, and run again.
+# pressing w in `graphene watch` would, and run again. A leaf whose check kept failing asked for no
+# path: there is nothing to widen, and it stays open for a person to read.
 came_back() {  # the ids whose note in the plan's text says they came back (a note follows its node's line)
   graphene plan --text | awk '/\[[a-z0-9-]+\]/ { match($0, /\[[a-z0-9-]+\]/); id = substr($0, RSTART + 1, RLENGTH - 2) }
                               /^ *# came back/ { print id }'
 }
-back=$(came_back)
-for id in $back; do
-  step graphene node widen "$id"
+widened=
+for id in $(came_back); do
+  if step graphene node widen "$id"; then widened=1; else echo "($id asked for no path outside its scope)"; fi
 done
-if [ -n "$back" ]; then   # with nothing back, a second run has nothing to run, and says so with exit 1
+if [ -n "$widened" ]; then   # with nothing widened, a second run has nothing new to run
   step graphene run --parallel 4
 fi
 
