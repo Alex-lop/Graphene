@@ -56,7 +56,7 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
     tests = layout(files)
     dirs = len(named_dirs(sentence, files))
     # ponytail: fixed line thresholds, tune against the four tasks and the public repos
-    lo, hi = (1, 3) if lines < 2000 else (2, 6) if lines < 20000 else (4, 10)
+    lo, hi = 1, 3 if lines < 2000 else 6 if lines < 20000 else 10  # the repo bounds it from above only
     lo = max(lo, min(dirs, hi))  # the directories named raise the floor, up to the repo's own bound
     hi = max(hi, lo + 1)
     if size == "finer":

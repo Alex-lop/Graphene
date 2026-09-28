@@ -52,7 +52,7 @@ def test_bigger_repo_cuts_finer(tmp_path):
     small = measure(tmp_path / "s", "go", repo(tmp_path / "s", {"a.py": 100}))
     big_files = repo(tmp_path, {f"m{i}.py": 1000 for i in range(25)})
     big = measure(tmp_path, "go", big_files)
-    assert leaves(big)[0] > leaves(small)[0]
+    assert leaves(big)[1] > leaves(small)[1]
     assert "no tests" in big
 
 
@@ -67,3 +67,9 @@ def test_a_word_naming_many_directories_does_not_set_the_floor(tmp_path):
     assert named_dirs("fix a typo in pkg3/sub", files) == {"pkg3/sub"}
     lo, hi = leaves(measure(tmp_path, "fix a typo in pkg1 pkg2 pkg3 pkg4 pkg5 pkg6 pkg7", files))
     assert lo <= hi <= 7  # directories named by path count, and never past the repo's own bound twice
+
+
+def test_a_small_ask_in_a_big_repo_can_be_one_leaf(tmp_path):
+    files = repo(tmp_path, {f"m{i}.py": 1000 for i in range(25)})
+    lo, hi = leaves(measure(tmp_path, "fix a typo in the README", files))
+    assert lo == 1 and hi >= 6  # the repo's size bounds the tree from above, never from below
