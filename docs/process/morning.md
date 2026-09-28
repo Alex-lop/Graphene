@@ -21,7 +21,7 @@
 
 **Broken or risky**
 - The board does not yet save attention: about twice the modelled seconds (study 2), less with 1-2 items (study 3).
-- CI fails now and then on the last run's stop-timing tests (see "The closing review" below).
+- 15 `graphene demo` replays from a test loop kept spinning after their terminals were gone; not yet explained.
 - The keychain item in step 1. Every test now runs with the keychain off.
 
 ---
@@ -59,8 +59,14 @@ Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read
 
 ## The evidence
 
-- **The suite:** 1288 passed, 2 skipped, locally at `1770539` (the full suite, 18 min). ruff clean;
-  the page's build equals its committed assets.
+- **The suite:** 1359 passed, 2 skipped at `5fadf9b` (the full suite, 29 min); the three 60 ms hook
+  time-budget tests failed under a load of about 30 and pass on the final head once it is quiet (4
+  passed). The race fixes merged after it (`g-flaky`, four files) were run on their own: 85 passed.
+  ruff clean.
+- **CI: green on all seven jobs at `71e0e17`** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the
+  page), the last commit that changes code; later commits touch only `docs/process/morning.md`.
+- **The ladder, dry, on the final head:** all seven rungs PASS in 1 min 43 s, bill $0.0049 against
+  the stand-ins; the fake key given to it appears in nothing it wrote.
 - **The evaluation:** 12 board trials and 3 graph trials by three stand-ins in a logged tmux seat, at
   80x24 and 120x36, on feeds, tonight's plan and the thirty-leaf plan (`evaluation.md`, `screens/`).
 - **The shaping studies** (`docs/test/results-2026-09-28-shaping.md`, each registered before its
