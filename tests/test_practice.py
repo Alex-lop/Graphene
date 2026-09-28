@@ -101,6 +101,18 @@ def test_in_an_agents_shell_the_access_rung_is_typed_by_the_person(tmp_path):
     assert "next: docs/test/practice.sh 1" in done.stdout
 
 
+def test_in_a_terminal_of_your_own_the_access_rung_runs_the_check_itself(tmp_path):
+    """Live, with no agent's mark: rung 1 runs access.py itself and prints no `!` line. There is no key,
+    no ConTree profile and a proxy that answers nothing, so nothing is sent."""
+    (tmp_path / "no-contree").mkdir()
+    done = ladder(tmp_path, "1", CONTREE_HOME=str(tmp_path / "no-contree"), HTTPS_PROXY="http://127.0.0.1:9",
+                  HTTP_PROXY="http://127.0.0.1:9", NO_PROXY="")  # fmt: skip
+    assert done.returncode == 1 and "FAIL · rung 1 · " in done.stdout, done.stdout + done.stderr
+    assert "NEBIUS_API_KEY is not set in the shell the ladder runs in; nothing was sent" in done.stdout
+    assert "docs/test/access.py --out" in (tmp_path / "state" / "rung-1.log").read_text()
+    assert (tmp_path / "state" / "access.json").exists() and "! " not in done.stdout
+
+
 def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
     """Live, rungs 2-7 spend on the person's key and are recorded as the person: an agent's shell runs
     none of them. Should one run anyway, nothing leaves the machine: no key, and a proxy that answers
