@@ -212,7 +212,10 @@ def reask_argv(store, size: str) -> list[str] | None:
     """The command a screen's re-ask key runs: the last sentence asked of a planner (not a follow-up
     about one node), again, sized finer or coarser. None when nothing was asked yet."""
     asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
-    return ["graphene", "ask", asked[-1]["note"], f"--{size}"] if asked else None
+    if not asked:
+        return None
+    planner = asked[-1].get("with")  # the planner that ask started, never whichever the repo names now
+    return ["graphene", "ask", asked[-1]["note"], *(["--with", planner] if planner else []), f"--{size}"]
 
 
 def _replace_last(store) -> list[str]:
@@ -240,17 +243,20 @@ def ask(
     say: Callable[[str], None] = print,
     size: str | None = None,
     talk: str | None = None,
+    planner: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
-    refusal, as a refused executor does."""
+    refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
+    asking it again finer or coarser starts the same one."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
     session = str(uuid.uuid4())
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
-    store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
+    row = {"note": sentence, "about": about, "with": planner}
+    store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)

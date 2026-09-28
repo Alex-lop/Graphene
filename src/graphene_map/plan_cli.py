@@ -850,8 +850,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                  "  propose the tree yourself: graphene plan propose - <<'EOF' … EOF", 1)  # fmt: skip
 
         def go(store):
-            template = named(executor or store.meta("planner"))  # --with, else the repo's (`graphene init`)
-            said = ask(store, checkout(), sentence, template, about, split, out, size)
+            spec = executor or store.meta("planner") or "claude"  # --with, else the repo's (`graphene init`)
+            said = ask(store, checkout(), sentence, named(spec), about, split, out, size, planner=spec)
             for line in said:
                 out(line)
             if said:
