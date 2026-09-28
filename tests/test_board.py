@@ -697,3 +697,10 @@ def test_one_answer_cannot_widen_a_scope_over_its_own_condition(repo):
     assert took.exit_code == 1 and "`readonly: schema.py` keeps out of every scope" in took.output
     with Store.open(repo) as store:
         assert P.get(store, "users").scope == ["api.py"] and B.conditions(store) == []
+
+
+def test_a_condition_that_differs_from_a_tracked_path_only_in_case_is_refused(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "risk: r  [r]\n    default: d\n    then: condition API.py\n", PLANNER, None)
+    took = person("board", "take", "r")
+    assert took.exit_code == 1 and "`API.py` matches nothing git tracks, and `api.py` differs" in took.output

@@ -150,3 +150,18 @@ def test_an_asides_record_never_calls_a_standing_path_in_scope(ruled, repo):
     assert any("had changed under this node, 1 inside its scope" in line for line in lines)
     rolled = NR.rolled_up(ruled, repo, [plan.get(ruled, "t")])
     assert any("2 paths git said had changed under them, 1 inside the scope" in line for line in rolled)
+
+
+def test_an_aside_is_refused_a_case_variant_of_a_standing_path(tmp_path):
+    """On a Mac's disk SECRETS/a.txt is secrets/a.txt: the hook judges what the write reaches."""
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    with Store.open(repo) as store:
+        S.apply(store, "protected: src/db/**\n", ALEX)
+        plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    G.plan_first(repo, False)
+    G.hook(repo, "UserPromptSubmit", prompt="fix the schema")
+    assert "protected: src/db/**" in G.reason(G.write(repo, "SRC/DB/schema.py"))
+    assert "protected: src/db/**" in G.reason(G.bash(repo, "echo pwned > src/DB/schema.py"))
+    assert G.write(repo, "src/api/users.py") is None

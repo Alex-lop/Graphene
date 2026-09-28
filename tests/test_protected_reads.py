@@ -119,3 +119,19 @@ def test_the_nemotron_planners_grep_does_not_follow_a_tracked_link_to_a_protecte
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     seen = planner.Repo(repo, ["secrets/**"])
     assert seen.grep("KEY") == "(no match)" and "protected" in seen.read("docs/link.txt")
+
+
+def test_a_protected_glob_is_matched_as_the_disk_reaches_it_and_a_miscased_one_is_refused(repo):
+    """On a Mac's disk SECRETS/ is secrets/: the planner's reads, the executor's view and the sandbox's
+    upload match a protected glob ignoring case, as the hook's read check does; and `graphene config`
+    refuses a glob that differs from a tracked path only in case, as `node add` does for a scope."""
+    from graphene_map import plan as P
+    from graphene_map import planner
+
+    assert "protected" in planner.Repo(repo, ["Secrets/**"]).read("secrets/prod.txt")
+    assert planner.Repo(repo, ["Secrets/**"]).grep("KEY") == "(no match)"
+    with Store.open(repo) as store:
+        assert executor.unprotected(store, ["app.py", "SECRETS/prod.txt"]) == ["app.py"]
+        with pytest.raises(P.Refused, match=r"line 1: `Secrets/\*\*` matches nothing git tracks"):
+            settings.apply(store, "protected: Secrets/**\n", Caller("alex", True), files=P.tracked(repo))
+        assert settings.protected(store) == ["secrets/**"]

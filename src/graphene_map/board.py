@@ -231,6 +231,9 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         if parent != node_id:
             return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
+    wrong = P.miscased(what, files or [])
+    if wrong:
+        raise P.Refused(f"then: {line}: {wrong}; spell it as git does")
     conditions += what
     return f"no leaf may write {', '.join(what)} (read-only, as `graphene config` shows)"
 

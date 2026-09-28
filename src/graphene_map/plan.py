@@ -231,9 +231,22 @@ def as_scoped(node: Node, conditions: list[tuple[str, str]]) -> list[str]:
     return [*node.scope, *(f"!{g}" for _, g in conditions)]
 
 
+def covers(globs: list[str], path: str) -> bool:
+    """Does a standing glob cover ``path`` as the disk reaches it? On one that ignores case (a Mac's)
+    SECRETS/ is secrets/, so case is ignored. ponytail: on a disk that minds case, SECRETS/ is then
+    kept out as well, which errs toward the setting."""
+    return in_scope(path.casefold(), [g.casefold() for g in globs])
+
+
 def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
-    """The setting that keeps ``path`` out of every scope, as `setting: glob`, or None."""
-    return next((f"{s}: {g}" for s, g in conditions if in_scope(path, [g])), None)
+    """The setting that keeps ``path`` out of every scope, as `setting: glob`, or None (``covers``)."""
+    return next((f"{s}: {g}" for s, g in conditions if covers([g], path)), None)
+
+
+def binds(path: str, node: Node, conditions: list[tuple[str, str]]) -> bool:
+    """Is ``path`` inside the scope as it binds (``as_scoped``), a standing path matched as the disk
+    reaches it (``kept_out_by``)?"""
+    return in_scope(path, node.scope) and kept_out_by(path, conditions) is None
 
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
@@ -544,7 +557,7 @@ def ignored_kept_out(checkout: str | Path, conditions: list[tuple[str, str]]) ->
     reports a change to one (an ignored `.env`), so `start` keeps these and `done` compares them."""
     if not conditions:
         return {}
-    specs = [f":(glob){g}{tail}" for _, g in conditions for tail in ("", "/**")]
+    specs = [f":(glob,icase){g}{tail}" for _, g in conditions for tail in ("", "/**")]
     out = _git(checkout, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", *specs)
     return {p: _hash(checkout, p) for p in out.split("\0") if p and kept_out_by(p, conditions)}
 
@@ -2129,7 +2142,8 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         node = get(store, node_id)
         waited_on = any(node.id in n.needs and n.state not in GONE for n in nodes(store))
         node.state, node.finished_at = (DONE if changed or waited_on else DROPPED), now
-        stray = [p for p in changed if not in_scope(p, as_scoped(node, standing(store)))]
+        conditions = standing(store)
+        stray = [p for p in changed if not binds(p, node, conditions)]
         detail = {"head": head(checkout), "changed": changed[:KEPT_PATHS]} | (
             {"outside": stray} if stray else {}
         )

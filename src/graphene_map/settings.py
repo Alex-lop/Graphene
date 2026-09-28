@@ -122,11 +122,14 @@ def _glob(no: int, glob: str) -> str:
     return bare
 
 
-def apply(store, text: str, who: P.Caller, opened: str | None = None) -> list[str]:
+def apply(
+    store, text: str, who: P.Caller, opened: str | None = None, files: list[str] | None = None
+) -> list[str]:
     """Read the whole text, then write every setting it names (one left out is cleared) in one
     claim; a line that cannot be read refuses all of it. Person-only. ``opened``: the text the editor
     was opened on; when the settings no longer render as it, someone else changed them meanwhile and
-    the save is refused, never written over theirs. Returns the text as stored."""
+    the save is refused, never written over theirs. ``files``: what git tracks, so a glob that differs
+    from a path only in case is refused, as a scope is. Returns the text as stored."""
     P._person_only(who, "changing Graphene's settings")
     got: dict[str, list[str]] = {"protected": [], "readonly": [], "never": []}
     said_size = None
@@ -155,6 +158,9 @@ def apply(store, text: str, who: P.Caller, opened: str | None = None) -> list[st
             if not all(globs):
                 raise P.Refused(f"line {no}: {key}: needs globs, comma-separated, none empty")
             got[key] += [_glob(no, g) for g in globs if _glob(no, g) not in got[key]]
+            wrong = P.miscased([_glob(no, g) for g in globs], files or [])
+            if wrong:
+                raise P.Refused(f"line {no}: {wrong}; spell it as git does")
     if not (said_size or any(got.values())):  # an emptied text is a slip (an editor's crash), as in plan edit
         raise P.Refused("nothing is applied from a text with no setting in it; to clear them all, save "
                         "`size: auto` alone")  # fmt: skip

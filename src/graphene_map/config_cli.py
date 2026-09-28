@@ -60,10 +60,11 @@ def register(cli: typer.Typer, root, open_store, fail):
                     typer.echo("nothing changed")
                     return
                 fail(f"nothing was applied; your text is kept in {path}", 1)
+            files = P.tracked(root())  # asked before the plan's write lock is taken, never under it
             try:
                 with open_store(root()) as store:
                     before = S.render(store)
-                    after = S.apply(store, saved, who, opened)
+                    after = S.apply(store, saved, who, opened, files)
             except P.Refused as no:
                 if not sys.stdin.isatty():
                     fail(f"{no}. Nothing was applied; your text is kept in {path}", 1)
@@ -83,6 +84,6 @@ def register(cli: typer.Typer, root, open_store, fail):
             if "\n".join(after) + "\n" == before:
                 typer.echo("nothing changed")
             with open_store(root()) as store:
-                for line in S.broken(store, P.tracked(root())):
+                for line in S.broken(store, files):
                     typer.echo(line)
             return
