@@ -268,6 +268,8 @@ class Docker:
             try:
                 ran = subprocess.run(["docker", "start", "-a", box], capture_output=True, timeout=timeout,
                                      start_new_session=True)  # fmt: skip
+                if box not in self.running:  # halted: removed with all it ran, and nothing of it is kept
+                    return image, 137, ""
                 code = int(self._docker("inspect", "-f", "{{.State.ExitCode}}", box).stdout.decode().strip())
             except subprocess.TimeoutExpired:
                 self._docker("kill", box)
@@ -280,11 +282,14 @@ class Docker:
             self._docker("rm", "-f", box)
 
     def halt(self) -> None:
-        """The run was stopped while a fork's thread waits on a container: kill it (its command ignores
-        the TERM docker passes on, as the first process in the container), and ``run`` removes it."""
-        # ponytail: a container made but not yet started when this runs still starts
+        """The run was stopped while a fork's thread waits on a container: remove it here, with all it runs
+        (its command ignores the TERM docker passes on, as the first process in the container). Left to
+        the fork's thread, it went only after a commit of the killed container, and a slow commit
+        outlasted the executor's grace (CI caught one)."""
+        # ponytail: a container still being created when this runs is made after it, and starts
         for box in list(self.running):
-            self._docker("kill", box)
+            self.running.discard(box)
+            self._docker("rm", "-f", box)
 
     def read(self, image: str, path: str) -> bytes:
         self.ops += 1
