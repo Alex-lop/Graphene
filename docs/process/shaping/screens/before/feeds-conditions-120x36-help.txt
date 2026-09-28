@@ -1,0 +1,37 @@
+(help: 1 screen(s), ctrl-d twice between them)
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp4mjflhab/feeds
+▼╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+└│  move                                                     run                                                      │
+ │    j k   down, up                                           R  run every ready leaf                                │
+ │    gg G  the goal, the last row                             r  run the ready leaves under this one                 │
+ │    /     search; n the next match                           x  release a running leaf; send back one in review;    │
+ │    Esc   ends a search, a selection, a pane                    reopen a done one                                   │
+ │    Tab   the next view that fits (graphene watch --view)    P  plan first on or off: a session proposes a tree     │
+ │    h l   in a view: the node to the left, to the right         before any code                                     │
+ │                                                                                                                    │
+ │  fold                                                     see                                                      │
+ │    za     fold or unfold here (on the goal: all)            Enter          the record: who held it, what changed,  │
+ │    zo zc  unfold, fold; a folded row counts the leaves                     the check                               │
+ │           inside by state                                   l              the executor's output                   │
+ │    zR zM  all open, all closed                              ctrl-d ctrl-u  scroll the pane                         │
+ │    zx     as it opened: what is done folded, the rest       m              seen: from here on, a row someone else  │
+ │           open                                                             changes reads + or ~ before its id      │
+ │                                                                                                                    │
+ │  shape                                                    a leaf that came back                                    │
+ │    y    accept a proposal; sign off a leaf in review;       w  widen its scope to what it wanted                   │
+ │         your own leaf is done                               b  a sibling leaf for that, which it waits on          │
+ │    d    drop                                                n  wait on the leaves its reason names                 │
+ │    e    edit its contract in $EDITOR                        ?  ask the planner what would let it be done           │
+ │    E    edit it with what is under it, as text                                                                     │
+ │    a A  add a sibling, a child                            :                                                        │
+ │    s    the planner splits it into leaves                   :<command>     any graphene command, as you would      │
+ │    u    undo your last act on the plan                                     type it (:node show x, :plan log)       │
+ │    V    select several, then y or d                         :ask <what>    the planner proposes it                 │
+ │    ?    on a node: ask the planner why, split, merge the    :stop          stops a run started here                │
+ │         selection (V), another way, or your words           ? on the goal  this help                               │
+ │                                                             q              quit; a run started here goes on        │
+ │                                                                                                                    │
+ │  Every key is a graphene command, and the bottom line says which it ran. Two agents work here: the planner         │
+ │  proposes the tree (a session, or :ask), the executors do its leaves (R, r).                                       │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ graphene watch --view outline

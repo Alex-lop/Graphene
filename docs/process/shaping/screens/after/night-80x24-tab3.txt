@@ -1,0 +1,24 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpb8i16o9n/night
+▼ ? Graphene has settings a person states once: where the Token…     proposed
+├   ◇ does a broad scope that also covers a protected…   overlap     asks
+├   ◇ what does graphene ask --finer (or --coarser)…     reask       asks
+├   ◇ "things the planner must never propose": is this…  never       asks
+├   ◇ the settings live in the store's plan_meta…        store       assumes
+├   ◇ a key passed on argv shows up in ps, and an…       keychain    risk
+├ ▶ ? the Token Factory key                              keys        3 proposed
+├ ▶ ? standing conditions                                conditions  3 proposed
+├ ▶ ? plan size                                          size        3 proposed
+└ ▶ ? graphene config                                    config      2 proposed
+────────────────────────────────────────────────────────────────────────────────
+ Graphene has settings a person states once: where the Token Factory key is
+ found, standing conditions the gate enforces, and the plan size, all shown
+ and edited with graphene config
+ the goal · proposed with the tree: accepting any of it accepts it
+
+ ? the Token Factory key                                  keys        proposed
+ ? standing conditions                                    conditions  proposed▂
+ ? plan size                                              size        proposed
+ ? graphene config                                        config      proposed
+ you: 4 + 5 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · za fold all · Tab view · ? help
+ graphene watch --view outline
