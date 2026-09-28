@@ -309,3 +309,24 @@ def test_a_word_shaped_like_a_key_is_taken_out_whole(tmp_path, monkeypatch):
     for fake in ("Ab1" + "x" * 17 + "SECRETTAILpart9876543210", "sk-" + "a1B2" * 12):
         said = practice.mask(f"Authorization: Bearer {fake}")
         assert said == "Authorization: Bearer [removed: shaped like a key]", said
+
+
+def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, monkeypatch):
+    """What sandbox.Contree says with a key but no project id (a stub SDK, nothing sent) is read as that,
+    both said by the rung (4) and only in the log under a leaf that did not land (3)."""
+    import types
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, "contree_sdk", types.SimpleNamespace(ContreeSync=None))
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree"))
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake")
+    monkeypatch.delenv("NEBIUS_PROJECT_ID", raising=False)
+    with pytest.raises(RuntimeError) as no:
+        sandbox.choose("contree")
+    said = f"RuntimeError: {no.value}"
+    landed = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {said}"
+    for text in (said, landed):
+        assert practice.likely(text)[0] == "ConTree has no credentials: NEBIUS_PROJECT_ID is not set"

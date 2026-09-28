@@ -473,7 +473,7 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
     (r"No module named 'contree_sdk'|ConTree is not configured \(SDK",
      "the ConTree SDK is not installed",
      "`uv sync --extra sandbox`, then the rung again"),
-    (r"ConTree needs NEBIUS_API_KEY|ConTree is not configured",
+    (r"ConTree needs (a key|NEBIUS_API_KEY)|ConTree is not configured",  # sandbox.Contree says the first
      "ConTree has no credentials: NEBIUS_PROJECT_ID is not set",
      "export NEBIUS_PROJECT_ID=… (the project's id, from the console) in ~/.zshenv, or `contree auth`"),
     (r"ImagePull|manifest unknown|pull access denied|failed to pull|image .{0,40}not found",
