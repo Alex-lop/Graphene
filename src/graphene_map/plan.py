@@ -218,6 +218,41 @@ def overlap(a: list[str], b: list[str], files: list[str]) -> list[str]:
     return sorted(set(both + literal))
 
 
+def standing(store) -> list[tuple[str, str]]:
+    """The person's standing conditions on paths, as (setting, glob): no scope may cover either."""
+    from graphene_map import settings as S
+
+    return [("protected", g) for g in S.protected(store)] + [("readonly", g) for g in S.readonly(store)]
+
+
+def as_scoped(node: Node, conditions: list[tuple[str, str]]) -> list[str]:
+    """The scope as it binds: every scope leaves the standing paths out, an aside's `**` included (it is
+    not refused for them), and one accepted before a condition was set."""
+    return [*node.scope, *(f"!{g}" for _, g in conditions)]
+
+
+def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
+    """The setting that keeps ``path`` out of every scope, as `setting: glob`, or None."""
+    return next((f"{s}: {g}" for s, g in conditions if in_scope(path, [g])), None)
+
+
+def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
+    """Refuse a scope that covers a path a standing condition keeps out, naming the setting and path.
+    ponytail: judged by ``overlap`` (tracked files and literal globs), so a scope that covers the path
+    and then takes it out again with a '!' glob is still refused; say the scope without it."""
+    if not node.scope or (node.aside and node.scope == ["**"]):  # an aside's untyped `**` leaves them out
+        return
+    for setting, glob in conditions:
+        hit = overlap(node.scope, [glob], files)
+        if hit:
+            path = next((p for p in hit if p in files), hit[0])  # a file git tracks, when one is covered
+            raise refusal(
+                f"{node.id}: its scope ({', '.join(node.scope)}) covers {path}, which the setting "
+                f"`{setting}: {glob}` keeps out of every scope",
+                do="narrow the scope; `graphene config` shows the settings",
+            )
+
+
 # -- the tree ---------------------------------------------------------------------------------------
 #
 # Hierarchy is meaning, edges are order. A node's ``parent`` says what it helps achieve; its
@@ -276,9 +311,15 @@ def all_needs(node: Node, by_id: dict[str, Node]) -> list[str]:
     return out
 
 
-def validate(nodes: list[Node], fresh: set[str] | None = None) -> None:
+def validate(
+    nodes: list[Node],
+    fresh: set[str] | None = None,
+    conditions: list[tuple[str, str]] = (),
+    files: list[str] = (),
+) -> None:
     """Refuse a plan that cannot run: an unknown parent or dependency, a cycle (through needs, through
-    the tree, or through both), a leaf with nothing to touch or nothing to pass. The leaf rule is
+    the tree, or through both), a leaf with nothing to touch or nothing to pass, a scope that breaks
+    a standing condition (``conditions``, judged against the tracked ``files``). The leaf rule is
     asked of ``fresh`` (what is being added or edited) only: a sub-goal whose children were all
     dropped is a node with a check and no scope, and it must not make every later edit fail."""
     by_id = {n.id: n for n in nodes if n.state not in GONE}
@@ -288,6 +329,7 @@ def validate(nodes: list[Node], fresh: set[str] | None = None) -> None:
             raise Refused(f"{n.id}: a node needs a title")
         if fresh is None or n.id in fresh:
             _globs_ok(n)
+            _keeps_standing(n, conditions, files)
             if "#" in n.owner:  # a name; the text reads what follows a # as a note
                 raise Refused(f"{n.id}: an owner is a name ({n.owner!r} has a # in it)")
         if n.parent is not None and n.parent not in by_id:
@@ -681,7 +723,8 @@ def run_check(
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     # It runs code an executor wrote, so it never gets the Token Factory key.
-    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"} | {"GRAPHENE_AS": "agent:check"}
+    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
+    env |= {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
     try:
         with _clean_tree(checkout, leave_out, began) as tree:
             code, out, err = _ended(command, tree, env, began)
@@ -735,13 +778,16 @@ def _end_check(proc: subprocess.Popen) -> None:
 # -- the operations -------------------------------------------------------------------------------
 
 
-def contract(node: Node, why: list[str] | None = None) -> str:
+def contract(node: Node, why: list[str] | None = None, decided: list[str] | tuple = ()) -> str:
     """The node as its executor is told it: the whole of what they are bound to, and why it is being
-    done at all (``trail``: from the plan's goal down to this node, in the person's words)."""
+    done at all (``trail``: from the plan's goal down to this node, in the person's words), and what
+    the person decided on the board that bears on it (``board.decided``)."""
     lines = [
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
+        *(["  decided:"] if decided else []),  # its lines start where every other key's value does
+        *(f"          {line}" for line in decided),
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
@@ -1151,7 +1197,7 @@ def propose(
             added.append(node)
         # ``containers``: new nodes the same text gives children (existing nodes moved under them come
         # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
-        validate(existing + added, {n.id for n in added} - set(containers))
+        validate(existing + added, {n.id for n in added} - set(containers), standing(store), files or [])
         held = {n.id: n for n in existing if n.state == RUNNING}
         for node in added:
             if node.state == OPEN and node.parent in held:
@@ -1233,6 +1279,8 @@ def edit(
             return node
         if check:  # else the caller validates once every edit it makes is in (a text saved whole)
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
+        if "scope" in changed:  # asked even when the caller validates later: the text form does
+            _keeps_standing(node, standing(store), files or [])
         target = next((n for n in nodes(store) if n.id == node.parent), None)
         if "parent" in changed and target is not None and target.state == RUNNING:
             raise _under_hands(target)
@@ -1517,6 +1565,7 @@ def start(
         node = get(store, node_id)
         everything = nodes(store)
         _may_start(store, node, who, everything)
+        _keeps_standing(node, standing(store), files)  # a setting made since it was proposed binds it too
         if away:
             raise Refused(f"{node.id} waits on {'; '.join(away)}")
         for other in everything:
@@ -1854,6 +1903,18 @@ def finish(
                 else "put it back as it was",
             )
     changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
+    kept_out = [(s, g, p) for p in changed for s, g in standing(store) if in_scope(p, [g])]
+    if kept_out and override is None:
+        setting, glob, path = kept_out[0]
+        store.log_node(node.id, now, "refused", who.label, who.session_id, None,
+                       {"standing": [[s, g, p] for s, g, p in kept_out]})  # fmt: skip
+        raise refusal(
+            f"{node.id} is not done: it changed {path}, which the setting `{setting}: {glob}` keeps "
+            "out of every scope",
+            [p for _, _, p in kept_out],
+            f"put it back (git checkout {(node.base_sha or 'HEAD')[:10]} -- <path>, or delete a new file), "
+            f"or say why: graphene node release {node.id} --why '…'",
+        )
     stray = sorted(set(outside_scope(store, node, changed)) | set(links_out(checkout, changed)))
     stray += elsewhere(store, node)
     # A file git does not track, outside the scope, may be what a run of the check left (a cache from
@@ -2041,7 +2102,7 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         node = get(store, node_id)
         waited_on = any(node.id in n.needs and n.state not in GONE for n in nodes(store))
         node.state, node.finished_at = (DONE if changed or waited_on else DROPPED), now
-        stray = [p for p in changed if not in_scope(p, node.scope)]
+        stray = [p for p in changed if not in_scope(p, as_scoped(node, standing(store)))]
         detail = {"head": head(checkout), "changed": changed[:KEPT_PATHS]} | (
             {"outside": stray} if stray else {}
         )
@@ -2200,7 +2261,7 @@ def set_paused(store, value: bool, who: Caller) -> None:
 # -- undo: the person's last act on the plan's shape, put back ----------------------------------------
 
 UNDO_KEPT = 20
-_GOALS = ("goal", "goal:proposed")
+_GOALS = ("goal", "goal:proposed", "board")  # the board (board.py): an answer undoes with what it changed
 
 
 def _shape(store) -> dict:
@@ -2230,11 +2291,24 @@ def _keep(store, what: str, before: dict, after: dict) -> None:
     rows = {
         i: [before["rows"].get(i), row] for i, row in after["rows"].items() if before["rows"].get(i) != row
     }
-    meta = {k: [before["meta"][k], after["meta"][k]] for k in _GOALS if before["meta"][k] != after["meta"][k]}
-    if rows or meta:
+    meta = {
+        k: [before["meta"][k], after["meta"][k]]
+        for k in _GOALS
+        if k != "board" and before["meta"][k] != after["meta"][k]
+    }
+    board = _items_moved(before["meta"]["board"], after["meta"]["board"])
+    if rows or meta or board:
         stack = json.loads(store.meta("undo") or "[]")[-(UNDO_KEPT - 1) :]
-        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta})
+        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board})
         store.set_meta("undo", json.dumps(stack))
+
+
+def _items_moved(before: str | None, after: str | None) -> dict:
+    """The board items an act changed, each as [before, after] (None: not there): an undo puts back
+    only these, so what anyone put up on the board since is kept."""
+    was = {it["id"]: it for it in json.loads(before or "[]")}
+    now = {it["id"]: it for it in json.loads(after or "[]")}
+    return {i: [was.get(i), now.get(i)] for i in {**was, **now} if was.get(i) != now.get(i)}
 
 
 def undo(store, who: Caller, now: str | None = None) -> str:
@@ -2261,6 +2335,14 @@ def undo(store, who: Caller, now: str | None = None) -> str:
                 f"cannot undo {act['what']!r}: {', '.join(hanging)} was put under or made to wait on what it "
                 "added, since; drop that first"
             )
+        board = json.loads(current["meta"]["board"] or "[]")
+        items = act.get("board", {})
+        changed = [it["id"] for it in board if it["id"] in items and it != items[it["id"]][1]]
+        if changed:
+            raise Refused(
+                f"cannot undo {act['what']!r}: {', '.join(changed)} changed on the board since, and undoing "
+                "it would lose that"
+            )
         if moved:
             states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
             raise Refused(
@@ -2281,6 +2363,9 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
         for key, (before, _) in act["meta"].items():
             store.set_meta(key, before)
+        if items:  # each item the act changed, as it was; one it put up goes; the rest stay as they are
+            back = [items[it["id"]][0] if it["id"] in items else it for it in board]
+            store.set_meta("board", json.dumps([it for it in back if it is not None]))
         try:
             # never put back a node whose parent or need is gone since; a state the plan was just in
             # is not asked the rules for a new node

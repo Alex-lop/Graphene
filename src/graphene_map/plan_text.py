@@ -36,6 +36,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
 
 KEYS = ("scope", "check", "needs", "owner", "signoff", "goal")
@@ -76,7 +77,9 @@ HELP = """\
 # A line with no [id] is a new node; a child goes after its parent's own lines. Under a node: scope:
 # the paths it may write; check: a command that exits 0 when it is done; needs: ids it waits on;
 # owner: me; signoff: yes. Any other line under a node says what it should achieve. Lines starting
-# with # are notes, never read.
+# with # are notes, never read. The board is the lines at the left edge before the tree (question:,
+# assume:, risk:, leave out:, note:): answer one with "answer: default", "answer: option 2", "answer:
+# parked" or your own words under it; delete its lines to drop it; add a note: of your own.
 # Save and quit to apply. Nothing is applied when a line cannot be read, or when this is emptied."""
 
 
@@ -416,15 +419,25 @@ def clock(stamp: str | None) -> str:
 
 
 def elide(text: str, wide: int) -> str:
-    """One line of at most ``wide`` characters, cut at a word with "…" when it is longer: a title in
-    a row of the screen or of `graphene plan`. A single word longer than the row is cut where it must."""
+    """One line of at most ``wide`` terminal cells (a Chinese or Japanese character is two), cut at a
+    word with "…" when it is longer: a title in a row of the screen or of `graphene plan`. A single
+    word longer than the row is cut where it must."""
+    from rich.cells import cell_len, chop_cells
+
     text = " ".join(str(text).split())
-    if len(text) <= wide:
+    if cell_len(text) <= wide:
         return text
     if wide < 2:
         return "…"[: max(wide, 0)]
-    cut = text.rfind(" ", 0, wide)
-    return (text[:cut] if cut > 0 else text[: wide - 1]).rstrip(" ,;:·") + "…"
+    cut = chop_cells(text, wide)[0].rfind(" ")
+    return (text[:cut] if cut > 0 else chop_cells(text, wide - 1)[0]).rstrip(" ,;:·") + "…"
+
+
+def pad(text: str, wide: int) -> str:
+    """``text`` filled with spaces to ``wide`` terminal cells: ``str.ljust`` for a row's column."""
+    from rich.cells import cell_len
+
+    return text + " " * (wide - cell_len(text))
 
 
 def blocker(node: P.Node, words: dict[str, str]) -> str:
@@ -496,6 +509,8 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
             lines.append("# proposed with the tree: accepting any of it accepts this")
         lines += [""] if shown else []
         written["*goal"] = {"goal": "\n".join(shown)}  # an id never has a star: the goal as it was shown
+        board, written["*board"] = B.render(store)  # the board, after the goal and before the tree
+        lines += [*board, ""] if board else []
         tops = under.get(None, [])
     else:
         tops = [P.get(store, root)]
@@ -537,10 +552,11 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
 # -- a text, applied --------------------------------------------------------------------------------
 
 
-def slug(title: str, taken: set[str]) -> str:
-    """A readable id from a title: it names the node's branch too (graphene/<id>)."""
-    words = [w for w in re.findall(r"[a-z0-9]+", title.lower()) if w not in _SMALL] or ["node"]
-    base = "-".join(words[:3])[:24].strip("-") or "node"
+def slug(title: str, taken: set[str], empty: str = "node") -> str:
+    """A readable id from a title: it names the node's branch too (graphene/<id>). A title with no
+    letter or digit of a-z and 0-9 in it is called ``empty``."""
+    words = [w for w in re.findall(r"[a-z0-9]+", title.lower()) if w not in _SMALL] or [empty]
+    base = "-".join(words[:3])[:24].strip("-") or empty
     out, k = base, 2
     while out in taken:
         out, k = f"{base}-{k}", k + 1
@@ -562,9 +578,15 @@ def apply(
     a line with the id of a node already in the plan is where the new ones hang). ``alone``: the text
     held one node without its children. Returns one line per change made, for whoever applied it."""
     now = now or P._now()
+    text, board = B.split(text)  # the board's lines, read by board.py; every other line keeps its number
     goal, lines = parse(text, strict=opened is not None)
-    if not lines and goal is None:
+    if not lines and goal is None and not board:
         raise P.Refused("the text has no node in it, so nothing was applied")
+    if board and opened is not None and "*board" not in opened:
+        raise P.Refused(
+            f"line {board[0]['no']}: the board is edited with the whole plan (`graphene plan edit`), not "
+            "in a part of it"
+        )
     everything = {n.id: n for n in P.nodes(store)}
     renamed = _ids(lines, everything, opened)
     taken = set(everything) | {ln.id for ln in lines if ln.id}
@@ -607,6 +629,8 @@ def apply(
             said += _reorder(store, lines, who, now)
             if store.meta("goal:proposed") and not P.nodes(store, (P.PROPOSED,)):
                 store.set_meta("goal:proposed", None)  # its tree is gone, so is the planner's sentence
+        if board or (opened or {}).get("*board"):
+            said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
         try:
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:
@@ -880,7 +904,7 @@ def _drops(store, lines, opened, who, now, alone: bool) -> list[str]:
     the whole set once; a node that moved on since the text was opened, or that has nodes under it
     the text did not show, is refused rather than dropped from under whoever holds it."""
     present = {ln.id for ln in lines}
-    going = [i for i in opened if i != "*goal" and i not in present]
+    going = [i for i in opened if not i.startswith("*") and i not in present]
     everything = P.nodes(store)
     by_id = {n.id: n for n in everything}
     for node_id in going:
@@ -1028,7 +1052,12 @@ def edit_loop(
                     now_opened = render(store, root, alone)[1]
                 moved = re.findall(r"\[([\w.-]+)\]", refusal)[:1] or (["*goal"] if "goal" in refusal else [])
                 for key in moved:
-                    if key not in now_opened:
+                    items = now_opened.get("*board", {})
+                    if key in items and key in opened.get("*board", {}):  # a board item: its answer too
+                        opened["*board"][key] = {
+                            **opened["*board"][key], "rev": items[key]["rev"], "state": items[key]["state"]
+                        }
+                    elif key not in now_opened:
                         opened.pop(key, None)  # gone since: its line is refused on the next save
                     elif key == "*goal":
                         opened[key] = now_opened[key]

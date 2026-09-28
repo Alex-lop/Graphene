@@ -1,0 +1,380 @@
+"""Red first (`graphene plan precheck`): every check run before any work, its verdict read from the exit
+code and the output first, and by Nano (the recorded fake here) only for a red whose reason they do not
+say. A scripted runner stands in for the sandbox fork; the Docker test runs the real one."""
+
+import json
+import subprocess
+
+import pytest
+from fake_tokenfactory import Fake
+from typer.testing import CliRunner
+
+from graphene_map import plan as P
+from graphene_map import precheck as C
+from graphene_map import tokenfactory as tf
+from graphene_map.cli import build
+from graphene_map.store import Store
+
+ME = P.Caller("alex", True)
+BOT = P.Caller("planner:claude", False, "s1")
+NANO = "nvidia/Nemotron-3-Nano-fake"
+RED = "python3 -c 'import app; assert app.greet() == \"hello\"'"
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "GRAPHENE_AS", "GRAPHENE_SANDBOX",
+                 "NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):  # fmt: skip
+        monkeypatch.delenv(name, raising=False)  # nothing here reaches Token Factory or ConTree live
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
+    for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "T"]):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True)
+    (tmp_path / ".gitignore").write_text(".graphene/\n")
+    (tmp_path / "app.py").write_text('def greet():\n    return "hi"\n')
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "start"], check=True)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def nano(monkeypatch):
+    started = []
+
+    def start(replies):
+        f = Fake(replies).__enter__()
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        started.append(f)
+        return f
+
+    yield start
+    for f in started:
+        f.__exit__(None, None, None)
+    tf._listed.cache_clear()
+
+
+def leaves(store, *checks, who=BOT):
+    nodes = [
+        {"id": f"l{k}", "title": f"leaf {k}", "scope": ["app.py"], "check": c} for k, c in enumerate(checks)
+    ]
+    P.propose(store, nodes, who)
+
+
+def scripted(answers):
+    """A sandbox fork that answers from a script, and counts what it was asked."""
+
+    def fork(command):
+        fork.asked.append(command)
+        return answers[command]
+
+    fork.asked = []
+    return fork
+
+
+def said(verdict, why):
+    return {"content": json.dumps({"verdict": verdict, "why": why})}
+
+
+def test_deterministic_verdicts_need_no_model_and_one_red_needs_exactly_one_call(repo, nano):
+    f = nano([said("red-right-reason", "greet still says hi; the leaf makes it say hello")])
+    fork = scripted({
+        "true": (0, ""),
+        "pytest tests/nope.py": (4, "ERROR: file or directory not found: tests/nope.py"),
+        RED: (1, "Traceback (most recent call last):\nAssertionError"),
+    })  # fmt: skip
+    with Store.open(repo) as store:
+        leaves(store, "true", "pytest tests/nope.py", RED, RED)  # the last two: one command, run once
+        rows = C.run(store, repo, fork=fork)
+        verdicts = {n.id: d["verdict"] for n, d in rows}
+        assert verdicts == {
+            "l0": "passes",
+            "l1": "cannot-run",
+            "l2": "red-right-reason",
+            "l3": "red-right-reason",
+        }
+        assert fork.asked == ["true", "pytest tests/nope.py", RED]
+        assert len(f.requests) == 1
+        asked = f.requests[0]
+        assert asked["model"] == NANO and asked["response_format"]["type"] == "json_schema"
+        assert asked["reasoning_effort"] == "low"
+        usage = store.node_log("*", ("usage",))
+        assert len(usage) == 1 and usage[0]["detail"]["endpoint"] == "a stand-in"
+        lines = C.said(rows)
+    assert "Token Factory" not in "\n".join(lines)  # a stand-in answered, and the line says so
+    assert any("l2" in line and "a stand-in" in line for line in lines)
+    assert lines[0].startswith("each check before any work, at ")
+    assert lines[1].startswith("! l0") and lines[3].startswith("  l2")
+
+
+def test_a_red_for_another_reason_is_marked_and_nano_is_not_trusted_beyond_its_schema(repo, nano):
+    nano([said("typo", "tests/test_app.py is spelt test/test_app.py"), {"content": "sure, looks red"},
+          {"content": json.dumps({"verdict": "typo", "why": {"a": 1}})},
+          {"content": json.dumps({"verdict": "typo", "why": "x", "sure": True})}])  # fmt: skip
+    fork = scripted({"python3 test/x.py": (2, "can't open file"), "make check": (2, "Error 2"),
+                     "exit 3": (3, ""), "exit 9": (9, "")})  # fmt: skip
+    with Store.open(repo) as store:
+        leaves(store, "python3 test/x.py", "make check", "exit 3", "exit 9")
+        rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
+    assert rows["l0"]["verdict"] == "typo" and rows["l0"]["by"] == "Nemotron-3-Nano-fake, a stand-in"
+    for unread in ("l1", "l2", "l3"):  # prose, a why that is not a string, a key the schema has not
+        assert rows[unread]["verdict"] == "red" and rows[unread]["why"].startswith("not read")
+
+
+def test_a_missing_module_is_the_environment_unless_a_scope_makes_it(repo):
+    scopes = ["app/**", "tests/**"]
+    assert C.verdict(1, "ModuleNotFoundError: No module named 'pytest'", "python3 -m pytest", scopes) == (
+        "cannot-run"
+    )
+    assert C.verdict(2, "E   ModuleNotFoundError: No module named 'app.feed'", "pytest", scopes) is None
+    assert C.verdict(127, "bash: pyest: command not found", "pyest", scopes) == "cannot-run"
+    assert C.verdict(5, "no tests ran", "python3 -m pytest -k xml", scopes) == "cannot-run"
+    assert C.verdict(5, "", "./run-it", scopes) is None  # 5 is pytest's only from pytest
+    src = ["src/pkg/new.py", "src/app/**"]  # a src layout, as this repository has
+    assert C.verdict(1, "No module named 'pkg.new'", "pytest", src) is None
+    assert C.verdict(1, "No module named 'app.feed'", "pytest", src) is None
+    assert C.verdict(1, "No module named 'yaml'", "pytest", src) == "cannot-run"
+
+
+def test_a_proposed_check_with_no_sandbox_never_runs_here(repo, monkeypatch):
+    def here(*_):
+        raise AssertionError("a planner's check ran on the person's machine")
+
+    monkeypatch.setattr(C, "_here", here)
+    monkeypatch.setattr(P, "_ended", here)
+    with Store.open(repo) as store:
+        leaves(store, "touch /tmp/owned && true")
+        [(_, d)] = C.run(store, repo)
+    assert d["verdict"] == "not-run" and "needs a sandbox" in d["why"]
+
+
+def test_an_accepted_check_runs_here_without_the_key_and_no_key_leaves_a_red_unread(repo, monkeypatch):
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")  # a key the check must not see, set while it runs
+    with Store.open(repo) as store:
+        leaves(store, 'test -z "$NEBIUS_API_KEY"', "false", who=ME)
+        [(_, seen)] = C.run(store, repo, ["l0"])  # it passes: no model is asked, the key goes nowhere
+        monkeypatch.delenv("NEBIUS_API_KEY")
+        rows = {n.id: d for n, d in C.run(store, repo)}
+    assert seen["verdict"] == "passes" and seen["where"] == "here"
+    assert rows["l1"]["verdict"] == "red" and "NEBIUS_API_KEY is not set" in rows["l1"]["why"]
+
+
+def test_a_verdict_is_kept_until_the_leaf_is_edited(repo):
+    fork = scripted({"true": (0, ""), "false": (1, "")})
+    with Store.open(repo) as store:
+        leaves(store, "true", who=ME)
+        P.propose(store, [{"id": "p", "title": "p", "scope": ["b.py"], "check": "true"}], BOT)
+        C.run(store, repo, fork=fork)
+        again = C.run(store, repo, fork=fork)  # current: nothing runs
+        assert fork.asked == ["true"] and len(store.node_log("p", ("precheck",))) == 1
+        assert again[1][1]["kept"]
+        assert C.current(store, P.get(store, "p"), *C.state(repo))["verdict"] == "passes"
+        assert "2 kept from the last run" in C.said(again)[0]
+        P.edit(store, "l0", {"check": "true && true"}, ME)
+        assert C.current(store, P.get(store, "l0"), *C.state(repo)) is None
+
+
+def test_graphene_plan_precheck_is_the_persons_and_says_each_leaf(repo):
+    runner = CliRunner()
+    with Store.open(repo) as store:
+        leaves(store, "true", who=ME)
+    shown = runner.invoke(build(), ["plan", "precheck"], env={"GRAPHENE_AS": "person:alex"})
+    assert shown.exit_code == 0, shown.output
+    assert (
+        "l0" in shown.stdout and "passes already" in shown.stdout and "node set <id> --check" in shown.stdout
+    )
+    refused = runner.invoke(build(), ["plan", "precheck"], env={"GRAPHENE_AS": "agent:bot"})
+    assert refused.exit_code == 1 and "the person's" in refused.output
+
+
+def test_the_flag_runs_it_as_a_proposal_lands(repo, monkeypatch, tmp_path):
+    import sys
+
+    from graphene_map.ask import ask
+
+    script = tmp_path / "planner.py"
+    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
+    with Store.open(repo) as store:
+        leaves(store, f"touch {tmp_path}/ran-here", who=ME)  # an accepted leaf: never run by an ask
+        ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
+        assert store.node_log("hello", ("precheck",)) == []
+        script.write_text(script.read_text().replace("hello", "hi"))
+        monkeypatch.setenv("GRAPHENE_SHAPE", "notes, precheck")
+        said = ask(store, repo, "say hi", f"{sys.executable} {script}", say=lambda _: None)
+        assert store.node_log("hi", ("precheck",))[0]["detail"]["verdict"] == "not-run"
+        assert store.node_log("hello", ("precheck",)) == []  # an earlier proposal: not this ask's
+        assert store.node_log("l0", ("precheck",)) == [] and not (tmp_path / "ran-here").exists()
+    shown = [line for line in said if "needs a sandbox" in line]
+    assert shown and said.index(shown[0]) > next(k for k, line in enumerate(said) if "hi" in line)
+
+
+def _docker() -> bool:
+    try:
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+@pytest.mark.skipif(not _docker(), reason="Docker is not running here")
+def test_proposed_checks_run_in_a_docker_fork_and_nothing_they_write_comes_back(repo, nano, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_SANDBOX", "docker")
+    monkeypatch.setattr(P, "_ended", lambda *_: (_ for _ in ()).throw(AssertionError("ran here")))
+    f = nano([said("red-right-reason", "greet says hi")])
+    with Store.open(repo) as store:
+        leaves(store, "touch app.py.stray; test -f app.py", RED, "whoami | grep -qx leaf")
+        rows = {n.id: d for n, d in C.run(store, repo)}
+    assert {k: d["verdict"] for k, d in rows.items()} == {
+        "l0": "passes", "l1": "red-right-reason", "l2": "passes"}  # fmt: skip
+    assert rows["l0"]["where"] == "a Docker fork" and len(f.requests) == 1
+    assert not (repo / "app.py.stray").exists()
+
+
+def test_any_executor_spelling_never_crashes_and_ask_keeps_its_proposal(repo, monkeypatch, tmp_path):
+    import sys
+
+    from graphene_map.ask import ask
+
+    assert C._prepare("nemotron --prepare='pip install -e .'") == "pip install -e ."
+    assert C._prepare("nemotron --prepare 'pip install -e .' --steps 3") == "pip install -e ."
+    assert C._prepare("nemotron --prepare-all x") is None and C._prepare("nemotron --prepare") is None
+    assert C._prepare("nemotron --prepare 'unclosed") is None
+    script = tmp_path / "planner.py"
+    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
+    monkeypatch.setenv("GRAPHENE_SHAPE", "precheck")
+    monkeypatch.setattr(C, "_runs", lambda *_: (_ for _ in ()).throw(RuntimeError("boom")))
+    with Store.open(repo) as store:
+        store.set_meta("executor", "nemotron --prepare='pip install -e .'")
+        said = ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
+        assert [n.id for n in P.nodes(store)] == ["hello"]
+    assert [line for line in said if "boom" in line] == ["! the checks were not run first: boom"]
+
+
+def test_one_leaf_that_breaks_is_one_line_and_the_others_still_run(repo, nano, monkeypatch):
+    nano([])
+
+    def fork(command):
+        if command == "boom":
+            raise RuntimeError("the fork broke")
+        return (1, "AssertionError")
+
+    monkeypatch.setattr(C, "_read", lambda *_: (_ for _ in ()).throw(AttributeError("'list' has no .get")))
+    with Store.open(repo) as store:
+        leaves(store, "boom", "false")
+        rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
+    assert rows["l0"]["verdict"] == "not-run" and "the fork broke" in rows["l0"]["why"]
+    assert rows["l1"]["verdict"] == "red" and rows["l1"]["why"].startswith("not read: ")
+
+
+def test_a_failing_endpoint_is_tried_once_with_no_backoff_and_then_not_again(repo, nano, monkeypatch):
+    f = nano([500] * 12)
+    waits = []
+    monkeypatch.setattr(tf.time, "sleep", waits.append)
+    fork = scripted({"false": (1, "AssertionError"), "exit 3": (3, "")})
+    with Store.open(repo) as store:
+        leaves(store, "false", "exit 3")
+        rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
+    assert waits == [] and len(f.requests) == 1
+    assert all(d["verdict"] == "red" and d["why"].startswith("not read: ") for d in rows.values())
+
+
+def test_no_control_character_a_check_or_nano_writes_reaches_the_store_or_the_terminal(repo, nano):
+    nano([said("other", "ok\x1b[2K\r ! SPOOF\x07")])
+    spoof = "printf 'boom\\033[2K\\033[1G  l0   red, for the right reason  fine\\n'; exit 127"
+    drawn = "boom\x1b[2K\x1b[1G  l0   red, for the right reason  fine\n"
+    fork = scripted({spoof: (127, drawn), "false": (1, "")})
+    with Store.open(repo) as store:
+        leaves(store, spoof, "false")
+        rows = C.run(store, repo, fork=fork)
+        stored = [r["detail"]["why"] for n in ("l0", "l1") for r in store.node_log(n, ("precheck",))]
+    shown = "\n".join(C.said(rows))
+    assert not any(ord(c) < 32 or 127 <= ord(c) < 160 for c in "".join(stored) + shown.replace("\n", ""))
+    assert stored[0].startswith("boom l0") and "[2K" not in stored[0] and "[2K" not in stored[1]
+
+
+def test_nothing_shaped_like_a_key_reaches_nano_the_store_or_the_terminal(repo, nano, monkeypatch):
+    secret = "ghp_" + "Ab1" * 12
+    f = nano([said("other", f"it printed {secret}")])
+    fork = scripted({"false": (1, f"token={secret}\nAWS wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\nfailed")})
+    with Store.open(repo) as store:
+        leaves(store, "false")
+        rows = C.run(store, repo, fork=fork)
+        stored = json.dumps([r["detail"] for r in store.node_log("l0", ("precheck",))])
+    assert secret not in json.dumps(f.requests) and "wJalrXUtnFEMI" not in json.dumps(f.requests)
+    assert secret not in stored and secret not in "\n".join(C.said(rows))
+    proxy = "http://proxyuser:Pr0xyS3cretT0kenAbcdefgh@127.0.0.1:9/v1/"
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", proxy)
+    tf._listed.cache_clear()
+    with Store.open(repo) as store:
+        [(_, d)] = C.run(store, repo, fork=scripted({"false": (1, "failed")}), again=True)
+    assert d["why"].startswith("not read: ") and "Pr0xy" not in d["why"] and "proxyuser" not in d["why"]
+
+
+def test_a_red_left_unread_is_read_on_the_next_run_once_nano_can_be_asked(repo, nano, monkeypatch):
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
+    fork = scripted({"false": (1, "AssertionError")})
+    with Store.open(repo) as store:
+        leaves(store, "false")
+        [(_, first)] = C.run(store, repo, fork=fork)
+        assert first["why"].startswith("not read: ")
+        f = nano([said("red-right-reason", "the work is not done")])
+        [(_, second)] = C.run(store, repo, fork=fork)
+    assert not second.get("kept") and second["verdict"] == "red-right-reason" and len(f.requests) == 1
+
+
+def test_an_uncommitted_change_makes_a_kept_verdict_stale(repo, monkeypatch):
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    with Store.open(repo) as store:
+        leaves(store, "test ! -f made.txt", who=ME)
+        [(_, first)] = C.run(store, repo)
+        [(_, kept)] = C.run(store, repo)
+        (repo / "made.txt").write_text("new, untracked, not ignored\n")
+        assert C.current(store, P.get(store, "l0"), *C.state(repo)) is None  # what a screen asks
+        [(_, after)] = C.run(store, repo)
+        assert first["verdict"] == "passes" and kept.get("kept")
+        assert not after.get("kept") and after["verdict"] == "red"
+
+
+def test_no_graphene_command_pays_for_the_token_factory_client_until_a_precheck_reads():
+    import sys
+
+    heavy = "{'graphene_map.tokenfactory', 'urllib.request'}"
+    probe = f"import sys, graphene_map.cli as c; c.build(); print(sorted({heavy} & set(sys.modules)))"
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == "[]"
+
+
+def test_an_id_named_twice_is_run_and_logged_once(repo):
+    with Store.open(repo) as store:
+        leaves(store, "true")
+        rows = C.run(store, repo, ["l0", "l0"], fork=scripted({"true": (0, "")}))
+        assert len(rows) == 1 and len(store.node_log("l0", ("precheck",))) == 1
+
+
+def test_on_board_puts_up_one_risk_per_check_that_cannot_tell_the_work_is_done(repo):
+    from types import SimpleNamespace
+
+
+    up = []
+
+    def add(store, kind, text, who, default=None, then=None, options=None, about=None):
+        if about == "l3":
+            raise P.Refused("about: l3, which is not a node in the plan")
+        up.append({"kind": kind, "text": text, "by": who.label, "agent": not who.person, "about": about,
+                   "default": default, "then": then, "state": "open"})  # fmt: skip
+        return {**up[-1], "id": f"r{len(up)}"}
+
+    board = SimpleNamespace(add=add, items=lambda _store: up)
+    fork = scripted({"true": (0, ""), "exit 127": (127, "sh: nope: command not found"), "false": (1, ""),
+                     "true && :": (0, "")})  # fmt: skip
+    with Store.open(repo) as store:
+        leaves(store, "true", "exit 127", "false", "true && :")
+        rows = C.run(store, repo, fork=fork)
+        said = C.on_board(store, rows, board)
+        again = C.on_board(store, C.run(store, repo, fork=fork), board)  # kept rows: nothing twice
+    assert [(it["kind"], it["about"]) for it in up] == [("risk", "l0"), ("risk", "l1")]
+    assert up[0]["text"] == "l0's check passes already: it exits 0 before any work is done"
+    assert all(it["agent"] and it["by"] == "graphene:precheck" and not it["then"] for it in up)
+    assert said[:2] == ["put up r1: " + up[0]["text"], "put up r2: " + up[1]["text"]]
+    assert said[2].startswith("! l3: not put up: ") and again == [said[2]]

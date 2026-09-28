@@ -1,15 +1,15 @@
 // The plan: what will be done, by whom, inside which paths, and what it waits for. Every position
-// comes from src/graphene_map/plan_view.py; the page adds the gutter it draws lane names in and
-// nothing else. Every control here changes what an agent may do, through one function in plan.py,
+// comes from src/graphene_map/plan_view.py, for the graph and for the tree alike; the page adds the
+// gutter it draws lane names in, and a pan and a zoom where a drawing is larger than its pane. Every control here changes what an agent may do, through one function in plan.py,
 // and where that mechanism stops the sentence saying so is printed next to the control.
 
-import { useState, type FormEvent, type ReactElement } from "react";
+import { select } from "d3-selection";
+import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
+import { useEffect, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 
-import { STATE, STATE_COLOUR, clip, clock, stamp, why, type View } from "./model";
-import type { Fork, Plan, PlanNode, Shown } from "./types";
+import { PAD_X, PAD_Y, STATE, STATE_COLOUR, clip, clock, graphWidth, stamp, treeWidth, why, type Layout, type Mode, type View } from "./model";
+import type { Fork, Plan, PlanEdge, PlanNode, Shown } from "./types";
 
-const PAD_X = 132; // the lane-name gutter, which is the page's own margin, not a position
-const PAD_Y = 16;
 const CHAR = 6.4;
 const SMALL = 5.9;
 
@@ -220,42 +220,178 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
   );
 }
 
-export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
-  const width = PAD_X + plan.width + 24;
+const BUTTONS = ["auto", "outline", "tree", "graph"] as const;
+
+/** Which way the plan is drawn, the record's toggle again, with auto to give the choice back to the
+ * plan's shape. Under it, the plan's own two facts in words, whichever layout is shown: the critical
+ * path and what can start at once, as the terminal says them. */
+export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; layout: Layout; mode: "auto" | Layout; why: string; onLayout: (m: Mode) => void }): ReactElement {
   return (
-    <div className="plan-canvas">
-      <svg width={width} height={plan.height + PAD_Y * 2} aria-label="the plan" onClick={() => onPick(null)}>
-        <defs>
-          <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
-            <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
-          </marker>
-        </defs>
-        {plan.lanes.map((lane) => (
-          <g key={lane.id} className={`lane-band ${lane.person ? "person" : ""}`} data-lane={lane.id}>
-            <rect x={4} y={PAD_Y + lane.y} width={width - 8} height={lane.height} rx={10} />
-            <text x={16} y={PAD_Y + lane.y + 17}>
-              {lane.person ? `${lane.label} — a person's` : "agents"}
-            </text>
-          </g>
+    <div className="layout-bar" data-testid="layout" data-layout={layout}>
+      <div className="toggle" role="group" aria-label="how the plan is drawn">
+        {BUTTONS.map((m) => (
+          <button key={m} type="button" className={m === mode ? "on" : ""} aria-pressed={m === mode} onClick={() => onLayout(m)}>
+            {m}
+          </button>
         ))}
-        {plan.edges.map((edge) => (
-          <polyline
-            key={edge.id}
-            data-edge={edge.id}
-            className="edge"
-            markerEnd="url(#arrow)"
-            points={edge.points.map((p) => `${PAD_X + (p[0] ?? 0)},${PAD_Y + (p[1] ?? 0)}`).join(" ")}
-          />
-        ))}
-        {plan.nodes.map((node) => (
-          <Box key={node.id} node={node} on={node.id === picked} onPick={onPick} />
-        ))}
-      </svg>
+      </div>
+      <span className="muted">{why}</span>
+      <span data-testid="critical">
+        {plan.critical.length > 0 ? `critical path: ${plan.critical.join(" → ")}` : "no critical path: nothing waits on anything"}
+      </span>
+      <span data-testid="at-once" title={plan.at_once.join(", ")}>
+        {plan.at_once.length} at once
+        {plan.at_once.length > 0 && `: ${plan.at_once.slice(0, 5).join(", ")}`}
+        {plan.at_once.length > 5 && ` and ${plan.at_once.length - 5} more`}
+      </span>
     </div>
   );
 }
 
-function Box({ node, on, onPick }: { node: PlanNode; on: boolean; onPick: (id: string) => void }): ReactElement {
+/** Where a drawing starts: its width fitted to the pane, never larger than drawn and never below 0.6,
+ * where it stays readable and is dragged (a layout the viewer picked though it is far too wide). A
+ * drawing only taller than its pane starts at 1 and pans down. */
+export const startScale = (width: number, pane: number): number => Math.max(Math.min(1, pane / width), 0.6);
+
+/** Which events move the drawing: d3-zoom's own rule (no right button, no ctrl but a pinch's wheel),
+ * and on a touch screen only two fingers, so one finger still scrolls the page past the drawing. */
+export const panFilter = (event: Event): boolean => {
+  const e = event as Event & { ctrlKey?: boolean; button?: number; touches?: { length: number } };
+  if (e.type === "touchstart") return (e.touches?.length ?? 0) > 1;
+  return (!e.ctrlKey || e.type === "wheel") && !e.button;
+};
+
+/** A drawing larger than its pane pans and zooms with d3-zoom, as the record's map does; one that
+ * fits is drawn as it is. The pane is measured, so a static render draws it whole. */
+function Pan({ width, height, label, onClear, children }: { width: number; height: number; label: string; onClear: () => void; children: ReactNode }): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  const svg = useRef<SVGSVGElement>(null);
+  const [pane, setPane] = useState<[number, number]>([0, 0]);
+  const [t, setT] = useState<ZoomTransform>(zoomIdentity);
+  useEffect(() => {
+    const node = box.current;
+    if (!node) return;
+    const measure = () => setPane([node.clientWidth, node.clientHeight]);
+    const watch = new ResizeObserver(measure);
+    watch.observe(node);
+    measure();
+    return () => watch.disconnect();
+  }, []);
+  const [pw, ph] = pane;
+  const larger = pw > 0 && ph > 0 && (width > pw || height > ph);
+  useEffect(() => {
+    const node = svg.current;
+    if (!node || !larger) return setT(zoomIdentity);
+    const fit = Math.min(1, pw / width, ph / height);
+    const behaviour = zoom<SVGSVGElement, unknown>()
+      .filter(panFilter)
+      .extent([
+        [0, 0],
+        [pw, ph],
+      ])
+      .scaleExtent([fit, 2])
+      .translateExtent([
+        [0, 0],
+        [width, height],
+      ])
+      .on("zoom", (event: { transform: ZoomTransform }) => setT(event.transform));
+    const picked = select(node);
+    picked.call(behaviour).call(behaviour.transform, zoomIdentity.scale(startScale(width, pw)));
+    return () => {
+      picked.on(".zoom", null);
+    };
+  }, [larger, pw, ph, width, height]);
+  return (
+    <>
+      {larger && <p className="pan-hint muted">two fingers move and zoom the drawing; one scrolls the page</p>}
+      <div className="plan-canvas" ref={box} data-pans={larger}>
+        <svg ref={svg} width={larger ? pw : width} height={larger ? ph : height} aria-label={label} onClick={onClear}>
+          <defs>
+            <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
+              <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
+            </marker>
+          </defs>
+          <g transform={t.toString()}>{children}</g>
+        </svg>
+      </div>
+    </>
+  );
+}
+
+const points = (edge: PlanEdge, dx: number, dy: number): string => edge.points.map((p) => `${dx + (p[0] ?? 0)},${dy + (p[1] ?? 0)}`).join(" ");
+
+/** The graph: what waits on what, left to right in columns by depth, one lane per owner. The critical
+ * path is drawn heavier, its edges and its boxes, and a leaf that can start now is tinted. */
+export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
+  const width = graphWidth(plan);
+  const on = new Set(plan.critical);
+  const now = new Set(plan.at_once);
+  return (
+    <Pan width={width} height={plan.height + PAD_Y * 2} label="the plan, as a graph of what waits on what" onClear={() => onPick(null)}>
+      {plan.lanes.map((lane) => (
+        <g key={lane.id} className={`lane-band ${lane.person ? "person" : ""}`} data-lane={lane.id}>
+          <rect x={4} y={PAD_Y + lane.y} width={width - 8} height={lane.height} rx={10} />
+          <text x={16} y={PAD_Y + lane.y + 17}>
+            {lane.person ? `${lane.label} — a person's` : "agents"}
+          </text>
+        </g>
+      ))}
+      {plan.edges.map((edge) => (
+        <polyline key={edge.id} data-edge={edge.id} data-critical={edge.critical} className={edge.critical ? "edge critical" : "edge"} markerEnd="url(#arrow)" points={points(edge, PAD_X, PAD_Y)} />
+      ))}
+      {plan.nodes.map((node) => (
+        <Box key={node.id} node={node} x={PAD_X + node.x} y={PAD_Y + node.y} on={node.id === picked} critical={on.has(node.id)} now={now.has(node.id)} onPick={onPick} />
+      ))}
+    </Pan>
+  );
+}
+
+/** The tree the way a person draws it: the goal at the top, each node under the one it helps achieve,
+ * the leaves at the ends of the branches. The same boxes, the same states and colours as the graph. */
+export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
+  const on = new Set(plan.critical);
+  const now = new Set(plan.at_once);
+  const [gx, gy] = [PAD_Y + (plan.tree_goal[0] ?? 0), PAD_Y + (plan.tree_goal[1] ?? 0)];
+  const goal = plan.goal || "no goal yet";
+  return (
+    <Pan width={treeWidth(plan)} height={plan.tree_height + PAD_Y * 2} label="the plan, as a tree" onClear={() => onPick(null)}>
+      {plan.tree_links.map((link) => (
+        <polyline key={link.id} data-link={link.id} className="edge link" points={points(link, PAD_Y, PAD_Y)} />
+      ))}
+      <g className="node goal-box" data-goal="" transform={`translate(${gx},${gy})`}>
+        <rect className="box" width={200} height={76} rx={8} />
+        <text x={12} y={24} className="state">
+          the goal
+        </text>
+        <text x={12} y={44} className="title">
+          {clip(goal, 176, CHAR)}
+          <title>{goal}</title>
+        </text>
+      </g>
+      {plan.nodes.map((node) => (
+        <Box key={node.id} node={{ ...node, width: node.tree_w }} x={PAD_Y + node.tree_x} y={PAD_Y + node.tree_y} on={node.id === picked} critical={on.has(node.id)} now={now.has(node.id)} onPick={onPick} />
+      ))}
+    </Pan>
+  );
+}
+
+function Box({
+  node,
+  x,
+  y,
+  on,
+  critical,
+  now,
+  onPick,
+}: {
+  node: PlanNode;
+  x: number;
+  y: number;
+  on: boolean;
+  critical: boolean;
+  now: boolean;
+  onPick: (id: string) => void;
+}): ReactElement {
   const shown = node.display_state;
   const colour = STATE_COLOUR[shown];
   // who has it and since when while it runs; who had it and when it ended once it is finished
@@ -264,14 +400,17 @@ function Box({ node, on, onPick }: { node: PlanNode; on: boolean; onPick: (id: s
       ? `${node.executor} · since ${clock(node.started_at)}`
       : `${node.executor} · finished ${clock(node.finished_at)}`
     : null;
+  const who = `${node.id} · ${node.owner === "agent" ? "any agent" : node.owner} · revision ${node.rev}`;
   const says = node.sub_goal ? rolled(node) : (held ?? node.waits[0] ?? node.scope.join(", "));
   return (
     <g
-      className={`node ${on ? "on" : ""}`}
+      className={["node", on && "on", critical && "critical", now && "now"].filter(Boolean).join(" ")}
       data-node={node.id}
       data-state={shown}
+      data-critical={critical}
+      data-now={now}
       aria-selected={on}
-      transform={`translate(${PAD_X + node.x},${PAD_Y + node.y})`}
+      transform={`translate(${x},${y})`}
       onClick={(e) => (e.stopPropagation(), onPick(node.id))}
     >
       <rect className="box" width={node.width} height={node.height} rx={8} stroke={colour} strokeDasharray={shown === "proposed" ? "4 3" : undefined} />
@@ -291,7 +430,8 @@ function Box({ node, on, onPick }: { node: PlanNode; on: boolean; onPick: (id: s
         <title>{node.title}</title>
       </text>
       <text x={12} y={58} className="who">
-        {node.id} · {node.owner === "agent" ? "any agent" : node.owner} · revision {node.rev}
+        {clip(who, node.width - 24, SMALL)}
+        <title>{who}</title>
       </text>
       <text x={12} y={70} className="says">
         {clip(says, node.width - 24, SMALL)}

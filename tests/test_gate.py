@@ -530,3 +530,18 @@ def test_an_agents_command_may_not_say_it_is_the_person_at_watch(repo):
     agent that set it would hide that trace, so its ordinary spelling is refused like GRAPHENE_AS."""
     holding(repo)
     assert "may not carry them" in reason(bash(repo, "GRAPHENE_WATCH=1 graphene node done n1"))
+
+
+def test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up(repo):
+    from graphene_map import board, gate
+    from graphene_map import plan_text as T
+
+    taught = hook(repo, "SessionStart", source="startup")["hookSpecificOutput"]["additionalContext"]
+    assert "`graphene board`" in taught
+    example = gate.TEACH.split("<<'EOF'\n")[1].split("EOF\n")[0].replace("      needs: other-leaf-id\n", "")
+    with Store.open(repo) as store:
+        T.apply(store, example, plan.Caller("claude:x", False, "s"), None)
+        assert [(it["kind"], it["id"]) for it in board.items(store)] == [
+            ("question", "q-id"),
+            ("assume", "a-id"),
+        ]

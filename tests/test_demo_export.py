@@ -104,6 +104,14 @@ def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_
     assert list(at) == ["readers", "csv-reader", "xml-reader", "json-reader", "yaml-reader", "parser"]
     readers = at.pop("readers")  # parents first
     assert (readers["sub_goal"], readers["leaves_done"], readers["leaves_total"]) == (True, 2, 5)
+    # the tree the page draws top-down, the goal above readers and readers over its five leaves; nothing
+    # waits on anything, so there is no critical path, and the two that came back can start again
+    def centre(n):
+        return n["tree_x"] + n["tree_w"] / 2
+
+    ends = (centre(at["csv-reader"]) + centre(at["parser"])) / 2
+    assert plan["tree_goal"][0] + 100 == centre(readers) == ends  # the goal's box is 200 wide
+    assert plan["critical"] == [] and plan["at_once"] == ["json-reader", "parser"]
     assert {i: n["state"] for i, n in at.items()} == {
         "csv-reader": "done", "xml-reader": "done", "json-reader": "open", "yaml-reader": "review",
         "parser": "open",

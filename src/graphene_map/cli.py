@@ -67,6 +67,8 @@ def build():
             name = param.opts[0] if param.param_type_name == "option" else f"<{param.name}>"
             what = (getattr(param, "help", None) or "").strip().rstrip(".")
             return f"{path} needs {name}" + (f": {what[:1].lower()}{what[1:]}" if what else "")
+        if path.startswith("graphene key"):  # what was typed may be a pasted key: never say it back
+            return f"{path} takes no words; the key is read from a hidden prompt (`{path} --help`)"
         said = error.format_message().strip().rstrip(".")
         helped = f" (`{path} --help` says what it takes)" if error.ctx else ""  # the parser names none
         return f"{path}: {said[:1].lower()}{said[1:]}{helped}"
@@ -206,6 +208,18 @@ def build():
     from .plan_cli import NO_PLAN, register
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
+    from .board_cli import register as board
+
+    board(cli, root, open_store, fail)
+    from .talk import register as talk
+
+    talk(cli, root, open_store, fail)
+
+    from . import config_cli, key_cli, keys
+    from . import settings as S
+
+    config_cli.register(cli, root, open_store, fail)
+    key_cli.register(cli, fail)
 
     WHO = ("planner", "executor")
     # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs
@@ -245,7 +259,7 @@ def build():
         said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
         return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached
 
-    def asked_once(offer: dict[str, str], said: str, now: dict, found: list[str]) -> dict[str, str]:
+    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, key: bool) -> dict[str, str]:
         """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
         keeps what is set; with nothing set it takes the one choice found, when exactly one is, and
         otherwise a number is typed (any of them: what is not found yet can still be chosen). A command
@@ -259,7 +273,7 @@ def build():
         for n, (word, name, needs) in enumerate(AGENTS, 1):
             picks[str(n)] = offer if word == "nemotron" else dict.fromkeys(WHO, word)
             state = "found" if word in found else "not found"
-            if word == "nemotron" and word not in found and os.environ.get("NEBIUS_API_KEY"):
+            if word == "nemotron" and word not in found and key:
                 state = "not reached"  # the key is here; the line above says what did not answer
             say(f"  {n}  {name:<27}needs {needs:<20}{state}")
         say(f"     {said}, {where}")  # what Nemotron would be, under its line
@@ -292,13 +306,14 @@ def build():
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
         offer, said, unreached, found = {}, "", None, []
+        key = keys.find() is not None  # the environment's, or the keychain's
         if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
             offer, said, unreached = nemotron()
-            if unreached and os.environ.get("NEBIUS_API_KEY"):  # a key that did not answer: before the choice
+            if unreached and key:  # a key that did not answer: before the choice
                 say(unreached)
             found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
         if asking:
-            given = asked_once(offer, said, now, found)
+            given = asked_once(offer, said, now, found, key)
         else:
             plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
             one = {} if len(found) != 1 else offer if found[0] == "nemotron" else dict.fromkeys(WHO, found[0])
@@ -311,7 +326,7 @@ def build():
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
                     "then `run` and `ask` start Claude Code")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain}
-        if unreached and not os.environ.get("NEBIUS_API_KEY"):
+        if unreached and not key:
             if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
                 say(unreached)
         for k, v in given.items():
@@ -353,6 +368,9 @@ def build():
             specs = [store.meta(k) or "claude" for k in WHO]  # what `run` and `ask` start when none is set
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
                 store.set_meta("plan_first", "on")
+            for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it
+                if store.meta(f"settings:{k}") is None:
+                    store.set_meta(f"settings:{k}", "auto" if k == "size" else "[]")
         say(chosen)
         try:
             added = install_hooks(r)

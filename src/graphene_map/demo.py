@@ -33,7 +33,6 @@ import asyncio
 import json
 import math
 import os
-import re
 import signal
 import sqlite3
 import subprocess
@@ -44,7 +43,7 @@ from pathlib import Path
 
 from textual.widgets import Static
 
-from . import __version__
+from . import __version__, keys
 from . import plan as P
 from . import tokenfactory as tf
 from .store import Store
@@ -57,21 +56,10 @@ LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what 
 NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
-META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused")  # read
-# Shaped like a key: 20 or more letters and digits in a row, a capital, a small letter and a digit among
-# them (a key, a token, a JWT's part). The whole word it sits in goes (up to a space, a slash or a quote),
-# so no piece of a key is left. A git sha, a uuid, a node's id, a log's name and a model's name have none.
-ALNUM = "[A-Za-z0-9]"
-KEY = re.compile(rf"(?<!{ALNUM})(?={ALNUM}*[A-Z])(?={ALNUM}*[a-z])(?={ALNUM}*[0-9]){ALNUM}{{20}}")
-WORD = re.compile(r"[\w.\-]{20,}", re.ASCII)
-# base64, which a word above ends at a / or a + (an AWS secret access key): 30 or more of its letters with a
-# capital, a small letter, a digit and a / or a +, and its padding. A . - or _ breaks it, so a path is kept
-# unless 30 of its characters in a row are letters, digits and slashes alone.
-B64 = "[A-Za-z0-9+/]"
-BASE64 = re.compile(
-    rf"(?<!{B64})(?={B64}*[A-Z])(?={B64}*[a-z])(?={B64}*[0-9])(?={B64}*[+/]){B64}{{30,}}=*"
-)
-REMOVED = "[removed: shaped like a key]"
+# the plan_meta keys the screen reads: the board's and the person's standing settings included
+META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
+        "settings:protected", "settings:readonly", "settings:never", "settings:size")  # read  # fmt: skip
+KEY, WORD, BASE64, REMOVED = tf.SHAPED, tf.WORD, tf.BASE64, tf.REMOVED  # shaped like a key: see there
 
 
 def hider(root: Path) -> tuple:
@@ -81,7 +69,8 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~")] if len(home) > 1 else []
-    said += [(os.environ[k], "[removed]") for k in (tf.KEY, "NEBIUS_PROJECT_ID") if len(os.getenv(k, "")) > 7]
+    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # keychain's too
+    said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
     def hide(value):
         if isinstance(value, dict):
@@ -91,9 +80,12 @@ def hider(root: Path) -> tuple:
         for text, instead in said:  # as written, and as JSON writes it inside a node's or a log row's detail
             for form in {text, json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}:
                 value = value.replace(form, instead)
-        return WORD.sub(lambda word: REMOVED if KEY.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
+        return tf.unkeyed(value)
 
     return hide, said
+
+
+unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
 
 
 def record(root: Path, out: Path, every: float = EVERY) -> int:
