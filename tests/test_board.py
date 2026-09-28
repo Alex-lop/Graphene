@@ -11,11 +11,14 @@ import sys
 import time
 
 import pytest
+from fake_tokenfactory import Fake
 from test_plan_cli import AGENT_ENV, agent, person, repo, runner  # noqa: F401  (fixtures)
 
 from graphene_map import board as B
 from graphene_map import plan as P
 from graphene_map import plan_text as T
+from graphene_map import tokenfactory as tf
+from graphene_map.ask import ask, named
 from graphene_map.cli import build
 from graphene_map.run import run_plan
 from graphene_map.store import Store
@@ -337,6 +340,35 @@ def test_a_refused_answer_in_the_text_names_its_line(repo):
         changed = text.replace("answer: default", "answer: option 1")
         with pytest.raises(P.Refused, match=r"line 3: q is taken already \(d\); `graphene plan undo`"):
             T.apply(store, changed, ALEX, opened)
+
+
+NEMOTRON = """```plan
+question: which id?  [which-id]
+    default: the row id; schema.py already has it
+assume: ids are integers  [int-ids]
+? users returns ids  [users]
+    scope: api.py
+    check: grep -q ids api.py
+```"""
+
+
+def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
+    with Fake([{"content": NEMOTRON}]) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        with Store.open(repo) as store:
+            ask(store, repo, "ids", named("nemotron"), say=lambda _: None)
+            assert [(it["id"], it["by"]) for it in B.items(store)] == [
+                ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
+            ]  # fmt: skip
+            [bill] = store.node_log("*", ("usage",))
+            assert bill["detail"]["prompt"] == 2
+    system = f.requests[0]["messages"][0]["content"]
+    assert "put a question on the board with the default" in system
+    prompt = f.requests[0]["messages"][1]["content"]
+    assert "question: what the words leave open and the repository cannot settle" in prompt
+    assert "Never ask what it answers: name the file that answers" in prompt
 
 
 def test_the_replay_works_with_a_plan_that_has_a_board(repo, tmp_path):

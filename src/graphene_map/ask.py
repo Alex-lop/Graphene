@@ -51,13 +51,22 @@ def label(template: str) -> str:
     argv = shlex.split(template)
     return "nemotron" if "graphene_map.planner" in argv else Path(argv[0]).name
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
-_START = re.compile(r"^(?:goal:|[-*+?][ \t])", re.MULTILINE)
+_START = re.compile(r"^(?:goal:|question:|assume:|risk:|leave out:|note:|[-*+?][ \t])", re.MULTILINE)
 
 RULES = """\
 Print the proposal between a line ```plan and a line ```, in this form:
 
 ```plan
 goal: their aim, in one sentence (only when the plan above has none)
+question: what the words leave open and the repository cannot settle  [short-id]
+    default: what you will assume if the person does not answer
+    option: another reasonable way (a line each, only when there is more than one)
+    then: scope leaf-id + pyproject.toml
+    about: leaf-id
+assume: what you took for granted that the person should confirm  [short-id]
+risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
+    default: what you would do about it
+leave out: what you would not do, and why  [short-id]
 - a sub-goal  [short-id]
   ? a leaf: one piece of work  [leaf-id]
       what it should achieve, in a line or two
@@ -75,6 +84,16 @@ goal: their aim, in one sentence (only when the plan above has none)
   [id], and your lines under it. You cannot change a node that is there; say what should change in a
   sentence after the block, and the person decides.
 - Mark every new line "?". Keep ids short, lower case, with dashes.
+- Read the repository before you ask anything. Never ask what it answers: name the file that answers
+  it in the leaf instead. For each thing the person's words leave open that the code cannot settle,
+  write a question: with the default you would assume (and option: lines when there is more than one
+  reasonable way) instead of guessing silently. Write assume: for what you took for granted, risk: for
+  what you see could go wrong, leave out: for what you would not do. At most about five of these, the
+  most important first, at the left edge after the goal and before the first node; none when nothing
+  is open. What is on the board above is answered or waiting: do not write it again.
+- A then: line under a default: or option: is what choosing it changes in the plan: scope NODE +
+  GLOB, check NODE: COMMAND, drop NODE, leaf "TITLE" under NODE, or condition GLOB; NODE is an [id]
+  in the plan or in your block. Leave it out when choosing changes nothing in the tree.
 - Write no file and start no work: what you print is all of your answer."""
 
 
