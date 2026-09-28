@@ -38,6 +38,18 @@ So far this path has run only against a scripted stand-in for Token Factory and 
 Sandboxes. [docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory,
 Sandboxes and Nemotron, and how to test it.
 
+Three prototypes put Nemotron Nano to work while you shape the tree. Each is a command, and
+`GRAPHENE_SHAPE=cover,note,precheck` runs them on their own:
+- `graphene plan cover` says which leaf carries each clause of your paragraph, and for a clause no
+  leaf carries it offers the command that adds your own words to the nearest leaf.
+- `graphene plan note "…"` finds the leaf a sentence of yours constrains, and prints the
+  `graphene node set` that would change it.
+- `graphene plan precheck` runs every check before any work (a proposed leaf's only in a sandbox fork)
+  and marks one that passes already or cannot run.
+
+They have run only against a scripted stand-in for Token Factory. [docs/process/ideas.md](docs/process/ideas.md)
+ranks them against seventeen other ideas.
+
 ## For judges
 
 No key, no Docker, and no model is called:
@@ -56,6 +68,10 @@ With a key for Token Factory (it spends at list price, and prints the bill at th
 export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
 docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
 ```
+
+To get there one rung at a time, each with its own spend cap, follow
+[docs/test/PRACTICE.md](docs/test/PRACTICE.md). `docs/test/practice.sh --dry` climbs the whole ladder
+on the stand-ins.
 
 ## You are here
 
