@@ -256,10 +256,20 @@ export const dash = (i: number | undefined): string | undefined => (i !== undefi
 
 export const linksBy = (graph: Graph, kind: Link["kind"]): Link[] => graph.links.filter((l) => l.kind === kind);
 
+// East Asian wide and fullwidth characters, and emoji, take two columns (a CJK glyph is about 1 em)
+const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]|\p{Extended_Pictographic}/u;
+
+/** How many columns a character takes: 2 for a wide one, as plan_view.cols counts them. */
+export const cols = (char: string): number => (WIDE.test(char) ? 2 : 1);
+
 /** A label that has to fit a fixed width, cut with an ellipsis; the whole text stays in the title. */
 export const clip = (text: string, width: number, per: number): string => {
   const room = Math.floor(width / per);
-  return text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`;
+  const chars = Array.from(text);
+  if (chars.reduce((n, c) => n + cols(c), 0) <= room) return text;
+  let used = 0;
+  const kept = chars.filter((c) => (used += cols(c)) <= Math.max(1, room - 1));
+  return `${kept.join("") || chars[0]}…`;
 };
 
 // -- the plan ------------------------------------------------------------------------------------
@@ -271,17 +281,41 @@ export type View = "plan" | "record";
  * the graph of what waits on what, left to right. */
 export type Layout = "outline" | "tree" | "graph";
 
-/** Why the page shows the layout it shows, when the viewer has not picked one. */
-export const BECAUSE: Record<Layout, string> = {
-  graph: "some nodes wait on others",
-  tree: "nothing waits on anything, and the tree fits",
-  outline: "nothing waits on anything, and the tree is wider than the window",
+export const PAD_X = 132; // the graph's lane-name gutter, which is the page's own margin, not a position
+export const PAD_Y = 16;
+const FIT = 0.8; // the least scale a drawing is chosen at: below it the says line is about 8 px
+
+/** How wide each drawing is on the page, gutters and all. */
+export const graphWidth = (plan: Plan): number => PAD_X + plan.width + 24;
+export const treeWidth = (plan: Plan): number => plan.tree_width + PAD_Y * 2;
+
+/** The layout the plan's shape calls for, and why: the graph when anything waits on anything and it
+ * fits `room` pixels across at 0.8, else the tree when it fits, else the outline. Only the width
+ * counts: a drawing taller than its pane pans down. */
+export const layoutFor = (plan: Plan, room: number): [Layout, string] => {
+  const waits = plan.edges.length > 0;
+  const fits = (width: number) => width * FIT <= room;
+  if (waits && fits(graphWidth(plan))) return ["graph", "some nodes wait on others, and the graph fits"];
+  if (fits(treeWidth(plan))) return ["tree", waits ? "the graph is too wide for the window, and the tree fits" : "nothing waits on anything, and the tree fits"];
+  return ["outline", waits ? "the graph and the tree are too wide for the window" : "nothing waits on anything, and the tree is too wide for the window"];
 };
 
-/** The layout the plan's shape calls for: the graph when anything waits on anything, else the tree
- * when it fits `room` pixels across, else the outline. */
-export const layoutFor = (plan: Plan, room: number): Layout =>
-  plan.edges.length > 0 ? "graph" : plan.tree_width + 32 <= room ? "tree" : "outline";
+/** What the viewer clicked on this page: auto, a layout, or nothing yet (the repository's setting). */
+export type Mode = "auto" | Layout | null;
+
+// the repository's `view` setting, in the terminal's names (graphene watch --view), as the page draws it
+const SETTING: Record<string, Layout> = { outline: "outline", tree: "tree", dag: "graph", graph: "graph" };
+
+/** The layout drawn, the button pressed and why. The page opens in the repository's view setting,
+ * the one the terminal reads (unset, or a view the page has not: auto); a click changes this page
+ * only, and nothing keeps it, so the store stays the one place the preference lives. */
+export const shownLayout = (plan: Plan, mode: Mode, room: number): { layout: Layout; mode: "auto" | Layout; why: string } => {
+  const [auto, because] = layoutFor(plan, room);
+  const set = SETTING[plan.view];
+  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${plan.view}` };
+  if (mode === null || mode === "auto") return { layout: auto, mode: "auto", why: `auto chose the ${auto}: ${because}` };
+  return { layout: mode, mode, why: "your choice, on this page only" };
+};
 
 /** What a state is called on screen. It is printed as words beside the shape, never as colour alone. */
 export const STATE: Record<Shown, string> = {

@@ -78,7 +78,7 @@ def test_unpark_opens_a_parked_item_and_refuses_one_that_is_not(repo):
     assert said.exit_code == 0 and said.stdout.startswith("open paging: pagination")
     assert items(repo)["paging"]["state"] == "open"
     said = person("board", "unpark", "paging")
-    assert said.exit_code == 1 and "paging is not parked" in said.output
+    assert said.exit_code == 1 and "paging is open, not parked" in said.output
     assert person("plan", "undo").exit_code == 0  # one act, undone as any other
     assert items(repo)["paging"]["state"] == "parked"
 

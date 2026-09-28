@@ -180,8 +180,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         the goal, then the tree folded to what is still moving. ``everything`` unfolds it; without
         ``archive`` a finished plan is not told how to put it away (a replay's repository is gone)."""
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
+        asked, board = B.waiting(store)  # what the board waits on the person for
         if not alive:
-            return [NO_PLAN]
+            return [board, NO_PLAN] if board else [NO_PLAN]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
         leaves = [n for n in P.leaves(alive) if not n.aside]
@@ -210,7 +211,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         ]
         if not P.paused(store) and leaves and count[P.DONE] == len(leaves) and not stuck:
             head += " · finished" + ("; `graphene plan archive` puts it away" if archive else "")
-        lines.append(head)
+        lines += [head, *([board] if board else [])]
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
             n
@@ -220,7 +221,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         back = {n.id for n in alive if P.came_back(store, n)}  # it came back: the next move is the person's
         words = {n.id: P.reads(n, alive, back) for n in alive}  # the words the screen and the text use
         yours += [n for n in alive if words[n.id] == "yours"]  # a person's own leaf, scope or none
-        if who.person and (yours or stuck or back):
+        if who.person and (yours or stuck or back or asked):
             seen: list[str] = []
             told = [
                 f"{n.id} ({words[n.id]}"
@@ -231,6 +232,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             ]
             told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
             told += [f"{n.id} (came back: `graphene node show {n.id}`)" for n in alive if n.id in back]
+            told += [f"{asked} on the board (`graphene board`)"] if asked else []
             more = (
                 f", and {len(told) - 8} more (`graphene plan --all`)"
                 if len(told) > 8 and not everything
@@ -387,11 +389,13 @@ def register(cli: typer.Typer, root, open_store, fail):
         if ctx.invoked_subcommand is not None:
             return
         who = P.caller()
+        if view and (as_json or as_text):
+            fail("--view draws the plan; --json and --text print what it holds: one or the other", 2)
         if as_text:
             run(lambda s: out(T.render(s)[0].rstrip("\n")))
             return
         if view:
-            return print_view(view, width, height)
+            return print_view(view, width, height, lambda: run(lambda s: print_plan(s, who, everything)))
         run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who, everything))
 
     @plan_cli.command("goal")
@@ -423,29 +427,33 @@ def register(cli: typer.Typer, root, open_store, fail):
         if name != "auto" and name not in V.VIEWS:
             fail(f"no view named {name}: the views are {', '.join(['auto', *V.VIEWS])}", 2)
 
-    def print_view(name: str, width: int | None, height: int | None) -> None:
+    def print_view(name: str, width: int | None, height: int | None, outline) -> None:
         """`graphene plan --view NAME`: the plan as that view draws it, in plain text, at $COLUMNS (or
         --width) by $LINES (or --height), for a script, a test or a stand-in; what the screen shows
-        when Tab reaches it. `auto` is the view that suits the plan at that size. A view that does not
-        fit prints the outline, and says so, as the screen does."""
+        when Tab reaches it. `auto` is the view that suits the plan at that size. The outline, a view
+        that does not fit (said on stderr, as the screen says it) and an empty plan print as
+        ``outline()`` does: `graphene plan`, with --all if asked, or `watch --once`, with what just
+        happened."""
         known_view(name)
         size = shutil.get_terminal_size()
         width, height = width or size.columns, height or size.lines
 
-        def show(store) -> None:
+        def show(store) -> bool:
             nodes, words, goal = V.inputs(store)
-            chosen = V.choose(nodes, width, height) if name == "auto" else name
+            chosen = V.choose(nodes, words, goal, width, height) if name == "auto" else name
             drawn = V.VIEWS[chosen].draw(nodes, words, goal, width, height, None) if V.VIEWS[chosen] else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)
-                return print_plan(store, P.caller())
+                return False
             for line in drawn.lines:
                 out(line.plain.rstrip())
             if drawn.note:
                 out(drawn.note)
+            return True
 
-        run(show)
+        if not run(show):
+            outline()
 
     @cli.command()
     def watch(
@@ -471,7 +479,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         if view:
             known_view(view)
         if (once or not sys.stdout.isatty()) and view not in (None, "outline"):
-            return print_view(view, None, None)
+            return print_view(view, None, None, lambda: print_once(who, everything))
         if once or not sys.stdout.isatty():
             return print_once(who, everything)
         try:

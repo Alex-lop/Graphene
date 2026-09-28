@@ -197,6 +197,7 @@ export interface PlanNode {
   y: number;
   tree_x: number; // where it sits in the top-down tree
   tree_y: number;
+  tree_w: number; // its box's width in the tree, sized to what it says
   width: number;
   height: number;
 }
@@ -259,11 +260,12 @@ export interface Plan {
   writable: boolean; // false for an exported file, and for a page opened from an agent's shell
   token: string | null; // this launch's, and never in an export
   critical: string[]; // the longest chain of leaves not yet done, first first; empty when nothing waits
-  ready: string[]; // the leaves that can start now
+  at_once: string[]; // the leaves that can start now, proposals whose needs are done too: plan_view.at_once
   tree_width: number;
   tree_height: number;
   tree_goal: number[]; // the goal's box, at the top of the tree
   tree_links: PlanEdge[]; // parent to child; the goal is ""
+  view: string; // the repository's view setting, the one graphene watch opens in: auto, outline, tree or dag
 }
 
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.

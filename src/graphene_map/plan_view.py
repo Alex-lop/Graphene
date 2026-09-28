@@ -17,8 +17,8 @@ The same nodes are laid out a second time as the tree a person draws (``tree_x``
 goal's box at ``tree_goal``, the links in ``tree_links``): the goal at the top, each node under the
 one it helps achieve, each leaf in its own slot left to right in outline order and each parent
 centred over its first and last child. ``critical`` is the longest chain of leaves not yet done
-through what each waits on, and ``ready`` the leaves that can start now; both are the plan's, read
-the same way whichever view the page shows.
+through what each waits on, and ``at_once`` the leaves that can start now; both are the plan's, read
+the same way whichever view the page shows and in the terminal's graph (`critical_path`, `at_once`).
 TODO: ``why`` asks the store for the whole plan once per node; one walk would do, and the page polls
 every two seconds. Not worth a second copy of ``plan.trail`` until a plan is large enough to feel it.
 
@@ -28,8 +28,11 @@ changes what an agent can do or says where the mechanism behind it stops; none o
 
 from __future__ import annotations
 
+import math
 import subprocess
+import unicodedata
 from dataclasses import asdict, dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 
 from . import plan as P
@@ -42,6 +45,8 @@ ROW_GAP = 12
 LANE_PAD = 26  # room above a lane's first row for the lane's name
 LANE_GAP = 20
 TREE_GAP = 24  # between two boxes side by side in the tree
+TREE_MIN = 140  # the narrowest box in the tree: its state word and a sign-off tag side by side
+CHAR, SMALL = 6.4, 5.9  # the page's pixels a column of a title (13 px) and of the id line (11 px) take
 TREE_DROP = 48  # between a parent's bottom edge and its children's top edge
 LOG_TAIL = 12  # log entries kept per node, newest last; the page polls, so every entry is paid for every 2 s
 SAID_CAP = 400  # a check's output is up to 2000 characters; the inspector shows its head
@@ -108,6 +113,7 @@ class ViewNode:
     y: float
     tree_x: float = 0.0  # where it sits in the top-down tree
     tree_y: float = 0.0
+    tree_w: float = NODE_W  # its box's width in the tree: as its title and id line need (tree_w)
     width: int = NODE_W
     height: int = NODE_H
 
@@ -150,11 +156,12 @@ class PlanView:
     forecast: dict = field(default_factory=dict)
     holes: dict = field(default_factory=lambda: dict(HOLES))
     critical: list[str] = field(default_factory=list)  # the longest chain of leaves not yet done, first first
-    ready: list[str] = field(default_factory=list)  # the leaves that can start now: plan.ready
+    at_once: list[str] = field(default_factory=list)  # the leaves that can start now, proposals too
     tree_width: float = 0.0
     tree_height: float = 0.0
     tree_goal: list[float] = field(default_factory=lambda: [0.0, 0.0])  # the goal's box, at the top
     tree_links: list[ViewEdge] = field(default_factory=list)  # parent to child; "" is the goal
+    view: str = "auto"  # the repository's `view` setting, the one `graphene watch` opens in; unset: auto
 
 
 def depths(nodes: list[P.Node]) -> dict[str, int]:
@@ -194,58 +201,129 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
     return out
 
 
-def tidy(tree: list[tuple[P.Node, int]], under: dict) -> dict[str, tuple[float, float]]:
-    """The top-down tree: each leaf takes the next slot left to right in outline order, and each
-    parent sits centred over its first and last child, so no two boxes touch and a parent is always
-    above what it is made of. The goal is the top row; a node's row is its depth plus one."""
-    slots = iter(range(len(tree)))
-    x = {n.id: next(slots) * (NODE_W + TREE_GAP) for n, _ in tree if not under.get(n.id)}
+def cols(text: str) -> int:
+    """The columns a text takes, an East Asian wide or fullwidth character (and an emoji) counting two,
+    as the page's `clip` counts them (ui/src/model.ts)."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def tree_w(node: P.Node) -> float:
+    """A box in the tree, as wide as its title and its id line need, from TREE_MIN to NODE_W: a plan
+    of short leaves fits a window a fixed width would not. The revision is left out, so an edit never
+    moves a box; the page cuts what does not fit."""
+    who = f"{node.id} · {'any agent' if node.owner == P.AGENT else node.owner}"
+    return float(min(NODE_W, max(TREE_MIN, math.ceil(24 + max(CHAR * cols(node.title), SMALL * cols(who))))))
+
+
+def tidy(tree: list[tuple[P.Node, int]], under: dict, wide: dict[str, float]) -> tuple[dict, float]:
+    """The top-down tree: the leaves side by side left to right in outline order, each in a slot as
+    wide as its box, and each parent centred over its first and last child. Each subtree is laid out
+    on its own and then placed beside the one before, so no two boxes touch at any depth, and a parent
+    wider than what is under it widens its subtree instead. The goal (NODE_W wide) is the top row; a
+    node's row is its depth plus one. Returns each node's (x, y) and the goal's x."""
+    rel: dict[str, dict[str, float]] = {}  # each subtree's xs, from its own left edge
+    span: dict[str, float] = {}
+
+    def beside(ids: list[str]) -> tuple[dict[str, float], float]:
+        out, left = {}, 0.0
+        for i in ids:
+            out |= {k: x + left for k, x in rel[i].items()}
+            left += span[i] + TREE_GAP
+        return out, left - TREE_GAP
+
+    def over(xs: dict[str, float], ids: list[str], width: float) -> float:
+        return (xs[ids[0]] + wide[ids[0]] / 2 + xs[ids[-1]] + wide[ids[-1]] / 2) / 2 - width / 2
+
     for n, _ in reversed(tree):  # children before their parents
-        if n.id not in x:
-            x[n.id] = (x[under[n.id][0].id] + x[under[n.id][-1].id]) / 2
-    return {n.id: (x[n.id], (depth + 1) * (NODE_H + TREE_DROP)) for n, depth in tree}
+        kids = [k.id for k in under.get(n.id, [])]
+        if not kids:
+            rel[n.id], span[n.id] = {n.id: 0.0}, wide[n.id]
+            continue
+        xs, width = beside(kids)
+        x = over(xs, kids, wide[n.id])
+        shift = max(0.0, -x)
+        rel[n.id] = {k: v + shift for k, v in xs.items()} | {n.id: x + shift}
+        span[n.id] = max(width + shift, x + shift + wide[n.id])
+    roots = [n.id for n, depth in tree if depth == 0]
+    xs, _ = beside(roots)
+    goal = over(xs, roots, NODE_W)
+    shift = max(0.0, -goal)
+    return {n.id: (xs[n.id] + shift, (depth + 1) * (NODE_H + TREE_DROP)) for n, depth in tree}, goal + shift
 
 
-def _link(source: str, at: tuple[float, float], target: str, to: tuple[float, float]) -> ViewEdge:
-    """Down from the parent's bottom edge to the child's top edge, turning halfway between them."""
-    sx, sy = at[0] + NODE_W / 2, at[1] + NODE_H
-    tx, ty = to[0] + NODE_W / 2, to[1]
+Box = tuple[float, float, float]  # a box in the tree: x, y, width
+
+
+def _link(source: str, at: Box, target: str, to: Box) -> ViewEdge:
+    """Down from the parent's bottom edge to the child's top edge, turning halfway between them; each
+    box is (x, y, width)."""
+    sx, sy = at[0] + at[2] / 2, at[1] + NODE_H
+    tx, ty = to[0] + to[2] / 2, to[1]
     middle = sy + TREE_DROP / 2
     points = [[sx, sy], [tx, ty]] if sx == tx else [[sx, sy], [sx, middle], [tx, middle], [tx, ty]]
     return ViewEdge(f"{source}>{target}", source, target, points)
 
 
-def critical(live: list[P.Node], under: dict) -> tuple[list[str], set[str]]:
-    """The longest chain of leaves not yet done through what each waits on, and the edges the page
-    draws for it. A need on a sub-goal is a wait on every leaf beneath it (decision 14), and it is
-    drawn as the edge that carries the need. Ties go to the chain that comes first in ``plan.order``.
-    A chain of one is no path: when nothing waits on anything, the list is empty."""
+def leaf_needs(nodes: list[P.Node]) -> tuple[list[P.Node], dict[str, list[str]]]:
+    """The leaves (`plan.leaves`: a proposed child under an accepted leaf does not make it a sub-goal)
+    in `plan.order`, and for each the leaves it waits on: what it and everything above it needs, where
+    a need on a sub-goal is a wait on each leaf beneath it (decision 14)."""
+    by_id = {n.id: n for n in nodes}
+    leaves = P.order(P.leaves(nodes))
+    ids = {n.id for n in leaves}
+    needs = {}
+    for leaf in leaves:
+        got = []
+        for need in P.all_needs(leaf, by_id):
+            got += [need] if need in ids else [n.id for n in P.below(need, nodes) if n.id in ids]
+        needs[leaf.id] = [i for i in dict.fromkeys(got) if i != leaf.id]
+    return leaves, needs
+
+
+def critical_path(nodes: list[P.Node]) -> list[str]:
+    """The critical path, the page's and the terminal's alike: the longest chain through what each
+    waits on of leaves not done, counted in leaves, first first. Ties go to `plan.order`'s first. A
+    chain of one is no path: when no leaf not done needs another, there is none."""
+    leaves, needs = leaf_needs(nodes)
+    todo = {n.id for n in leaves if n.state != P.DONE}
+    rank = {n.id: k for k, n in enumerate(leaves)}
+    try:  # what a leaf waits on comes first; `validate` refuses a cycle, and one read as it is has no path
+        ahead = list(TopologicalSorter({i: needs[i] for i in todo}).static_order())
+    except CycleError:
+        return []
+    best: dict[str, list[str]] = {}  # the longest chain ending at each leaf
+    for i in (i for i in ahead if i in todo):
+        before = sorted((d for d in needs[i] if d in todo), key=rank.__getitem__)
+        best[i] = max((best[d] for d in before), key=len, default=[]) + [i]
+    path = max((best[i] for i in sorted(best, key=rank.__getitem__)), key=len, default=[])
+    return path if len(path) > 1 else []
+
+
+def at_once(nodes: list[P.Node]) -> list[str]:
+    """What can start at once, the page's and the terminal's alike: the leaves not done, not running,
+    not in review and not the person's own, with a scope to work in and nothing left to wait on,
+    proposed or accepted alike (the shaping comes before acceptance), in `plan.order`."""
+    by_id = {n.id: n for n in nodes}
+    return [
+        n.id
+        for n in leaf_needs(nodes)[0]
+        if n.state in (P.PROPOSED, P.OPEN) and n.owner == P.AGENT and n.scope and not P.unmet(n, by_id)
+    ]
+
+
+def _critical_edges(path: list[str], live: list[P.Node]) -> set[str]:
+    """The edges the page draws heavier for the path: each carries the need one leaf on it has on the
+    one before, from the leaf itself or from what it sits under, on that leaf or on what it sits under."""
     by_id = {n.id: n for n in live}
-    rank = {n.id: i for i, n in enumerate(P.order(live))}
-    todo = {n.id for n in live if not under.get(n.id) and n.state != P.DONE}
-
-    def waits_on(leaf: P.Node) -> list[tuple[str, str]]:  # (a leaf it waits on, the edge drawn for it)
-        out = []
-        for carrier in (leaf, *P.above(leaf, by_id)):
-            for need in carrier.needs:
-                if need in by_id:
-                    out += [(n.id, f"{need}>{carrier.id}") for n in (by_id[need], *P.below(need, live))
-                            if n.id in todo]  # fmt: skip
-        return sorted(out, key=lambda pair: rank[pair[0]])
-
-    best: dict[str, tuple[list[str], list[str]]] = {}  # the longest chain ending at a leaf, and its edges
-
-    def chain(leaf_id: str, trail: frozenset[str]) -> tuple[list[str], list[str]]:
-        if leaf_id not in best:  # a cycle is refused by `validate`; the trail stops one read as it stands
-            on = trail | {leaf_id}
-            found = [(chain(d, on), edge) for d, edge in waits_on(by_id[leaf_id]) if d not in on]
-            (ids, edges), edge = max(found, key=lambda f: len(f[0][0]), default=(([], []), None))
-            best[leaf_id] = (ids + [leaf_id], edges + ([edge] if edge else []))
-        return best[leaf_id]
-
-    ends = sorted(todo, key=rank.__getitem__)
-    ids, edges = max((chain(i, frozenset()) for i in ends), key=lambda c: len(c[0]), default=([], []))
-    return (ids, set(edges)) if len(ids) > 1 else ([], set())
+    out = set()
+    for before, leaf in zip(path, path[1:], strict=False):
+        for carrier in (by_id[leaf], *P.above(by_id[leaf], by_id)):
+            beneath = {i: {i} | {n.id for n in P.below(i, live)} for i in carrier.needs}
+            need = next((i for i in carrier.needs if before in beneath[i]), None)
+            if need:
+                out.add(f"{need}>{carrier.id}")
+                break
+    return out
 
 
 def rolls_up(node: P.Node, nodes: list[P.Node], under: dict) -> tuple[int, int]:
@@ -380,7 +458,11 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     # the store lives at <repo>/.graphene/graphene.db, and the page names the repo even when no
     # session has been recorded in it yet, which is exactly when the graph cannot name it
     view = PlanView(
-        repo=store.path.parent.parent.name, goal=P.goal(store), person=person, paused=P.paused(store)
+        repo=store.path.parent.parent.name,
+        goal=P.goal(store),
+        person=person,
+        paused=P.paused(store),
+        view=store.meta("view") or "auto",
     )
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
     back = {n.id for n in live if P.came_back(store, n)}  # the next move is the person's, as in the terminal
@@ -465,8 +547,8 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
         y += height + LANE_GAP
 
     view.nodes = [placed[n.id] for n, _ in tree]  # parents before their children: the page indents
-    view.critical, on_path = critical(live, under)
-    view.ready = [n.id for n in P.ready(live)]
+    view.critical, view.at_once = critical_path(live), at_once(live)
+    on_path = _critical_edges(view.critical, live)
     for n in ordered:
         for need in n.needs:
             source, target = placed.get(need), placed[n.id]
@@ -477,16 +559,18 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     view.width = max(n.x + NODE_W for n in view.nodes)
     view.height = y - LANE_GAP
 
-    at = tidy(tree, under)
+    wide = {n.id: tree_w(n) for n, _ in tree}
+    at, goal = tidy(tree, under, wide)
+    box = {i: (x, y, wide[i]) for i, (x, y) in at.items()}
     for shown in view.nodes:
         shown.tree_x, shown.tree_y = at[shown.id]
-    roots = [n.id for n, d in tree if d == 0]
-    view.tree_goal = [(at[roots[0]][0] + at[roots[-1]][0]) / 2, 0.0]
-    view.tree_links = [_link("", tuple(view.tree_goal), r, at[r]) for r in roots] + [
-        _link(n.parent, at[n.parent], n.id, at[n.id]) for n, d in tree if d > 0
+        shown.tree_w = wide[shown.id]
+    view.tree_goal = [goal, 0.0]
+    view.tree_links = [_link("", (goal, 0.0, NODE_W), n.id, box[n.id]) for n, d in tree if d == 0] + [
+        _link(n.parent, box[n.parent], n.id, box[n.id]) for n, d in tree if d > 0
     ]
-    view.tree_width = max(x for x, _ in at.values()) + NODE_W
-    view.tree_height = max(y for _, y in at.values()) + NODE_H
+    view.tree_width = max(x + w for x, _, w in box.values())
+    view.tree_height = max(y for _, y, _ in box.values()) + NODE_H
     return asdict(view)
 
 

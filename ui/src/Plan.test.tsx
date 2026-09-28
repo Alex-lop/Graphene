@@ -6,8 +6,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-import { layoutFor } from "./model";
-import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView } from "./Plan";
+import { layoutFor, shownLayout, type Mode } from "./model";
+import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, panFilter, startScale } from "./Plan";
 import type { Plan, PlanEdge, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
@@ -40,6 +40,7 @@ const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   row: 0,
   x: 0,
   y: 0,
+  tree_w: 200,
   tree_x: 0,
   tree_y: 124,
   width: 200,
@@ -71,11 +72,12 @@ const plan: Plan = {
   writable: false,
   token: null,
   critical: [],
-  ready: [],
+  at_once: [],
   tree_width: 200,
   tree_height: 200,
   tree_goal: [0, 0],
   tree_links: [],
+  view: "auto",
 };
 
 // feeds, as plan_view.py lays it out: two chains into one leaf, the longer one critical
@@ -85,7 +87,7 @@ const feeds: Plan = {
   nodes: [node("xml-reader"), node("xml-wire", { needs: ["xml-reader"], display_state: "waiting" }), node("zero-rule"), node("xml-e2e", { needs: ["xml-wire", "zero-rule"], display_state: "waiting" })],
   edges: [edge("xml-reader", "xml-wire", true), edge("xml-wire", "xml-e2e", true), edge("zero-rule", "xml-e2e", false)],
   critical: ["xml-reader", "xml-wire", "xml-e2e"],
-  ready: ["xml-reader", "zero-rule"],
+  at_once: ["xml-reader", "zero-rule"],
 };
 
 test("the tree is indented by depth, and a sub-goal counts its leaves instead of naming a scope", () => {
@@ -160,24 +162,48 @@ test("with no Claude Code session recorded, the record screen cannot be opened a
   expect(record(header(1))).not.toContain("disabled");
 });
 
-test("the page draws the plan the way its shape calls for: the graph when anything waits, else the tree when it fits, else the outline", () => {
-  expect(layoutFor(feeds, 2000)).toBe("graph");
-  expect(layoutFor(feeds, 100)).toBe("graph"); // what waits on what is the thing to see, and it pans
-  expect(layoutFor(plan, 1000)).toBe("tree");
-  expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toBe("outline");
+test("the page draws the plan the way its shape calls for: the graph when anything waits and it fits at 0.8, else the tree when it fits, else the outline", () => {
+  // feeds' graph is 132 + 440 + 24 = 596 px wide; its tree 200 + 32
+  const wide = { ...feeds, width: 440, tree_width: 200 };
+  expect(layoutFor(wide, 2000)).toEqual(["graph", "some nodes wait on others, and the graph fits"]);
+  expect(layoutFor(wide, 596 * 0.8)[0]).toBe("graph"); // drawn at 0.8, still readable
+  expect(layoutFor(wide, 596 * 0.8 - 1)).toEqual(["tree", "the graph is too wide for the window, and the tree fits"]);
+  expect(layoutFor({ ...wide, tree_width: 4000 }, 300)).toEqual(["outline", "the graph and the tree are too wide for the window"]);
+  expect(layoutFor(plan, 1000)).toEqual(["tree", "nothing waits on anything, and the tree fits"]);
+  expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toEqual(["outline", "nothing waits on anything, and the tree is too wide for the window"]);
 });
 
-test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start now in words", () => {
-  const bar = (picked: boolean) => renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" picked={picked} onLayout={() => undefined} />);
-  const html = bar(false);
+test("a drawing starts at the scale that fits its width, never below 0.6, and one only taller than its pane is not shrunk", () => {
+  expect(startScale(500, 900)).toBe(1); // narrower than the pane: however tall, drawn at 1 and panned down
+  expect(startScale(1000, 900)).toBe(0.9);
+  expect(startScale(3000, 900)).toBe(0.6); // a layout the viewer picked though it is far too wide: readable, dragged
+});
+
+test("the tree's boxes are as wide as Python sized them", () => {
+  const sized: Plan = { ...plan, nodes: [node("a", { tree_w: 140 })] };
+  const html = renderToStaticMarkup(<PlanTopDown plan={sized} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/data-node="a"[^>]*><rect class="box" width="140"/);
+});
+
+test("the switch has auto and the three layouts, says what is drawn and why, and says the critical path and what can start at once in words, as the terminal names it", () => {
+  const bar = (mode: Mode) => renderToStaticMarkup(<LayoutBar plan={feeds} {...shownLayout(feeds, mode, 2000)} onLayout={() => undefined} />);
+  const html = bar(null);
   expect(html).toMatch(/data-layout="graph"/);
-  expect(html.match(/<button/g)).toHaveLength(3);
-  expect(html).toMatch(/aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*class="on" aria-pressed="true"[^>]*>graph<\/button>/);
-  expect(html).toContain("chosen: some nodes wait on others");
+  expect(html.match(/<button/g)).toHaveLength(4);
+  expect(html).toMatch(/class="on" aria-pressed="true"[^>]*>auto<\/button>.*aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*aria-pressed="false"[^>]*>graph<\/button>/);
+  expect(html).toContain("auto chose the graph: some nodes wait on others, and the graph fits");
   expect(html).toContain("critical path: xml-reader → xml-wire → xml-e2e");
-  expect(html).toContain("can start now: xml-reader, zero-rule");
-  expect(bar(true)).toContain("your choice, kept in this browser");
-  expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" picked={false} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+  expect(html).toContain("2 at once: xml-reader, zero-rule");
+  expect(bar("tree")).toMatch(/data-layout="tree".*class="on" aria-pressed="true"[^>]*>tree<\/button>.*your choice, on this page only/);
+  expect(renderToStaticMarkup(<LayoutBar plan={plan} {...shownLayout(plan, null, 2000)} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+});
+
+test("the page opens in the repository's view setting, the one the terminal reads, and a click changes this page only", () => {
+  expect(shownLayout({ ...feeds, view: "auto" }, null, 2000).layout).toBe("graph");
+  expect(shownLayout({ ...feeds, view: "outline" }, null, 2000)).toMatchObject({ layout: "outline", mode: "outline", why: "this repo's view setting: outline" });
+  expect(shownLayout({ ...feeds, view: "dag" }, null, 2000)).toMatchObject({ layout: "graph", mode: "graph" }); // the terminal's name for it
+  expect(shownLayout({ ...feeds, view: "tree" }, "auto", 2000)).toMatchObject({ layout: "graph", mode: "auto" }); // a click on auto brings the choice back
+  expect(shownLayout({ ...feeds, view: "something else" }, null, 2000).mode).toBe("auto");
 });
 
 test("in the graph the critical path is drawn heavier, its edges and its boxes, and a leaf that can start now is marked", () => {
@@ -204,4 +230,25 @@ test("the tree is drawn top-down from Python's positions: the goal on top, a lin
   expect(html).toMatch(/class="node" data-node="signin" data-state="sub-goal"[^>]*transform="translate\(16,140\)"/);
   expect(html).toMatch(/class="node on" data-node="api"/);
   expect(html).not.toContain("lane-band"); // the tree has no lanes: whose a node is, is in the box
+});
+
+test("a box's id line is cut to the box like its title, so a long id never runs into the next box", () => {
+  const long: Plan = { ...plan, nodes: [node("a-thirty-one-character-long-id1")] };
+  const html = renderToStaticMarkup(<PlanTopDown plan={long} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/class="who">a-thirty-one-character-lon[^<]*…<title>a-thirty-one-character-long-id1 · any agent · revision 1<\/title>/);
+});
+
+test("the at-once line names at most five leaves and then how many more", () => {
+  const many: Plan = { ...feeds, at_once: ["a", "b", "c", "d", "e", "f", "g", "h"] };
+  const html = renderToStaticMarkup(<LayoutBar plan={many} {...shownLayout(many, null, 2000)} onLayout={() => undefined} />);
+  expect(html).toContain("8 at once: a, b, c, d, e and 3 more");
+  expect(html).toMatch(/title="a, b, c, d, e, f, g, h"/); // all of them, on hover
+});
+
+test("on a phone one finger scrolls the page and two pan and zoom the drawing; a mouse drags it", () => {
+  const touch = (n: number) => ({ type: "touchstart", touches: { length: n } }) as unknown as Event;
+  expect(panFilter(touch(1))).toBe(false);
+  expect(panFilter(touch(2))).toBe(true);
+  expect(panFilter({ type: "mousedown", button: 0 } as unknown as Event)).toBe(true);
+  expect(panFilter({ type: "mousedown", button: 2 } as unknown as Event)).toBe(false); // the context menu
 });
