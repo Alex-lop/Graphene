@@ -178,3 +178,13 @@ def test_a_keychain_that_hangs_is_given_up_on_and_asked_once_per_process(keychai
     monkeypatch.setattr(keys, "TIMEOUT", 0.3)
     assert [keys.find() for _ in range(3)] == [None] * 3  # no TimeoutExpired, and no wait each time
     assert (keychain / "spawns").read_text() == "x\n"
+
+
+def test_a_key_with_a_line_break_is_refused_without_being_said(monkeypatch):
+    monkeypatch.setenv("NEBIUS_API_KEY", "sk-LINE-ONE\nsk-LINE-TWO")
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
+    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    tf._listed.cache_clear()
+    line = keys.reached()
+    tf._listed.cache_clear()
+    assert line.startswith("Token Factory: not reached") and "LINE" not in line and "line break" in line

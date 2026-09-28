@@ -38,7 +38,7 @@ def _run(argv: list[str], stdin: str | None = None) -> subprocess.CompletedProce
 
 def find() -> str | None:
     """The key, from the environment first, then the keychain; None when neither has one."""
-    key = os.environ.get(KEY)
+    key = os.environ.get(KEY, "").strip()
     if key:
         return key
     return _from_keychain() if _keychain() else None
