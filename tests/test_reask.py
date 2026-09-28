@@ -69,3 +69,32 @@ def test_an_answer_about_a_dropped_node_is_told_to_every_executor_after_a_reask(
     stands = prompt.index("These answers of the person's stand")
     kept = '- ids as numbers or strings? → numbers (it added to the goal of ids: "ids stay numbers")'
     assert prompt.index(kept) > stands
+
+
+FAILS = 'import sys\nprint("sorry, cannot plan now")\nsys.exit(1)\n'
+
+
+def states(repo) -> dict:
+    with Store.open(repo) as store:
+        return {n.id: n.state for n in A.P.nodes(store)}
+
+
+def test_a_reask_whose_planner_fails_keeps_the_tree_it_would_have_replaced(repo, tmp_path, monkeypatch):
+    assert person("ask", "add ids", "--with", planner(tmp_path, ASKED, monkeypatch)).exit_code == 0
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FAILS, monkeypatch))
+    assert again.exit_code == 1 and "nothing was added" in again.output
+    assert states(repo) == {"users-api": "proposed", "ids": "proposed"}  # not dropped before the planner ran
+    with Store.open(repo) as store:
+        assert B.get(store, "id-type")["about"] == "ids"
+
+
+def test_a_reask_whose_proposal_is_refused_keeps_the_tree_and_the_answers(repo, tmp_path, monkeypatch):
+    assert person("ask", "add ids", "--with", planner(tmp_path, ASKED, monkeypatch)).exit_code == 0
+    with Store.open(repo) as store:
+        B.take(store, "id-type", ME)
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, ASKED, monkeypatch))
+    assert again.exit_code == 1 and "is on the board already" in again.output
+    assert "which is dropped" not in again.output  # nothing was dropped, so nothing says it was
+    assert states(repo) == {"users-api": "proposed", "ids": "proposed"}
+    with Store.open(repo) as store:
+        assert B.get(store, "id-type")["about"] == "ids"

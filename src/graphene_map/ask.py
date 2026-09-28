@@ -250,6 +250,23 @@ def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
     return stands
 
 
+class _Rehearsed(Exception):
+    """Raised to roll back a replacement made only to learn what would stand."""
+
+
+def _what_stands(store) -> list[str] | None:
+    """What ``_replace_last`` would leave standing, for the planner's prompt, with nothing dropped: the
+    drop is made for real only with the new proposal, in its transaction, so a planner that fails or a
+    proposal Graphene refuses leaves the tree it would have replaced as it was."""
+    kept: list = []
+    try:
+        with store.claim():
+            kept.append(_replace_last(store, lambda _: None))
+            raise _Rehearsed
+    except _Rehearsed:
+        return kept[0]
+
+
 def ask(
     store,
     root: Path,
@@ -278,7 +295,7 @@ def ask(
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    stands = _replace_last(store, say) if size and about is None and not split else None
+    stands = _what_stands(store) if size and about is None and not split else None
     if stands is not None:  # asked again, finer or coarser
         stand = "".join(f"\n- {line}" for line in stands)
         stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
@@ -306,12 +323,17 @@ def ask(
             tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
             refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
+            heard: list[str] = []  # what the replacement says, said once it has been made
             try:
                 with store.claim():
+                    if stands is not None:
+                        _replace_last(store, heard.append)
                     said = T.apply(store, text, who, None, files=files)
             except P.Refused as no:
                 refusal = f"Graphene could not read the proposal: {no}"
             else:
+                for line in heard:
+                    say(line)
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
                 if rest:  # its lines as it wrote them (a list stays a list), not run together
                     lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
