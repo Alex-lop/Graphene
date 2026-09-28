@@ -1709,6 +1709,14 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
 
 
+def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
+    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
+    a ? into the line, and help took ?, ?, Enter."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
+    assert seen["screen"] == "Help"
+
+
 def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
     """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
     "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
@@ -1722,9 +1730,14 @@ def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_
     assert "docs is came back" not in seen["status"] and "r runs it again" in seen["status"]
 
 
-def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
-    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
-    a ? into the line, and help took ?, ?, Enter."""
-    proposed(repo)
-    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
-    assert seen["screen"] == "Help"
+def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo):
+    """Walk 2026-09-28: with every leaf done the goal still offered `R run all ready`, and only the
+    shell's `graphene` said the plan was finished."""
+    api_done(repo)
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        top, keys = seen["status"].splitlines()[:2]
+        assert "3/3 done, finished" in top, (size, top)
+        assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)

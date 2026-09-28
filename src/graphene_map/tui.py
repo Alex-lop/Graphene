@@ -842,11 +842,14 @@ class Watch(App):
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
+            "finished": bool(leaves) and done == len(leaves) and not tops and not yours,
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
+        if self.counts["finished"]:  # what `graphene` says: the status line's, not the goal row's
+            self.counts["done"] += ", finished"
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
         shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine] + self.board.shape()
         tree = self.tree
@@ -1280,7 +1283,8 @@ class Watch(App):
         if not self.nodes:
             return [":ask what you want", *tail]
         if self.on_goal():
-            keys = ["y accept it all"] if self.counts.get("you") else ["R run all ready"]
+            ended = ":plan archive puts it away" if self.counts.get("finished") else "R run all ready"
+            keys = ["y accept it all"] if self.counts.get("you") else [ended]
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
             return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
