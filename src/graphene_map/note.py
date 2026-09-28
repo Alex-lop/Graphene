@@ -145,11 +145,17 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
         if not any(P.in_scope(f, [bare]) for f in files) and not P.in_scope(bare.rstrip("/*") or bare, scope):
             say(f"{g} matches no file git tracks and is not under {target}'s scope; nothing is offered")
             return None
+        if len(files) > 1 and not g.startswith("!") and all(P.in_scope(f, [g]) for f in files):
+            say(f"{g} takes in every file git tracks; nothing is offered")
+            return None
     for g in remove:
         if g not in scope:
             say(f"{g} is not in {target}'s scope; nothing is offered")
             return None
     fresh = [g for g in scope if g not in remove] + [g for g in add if g not in scope]
+    if any(P.in_scope(f, scope) for f in files) and not any(P.in_scope(f, fresh) for f in files):
+        say(f"it would leave {target} no file git tracks; nothing is offered")
+        return None
     if node is None:
         if not (fresh and check):  # else `node add` makes a heading with no work under it
             say("a new leaf needs a scope and a check, and the model did not give both; nothing is offered")

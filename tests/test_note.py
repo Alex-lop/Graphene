@@ -251,3 +251,12 @@ def test_leaves_named_new_and_none_are_leaves_not_the_special_answers(repo, fake
     assert routed(repo)[0].command.startswith("graphene node add --scope api.py")
     offer, said, _, _ = routed(repo)
     assert offer is None and said[0].startswith("it constrains no leaf")
+
+
+def test_a_note_neither_widens_a_leaf_to_the_whole_repo_nor_empties_it(repo, fake):
+    planned(repo)
+    fake([answer("ids", scope_add=["**"]), answer("ids", scope_add=["!api.py"])])
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == ["** takes in every file git tracks; nothing is offered"]
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == ["it would leave ids no file git tracks; nothing is offered"]
