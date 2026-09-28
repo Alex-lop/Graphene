@@ -28,6 +28,8 @@ NO_PLAN = (
     "nothing is planned here yet. Say what you want to your agent, in a paragraph: it proposes the "
     "tree, and you prune it in `graphene watch`. Or `graphene ask '<what you want>'`"
 )
+# ... and in a repository `graphene init` never set up, what comes before either
+NOT_INIT = "Before either, `graphene init` chooses who plans and who runs (until then, Claude Code)"
 
 
 def register(cli: typer.Typer, root, open_store, fail):
@@ -192,7 +194,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         asked, board = B.waiting(store)  # what the board waits on the person for
         if not alive:
-            return [board, NO_PLAN] if board else [NO_PLAN]
+            none = NO_PLAN if store.meta("plan_first") is not None else f"{NO_PLAN}. {NOT_INIT}"
+            return [board, none] if board else [none]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
         leaves = [n for n in P.leaves(alive) if not n.aside]
