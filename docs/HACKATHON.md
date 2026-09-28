@@ -44,7 +44,10 @@ files it may change (its scope) and the command that proves it done (its check).
 code cannot answer and what changes the tree, at most three items: questions, each with a default and
 its options, and risks, each with what it would do about it. You answer each with one command:
 `graphene board take ID` for the default, `pick ID N` for an option, `drop`, `park` or `unpark`,
-`answer ID …` in your own words, and `note …` for something of yours.
+`answer ID …` in your own words, and `note …` for something of yours. In `graphene watch` the items
+are the first rows under the goal, answered with a key each (`y` take, `1`-`9` pick, `d` drop, `p`
+park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
+the board`).
 <!-- integ only: graphene board and every subcommand above (board_cli.py). -->
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
 plan as your own act, which `graphene plan undo` takes back. Every answer reaches the executors'
@@ -256,8 +259,6 @@ demo page and here, whatever it says.
 - Nemotron's three shaping prototypes run live, each measured as `docs/process/ideas.md` sets out:
   for `cover`, the clauses a blind judge says the tree dropped; for `note`, how often a note finds the
   right leaf; for `precheck`, its verdicts against hand labels and the seconds per fork.
-- The board as keys in `graphene watch`. Tonight it is answered by command; the screen does not yet
-  show it or count its open items.
 - The escape test live in ConTree, and a live leaf recorded and replayed in CI.
 - A real open-source repository's issue done through the tree, with the patch offered upstream by a
   person.

@@ -37,3 +37,17 @@ def test_the_docs_describe_the_planner_prompt_the_code_sends():
         assert "what it assumed, the risks it sees" not in said, path
     assert f"Since prompt version {planner.PROMPT_VERSION}, Ultra" in doc("docs/HACKATHON.md")
     assert "at most three items" in doc("README.md")
+
+
+def test_the_docs_say_graphene_watch_shows_and_counts_the_board_as_it_does():
+    import inspect
+
+    from graphene_map import tui
+
+    source = inspect.getsource(tui)
+    assert "board_rows as BR" in source and 'Binding("p", "board(\'p\')"' in source
+    assert "on the board" in source  # the status line counts the board's open items
+    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("docs/demo/STORYBOARD.md")
+    assert "the screen does not yet show it" not in hackathon
+    assert "does not show the board" not in storyboard
+    assert "In `graphene watch` the items are the first rows under the goal" in hackathon

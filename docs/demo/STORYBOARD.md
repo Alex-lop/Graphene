@@ -39,11 +39,10 @@ recording's words will be whatever Ultra puts up that night; the layout, the com
 are these. The path on each screen's first line is shortened, and in G1 and G2 the empty rows of
 the lower pane are shown as `…`.
 
-<!-- integ only: every command in these frames. The watch screen does not show the board or count
-its open items tonight (its status line read "you: 1" with four items open), which is why the
-board is answered in the left pane. If a board view in graphene watch merges before the recording
-(lane-a-board-view or lane-a-board-rows), shoot B1 and B2 in the right pane with its keys instead
-(y takes the default, 1 picks option 1, p parks). -->
+<!-- For the coordinator: these frames were rendered before the rows board merged (decision 84), so
+they answer the board in the left pane. `graphene watch` now shows each item as a row under the goal
+and counts the open ones on its status line ("+ N on the board"): shoot B1 and B2 in the right pane
+with its keys instead (y takes the default, 1 picks option 1, p parks, d drops, Enter answers). -->
 
 **B1, 0:30. Left pane, typed: `graphene board` Enter.**
 
