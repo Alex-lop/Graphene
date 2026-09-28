@@ -116,7 +116,7 @@ def prompt_for(
             )
     lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", ""]
     conditions = settings.conditions_for_planner(store)
-    if size and size != settings.size(store):  # this ask's size stands; the saved one's line would contradict it
+    if size and size != settings.size(store):  # this ask's size stands; the saved one's would contradict it
         conditions = "\n".join(c for c in conditions.splitlines() if not c.startswith("The person wants a "))
     if conditions:
         lines += ["The person's standing conditions:", conditions, ""]

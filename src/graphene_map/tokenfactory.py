@@ -69,7 +69,7 @@ def _request(
     if not key:
         raise Unreachable(f"{KEY} is not set: Token Factory needs a key (tokenfactory.nebius.com)")
     if any(c.isspace() for c in key):  # a header cannot carry it, and its error would print the key
-        raise Unreachable(f"the key found holds a space or a line break: set {KEY} or `graphene key set` again")
+        raise Unreachable(f"the key found holds a space or a line break: set {KEY} or `graphene key set`")
     data = json.dumps(body).encode() if body is not None else None
     wait = 2.0
     for attempt in range(1, tries + 1):

@@ -132,7 +132,9 @@ def test_reached_says_what_stood_in_the_way_without_the_key(monkeypatch):
     assert line.startswith("Token Factory: not reached") and "not-shown" not in line and "\n" not in line
 
 
-def test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path(keychain, tmp_path, monkeypatch):
+def test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path(
+    keychain, tmp_path, monkeypatch
+):
     tool = "security" if keys.PLATFORM == "darwin" else "secret-tool"
     broken = tmp_path / "broken" / tool
     broken.parent.mkdir()

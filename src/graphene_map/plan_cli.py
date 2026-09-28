@@ -768,7 +768,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 raise typer.Exit(130) from None
             out(summary(store, since))
 
-    def planner(sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None) -> None:
+    def planner(
+        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
+    ) -> None:
         from .ask import ask, named
 
         who = P.caller()
@@ -799,8 +801,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             "last. Default: the one `graphene init` chose, else claude with read-only tools.",
         ),
         about: str = typer.Option(None, "--about", help="A node the question is about (one that came back)."),
-        finer: bool = typer.Option(False, "--finer", help="A finer plan than the saved size, for this ask only."),
-        coarser: bool = typer.Option(False, "--coarser", help="A coarser plan than the saved size, for this ask only."),
+        finer: bool = typer.Option(False, "--finer", help="Size this ask finer, whatever the saved size."),
+        coarser: bool = typer.Option(False, "--coarser", help="Size this ask coarser, whatever is saved."),
     ) -> None:
         """Ask a planner for a proposal: it reads the repo with read-only tools and prints the tree in
         the plan's text, which is added as proposals for you to prune. Nothing runs."""

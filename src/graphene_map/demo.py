@@ -81,7 +81,7 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~")] if len(home) > 1 else []
-    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # the keychain's too
+    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # keychain's too
     said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
     def hide(value):

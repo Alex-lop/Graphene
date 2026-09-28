@@ -75,7 +75,8 @@ def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(keys, "find", lambda: "tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")
     hide, _ = demo.hider(tmp_path / "work" / "feeds")
-    assert hide("the model said: tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789") == "the model said: [removed]"
+    said = hide("the model said: tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")
+    assert said == "the model said: [removed]"
 
 
 def test_a_base64_secret_with_a_slash_or_a_plus_goes_whole(tmp_path, monkeypatch):

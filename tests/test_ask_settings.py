@@ -45,7 +45,7 @@ def test_finer_sizes_this_ask_only(repo, tmp_path, monkeypatch):
         settings.apply(store, "size: coarser\n", ME)
     person("ask", "add ids", "--finer", "--with", planner(tmp_path, GOOD, monkeypatch))
     prompt = said(tmp_path)
-    assert "(finer)." in prompt and "wants a coarser plan" not in prompt  # this ask's size, not a contradiction
+    assert "(finer)." in prompt and "wants a coarser plan" not in prompt  # this ask's size, no contradiction
     with Store.open(repo) as store:
         assert settings.size(store) == "coarser"
 

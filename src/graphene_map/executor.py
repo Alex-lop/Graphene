@@ -122,7 +122,7 @@ class Local:
         path.write_bytes(data)
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
-        # model-written code never sees the key: not in its environment, nor through Graphene's keychain lookup
+        # model-written code never sees the key: not in its environment, nor through Graphene's keychain
         env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_KEYCHAIN": "off"}
         proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
