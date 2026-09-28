@@ -156,6 +156,11 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
     person = P.Caller(P.person_name(), True)
     try:  # made and rolled back: what the command would meet, it meets here first
         with store.claim():
+            now = P.get(store, target) if node else None
+            if now and now.rev != node.rev:  # offered from what the model read, it would undo the edit
+                say(f"{target} changed while the model was asked (revision {node.rev}, now {now.rev}); "
+                    "nothing is offered: place the note again")  # fmt: skip
+                return None
             if node is None:
                 P.propose(store, [changes], person, files=files)
             else:

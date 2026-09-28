@@ -169,3 +169,21 @@ def test_no_control_character_the_model_writes_reaches_the_terminal_or_the_store
     with Store.open(repo) as store:
         rows = json.dumps(store.node_log(kinds=("suggested",)))
     assert "\\u001b" not in rows and "\\u0007" not in rows and "[2Kis so" in rows
+
+
+def test_an_offer_never_undoes_an_edit_made_while_the_model_was_asked(repo, fake):
+    planned(repo)
+
+    def meanwhile(body):  # the person narrows ids while the model thinks
+        with Store.open(repo) as store:
+            P.edit(store, "ids", {"scope": ["schema.py"]}, ALEX, files=P.tracked(repo))
+        return answer("ids", scope_add=["schema.py"])
+
+    fake([meanwhile])
+    offer, said, _, nodes = routed(repo)
+    assert offer is None and said == [
+        "ids changed while the model was asked (revision 1, now 2); nothing is offered: place the note again"
+    ]
+    assert nodes["ids"].scope == ["schema.py"]
+    with Store.open(repo) as store:
+        assert store.node_log(kinds=("suggested",)) == []
