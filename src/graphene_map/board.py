@@ -10,7 +10,8 @@ effects in the plan's own words (``then:``), applied as the person's edit when i
     scope NODE + GLOB, …      NODE's scope takes in the globs
     check NODE: COMMAND       NODE's check becomes the command
     drop NODE                 NODE leaves the plan
-    leaf TITLE under NODE     a proposed leaf under NODE, for the person to fill in or prune
+    leaf TITLE under NODE     a proposed leaf under NODE (beside it, when NODE is a leaf), for the
+                              person to fill in or prune
     condition GLOB            a condition every plan runs under (``conditions``)
 
 The board lives in the one store, as the plan_meta key ``board`` (a JSON list, in the order the
@@ -181,8 +182,14 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         P.drop(store, node_id, who, now)
         return f"dropped {node_id}"
     if verb == "leaf":
-        leaf = T.slug(what, {n.id for n in P.nodes(store)})
-        P.propose(store, [{"id": leaf, "title": what, "parent": node_id}], who, now, files, proposals={leaf})
+        everything = P.nodes(store)
+        leaf = T.slug(what, {n.id for n in everything})
+        parent = node_id
+        if node_id and not any(n.parent == node_id and n.state not in P.GONE for n in everything):
+            parent = P.get(store, node_id).parent  # a leaf stays a leaf: its work is never left to no one
+        P.propose(store, [{"id": leaf, "title": what, "parent": parent}], who, now, files, proposals={leaf})
+        if parent != node_id:
+            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
     conditions += what
     return f"condition {', '.join(what)}"

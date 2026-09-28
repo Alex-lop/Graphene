@@ -409,3 +409,18 @@ def test_a_board_with_nothing_but_dropped_items_reads_as_empty(repo):
     person("board", "note", "later")
     assert person("board", "drop", "later").exit_code == 0
     assert person("board").stdout == EMPTY + "\n"
+
+
+def test_a_leaf_effect_under_a_leaf_puts_the_new_leaf_beside_it_and_keeps_it_a_leaf(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "feed", "title": "the feed"},
+                          {"id": "zero", "title": "zero price", "parent": "feed", "scope": ["feed.py"],
+                           "check": "true"}], ALEX)  # fmt: skip
+        risk = 'risk: no zero sample  [r]\n    default: add one\n    then: leaf "a sample" under zero\n'
+        T.apply(store, risk, PLANNER, None)
+    took = person("board", "take", "r")
+    assert took.exit_code == 0, took.output
+    assert "  changed: proposed sample beside zero, a leaf, under feed" in took.stdout
+    with Store.open(repo) as store:
+        assert P.get(store, "sample").parent == "feed"
+        assert {n.id for n in P.leaves(P.nodes(store))} == {"zero", "sample"}
