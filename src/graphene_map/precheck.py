@@ -180,7 +180,7 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
     scopes, model = [g for n in everything for g in n.scope if g != "**"], None
     for node in todo:
         if kept.get(node.id):
-            out.append((node, kept[node.id]))
+            out.append((node, {**kept[node.id], "kept": True}))  # shown as kept, never logged again
             continue
         key = (node.check, node.state == P.PROPOSED)
         code, text, where = ran[key]
@@ -215,7 +215,9 @@ def _gist(text: str) -> str:
 def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
     """One line a leaf, then what to do about the marked ones."""
     base = next((d["base"] for _, d in rows if d.get("base")), None)
-    lines = [f"each check before any work, at {base[:7]}:"] if base else []
+    kept = sum(1 for _, d in rows if d.get("kept"))
+    again = f" ({kept} kept from the last run at this commit; --again runs them again)" if kept else ""
+    lines = [f"each check before any work, at {base[:7]}{again}:"] if base else []
     for node, d in rows:
         mark = " " if d["verdict"] in QUIET else "!"
         where = f" · {d['where']}" if d.get("where") not in (None, "here") else ""

@@ -157,7 +157,9 @@ def test_a_verdict_is_kept_until_the_leaf_is_edited(repo):
         C.run(store, repo, fork=fork)
         again = C.run(store, repo, fork=fork)  # current: nothing runs
         assert fork.asked == ["true"] and len(store.node_log("p", ("precheck",))) == 1
-        assert C.current(store, P.get(store, "p"), P.head(repo)) == again[1][1]
+        assert again[1][1]["kept"]
+        assert C.current(store, P.get(store, "p"), P.head(repo))["verdict"] == "passes"
+        assert "2 kept from the last run" in C.said(again)[0]
         P.edit(store, "l0", {"check": "true && true"}, ME)
         assert C.current(store, P.get(store, "l0"), P.head(repo)) is None
 
