@@ -201,6 +201,8 @@ question: one  [one]
     then: check users: test -f api.py
     option: none of it
     then: drop users
+    option: tell it
+    then: goal users + Keep the response shape.
 risk: two  [two]
     default: a leaf
     then: leaf "a sample" under users
@@ -214,6 +216,7 @@ risk: two  [two]
         (["take", "one"], lambda s: P.get(s, "users").scope == ["api.py", "schema.py"]),
         (["pick", "one", "1"], lambda s: P.get(s, "users").check == "test -f api.py"),
         (["pick", "one", "2"], lambda s: P.get(s, "users").state == P.DROPPED),
+        (["pick", "one", "3"], lambda s: P.get(s, "users").goal == "Keep the response shape."),
         (["take", "two"], lambda s: [P.get(s, "sample").state, *B.conditions(s)] == ["proposed", "vendor/*"]),
     ],
 )
@@ -385,7 +388,7 @@ def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
                 ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
             ]  # fmt: skip
             [bill] = store.node_log("*", ("usage",))
-            assert bill["detail"]["prompt"] == 2
+            assert bill["detail"]["prompt"] == 3
     system = f.requests[0]["messages"][0]["content"]
     assert "put a question on the board with the default" in system
     prompt = f.requests[0]["messages"][1]["content"]
@@ -527,15 +530,35 @@ def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(rep
         assert [it["state"] for it in B.items(store)] == ["dropped"]
 
 
-def test_a_condition_is_said_to_be_recorded_for_the_settings_never_changed(repo):
+def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
+    """`then: condition GLOB` was only recorded ("nothing enforces it yet"): it now feeds the settings'
+    read-only list, so a scope over it is refused and `graphene config` shows it, until plan undo."""
+    from graphene_map import settings as S
+
+    (repo / "vendor").mkdir()
+    (repo / "vendor" / "lib.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "vendor"], cwd=repo, check=True)  # judged against what git tracks
     with Store.open(repo) as store:
         T.apply(store, "risk: vendored  [vendor]\n    default: leave it\n    then: condition vendor/**\n",
                 PLANNER, None)  # fmt: skip
+        with pytest.raises(P.Refused, match=r"^line 3: '/etc' is not inside the repo"):
+            T.apply(store, "risk: r  [r]\n    default: d\n    then: condition /etc\n", PLANNER, None)
     took = person("board", "take", "vendor")
-    assert took.stdout.splitlines()[1:] == ["  recorded: condition vendor/**, for the settings"]
-    assert "      recorded: condition vendor/**, for the settings" in person("board").stdout
+    said = "  changed: no leaf may write vendor/** (read-only, as `graphene config` shows)"
+    assert took.stdout.splitlines()[1:] == [said]
+    assert "      changed: no leaf may write vendor/**" in person("board").stdout
     with Store.open(repo) as store:
-        assert B.conditions(store) == ["vendor/**"]  # the seam the settings read
+        assert B.conditions(store) == ["vendor/**"] == S.readonly(store)
+        assert S.for_screen(store)["readonly"] == ["vendor/**"]
+        assert "No leaf may write these paths: vendor/**." in S.conditions_for_planner(store)
+    config = person("config").stdout
+    assert "# readonly, chosen on the board: vendor/** (graphene board; plan undo takes it back)" in config
+    refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
+    assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
+    assert person("plan", "undo").exit_code == 0
+    with Store.open(repo) as store:
+        assert S.readonly(store) == []
+    assert person("node", "add", "lib", "--scope", "vendor/**", "--check", "true").exit_code == 0
 
 
 def test_under_inside_a_quoted_leaf_title_is_the_titles():
@@ -578,3 +601,73 @@ def test_unpark_opens_a_parked_item_again_and_is_one_undoable_command(repo):
     assert person("plan", "undo").stdout == "undid: board unpark int-ids\n"
     with Store.open(repo) as store:
         assert B.get(store, "int-ids")["state"] == "parked"
+
+
+def test_a_goal_effect_ends_the_leafs_goal_with_the_sentence_once_and_is_refused_by_its_line(repo):
+    """A pick that contradicted a leaf's goal left the goal as it was, so the person rewrote it by hand
+    (the evaluation's biggest stall, 11 of 55): `then: goal NODE + TEXT` puts the sentence on the leaf."""
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "wire", "title": "wire", "goal": "Enable the source", "scope": ["api.py"],
+                           "check": "true"}], ALEX)  # fmt: skip
+        said = '    then: goal wire + "Do not enable the source; Ops enables it."\n'
+        asked = "question: who enables it?  [enable]\n    default: we do\n    option: Ops does\n"
+        T.apply(store, asked + said, PLANNER, None)
+        assert said in T.render(store)[0]  # as it was written
+        B.pick(store, "enable", 1, ALEX)
+        assert P.get(store, "wire").goal == "Enable the source. Do not enable the source; Ops enables it."
+        assert B.get(store, "enable")["became"] == ["wire: goal + Do not enable the source; Ops enables it."]
+        with pytest.raises(P.Refused, match=r"^line 3: then: goal ghost \+ x names ghost, which is not a"):
+            T.apply(store, "question: q  [q]\n    default: d\n    then: goal ghost + x\n", PLANNER, None)
+    assert B.effect("goal wire + said twice") == ("goal", "wire", "said twice")
+
+
+PICKED = """```plan
+question: who enables the xml source?  [enable]
+    default: we do, in config/defaults.py
+    option: Ops enables it; we only add the reader
+    then: goal users + "Do not enable the source: Ops does."
+    then: check users: grep -q ids api.py
+? users returns ids  [users]
+    Return ids and enable the source.
+    scope: api.py, schema.py
+    check: grep -q ids api.py && grep -q ids schema.py
+```"""
+RULE = "carries the then: lines that make that change"
+
+
+def _picked_reaches_the_leaf(store):
+    B.pick(store, "enable", 1, ALEX)
+    users = P.get(store, "users")
+    assert users.goal == "Return ids and enable the source. Do not enable the source: Ops does."
+    assert users.check == "grep -q ids api.py"
+
+
+def test_a_script_planner_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf(
+    repo, tmp_path
+):
+    """The evaluation's biggest stall (11 of 55): a pick that contradicted a leaf's goal left the leaf as
+    it was. The planner is now told to write the then: lines, and when it does, the pick changes the leaf."""
+    script = tmp_path / "planner.py"
+    script.write_text(f"import sys\nopen({str(tmp_path / 'prompt.txt')!r}, 'w').write(sys.argv[-1])\n"
+                      f"print({PICKED!r})\n")  # fmt: skip
+    said = person("ask", "users come back with ids", "--with", f"{sys.executable} {script}")
+    assert said.exit_code == 0, said.output
+    prompt = " ".join((tmp_path / "prompt.txt").read_text().split())
+    assert RULE in prompt and 'goal NODE + "SENTENCE"' in prompt
+    with Store.open(repo) as store:
+        _picked_reaches_the_leaf(store)
+
+
+def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf(
+    repo, monkeypatch
+):
+    with Fake([{"content": PICKED}]) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        with Store.open(repo) as store:
+            ask(store, repo, "ids", named("nemotron"), say=lambda _: None)
+            _picked_reaches_the_leaf(store)
+    system, prompt = (" ".join(m["content"].split()) for m in f.requests[0]["messages"][:2])
+    assert "carries the then: lines that make that change (goal, scope, check, drop, leaf)" in system
+    assert RULE in prompt

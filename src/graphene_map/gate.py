@@ -119,6 +119,8 @@ TEACH = (
     "goal: their aim, in one sentence\n"
     "question: what their words leave open and the repo cannot settle  [q-id]\n"
     "    default: what you will assume if they do not answer\n"
+    "    option: another way, when there is one\n"
+    "    then: goal leaf-id + what the leaf does instead, in a sentence\n"
     "assume: what you took for granted that they should confirm  [a-id]\n"
     "- a sub-goal  [short-id]\n"
     "  - a leaf: one piece of work  [leaf-id]\n"
@@ -131,7 +133,11 @@ TEACH = (
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
     "`needs` orders leaves that build on each other. Ask instead of guessing: put up on the board, at the "
     "left edge before the tree, a question: with its default (and option: lines), an assume:, a risk: or a "
-    "leave out: for what the repo cannot answer, never what a file answers. Only the person answers them "
+    "leave out: for what the repo cannot answer, never what a file answers. Write each leaf as the default "
+    "has it; an option (or a default the leaves do not follow) that changes what a leaf does, which files "
+    "it may touch or how it is checked carries the then: lines that make the change (goal LEAF + SENTENCE, "
+    "scope LEAF + GLOB, check LEAF: COMMAND, drop LEAF, leaf \"TITLE\" under NODE), so the answer changes "
+    "the tree. Only the person answers them "
     "(`graphene board`); what they decide is told to you in your leaf's contract."
 )
 FREE = (  # plan first off: the session's judgement, and decision 18 while a plan is in force

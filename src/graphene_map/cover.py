@@ -218,10 +218,10 @@ STAND_IN = " (read by a stand-in, not Nemotron)"
 
 
 def to_board(store, add: Callable[..., dict]) -> list[str]:
-    """Put the last cover's standing clauses on the board, for a board screen to call with
-    ``board.add``: one note each, by shaper:nemotron, about the leaf nearest it as the plan is now,
-    whose default is the offer. The board has no effect that adds to a goal, so taking the default tells
-    that leaf's executor; `graphene plan cover --take N` makes the edit. A clause on the board already
+    """Put the last cover's standing clauses on the board, with ``board.add``: one note each, by
+    shaper:nemotron, about the leaf nearest it as the plan is now, whose default is the offer: taken, its
+    `then: goal LEAF + "CLAUSE"` puts the person's own words at the end of that leaf's goal, as
+    `graphene plan cover --take N` does. A clause on the board already
     (in any state: dropping it there sets it aside), or that its leaf's goal now carries, is not put up.
     Returns the lines to show: how many went up, and one for each that could not."""
     runs = store.node_log("*", ("covered",))
@@ -242,8 +242,8 @@ def to_board(store, add: Callable[..., dict]) -> list[str]:
             if leaf is None:
                 add(store, "note", text, who, default="add it to a leaf in `graphene plan edit`", then=[])
             else:
-                add(store, "note", text, who, default=f"add it to the end of {leaf.id}'s goal", then=[],
-                    about=leaf.id)  # fmt: skip
+                add(store, "note", text, who, default=f"add it to the end of {leaf.id}'s goal",
+                    then=[f'goal {leaf.id} + "{u["note"]}"'], about=leaf.id)  # fmt: skip
             put += 1
         except Exception as no:  # one clause that cannot go up does not keep the others off
             said.append(CONTROL.sub("", f"cover: '{u['note']}' is not on the board: {no}"))
@@ -255,12 +255,17 @@ def shaping() -> set[str]:
 
 
 def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
-    """GRAPHENE_SHAPE=cover: account for the paragraph once the proposal has landed. What goes wrong
-    here is one line; the proposal stands."""
+    """GRAPHENE_SHAPE=cover: account for the paragraph once the proposal has landed, and put each
+    clause no leaf carries on the board (``to_board``). What goes wrong here is one line; the proposal
+    stands."""
     if "cover" in shaping():
+        from . import board
+
         say = plain(say)
         try:
             cover(store, sentence, say)
+            for line in to_board(store, board.add):
+                say(line)
         except P.Refused as no:
             say(f"cover: {no}")
         except Exception as no:  # a helper that runs after the proposal landed never takes the ask down

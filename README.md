@@ -179,7 +179,8 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
   them, the planner is told never to read them, its tools and the hook refuse to, and they are not
   uploaded to a sandbox.
 - **Read-only globs.** `readonly: docs/**`: no leaf may write them; a scope that covers one is
-  refused when it is proposed, edited or started, and a change to one is refused at `done`.
+  refused when it is proposed, edited or started, and a change to one is refused at `done`. A
+  board answer you take with `then: condition GLOB` under it adds its glob here, until `plan undo`.
 - **What the planner must never propose.** `never: add a dependency`, a line each, told to it.
 - **How big a plan is.** `size: auto`, `finer` or `coarser`. The planner is told the repo's files,
   lines and test layout and the directories your ask names, and a number of leaves from them.

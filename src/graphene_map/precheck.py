@@ -27,6 +27,7 @@ from pathlib import Path
 from . import plan as P
 
 FLAG = "precheck"
+SHAPER = "shaper:nemotron"  # who puts the shaping prototypes' output on the board
 PROMPT_VERSION = "precheck-1"
 SAID = {"passes": "passes already", "cannot-run": "cannot run", "not-run": "not run",
         "red-right-reason": "red, for the right reason", "red": "red", "environment": "red: the environment",
@@ -308,12 +309,12 @@ def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
 
 def on_board(store, rows: list[tuple[P.Node, dict]], board=None) -> list[str]:
     """Put each check that cannot tell its leaf is done (it passes already, cannot run, or is red for
-    another reason) on the board, as a risk about that leaf by graphene:precheck, waiting on the person;
+    another reason) on the board, as a risk about that leaf by shaper:nemotron, waiting on the person;
     one a board holds already, not dropped, is not put up again. ``board`` is the board module (its
     ``add`` and ``items``). Returns one line an item: what was put up, or why it was not."""
     if board is None:
-        from . import board  # on the branch that has the board
-    who = P.Caller("graphene:precheck", False)
+        from . import board
+    who = P.Caller(SHAPER, False)  # the shaping prototypes' actor; the text says who read a red
     up = {(it.get("about"), it["text"]) for it in board.items(store) if it.get("state") != "dropped"}
     lines = []
     for node, d in rows:
@@ -339,13 +340,15 @@ def shaped() -> bool:
 
 def after_proposal(store, root: Path, ids) -> list[str]:
     """`graphene ask` with GRAPHENE_SHAPE=precheck: the lines saying the checks of the leaves this
-    proposal just proposed (``ids``), each run first in a sandbox fork. An accepted leaf's check is never
+    proposal just proposed (``ids``), each run first in a sandbox fork, and each that cannot tell its
+    leaf is done put on the board as a risk (``on_board``). An accepted leaf's check is never
     run by an ask; it runs here only when the person says `graphene plan precheck`."""
     if not shaped():
         return []
     try:
         new = [i for i in dict.fromkeys(ids) if (store.node_row(i) or {}).get("state") == P.PROPOSED]
-        return said(run(store, root, new)) if new else []
+        rows = run(store, root, new) if new else []
+        return [*said(rows), *on_board(store, rows)] if rows else []
     except Exception as no:  # the proposal has landed: nothing here may turn that into a failed ask
         return [f"! the checks were not run first: {' '.join(str(no).split())[:200]}"]
 

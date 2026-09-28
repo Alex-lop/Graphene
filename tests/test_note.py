@@ -283,7 +283,7 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
         put.append(dict(kind=kind, text=text, by=who.label, agent=not who.person, default=default, then=then))
         return {**put[-1], "about": about}
 
-    board.add = add
+    board.add, board.conditions = add, lambda _store: []  # the settings read its conditions
     monkeypatch.setitem(sys.modules, "graphene_map.board", board)  # lane A's board, as its add() is called
     import graphene_map
 
@@ -294,16 +294,15 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
     with Store.open(repo) as store:
         item = note.to_board(store, repo, "ids come back sorted")
         assert item == {
-            "kind": "note", "by": "note:nemotron", "agent": True, "about": "ids",
+            "kind": "note", "by": "shaper:nemotron", "agent": True, "about": "ids",
             "text": "you said 'ids come back sorted'; a stand-in, not Token Factory, places it on ids: "
             "it says so",
             "default": "take it: scope ids + schema.py; check ids: grep -q sorted api.py",
             "then": ["scope ids + schema.py", "check ids: grep -q sorted api.py"],
         }  # fmt: skip
-        item = note.to_board(store, repo, "ids come back sorted")
-        assert item["then"] == [] and item["default"] == (
-            "run it yourself: graphene node set ids --goal 'users returns ids; ids come back sorted'"
-        )
+        item = note.to_board(store, repo, "ids come back sorted")  # a goal is in the board's forms now
+        assert item["then"] == ['goal ids + "ids come back sorted"']
+        assert item["default"] == 'take it: goal ids + "ids come back sorted"'
         said = []
         assert note.to_board(store, repo, "ids come back sorted", say=said.append) is None and len(said) == 1
     fake([answer("ids", goal_add=True)])
@@ -319,3 +318,29 @@ def test_to_board_says_an_unreachable_model_in_one_line_instead_of_raising(repo,
     with Store.open(repo) as store:
         assert note.to_board(store, repo, "ids come back sorted", say=said.append) is None
     assert len(said) == 1 and said[0].startswith("the note was not placed: Token Factory answered 500")
+
+
+def test_a_board_note_with_the_note_flag_is_routed_and_its_offer_taken_changes_the_leaf(
+    repo, fake, monkeypatch
+):
+    """GRAPHENE_SHAPE=note: `graphene board note` puts the person's note up as written, then the offer
+    by shaper:nemotron (a stand-in here, and said so), whose default, taken, makes the whole change."""
+    planned(repo)
+    fake([answer("ids", scope_add=["schema.py"], goal_add=True)])
+    assert person("board", "note", "ids come back sorted").exit_code == 0  # no flag: no model is asked
+    monkeypatch.setenv("GRAPHENE_SHAPE", "note")
+    said = person("board", "note", "ids come back sorted")
+    assert said.exit_code == 0, said.output
+    offer = [line for line in said.stdout.splitlines() if line.startswith("put up ")]
+    assert offer and "a stand-in, not Token Factory, places it on ids" in offer[0], said.stdout
+    assert 'take it: scope ids + schema.py; goal ids + "ids come back sorted"' in said.stdout
+    item_id = offer[0].split()[2].rstrip(":")
+    from graphene_map import board as B
+
+    with Store.open(repo) as store:
+        assert B.get(store, item_id)["by"] == "shaper:nemotron"
+    assert person("board", "take", item_id).exit_code == 0
+    with Store.open(repo) as store:
+        ids = P.get(store, "ids")
+        assert (ids.scope, ids.goal) == (["api.py", "schema.py"], "ids come back sorted")
+    assert agent("board", "note", "later").exit_code == 0  # an agent's note is never routed: nothing spent
