@@ -402,3 +402,18 @@ def test_the_precheck_flag_puts_each_weak_check_on_the_board_after_an_ask(repo, 
         assert up == [("one", "risk", "shaper:nemotron"), ("two", "risk", "shaper:nemotron")]
         assert "read by Nemotron-3-Nano-fake, a stand-in" in B.items(store)[1]["text"]
     assert sum(line.startswith("put up ") for line in lines) == 2
+
+
+def test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off(repo, monkeypatch, tmp_path):
+    """As `node done` runs it: a check runs code an executor wrote, so Graphene's own lookup is off in it.
+    A fake `security` stands in for the keychain, so the real one is never asked."""
+    shims = tmp_path / "shims"
+    shims.mkdir()
+    (shims / "security").write_text("#!/bin/sh\nexit 44\n")
+    (shims / "security").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shims}:{__import__('os').environ['PATH']}")
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "on")
+    with Store.open(repo) as store:
+        leaves(store, 'test "$GRAPHENE_KEYCHAIN" = off', who=ME)
+        [(_, seen)] = C.run(store, repo, ["l0"])
+    assert seen["verdict"] == "passes" and seen["where"] == "here"

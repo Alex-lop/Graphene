@@ -715,3 +715,35 @@ def test_an_answer_in_words_to_an_item_whose_default_changes_the_plan_says_it_ch
     )
     plain = person("board", "answer", "shape", "keep", "it").stdout.splitlines()
     assert len(plain) == 1  # a note has no change to apply: nothing more is said
+
+
+def test_a_condition_over_a_leafs_scope_names_that_leaf(repo):
+    """A board condition is a read-only glob as a setting is, so a take that newly covers a leaf's scope
+    names the leaf, as a `graphene config` save does, before an executor is sent to it."""
+    added = person("node", "add", "users", "--id", "users", "--scope", "api.py", "--check", "true")
+    assert added.exit_code == 0, added.output
+    with Store.open(repo) as store:
+        T.apply(store, "risk: shared  [shared]\n    default: d\n    then: condition api.py\n", PLANNER, None)
+    took = person("board", "take", "shared")
+    assert took.exit_code == 0, took.output
+    assert "users: its scope (api.py) now covers api.py, kept out by `readonly: api.py`" in took.stdout
+
+
+def test_one_answer_cannot_widen_a_scope_over_its_own_condition(repo):
+    """The answer's condition binds its own scope effect, as it would one taken after it."""
+    added = person("node", "add", "users", "--id", "users", "--scope", "api.py", "--check", "true")
+    assert added.exit_code == 0, added.output
+    with Store.open(repo) as store:
+        T.apply(store, "risk: both  [both]\n    default: d\n    then: scope users + schema.py\n"
+                "    then: condition schema.py\n", PLANNER, None)  # fmt: skip
+    took = person("board", "take", "both")
+    assert took.exit_code == 1 and "`readonly: schema.py` keeps out of every scope" in took.output
+    with Store.open(repo) as store:
+        assert P.get(store, "users").scope == ["api.py"] and B.conditions(store) == []
+
+
+def test_a_condition_that_differs_from_a_tracked_path_only_in_case_is_refused(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "risk: r  [r]\n    default: d\n    then: condition API.py\n", PLANNER, None)
+    took = person("board", "take", "r")
+    assert took.exit_code == 1 and "`API.py` matches nothing git tracks, and `api.py` differs" in took.output

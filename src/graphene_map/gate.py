@@ -429,7 +429,7 @@ def scope_refused(
     refusal is logged on the node, where a hand-back's offers are read from. The Claude Code hook and
     the Nemotron executor's write tools both say it, so an agent of either meets the same words."""
     standing = P.standing(store)
-    if any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held):
+    if any(P.binds(rel, n, standing) for n in held):
         return None
     n = held[0]
     store.log_node(n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
@@ -617,12 +617,13 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
-            bound = held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)
+            bound = held and any(P.binds(rel, n, standing) for n in held)
             if rel is not None and not bound:
                 rels.append(rel)
-        ignored = _ignored(root, rels)  # a build leftover git ignores is nobody's change
+        # a build leftover git ignores is nobody's change; a standing path (an ignored .env) is never one
+        ignored = {r for r in _ignored(root, rels) if not P.kept_out_by(r, standing)}
         for rel in rels:
-            if rel in ignored or (held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)):
+            if rel in ignored or (held and any(P.binds(rel, n, standing) for n in held)):
                 continue
             answer = _check_write(store, held, rel, event, "shell", root)
             if answer is not None:
@@ -637,9 +638,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
-        bound = [P.as_scoped(n, P.standing(store)) for n in held]
-        stray = [r for r in changed if r and not any(P.in_scope(r, b) for b in bound)]
-        ignored = _ignored(root, stray)
+        standing = P.standing(store)
+        stray = [r for r in changed if r and not any(P.binds(r, n, standing) for n in held)]
+        ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:
             return None

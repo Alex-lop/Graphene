@@ -80,8 +80,28 @@ def test_counting_stops_once_the_largest_bucket_is_reached_and_skips_lockfiles(t
 
     files = repo(tmp_path, {f"m{i:02}.py": 1000 for i in range(40)} | {"uv.lock": 50000})
     read = []
-    real = Path.read_bytes
-    monkeypatch.setattr(Path, "read_bytes", lambda self: read.append(self.name) or real(self))
+    real = Path.open
+    monkeypatch.setattr(Path, "open", lambda self, *a, **k: read.append(self.name) or real(self, *a, **k))
     said = measure(tmp_path, "go", files)
     assert "over 20,000 lines" in said and len(read) == 20 and "uv.lock" not in read
     assert "over 20,000" not in measure(tmp_path, "go", ["uv.lock", "m00.py"])  # a lockfile is not code
+
+
+def test_a_link_or_a_fifo_is_not_read_so_the_count_cannot_hang(tmp_path):
+    """A tracked link to a FIFO (or to /dev/zero) blocked `graphene ask` for good: only regular files are
+    read, and each only up to a cap."""
+    import multiprocessing
+    import os
+
+    files = repo(tmp_path, {"api.py": 3})
+    os.mkfifo(tmp_path / "fifo")
+    (tmp_path / "notes.txt").symlink_to(tmp_path / "fifo")
+    (tmp_path / "zero.txt").symlink_to("/dev/zero")
+    files += ["notes.txt", "zero.txt", "fifo"]
+    counting = multiprocessing.get_context("fork").Process(target=measure, args=(tmp_path, "add ids", files))
+    counting.start()
+    counting.join(8)
+    hung = counting.is_alive()
+    counting.kill()
+    assert not hung
+    assert "4 files and 3 lines" in measure(tmp_path, "add ids", files)

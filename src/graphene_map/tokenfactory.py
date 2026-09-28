@@ -92,6 +92,9 @@ def _request(
         raise Unreachable(f"{KEY} is not set: Token Factory needs a key (tokenfactory.nebius.com)")
     if any(c.isspace() for c in key):  # a header cannot carry it, and its error would print the key
         raise Unreachable(f"the key found holds a space or a line break: set {KEY} or `graphene key set`")
+    if not (key.isascii() and key.isprintable()):  # a pasted en dash: the header is never built
+        raise Unreachable(f"the key found holds a character that is not plain ASCII letters, digits and "
+                          f"punctuation (a pasted dash?): set {KEY} or `graphene key set` again")  # fmt: skip
     data = json.dumps(body).encode() if body is not None else None
     wait = 2.0
     for attempt in range(1, tries + 1):
@@ -107,7 +110,8 @@ def _request(
                 raise Unreachable(f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
                                   "GRAPHENE_TOKENFACTORY_URL?") from None  # fmt: skip
         except urllib.error.HTTPError as no:
-            said = no.read().decode("utf-8", "replace")[:300]
+            # a gateway's page may echo the Authorization header: the key goes before the cut can halve it
+            said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key, "…"))[:300]
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)

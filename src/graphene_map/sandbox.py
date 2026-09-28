@@ -393,7 +393,7 @@ class Sandbox:
 
         hidden = settings.protected(store) if store is not None else []  # never uploaded, so never read
         files = P.in_tree(source)
-        kept_back = [f for f in files if P.in_scope(f, hidden)]
+        kept_back = [f for f in files if P.covers(hidden, f)]
         files = [f for f in files if f not in kept_back]
         dirs = {str(p) for f in files for p in Path(f).parents if str(p) != "."}
         began = time.monotonic()
