@@ -95,12 +95,14 @@ def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
     return plan_view.at_once(nodes, {i for i, w in words.items() if w == "came back"})
 
 
-def note(nodes: list[P.Node], words: dict[str, str]) -> str:
-    """What the graph says at a glance, for the bottom line, the critical path first so 80 columns
-    never cut it: `critical ━ a > b > c (3) · 2 ready · 1 more once accepted · 2 wait · 1 running ·
-    1 on you · 4 done`. "ready" is what `R` starts, the status line's own count; "once accepted" is
-    a proposal that could start as soon as it is; "wait" is every other leaf not done. Every leaf is
-    counted once, so the counts add up to the leaves drawn. A path of one leaf is no path."""
+def note(nodes: list[P.Node], words: dict[str, str], width: int | None = None) -> str:
+    """What the graph says at a glance, for the bottom line, the critical path first: `critical ━
+    a > b > c (3) · 2 ready · 1 more once accepted · 2 wait · 1 running · 1 on you · 4 done`. "ready"
+    is what `R` starts, the status line's own count; "once accepted" is a proposal that could start as
+    soon as it is; "wait" is every other leaf not done. Every leaf is counted once, so the counts add
+    up to the leaves drawn. A path of one leaf is no path. Past four leaves, or past ``width`` (the
+    graph's, which the status line has too), the path's middle goes (`a > … > f`) before its last
+    leaf, its length or a count does."""
     g = _graph(nodes)
     if not g.leaves:
         return "no leaves yet"
@@ -112,14 +114,20 @@ def note(nodes: list[P.Node], words: dict[str, str]) -> str:
         word = words.get(n.id, "")
         later = "once accepted" if n.id in now and word == "proposed" else "wait"
         count[KINDS.get(word) or ("ready" if word == "ready" else later)] += 1
-    path = critical_path(nodes)
-    shown = path if len(path) <= 4 else [*path[:2], "…", path[-1]]
-    said = [f"critical ━ {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []
-    said.append(f"{count['ready']} ready" if count["ready"] else "none ready")
+    said = [f"{count['ready']} ready" if count["ready"] else "none ready"]
     if count["once accepted"]:
         said.append(f"{count['once accepted']}{' more' if count['ready'] else ''} once accepted")
     said += [f"{count[k]} {k}" for k in ("wait", "running", "on you", "done") if count[k] or k == "wait"]
-    return " · ".join(said)
+    path, counts = critical_path(nodes), " · ".join(said)
+    if len(path) < 2:
+        return counts
+    k = len(path)
+    forms = [path] * (k <= 4) + [[*path[:j], "…", path[-1]] for j in (2, 1) if j < k - 1] + [["…", path[-1]]]
+    for form in forms:
+        line = f"critical ━ {' > '.join(form)} ({k}) · {counts}"
+        if width is None or cell_len(line) <= width:
+            break
+    return line
 
 
 # -- where everything goes ---------------------------------------------------------------------------
@@ -338,7 +346,7 @@ def draw(
         text.rstrip()
         lines.append(text)
     order = sorted(at, key=lambda i: (g.level[i], row[i]))
-    return Drawn(lines=lines, at=at, order=order, note=note(nodes, words))
+    return Drawn(lines=lines, at=at, order=order, note=note(nodes, words, width))
 
 
 def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str, str]]:

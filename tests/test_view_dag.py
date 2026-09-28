@@ -7,7 +7,7 @@ import sys
 import types
 from dataclasses import dataclass
 
-from rich.cells import split_graphemes
+from rich.cells import cell_len, split_graphemes
 from rich.text import Text
 
 try:
@@ -206,6 +206,21 @@ def test_an_accepted_leaf_with_a_proposed_child_is_drawn_and_on_the_path():
     said = drawn.note
     assert said.startswith("critical ━ a > b > c (3)")
     assert sum(int(part.split()[0]) for part in said.split(" · ")[1:]) == 4
+
+
+def test_the_note_keeps_the_paths_end_and_every_count_at_the_width_it_is_drawn_at():
+    """The note shortened a path past four leaves only: four ids of a dozen letters drew at 80, and
+    the status line cut the note's last leaf, its count and "1 ready" (`critical ━ … > write-report >…`)."""
+    ids = ["parse-billing", "reconcile-rows", "write-report", "notify-finance"]
+    nodes = [leaf(i, "x", ids[k - 1 : k]) for k, i in enumerate(ids)]
+    for width in (73, 78, 90):
+        said = V.draw(nodes, words_of(nodes), "", width, 24, None).note
+        assert cell_len(said) <= width and said.endswith(" > notify-finance (4) · 1 ready · 3 wait"), said
+    assert V.draw(nodes, words_of(nodes), "", 90, 24, None).note == (
+        "critical ━ parse-billing > reconcile-rows > … > notify-finance (4) · 1 ready · 3 wait"
+    )
+    assert V.draw(nodes, words_of(nodes), "", 78, 24, None).note.startswith("critical ━ parse-billing > … >")
+    assert " > write-report > " in V.note(nodes, words_of(nodes))  # no width: the whole path
 
 
 def style_at(line, x):
