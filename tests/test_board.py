@@ -699,8 +699,7 @@ def test_a_finer_ask_that_drops_a_leaf_a_board_answer_changed_says_the_change_is
     sentence, planner = "users should come back with their ids", f"{sys.executable} {script}"
     again = person("ask", sentence, "--finer", "--with", planner)
     assert again.exit_code == 0, again.output
-    lost = [ln for ln in again.stdout.splitlines() if "which-id" in ln and "not on the new tree" in ln]
-    assert lost and "users: scope + schema.py" in lost[0] and "graphene node set" in lost[0], again.stdout
+    assert "users is dropped, and with it its scope + schema.py (from which-id)" in again.stdout, again.stdout
 
 
 def test_an_answer_in_words_to_an_item_whose_default_changes_the_plan_says_it_changed_nothing(repo, tmp_path):
@@ -747,3 +746,81 @@ def test_a_condition_that_differs_from_a_tracked_path_only_in_case_is_refused(re
         T.apply(store, "risk: r  [r]\n    default: d\n    then: condition API.py\n", PLANNER, None)
     took = person("board", "take", "r")
     assert took.exit_code == 1 and "`API.py` matches nothing git tracks, and `api.py` differs" in took.output
+
+
+def test_an_item_about_a_node_that_left_the_plan_is_not_answered_and_the_pane_says_told_to_no_one(repo):
+    from graphene_map import board_rows as BR
+
+    with Store.open(repo) as store:
+        users = {"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}
+        P.propose(
+            store, [users, {"id": "docs", "title": "docs", "scope": ["README.md"], "check": "true"}], ALEX
+        )
+        asked = "question: which id?  [which-id]\n    default: the row id\n    about: users\n"
+        asked += "question: which docs?  [which-docs]\n    default: the readme\n    about: docs\n"
+        T.apply(store, asked, PLANNER, None)
+    assert person("board", "take", "which-docs").exit_code == 0
+    assert person("node", "drop", "users").exit_code == 0
+    assert person("node", "drop", "docs").exit_code == 0
+    for act in (["take", "which-id"], ["answer", "which-id", "a", "uuid"]):
+        refused = person("board", *act)
+        assert refused.exit_code == 1 and "which-id is about users, which has left the plan" in refused.stderr
+    assert person("board", "drop", "which-id").exit_code == 0  # dropping it is still the person's
+    with Store.open(repo) as store:
+        board = BR.read(store)
+        pane = str(BR.pane(board, BR.Row("item", "which-docs"), {n.id: n for n in P.nodes(store)}, 80))
+    assert "to no one: docs has left the plan" in pane and "the executors of docs" not in pane
+
+
+def test_plan_edit_does_not_reword_an_item_already_answered(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        asked = "question: which id?  [which-id]\n    default: the row id\n    then: condition schema.py\n"
+        T.apply(store, asked + "    about: users\n", PLANNER, None)
+        B.take(store, "which-id", ALEX)
+        text, opened = T.render(store)
+        edited = text.replace("default: the row id", "default: a new uuid").replace(
+            "condition schema.py", "condition api.py"
+        )
+        with pytest.raises(
+            P.Refused, match=r"^line \d+: \[which-id\] is taken \(the row id\); `graphene plan undo`"
+        ):
+            T.apply(store, edited, ALEX, opened)
+        assert B.get(store, "which-id")["default"] == "the row id" and B.conditions(store) == ["schema.py"]
+        T.apply(store, text.replace("which id?  [which-id]", "which id, then?  [which-id]"), ALEX, opened)
+
+
+def test_a_goal_effect_is_skipped_only_when_the_goal_has_that_sentence_not_when_it_says_the_opposite(repo):
+    no_uuid = "Return the row id; do not add a uuid column."
+    assert P.goal_plus(no_uuid, "add a uuid column.") == f"{no_uuid} add a uuid column."
+    assert P.goal_plus("Do not enable the source.", "Enable the source.") is not None
+    assert P.goal_plus("Keep ids", "id") == "Keep ids. id"
+    assert P.goal_plus("Keep ids. Return them sorted.", "return them sorted") is None  # it has it already
+    assert P.goal_plus("Keep ids; add a uuid column", "Add a uuid column.") is None
+    with Store.open(repo) as store:
+        users = {"id": "users", "title": "users", "goal": no_uuid, "scope": ["api.py"], "check": "true"}
+        P.propose(store, [users], ALEX)
+        T.apply(store, "question: which id?  [which-id]\n    default: the row id\n    option: a uuid column\n"
+                "    then: goal users + add a uuid column.\n", PLANNER, None)  # fmt: skip
+    picked = person("board", "pick", "which-id", "1")
+    assert "users: goal + add a uuid column." in picked.stdout and "says it already" not in picked.stdout
+
+
+def test_dropping_an_answered_item_says_the_read_only_glob_it_lifts_and_the_edits_that_stay(repo):
+    risk = "risk: someone edits schema.py  [schema]\n    default: leave it\n    then: condition schema.py\n"
+    risk += "    then: goal users + Never touch the schema.\n"
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, risk + "risk: again  [again]\n" + risk.split("\n", 1)[1], PLANNER, None)
+    assert person("board", "take", "schema").exit_code == 0
+    dropped = person("board", "drop", "schema").stdout.splitlines()
+    assert dropped[1:] == [
+        "  no longer read-only: schema.py",
+        "  what it changed stays: users: goal + Never touch the schema.",
+    ]
+    assert person("board", "take", "again").exit_code == 0
+    with Store.open(repo) as store:
+        text, opened = T.render(store)
+        start = text.index("risk: again")
+        said = T.apply(store, text[:start] + text[text.index("\n- ", start) :], ALEX, opened)
+    assert any("no longer read-only: schema.py" in line for line in said), said

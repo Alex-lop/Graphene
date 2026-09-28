@@ -219,25 +219,25 @@ def reask_argv(store, size: str) -> list[str] | None:
     return ["graphene", "ask", asked[-1]["note"], *(["--with", planner] if planner else []), f"--{size}"]
 
 
-def _not_carried(store, dropped: set[str]) -> list[str]:
-    """What a board answer changed on a node this ask dropped with the tree it replaced: the new tree's
-    ids are the planner's, so the change is not carried over, and the person is told where it went."""
-    return [
-        f"the board's {it['id']} changed {line}, and {line.split(':')[0]} went with the old tree: its change "
-        "is not on the new tree (`graphene node set` puts it on a leaf)"
-        for it in B.items(store)
-        for line in it.get("became") or []
-        if line.split(":")[0] in dropped
-    ]
+def _last_ask(store) -> str | None:
+    """The session of the last ask of the whole plan that proposed anything (not a split, a follow-up
+    about one node, or an ask whose planner failed)."""
+    proposing = {r["session_id"] for r in store.node_log(None, ("proposed",))}
+    asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
+    return next((a["session"] for a in reversed(asked) if a.get("session") in proposing), None)
 
 
-def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
-    """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
-    to prune in their place, not a second beside them. What the person answered about a dropped node
-    becomes about the whole plan (``board.rehome``), and a goal sentence an answer added to one is
+def _replace_last(store, say: Callable[[str], None], session: str | None) -> list[str] | None:
+    """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
+    another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
+    place, not a second beside it. What the person answered about a dropped node
+    becomes about the whole plan (``board.rehome``), and the goal, scope or check an answer gave one is
     named, so neither goes nowhere unsaid. Returns what stands, for the planner (None: nothing was
     dropped)."""
-    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
+    mine = {
+        r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
+    }
+    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
     ids = {n.id for n in pending}
     dropped = []
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
@@ -249,19 +249,40 @@ def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
     if not dropped:
         return None
     gone = {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
-    for line in _not_carried(store, gone):
-        say(line)
     stands = []
     for item, was in B.rehome(store, gone, P.caller()):
         say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")
-        stands.append(B.said(item))
+        stands += [B.said(item)] if B.told(item) or item["state"] == "parked" else []  # an answer
     for item in B.items(store):
-        for line in item.get("became") or []:
-            node, _, what = line.partition(": goal + ")
-            if what and node in gone and item["state"] != "dropped":
-                say(f"{node} is dropped, and with it its goal + {what} (from {item['id']})")
-                stands.append(f'{B.said(item)} (it added to the goal of {node}: "{what}")')
+        for line in item.get("became") or []:  # what the answer did to a dropped node: its goal, scope, check
+            node, _, what = line.partition(": ")
+            if not what or node not in gone or item["state"] == "dropped" or what.startswith("its goal says"):
+                continue
+            say(f"{node} is dropped, and with it its {what} (from {item['id']})")
+            sentence = what.removeprefix("goal + ")
+            stands.append(
+                f'{B.said(item)} (it added to the goal of {node}: "{sentence}")'
+                if sentence != what
+                else f"{B.said(item)} (it changed {node}: {what})"
+            )
     return stands
+
+
+class _Rehearsed(Exception):
+    """Raised to roll back a replacement made only to learn what would stand."""
+
+
+def _what_stands(store, session: str | None) -> list[str] | None:
+    """What ``_replace_last`` would leave standing, for the planner's prompt, with nothing dropped: the
+    drop is made for real only with the new proposal, in its transaction, so a planner that fails or a
+    proposal Graphene refuses leaves the tree it would have replaced as it was."""
+    kept: list = []
+    try:
+        with store.claim():
+            kept.append(_replace_last(store, lambda _: None, session))
+            raise _Rehearsed
+    except _Rehearsed:
+        return kept[0]
 
 
 def ask(
@@ -286,13 +307,14 @@ def ask(
     session = str(uuid.uuid4())
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
-    row = {"note": sentence, "about": about, "with": planner}
+    last = _last_ask(store)  # the ask a re-ask replaces: the one before this
+    row = {"note": sentence, "about": about, "with": planner, "session": session}
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    stands = _replace_last(store, say) if size and about is None and not split else None
+    stands = _what_stands(store, last) if size and about is None and not split else None
     if stands is not None:  # asked again, finer or coarser
         stand = "".join(f"\n- {line}" for line in stands)
         stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
@@ -320,12 +342,17 @@ def ask(
             tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
             refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
+            heard: list[str] = []  # what the replacement says, said once it has been made
             try:
                 with store.claim():
+                    if stands is not None:
+                        _replace_last(store, heard.append, last)
                     said = T.apply(store, text, who, None, files=files)
             except P.Refused as no:
                 refusal = f"Graphene could not read the proposal: {no}"
             else:
+                for line in heard:
+                    say(line)
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
                 if rest:  # its lines as it wrote them (a list stays a list), not run together
                     lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
