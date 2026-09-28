@@ -406,7 +406,7 @@ def demo_run(r: Rung) -> str:
 
 # number: (name, what it may spend in dollars at list price, how long it takes live, the rung)
 RUNGS = {
-    1: ("access, typed by you", 0.25, "1 min", access),
+    1: ("access to Token Factory", 0.25, "1 min", access),
     2: ("one leaf local on Nemotron", 0.50, "2-5 min", local),
     3: ("one leaf in a Sandbox", 0.50, "3-8 min", in_sandbox),
     4: ("the escape test in the Sandbox", 0.05, "2-5 min", escape),
@@ -577,7 +577,8 @@ def main(argv: list[str]) -> int:
         status()
         return 0
     if args and not (args[0].isdigit() and int(args[0]) in RUNGS):
-        print(__doc__.split("\n\n")[1])
+        for line in __doc__.split("\n\n")[1].splitlines():
+            say(line)
         return 2
     whole = DRY and not args  # the dry run climbs the whole ladder, from nothing
     if whole:

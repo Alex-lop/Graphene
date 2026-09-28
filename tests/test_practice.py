@@ -90,3 +90,11 @@ def test_the_dry_run_removes_only_a_state_it_made(tmp_path):
     assert done.returncode == 2 and (state / "mine.txt").read_text() == "not the ladder's"
     assert "the ladder did not make" in done.stdout and "nothing was removed" in done.stdout
     assert not (tmp_path / "work").exists()
+
+
+def test_every_line_of_the_dry_run_says_so(tmp_path):
+    for args in (["--dry", "nine"], ["--dry", "status"]):
+        said = ladder(tmp_path, *args).stdout
+        lines = said.strip().splitlines()
+        assert lines and all(ln.startswith("dry run, stand-ins · ") for ln in lines)
+        assert "typed by you" not in said  # the dry run types everything itself
