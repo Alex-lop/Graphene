@@ -195,6 +195,19 @@ def test_the_notes_counts_add_up_to_the_leaves_and_a_flat_plan_has_no_critical_p
     assert V.note(flat, words_of(flat)) == "3 ready · 0 wait"
 
 
+def test_an_accepted_leaf_with_a_proposed_child_is_drawn_and_on_the_path():
+    """What `node split` leaves: the graph took c for a sub-goal and drew its proposed child in its
+    place, while the note named c on the critical path and `graphene plan` counted four leaves."""
+    nodes = diamond_and_chain()[:2] + [leaf("c", "write it", ["b"]), leaf("kid", "a piece of c", parent="c")]
+    nodes[-1].state = P.PROPOSED
+    drawn = checked(nodes, 80)
+    assert V.critical_path(nodes) == ["a", "b", "c"]
+    assert set(drawn.at) == {n.id for n in P.leaves(nodes)} == {"a", "b", "c", "kid"}
+    said = drawn.note
+    assert said.startswith("critical ━ a > b > c (3)")
+    assert sum(int(part.split()[0]) for part in said.split(" · ")[1:]) == 4
+
+
 def style_at(line, x):
     return " ".join(str(span.style) for span in line.spans if span.start <= x < span.end)
 

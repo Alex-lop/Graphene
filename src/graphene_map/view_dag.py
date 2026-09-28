@@ -28,7 +28,7 @@ from rich.text import Text
 
 from . import plan as P
 from . import plan_view
-from .plan_view import depths, outline
+from .plan_view import depths, leaf_needs, outline
 from .views import Drawn, elide, graphemes
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
@@ -68,16 +68,11 @@ class _Graph:
 
 
 def _graph(nodes: list[P.Node]) -> _Graph:
-    under = P.kids(nodes, drawn=True)
-    by_id = {n.id: n for n in nodes}
-    leaves = [n for n, _ in outline(nodes) if not under.get(n.id)]
-    ids = {n.id for n in leaves}
-    raw: dict[str, list[str]] = {}
-    for leaf in leaves:
-        got = []
-        for need in P.all_needs(leaf, by_id):
-            got += [need] if need in ids else [n.id for n in P.below(need, nodes) if n.id in ids]
-        raw[leaf.id] = [i for i in dict.fromkeys(got) if i != leaf.id]
+    """The leaves and what each waits on are the critical path's own (`plan_view.leaf_needs`): a
+    proposed child under an accepted leaf does not make it a sub-goal, so both are drawn."""
+    listed, raw = leaf_needs(nodes)
+    ids = {n.id for n in listed}
+    leaves = [n for n, _ in outline(nodes) if n.id in ids]
     waits = [replace(n, needs=raw[n.id]) for n in leaves]
     level = depths(waits)
     raw = {i: [x for x in r if level[x] < level[i]] for i, r in raw.items()}  # a cycle: validate refuses it
