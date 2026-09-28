@@ -1172,6 +1172,19 @@ as written and the change is named here.
 
     *Evidence:* `docs/test/results-2026-09-28-shaping.md` ("Study 2 results"); each run's
     `judge.md` under `~/graphene-shaping-runs/`.
+99. **The planner puts up at most three board items, each one a question or a risk whose answer
+    changes the tree (prompt version 4). This revises 82 and 83.** An assumption it is sure of is
+    a sentence in the goal of the leaf it bears on, not an item, and it never puts up an item
+    whose answer would change nothing. *Why:* 98's cost was mostly reading the board on top of the
+    tree. *Evidence:* study 3, registered before its runs as exploratory and after the fact (the
+    change was made because of study 2, on the same four tasks and cards, so it can show which way
+    the direction moves and never confirm it). The planner put up 1 or 2 items where study 2's had
+    put up 5 or 6. The board still cost more than the outline on all four tasks, but the gap in
+    modelled person-seconds shrank on each (feeds +349 against +608, inventory +323 against +637,
+    logs +399 against +498, report +273 against +357), and the plan was as faithful or more on all
+    four. `tests/test_ask.py::test_the_planner_is_told_the_board_carries_only_what_changes_the_tree`;
+    `docs/test/results-2026-09-28-shaping.md` ("Study 3"); runs under `~/graphene-shaping3-runs/`.
+    98's claim stands: the board does not yet save attention.
 
 ## What does not bind (say it wherever you sell it)
 
