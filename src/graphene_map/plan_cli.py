@@ -14,6 +14,7 @@ from pathlib import Path
 
 import typer
 
+from . import cover
 from . import gate as G
 from . import plan as P
 from . import plan_text as T
@@ -365,6 +366,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         help="The shared plan: what will be done, by whom, inside which paths.", invoke_without_command=True
     )
     cli.add_typer(plan_cli, name="plan")
+    cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
 
     @plan_cli.callback()
     def show_plan(
