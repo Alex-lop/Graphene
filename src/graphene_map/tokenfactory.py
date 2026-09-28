@@ -1,7 +1,8 @@
 """Token Factory: Nebius's OpenAI-compatible inference API, which the Nemotron planner and executor call.
 
 Standard library only: two endpoints (the model list and chat completions) need no client library.
-The key is read from ``NEBIUS_API_KEY`` when a call is made, sent in one header, and written nowhere:
+The key is found when a call is made (``keys.find``: ``NEBIUS_API_KEY``, then the keychain), sent in one
+header, and written nowhere:
 not in the store, a log, the ledger or a recording.
 
 Model ids are never written here. ``roles`` reads them from the live list (``GET /models``), so an id
@@ -23,6 +24,8 @@ import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from graphene_map import keys
 
 BASE = "https://api.tokenfactory.nebius.com/v1/"
 KEY = "NEBIUS_API_KEY"
@@ -62,7 +65,7 @@ def _request(
     method: str, path: str, body: dict | None = None, timeout: float = 60, tries: int = TRIES
 ) -> tuple[dict, dict]:
     """One request, tried again on a 429 or a 5xx. Returns the JSON answer and the response headers."""
-    key = os.environ.get(KEY)
+    key = keys.find()
     if not key:
         raise Unreachable(f"{KEY} is not set: Token Factory needs a key (tokenfactory.nebius.com)")
     data = json.dumps(body).encode() if body is not None else None
