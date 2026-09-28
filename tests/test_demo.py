@@ -69,6 +69,16 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
+def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
+    from graphene_map import keys
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(keys, "find", lambda: "tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")
+    hide, _ = demo.hider(tmp_path / "work" / "feeds")
+    said = hide("the model said: tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")
+    assert said == "the model said: [removed]"
+
+
 def test_a_base64_secret_with_a_slash_or_a_plus_goes_whole(tmp_path, monkeypatch):
     """A key-shaped word ends at a slash, so a base64 secret with a / or a + in it (an AWS secret access key)
     was kept in pieces. A run of 30 or more base64 characters with a capital, a small letter, a digit and a

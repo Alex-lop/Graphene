@@ -37,10 +37,19 @@ def test_it_names_the_ids_and_which_model_misfires(tmp_path, monkeypatch, capsys
     assert f.requests[0]["tools"][0]["function"]["name"] == "get_current_weather"
 
 
+def test_the_docs_suite_never_reaches_the_real_keychain(monkeypatch):
+    from graphene_map import keys
+
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    monkeypatch.setattr(keys.subprocess, "run", lambda *a, **k: pytest.fail("the keychain was asked"))
+    assert keys.find() is None
+
+
 def test_without_a_key_nothing_is_sent(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     assert access.main(["--sandbox", "none", "--out", str(tmp_path / "a.json")]) == 1
-    assert "NEBIUS_API_KEY is not set in this shell; nothing was sent" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert "NEBIUS_API_KEY is not set in this shell and no key is in the keychain; nothing was sent" in said
 
 
 @pytest.mark.skipif(subprocess.run(["docker", "info"], capture_output=True).returncode != 0

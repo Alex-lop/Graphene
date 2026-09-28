@@ -21,7 +21,18 @@ def no_token_factory(monkeypatch, tmp_path):
     directory has: a test that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
     for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")  # a developer's real keychain is never read or written
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
+
+
+@pytest.fixture(autouse=True)
+def no_agent_marks(monkeypatch):
+    """A leaf's check runs with its executor's marks set: the suite takes nobody for an agent, or a
+    stand-in, because of the shell it was started from."""
+    from graphene_map import plan
+
+    for name in (*plan.AGENT_MARKS, "GRAPHENE_AS"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture

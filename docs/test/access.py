@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from graphene_map import keys  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
 
@@ -105,10 +105,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sandbox", choices=("contree", "docker", "none"), default="contree")
     ap.add_argument("--out", type=Path, default=Path(__file__).parent / f"access-{date.today()}.json")
     args = ap.parse_args(argv)
-    report: dict = {"at": time.strftime("%Y-%m-%d %H:%M %Z"), "key": bool(os.environ.get(tf.KEY))}
+    report: dict = {"at": time.strftime("%Y-%m-%d %H:%M %Z"), "key": bool(keys.find())}
     lines = [f"Access, checked {report['at']} (docs/test/access.py):"]
     if not report["key"]:
-        lines.append("- Token Factory: NEBIUS_API_KEY is not set in this shell; nothing was sent.")
+        lines.append("- Token Factory: NEBIUS_API_KEY is not set in this shell and no key is in the "
+                     "keychain; nothing was sent.")
     else:
         try:
             listed = tf.models()

@@ -77,5 +77,5 @@ def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_
     for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path))  # no saved profile
-    with pytest.raises(RuntimeError, match="ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID"):
+    with pytest.raises(RuntimeError, match="ConTree needs a key .* and NEBIUS_PROJECT_ID"):
         sandbox.Contree()

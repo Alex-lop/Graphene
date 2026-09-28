@@ -36,7 +36,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import gate
+from . import gate, settings
 from . import plan as P
 from . import tokenfactory as tf
 from .run import GRACE, REFUSED
@@ -122,7 +122,8 @@ class Local:
         path.write_bytes(data)
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
-        env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # model-written code never sees the key
+        # model-written code never sees the key: not in its environment, nor through Graphene's keychain
+        env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_KEYCHAIN": "off"}
         proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
@@ -187,6 +188,7 @@ class Leaf:
         if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
         shown = _shown(self.place.root, self.source)  # never what git ignores (a .env), never .graphene/
+        shown = unprotected(self.store, shown)
         rel = str(full.relative_to(here))
         if full.is_dir():
             prefix = "" if rel == "." else rel + "/"
@@ -194,7 +196,8 @@ class Leaf:
             names = sorted({r.split("/")[0] + ("/" if "/" in r else "") for r in rests})
             return "\n".join(names) or "(empty)"
         if rel not in shown:
-            return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
+            return (f"{path} is not read: git ignores it, it is protected or it is not there "
+                    "(what is read goes to the model)")  # fmt: skip
         try:
             data = self.place.read(rel)  # not relative to the root as given: a fork's copy is behind a link
             lines = data.decode("utf-8", "replace").split("\n")
@@ -493,6 +496,12 @@ def _shown(root: Path, source: Path) -> list[str]:
     return sorted(set(found) - ignored)
 
 
+def unprotected(store: Store, files: list[str]) -> list[str]:
+    """``files`` less the protected paths the person set (`graphene config`): what the model may see."""
+    hidden = settings.protected(store)
+    return [f for f in files if not P.in_scope(f, hidden)]
+
+
 def _in_scope_state(root: Path, scope: list[str], source: Path) -> dict[str, bytes]:
     """The files under ``root`` that the scope covers and git in ``source`` shows, links and caches left
     out: what git ignores (a .env, a .venv, data/) is never copied from a fork, nor deleted for one."""
@@ -651,7 +660,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         store.log_node(node.id, P._now(), "model", f"run:{NAME}", session or None, None, step)
         first = [prompt]
         if args.map:
-            files = P.in_tree(here)
+            files = unprotected(store, P.in_tree(here))
             more = "\n…" if len(files) > 400 else ""
             first.append("The repository's files:\n" + "\n".join(files[:400]) + more)
         if args.inline:
