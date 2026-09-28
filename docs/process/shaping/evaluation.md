@@ -776,7 +776,7 @@ notes
 - The **tree** was never reached at 80x24. At 120x36 it served only as a cross-check.
 - All graph answers were right against `critical_path`, the node states and what `R` starts.
 
-## The decision (the coordinator's, 03:45)
+## The decision (the coordinator's, 03:30)
 
 - **The board is the rows candidate; the view candidate is deleted** (its branch `lane-a-board-view` is
   not merged; its screens stay above, under `screens/view-*`). The two tied on effort: 249 against 244
