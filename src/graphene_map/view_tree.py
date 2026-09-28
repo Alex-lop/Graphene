@@ -20,8 +20,9 @@ from .views import Drawn, elide
 WIDEST = 30  # a cell never takes more, however few the leaves: a tree, not a table
 TITLE = 8  # the least room a title needs to be worth its own line
 YOURS = ("came back", "review", "yours")
-# the forms tried, the one that says most first: (fold finished sub-goals, list leaves down, titles)
-FORMS = [(fold, stack, two) for fold in (False, True) for stack in (False, True) for two in (True, False)]
+# the forms tried, the one that says most first: (fold finished sub-goals, list leaves down, titles);
+# finished work folds before leaves are listed down, since what is done says least
+FORMS = [(fold, stack, two) for stack in (False, True) for fold in (False, True) for two in (True, False)]
 
 
 def draw(
@@ -105,10 +106,6 @@ class _Tree:
         kids = self.kids(node_id)
         return self.stack and node_id is not None and bool(kids) and not any(self.kids(k.id) for k in kids)
 
-    def slots(self, node_id: str | None) -> int:
-        kids = self.kids(node_id)
-        return 1 if not kids or self.stacked(node_id) else sum(self.slots(k.id) for k in kids)
-
     def head(self, n: P.Node) -> Text:
         """A cell's first line: glyph and id in the state's colour, then a folded sub-goal's count or
         how many nodes it waits on."""
@@ -126,16 +123,41 @@ class _Tree:
         least = self.head(n).cell_len + 2 * down
         return max(least, 2 + 2 * down + TITLE) if self.two else least
 
+    def spans(self, node_id: str | None) -> list[int]:
+        """The least columns of each slot under a node, in order: a leaf's cell, or a sub-goal listed
+        down (its head, and its leaves under it after `├ `). A sub-goal drawn across widens the slots
+        under it, evenly, until its own cell fits over them; a folded one is as narrow as its cell."""
+        kids = self.kids(node_id)
+        if node_id is None and not kids:
+            return [1]
+        if not kids or self.stacked(node_id):
+            return [max([self.need(self.by_id[node_id], False)] + [self.need(k, True) for k in kids])]
+        out = [w for k in kids for w in self.spans(k.id)]
+        mine = self.need(self.by_id[node_id], False) if node_id is not None else 0
+        for k in range(mine - sum(out) - self.gap * (len(out) - 1)):
+            out[k % len(out)] += 1
+        return out
+
+    def widths(self, width: int) -> list[int] | None:
+        """Each slot's columns: every slot as wide as the others while that fits (with titles, as wide
+        as an even share, up to WIDEST), then the narrow ones narrower, down to what each needs."""
+        need = self.spans(None)
+        gaps = self.gap * (len(need) - 1)
+        target = min((width - gaps) // len(need), WIDEST) if self.two else max(need)
+        while target >= 0:
+            got = [max(n, target) for n in need]
+            if sum(got) + gaps <= width:
+                return got
+            target -= 1
+        return None
+
     def draw(self, goal: str, width: int, cursor: str | None) -> Drawn | None:
-        slots = self.slots(None)
-        shown = [n for n in self.by_id.values() if self.visible(n)]
-        down = {k.id for n in shown if self.stacked(n.id) for k in self.kids(n.id)}
-        least = max([self.need(n, n.id in down) for n in shown] or [1])
-        room = (width - self.gap * (slots - 1)) // slots
-        if room < least:
+        wide = self.widths(width)
+        if wide is None:
             return None
-        self.wide = max(least, min(room, WIDEST)) if self.two else least
-        self.offset = (width - slots * self.wide - self.gap * (slots - 1)) // 2
+        self.left = [(width - sum(wide) - self.gap * (len(wide) - 1)) // 2]
+        for w in wide:
+            self.left.append(self.left[-1] + w + self.gap)
         while cursor is not None and cursor in self.by_id and not self.visible(self.by_id[cursor]):
             cursor = self.by_id[cursor].parent  # inside a folded sub-goal: the fold is where it is
         self.cursor = cursor
@@ -159,17 +181,16 @@ class _Tree:
         may take the columns of every slot under it, as long as it stays centred (or starts) there."""
         kids, first = self.kids(node_id), self.slot
         if not kids or self.stacked(node_id):
-            left = self.offset + self.slot * (self.wide + self.gap)
+            left, wide = self.left[self.slot], self.left[self.slot + 1] - self.left[self.slot] - self.gap
             self.slot += 1
-            at = left if self.stack else left + self.wide // 2
+            at = left if self.stack else left + wide // 2
         else:
             xs = [self.place(k.id, depth + 1) for k in kids]
             at = (xs[0] + xs[-1]) // 2
             self.put(self.row(depth) + (1 if depth == 0 else self.h), xs[0], Text(_joins(xs, at), "dim"))
         if node_id is None:
             return at
-        lo = self.offset + first * (self.wide + self.gap)
-        hi = self.offset + self.slot * (self.wide + self.gap) - self.gap - 1
+        lo, hi = self.left[first], self.left[self.slot] - self.gap - 1
         a, b = at - lo, hi - at
         room = b + 1 if self.stack else max(2 * min(a, b + 1), 2 * min(a, b) + 1)
         n = self.by_id[node_id]
@@ -180,7 +201,7 @@ class _Tree:
             self.put(y, at, Text("└ " if last else "├ ", "dim"))
             if self.two and not last:
                 self.put(y + 1, at, Text("│", "dim"))
-            self.cell(k, y, at + 2, self.wide - 2, "  ")
+            self.cell(k, y, at + 2, hi - at - 1, "  ")
         return at
 
     def cell(self, n: P.Node, y: int, at: int, room: int, lead: str) -> None:

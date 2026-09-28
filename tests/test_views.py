@@ -322,7 +322,8 @@ def test_auto_keeps_the_outline_for_a_view_taller_than_its_rows_unless_it_shows_
     ]
     words = {n.id: P.reads(n, thirty) for n in thirty}
     assert V.choose(thirty, words, "g", 78, 10) == "outline"
-    assert V.choose(thirty, words, "g", 118, 16) == "tree"  # its leaves listed down fit; the graph scrolls
+    # the tree lists its leaves down to fit (it scores 50, the outline's own) and the graph scrolls
+    assert V.choose(thirty, words, "g", 118, 16) == "outline"
 
 
 def test_the_replay_allows_tab_and_still_refuses_writes(tmp_path, monkeypatch, grid):
