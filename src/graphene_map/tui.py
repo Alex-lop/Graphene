@@ -326,6 +326,12 @@ class Ask(ModalScreen[str | None]):
     def done(self, event: Input.Submitted) -> None:
         self.dismiss(event.value.strip() or None)
 
+    @on(Input.Changed)
+    def at_once(self, event: Input.Changed) -> None:
+        """A line that offers `? help` opens it on the one key, as ? does everywhere else."""
+        if event.value == "?" and "? help" in self.prompt:
+            self.dismiss("?")
+
     def action_cancel(self) -> None:
         self.dismiss(None)
 

@@ -1720,3 +1720,11 @@ def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_
         assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
     seen, _ = at(repo, "docs", (120, 36), keys=["x"])
     assert "docs is came back" not in seen["status"] and "r runs it again" in seen["status"]
+
+
+def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
+    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
+    a ? into the line, and help took ?, ?, Enter."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
+    assert seen["screen"] == "Help"
