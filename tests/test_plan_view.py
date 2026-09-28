@@ -284,6 +284,21 @@ def test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once(store)
     assert both()[1] == ["a", "b"]
 
 
+def test_a_leaf_that_came_back_is_on_the_person_and_not_at_once_on_the_page_or_in_the_terminal(store, repo):
+    """The page said "2 at once: a, c" beside the graph's "1 ready · 1 wait · 1 on you" and the
+    status line's `R: 1 ready`: at once took no account of a leaf that came back."""
+    from graphene_map import view_dag
+    from graphene_map.views import inputs
+
+    plan.propose(store, [node("a"), node("b", needs=["a"]), node("c")], ALEX)
+    plan.start(store, "c", BOT, repo)
+    plan.release(store, "c", BOT, "it needs README.md too")
+    view, (nodes, words, _) = build_plan_view(store), inputs(store)
+    assert view["at_once"] == view_dag.at_once(nodes, words) == ["a"]
+    assert [i for i, w in words.items() if w == "ready"] == ["a"]  # the status line's count
+    assert view_dag.note(nodes, words) == "critical ━ a > b (2) · 1 ready · 1 wait · 1 on you"
+
+
 def test_an_accepted_leaf_with_a_proposed_child_is_still_the_leaf_on_the_critical_path(store):
     """A proposal binds nobody (plan.leaves): b stays the leaf that runs, and the path goes through it."""
     plan.propose(store, [node("a"), node("b", needs=["a"]), node("c", needs=["b"])], ALEX)

@@ -91,8 +91,8 @@ def critical_path(nodes: list[P.Node]) -> list[str]:
 
 def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
     """The leaves that could start now, proposed ones too (they start once accepted): the page's own
-    (`plan_view`). ``words`` is kept for the view's callers; the plan alone decides it."""
-    return plan_view.at_once(nodes)
+    (`plan_view`), with what ``words`` says came back left to the person."""
+    return plan_view.at_once(nodes, {i for i, w in words.items() if w == "came back"})
 
 
 def note(nodes: list[P.Node], words: dict[str, str]) -> str:

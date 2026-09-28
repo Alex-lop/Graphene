@@ -918,7 +918,7 @@ as written and the change is named here.
     - **The critical path** is the longest chain of leaves not yet done, through `needs` (a need on
       a sub-goal is a need on each leaf under it), counted in leaves; a tie goes to the plan's order,
       and a chain of one leaf is no path. **At once** is the leaves that are open or proposed, the
-      agents', with a scope and nothing left to wait on. Both are `plan_view.critical_path` and
+      agents', with a scope and nothing left to wait on, and not come back to the person. Both are `plan_view.critical_path` and
       `plan_view.at_once`, and the graph calls them.
     - **The graph's note** names the path first, so 80 columns never cut it, and counts "ready" as
       the status line's `R: N ready` does, with proposals that could start once accepted said apart:
