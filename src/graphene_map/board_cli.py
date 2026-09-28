@@ -46,7 +46,7 @@ def rows(store) -> list[str]:
             out += [f"    {line}" for line in rest]
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
-                out += ["      " + T.elide(_became(line), WIDE - 6) for line in item["became"]]
+                out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
                 continue
             if item["default"] or item["then"]:
                 out += [*_hang("      default: ", item["default"] or ""), *_then(item["then"])]
@@ -87,7 +87,7 @@ def _became(line: str) -> str:
 
 
 def _then(effects: list[str]) -> list[str]:
-    return ["         then: " + T.elide(line, WIDE - 15) for line in effects]
+    return [ln for line in effects for ln in _hang("         then: ", line)]
 
 
 def register(cli: typer.Typer, root, open_store, fail) -> None:

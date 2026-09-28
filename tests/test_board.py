@@ -509,7 +509,8 @@ def test_the_board_fits_80_columns_with_the_longest_id_an_agents_note_and_a_long
     assert any(
         line.rstrip().endswith("  abcdefghijklmnopqrstuvwxyz012345  open") for line in shown
     )  # whole id
-    assert any(line.startswith("         then: scope users + pyproject.toml") for line in shown)
+    at = next(k for k, line in enumerate(shown) if line.startswith("         then: scope users + pyproject"))
+    assert shown[at + 1] == "               requirements-dev.txt, setup.cfg, tox.ini"  # wrapped, whole
 
 
 def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(repo):
