@@ -274,6 +274,7 @@ def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool], signalled: set
                 "dollars": round(sum(u.get("dollars") or 0 for u in usage), 6),
                 "models": sorted({u["model"] for u in usage if u.get("model")}),
                 "unpriced_attempts": max(0, attempts - len(usage)),
+                **tally.forks_and_escalations(log),
                 "wall_seconds": round(wall, 1),
             })  # fmt: skip
     return rows
@@ -429,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         "dollars": dollars, "unpriced_attempts": unpriced, "tokens_in": sum(r["tokens_in"] for r in leaves),
         "tokens_out": sum(r["tokens_out"] for r in leaves),
         "cost_per_landed_usd": per_landed,
+        "forks": sum(r["forks"] for r in leaves), "escalations": sum(r["escalations"] for r in leaves),
         "rounds": rounds, "rounds_cap_hit": cap_hit, "stopped": stopped, "wall_seconds": round(wall, 1),
         "files_outside_intent_final": outside,
         "person_actions": tally.read_runlog(runlog, [])["person_actions"],

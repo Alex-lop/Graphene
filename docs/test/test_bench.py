@@ -157,6 +157,7 @@ def test_one_lands_one_lands_after_its_offer_one_is_refused_and_the_rows_and_res
     assert run["dollars"] == round(sum(r["dollars"] for r in leaves.values()), 6)
     assert run["cost_per_landed_usd"] == run["dollars"]  # one leaf landed
     assert run["files_outside_intent_final"] == []
+    assert (run["forks"], run["escalations"], bye["forks"], bye["escalations"]) == (0, 0, 0, 0)  # one model
     for row in [*leaves.values(), run]:
         assert (row["task"], row["config"], row["run"], row["planner"]) == ("tiny", "scripted", 1, "nemotron")
         assert row["executor"] == f"nemotron --model {NANO}" and row["prompt_version"] == bench.PROMPT_VERSION

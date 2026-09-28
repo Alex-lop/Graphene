@@ -225,6 +225,31 @@ def read_store(db: Path, repo: Path, intent: list[str], notes: list[str]) -> dic
     }
 
 
+def forks_and_escalations(log: list[dict]) -> dict[str, int]:
+    """Decision 75, counted from leaf logs (one leaf's, or a whole store's). A fork is a `fork` row
+    that says it started (state `running`: each fork writes one as it starts and one as it ends; a leaf
+    run with one conversation writes none, and has 0). An escalation is a `model` row that names the
+    model before it (`from`): an attempt on another model than the attempt before."""
+
+    def said(e: dict) -> dict:
+        return e.get("detail") or {}
+
+    return {
+        "forks": sum(e["kind"] == "fork" and said(e).get("state") == "running" for e in log),
+        "escalations": sum(e["kind"] == "model" and bool(said(e).get("from")) for e in log),
+    }
+
+
+def store_log(db: Path) -> list[dict]:
+    """The store's `model` and `fork` rows, read only; none when there is no store."""
+    if not db.exists():
+        return []
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    rows = conn.execute("SELECT kind, detail FROM node_log WHERE kind IN ('model', 'fork')").fetchall()
+    conn.close()
+    return [{"kind": kind, "detail": json.loads(detail) if detail else None} for kind, detail in rows]
+
+
 def runs_cost(runs: Path, notes: list[str]) -> dict:
     """What the executors `graphene run` started cost, out of `.graphene/runs/<node>-<attempt>.txt`.
 
@@ -410,6 +435,7 @@ def main(argv: list[str]) -> int:
         "executor_calls": log["results"] + runs["calls"],
         "executor_calls_unpriced": log["results_unpriced"] + runs["unpriced"],
         "wall_seconds": log["wall_seconds"],
+        **forks_and_escalations(store_log(repo / ".graphene" / "graphene.db")),
         "notes": notes,
     }
     print(json.dumps(out, indent=2))

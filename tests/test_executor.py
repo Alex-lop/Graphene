@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from fake_tokenfactory import Fake, call
@@ -89,6 +90,14 @@ def run_one(repo, spec=f"nemotron --model {NANO}", attempts=1):
     with Store.open(repo) as store:
         done = run_plan(store, repo, named(spec), attempts, None, said.append, repo / ".graphene" / "runs")
     return done, said
+
+
+def counted(store: Store, node: str) -> dict:
+    """What docs/test/tally.py counts of a leaf's log for the live pre-registration: forks, escalations."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs" / "test"))
+    import tally
+
+    return tally.forks_and_escalations(store.node_log(node))
 
 
 def tool_results(request: dict) -> list[str]:
@@ -196,6 +205,7 @@ def test_a_refused_attempt_climbs_the_ladder_with_the_refusal_in_hand(repo, fake
     with Store.open(repo) as store:  # each attempt's model as it began, and the step up logged as one
         kinds = [e["kind"] for e in store.node_log("greet", ("model", "usage"))]
         steps = [e["detail"] for e in store.node_log("greet", ("model",))]
+        assert counted(store, "greet") == {"forks": 0, "escalations": 1}
     assert kinds == ["model", "usage", "model", "usage"]  # before its model calls, not with the bill
     assert steps[0] == {"attempt": 1, "model": NANO}
     assert steps[1] == {"attempt": 2, "model": SUPER, "from": NANO,
@@ -308,6 +318,7 @@ def test_each_forks_state_is_in_the_leafs_log_as_it_happens(repo, fake):
     assert [n.id for n in done] == ["greet"]
     with Store.open(repo) as store:
         log = store.node_log("greet", ("fork", "usage"))
+        assert counted(store, "greet") == {"forks": 2, "escalations": 0}
     rows = [(e["detail"]["fork"], e["detail"]["state"]) for e in log if e["kind"] == "fork"]
     assert sorted(rows[:2]) == [(1, "running"), (2, "running")]
     assert rows[2:] == [(1, "check failed"), (2, "passed")]  # fork 1 ended first, and its row said so then

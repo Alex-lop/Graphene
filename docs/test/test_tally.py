@@ -99,6 +99,28 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
 
 
+# decision 75's rows, as the Nemotron executor writes them: n1 ran once on Nano with 3 forks, was
+# refused, and ran again on Super with 3 forks (one of which the stop found before it started); n2
+# ran with one conversation (no fork row) on Nano and again on Nano (the ladder's last rung: no from).
+NANO, SUPER = "nvidia/Nemotron-3-Nano-fake", "nvidia/Nemotron-3-Super-fake"
+def fork(node, k, model, state):
+    return node, "fork", json.dumps({"fork": k, "of": 3, "model": model, "state": state})
+
+
+FORKS_AND_MODELS = [
+    ("n1", "model", json.dumps({"attempt": 1, "model": NANO})),
+    *[fork("n1", k, NANO, "running") for k in (1, 2, 3)],
+    *[fork("n1", k, NANO, "check failed") for k in (1, 2, 3)],
+    ("n1", "model", json.dumps({"attempt": 2, "model": SUPER, "from": NANO, "why": "attempt 1 refused"})),
+    *[fork("n1", k, SUPER, "running") for k in (1, 2)],
+    fork("n1", 1, SUPER, "passed"),
+    fork("n1", 2, SUPER, "lost"),
+    fork("n1", 3, SUPER, "stopped"),
+    ("n2", "model", json.dumps({"attempt": 1, "model": NANO})),
+    ("n2", "model", json.dumps({"attempt": 2, "model": NANO})),
+]
+
+
 class Tally(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -131,7 +153,7 @@ class Tally(unittest.TestCase):
             "CREATE TABLE tool_events (id TEXT, session_id TEXT, timestamp TEXT, tool TEXT, "
             "success INTEGER, file_path TEXT, old_content TEXT, new_content TEXT, response TEXT)"
         )
-        conn.execute("CREATE TABLE node_log (id INTEGER PRIMARY KEY, node_id TEXT, kind TEXT)")
+        conn.execute("CREATE TABLE node_log (id INTEGER PRIMARY KEY, node_id TEXT, kind TEXT, detail TEXT)")
         for i, (tool, path, old, new, ok) in enumerate(EVENTS):
             conn.execute(
                 "INSERT INTO tool_events VALUES (?, 's1', ?, ?, ?, ?, ?, ?, NULL)",
@@ -150,6 +172,7 @@ class Tally(unittest.TestCase):
         )
         for kind in ("denied", "denied", "breach", "refused", "finished", "started"):
             conn.execute("INSERT INTO node_log (node_id, kind) VALUES ('n1', ?)", (kind,))
+        conn.executemany("INSERT INTO node_log (node_id, kind, detail) VALUES (?, ?, ?)", FORKS_AND_MODELS)
         conn.commit()
         conn.close()
 
@@ -298,6 +321,11 @@ class Tally(unittest.TestCase):
             any("n2-1.txt is not an --output-format json result" in n for n in self.out["notes"]),
             self.out["notes"],
         )
+
+    def test_forks_and_escalations_come_from_the_leaf_logs(self):
+        # forks: the rows that say a fork started, 3 on Nano and 2 on Super (the third was stopped
+        # before it began); escalations: the one model row with a `from`
+        self.assertEqual((self.out["forks"], self.out["escalations"]), (5, 1))
 
     def test_acceptance_comes_straight_from_accept_py(self):
         self.assertEqual(self.out["acceptance"]["passed"], 2)
