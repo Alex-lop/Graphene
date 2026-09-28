@@ -419,15 +419,25 @@ def clock(stamp: str | None) -> str:
 
 
 def elide(text: str, wide: int) -> str:
-    """One line of at most ``wide`` characters, cut at a word with "…" when it is longer: a title in
-    a row of the screen or of `graphene plan`. A single word longer than the row is cut where it must."""
+    """One line of at most ``wide`` terminal cells (a Chinese or Japanese character is two), cut at a
+    word with "…" when it is longer: a title in a row of the screen or of `graphene plan`. A single
+    word longer than the row is cut where it must."""
+    from rich.cells import cell_len, chop_cells
+
     text = " ".join(str(text).split())
-    if len(text) <= wide:
+    if cell_len(text) <= wide:
         return text
     if wide < 2:
         return "…"[: max(wide, 0)]
-    cut = text.rfind(" ", 0, wide)
-    return (text[:cut] if cut > 0 else text[: wide - 1]).rstrip(" ,;:·") + "…"
+    cut = chop_cells(text, wide)[0].rfind(" ")
+    return (text[:cut] if cut > 0 else chop_cells(text, wide - 1)[0]).rstrip(" ,;:·") + "…"
+
+
+def pad(text: str, wide: int) -> str:
+    """``text`` filled with spaces to ``wide`` terminal cells: ``str.ljust`` for a row's column."""
+    from rich.cells import cell_len
+
+    return text + " " * (wide - cell_len(text))
 
 
 def blocker(node: P.Node, words: dict[str, str]) -> str:
@@ -542,10 +552,11 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
 # -- a text, applied --------------------------------------------------------------------------------
 
 
-def slug(title: str, taken: set[str]) -> str:
-    """A readable id from a title: it names the node's branch too (graphene/<id>)."""
-    words = [w for w in re.findall(r"[a-z0-9]+", title.lower()) if w not in _SMALL] or ["node"]
-    base = "-".join(words[:3])[:24].strip("-") or "node"
+def slug(title: str, taken: set[str], empty: str = "node") -> str:
+    """A readable id from a title: it names the node's branch too (graphene/<id>). A title with no
+    letter or digit of a-z and 0-9 in it is called ``empty``."""
+    words = [w for w in re.findall(r"[a-z0-9]+", title.lower()) if w not in _SMALL] or [empty]
+    base = "-".join(words[:3])[:24].strip("-") or empty
     out, k = base, 2
     while out in taken:
         out, k = f"{base}-{k}", k + 1

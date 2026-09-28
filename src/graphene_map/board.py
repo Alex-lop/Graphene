@@ -260,9 +260,11 @@ def add(
     with store.claim():
         board = items(store)
         taken = {it["id"] for it in board} | {n.id for n in P.nodes(store)}
+        kind = _ALIAS.get(kind, kind)
+        fresh = T.slug(text, taken, kind.replace(" ", "-"))  # a note in Japanese is "note", not "node"
         item = {
-            "id": item_id if item_id and item_id not in taken else T.slug(text, taken),
-            "kind": _ALIAS.get(kind, kind), "text": _one(text), "default": _one(default) or None,
+            "id": item_id if item_id and item_id not in taken else fresh,
+            "kind": kind, "text": _one(text), "default": _one(default) or None,
             "then": [_one(e) for e in then or []],
             "options": [{"text": _one(o["text"]), "then": [_one(e) for e in o.get("then", [])]}
                         for o in options or []],

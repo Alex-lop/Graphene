@@ -40,7 +40,7 @@ def rows(store) -> list[str]:
             words = item["text"]
             mark = f"  · {item['by']}'s" if item["agent"] and item["kind"] == "note" else ""
             title = f"  {B.look(item)[0]} {T.elide(words, wt - 4)}"
-            out.append(f"{title.ljust(wt)}  {item['id'].ljust(wid)}  {word.ljust(ww)}{mark}".rstrip())
+            out.append(f"{T.pad(title, wt)}  {item['id'].ljust(wid)}  {word.ljust(ww)}{mark}".rstrip())
             if name == "settled":
                 out += [f"      → {item['answer']}"] if item.get("answer") else []
                 out += [f"      changed: {line}" for line in item["became"]]

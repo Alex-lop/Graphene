@@ -440,3 +440,23 @@ def test_deleting_only_an_items_own_line_is_refused_by_the_line_of_what_it_leave
         with pytest.raises(P.Refused, match=f"^line {line}: these lines belong to no board item"):
             T.apply(store, text.replace(deleted, ""), ALEX, opened)
         assert T.render(store)[0] == text  # nothing moved: not the goal, not the item above
+
+
+def test_wide_characters_keep_the_boards_columns_and_a_note_with_no_ascii_is_called_a_note(repo):
+    from rich.cells import cell_len
+
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        wide = B.note(store, "日本語のメモ", ALEX)
+        B.note(store, "plain words", ALEX)
+        assert wide["id"] == "note"  # not "node", which reads as the plan's
+        shown = rows(store)
+    at = [
+        cell_len(ln[: ln.index(f" {i} ")])
+        for i in ("note", "plain-words")
+        for ln in shown
+        if f"  {i}  " in ln
+    ]
+    assert len(at) == 2 and at[0] == at[1]
+    assert cell_len(T.elide("日本語のメモ " * 10, 12)) <= 12
