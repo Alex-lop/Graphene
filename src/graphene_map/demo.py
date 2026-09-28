@@ -44,7 +44,7 @@ from pathlib import Path
 
 from textual.widgets import Static
 
-from . import __version__
+from . import __version__, keys
 from . import plan as P
 from . import tokenfactory as tf
 from .store import Store
@@ -81,7 +81,8 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~")] if len(home) > 1 else []
-    said += [(os.environ[k], "[removed]") for k in (tf.KEY, "NEBIUS_PROJECT_ID") if len(os.getenv(k, "")) > 7]
+    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # the keychain's too
+    said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
     def hide(value):
         if isinstance(value, dict):
