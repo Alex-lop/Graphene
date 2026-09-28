@@ -236,7 +236,8 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
     from . import tokenfactory as tf
 
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
-    todo = [P.get(store, i) for i in ids] or [n for n in everything if n.state in (P.PROPOSED, P.OPEN)]
+    todo = [P.get(store, i) for i in dict.fromkeys(ids)]  # an id named twice is one leaf
+    todo = todo or [n for n in everything if n.state in (P.PROPOSED, P.OPEN)]
     for n in todo:
         if n.state not in (P.PROPOSED, P.OPEN):
             raise P.Refused(f"{n.id} is {n.state}: a check is run first only before its work starts")

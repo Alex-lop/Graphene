@@ -341,3 +341,10 @@ def test_no_graphene_command_pays_for_the_token_factory_client_until_a_precheck_
     probe = f"import sys, graphene_map.cli as c; c.build(); print(sorted({heavy} & set(sys.modules)))"
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
     assert out.strip() == "[]"
+
+
+def test_an_id_named_twice_is_run_and_logged_once(repo):
+    with Store.open(repo) as store:
+        leaves(store, "true")
+        rows = C.run(store, repo, ["l0", "l0"], fork=scripted({"true": (0, "")}))
+        assert len(rows) == 1 and len(store.node_log("l0", ("precheck",))) == 1
