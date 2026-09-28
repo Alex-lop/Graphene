@@ -149,3 +149,18 @@ def test_an_error_that_echoes_the_key_is_said_without_it(monkeypatch, pad):
     assert said.startswith("Token Factory answered 401") and "invalid key" in said
     for text in (said, str(no.value)):
         assert "sk-FAKE" not in text and "review-123" not in text
+
+
+def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
+    """A pasted en dash: the header could not be built, and a traceback reached the screen."""
+    from graphene_map import keys
+
+    key = "sk-FAKE–graphene-review-123"
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1")  # never reached
+    with pytest.raises(tf.Unreachable, match="letters, digits and punctuation") as no:
+        tf._request("GET", "models", tries=1)
+    assert key not in str(no.value)
+    with pytest.raises(RuntimeError, match="one word") as no:
+        keys.set(key)
+    assert key not in str(no.value)
