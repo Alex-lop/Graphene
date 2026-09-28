@@ -27,6 +27,7 @@ import typer
 from . import plan as P
 from . import tokenfactory as tf
 
+TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
 WHO = "note:nemotron"  # the actor of its rows; each usage row's `endpoint` says who answered
 SYSTEM = """\
 A person typed a note about their plan. The plan's leaves still to be done follow, each with its
@@ -96,7 +97,7 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"The note: {sentence}\n\nThe leaves:\n\n"
              + ("\n\n".join(P.contract(n) for n in leaves) or "(none yet)")},
-        ], tag="note", temperature=0, max_tokens=2048,
+        ], tag="note", tries=1, timeout=TIMEOUT, temperature=0, max_tokens=2048,
             response_format={"type": "json_schema", "json_schema": SCHEMA})  # fmt: skip
     except tf.Unreachable as no:
         raise P.Refused(f"the note was not placed: {no}") from None

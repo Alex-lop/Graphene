@@ -207,3 +207,15 @@ def test_no_key_shaped_string_reaches_the_store_the_output_or_the_model(repo, fa
         except P.Refused as no:
             assert "shaped like a key" in str(no) and key[3:] not in str(no)
     assert len(f.requests) == 2
+
+
+def test_a_note_asks_once_with_a_short_timeout_and_says_so_in_one_line(repo, fake):
+    planned(repo)
+    f = fake([500, answer("ids", check="true")])
+    with Store.open(repo) as store:
+        try:
+            note.route(store, repo, "ids come back sorted")
+            raise AssertionError("a 500 was not refused")
+        except P.Refused as no:
+            assert "answered 500" in str(no) and "asked once" in str(no)
+    assert len(f.requests) == 1 and note.TIMEOUT <= 30
