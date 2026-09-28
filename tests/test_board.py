@@ -424,3 +424,19 @@ def test_a_leaf_effect_under_a_leaf_puts_the_new_leaf_beside_it_and_keeps_it_a_l
     with Store.open(repo) as store:
         assert P.get(store, "sample").parent == "feed"
         assert {n.id for n in P.leaves(P.nodes(store))} == {"zero", "sample"}
+
+
+@pytest.mark.parametrize(
+    "deleted, line",
+    [
+        ("question: which id?  [q-open]\n", 3),
+        ("risk: an effect with no words for its default  [r-bare]\n", 21),
+    ],
+)
+def test_deleting_only_an_items_own_line_is_refused_by_the_line_of_what_it_leaves(repo, deleted, line):
+    with Store.open(repo) as store:
+        T.apply(store, ALL, ALEX, None)
+        text, opened = T.render(store)
+        with pytest.raises(P.Refused, match=f"^line {line}: these lines belong to no board item"):
+            T.apply(store, text.replace(deleted, ""), ALEX, opened)
+        assert T.render(store)[0] == text  # nothing moved: not the goal, not the item above
