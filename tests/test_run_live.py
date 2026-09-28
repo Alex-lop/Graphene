@@ -929,3 +929,15 @@ def test_a_run_started_where_ctrl_c_is_ignored_still_stops_on_it(repo):
     said, _ = run.communicate(timeout=30)
     assert run.returncode == 130, said
     assert states(repo) == {"a": OPEN}
+
+
+def test_a_siblings_goal_ends_the_reason_with_a_full_stop(repo):
+    """Walk 2026-09-28: the sibling's goal read "…cli/main.py alone cannot name xml This leaf makes
+    that change", the reason and the next sentence run together."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        made = plan.sibling(store, "a", [], ALEX)
+    goal = " ".join(made.goal.split())
+    assert goal.startswith("a (leaf a) came back: it needs src/util.py. This leaf makes")

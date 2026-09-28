@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-26, by the agent that ran the winning directive.*
+2026-09-28, by the agent that ran the shaping directive.*
 
 ## What Graphene is
 
@@ -774,6 +774,446 @@ changes a decision above, the old one is left as written and the change is named
     - ConTree's image lookup runs outside the fifty-slot cap. It is a lookup, not an operation.
     - A replay has no git history (78).
 
+## Decisions taken on 2026-09-28, night (the shaping directive)
+
+Taken by the agent that ran `docs/process/directives/SHAPING_DIRECTIVE.md`, each with its evidence.
+This session had no Token Factory key, so nothing below ran live: every test named here runs against
+the scripted fake (`tests/fake_tokenfactory.py`) and, for sandboxes, the Docker stand-in. The people
+in the trials are Claude sub-agents standing in for you, a first-time user and a judge; your own
+session outranks them. Strike any of them. Where one changes a decision above, the old one is left
+as written and the change is named here.
+
+81. **The board is part of the plan: the planner's questions, assumptions, risks and leave-outs, and
+    anyone's notes, in the one store, answered only by you.**
+    - **Where it lives.** The plan_meta key `board`, a JSON list: no new table, no migration. Every
+      act is a `board` row in the plan's log. `graphene plan --text` writes its lines after the goal
+      and before the tree, and `plan edit` round-trips them. This extends decision 29.
+    - **Your answers.** One `graphene board` command each: `take`, `pick ID N`, `answer ID WORDS`,
+      `park`, `unpark`, `drop`, `note`. An agent's answer is refused in one line; an agent's note
+      waits until you take it.
+    - **Answers become constraints.** A default or an option may carry `then:` lines in the plan's
+      own words (`goal NODE + TEXT`, `scope NODE + GLOB`, `check NODE: COMMAND`, `drop NODE`, `leaf
+      TITLE under NODE`, `condition GLOB`), applied as your edit. `leaf … under` a leaf puts the new
+      leaf beside it, so no answer turns a leaf into a sub-goal. `condition GLOB` binds as a read-only
+      glob until undone (decision 90). Every answer is told to the executors it is about, under a
+      `decided:` heading in the contract. This extends decision 17.
+    - **Undo is per item.** `plan undo` takes back your act and what it changed, and keeps whatever
+      a planner put up since.
+    - **A drop binds planners.** What you dropped is in the planner's prompt, and the same words are
+      not put up again.
+    - **It wraps, never cuts.** The id and the state word stay whole, since commands take them.
+
+    *Evidence:* `tests/test_board.py` (`test_the_text_form_round_trips_every_kind_and_state`,
+    `test_an_agent_cannot_answer_and_its_note_waits_for_the_person`,
+    `test_an_answer_reaches_the_executors_contract`,
+    `test_undo_does_not_lose_what_the_planner_put_up_since`,
+    `test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again`). A skeptic's 13
+    findings on the first build (an undo stuck for good, a leaf turned into a sub-goal) were each
+    fixed with a test that failed before it.
+82. **Both planners ask instead of guessing (prompt version 2).** The rules `graphene ask` gives
+    every planner (`ask.RULES`) and Nemotron's own (`planner.SYSTEM`) now say: read the repository
+    first, never ask what a file answers, put up a question with the default you would assume rather
+    than guess, and at most about five items, most important first. A new Claude Code session is
+    taught the board's lines too (`gate.TEACH`), and told that only you answer them. *Why:* on
+    tonight's own plan (decision 95) the same paragraph gave five paragraphs of prose the first time,
+    and five board items the second, each a decision lane B's executors had made silently.
+    *Evidence:* `test_nemotron_is_told_to_ask_and_its_board_lands`,
+    `tests/test_gate.py::test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up`,
+    `docs/process/shaping/as-the-person.md` items 2 and 12. Whether Ultra asks questions worth a key
+    press is not known until it runs live.
+83. **A pick changes its leaf (prompt version 3).**
+    - **`then: goal NODE + TEXT`** ends NODE's goal with the sentence, as your edit. A sentence the
+      goal already has is not added twice, and `plan undo` takes it back. It adds and never replaces,
+      so a planner's words never overwrite your edits.
+    - **Prompt version 3.** Both planners, and a new Claude Code session, are told that every
+      option, and every default the leaves do not already follow, carries the `then:` lines (goal,
+      scope, check, drop, leaf) that change the leaf, and to write each leaf as the default has it.
+    - **`graphene node set ID --add-scope GLOB --add-goal TEXT`** adds to a scope or a goal as it
+      stands, so a correction from a shell is no longer a retyped goal. With `--scope` or `--goal` it
+      is refused.
+
+    *Why:* the stand-ins' biggest stall, 11 of 55 on the board, was a pick that left its leaf as it
+    was, fixed by hand in long `:node set` lines; and on tonight's own plan, adding one sentence to a
+    goal meant retyping 130 words. *The limit:* until a planner follows the rule, an appended sentence
+    can sit after one that says the opposite; the pick is told to the executor under `decided:`
+    either way. *Evidence:* `tests/test_board.py`
+    (`test_a_goal_effect_ends_the_leafs_goal_with_the_sentence_once_and_is_refused_by_its_line`,
+    `test_a_script_planner_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf`,
+    `test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf`);
+    `tests/test_plan_cli.py::test_node_set_adds_to_a_scope_or_a_goal_without_retyping_it`.
+84. **On the screen the board is rows of the outline, under the goal and above the tree. The other
+    candidate, the board as a view of its own, is deleted.**
+    - **The rows.** Each open item is a row in the one row grammar, its kind as a verb (`asks`,
+      `assumes`, `risk`, `leaves out`, `note`). Settled, parked and dropped items fold into one row
+      (`✓ 2 settled · 1 parked · 1 dropped`). The standing conditions are a dim row at the root
+      (decision 90). The screen opens on the first open item.
+    - **The keys**, each the `graphene board` command the bottom line names: `y` take, `1`-`9`
+      pick, `d` drop, `p` park (again: unpark), `Enter` answer in your words, `a` note. On a node
+      they mean what they meant. `?` on an item is the help, since its keys are already on the
+      bottom line and in the pane; on a node it is the planner's chooser (decision 88).
+    - **The keys have a line nothing overwrites.** What a command said goes on a line under it. *Why:*
+      6 stalls where an answer moved the cursor and the echo hid the next item's keys. *The cost:*
+      the side pane loses a line or two while something is said.
+    - **Board items are counted apart:** `you: 5 + 5 on the board`. They do wait on you.
+
+    *Why rows:* the two candidates tied. Twelve trials by the three stand-ins, on feeds and tonight's
+    own plan at 80×24 and 120×36: 249 against 244 keys pressed, 35,577 against 36,855 words read,
+    29 against 26 stalls, all twelve finished; the terminal's size moved the numbers more than the
+    candidate did. Rows wins the tie: a question and the leaf it is about are on one screen in one
+    grammar, and it adds no mode (Tab stays the plan's views). What the stand-ins stalled on is
+    decisions 83 and 85 to 87. Decision 98 says why this is not yet enough. *Evidence:*
+    `docs/process/shaping/evaluation.md` (the trials, the renders, the decision at 03:30);
+    `tests/test_board_rows.py` (`test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said`,
+    `test_question_mark_on_an_item_is_help_and_on_a_node_the_planners_chooser`,
+    `test_board_items_are_counted_apart_from_the_plan`); the screens before and after in
+    `docs/process/shaping/screens/`.
+85. **The terminal has three views of one plan: the outline, a top-down tree and a left-to-right
+    graph. Tab switches, and the outline stays the default.**
+    - **Tab** goes outline, tree, graph, past any that does not fit, and says once per width which
+      it went past (`the tree does not fit at 80 columns`). Each is also `graphene watch --view NAME`
+      and `graphene plan --view NAME` (or `auto`). Every key acts on the node under the view's
+      cursor, as in the outline; `j k` walk the view's order, `h l` go to the nearest cell beside,
+      `gg G` to the ends.
+    - **A view's first line is the goal's**, with the conditions and what the board holds first, and
+      the cursor on it acts on the goal (`y`, `E`). A node a view has no cell for (a sub-goal in the
+      graph) stands in by its first leaf, and Tab back returns to it.
+    - **A view goes above the node pane at the whole width, at every size**, as tall as its lines
+      up to half the rows. This changes decision 30 for the views; the outline is laid out as
+      before. *The cost:* at 120×36 the node pane has about 16 rows under a view.
+    - **`auto`** opens a view only when it draws, fits its rows unless it draws needs (the graph),
+      and scores above the outline's 50; a tie goes to the outline. On feeds that is the graph, on
+      the thirty-leaf plan the outline.
+    - **The screen opens in the repository's `view` setting** (plan_meta); unset, the outline. No
+      command writes it yet.
+
+    *Why the outline stays the default:* in the three graph trials on the thirty-leaf plan it
+    answered what runs, what waits on what and what `R` starts, for every stand-in, with no key
+    pressed at 120×36. The graph answered the critical path; the tree was a cross-check only, and
+    none of the three found it at 80×24, which is why Tab now says so. *Evidence:* `evaluation.md` §3;
+    `tests/test_views.py`
+    (`test_auto_keeps_the_outline_for_a_view_taller_than_its_rows_unless_it_shows_needs`,
+    `test_a_view_takes_the_whole_width_and_the_node_pane_goes_under_it`,
+    `test_the_views_first_line_is_the_goal_and_its_keys_are_the_goal_rows`,
+    `test_tab_says_once_which_view_it_went_past_because_it_does_not_fit`).
+86. **How the tree and the graph are drawn.**
+    - **The tree** is the plan the way you draw it: the goal on top, each parent centred over its
+      children, a cell its glyph and id in their state's colour, the title under them when there is
+      room, and `←N` for how many nodes it waits on. Too wide, it drops the titles, then folds the
+      sub-goals whose leaves are all done, then lists each sub-goal's leaves down, and only then
+      gives way to the outline. The thirty-leaf plan needs 87 columns, so at 80 it is the outline.
+    - **The graph** draws only leaves, since a leaf is what someone does. A leaf's column is the
+      longest chain of needs before it, so a column could all run at once. A line never runs through
+      a cell, a track it crosses stays unbroken, a need another already implies is not drawn, and a
+      leaf that needs two or more gets a row of its own. The critical path is heavy (`━`). *The
+      cost:* no sub-goal labels; the outline keeps the hierarchy.
+    - Both are pure functions of the nodes the screen already read, never the store, and both count
+      wide characters in terminal cells.
+
+    *Evidence:* `tests/test_view_tree.py` (layout invariants at every width from 20 to 167,
+    `test_the_least_width_is_the_folded_ids_listed_down`); `tests/test_view_dag.py`
+    (`test_random_plans_never_draw_a_line_through_a_cell_and_say_exactly_their_needs`,
+    `test_a_fan_out_past_seven_crosses_nothing`).
+87. **One critical path and one "at once", for the page and the terminal alike; the graph's note
+    leads with the path; the page draws one layout at a time. This changes decision 26.**
+    - **The critical path** is the longest chain of leaves not yet done, through `needs` (a need on
+      a sub-goal is a need on each leaf under it), counted in leaves; a tie goes to the plan's order,
+      and a chain of one leaf is no path. **At once** is the leaves that are open or proposed, the
+      agents', with a scope and nothing left to wait on, and not come back to the person. Both are `plan_view.critical_path` and
+      `plan_view.at_once`, and the graph calls them.
+    - **The graph's note** names the path first, so 80 columns never cut it, and counts "ready" as
+      the status line's `R: N ready` does, with proposals that could start once accepted said apart:
+      `critical ━ v-dupes > v-rules (2) · 4 ready · 4 more once accepted · 3 wait · …`. *Why:* all
+      three graph stand-ins lost the path to the 80-column cut, and read "8 at once" beside "R: 4
+      ready" as a contradiction.
+    - **The page** draws the outline, the tree or the graph, not the outline above the canvas. It
+      opens in the same `view` setting the screen reads. Unset, it is `auto`: the graph when it fits
+      its width at scale 0.8 or more, else the tree, else the outline, and the bar says why. So
+      unset, the screen opens in the outline and the page in `auto`. A click changes that page only
+      and is kept nowhere. Critical is shown by weight and in words, never by colour alone.
+
+    *Why one definition:* a skeptic ran both on the same stores and they disagreed (two independent
+    leaves: no path on the page, `a (1)` in the terminal). *Why nothing in the browser:* a layout kept
+    in `localStorage` leaked across every plan on that origin, a second place for one preference.
+    *Evidence:* `tests/test_plan_view.py::test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once`,
+    `tests/test_views.py::test_the_graphs_note_names_the_critical_path_first_and_counts_ready_as_the_status_line_does`,
+    `tests/test_server.py::test_the_page_opens_in_the_view_the_repository_is_set_to_the_one_the_terminal_reads`,
+    `ui/src/Plan.test.tsx`. *Still open:* no screen says how a tie was broken (all three stand-ins
+    guessed "it waits on a person"); the tree's "wait on you" still counts differently from the
+    status line; and `graphene run` still starts a leaf that came back, which `R: N ready` leaves out.
+88. **Talking on the tree: `?` on a node asks the planner about it, and what anyone else changed
+    since you last looked is marked. This changes decision 30's `?`.**
+    - **The chooser.** `?` on a node opens one line: `w` why, `s` split, `m` merge the `V`
+      selection, `a` another way, `?` help, or your own words (`graphene ask --about`). On the goal
+      and on a board item, `?` is the help. Each is a command: `graphene talk why|merge|another`,
+      `graphene node split`.
+    - **Every answer lands in the store**, never only printed. Why is a note on the board about the
+      node. Merge proposes one leaf and puts up a question whose default drops the leaves merged.
+      Another way proposes a sibling and a question which to keep. Graphene puts the question up in
+      the planner's name, so its effects are right whatever the planner wrote, and every planner
+      answers (Claude Code, Codex, Nemotron).
+    - **What changed.** `graphene plan seen` (`m`) keeps your mark; `graphene plan changes` lists
+      what changed after it. A node added since reads `+` before its id, one changed `~`, and a
+      folded sub-goal with a change inside reads `~`. Only other people's acts count: you saw your
+      own as you made them. Only you move the mark, by `m` or `graphene plan seen`; an agent that
+      tries is refused, since moving it would hide a change from you.
+
+    *Why:* on tonight's own plan two leaves came back for one cause, and seeing it took two
+    paragraphs of prose (`as-the-person.md`, item 6). *Evidence:* `tests/test_talk.py`
+    (`test_changes_since_seen_are_others_and_only_after_the_mark`,
+    `test_a_row_changed_since_the_person_looked_is_marked_until_m`,
+    `test_question_mark_on_a_node_opens_the_chooser_and_each_choice_runs_its_command`,
+    `test_nemotron_answers_why_and_its_note_lands_as_its_own`).
+89. **Keys: found in `NEBIUS_API_KEY`, then the system keychain, never in a file; set, checked and
+    removed only by you.**
+    - `graphene key set` reads the key from a hidden prompt, never from argv (which `ps` shows), and
+      keeps it with `security` on macOS or `secret-tool` on Linux. `graphene key check` prints
+      `Token Factory: reached, N NVIDIA models` or what stood in the way, never the key. `graphene
+      key remove` takes it out.
+    - The environment wins, so CI and one-off runs need no keychain. The keychain is asked once a
+      process, given up on after 5 s, and only through the tool `which()` found.
+    - A caller with an agent's marks is refused. A word typed after `graphene key` is never said
+      back, and a key with a space or a line break is refused without being shown.
+    - Graphene's own lookup is off in a command the model runs, in a check, and in any planner or
+      executor that is not its own Nemotron. ConTree, `docs/test/access.py` and `demo --record`
+      count a key kept in the keychain.
+    - Only Token Factory's key is covered.
+
+    *Evidence:* `tests/test_keys.py`, `tests/test_key_cli.py` (`test_an_agent_is_refused`,
+    `test_set_never_takes_the_key_from_argv`),
+    `tests/test_cli_settings.py::test_a_key_pasted_after_any_key_command_is_never_echoed`,
+    `test_model_written_code_and_a_check_never_find_the_keychain_key`. The hole is under "What does
+    not bind".
+90. **Standing conditions: protected paths, read-only globs, and what the planner must never
+    propose.** Unset, each is empty.
+    - **`protected: GLOB, …`**: no scope may include it, no planner or executor tool reads it (the
+      hook matches what a link or a case variant reaches), and it is not uploaded to a sandbox.
+    - **`readonly: GLOB, …`**: read, never written. A board answer's `then: condition GLOB` adds
+      one, read live from the board and never copied, so `plan undo` takes it away with the answer;
+      `graphene config` shows it as a `# board:` line. *Why read-only and not protected:* a board
+      risk is about writes, and hiding the paths from the planner's reads goes further than it asked.
+    - **`never: SENTENCE`**, a line each: told to the planner, not enforced.
+    - **Where the gate holds the two globs:** at propose and edit; at start, so a setting made after
+      a leaf was proposed binds it too, naming the setting; on every write through the hook and the
+      Nemotron tools, asides included (their `**` leaves them out); and at `done`. Only your own
+      override passes them. A save that newly covers a leaf's scope names that leaf.
+    - **Where they show:** a dim row at the root of the board, first on the tree's and the graph's
+      goal line, under the keys in `?`, in the page's data and in a replay.
+
+    *Why:* "don't touch vendored or legacy files" is in the README's own example paragraph, and a
+    setting costs that attention once. *Evidence:* `tests/test_standing_gate.py`,
+    `tests/test_protected_reads.py`, `test_a_protected_file_is_never_uploaded_to_the_sandbox`,
+    `test_a_new_protected_path_names_the_leaves_whose_scope_now_covers_it`,
+    `test_a_condition_binds_as_a_read_only_glob_until_undone`,
+    `test_the_standing_conditions_are_a_dim_row_at_the_root_and_on_a_views_goal_line`. The holes are
+    under "What does not bind".
+91. **How big the plan is: one sentence to the planner, and a setting of `auto` (unset), `finer` or
+    `coarser`.**
+    - The sentence gives the repository's files, its lines (counted up to 20,000, lockfiles left
+      out), its test layout and the directories the ask names (by path, or by a name only one
+      directory has), and a number of leaves: from 1 up to 3, 6 or 10 by the repository's size,
+      raised by the directories named up to that bound. `finer` doubles the range, `coarser` halves
+      it.
+    - `graphene ask "…" --finer` (or `--coarser`) sizes one ask, whatever is saved, and replaces the
+      planner's proposal still waiting on you, so you prune one tree, not two. A split and a
+      follow-up (`--about`) are not sized. On the screen, `+` and `-` ask the last sentence again,
+      finer and coarser, in the background.
+
+    *What was measured:* 21 runs of the Claude Code planner, one a cell, on the four task
+    repositories, `itsdangerous`, `requests` and Graphene. Under `auto` it proposed 1 to 3 leaves
+    everywhere, from 118 lines to over 20,000: the ask set the count, not the repository. `finer`
+    gave more leaves than `auto` on 5 of 7 and never fewer; `coarser` fewer or the same on all 7.
+    The thresholds are still guesses. *Evidence:* `docs/process/shaping/sizing.md`,
+    `tests/test_sizing.py`, `tests/test_ask_settings.py`,
+    `test_plus_and_minus_ask_the_plan_again_finer_and_coarser`. *Still open, yours to decide:* `+`
+    after you have answered the board drops the proposals your answers were about, so their
+    `decided:` lines reach no executor; and `+` asks the repository's planner, not the one the last
+    ask named with `--with`. Keep the answers tied to the new tree, or refuse `+` while answers point
+    at what it would drop?
+92. **`graphene config` is the one place for the settings, and `?` shows them. There is no keymap
+    setting.**
+    - `graphene config` prints `protected`, `readonly`, `never` and `size`, then, as `#` lines a
+      save leaves alone, the board's read-only globs, the planner, the executor, plan first and
+      where the key was found (never the key). Those keep their own commands.
+    - `graphene config edit` refuses a line it cannot read by its number, and writes all or nothing.
+      It refuses a save made from a text someone has changed since, saying what the settings now
+      hold, and a text with no setting in it. It prints each line it removed and added. `plan undo`
+      does not reach the settings, and its help says so. Only you edit them.
+    - **`?`** opens on a one-line legend of the glyphs in their colours (`━ critical`), then one row
+      a key with its group beside it, no row wrapped, then the settings: 2 screens at 80×24 (the
+      judge counted 5, "with no glyph legend"), 1 at 120×36.
+    - **No keymap.** Nobody has asked to remap, the screen already uses vim's keys (decision 63),
+      and every key is a command you can type, so a remap setting has nobody who needs it yet.
+      Revisit if a vim user's session shows a collision.
+
+    *Evidence:* `tests/test_settings.py`, `tests/test_config_cli.py`
+    (`test_a_save_from_a_text_another_writer_has_since_changed_is_refused`,
+    `test_an_agent_cannot_edit_and_no_editor_opens`),
+    `tests/test_tui.py::test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it`, and a README
+    line for each setting.
+93. **The ladder: seven rungs you climb one at a time, each with its own spend cap, one PASS or FAIL
+    line, the bill so far and the next command.**
+    - **The rungs:** 1 access, 2 one leaf local, 3 one leaf in a Sandbox, 4 the escape test in
+      ConTree, 5 a recorded leaf, 6 arm A as one Graphene leaf and B′ on feeds, 7 the demo run,
+      recorded.
+      Caps run from $0.05 (rung 4) to $3 (rungs 6 and 7): $7.80 is one pass of each, and a rerun
+      gets its cap afresh.
+    - **Live, only you climb.** From a shell with an agent's mark, rungs 2 to 7 run nothing and say
+      so, and rung 1 prints the line to type with `!`. In a terminal of your own, rung 1 runs the
+      access check itself. So climb outside Claude Code, whose `!` lines carry `CLAUDECODE`.
+    - **It stops at the first failure** and says what that most likely means and what to try
+      (`practice.py`'s `MEANS`).
+    - **Ctrl-C** stops a rung, cleans up what it made (in Docker too), and says what is left and
+      how to clean it.
+    - **Rung 6** passes feeds' sealed paragraph from its file to the command. No line and no log
+      holds it, no command's output is shown on that rung, and the dry run passes a placeholder.
+    - **`docs/test/PRACTICE.md`** is all of it, in ten lines.
+
+    *Evidence:* the dry climb (`docs/test/practice.sh --dry`, about three minutes) passes against
+    the scripted fake and Docker; `tests/test_practice.py`
+    (`test_the_whole_ladder_climbs_against_the_stand_ins`, `test_in_an_agents_shell_no_live_rung_runs`,
+    `test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed`,
+    `test_ctrl_c_stops_a_rung_and_says_what_is_left`). Only the live calls are new tomorrow on the
+    ladder's own path. Rung 6 is not the evidence runs' arms: its arm A is a Graphene leaf (scope
+    `**`, check `true`), not `arm_a.py`'s one `converse` session, and its B′ goes through `graphene
+    run`, not `arm_bprime.py`. Those two harnesses and `evidence.py add` are tested against the fake
+    only (`test_arm_a.py`, `test_arm_bprime.py`, `test_evidence.py`) and first meet the live service
+    in the evidence runs.
+94. **Nemotron while you shape: three prototypes, chosen from twenty ranked ideas, behind
+    `GRAPHENE_SHAPE` (unset: none runs). Each is also a command, and each puts what it found on the
+    board.**
+    - **Your words, accounted for** (`graphene plan cover`; flag `cover`). Nano says which leaf
+      carries each clause of your paragraph. A clause is kept only when it is your words, whole,
+      starting and ending at a clause's edge and overlapping none kept; one the model invents is
+      dropped. Each clause no leaf carries goes on the board, its default `then: goal LEAF +
+      "CLAUSE"`, so taking it puts your own words on the leaf.
+    - **Notes find their leaf** (`graphene plan note "…"`; with the flag, `graphene board note`). A
+      sentence you type is placed on the one open or proposed leaf it constrains, and the offer goes
+      on the board beside your note as the `then:` lines that make the change. The change is made
+      and rolled back first, so the offer is one the plan takes, and what lands on a goal is your
+      sentence. Only your note is routed, since routing spends.
+    - **Red first** (`graphene plan precheck`; flag `precheck`). Every check runs before any work.
+      "Passes already" and "cannot run" need no model; Nano reads only a red whose reason the exit
+      code and output do not say. A proposed leaf's check runs only in a sandbox fork, never on
+      your machine; with no sandbox it is not run. Each weak check goes on the board as a risk about
+      its leaf.
+    - **For all three.** Only you run them, since they spend. A failure is one line, and the
+      proposal stands. The bill is a usage row under its own name, saying who answered. Their board
+      items are put up by `shaper:nemotron`, and say "a stand-in" when Token Factory did not answer.
+      Nothing shaped like a key and no control character reaches the model, the store or the
+      terminal.
+
+    *Why these three:* three judges scored 32 ideas (20 after merging) on fit, what a judge would
+    see, uniqueness against `field.md`, cost, and whether it can be measured by 20 October. These
+    came first, work with every planner, and need only Nano. *Evidence:* `docs/process/ideas.md`;
+    `tests/test_cover.py`, `tests/test_note.py`, `tests/test_precheck.py` (the Docker fork included),
+    among them `test_the_cover_flag_puts_the_uncovered_clauses_on_the_board_after_an_ask`; a
+    skeptic each, before the merge. *Still open:* precheck's items say `shaper:nemotron` even where
+    an exit code, not Nano, gave the verdict; and a check `plan note` drafts is not judged for what
+    it does: taken, `done` runs it, as it runs a planner's.
+95. **Tonight's own plan ran through Graphene, in a clone, with the coordinator in your seat.** Lane B
+    (settings you state once) went from one 196-word paragraph to ten leaves landed in 29 minutes:
+    `graphene ask`, then `graphene run --parallel` with Claude Code, in a clone at
+    `~/graphene-night`. *Why a clone, not a worktree:* there is one store per repository, and a
+    worktree shares the main checkout's, so a plan in force there would have held every other lane's
+    sub-agent to it. The person's acts dropped the agent's markers and set `GRAPHENE_AS=person:alex`,
+    so the log marks each "(no terminal)". *What it found* (`docs/process/shaping/as-the-person.md`):
+    - The planner's questions came as five paragraphs of prose, about 250 words, printed once, cut
+      at 300 characters a line and never stored. This is the board's case, from our own plan.
+    - Adding one sentence to a goal from a shell meant retyping the goal: 130 words.
+    - Two leaves came back for one cause, with offers naming two different files; seeing that one
+      fix covered both was left to the person.
+    - A leaf added during a run waits for the next `R`, and nothing said so.
+    - Each leaf's check passed and the merged whole failed lint: nothing checks the sum.
+    - The same paragraph, to the planner that asks (decision 82), put up five items, each a decision
+      lane B's executors had made silently, one of them a risk nobody had seen: an executor's own
+      shell can read the keychain.
+96. **A reviewer's test wrote a fake key into your real login keychain, at about 02:00, so every
+    test now runs with the keychain off.** The item (service `graphene`, account `token-factory`)
+    holds no real key, and only you can take it out; the classifier refused it to the agent:
+    `security delete-generic-password -s graphene -a token-factory`. *The causes:* `docs/test` had no
+    conftest turning the keychain off; a lookup could fall through to the next keychain tool on the
+    PATH; and the ladder gave each rung an environment without any `GRAPHENE_` setting, so the tests'
+    rung 1 asked your real keychain for a key, and found that fake one. *Now:* `tests/conftest.py`
+    and `docs/test/conftest.py` set `GRAPHENE_KEYCHAIN=off` for every test, only the tool `which()`
+    found is run, and a rung keeps `GRAPHENE_KEYCHAIN=off` when the shell sets it (`1770539`). The
+    reproductions used a fake `security` on the PATH, whose call log stayed empty through the suite.
+    *Evidence:* `tests/test_keys.py::test_the_suite_never_reaches_the_real_keychain`,
+    `docs/test/test_access.py::test_the_docs_suite_never_reaches_the_real_keychain`,
+    `test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path`,
+    `tests/test_practice.py::test_in_a_terminal_of_your_own_the_access_rung_runs_the_check_itself`.
+97. **The shaping study ran on one pinned build, and its first design never ran.** The build is a
+    wheel of `668c7fd` in a venv of its own, first on the PATH of every run; the commit and the
+    wheel's sha256 (`5408b89f…`) are in `~/graphene-shaping-runs/build.txt`, and a run on any other
+    `graphene` is void. *Why:* nothing is tuned once the first run starts. Study 1 (the paragraph,
+    the outline, and the board with the graph, on four tasks, with Claude Code planning and
+    executing) was pre-registered before any run, its deviations before the first. It never ran:
+    this session's permission classifier refused every stand-in's Claude Code session, so seven runs
+    are void, the four paragraph runs were never made, and the one valid run stopped before
+    `graphene run`. Its null is the harness's, not a result about shaping; it can be rerun from a
+    seat where a stand-in may start Claude Code. The sealed paragraphs were written once by a
+    stand-in from each card, and the agent that ran the night has not read them. The live
+    pre-registration (`docs/test/results-2026-09-28-live-prereg.md`) was committed before any live
+    data, and its table is empty.
+98. **The board does not yet save attention. In the second shaping study it cost more than the
+    outline on every task, and bought a plan at least as faithful to the card.**
+    - **What ran.** Study 2, pre-registered at about 04:00 before any of its runs, measured only the
+      shaping: one Claude Code proposal per task, copied byte for byte into both arms, shaped by a
+      stand-in up to the moment it would press `R`, nothing run, and a judge per run reading the
+      shaped plan against the card. Eight runs, all valid, one a cell.
+    - **What it found.** Answering the board first cost more modelled person-seconds than the
+      outline on 4 of 4 tasks, two to two and a half times as much, mostly in reading (on logs,
+      typing weighed more): 1,277 against 669 on feeds (3,754 words read against 1,838), 1,064
+      against 427 on inventory, 823 against 324 on logs, 650 against 293 on report. The
+      shaped plan was at least as faithful to the card on all four: more on logs (yes against
+      partly, 16 of 16 constraints against 12 of 16) and on feeds (19 of 19 against 18 of 20), tied
+      on inventory and report.
+    - **What it did not measure.** It ran on the pinned build, before decision 83 (prompt version
+      2, no `then: goal`, no `--add-goal`), read through `graphene board` and `graphene plan --view
+      auto` at the command line, not the screen. The people were Claude stand-ins and the seconds
+      the keystroke-level model's.
+    - **What the next run must change.** The board has to replace reading the tree, not add to it:
+      fewer items, only those whose answer changes the tree, and a print compact enough that
+      answering it is most of the reading. Then the same design again, on a build with decision
+      83, and on the screen.
+
+    *Evidence:* `docs/test/results-2026-09-28-shaping.md` ("Study 2 results"); each run's
+    `judge.md` under `~/graphene-shaping-runs/`.
+99. **The planner puts up at most three board items, each one a question or a risk whose answer
+    changes the tree (prompt version 4). This revises 82 and 83.** An assumption it is sure of is
+    a sentence in the goal of the leaf it bears on, not an item, and it never puts up an item
+    whose answer would change nothing. *Why:* 98's cost was mostly reading the board on top of the
+    tree. *Evidence:* study 3, registered before its runs as exploratory and after the fact (the
+    change was made because of study 2, on the same four tasks and cards, so it can show which way
+    the direction moves and never confirm it). The planner put up 1 or 2 items where study 2's had
+    put up 5 or 6. The board still cost more than the outline on all four tasks, but the gap in
+    modelled person-seconds shrank on each (feeds +349 against +608, inventory +323 against +637,
+    logs +399 against +498, report +273 against +357), and the plan was as faithful or more on all
+    four. `tests/test_ask.py::test_the_planner_is_told_the_board_carries_only_what_changes_the_tree`;
+    `docs/test/results-2026-09-28-shaping.md` ("Study 3"); runs under `~/graphene-shaping3-runs/`.
+    98's claim stands: the board does not yet save attention.
+100. **What the closing review changed.** Five adversaries went over the diff `cb2ce54..2111115`,
+     one each on the board, the views, settings and keys, the ladder, and the claims, and a skeptic
+     reproduced every finding from scratch. That gave 48 findings, all collected before any was
+     fixed: 45 confirmed and 3 refuted (with why, in the review's record). Each fix has a test that
+     fails before it, on the `g-fix-*` branches merged into `shaping`. The six blockers:
+     - **A re-ask (`+`, `-`) dropped the waiting tree before the planner ran,** so a planner that
+       failed left nothing, and it dropped a split's and another way's proposals with it. It now
+       drops only the last ask's own tree, and only once a new proposal has landed (this revises 91).
+       A planner that writes a board item again with changes keeps the board's own and lands the
+       rest, rather than losing the whole proposal.
+     - **The graph crashed on a title holding a joined emoji** (a family of three). Cells are measured
+       whole now, and variation selectors count right.
+     - **A shell write to a git-ignored protected or read-only path passed the hook and `done`** (the
+       README's own `.env` example). The ignored files a condition covers are hashed at start and
+       checked at `done` (this extends 90).
+     - **A Token Factory error body that echoed the key was printed, stored and recordable.** It is
+       masked by shape before it is printed or kept (this extends 89).
+     - **`HACKATHON.md` said no shaping number existed.** It now reports studies 2 and 3 as they came.
+     - Also fixed: the ladder's dry climb could delete the live ladder's ledger when both shared a
+       state directory; `practice.mask` hid only a key's first twenty characters; `plan precheck`
+       ran an accepted leaf's check with the keychain on; an answer about a leaf that left the plan
+       was accepted and told to no one; the docs described prompt versions 2 and 3.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -825,6 +1265,24 @@ changes a decision above, the old one is left as written and the change is named
   ignored environment (`.venv/bin/pytest`, `node_modules`) must make its own there.
 - The planner of `graphene ask` has read-only tools because you (or the default) named them. A planner
   started with tools that write is held by the hooks (Claude Code) and by `start`, and not otherwise.
+- A key in the keychain is readable by any process of your user while the keychain is unlocked: an
+  agent that runs `security find-generic-password` gets it. Graphene turns its own lookup off in a
+  command the model runs, a check, and any planner or executor that is not its own Nemotron; only a
+  sandbox is a boundary (decision 89).
+- A protected path is kept from the model where Graphene reads for it, not everywhere. A command the
+  Nemotron executor runs in the local placement can read it, as it can any file your user can. A
+  leaf's check in a sandbox fork runs on the whole checkout, so a test the leaf wrote could print
+  it. A Codex planner is only told not to read it (decision 90).
+- `never:` lines are told to the planner, not enforced: a proposal that does what one forbids is not
+  refused.
+- A board answer changes a leaf only through its `then:` lines. An answer in your own words, or an
+  option a planner wrote without them, reaches the executor only as a `decided:` line, and a goal a
+  pick added to can say two opposite things until the planner writes leaves as the default has them
+  (decisions 81 and 83).
+- `+` or `-` after you answered the board drops the proposals your answers were about, and their
+  `decided:` lines then reach no executor (decision 91).
+- What the three prototypes printed tonight is a stand-in's: the scripted fake answered every call.
+  What Nano makes of a real paragraph, a note or a red is unknown until it runs live (decision 94).
 
 ## What comes next, in the order I would do it
 
@@ -877,6 +1335,22 @@ changes a decision above, the old one is left as written and the change is named
    on Nemotron (item 6) and the judges' seats on the real video (item 10).
 2. Then the directive's queue from item 1, in its lanes. The faults (72 to 74), the screen (75, 76)
    and the replay (77) are built and waiting for live data.
+
+## What comes next, from 28 September
+
+1. The key and the ladder. The key in `~/.zshenv`, the fake keychain item out (decision 96), then
+   `docs/test/practice.sh` in a terminal of your own, one rung at a time (`docs/test/PRACTICE.md`).
+2. The live directive. Its draft, `docs/process/directives/LIVE_DIRECTIVE_DRAFT.md`, is yours to
+   edit before it is sent: first contact, the arms as pre-registered, the chart and the demo run.
+   Its evidence tooling is in: `docs/test/evidence.py` fills the pre-registered table and draws the
+   chart (and refuses a stand-in's rows unless told), `docs/test/arm_bprime.py` runs arm B′, and
+   `docs/test/standin.py` prints arm A's brief. Each is tested against the scripted fake.
+3. The board, made to save attention (decision 98). Fewer items, only those that change the tree,
+   is prompt version 4, and study 3 ran study 2's design again on it: the board still cost more. Next,
+   a compact print, and the design again on the screen.
+4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
+5. The prototypes live: cover, note and precheck against Token Factory, each measured as
+   `docs/process/ideas.md` says, by 20 October.
 
 ## How this file is used
 

@@ -1,0 +1,50 @@
+(help: 2 screen(s), ctrl-d twice between them)
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  ◇◆↩ yours  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done  ━ critical   │
+│  move       j k         down, up                                            │
+│             gg G / n    the goal, the last row; search, the next match      │
+│             Esc         ends a search, a selection, a pane                  │
+│             Tab         the next view that fits (graphene watch --view)     │
+│             h l         in a view: the node to the left, to the right       │
+│  fold       za zo zc    fold or unfold, unfold, fold (on the goal: all)     │
+│             zR zM zx    all open, all closed, as it opened                  │
+│  shape      y d         accept, sign off, it is done; drop                  │
+│             e E         edit it in $EDITOR; with what is under it           │
+│             a A s       add a sibling, a child; the planner splits it       │─
+│             ?           ask the planner why, split, merge, another way      │
+│             + -         the plan asked again, finer, coarser                │
+│             V u         select several, then y or d; undo                   │
+│             m           seen: what changes after it reads + or ~          ▂ │
+│  run        R r         run every ready leaf; the ready ones under this     │
+│             x           release it; send it back; reopen it                 │
+│             P           plan first on or off                                │
+│  see        Enter l     the record; the executor's output                   │
+│             ctrl-d -u   scroll the pane                                     │
+│  came back  w b n       widen its scope; a sibling first; wait on those     │
+│             ?           ask the planner what would let it be done           │
+╰─────────────────────────────────────────────────────────────────────────────╯
+---
+╭─────────────────────────────────────────────────────────────────────────────╮
+│             ?           ask the planner why, split, merge, another way      │
+│             + -         the plan asked again, finer, coarser                │
+│             V u         select several, then y or d; undo                   │
+│             m           seen: what changes after it reads + or ~            │
+│  run        R r         run every ready leaf; the ready ones under this     │
+│             x           release it; send it back; reopen it                 │
+│             P           plan first on or off                                │
+│  see        Enter l     the record; the executor's output                 ▆ │
+│             ctrl-d -u   scroll the pane                                     │
+│  came back  w b n       widen its scope; a sibling first; wait on those     │
+│             ?           ask the planner what would let it be done           │─
+│  board      y 1..9      take the default, confirm, agree; pick one          │
+│             d p         drop it; park it (p again: unpark)                  │
+│             Enter a     answer in your words; a note                        │
+│  :          :<command>  any graphene command (:ask, :stop, :node set)       │
+│             q           quit; a run started here goes on                    │
+│  settings   planner     claude (graphene init --planner)                    │
+│             executor    claude (graphene init --executor)                   │
+│             plan first  on (graphene plan first on|off)                     │
+│             size        auto                                                │
+│  Every key is a graphene command; the bottom line says which it ran.        │
+│  graphene config edit changes them.                                         │
+╰─────────────────────────────────────────────────────────────────────────────╯

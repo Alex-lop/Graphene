@@ -32,6 +32,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -102,14 +103,14 @@ def _end(proc: subprocess.Popen) -> None:
 
 def _end_group(pid: int, gone: Callable[[], bool]) -> None:
     """TERM to a process group, then KILL, each given its time: nothing is handed on while the old
-    executor may still write."""
+    executor may still write. A group that refuses the signal is waited for all the same: macOS
+    refuses one (EPERM) whose last process is ending, and it is not gone until ``gone`` says so (CI
+    caught a stop that returned while the executor was still ending, its exit code not yet known)."""
     for sig, grace in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 5)):
         if gone():
             return
-        try:
+        with contextlib.suppress(OSError):
             os.killpg(pid, sig)
-        except OSError:
-            return
         until = time.monotonic() + grace
         while not gone() and time.monotonic() < until:
             time.sleep(0.05)
@@ -220,13 +221,15 @@ def _let_go(store, node_id: str) -> bool:
     return last is not None and (last["kind"] == "dropped" or bool(last["detail"].get("person")))
 
 
-def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None) -> str:
+def prompt_for(
+    node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None, decided: list[str] = ()
+) -> str:
     lines = [
         "You are doing one leaf of a plan that a person and their agents share. `why` is the path from "
         "the plan's goal down to your leaf, in the person's words: it is what your work is for. The "
         "leaf is the whole of what you are asked to do.",
         "",
-        P.contract(node, why),
+        P.contract(node, why, decided),
         *(f"  sent back with: {note}" for note in notes),
         "",
         "Read anything you need; write only inside the scope. When it is done, run "
@@ -284,7 +287,9 @@ def run_node(
                 raise KeyboardInterrupt
             argv = command_for(
                 template,
-                prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
+                prompt_for(
+                    node, P.notes(store, node.id), refusal, P.trail(store, node), B.decided(store, node)
+                ),
                 session,
                 attempt > 1,
             )
@@ -294,6 +299,8 @@ def run_node(
             env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session,
                    "GRAPHENE_TRY": str(attempt)}  # fmt: skip
             env["GRAPHENE_EXECUTOR"] = name
+            if name != "nemotron":  # only Graphene's own executor calls Token Factory; the rest never look
+                env["GRAPHENE_KEYCHAIN"] = "off"
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
@@ -349,7 +356,10 @@ def run_node(
                 said = first.rstrip(":") + (f" · {paths}" if paths else "")
                 say(f"{node.id} attempt {attempt} refused: {said}")
         tries = f"{attempts} attempt{'s' if attempts != 1 else ''}"
-        P.release(store, node.id, who, f"{tries}, the last one refused: {refusal}")
+        # the refusal for the person: its `graphene node release` step was the executor's to take
+        told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
+        crashed = f"; the executor itself exited {code}" if code else ""
+        P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
         say(f"{node.id} came back after {tries}")
         return None
     except KeyboardInterrupt:

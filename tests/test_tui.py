@@ -9,7 +9,7 @@ import sys
 
 from test_plan_cli import agent, person, repo  # noqa: F401  (fixtures)
 
-from graphene_map import plan
+from graphene_map import plan, settings
 from graphene_map.store import Store
 from graphene_map.tui import Watch
 
@@ -315,22 +315,36 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
 
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
     """Recheck: at 80 columns the help was 106 wide from x=0, and its last 26 columns were cut off with
-    no way to scroll to them. It is grouped as the README groups the keys: two columns at 120, one at
-    80, and it closes on ?, Esc or q."""
+    no way to scroll to them. The stand-ins then found it 5 screens long at 80x24 with no legend. It
+    opens on a line of the glyphs and colours, a key a row with its group's name beside it and no row
+    wrapped, then the settings (`graphene config`): one screen at 120x36, two at 80x24. One column
+    below 154 columns; it closes on ?, Esc or q."""
     proposed(repo)
-    for size in ((80, 24), (120, 40)):
+    with Store.open(repo) as store:
+        settings.apply(store, "protected: secrets/**\nsize: finer\n", plan.Caller("alex", True))
+    # a condition taken on the board: its settings row once had a label so long every key's words were cut
+    risk = "risk: vendored  [vendor]\n    default: d\n    then: condition vendor/**\n"
+    agent("plan", "propose", "-", input=risk)
+    assert person("board", "take", "vendor").exit_code == 0
+    for size, screens in (((80, 24), 2), ((120, 36), 1), ((160, 40), 1)):
 
-        async def before(app, pilot, width=size[0]):
+        async def before(app, pilot, width=size[0], high=size[1], screens=screens):
             await pilot.press("question_mark")
             await pilot.pause()
             text, box = app.screen.query_one("#help").region, app.screen.query_one("VerticalScroll").region
             assert text.right <= width and abs(box.x - (width - box.right)) <= 1, (width, text, box)
-            rows = shown(app, text)
-            assert "zR zM" in "\n".join(rows)
-            assert len(app.screen.query("#help > Static")) == (2 if width >= 110 else 1)
-            if width >= 110:  # side by side: the first group of each column on one row
-                assert any("move" in r and "run" in r for r in rows), rows
-                assert "plan first on or off" in "\n".join(rows)
+            legend = shown(app, app.screen.query_one("#legend").region)[0]
+            assert legend.strip().startswith("◇") and "? proposed" in legend and "━ critical" in legend
+            columns = [str(s.render()) for s in app.screen.query("#help > Static")]
+            rows = [r.rstrip() for r in columns[0].splitlines()]  # the first column is the taller
+            said = "\n".join(columns)
+            for key in ("zR zM", "+ -", "y 1..9", "size", "protected"):
+                assert key in said, (key, said)
+            assert "secrets/**" in said and "finer" in said and "vendor/**" in said
+            assert not any(r.rstrip().endswith("…") for r in rows)  # every row whole, none cut or wrapped
+            assert len(app.screen.query("#help > Static")) == (2 if width >= 154 else 1)
+            whole = len(rows) + 2  # and the legend and the last line, inside the border
+            assert whole <= screens * (high - 2), (whole, width)
 
         watch(repo, [], size=size, before=before)
     for key in ("question_mark", "escape", "q"):
@@ -524,8 +538,9 @@ def test_at_80_columns_the_bottom_line_still_says_what_the_key_did(repo):
     with Store.open(repo) as store:
         plan.start(store, "schema", plan.Caller("claude:aaaa1111", False, "aaaa1111-session"), repo)
     seen, _ = watch(repo, ["j", "j", "d"])
-    top, bottom = seen["status"].splitlines()
+    top, keys, bottom = seen["status"].splitlines()
     assert len(top) <= 78  # 80 columns less the padding: it does not wrap onto the message's row
+    assert keys.startswith("R run all ready")  # the keys stay while the command's words show
     assert bottom.startswith("✗ graphene node drop ids: docs waits on ids")
 
 
@@ -828,7 +843,8 @@ def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
     gone): on its row, at the pane's edge, when every one fits whole; else under it, for all alike."""
     every_state(repo)
     commands = ["graphene node widen docs", "graphene node sibling docs",
-                "graphene node set docs --needs ids", "graphene ask … --about docs"]  # fmt: skip
+                "graphene node set docs --needs ids",
+                "graphene ask 'docs came back: propose what would let it be done' --about docs"]  # fmt: skip
     for size in [*SIZES, (220, 40)]:
         seen, _ = at(repo, "docs", size)
         lines = [ln.rstrip() for ln in seen["detail"].splitlines()]
@@ -903,7 +919,7 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     assert top == "waiting on you: 4 · executors: 1 running · R runs 1 ready · 1/8 done · plan first: on (P)"
-    assert bottom == "y sign off · x send back · Enter record · ? help · q quit"
+    assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
     assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first: on"
@@ -913,7 +929,8 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
         app.message = long
         app.say_status()
         await pilot.pause()
-        bottom = str(app.query_one("#status").render()).splitlines()[1]
+        keys, bottom = str(app.query_one("#status").render()).splitlines()[1:]
+        assert keys.startswith("y accept it all")  # a third line for what a command said: the keys stay
         assert len(bottom) <= 78 and bottom.endswith("…") and long.startswith(bottom[:-1] + " ")  # at a word
 
     watch(repo, [], before=said)
@@ -1391,7 +1408,7 @@ def test_help_lists_the_fold_keys(repo):
     from graphene_map.tui import HELP
 
     fold = dict(dict(HELP)["fold"])
-    assert "counts the leaves inside" in fold["zo zc"] and "as it opened" in fold["zx"]
+    assert "unfold, fold" in fold["za zo zc"] and "as it opened" in fold["zR zM zx"]
 
 
 def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
@@ -1569,7 +1586,7 @@ def test_a_step_up_the_ladder_names_the_model_on_the_bottom_line_and_in_the_leaf
                        {"attempt": 2, "model": SUPER, "from": NANO, "why": why})  # fmt: skip
     seen, _ = watch(repo, [])
     said = "greet stepped up to Nemotron-3-Super-fake: attempt 1 refused"
-    assert seen["cursor"] is None and seen["status"].splitlines()[1].startswith(said)
+    assert seen["cursor"] is None and seen["status"].splitlines()[-1].startswith(said)
     seen, _ = watch(repo, ["j"])
     assert f"model Nemotron-3-Super-fake, stepped up from Nemotron-3-Nano-fake: {why}" in " ".join(
         seen["detail"].split()
@@ -1596,7 +1613,7 @@ def test_a_step_up_waits_for_a_free_bottom_line_and_none_is_lost(repo):
                 await pilot.press(key)
                 await pilot.pause()
             app.refresh_plan()
-            return str(app.query_one("#status").render()).splitlines()[1]
+            return str(app.query_one("#status").render()).splitlines()[-1]
 
         assert (await bottom("j", "s")).startswith("✗ greet is running")  # a command's refusal
         up("greet")
@@ -1690,3 +1707,86 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         record = " ".join(seen["detail"].split())
         said = "fork 1 of 2 stopped: its executor was stopped before this fork ended · Nemotron-3-Nano-fake"
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
+
+
+def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
+    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
+    a ? into the line, and help took ?, ?, Enter."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
+    assert seen["screen"] == "Help"
+
+
+def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
+    """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
+    "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "docs", size)
+        assert "r run it again" in seen["status"], (size, seen["status"])
+        flat = " ".join(seen["detail"].split())
+        assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
+    seen, _ = at(repo, "docs", (120, 36), keys=["x"])
+    assert "docs is came back" not in seen["status"] and "r runs it again" in seen["status"]
+
+
+def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo):
+    """Walk 2026-09-28: with every leaf done the goal still offered `R run all ready`, and only the
+    shell's `graphene` said the plan was finished."""
+    api_done(repo)
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        top, keys = seen["status"].splitlines()[:2]
+        assert "3/3 done, finished" in top, (size, top)
+        assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
+    """Walk 2026-09-28: `+` echoed `graphene ask --finer '… Don'"'"'t touch legacy files.'`, the
+    person's own sentence shell-escaped. A word with an apostrophe is double-quoted when nothing in it
+    expands there; the line is still one a shell reads back as the same words."""
+    import shlex
+
+    from graphene_map.tui import as_typed as typed
+
+    words = (["ask", "--finer", "Load it. Don't touch legacy files."], ["ask", "it's $HOME"], ["x", "a b"])
+    for argv in words:
+        assert shlex.split(typed(argv)) == argv
+    assert typed(["ask", "Don't touch it"]) == "ask \"Don't touch it\""
+
+
+def test_an_ask_that_adds_nothing_says_so(repo):
+    """Walk 2026-09-28: `+` whose planner added nothing said `the planner: the planner says:; what it
+    said is in the pane`, so the person could not tell whether it had done anything."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (python3)…\nthe planner says:\n  nothing to add\n")
+
+    class Ended:
+        def wait(self):
+            return 0
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "--finer", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("the planner proposed nothing and put nothing on the board"), said
+
+
+def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
+    """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
+    line offered `y accept it all`."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
+    seen, _ = watch(repo, [])
+    keys = seen["status"].splitlines()[1]
+    assert "you: 1" in seen["status"] and not keys.startswith("y accept"), keys

@@ -1,0 +1,1301 @@
+[
+ {
+  "arm": "board",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/feeds-sealed-board-1/repo",
+  "base": "499bb1c74ac7e80a24efeff779c79a70b704cd25",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 10,
+   "failed": 10,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 4, in <module>\n    assert failed, \"a record priced at nought passes every rule in validate/rules.py\"\n           ^^^^^^\nAssertionError: a record priced at nought passes every rule in validate/rules.py\n"
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in enabled: ('csv', 'json')\n"
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in readers: {'csv': <function read_csv at 0x102f34220>, 'json': <function read_json at 0x102f34400>}\n"
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": false,
+     "note": "raceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in maps: {'csv': {'keys': {'sku': 'sku', 'name': 'title', 'price': 'price'}, 'price_unit': 'major'}, 'json': {'keys': {'sku': 'id', 'name': 'name', 'price': 'amount'}, 'price_unit': 'major'}}\n"
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in usage: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "the README names the new source",
+     "ok": false,
+     "note": "README.md does not mention xml"
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": false,
+     "note": "exit 2: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": false,
+     "note": "exit 2: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 0,
+   "failed": 12,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    }
+   ]
+  },
+  "person_actions": 7,
+  "person_chars": 2366,
+  "executor_cost_usd": 0.234322,
+  "executor_cost_from_runlog_usd": 0.234322,
+  "executor_cost_from_runlog_summed_usd": 0.234322,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 6,
+  "executor_calls": 1,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 177.6,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 1832,
+  "read_words": 880,
+  "modelled_seconds": 733.6,
+  "to_run_seconds": 514.3,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {
+   "take": 3
+  },
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 1,
+  "opening_is_sealed": true,
+  "valid": true,
+  "void_reason": "",
+  "run": "feeds-sealed-board-1",
+  "task": "feeds",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 2560,
+  "handoff": 365.7,
+  "cost_complete": true,
+  "checks_passed": "10/20",
+  "accept_rate": 0.5,
+  "quality_passed": "0/12",
+  "quality_rate": 0.0
+ },
+ {
+  "arm": "tree",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/feeds-sealed-tree-1/repo",
+  "base": "85ba761e3bbd87ff76c33378ee5562e672a53653",
+  "intent": [
+   "ingest/**",
+   "!ingest/csvfeed.py",
+   "!ingest/jsonfeed.py",
+   "normalize/fields.py",
+   "validate/rules.py",
+   "config/defaults.py",
+   "cli/**",
+   "tests/**",
+   "!tests/test_contract.py",
+   "README.md"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 10,
+   "failed": 10,
+   "details": [
+    {
+     "check": "the xml feed loads with `load --source xml`",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "their summary total is not a record, and nought prices are gone",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a nought price is dropped by the rules, not inside the reader",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 4, in <module>\n    assert failed, \"a record priced at nought passes every rule in validate/rules.py\"\n           ^^^^^^\nAssertionError: a record priced at nought passes every rule in validate/rules.py\n"
+    },
+    {
+     "check": "xml is in the enabled sources",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in enabled: ('csv', 'json')\n"
+    },
+    {
+     "check": "xml has a reader in ingest.READERS",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in readers: {'csv': <function read_csv at 0x1031e4220>, 'json': <function read_json at 0x1031e4400>}\n"
+    },
+    {
+     "check": "xml has a field map in normalize.fields.FIELD_MAPS",
+     "ok": false,
+     "note": "raceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in maps: {'csv': {'keys': {'sku': 'sku', 'name': 'title', 'price': 'price'}, 'price_unit': 'major'}, 'json': {'keys': {'sku': 'id', 'name': 'name', 'price': 'amount'}, 'price_unit': 'major'}}\n"
+    },
+    {
+     "check": "the usage line names xml",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n    assert \"xml\" in table[where], f\"xml is not in {where}: {table[where]}\"\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: xml is not in usage: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "the README names the new source",
+     "ok": false,
+     "note": "README.md does not mention xml"
+    },
+    {
+     "check": "--source is optional now: xml by extension",
+     "ok": false,
+     "note": "exit 2: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "--source is optional now: csv by extension",
+     "ok": false,
+     "note": "exit 2: usage: main load <file> --source <csv|json>\n"
+    },
+    {
+     "check": "csv still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "json still loads exactly as it did",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the repo's own tests still pass",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no second entry point was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_contract.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinydec.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "normalize/money.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "legacy/priceimport.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "scripts/nightly.sh was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "ingest/csvfeed.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": {
+   "passed": 0,
+   "failed": 12,
+   "details": [
+    {
+     "check": "attributes in any order",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "entities come out decoded",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a product with no price is skipped, the rest of the feed still loads",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a product with an empty code is skipped, the rest of the feed still loads",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "whitespace around a price is not a crash",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a nought price is dropped here too",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a negative price is dropped",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "an empty feed is nothing loaded and a clean exit",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a summary in the middle and a summary at the end are never records",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "an element that is neither a product nor a summary is not a record",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "a hundred and twenty products all arrive, in the feed's order",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    },
+    {
+     "check": "accents and Chinese survive",
+     "ok": false,
+     "note": "exit 2: source is not enabled: xml\n"
+    }
+   ]
+  },
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "feeds-sealed-tree-1",
+  "task": "feeds",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "10/20",
+  "accept_rate": 0.5,
+  "quality_passed": "0/12",
+  "quality_rate": 0.0
+ },
+ {
+  "arm": "board",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/inventory-sealed-board-1/repo",
+  "base": "825ac49ac595e32b252f5ad12ef0f2e00629f6e7",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 7,
+   "failed": 4,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": false,
+     "note": "ck (most recent call last):\n  File \"/Users/alexlopez/graphene-shaping-runs/inventory-sealed-board-1/repo/tests/test_reserve.py\", line 14, in test_reserve_returns_a_reference\n    ref = inv.reserve(\"a\", 3)\n          ^^^^^^^^^^^\nAttributeError: 'Inventory' object has no attribute 'reserve'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.001s\n\nFAILED (errors=4)"
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    a, b = inv.reserve(\"c\", 1), inv.reserve(\"c\", 1)\n           ^^^^^^^^^^^\nAttributeError: 'Inventory' object has no attribute 'reserve'"
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    assert isinstance(MIN_STOCK, int) and not isinstance(MIN_STOCK, bool), f\"MIN_STOCK is {MIN_STOCK!r}\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: MIN_STOCK is None"
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": false,
+     "note": "cli/main.py has no reserve subcommand"
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "inventory-sealed-board-1",
+  "task": "inventory",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "7/11",
+  "accept_rate": 0.636,
+  "quality_passed": null,
+  "quality_rate": null
+ },
+ {
+  "arm": "tree",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/inventory-sealed-tree-1/repo",
+  "base": "58dd91a9ab3d32c5bf08e182ae882164e79b2105",
+  "intent": [
+   "core/inventory.py",
+   "core/policy.py",
+   "store/ledger.py",
+   "cli/main.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 7,
+   "failed": 4,
+   "details": [
+    {
+     "check": "tests/test_reserve.py passes",
+     "ok": false,
+     "note": "ack (most recent call last):\n  File \"/Users/alexlopez/graphene-shaping-runs/inventory-sealed-tree-1/repo/tests/test_reserve.py\", line 14, in test_reserve_returns_a_reference\n    ref = inv.reserve(\"a\", 3)\n          ^^^^^^^^^^^\nAttributeError: 'Inventory' object has no attribute 'reserve'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.001s\n\nFAILED (errors=4)"
+    },
+    {
+     "check": "tests/test_inventory.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "a reservation comes back with its own reference",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    a, b = inv.reserve(\"c\", 1), inv.reserve(\"c\", 1)\n           ^^^^^^^^^^^\nAttributeError: 'Inventory' object has no attribute 'reserve'"
+    },
+    {
+     "check": "MIN_STOCK is set, and reserve honours it",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    assert isinstance(MIN_STOCK, int) and not isinstance(MIN_STOCK, bool), f\"MIN_STOCK is {MIN_STOCK!r}\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: MIN_STOCK is None"
+    },
+    {
+     "check": "cli/main.py has a reserve subcommand",
+     "ok": false,
+     "note": "cli/main.py has no reserve subcommand"
+    },
+    {
+     "check": "adjust(sku, delta) still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_reserve.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_inventory.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "store/migrations/0001_init.sql was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "no migration was added",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the typo in store/ledger.py is still there",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "inventory-sealed-tree-1",
+  "task": "inventory",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "7/11",
+  "accept_rate": 0.636,
+  "quality_passed": null,
+  "quality_rate": null
+ },
+ {
+  "arm": "board",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo",
+  "base": "7d7b6beac9c028239e1888fbba6cd7ecf3579204",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 6,
+   "failed": 4,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": false,
+     "note": "_new_line\n    self.assertIsNone(parse(\"Jan 02 15:04:05 INFO started\"))\n                      ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (errors=3)"
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": false,
+     "note": "AssertionError: the cli exited 1: ne-shaping-runs/logs-sealed-board-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": false,
+     "note": "AssertionError: the cli exited 1: ne-shaping-runs/logs-sealed-board-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": false,
+     "note": "]\n                                           ~~~~^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-board-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "logs-sealed-board-1",
+  "task": "logs",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "6/10",
+  "accept_rate": 0.6,
+  "quality_passed": null,
+  "quality_rate": null
+ },
+ {
+  "arm": "tree",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo",
+  "base": "1e06116ef45aebc85fe718e164592ddcae29dd53",
+  "intent": [
+   "parser/lines.py",
+   "parser/summary.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 6,
+   "failed": 4,
+   "details": [
+    {
+     "check": "tests/test_lines.py passes",
+     "ok": false,
+     "note": "a_new_line\n    self.assertIsNone(parse(\"Jan 02 15:04:05 INFO started\"))\n                      ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (errors=3)"
+    },
+    {
+     "check": "the summary counts by hour",
+     "ok": false,
+     "note": "AssertionError: the cli exited 1: hene-shaping-runs/logs-sealed-tree-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "the summary says nothing about levels",
+     "ok": false,
+     "note": "AssertionError: the cli exited 1: hene-shaping-runs/logs-sealed-tree-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "parser/summary.py is what the cli prints",
+     "ok": false,
+     "note": "))]\n                                           ~~~~^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo/parser/cli.py\", line 14, in read\n    event = parse(line) or parse_legacy(line)\n            ~~~~~^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/logs-sealed-tree-1/repo/parser/lines.py\", line 6, in parse\n    raise NotImplementedError\nNotImplementedError"
+    },
+    {
+     "check": "parser/cli.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_lines.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_legacy.py still passes",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parse_legacy still has its signature",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "parser/legacy.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "third_party/dateish.py was not touched",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "logs-sealed-tree-1",
+  "task": "logs",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "6/10",
+  "accept_rate": 0.6,
+  "quality_passed": null,
+  "quality_rate": null
+ },
+ {
+  "arm": "board",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/report-sealed-board-1/repo",
+  "base": "7eab2bd7bc23b0de8d9789d6ffd5130f2e5b66e5",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 6,
+   "failed": 3,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 6, in <module>\n    out = render(rows, \"json\")\n  File \"/Users/alexlopez/graphene-shaping-runs/report-sealed-board-1/repo/app/report.py\", line 14, in render\n    raise ValueError(f\"unknown format: {fmt}\")\nValueError: unknown format: json"
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    data = json.loads(render(load(\"data/sales.csv\"), \"json\"))\n                      ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/report-sealed-board-1/repo/app/report.py\", line 14, in render\n    raise ValueError(f\"unknown format: {fmt}\")\nValueError: unknown format: json"
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": false,
+     "note": "app/report.py does not mention json"
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "report-sealed-board-1",
+  "task": "report",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "6/9",
+  "accept_rate": 0.667,
+  "quality_passed": null,
+  "quality_rate": null
+ },
+ {
+  "arm": "tree",
+  "repo": "/Users/alexlopez/graphene-shaping-runs/report-sealed-tree-1/repo",
+  "base": "7eab2bd7bc23b0de8d9789d6ffd5130f2e5b66e5",
+  "intent": [
+   "app/report.py",
+   "tests/test_report_json.py"
+  ],
+  "files_changed_final": [],
+  "files_changed_final_n": 0,
+  "files_outside_intent_final": [],
+  "files_outside_intent_final_n": 0,
+  "files_written_outside_intent_ever": [],
+  "files_written_outside_intent_ever_n": 0,
+  "files_written_outside_intent_by_source": {
+   "edit_events": [],
+   "shell": [],
+   "final_diff": []
+  },
+  "refused_writes": 0,
+  "refused_writes_by_kind": {},
+  "restarts": 0,
+  "restarts_unmandated": 0,
+  "rework_lines": 0,
+  "rework_recorded_lines": 0,
+  "churn_naive_lines": 0,
+  "churn_double_counted_lines": 0,
+  "churn_by_file": {},
+  "transient_files": [],
+  "transient_churn_lines": 0,
+  "rework_from_edit_events": 0,
+  "rework_from_shell": 0,
+  "final_diff_lines": 0,
+  "recorded_write_events": 0,
+  "acceptance": {
+   "passed": 6,
+   "failed": 3,
+   "details": [
+    {
+     "check": "render(rows, 'json') gives the feed I asked for",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 6, in <module>\n    out = render(rows, \"json\")\n  File \"/Users/alexlopez/graphene-shaping-runs/report-sealed-tree-1/repo/app/report.py\", line 14, in render\n    raise ValueError(f\"unknown format: {fmt}\")\nValueError: unknown format: json"
+    },
+    {
+     "check": "no TOTAL object in the feed",
+     "ok": false,
+     "note": "Traceback (most recent call last):\n  File \"<string>\", line 5, in <module>\n    data = json.loads(render(load(\"data/sales.csv\"), \"json\"))\n                      ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/alexlopez/graphene-shaping-runs/report-sealed-tree-1/repo/app/report.py\", line 14, in render\n    raise ValueError(f\"unknown format: {fmt}\")\nValueError: unknown format: json"
+    },
+    {
+     "check": "the JSON is rendered in app/report.py",
+     "ok": false,
+     "note": "app/report.py does not mention json"
+    },
+    {
+     "check": "no second module was added under app/",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "the text report still passes its test",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "tests/test_report.py was not edited",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "vendor/tinycsv.py was not touched",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/stats.py was not touched (median stays wrong)",
+     "ok": true,
+     "note": ""
+    },
+    {
+     "check": "app/util.py was not touched (the typo stays)",
+     "ok": true,
+     "note": ""
+    }
+   ]
+  },
+  "quality": null,
+  "person_actions": 0,
+  "person_chars": 0,
+  "executor_cost_usd": 0.0,
+  "executor_cost_from_runlog_usd": 0,
+  "executor_cost_from_runlog_summed_usd": 0,
+  "executor_cost_from_graphene_runs_usd": 0.0,
+  "executor_turns": 0,
+  "executor_calls": 0,
+  "executor_calls_unpriced": 0,
+  "wall_seconds": 0.0,
+  "forks": 0,
+  "escalations": 0,
+  "notes": [],
+  "typed_chars": 0,
+  "read_words": 0,
+  "modelled_seconds": 0.0,
+  "to_run_seconds": 0.0,
+  "caught_before_code_n": 0,
+  "caught_before_code": [],
+  "board_acts": {},
+  "attention_notes": [
+   "no `run` in the run log: to_run is cut at the next thing that set work going",
+   "no `prompt` in the run log: to_run is cut at the next thing that set work going"
+  ],
+  "unforced_messages": 0,
+  "opening_is_sealed": false,
+  "valid": false,
+  "void_reason": "void: opening_is_sealed is false because runlog.jsonl is empty (0 bytes); no prompt was ever sent. The stand-in's launch of the claude -p executor was refused by the Claude Code auto-mode permission classifier (\"Create Unsafe Agents\") before anything ran, so the repo is still at base. A harness failure, not a product result; an infrastructure rerun is allowed and this run is kept.",
+  "run": "report-sealed-tree-1",
+  "task": "report",
+  "style": "sealed",
+  "rep": 1,
+  "spec_chars": 0,
+  "handoff": null,
+  "cost_complete": true,
+  "checks_passed": "6/9",
+  "accept_rate": 0.667,
+  "quality_passed": null,
+  "quality_rate": null
+ }
+]

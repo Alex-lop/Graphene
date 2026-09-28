@@ -54,7 +54,9 @@ def credentials() -> bool:
     """Has ConTree something to sign in with: a key and a project here, or a saved profile?"""
     env = os.environ
     home = Path(env.get("CONTREE_HOME") or Path.home() / ".config" / "contree")
-    return bool(env.get("NEBIUS_API_KEY") and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
+    from . import keys  # the environment's key, else the keychain's
+
+    return bool(keys.find() and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
 
 
 def _fixed(glob: str) -> str:
@@ -184,9 +186,12 @@ class Contree:
 
         self.image = image
         if not credentials():  # else the SDK sends the variable's name as the token, and gets a 401
-            raise RuntimeError("ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID in the environment, or a "
-                               "profile saved by `contree auth`")  # fmt: skip
-        self.sdk = ContreeSync()
+            raise RuntimeError("ConTree needs a key (NEBIUS_API_KEY or `graphene key set`) and "
+                               "NEBIUS_PROJECT_ID, or a profile saved by `contree auth`")
+        from . import keys
+
+        token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
+        self.sdk = ContreeSync(token=token) if token else ContreeSync()
         self.base = self.sdk.images.oci(image)
         self.ops = 1
 
@@ -224,19 +229,34 @@ class Docker:
         self.made = [i for i in self.made if i in keep]
 
     def _docker(self, *args: str, data: bytes | None = None) -> subprocess.CompletedProcess:
-        return subprocess.run(["docker", *args], input=data, capture_output=True)
+        """docker's CLI, in a session of its own: a terminal's Ctrl-C reaches Graphene, not it. A call a
+        stop lands in is let end first (its input cut short), so what it made is known to the cleanup:
+        a container by its name, a committed image in ``made``."""
+        given = subprocess.DEVNULL if data is None else subprocess.PIPE
+        with subprocess.Popen(["docker", *args], stdin=given, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              start_new_session=True) as call:  # fmt: skip
+            try:
+                out, err = call.communicate(data)
+            except BaseException:
+                if call.stdin:
+                    call.stdin.close()
+                out, _ = call.communicate()
+                if args[0] == "commit" and call.returncode == 0:
+                    self.made.append(out.decode().strip())
+                raise
+        return subprocess.CompletedProcess(call.args, call.returncode, out, err)
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
         return self.run(self.base, script, {"/tmp/graphene/repo.tar": tar.read_bytes()}, timeout)
 
     def run(self, image: str, script: str, files: dict[str, bytes], timeout: float) -> tuple[str, int, str]:
         self.ops += 1
-        made = self._docker("create", "-i", image, "bash", "-c", script)
-        if made.returncode != 0:
-            return image, 125, made.stderr.decode("utf-8", "replace")
-        box = made.stdout.decode().strip()
+        box = f"graphene-{os.getpid()}-{os.urandom(6).hex()}"  # named before it is made: a stop finds it
         self.running.add(box)
         try:
+            made = self._docker("create", "-i", "--name", box, image, "bash", "-c", script)
+            if made.returncode != 0:
+                return image, 125, made.stderr.decode("utf-8", "replace")
             if files:
                 buf = io.BytesIO()
                 with tarfile.open(fileobj=buf, mode="w") as tar:
@@ -246,7 +266,10 @@ class Docker:
                         tar.addfile(info, io.BytesIO(data))
                 self._docker("cp", "-", f"{box}:/", data=buf.getvalue())
             try:
-                ran = subprocess.run(["docker", "start", "-a", box], capture_output=True, timeout=timeout)
+                ran = subprocess.run(["docker", "start", "-a", box], capture_output=True, timeout=timeout,
+                                     start_new_session=True)  # fmt: skip
+                if box not in self.running:  # halted: removed with all it ran, and nothing of it is kept
+                    return image, 137, ""
                 code = int(self._docker("inspect", "-f", "{{.State.ExitCode}}", box).stdout.decode().strip())
             except subprocess.TimeoutExpired:
                 self._docker("kill", box)
@@ -259,11 +282,14 @@ class Docker:
             self._docker("rm", "-f", box)
 
     def halt(self) -> None:
-        """The run was stopped while a fork's thread waits on a container: kill it (its command ignores
-        the TERM docker passes on, as the first process in the container), and ``run`` removes it."""
-        # ponytail: a container made but not yet started when this runs still starts
+        """The run was stopped while a fork's thread waits on a container: remove it here, with all it runs
+        (its command ignores the TERM docker passes on, as the first process in the container). Left to
+        the fork's thread, it went only after a commit of the killed container, and a slow commit
+        outlasted the executor's grace (CI caught one)."""
+        # ponytail: a container still being created when this runs is made after it, and starts
         for box in list(self.running):
-            self._docker("kill", box)
+            self.running.discard(box)
+            self._docker("rm", "-f", box)
 
     def read(self, image: str, path: str) -> bytes:
         self.ops += 1
@@ -368,17 +394,22 @@ class Sandbox:
         self.strays: set[str] = set()
         self.timings: list[float] = []
         self.shared: str | None = None  # the checkpoint of the commit, which other leaves fork too
+        from . import settings
+
+        hidden = settings.protected(store) if store is not None else []  # never uploaded, so never read
         files = P.in_tree(source)
+        kept_back = [f for f in files if P.covers(hidden, f)]
+        files = [f for f in files if f not in kept_back]
         dirs = {str(p) for f in files for p in Path(f).parents if str(p) != "."}
         began = time.monotonic()
-        key = self._key(source, prepare)
+        key = self._key(source, prepare, hidden)
         shared = store.meta(key) if store is not None and key else None
         if shared:  # a leaf at this commit made the checkpoint already: fork it, with this leaf's grants
             self.image, code, out = self.box.run(shared, layer2(scope, files, dirs), {}, 600)
             self.shared = shared if code == 0 else None  # gone (a pruned box): made again below
         self.reused = bool(self.shared)
         if not self.shared:
-            tar = pack(source)
+            tar = pack(source, kept_back)
             try:
                 if key:  # a clean commit: its checkpoint is kept for the other leaves at it
                     shared, code, out = self.box.start(tar, base(prepare), 1800)
@@ -401,7 +432,7 @@ class Sandbox:
         self.seen = state[1]
         self.ops = self.box.ops  # what making it took: the box is its own until it forks
 
-    def _key(self, checkout: Path, prepare: str | None) -> str | None:
+    def _key(self, checkout: Path, prepare: str | None, hidden: list[str] = ()) -> str | None:
         """Where the checkpoint of this checkout's commit is kept, or None when the checkout is not
         exactly a commit (anything uncommitted is this leaf's own)."""
         try:
@@ -411,7 +442,7 @@ class Sandbox:
         except (P.Refused, OSError):
             return None
         box = getattr(self.box, "box", self.box)  # a wrapper's box is the box
-        made = f"{type(box).__name__}|{getattr(box, 'image', IMAGE)}|{prepare or ''}"
+        made = f"{type(box).__name__}|{getattr(box, 'image', IMAGE)}|{prepare or ''}|{','.join(hidden)}"
         return f"sandbox:{head}:{hashlib.sha1(made.encode()).hexdigest()[:12]}"
 
     def fork(self, root: Path) -> Sandbox:

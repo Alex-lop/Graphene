@@ -4,7 +4,8 @@ Graphene keeps a plan that a person and their coding agents share, holds executo
 keeps a record of what was done for each node. No model decides anything here: the plan, the boundary
 and the record are computed from the plan's own rows, from git, and from what the executors record. A
 model is called only by the planner and the executor you name, Graphene's Nemotron ones included
-(P4b).
+(P4b), and by the prototypes of P4d when you run them, whose answers are offered and applied only
+when you take them.
 
 Part one is the plan and what makes it bind. Part two is the record underneath it.
 
@@ -155,6 +156,162 @@ on its own (a finished background task, a reminder, a slash command) is never th
 
 A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
 and its record says the check failed. A session is never trapped by it.
+
+## P1d. The board
+
+`board.py`. Beside the tree, the planner puts up what the repository cannot answer:
+- a `question`, with the `default` it would assume and `option` lines when there is more than one way;
+- `assume` for what it took for granted, `risk` for what could go wrong, `leave out` for what it would
+  not do.
+
+Anyone may put up a `note`. The board is one JSON list in the store's meta (key `board`), in the order
+items were put up, so `graphene plan undo` puts back an answer with everything it changed. Every act is
+a `board` row in the plan's log, on the node the item is `about`, else on `*`, so what changed since the
+person last looked (P1e) covers it.
+
+Only the person answers (`board.settle`, refused to an agent):
+
+| Command | Key on its row | The item becomes |
+| --- | --- | --- |
+| `graphene board take ID` | `y` | `taken`: the default, a confirmed assumption, an agreed leave-out |
+| `graphene board pick ID N` | `1`..`9` | `picked`: option N |
+| `graphene board answer ID WORDS` | `Enter` | `answered`, in the person's words |
+| `graphene board park ID` / `unpark ID` | `p` | `parked` (told to nobody), or open again |
+| `graphene board drop ID` | `d` | `dropped`: told to nobody, and a planner asked again is told not to bring it back |
+| `graphene board note WORDS [--about ID]` | `a` | a note: the person's is told as written; an agent's waits for `take` |
+
+A default or an option may carry `then:` lines, in the plan's own words. They are applied when it is
+chosen, as the person's edit, in the same transaction:
+
+| `then:` | Does |
+| --- | --- |
+| `scope NODE + GLOB, …` | NODE's scope takes in the globs |
+| `check NODE: COMMAND` | NODE's check becomes the command |
+| `goal NODE + TEXT` | NODE's goal ends with the sentence (`node set --add-goal` does the same) |
+| `drop NODE` | NODE leaves the plan |
+| `leaf TITLE under NODE` | a proposed leaf under NODE (beside it, when NODE is a leaf) |
+| `condition GLOB` | a read-only glob (P1f) until the answer is undone |
+
+An effect that names no node in the plan is refused when the item is put up, by its line. What is told
+(`board.decided`: every answered, picked or taken item, and the person's own notes) reaches each
+executor it is about as `decided:` lines in its contract (`plan.contract`). That covers an item about the
+whole plan, the leaf itself, or a sub-goal above it. The planner is given the same lines when asked
+about a node.
+
+**In the text form** (P1c) the board comes first, after the goal: an item's line at the left edge
+(`question: words  [id]`), its own lines indented under it (`default:`, `option:`, `then:`, `about:`,
+`answer:` as `default`, `option N`, `parked` or words). `plan edit` reads a changed `answer:` as the
+person's answer, a changed item as a rewording and a deleted item as dropped. From an agent, only new
+items count; an agent's text that answers one, or rewords one already there, is refused by its line.
+
+**Asked for.** The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 4)
+tells it to read the repository first. It asks only what the code cannot settle and what changes the
+tree, at most three items, each a question or a risk, most important first; an assumption it is sure
+of is a sentence in the goal of the leaf it bears on, not an item. It writes each leaf as the default has it, and gives every option that
+changes a leaf the `then:` lines that make the change. Plan first's instruction to a Claude Code
+session says the same (`gate.TEACH`).
+
+**On the screen** (`board_rows.py`), each open item is a row directly under the goal, before the first
+sub-goal, in the row grammar: glyph and colour from `plan.LOOK`, its words, its id, and its kind as a
+verb (asks, assumes, risk, leaves out, note). What is settled, parked or dropped folds into one row
+(`✓ 3 settled · 1 parked`). The screen opens on the first open item, and the bottom line says what
+each key does there. `graphene plan` says `the board: 2 questions, 1 risk open (graphene board)` while
+anything waits.
+
+## P1e. Views of the plan, and talking on it
+
+`views.py`. The outline is the screen's tree and `graphene plan`'s print. A view is a module with a
+pure `draw(nodes, words, goal, width, height, cursor)`, which returns `None` when the view does not fit
+the width, and optionally `suits(...)`, a score from 0 to 100. There are two:
+
+- `tree` (`view_tree.py`) draws the plan top-down, the goal at the top and each parent centred over
+  its children. A node is its glyph and id in its state's colour, with its title under them when there
+  is room and `←2` for how many nodes it waits on. When the tree is too wide it drops the titles, then
+  folds sub-goals whose leaves are all done, then lists each sub-goal's leaves down, and only then
+  gives up.
+- `dag` (`view_dag.py`) draws only leaves, left to right. A leaf's column is the longest chain of
+  `needs` before it, so one column can run at once. A line goes from the leaf that is needed into the
+  one that waits, and never through a cell. A need already implied by another is not drawn. The
+  critical path (the longest chain of leaves not done) is bold and heavy.
+
+`Tab` in `graphene watch` goes to the next view that draws at this size, then back to the outline; the
+cursor stays on its node, and `h` `l` move to the cell beside. `--view auto` (`views.choose`) opens a
+view only when its `suits` beats the outline's 50, it draws, and it fits the rows it has; a view that
+draws `needs` may be taller. A tie goes to the outline. `graphene plan --view NAME [--width --height]`
+prints what `Tab` shows, in plain text. A view that does not fit prints the outline and says so on
+stderr. The page (`graphene ui`, §6) draws the same outline, tree and graph from the same critical path
+and `at_once` (`plan_view.py`).
+
+**Talking on a node** (`talk.py`). `?` on a node opens one line:
+- `w`: `graphene talk why ID`. The planner's answer is a note on the board about the node, by the
+  planner, which the person takes or drops.
+- `s`: `graphene node split ID`, leaves under it, proposed.
+- `m`: `graphene talk merge ID ID…` on the rows selected with `V`. One proposed leaf for all of them,
+  and a question on the board. Its default drops them; its option, keep them apart, drops the new one.
+- `a`: `graphene talk another ID`. Another way, proposed beside it, and a question whose default keeps
+  the node and whose option takes the other way.
+- Anything else is `graphene ask WORDS --about ID`.
+
+Each is `graphene ask --about` with its own words to the planner (`ask.talking`), so every planner
+answers it. Graphene puts the question up in the planner's name, so its `then:` lines are right
+whatever the planner wrote.
+
+**What changed since the person last looked.** `graphene plan seen` (`m` on the screen) keeps a mark,
+the last row of the plan's log the person has seen (meta `seen:NAME`). `graphene plan changes` lists
+what anyone else did after it: added, edited, dropped, the board. The screen puts `+` (added) or `~`
+(changed) before such a row's id, and `~` on a folded row when anything inside it changed. The bottom
+line counts them. Only the person moves the mark, so a planner's revision cannot slip past.
+
+## P1f. Settings the person states once
+
+`settings.py`. They live in the store's meta (`settings:protected`, `settings:readonly`,
+`settings:never`, `settings:size`). `graphene config` prints them as text, with the planner, the
+executor, plan first, the board's conditions and where the key was found as `#` lines.
+`graphene config edit` edits them as `plan edit` edits the plan:
+- the person only;
+- a line it cannot read is refused by its number, and nothing is applied;
+- a text with no setting in it is refused;
+- a save over settings someone else changed since it opened is refused.
+
+Each change is a `settings` row in the log with what was there before; `plan undo` does not reach them.
+After a save, every leaf not yet done whose scope a condition now covers is named, with the command to
+narrow it (`settings.broken`).
+
+| Setting | What holds it |
+| --- | --- |
+| `protected: GLOB, …` | No scope may cover it. The planner is told never to read it. The Nemotron planner's and executor's tools do not list or read it, the hook refuses a Claude Code planner's `Read`, `Grep` or `Glob` that would reach it (`gate._protected_read`), and it is not uploaded to a sandbox |
+| `readonly: GLOB, …` | No leaf may write it. With the board's `condition` globs, it is a standing condition like `protected` |
+| `never: SENTENCE` | Told to the planner, a line each. Nothing enforces it (P5) |
+| `size: auto\|finer\|coarser` | How many leaves the planner is asked for (below) |
+
+**Standing conditions bind every scope.** A scope that covers a protected or read-only path, judged
+over tracked files and the globs as written, is refused when it is proposed, edited or started
+(`plan._keeps_standing`). A scope accepted before the condition was set is refused at start, too.
+As it binds, every scope, a prompt leaf's `**` included, ends with `!GLOB` for each condition
+(`plan.as_scoped`).
+The hook's write and shell checks, the Nemotron executor's write tools and `done` all read the scope that
+way, so a write there is refused, and the refusal names the setting.
+
+**The size of a plan** (`sizing.measure`). The planner is told the repository's files and lines
+(lockfiles left out, counted to 20,000), where its tests live (one `tests/` directory, beside the code,
+or none) and how many of its directories the ask names. From those it is given a number of leaves:
+1 to 3 under 2,000 lines, to 6 under 20,000, to 10 past that, with the named directories raising the
+floor. `finer` doubles the range and `coarser` halves it. `graphene ask … --finer` or `--coarser` sizes
+one ask whatever is saved, and drops the planner's proposals still waiting on the person, so there is
+one tree to prune, not two. `+` and `-` in `graphene watch` run that for the last sentence asked.
+
+**The Token Factory key** (`keys.py`, `key_cli.py`) is found in `NEBIUS_API_KEY`, else the system
+keychain (`security` on macOS, `secret-tool` on Linux, service `graphene`, account `token-factory`),
+and never in a file.
+- `graphene key set` reads it from a hidden prompt; a key on the command line is refused. The key goes
+  to the keychain tool on its stdin, never in its argv.
+- `graphene key check` prints `Token Factory: reached, N NVIDIA models` or what stood in the way, with
+  the key cut out of any message.
+- `graphene key remove` takes it out.
+
+All three are the person's. `GRAPHENE_KEYCHAIN=off` leaves the keychain out entirely, and set and remove
+then say so. Graphene sets it for a leaf's check, for every command the Nemotron executor's model runs,
+and for a planner or executor that is not its own Nemotron.
 
 ## P2. The boundary: what makes a node done
 
@@ -314,8 +471,8 @@ a leaf; `--about <id>` asks it about a leaf that came back.
 
 `--with nemotron` names Graphene's own executor (`executor.py`) to `graphene run`, and its own planner
 (`planner.py`) to `graphene ask`, `node split` and `:ask`. Both call Nebius Token Factory's
-OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key in
-`NEBIUS_API_KEY`. The key is sent in one header and written nowhere. No model id is written into
+OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key found in
+`NEBIUS_API_KEY`, else the keychain (P1f). The key is sent in one header and written nowhere else. No model id is written into
 Graphene: `tokenfactory.roles` reads the NVIDIA Nemotron models from the live list (`GET /v1/models`),
 by size (Ultra, Super, Nano). Token Factory retires models on notice, so an id `graphene init` wrote or
 `--model` gave may leave the list: it falls back within the family (`tokenfactory.resolve`), to the
@@ -435,6 +592,35 @@ an agent is never asked, at a terminal or not. An agent's plain `graphene init` 
 that is not set, with the one thing found here when exactly one is. The screen's status line names what `R` starts (`R runs 3 ready
 with nemotron`) only where the long form still fits with it.
 
+## P4d. Nano while the person shapes: three prototypes
+
+These three are ranked in `docs/process/ideas.md`, and have run only against a scripted stand-in for
+Token Factory (`tests/fake_tokenfactory.py`). Each is a command, and each is the person's, since it
+spends. `GRAPHENE_SHAPE` (comma-separated: `cover`, `note`, `precheck`) also runs them on their own.
+They read the plan after it has landed, so they work whichever planner proposed it. Whatever they put
+on the board is put up by `shaper:nemotron` and waits on the person.
+
+| Prototype | Command | What it does | With `GRAPHENE_SHAPE` |
+| --- | --- | --- | --- |
+| Your words, accounted for (`cover.py`) | `graphene plan cover [--paragraph FILE] [--take N] [--dismiss N]` | One Nano call, in a JSON schema, says which node carries each clause of the paragraph (the last one `graphene ask` was given). A clause is kept only when its words are in the paragraph, so an invented one is dropped; a clause no node carries is offered, verbatim, for the end of the nearest leaf's goal (`--take N`), or set aside for good (`--dismiss N`) | after each `graphene ask`, each clause no leaf carries is a note on the board whose default, taken, adds it |
+| Notes find their leaf (`note.py`) | `graphene plan note "SENTENCE"` | One Nano call picks the open or proposed leaf the sentence constrains, and what to add to its scope, check or goal. Graphene checks the answer: the leaf is there, an added glob matches a tracked file or falls under the scope, a check names nothing no leaf may create, and the change, made and rolled back, is one the plan takes. Only then is it printed as the `graphene node set` (or `node add`) that makes it. Nothing changes until the person runs it | `graphene board note` routes the note too, and puts the offer up as a note whose default, taken, makes the change |
+| Red first (`precheck.py`) | `graphene plan precheck [IDS] [--prepare CMD] [--again]` | Each check runs once at the commit the work starts from. A proposed leaf's check was written by a planner, so it runs only in a sandbox fork (ConTree, or Docker with `GRAPHENE_SANDBOX=docker`) and is `not run` with no sandbox. An accepted leaf's runs here, as `done` runs it. Exit 0 is `passes already`; 126, 127, pytest's 4 and 5, `command not found` and `No module named` are `cannot run`. Nano is asked only about a red whose reason those do not say. Each verdict is a `precheck` row at the leaf's revision and commit, and goes stale when either moves | after a proposal lands, its leaves' checks are run and each that cannot tell its leaf is done is a risk on the board |
+
+**The practice ladder** (`docs/test/practice.sh`, `docs/test/PRACTICE.md`) is the first hour with a key,
+one rung at a time:
+1. access;
+2. one leaf local;
+3. one leaf in a Sandbox;
+4. the escape test there;
+5. a recorded leaf;
+6. arm A as one leaf, and B′, on feeds (practice: not the evidence runs' harnesses);
+7. the demo run.
+
+Each rung has its own spend cap (`GRAPHENE_SPEND_CAP_USD` on top of what the ladder has spent), and
+prints one PASS or FAIL line, the bill so far, and the next command; a failure says what it most likely
+means. `--dry` climbs all seven against the scripted fake and Docker. Live, rungs 2 to 7 run nothing
+from a shell with an agent's mark.
+
 ## P5. Where each mechanism ends
 
 - A shell command can write a file in a way no parser reads (a script that opens files itself).
@@ -486,6 +672,18 @@ with nemotron`) only where the long form still fits with it.
   of the nodes is refused at `done`.
 - `.claude/settings*.json` is not protected by anything here. An agent that removes the hook from
   it has removed the hook; the boundary still holds.
+- A board answer changes the tree only through its `then:` lines. One with none (words, or a default
+  the planner gave no `then:`) reaches an executor only as a `decided:` line in its contract: it is
+  told, and the scope and the check are what bind.
+- A `never:` line is told to the planner and checked nowhere: a proposal that breaks it is added like
+  any other, and only the person's pruning catches it.
+- A protected path is kept from the model where Graphene reads for it. A command the local Nemotron
+  executor runs can read it, as any file the user can; a Codex planner, or a Claude Code one without
+  the hooks, is only told not to; a leaf's check in a sandbox fork runs on the whole checkout, so a
+  test the leaf wrote could print it.
+- A key in the keychain is readable by any process of the user while the keychain is unlocked
+  (`security find-generic-password`). `GRAPHENE_KEYCHAIN=off` stops only Graphene's own lookup; a
+  sandbox run is the only real boundary.
 
 ## P6. A node's record
 
@@ -635,7 +833,9 @@ grading is simply absent rather than being guessed at from something else (P6).
 
 `graphene` with no command prints the plan when the repo has one, and otherwise one line saying how
 to start one. `graphene watch` is the plan on one screen (P1a); `graphene plan --text` the plan as
-text (P1c). `graphene node show <id>` is a node's record (P6). `graphene ui` is the plan and, behind
+text (P1c). `graphene node show <id>` is a node's record (P6). `graphene board` is the board (P1d),
+`graphene plan --view NAME` a view of the plan and `graphene plan changes` what changed since you last
+looked (P1e), and `graphene config` the settings (P1f). `graphene ui` is the plan and, behind
 it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
 
 `graphene ui` draws what the store holds, the plan and the sessions the hooks recorded, and asks git
@@ -661,9 +861,10 @@ written.
 
 ## 5. What Graphene never does
 
-It calls a model only when you name its Nemotron planner or executor (P4b). Then it sends Token Factory
-the prompts about your repository and the files the model reads, and Sandboxes the leaf's checkout, and
-nothing else, anywhere. The key is read from your environment at each call and written nowhere. It
+It calls a model only when you name its Nemotron planner or executor (P4b), or run a prototype of P4d
+(which asks Nano). Then it sends Token Factory the prompts about your repository and the files the
+model reads, and Sandboxes the leaf's checkout, and nothing else, anywhere. The key is read from your
+environment, else the keychain, and written nowhere but the keychain, by `graphene key set`. It
 never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
 permissions you give them; nothing else in Graphene starts an agent. It reads nothing Claude Code keeps under `~/.claude/`
@@ -677,7 +878,10 @@ ignores itself in git through a `.gitignore` of its own, so the repo's `.gitigno
 `graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
 first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners
 (agents first, then each person), and every position is computed in Python
-(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The second
+(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The same nodes are
+also laid out as the tree a person draws, the goal at the top; buttons choose the outline, the tree or
+the graph, and `auto` chooses from the plan's shape. Under each, the critical path and what can start
+at once are said in words. The page does not show the board. The second
 screen is the record of a run: lanes of agents over rows of files (`graph.py`).
 
 The page can change the plan only when a person started `graphene ui` (started from an agent's

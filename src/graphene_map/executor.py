@@ -36,10 +36,10 @@ import threading
 import time
 from pathlib import Path
 
-from . import gate
+from . import gate, settings
 from . import plan as P
 from . import tokenfactory as tf
-from .run import GRACE, REFUSED
+from .run import GRACE, REFUSED, _alive
 from .store import Store, repo_root
 
 PROMPT_VERSION = 1
@@ -122,7 +122,8 @@ class Local:
         path.write_bytes(data)
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
-        env = {k: v for k, v in os.environ.items() if k != tf.KEY}  # model-written code never sees the key
+        # model-written code never sees the key: not in its environment, nor through Graphene's keychain
+        env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_KEYCHAIN": "off"}
         proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
@@ -130,12 +131,11 @@ class Local:
         try:
             out, _ = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
+            _kill(proc)
             out, _ = proc.communicate()
             return 124, out.decode("utf-8", "replace") + f"\n(stopped after {timeout} s)"
         except BaseException:  # a stopped run: nothing the model started outlives it
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait()
+            _kill(proc)
             raise
         return proc.returncode, out.decode("utf-8", "replace")
 
@@ -149,8 +149,22 @@ class Local:
         pass
 
 
+def _kill(proc: subprocess.Popen) -> None:
+    """KILL to a command's session, and back only once none of it is left: a process the command
+    started is there a moment after the KILL (until it runs to die, and until its new parent reaps
+    it), and a stop said before then left it behind (CI caught one)."""
+    with contextlib.suppress(ProcessLookupError):  # it ended just now
+        os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+    until = time.monotonic() + 5
+    while _alive(-proc.pid) and time.monotonic() < until:  # a negative pid names its process group
+        time.sleep(0.01)
+
+
 class Leaf:
     """One leaf's tools, as the model calls them."""
+
+    tools, nudge = TOOLS, NUDGE  # what the model is offered, and told when it calls none (arm A: its own)
 
     def __init__(self, store: Store, node: P.Node, place, repo: Path, session: str):
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
@@ -187,6 +201,7 @@ class Leaf:
         if not full.is_relative_to(here):  # what is read is sent to the model
             return f"{path} is not in this repository; only the repository is read"
         shown = _shown(self.place.root, self.source)  # never what git ignores (a .env), never .graphene/
+        shown = unprotected(self.store, shown)
         rel = str(full.relative_to(here))
         if full.is_dir():
             prefix = "" if rel == "." else rel + "/"
@@ -194,7 +209,8 @@ class Leaf:
             names = sorted({r.split("/")[0] + ("/" if "/" in r else "") for r in rests})
             return "\n".join(names) or "(empty)"
         if rel not in shown:
-            return f"{path} is not read: git ignores it or it is not there (what is read goes to the model)"
+            return (f"{path} is not read: git ignores it, it is protected or it is not there "
+                    "(what is read goes to the model)")  # fmt: skip
         try:
             data = self.place.read(rel)  # not relative to the root as given: a fork's copy is behind a link
             lines = data.decode("utf-8", "replace").split("\n")
@@ -419,7 +435,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         if stopped():
             return None
         _compact(messages)
-        said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
+        said = tf.chat(model, messages, leaf.tools if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
         with _SHARED:
             bill["calls"] += 1
@@ -450,7 +466,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if cut and params.get("max_tokens"):
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
                 print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
-            messages.append({"role": "user", "content": CUT if cut else NUDGE})
+            messages.append({"role": "user", "content": CUT if cut else leaf.nudge})
             continue
         for c in calls:
             if stopped():
@@ -491,6 +507,12 @@ def _shown(root: Path, source: Path) -> list[str]:
         found += [os.path.relpath(os.path.join(base, name), root) for name in names]
     ignored = gate._ignored(source, found)
     return sorted(set(found) - ignored)
+
+
+def unprotected(store: Store, files: list[str]) -> list[str]:
+    """``files`` less the protected paths the person set (`graphene config`): what the model may see."""
+    hidden = settings.protected(store)
+    return [f for f in files if not P.covers(hidden, f)]
 
 
 def _in_scope_state(root: Path, scope: list[str], source: Path) -> dict[str, bytes]:
@@ -651,7 +673,7 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         store.log_node(node.id, P._now(), "model", f"run:{NAME}", session or None, None, step)
         first = [prompt]
         if args.map:
-            files = P.in_tree(here)
+            files = unprotected(store, P.in_tree(here))
             more = "\n…" if len(files) > 400 else ""
             first.append("The repository's files:\n" + "\n".join(files[:400]) + more)
         if args.inline:

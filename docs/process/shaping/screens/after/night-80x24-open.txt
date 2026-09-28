@@ -1,0 +1,24 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpb8i16o9n/night
+▼ ? Graphene has settings a person states once: where the Token…     proposed
+├   ◇ does a broad scope that also covers a protected…   overlap     asks
+├   ◇ what does graphene ask --finer (or --coarser)…     reask       asks
+├   ◇ "things the planner must never propose": is this…  never       asks
+├   ◇ the settings live in the store's plan_meta…        store       assumes
+├   ◇ a key passed on argv shows up in ps, and an…       keychain    risk
+├ ▶ ? the Token Factory key                              keys        3 proposed
+├ ▶ ? standing conditions                                conditions  3 proposed
+├ ▶ ? plan size                                          size        3 proposed
+└ ▶ ? graphene config                                    config      2 proposed
+────────────────────────────────────────────────────────────────────────────────
+ does a broad scope that also covers a protected or read-only path "break" the
+ conditions (say src/** when src/graphene_map/ui/static/** is read-only)?
+ overlap · question · open · put up by the planner (graphene ask)
+
+ y default  yes: at propose and edit, a scope is refused when it matches any
+            tracked file under a protected or read-only glob (P.overlap with
+            P.tracked); at done, a changed path under one is refused
+ 1          no: the conditions are cut out of every scope, so src/** is
+            allowed, and only a changed path under a condition is refused at
+            done
+ you: 4 + 5 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y take: yes: at propose… · 1 pick · d drop · p park · Enter answer · a note

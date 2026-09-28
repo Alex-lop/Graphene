@@ -7,11 +7,13 @@ and nothing else. Each run's rows carry the tree's hash (`tree`), so a reader ca
 
 A tree is made once per task, before any configuration runs, and it needs the live planner:
 
-1. **The Nemotron planner proposes it** from a paragraph a stand-in person wrote from the task's card.
+1. **The Nemotron planner proposes it** from a paragraph a stand-in person wrote from the task's card,
+   once, before any evidence run: `docs/test/tasks/<task>/paragraph.md`, the same text for every arm
+   (and `change.md` beside it, the card's change of mind, where the card has one).
 2. **The stand-in prunes it** against the card. The stand-in is the card's only reader, as in
    `standin.py`: whoever starts it (and whoever tunes the executor) never opens `intent.md`,
-   `accept.py`, `quality.py` or `intent_globs.txt`, never sees the paragraph, and gets back no word
-   of the card.
+   `accept.py`, `quality.py`, `intent_globs.txt`, `paragraph.md` or `change.md`, never sees the
+   paragraph, and gets back no word of the card.
 3. **Every leaf's check must fail at the base commit.** A check that already passes is not a check:
    the stand-in fixes it or prunes its leaf, and the number it fixed goes in the commit message. The
    bench flags and counts any that are left (`checks_passing_at_base`) on every run.
@@ -44,8 +46,9 @@ Then start the stand-in, a sub-agent, with this brief (put the task's name in pl
 > paste it into anything, and never repeat it in what you write back. Read nothing else under
 > `docs/test/`. Every shell you open starts with `source ~/graphene-trees/feeds-standin-tree-1/env.sh`.
 >
-> 1. From the card alone, before you open any file of the repo, write the paragraph you would type
->    to a colleague, with every constraint you still remember, into `../paragraph.txt`.
+> 1. Your paragraph is already written, from the card, and every arm gets the same one:
+>    `cp ~/Desktop/AllThingsAgenticHackathon/docs/test/tasks/feeds/paragraph.md ../paragraph.txt`.
+>    Do not change it.
 > 2. `as_me graphene ask "$(cat ../paragraph.txt)" --with nemotron` (Nemotron Ultra proposes the tree),
 >    then, once, `as_me graphene plan --text > ../proposed.plan`: what it proposed, before any prune.
 > 3. Prune it against the card: `as_me graphene plan --text > "$TMPDIR/before.txt"`, copy it to

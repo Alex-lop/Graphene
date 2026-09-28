@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The brief a stand-in person is given, printed rather than written by hand each time.
 
-    docs/test/standin.py <task> <dense|tuesday> <prompt|tree> <run-dir> <venv-bin>
+    docs/test/standin.py <task> <dense|tuesday|sealed> <prompt|tree|board> <run-dir> <venv-bin>
+    docs/test/standin.py <task> <style> nano <run-dir> <venv-bin> --steps N --seconds S
 
 One generator for both arms and both styles, so anyone auditing can diff the two briefs and see
 that what differs between them is the method and the manner, and nothing else. The card is pasted
@@ -15,6 +16,18 @@ their paragraph to a session in the repo, whose hooks turn it into a proposed tr
 only with the commands `graphene watch`'s keys run. Every shell sources the run's env.sh (newrun.sh
 writes it), and everything the person reads is logged as `read`, in both arms, so attention can be
 modelled from the log rather than guessed.
+
+28 September (results-2026-09-28-shaping.md): the `board` arm answers the planner's board first, one
+`graphene board` command an item, each logged as a `board` act, then reads the tree as a graph
+(`plan --view auto`) and prunes and runs it with the tree arm's commands. The `sealed` style opens
+every arm with the task's sealed paragraph, byte for byte, and sends its written change of mind the
+same way, so a task's arms differ in what came after the opening and in nothing before it.
+
+28 September (results-2026-09-28-live-prereg.md): the `nano` arm is arm A, the paragraph to one
+Nemotron Nano session with no tree. It is the prompt arm with arm_a.py as the executor: its arm
+section and its executor section differ from the prompt arm's, and nothing else does. Its budget
+(model calls and seconds for the whole run) is the frozen decision's and is given on the command
+line. The other arms' briefs are unchanged, byte for byte.
 """
 
 from __future__ import annotations
@@ -48,7 +61,19 @@ STYLES = {
   what happened, and if it is wrong you say so, briefly.
 
   Take that literally. Your opening message is under thirty words. Count them before you send it.""",
+    "sealed": """Your opening message is already written. You wrote it earlier, from your card, and
+  it is in {paragraph}. Send that file as it is, byte for byte, as your first message:
+  MSG=$(cat {paragraph}). Do not rewrite it, shorten it or add to it. {change}
+  These are the only files under docs/test/ you may read.
+
+  After that you are a busy, competent person. You read what you are shown. You change what is
+  wrong by your card and leave alone what is already right. Anything you type after the opening is
+  short and plain, in your own words.""",
 }
+CHANGE_WRITTEN = """Your change of mind is written too, in
+  {change}: when the time comes, send it the same way, byte for byte, MSG=$(cat {change})."""
+CHANGE_UNWRITTEN = """Your change of mind, if your card has one, is not written down: say it
+  in your own words when the time comes."""
 
 # Two lines were added to every brief between repetition 1 and repetition 2 of the 21 September
 # run, because repetition 1 showed they were needed, and both arms of a repetition always got the
@@ -71,6 +96,16 @@ ARMS = {
   2. Read its `result` and `git diff {base}`. Carry on in the same session with `--resume
      <session_id>`, as many messages as you like. A message that is new information or the next
      step is a `prompt`; a message that says "no, that is not what I meant" is a `correction`.
+  3. The change of mind on your card is a follow-up message, once the first part works, and it
+     costs you one of your three corrections. Log it as a `correction` with `--mandated`.
+  4. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
+    "nano": """There is no plan. You work the way you always have: you type a message to an agent in
+  the repo, you read what came back and the diff, and if it is not what you wanted you say so.
+
+  1. Send your opening message to the executor.  -> log as `prompt`
+  2. Read its reply and `git diff {base}`. Carry on in the same session with a follow-up, as many
+     as its budget allows. A message that is new information or the next step is a `prompt`; a
+     message that says "no, that is not what I meant" is a `correction`.
   3. The change of mind on your card is a follow-up message, once the first part works, and it
      costs you one of your three corrections. Log it as a `correction` with `--mandated`.
   4. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
@@ -111,6 +146,90 @@ ARMS = {
   7. A finished leaf that is wrong: did reopen "as_me graphene node reopen <id> --note '…'"
      [x], then run again. A reopen is a correction.
   8. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
+    "board": """There is a plan, and it is a tree: the root is what you want, its children are
+  how it will be done, the leaves are work an agent does. Before the tree there is a board: the
+  planner's questions, each with the answer it would assume if you said nothing, its options where
+  it sees more than one way, its assumptions, its risks, and what it would leave out. You say what
+  you want to a session in the repo, the way you always have; the repo's hooks make that session
+  put up the board and propose a tree instead of writing code. You answer the board first, then
+  read the tree as a graph, prune it, and let it run. The key in brackets is the key that runs the
+  same command in `graphene watch`; here you type the command.
+
+  1. Send your opening message to the executor, in the repo: it is the session that proposes.
+                                                                          -> log as `prompt`
+  2. Read its `result` and the board: `seen as_me graphene board`. Carry on in the same session
+     with `--resume <session_id>`, as many messages as you like. A message that is new information
+     or the next step is a `prompt`; a message that says "no, that is not what I meant" is a
+     `correction`.
+  3. Answer every item on the board before you look at the tree, each with one of these and
+     nothing else:
+       did board "as_me graphene board take <id>"              the answer it would assume
+       did board "as_me graphene board pick <id> <n>"          its option n
+       did board "as_me graphene board drop <id>"              not wanted
+       did board "as_me graphene board park <id>"              not now
+       did board "as_me graphene board answer <id> '<words>'"  your own answer, in your words
+       did board "as_me graphene board note '<words>'"         a note of your own, on no item
+     If there is no tree once the board is answered, ask the same session for one: a `prompt`.
+  4. Read the tree as a graph: `seen as_me graphene plan --view auto` (a proposal is marked).
+     Prune it with these, and nothing else:
+       did accept "as_me graphene plan accept <id>"      [y] it, what is above it and under it
+       did drop "as_me graphene node drop <id>"          [d] it, and everything under it
+       did edit "as_me graphene node set <id> --title '…' --goal '…' --scope '…' --check '…'"
+                                                         [e] one node's contract, any of those
+     or [E], the tree as text, changed in your own editing tool and saved back:
+       as_me graphene plan --text > "$TMPDIR/before.txt"; cp "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+       … change after.txt …
+       as_me env EDITOR="cp $TMPDIR/after.txt" graphene plan edit
+       log edit --edit "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+     A proposal nobody accepts never runs.
+  5. did run "as_me graphene run --parallel 4 --with \\"{executor}\\" > \\"\\$TMPDIR/run-1.txt\\" 2>&1"
+                                                         [R] four leaves at once, each in its own
+     worktree, merged here when the merge is clean (run-2.txt the next time, and so on). Then
+     `seen as_me graphene plan --view auto`.
+  6. A leaf that came back: `seen as_me graphene node show <id>` says why, and what it offers:
+       did widen "as_me graphene node widen <id>"        [w] its scope, to the paths it wanted
+       did sibling "as_me graphene node sibling <id>"    [b] a leaf beside it, for those paths
+     Take an offer or not, and run again (step 5).
+  7. The change of mind on your card is a follow-up message to the same session, once the first
+     part works, and it costs you one of your three corrections. Log it as a `correction` with
+     `--mandated`. What it puts up, you answer on the board, prune and run as above.
+  8. A finished leaf that is wrong: did reopen "as_me graphene node reopen <id> --note '…'"
+     [x], then run again. A reopen is a correction.
+  9. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
+}
+
+# The executor section of the brief: Claude Code for the 20 to 28 September arms, and for arm A of the
+# live pre-registration (results-2026-09-28-live-prereg.md) one Nemotron Nano session through arm_a.py,
+# whose budget is the run's (the frozen decision states it; nothing here picks it).
+EXECUTORS = {
+    "claude": """THE EXECUTOR — the same command, the same tools, in both arms
+
+  as_me env -u GRAPHENE_AS {by_hand} < /dev/null > "$TMPDIR/e1.json"
+
+  Its `result` field is what it said back; `session_id` is how you carry on:
+  `--resume <session_id>` after the other flags. Your message goes straight after `-p` and nowhere
+  else: `--allowedTools` takes a list and will eat a prompt that comes after it.""",
+    "nano": """THE EXECUTOR — one agent session, the same tools and budget in every run of this arm
+
+  Your opening message, from the file it is in (a message in $MSG goes there first, as it is:
+  printf '%s' "$MSG" > "$TMPDIR/m1.txt"):
+
+    as_me env -u GRAPHENE_AS "{venv}/python" {here}/arm_a.py {repo} \\
+      --paragraph-file "$TMPDIR/m1.txt" --steps {steps} --seconds {seconds} \\
+      --conversation {run}/arm-a.json > "$TMPDIR/e1.txt" 2>&1
+
+  Every later message goes to the same session: the same command with --follow-up-file
+  "$TMPDIR/m2.txt" in place of --paragraph-file (m3.txt the time after, and so on).
+
+  {run}/arm-a.json is the session. Its `result` field is what the agent said last. After every
+  call, log it and read it with these two lines, in place of the e1.json lines above:
+
+    python3 {here}/logline.py "$R" executor result --from-json {run}/arm-a.json
+    reply {run}/arm-a.json
+
+  The budget is the run's, not the message's: {steps} model calls and {seconds} seconds in all. A
+  follow-up gets what the earlier messages left, and once it is spent a follow-up is refused and
+  the run is over.""",
 }
 
 BRIEF = """You are standing in for the person who wants a change made to a small codebase. Play
@@ -175,13 +294,7 @@ LOGGING — as you go, never afterwards from memory
   executor that `graphene run` started: its cost is read out of `.graphene/runs/` and logging it
   as well would count it twice.
 
-THE EXECUTOR — the same command, the same tools, in both arms
-
-  as_me env -u GRAPHENE_AS {by_hand} < /dev/null > "$TMPDIR/e1.json"
-
-  Its `result` field is what it said back; `session_id` is how you carry on:
-  `--resume <session_id>` after the other flags. Your message goes straight after `-p` and nowhere
-  else: `--allowedTools` takes a list and will eat a prompt that comes after it.
+{executor}
 
   Three pieces of grit, all found the hard way, all the same for every arm. Write the whole
   invocation — your message in a quoted heredoc, then the command — into one script under
@@ -223,6 +336,53 @@ WHEN YOU ARE FINISHED
 """
 
 
+def card(task: str, tasks: Path = HERE / "tasks") -> str:
+    """The task's card, whole: pasted at the end of a brief and read by nobody who starts a run."""
+    return (tasks / task / "intent.md").read_text(encoding="utf-8")
+
+
+def brief(
+    task: str,
+    style: str,
+    arm: str,
+    run_dir: Path,
+    venv: str,
+    tasks: Path = HERE / "tasks",
+    budget: tuple[int, float] | None = None,
+) -> str:
+    """`budget` is arm A's (`nano`) model calls and seconds for the whole run, and only arm A takes one."""
+    if (arm == "nano") != (budget is not None):
+        raise ValueError(
+            "arm nano takes --steps N --seconds S, the frozen decision's budget; no other arm does"
+        )
+    base = (run_dir / "base.sha").read_text().strip()
+    paragraph, change = tasks / task / "paragraph.md", tasks / task / "change.md"
+    if style == "sealed" and not paragraph.exists():
+        raise FileNotFoundError(f"no sealed paragraph for {task}: {paragraph}")
+    written = CHANGE_WRITTEN.format(change=change) if change.exists() else CHANGE_UNWRITTEN
+    return BRIEF.format(
+        repo=run_dir / "repo",
+        base=base,
+        runlog=run_dir / "runlog.jsonl",
+        tmp=run_dir / "tmp",
+        run=run_dir,
+        venv=venv,
+        here=HERE,
+        style=STYLES[style].format(paragraph=paragraph, change=written),
+        arm=ARMS[arm].format(base=base, executor=EXECUTOR),
+        executor=EXECUTORS["nano" if budget else "claude"].format(
+            by_hand=BY_HAND,
+            venv=venv,
+            here=HERE,
+            repo=run_dir / "repo",
+            run=run_dir,
+            steps=budget[0] if budget else "",
+            seconds=f"{budget[1]:g}" if budget else "",
+        ),  # fmt: skip
+        card=card(task, tasks),
+    )
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 6:
         sys.stderr.write(__doc__)
@@ -231,22 +391,13 @@ def main(argv: list[str]) -> int:
     if style not in STYLES or arm not in ARMS:
         sys.stderr.write(f"style is one of {', '.join(STYLES)}; arm is one of {', '.join(ARMS)}\n")
         return 2
-    base = (run_dir / "base.sha").read_text().strip()
-    print(
-        BRIEF.format(
-            repo=run_dir / "repo",
-            base=base,
-            runlog=run_dir / "runlog.jsonl",
-            tmp=run_dir / "tmp",
-            run=run_dir,
-            venv=venv,
-            here=HERE,
-            style=STYLES[style],
-            arm=ARMS[arm].format(base=base, executor=EXECUTOR),
-            by_hand=BY_HAND,
-            card=(HERE / "tasks" / task / "intent.md").read_text(encoding="utf-8"),
-        )
-    )
+    rest = dict(zip(argv[6::2], argv[7::2], strict=False))
+    try:
+        budget = (int(rest["--steps"]), float(rest["--seconds"])) if rest else None
+        print(brief(task, style, arm, run_dir, venv, budget=budget))
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
     return 0
 
 

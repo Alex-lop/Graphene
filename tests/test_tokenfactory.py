@@ -109,3 +109,58 @@ def test_a_completion_that_timed_out_is_tried_once_more_not_six_times(fake, monk
     with pytest.raises(tf.Unreachable, match="could not be reached"):
         tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "q"}])
     assert tries.count("POST") == 2
+
+
+@pytest.mark.parametrize("pad", [0, 255])
+def test_an_error_that_echoes_the_key_is_said_without_it(monkeypatch, pad):
+    """A gateway's 401 page may echo the Authorization header: what is raised goes to the screen, the
+    plan log (a released leaf's why) and a recording, so the key is taken out where it is raised, even
+    when the 300 characters kept would cut it in two."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Echo(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            echoed = "x" * pad + " invalid key: " + self.headers["Authorization"]
+            data = json.dumps({"error": echoed}).encode()
+            self.send_response(401)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        do_POST = do_GET
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    key = "sk-FAKE-graphene-review-123"
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", f"http://127.0.0.1:{server.server_port}/v1")
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    tf._listed.cache_clear()
+    try:
+        said = tf.reach()
+        with pytest.raises(tf.Unreachable) as no:
+            tf._request("POST", "chat/completions", {}, tries=1)
+    finally:
+        server.shutdown()
+        tf._listed.cache_clear()
+    assert said.startswith("Token Factory answered 401") and "invalid key" in said
+    for text in (said, str(no.value)):
+        assert "sk-FAKE" not in text and "review-123" not in text
+
+
+def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
+    """A pasted en dash: the header could not be built, and a traceback reached the screen."""
+    from graphene_map import keys
+
+    key = "sk-FAKE–graphene-review-123"
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1")  # never reached
+    with pytest.raises(tf.Unreachable, match="letters, digits and punctuation") as no:
+        tf._request("GET", "models", tries=1)
+    assert key not in str(no.value)
+    with pytest.raises(RuntimeError, match="one word") as no:
+        keys.set(key)
+    assert key not in str(no.value)
