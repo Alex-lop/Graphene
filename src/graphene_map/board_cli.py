@@ -119,6 +119,17 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         act(f"board park {item_id}", lambda s, who, files: B.park(s, item_id, who))
 
     @board_cli.command()
+    def unpark(item_id: str = typer.Argument(...)) -> None:
+        """Unpark it: open again, for you to answer."""
+
+        def unparked(s, who, files):
+            if B.get(s, item_id)["state"] != "parked":
+                raise P.Refused(f"{item_id} is not parked")
+            return B.settle(s, item_id, "open", who)
+
+        act(f"board unpark {item_id}", unparked)
+
+    @board_cli.command()
     def answer(item_id: str = typer.Argument(...), words: list[str] = typer.Argument(...)) -> None:
         """Answer it in your own words."""
         act(f"board answer {item_id}", lambda s, who, files: B.answer(s, item_id, " ".join(words), who))
