@@ -375,6 +375,30 @@ def test_on_board_puts_up_one_risk_per_check_that_cannot_tell_the_work_is_done(r
         again = C.on_board(store, C.run(store, repo, fork=fork), board)  # kept rows: nothing twice
     assert [(it["kind"], it["about"]) for it in up] == [("risk", "l0"), ("risk", "l1")]
     assert up[0]["text"] == "l0's check passes already: it exits 0 before any work is done"
-    assert all(it["agent"] and it["by"] == "graphene:precheck" and not it["then"] for it in up)
+    assert all(it["agent"] and it["by"] == "shaper:nemotron" and not it["then"] for it in up)
     assert said[:2] == ["put up r1: " + up[0]["text"], "put up r2: " + up[1]["text"]]
     assert said[2].startswith("! l3: not put up: ") and again == [said[2]]
+
+
+def test_the_precheck_flag_puts_each_weak_check_on_the_board_after_an_ask(repo, nano, monkeypatch, tmp_path):
+    """GRAPHENE_SHAPE=precheck: a proposed check that passes already, or that Nano reads as red for another
+    reason (a stand-in here, and said so), is a risk on the board about its leaf, by shaper:nemotron."""
+    import sys
+
+    from graphene_map import board as B
+    from graphene_map.ask import ask
+
+    nano([said("typo", "it names app.greeet")])
+    fork = scripted({"true": (0, ""), "false": (1, "AttributeError: greeet")})
+    fork.where = "a scripted fork"
+    monkeypatch.setattr(C, "_forks", lambda *_: (fork, None))
+    script = tmp_path / "planner.py"
+    script.write_text('print("```plan\\n? one  [one]\\n    scope: app.py\\n    check: true\\n'
+                      '? two  [two]\\n    scope: app.py\\n    check: false\\n```")')  # fmt: skip
+    monkeypatch.setenv("GRAPHENE_SHAPE", "precheck")
+    with Store.open(repo) as store:
+        lines = ask(store, repo, "two leaves", f"{sys.executable} {script}", say=lambda _: None)
+        up = [(it["about"], it["kind"], it["by"]) for it in B.items(store)]
+        assert up == [("one", "risk", "shaper:nemotron"), ("two", "risk", "shaper:nemotron")]
+        assert "read by Nemotron-3-Nano-fake, a stand-in" in B.items(store)[1]["text"]
+    assert sum(line.startswith("put up ") for line in lines) == 2

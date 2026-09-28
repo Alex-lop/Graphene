@@ -9,6 +9,7 @@ import typer
 from rich.cells import cell_len, chop_cells
 
 from . import board as B
+from . import cover
 from . import plan as P
 from . import plan_text as T
 
@@ -166,5 +167,15 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         words: list[str] = typer.Argument(...),
         about: str = typer.Option(None, "--about", help="The node it is about; none is the whole plan."),
     ) -> None:
-        """Put up a note. Yours is told to the executors as written; an agent's waits for you."""
+        """Put up a note. Yours is told to the executors as written; an agent's waits for you. With
+        GRAPHENE_SHAPE=note, a model then finds the leaf it constrains, and the change is put up as an
+        item whose default, taken, makes it."""
         act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))
+        if "note" in cover.shaping() and P.caller().person:
+            from . import note as N  # here, not above: it loads the model's client only when asked
+
+            with open_store(root()) as store:  # routed outside the plan's write lock, as note.route asks
+                item = N.to_board(store, root(), " ".join(words), say=out)
+            if item is not None:
+                out(f"put up {item['id']}: {item['text']}")
+                out(f"  default: {item['default']}")
