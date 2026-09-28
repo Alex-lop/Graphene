@@ -424,6 +424,23 @@ def drop(store, item_id: str, who: P.Caller) -> dict:
     return settle(store, item_id, "dropped", who)
 
 
+def rehome(store, gone: set[str], who: P.Caller, now: str | None = None) -> list[tuple[dict, str]]:
+    """What the person answered (or parked) about a node that left the plan becomes about the whole
+    plan, so it is still told to every executor rather than to none. Returns (item, the node it was
+    about)."""
+    now = now or P._now()
+    moved = []
+    with store.claim():
+        board = items(store)
+        for item in board:
+            if item.get("about") in gone and (told(item) or item["state"] == "parked"):
+                moved.append((item, item["about"]))
+                item.update(about=None, rev=item["rev"] + 1, updated_at=now)
+                _log(store, item, "moved to the whole plan", who, now, was=moved[-1][1])
+        _put(store, board)
+    return moved
+
+
 # -- the text form --------------------------------------------------------------------------------
 
 

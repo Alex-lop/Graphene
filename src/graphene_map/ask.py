@@ -213,12 +213,18 @@ def reask_argv(store, size: str) -> list[str] | None:
     """The command a screen's re-ask key runs: the last sentence asked of a planner (not a follow-up
     about one node), again, sized finer or coarser. None when nothing was asked yet."""
     asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
-    return ["graphene", "ask", asked[-1]["note"], f"--{size}"] if asked else None
+    if not asked:
+        return None
+    planner = asked[-1].get("with")  # the planner that ask started, never whichever the repo names now
+    return ["graphene", "ask", asked[-1]["note"], *(["--with", planner] if planner else []), f"--{size}"]
 
 
-def _replace_last(store) -> list[str]:
+def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
     """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
-    to prune in their place, not a second beside them. Returns the ids dropped."""
+    to prune in their place, not a second beside them. What the person answered about a dropped node
+    becomes about the whole plan (``board.rehome``), and a goal sentence an answer added to one is
+    named, so neither goes nowhere unsaid. Returns what stands, for the planner (None: nothing was
+    dropped)."""
     pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
     ids = {n.id for n in pending}
     dropped = []
@@ -228,7 +234,20 @@ def _replace_last(store) -> list[str]:
             dropped.append(n.id)
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
-    return dropped
+    if not dropped:
+        return None
+    gone = {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
+    stands = []
+    for item, was in B.rehome(store, gone, P.caller()):
+        say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")
+        stands.append(B.said(item))
+    for item in B.items(store):
+        for line in item.get("became") or []:
+            node, _, what = line.partition(": goal + ")
+            if what and node in gone and item["state"] != "dropped":
+                say(f"{node} is dropped, and with it its goal + {what} (from {item['id']})")
+                stands.append(f'{B.said(item)} (it added to the goal of {node}: "{what}")')
+    return stands
 
 
 def ask(
@@ -241,25 +260,31 @@ def ask(
     say: Callable[[str], None] = print,
     size: str | None = None,
     talk: str | None = None,
+    planner: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
-    refusal, as a refused executor does."""
+    refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
+    asking it again finer or coarser starts the same one."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
     session = str(uuid.uuid4())
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
-    store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
+    row = {"note": sentence, "about": about, "with": planner}
+    store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    if size and about is None and not split and _replace_last(store):  # asked again, finer or coarser
+    stands = _replace_last(store, say) if size and about is None and not split else None
+    if stands is not None:  # asked again, finer or coarser
+        stand = "".join(f"\n- {line}" for line in stands)
+        stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
         asked = prompt = prompt.replace(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
-            "dropped, so propose the whole tree afresh.\n\n" + RULES)  # fmt: skip
+            f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
