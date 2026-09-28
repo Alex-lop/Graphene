@@ -1,4 +1,5 @@
-"""How coarse or fine the planner cuts a tree: the repo's files, lines and test layout, and the directories the ask names."""
+"""How coarse or fine the planner cuts a tree: the repo's files, lines and test layout, and the
+directories the ask names."""
 
 import re
 from pathlib import Path, PurePosixPath
@@ -19,7 +20,8 @@ def _lines(root: Path, files: list[str]) -> int:
 
 
 def layout(files: list[str]) -> str:
-    """'tests/' when the tests sit in one tests/ directory, 'beside' when next to the code, 'none' when there are none."""
+    """'tests/' when the tests sit in one tests/ directory, 'beside' when next to the code, 'none' when
+    there are none."""
     if any(set(PurePosixPath(p).parts[:-1]) & {"tests", "test"} for p in files):
         return "tests/"
     name = re.compile(r"(^test_.*|.*_test\.\w+|.*\.(test|spec)\.\w+)$")
@@ -27,7 +29,8 @@ def layout(files: list[str]) -> str:
 
 
 def named_dirs(sentence: str, files: list[str]) -> set[str]:
-    """The directories of the repo the sentence names, by path or by last name; a named file names its directory."""
+    """The directories of the repo the sentence names, by path or by last name; a named file names its
+    directory."""
     dirs = {str(d) for p in files for d in PurePosixPath(p).parents if str(d) != "."}
     by_name: dict[str, set[str]] = {}
     for d in dirs:
@@ -65,7 +68,9 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
         "beside": "tests sit next to the code, so each leaf's check can be a test beside what it changes",
         "none": "the repo has no tests, so each leaf's check must be a command that proves it",
     }[tests]
-    named = f"the ask names {dirs} director{'y' if dirs == 1 else 'ies'}" if dirs else "the ask names no directory"
+    named = "the ask names no directory"
+    if dirs:
+        named = f"the ask names {dirs} director{'y' if dirs == 1 else 'ies'}"
     leaves = f"{lo} leaf" if lo == hi == 1 else f"{lo} to {hi} leaves"
     return (
         f"The repo has {len(files):,} files and {lines:,} lines, {named}, and {where}: "
