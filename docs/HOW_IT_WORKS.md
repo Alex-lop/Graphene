@@ -260,6 +260,57 @@ what anyone else did after it: added, edited, dropped, the board. The screen put
 (changed) before such a row's id, and `~` on a folded row when anything inside it changed. The bottom
 line counts them. Only the person moves the mark, so a planner's revision cannot slip past.
 
+## P1f. Settings the person states once
+
+`settings.py`. They live in the store's meta (`settings:protected`, `settings:readonly`,
+`settings:never`, `settings:size`). `graphene config` prints them as text, with the planner, the
+executor, plan first, the board's conditions and where the key was found as `#` lines.
+`graphene config edit` edits them as `plan edit` edits the plan:
+- the person only;
+- a line it cannot read is refused by its number, and nothing is applied;
+- a text with no setting in it is refused;
+- a save over settings someone else changed since it opened is refused.
+
+Each change is a `settings` row in the log with what was there before; `plan undo` does not reach them.
+After a save, every leaf not yet done whose scope a condition now covers is named, with the command to
+narrow it (`settings.broken`).
+
+| Setting | What holds it |
+| --- | --- |
+| `protected: GLOB, …` | No scope may cover it. The planner is told never to read it. The Nemotron planner's and executor's tools do not list or read it, the hook refuses a Claude Code planner's `Read`, `Grep` or `Glob` that would reach it (`gate._protected_read`), and it is not uploaded to a sandbox |
+| `readonly: GLOB, …` | No leaf may write it. With the board's `condition` globs, it is a standing condition like `protected` |
+| `never: SENTENCE` | Told to the planner, a line each. Nothing enforces it (P5) |
+| `size: auto\|finer\|coarser` | How many leaves the planner is asked for (below) |
+
+**Standing conditions bind every scope.** A scope that covers a protected or read-only path, judged
+over tracked files and the globs as written, is refused when it is proposed, edited or started
+(`plan._keeps_standing`). A scope accepted before the condition was set is refused at start, too.
+As it binds, every scope, a prompt leaf's `**` included, ends with `!GLOB` for each condition
+(`plan.as_scoped`).
+The hook's write and shell checks, the Nemotron executor's write tools and `done` all read the scope that
+way, so a write there is refused, and the refusal names the setting.
+
+**The size of a plan** (`sizing.measure`). The planner is told the repository's files and lines
+(lockfiles left out, counted to 20,000), where its tests live (one `tests/` directory, beside the code,
+or none) and how many of its directories the ask names. From those it is given a number of leaves:
+1 to 3 under 2,000 lines, to 6 under 20,000, to 10 past that, with the named directories raising the
+floor. `finer` doubles the range and `coarser` halves it. `graphene ask … --finer` or `--coarser` sizes
+one ask whatever is saved, and drops the planner's proposals still waiting on the person, so there is
+one tree to prune, not two. `+` and `-` in `graphene watch` run that for the last sentence asked.
+
+**The Token Factory key** (`keys.py`, `key_cli.py`) is found in `NEBIUS_API_KEY`, else the system
+keychain (`security` on macOS, `secret-tool` on Linux, service `graphene`, account `token-factory`),
+and never in a file.
+- `graphene key set` reads it from a hidden prompt; a key on the command line is refused. The key goes
+  to the keychain tool on its stdin, never in its argv.
+- `graphene key check` prints `Token Factory: reached, N NVIDIA models` or what stood in the way, with
+  the key cut out of any message.
+- `graphene key remove` takes it out.
+
+All three are the person's. `GRAPHENE_KEYCHAIN=off` leaves the keychain out entirely, and set and remove
+then say so. Graphene sets it for a leaf's check, for every command the Nemotron executor's model runs,
+and for a planner or executor that is not its own Nemotron.
+
 ## P2. The boundary: what makes a node done
 
 `graphene node start <id>` refuses unless the node is open, everything it needs is done, the caller
@@ -418,8 +469,8 @@ a leaf; `--about <id>` asks it about a leaf that came back.
 
 `--with nemotron` names Graphene's own executor (`executor.py`) to `graphene run`, and its own planner
 (`planner.py`) to `graphene ask`, `node split` and `:ask`. Both call Nebius Token Factory's
-OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key in
-`NEBIUS_API_KEY`. The key is sent in one header and written nowhere. No model id is written into
+OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key found in
+`NEBIUS_API_KEY`, else the keychain (P1f). The key is sent in one header and written nowhere else. No model id is written into
 Graphene: `tokenfactory.roles` reads the NVIDIA Nemotron models from the live list (`GET /v1/models`),
 by size (Ultra, Super, Nano). Token Factory retires models on notice, so an id `graphene init` wrote or
 `--model` gave may leave the list: it falls back within the family (`tokenfactory.resolve`), to the
@@ -593,6 +644,15 @@ with nemotron`) only where the long form still fits with it.
 - A board answer changes the tree only through its `then:` lines. One with none (words, or a default
   the planner gave no `then:`) reaches an executor only as a `decided:` line in its contract: it is
   told, and the scope and the check are what bind.
+- A `never:` line is told to the planner and checked nowhere: a proposal that breaks it is added like
+  any other, and only the person's pruning catches it.
+- A protected path is kept from the model where Graphene reads for it. A command the local Nemotron
+  executor runs can read it, as any file the user can; a Codex planner, or a Claude Code one without
+  the hooks, is only told not to; a leaf's check in a sandbox fork runs on the whole checkout, so a
+  test the leaf wrote could print it.
+- A key in the keychain is readable by any process of the user while the keychain is unlocked
+  (`security find-generic-password`). `GRAPHENE_KEYCHAIN=off` stops only Graphene's own lookup; a
+  sandbox run is the only real boundary.
 
 ## P6. A node's record
 
