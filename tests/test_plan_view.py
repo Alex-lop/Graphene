@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from graphene_map import plan
-from graphene_map.plan_view import HOLES, NODE_H, NODE_W, TREE_MIN, build_plan_view
+from graphene_map.plan_view import HOLES, NODE_H, NODE_W, TREE_MIN, build_plan_view, cols
 from graphene_map.store import Store
 
 ALEX = plan.Caller("alex", True)
@@ -210,7 +210,8 @@ def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_c
     wire = next(link for link in first["tree_links"] if link["target"] == "wire")
     assert wire["points"][0] == [centre(at["xml"]), at["xml"]["tree_y"] + NODE_H]
     assert wire["points"][-1] == [centre(at["wire"]), at["wire"]["tree_y"]]
-    assert first["tree_width"] == max(n["tree_x"] + n["tree_w"] for n in first["nodes"])
+    goal_edge = first["tree_goal"][0] + NODE_W
+    assert first["tree_width"] == max(goal_edge, *(n["tree_x"] + n["tree_w"] for n in first["nodes"]))
     assert first["tree_height"] == max(n["tree_y"] for n in first["nodes"]) + NODE_H
 
 
@@ -263,6 +264,22 @@ def test_with_nothing_waiting_on_anything_there_is_no_critical_path(store):
     assert view["critical"] == [] and not any(e["critical"] for e in view["edges"])
 
 
+def test_a_box_counts_an_emoji_at_least_as_wide_as_the_pages_clip_does():
+    """❤ ✔ ⚠ are narrow by East Asian width but two columns to the page's `clip` (Extended_Pictographic):
+    a box sized to 'ship it ✅ ❤ ⚡ ✔ ⚠ ☕ done' at 27 columns was clipped at the page's 30."""
+    assert cols("ship it ✅ ❤ ⚡ ✔ ⚠ ☕ done") == 30
+    assert all(cols(c) == 2 for c in "©®‼⁉™ℹ↔◻⤴〰〽㉈❤✔⚠☀✈⌚⏩▶")
+    assert cols("a → b, 3 ≤ 4") == 12  # an arrow or a sign that is no emoji stays one
+
+
+def test_the_tree_is_as_wide_as_its_goal_box_on_a_plan_narrower_than_it(store):
+    """A one-leaf plan's tree was 170 wide, its goal box 200: the page cut the goal's right side off."""
+    plan.set_goal(store, "fix it", ALEX)
+    plan.propose(store, [node("a", title="fix it")], ALEX)
+    view = build_plan_view(store)
+    assert view["tree_width"] >= view["tree_goal"][0] + NODE_W == 200
+
+
 def test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once(store):
     """One definition, in plan_view, for the page and for the terminal's graph (view_dag): the path is
     none when no leaf needs another, and what can start at once counts a proposal whose needs are done
@@ -282,6 +299,21 @@ def test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once(store)
     assert both() == (["a", "c", "e"], ["a", "b"])
     plan.propose(store, [node("mine", owner="alex")], ALEX)
     assert both()[1] == ["a", "b"]
+
+
+def test_a_leaf_that_came_back_is_on_the_person_and_not_at_once_on_the_page_or_in_the_terminal(store, repo):
+    """The page said "2 at once: a, c" beside the graph's "1 ready · 1 wait · 1 on you" and the
+    status line's `R: 1 ready`: at once took no account of a leaf that came back."""
+    from graphene_map import view_dag
+    from graphene_map.views import inputs
+
+    plan.propose(store, [node("a"), node("b", needs=["a"]), node("c")], ALEX)
+    plan.start(store, "c", BOT, repo)
+    plan.release(store, "c", BOT, "it needs README.md too")
+    view, (nodes, words, _) = build_plan_view(store), inputs(store)
+    assert view["at_once"] == view_dag.at_once(nodes, words) == ["a"]
+    assert [i for i, w in words.items() if w == "ready"] == ["a"]  # the status line's count
+    assert view_dag.note(nodes, words) == "critical ━ a > b (2) · 1 ready · 1 wait · 1 on you"
 
 
 def test_an_accepted_leaf_with_a_proposed_child_is_still_the_leaf_on_the_critical_path(store):

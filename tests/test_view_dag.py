@@ -7,7 +7,7 @@ import sys
 import types
 from dataclasses import dataclass
 
-from rich.cells import cell_len
+from rich.cells import cell_len, split_graphemes
 from rich.text import Text
 
 try:
@@ -54,10 +54,11 @@ def words_of(nodes):
 
 
 def cells(text):
-    """A line as one entry a terminal column: a wide character's second column is a NUL."""
+    """A line as one entry a terminal column, as rich measures it: a wide character's second column
+    is a NUL, and what a terminal draws as one (❤️, 👩‍👩‍👧) is one entry."""
     out = []
-    for c in text:
-        out += [c] + ["\0"] * (cell_len(c) - 1)
+    for a, b, wide in split_graphemes(text)[0]:
+        out += [text[a:b]] + ["\0"] * (wide - 1)
     return out
 
 
@@ -194,6 +195,34 @@ def test_the_notes_counts_add_up_to_the_leaves_and_a_flat_plan_has_no_critical_p
     assert V.note(flat, words_of(flat)) == "3 ready · 0 wait"
 
 
+def test_an_accepted_leaf_with_a_proposed_child_is_drawn_and_on_the_path():
+    """What `node split` leaves: the graph took c for a sub-goal and drew its proposed child in its
+    place, while the note named c on the critical path and `graphene plan` counted four leaves."""
+    nodes = diamond_and_chain()[:2] + [leaf("c", "write it", ["b"]), leaf("kid", "a piece of c", parent="c")]
+    nodes[-1].state = P.PROPOSED
+    drawn = checked(nodes, 80)
+    assert V.critical_path(nodes) == ["a", "b", "c"]
+    assert set(drawn.at) == {n.id for n in P.leaves(nodes)} == {"a", "b", "c", "kid"}
+    said = drawn.note
+    assert said.startswith("critical ━ a > b > c (3)")
+    assert sum(int(part.split()[0]) for part in said.split(" · ")[1:]) == 4
+
+
+def test_the_note_keeps_the_paths_end_and_every_count_at_the_width_it_is_drawn_at():
+    """The note shortened a path past four leaves only: four ids of a dozen letters drew at 80, and
+    the status line cut the note's last leaf, its count and "1 ready" (`critical ━ … > write-report >…`)."""
+    ids = ["parse-billing", "reconcile-rows", "write-report", "notify-finance"]
+    nodes = [leaf(i, "x", ids[k - 1 : k]) for k, i in enumerate(ids)]
+    for width in (73, 78, 90):
+        said = V.draw(nodes, words_of(nodes), "", width, 24, None).note
+        assert cell_len(said) <= width and said.endswith(" > notify-finance (4) · 1 ready · 3 wait"), said
+    assert V.draw(nodes, words_of(nodes), "", 90, 24, None).note == (
+        "critical ━ parse-billing > reconcile-rows > … > notify-finance (4) · 1 ready · 3 wait"
+    )
+    assert V.draw(nodes, words_of(nodes), "", 78, 24, None).note.startswith("critical ━ parse-billing > … >")
+    assert " > write-report > " in V.note(nodes, words_of(nodes))  # no width: the whole path
+
+
 def style_at(line, x):
     return " ".join(str(span.style) for span in line.spans if span.start <= x < span.end)
 
@@ -265,6 +294,16 @@ def test_wide_characters_take_two_columns_and_the_lines_still_meet():
         checked(nodes, width)
     goal = V.draw(nodes, words_of(nodes), "目標を書く " * 30, 80, 24, None).lines[0]
     assert goal.cell_len <= 80 and goal.plain.endswith("…")
+
+
+def test_an_emoji_takes_the_cells_a_terminal_gives_it_and_the_lines_still_meet():
+    """A joined emoji (👩‍👩‍👧, two cells) raised IndexError: each code point took columns of its own,
+    six in all. An emoji with a variation selector (❤️, two cells) was counted one, so a line ran
+    past the width."""
+    for title in ("thank the 👩‍👩‍👧 team", "👩‍👩‍👧 " * 9, "❤️" * 12, "ok ✔️ ⚠️ done 👍🏽"):
+        nodes = [leaf("a", "read the feed"), leaf("b", title, ["a"]), leaf("c", "x", ["b"])]
+        for width in range(20, 90, 7):
+            checked(nodes, width)
 
 
 def test_a_fan_out_past_seven_crosses_nothing():

@@ -28,8 +28,8 @@ from rich.text import Text
 
 from . import plan as P
 from . import plan_view
-from .plan_view import depths, outline
-from .views import Drawn, elide
+from .plan_view import depths, leaf_needs, outline
+from .views import Drawn, elide, graphemes
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
 KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
@@ -68,16 +68,11 @@ class _Graph:
 
 
 def _graph(nodes: list[P.Node]) -> _Graph:
-    under = P.kids(nodes, drawn=True)
-    by_id = {n.id: n for n in nodes}
-    leaves = [n for n, _ in outline(nodes) if not under.get(n.id)]
-    ids = {n.id for n in leaves}
-    raw: dict[str, list[str]] = {}
-    for leaf in leaves:
-        got = []
-        for need in P.all_needs(leaf, by_id):
-            got += [need] if need in ids else [n.id for n in P.below(need, nodes) if n.id in ids]
-        raw[leaf.id] = [i for i in dict.fromkeys(got) if i != leaf.id]
+    """The leaves and what each waits on are the critical path's own (`plan_view.leaf_needs`): a
+    proposed child under an accepted leaf does not make it a sub-goal, so both are drawn."""
+    listed, raw = leaf_needs(nodes)
+    ids = {n.id for n in listed}
+    leaves = [n for n, _ in outline(nodes) if n.id in ids]
     waits = [replace(n, needs=raw[n.id]) for n in leaves]
     level = depths(waits)
     raw = {i: [x for x in r if level[x] < level[i]] for i, r in raw.items()}  # a cycle: validate refuses it
@@ -96,16 +91,18 @@ def critical_path(nodes: list[P.Node]) -> list[str]:
 
 def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
     """The leaves that could start now, proposed ones too (they start once accepted): the page's own
-    (`plan_view`). ``words`` is kept for the view's callers; the plan alone decides it."""
-    return plan_view.at_once(nodes)
+    (`plan_view`), with what ``words`` says came back left to the person."""
+    return plan_view.at_once(nodes, {i for i, w in words.items() if w == "came back"})
 
 
-def note(nodes: list[P.Node], words: dict[str, str]) -> str:
-    """What the graph says at a glance, for the bottom line, the critical path first so 80 columns
-    never cut it: `critical ━ a > b > c (3) · 2 ready · 1 more once accepted · 2 wait · 1 running ·
-    1 on you · 4 done`. "ready" is what `R` starts, the status line's own count; "once accepted" is
-    a proposal that could start as soon as it is; "wait" is every other leaf not done. Every leaf is
-    counted once, so the counts add up to the leaves drawn. A path of one leaf is no path."""
+def note(nodes: list[P.Node], words: dict[str, str], width: int | None = None) -> str:
+    """What the graph says at a glance, for the bottom line, the critical path first: `critical ━
+    a > b > c (3) · 2 ready · 1 more once accepted · 2 wait · 1 running · 1 on you · 4 done`. "ready"
+    is what `R` starts, the status line's own count; "once accepted" is a proposal that could start as
+    soon as it is; "wait" is every other leaf not done. Every leaf is counted once, so the counts add
+    up to the leaves drawn. A path of one leaf is no path. Past four leaves, or past ``width`` (the
+    graph's, which the status line has too), the path's middle goes (`a > … > f`) before its last
+    leaf, its length or a count does."""
     g = _graph(nodes)
     if not g.leaves:
         return "no leaves yet"
@@ -117,14 +114,20 @@ def note(nodes: list[P.Node], words: dict[str, str]) -> str:
         word = words.get(n.id, "")
         later = "once accepted" if n.id in now and word == "proposed" else "wait"
         count[KINDS.get(word) or ("ready" if word == "ready" else later)] += 1
-    path = critical_path(nodes)
-    shown = path if len(path) <= 4 else [*path[:2], "…", path[-1]]
-    said = [f"critical ━ {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []
-    said.append(f"{count['ready']} ready" if count["ready"] else "none ready")
+    said = [f"{count['ready']} ready" if count["ready"] else "none ready"]
     if count["once accepted"]:
         said.append(f"{count['once accepted']}{' more' if count['ready'] else ''} once accepted")
     said += [f"{count[k]} {k}" for k in ("wait", "running", "on you", "done") if count[k] or k == "wait"]
-    return " · ".join(said)
+    path, counts = critical_path(nodes), " · ".join(said)
+    if len(path) < 2:
+        return counts
+    k = len(path)
+    forms = [path] * (k <= 4) + [[*path[:j], "…", path[-1]] for j in (2, 1) if j < k - 1] + [["…", path[-1]]]
+    for form in forms:
+        line = f"critical ━ {' > '.join(form)} ({k}) · {counts}"
+        if width is None or cell_len(line) <= width:
+            break
+    return line
 
 
 # -- where everything goes ---------------------------------------------------------------------------
@@ -343,7 +346,7 @@ def draw(
         text.rstrip()
         lines.append(text)
     order = sorted(at, key=lambda i: (g.level[i], row[i]))
-    return Drawn(lines=lines, at=at, order=order, note=note(nodes, words))
+    return Drawn(lines=lines, at=at, order=order, note=note(nodes, words, width))
 
 
 def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str, str]]:
@@ -361,9 +364,9 @@ def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str,
 
 def _columns(text: str, how: str) -> list[tuple[str, str]]:
     """Text as one entry a terminal column, as the grid is laid out: a wide character's second column
-    is "", and a character that takes none (a combining accent) joins the one before it."""
+    is "", and what a terminal draws as one (`graphemes`) is one entry."""
     out: list[tuple[str, str]] = []
-    for char in text:
+    for char in graphemes(text):
         wide = cell_len(char)
         if wide == 0 and out:
             out[-1] = (out[-1][0] + char, how)
