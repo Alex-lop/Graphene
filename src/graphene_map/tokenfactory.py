@@ -239,7 +239,7 @@ def spent() -> float:
 
 
 def chat(model: str, messages: list[dict], tools: list[dict] | None = None, tag: str = "",
-         tries: int = TRIES, timeout: float = TIMEOUT, **params) -> dict:  # fmt: skip
+         tries: int | None = None, timeout: float | None = None, **params) -> dict:  # fmt: skip
     """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model"}``: the
     assistant's message as Token Factory sent it (``content``, ``tool_calls``, any reasoning), its usage,
     and that usage at list price. ``params`` go into the request as they are (temperature, max_tokens,
@@ -250,7 +250,8 @@ def chat(model: str, messages: list[dict], tools: list[dict] | None = None, tag:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
     began = time.monotonic()
-    said, headers = _request("POST", "chat/completions", body, timeout=timeout, tries=tries)
+    # the module's TIMEOUT and TRIES read now, not when this was defined: a test sets them per run
+    said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
     took = time.monotonic() - began
     try:
         message = said["choices"][0]["message"]
