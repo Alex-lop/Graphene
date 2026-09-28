@@ -132,8 +132,10 @@ def test_the_person_takes_picks_drops_parks_and_answers_each_by_cli(repo, tmp_pa
     unknown = person("board", "park", "nothing")
     assert unknown.exit_code == 1 and "no item nothing on the board" in unknown.stderr
     shown = person("board").stdout.splitlines()
-    assert shown[0] == "the board: 0 open, 1 parked, 4 settled"
-    assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled"]
+    # walk 2026-09-28: the dropped item vanished here while watch counted it: it is listed, last
+    assert shown[0] == "the board: 0 open, 1 parked, 4 settled, 1 dropped"
+    assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled", "dropped"]
+    assert any(" paging " in line and line.endswith("dropped") for line in shown)
 
 
 def test_an_agent_cannot_answer_and_its_note_waits_for_the_person(repo, tmp_path):
@@ -556,6 +558,8 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
     assert "# board: readonly vendor/** (plan undo takes it back)" in config
     refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
     assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
+    # walk 2026-09-28: under a header saying '#' lines are not read, the rule read as switched off
+    assert "# In force too, each changed by the command it names" in config
     assert person("plan", "undo").exit_code == 0
     with Store.open(repo) as store:
         assert S.readonly(store) == []
@@ -672,3 +676,42 @@ def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_rea
     system, prompt = (" ".join(m["content"].split()) for m in f.requests[0]["messages"][:2])
     assert "carries the then: lines that make that change (goal, scope, check, drop, leaf)" in system
     assert RULE in prompt
+
+
+def test_an_ask_that_puts_up_board_items_names_the_board_as_what_waits(repo, tmp_path, monkeypatch):
+    """Walk 2026-09-28: an ask that put up 5 board items ended by pointing only at the tree, and
+    typed at watch's `:` it told the person to open the screen they were on."""
+    said = planned(repo, tmp_path)
+    assert "the board waits on you (5): `graphene board`, or `graphene watch`" in said.stdout
+    assert "prune it: `graphene watch`" in said.stdout  # a leaf was proposed too
+    monkeypatch.setenv("GRAPHENE_WATCH", "")
+    again = planned(repo, tmp_path)
+    assert "at the top, y takes, d drops" in again.stdout and "`graphene watch`" not in again.stdout
+
+
+def test_a_finer_ask_that_drops_a_leaf_a_board_answer_changed_says_the_change_is_not_carried(repo, tmp_path):
+    """Walk 2026-09-28 (all three walkers): a pick widened a leaf, `+` asked again finer, the leaf was
+    dropped with the old tree, the new one lacked the change, and nothing said so. It is said now; the
+    change is not carried over (the new tree's ids are the planner's), so the line says where to put it."""
+    planned(repo, tmp_path)
+    assert person("board", "pick", "which-id", "1").exit_code == 0
+    script = tmp_path / "planner.py"
+    sentence, planner = "users should come back with their ids", f"{sys.executable} {script}"
+    again = person("ask", sentence, "--finer", "--with", planner)
+    assert again.exit_code == 0, again.output
+    lost = [ln for ln in again.stdout.splitlines() if "which-id" in ln and "not on the new tree" in ln]
+    assert lost and "users: scope + schema.py" in lost[0] and "graphene node set" in lost[0], again.stdout
+
+
+def test_an_answer_in_words_to_an_item_whose_default_changes_the_plan_says_it_changed_nothing(repo, tmp_path):
+    """Walk 2026-09-28: `board answer` on a risk whose default adds a leaf changed nothing in the tree,
+    and nothing said so."""
+    planned(repo, tmp_path)
+    said = person("board", "answer", "empty-check", "yes,", "add", "a", "sample").stdout.splitlines()
+    assert said[0].startswith("answered empty-check")
+    assert said[1] == (
+        "  your words go to executors as written and change no leaf; `graphene plan undo`, "
+        "then `graphene board take empty-check`, applies the default's change"
+    )
+    plain = person("board", "answer", "shape", "keep", "it").stdout.splitlines()
+    assert len(plain) == 1  # a note has no change to apply: nothing more is said

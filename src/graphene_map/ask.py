@@ -219,6 +219,18 @@ def reask_argv(store, size: str) -> list[str] | None:
     return ["graphene", "ask", asked[-1]["note"], *(["--with", planner] if planner else []), f"--{size}"]
 
 
+def _not_carried(store, dropped: set[str]) -> list[str]:
+    """What a board answer changed on a node this ask dropped with the tree it replaced: the new tree's
+    ids are the planner's, so the change is not carried over, and the person is told where it went."""
+    return [
+        f"the board's {it['id']} changed {line}, and {line.split(':')[0]} went with the old tree: its change "
+        "is not on the new tree (`graphene node set` puts it on a leaf)"
+        for it in B.items(store)
+        for line in it.get("became") or []
+        if line.split(":")[0] in dropped
+    ]
+
+
 def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
     """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
     to prune in their place, not a second beside them. What the person answered about a dropped node
@@ -231,12 +243,14 @@ def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
             P.drop(store, n.id, P.caller())
-            dropped.append(n.id)
+            dropped += [n.id, *(c.id for c in P.below(n.id, pending))]
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
     if not dropped:
         return None
     gone = {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
+    for line in _not_carried(store, gone):
+        say(line)
     stands = []
     for item, was in B.rehome(store, gone, P.caller()):
         say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")

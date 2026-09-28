@@ -87,6 +87,8 @@ def test_every_setting_is_written_by_edit_and_shown_back(repo, monkeypatch, tmp_
     edited = config("edit")
     assert edited.exit_code == 0, edited.output
     assert "size: finer" in edited.stdout and "never: add a dependency" in edited.stdout
+    # walk 2026-09-28: the added line was printed bare, so it read as echoed rather than added
+    assert "added: protected: vendor/**, .env" in edited.stdout.splitlines()
     assert stored(repo) == (["vendor/**", ".env"], ["docs/**"], ["add a dependency"], "finer")
     shown = config().stdout
     for line in ("protected: vendor/**, .env", "readonly: docs/**", "never: add a dependency", "size: finer"):

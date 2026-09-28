@@ -104,7 +104,8 @@ def lines_for_screen(store) -> list[str]:
 
 
 def render(store) -> str:
-    out = [HEAD.rstrip("\n"), *elsewhere(store), ""]
+    out = [HEAD.rstrip("\n"), "# In force too, each changed by the command it names (not by this text):",
+           *elsewhere(store), ""]  # fmt: skip
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
     out += [f"never: {n}" for n in never(store)]
     out.append(f"size: {size(store)}")

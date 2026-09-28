@@ -843,7 +843,8 @@ def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
     gone): on its row, at the pane's edge, when every one fits whole; else under it, for all alike."""
     every_state(repo)
     commands = ["graphene node widen docs", "graphene node sibling docs",
-                "graphene node set docs --needs ids", "graphene ask … --about docs"]  # fmt: skip
+                "graphene node set docs --needs ids",
+                "graphene ask 'docs came back: propose what would let it be done' --about docs"]  # fmt: skip
     for size in [*SIZES, (220, 40)]:
         seen, _ = at(repo, "docs", size)
         lines = [ln.rstrip() for ln in seen["detail"].splitlines()]
@@ -1706,3 +1707,86 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         record = " ".join(seen["detail"].split())
         said = "fork 1 of 2 stopped: its executor was stopped before this fork ended · Nemotron-3-Nano-fake"
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
+
+
+def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
+    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
+    a ? into the line, and help took ?, ?, Enter."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
+    assert seen["screen"] == "Help"
+
+
+def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
+    """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
+    "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "docs", size)
+        assert "r run it again" in seen["status"], (size, seen["status"])
+        flat = " ".join(seen["detail"].split())
+        assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
+    seen, _ = at(repo, "docs", (120, 36), keys=["x"])
+    assert "docs is came back" not in seen["status"] and "r runs it again" in seen["status"]
+
+
+def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo):
+    """Walk 2026-09-28: with every leaf done the goal still offered `R run all ready`, and only the
+    shell's `graphene` said the plan was finished."""
+    api_done(repo)
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        top, keys = seen["status"].splitlines()[:2]
+        assert "3/3 done, finished" in top, (size, top)
+        assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
+    """Walk 2026-09-28: `+` echoed `graphene ask --finer '… Don'"'"'t touch legacy files.'`, the
+    person's own sentence shell-escaped. A word with an apostrophe is double-quoted when nothing in it
+    expands there; the line is still one a shell reads back as the same words."""
+    import shlex
+
+    from graphene_map.tui import as_typed as typed
+
+    words = (["ask", "--finer", "Load it. Don't touch legacy files."], ["ask", "it's $HOME"], ["x", "a b"])
+    for argv in words:
+        assert shlex.split(typed(argv)) == argv
+    assert typed(["ask", "Don't touch it"]) == "ask \"Don't touch it\""
+
+
+def test_an_ask_that_adds_nothing_says_so(repo):
+    """Walk 2026-09-28: `+` whose planner added nothing said `the planner: the planner says:; what it
+    said is in the pane`, so the person could not tell whether it had done anything."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (python3)…\nthe planner says:\n  nothing to add\n")
+
+    class Ended:
+        def wait(self):
+            return 0
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "--finer", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("the planner proposed nothing and put nothing on the board"), said
+
+
+def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
+    """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
+    line offered `y accept it all`."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
+    seen, _ = watch(repo, [])
+    keys = seen["status"].splitlines()[1]
+    assert "you: 1" in seen["status"] and not keys.startswith("y accept"), keys

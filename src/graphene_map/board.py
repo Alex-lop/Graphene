@@ -589,10 +589,10 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
             )
         if known is not None and opened is None and known["state"] != "dropped":
             if _fields(f) != _fields(known) or (f["answer"] and _one(f["answer"]) != _one(spelled(known))):
-                raise P.Refused(
-                    f"line {f['no']}: [{f['id']}] is on the board already, and this text changes it; the "
-                    "person edits the board (`graphene plan edit`), or give this line another id"
-                )
+                # a planner asked again (`+`, a follow-up) writes its item again: the board stays the
+                # person's, the rest of the proposal still lands, and the person is told
+                said.append(f"kept {f['id']} on the board as it stands (a planner's text changed it; "
+                            "`graphene plan edit` is how the person changes it)")
             continue
         if known is None or (known["state"] == "dropped" and opened is None):
             if f["answer"] and not who.person:

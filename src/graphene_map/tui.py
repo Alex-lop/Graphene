@@ -326,6 +326,12 @@ class Ask(ModalScreen[str | None]):
     def done(self, event: Input.Submitted) -> None:
         self.dismiss(event.value.strip() or None)
 
+    @on(Input.Changed)
+    def at_once(self, event: Input.Changed) -> None:
+        """A line that offers `? help` opens it on the one key, as ? does everywhere else."""
+        if event.value == "?" and "? help" in self.prompt:
+            self.dismiss("?")
+
     def action_cancel(self) -> None:
         self.dismiss(None)
 
@@ -832,15 +838,19 @@ class Watch(App):
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
+            "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
             "board": len(self.board.open),  # they wait on the person too: `you: 1 + 5 on the board`
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
+            "finished": bool(leaves) and done == len(leaves) and not tops and not yours,
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
+        if self.counts["finished"]:  # what `graphene` says: the status line's, not the goal row's
+            self.counts["done"] += ", finished"
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
         shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine] + self.board.shape()
         tree = self.tree
@@ -1274,7 +1284,8 @@ class Watch(App):
         if not self.nodes:
             return [":ask what you want", *tail]
         if self.on_goal():
-            keys = ["y accept it all"] if self.counts.get("you") else ["R run all ready"]
+            ended = ":plan archive puts it away" if self.counts.get("finished") else "R run all ready"
+            keys = ["y accept it all"] if self.counts.get("proposed") else [ended]
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
             return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
@@ -1282,7 +1293,7 @@ class Watch(App):
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
-            return [*on, *offers, "? ask the planner", "Enter record", "q quit"]
+            return [*on, *offers, "? ask the planner", "r run it again", "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             return [*on, *shut, *KEYS[word], *tail]
@@ -1337,7 +1348,7 @@ class Watch(App):
         for word in argv[1:]:  # `graphene node edit x: x: scope changed` says x once
             first = first.removeprefix(f"{word}: ")
         first = first.removeprefix(f"{' '.join(argv[:2])}: ")  # and `plan first on: plan first: on`
-        self.message = f"{'✗ ' if code else ''}graphene {shlex.join(argv)}" + (f": {first}" if first else "")
+        self.message = f"{'✗ ' if code else ''}graphene {as_typed(argv)}" + (f": {first}" if first else "")
         if not quiet:
             self.refresh_plan()
         return said if keep else code
@@ -1361,9 +1372,7 @@ class Watch(App):
     def action_help_or_ask(self) -> None:
         node_id = self.selected()
         if node_id is not None and node_id in self.back:  # there ? asks the planner, which spends
-            self.background(
-                ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
-            )
+            self.background(asked_about(node_id))
         elif node_id is not None:
             self.talk_to()
         else:
@@ -1421,7 +1430,7 @@ class Watch(App):
         if len(lines) > 1:  # more than a line (a record, the log): it gets the side pane
             self.view = "said"
             self.query_one("#detail", Static).update(hanging("\n".join(lines), self.pane_room()[0]))
-            self.message = f"graphene {shlex.join(argv)}: {len(lines)} lines, in the pane"
+            self.message = f"graphene {as_typed(argv)}: {len(lines)} lines, in the pane"
             self.say_status()
 
     def action_escape(self) -> None:
@@ -1575,9 +1584,8 @@ class Watch(App):
 
             self.push_screen(Ask(f"reopen {node_id}: what is wrong (its next executor is told)"), reopened)
         elif state is not None:
-            self.message = (
-                f"{node_id} is {self.word(node_id)}: x releases a running leaf, or reopens a finished one"
-            )
+            again = "; r runs it again" if node_id in self.back else ""
+            self.message = f"x releases a running leaf or reopens a finished one; {node_id} is neither{again}"
             self.say_status()
 
     def action_tail(self) -> None:
@@ -1736,7 +1744,7 @@ class Watch(App):
                 stdout=sink, stderr=subprocess.STDOUT, start_new_session=True, env=env,
             )  # fmt: skip
         self.runs.append(proc)
-        self.message = f"graphene {shlex.join(argv)}: started (its output: {log.relative_to(self.root_path)})"
+        self.message = f"graphene {as_typed(argv)}: started (its output: {log.relative_to(self.root_path)})"
         self.say_status()
         threading.Thread(target=self.follow, args=(proc, argv, log), daemon=True).start()
 
@@ -1752,15 +1760,21 @@ class Watch(App):
         gist = (news[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
         named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
         mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
-        whole = [f"{mark}graphene {shlex.join(argv)} ended (exit {code}); all it said, kept in "
+        whole = [f"{mark}graphene {as_typed(argv)} ended (exit {code}); all it said, kept in "
                  f"{log.relative_to(self.root_path)}:", "", *said]  # fmt: skip
         # a run's own last line says what it did (`run: 3 done, …`): said once, not after "run ended"
         told = f"{mark}{gist}" if re.match(rf"{re.escape(argv[0])}\b", gist) else (
-            f"{mark}graphene {shlex.join(named)} ended: {gist}"
+            f"{mark}graphene {as_typed(named)} ended: {gist}"
         )  # fmt: skip
         made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
+        put = [line.removeprefix("put up ").split(":")[0] for line in news if line.startswith("put up ")]
         if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
-            told = mark + (f"the planner proposed {', '.join(made)}" if made else f"the planner: {gist}")
+            did = [*([f"proposed {', '.join(made)}"] if made else []),
+                   *([f"put {', '.join(put)} on the board"] if put else [])]  # fmt: skip
+            if did or code:
+                told = mark + (f"the planner {' and '.join(did)}" if did else f"the planner: {gist}")
+            else:  # its prose alone said nothing was added, and the person could not tell
+                told = "the planner proposed nothing and put nothing on the board"
             told += "; what it said is in the pane"
         with contextlib.suppress(Exception):  # the screen may be gone by now
             self.call_from_thread(self.finished, told, "\n".join(whole))
@@ -2015,12 +2029,23 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     return pane.render()
 
 
+def as_typed(argv: list[str]) -> str:
+    """A command as a person would type it: shlex's quoting, except that a word with an apostrophe and
+    nothing a shell expands inside double quotes is double-quoted (`"don't"`, not `'don'"'"'t'`)."""
+    return " ".join(f'"{w}"' if "'" in w and not re.search(r'["$`\\!]', w) else shlex.quote(w) for w in argv)
+
+
+def asked_about(node_id: str) -> list[str]:
+    """What ? on a leaf that came back runs, and its pane shows as the command it is."""
+    return ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
+
+
 def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     """Why it came back, then the fixes it offers as rows of one shape (key, what it does, the
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
-    offers = [*P.offers(store, node), ("?", "ask the planner", ["ask", "…", "--about", node.id])]
-    rows = [(key, _its(does, node.id), f"graphene {' '.join(argv)}") for key, does, argv in offers]
+    offers = [*P.offers(store, node), ("?", "ask the planner", asked_about(node.id))]
+    rows = [(key, _its(does, node.id), f"graphene {as_typed(argv)}") for key, does, argv in offers]
     # one line each when every one fits whole; else two each, all alike: what the key does, then the
     # command under it (at 120 columns the pane is narrow, and the commands had gone)
     one = all(5 + len(does) + 2 + len(command) <= pane.wide for _, does, command in rows)
