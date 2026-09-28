@@ -390,11 +390,18 @@ def settle(
                     else "an answer needs its words"
                 )
         conditions: list[str] = []
-        became = [_apply(store, line, who, now, files, conditions) for line in effects]
+        became = [""] * len(effects)
+        first = [i for i, line in enumerate(effects) if effect(line)[0] == "condition"]
+        for i in first:
+            became[i] = _apply(store, effects[i], who, now, files, conditions)
         item.update(
             state=state, answer=answer, option=option if state == "picked" else None, rev=item["rev"] + 1,
-            updated_at=now, became=became or item["became"], conditions=conditions or item["conditions"],
+            updated_at=now, conditions=conditions or item["conditions"],
         )  # fmt: skip
+        _put(store, board)  # the answer's own conditions bind its other effects, as a later answer's would
+        for i in (i for i in range(len(effects)) if i not in first):
+            became[i] = _apply(store, effects[i], who, now, files, conditions)
+        item.update(became=became or item["became"])
         _put(store, board)
         _log(store, item, {"taken": "took", "open": "unparked"}.get(state, state), who, now, became=became)
     return item

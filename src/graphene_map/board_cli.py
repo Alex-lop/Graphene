@@ -12,6 +12,7 @@ from . import board as B
 from . import cover
 from . import plan as P
 from . import plan_text as T
+from . import settings as S
 
 EMPTY = (
     "the board is empty. The planner puts up what it would ask you (`graphene ask '…'`); "
@@ -109,10 +110,14 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                     item = operation(store, who, files)
             except P.Refused as no:
                 fail(str(no), 1)
+            # a condition is a read-only glob as a setting is: name the leaves it now covers, as config does
+            covered = S.broken(store, files) if item["state"] in B.DECIDED and item.get("conditions") else []
         answer = f" → {item['answer']}" if item.get("answer") else ""
         out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
             out(f"  {_became(line)}")
+        for line in covered:
+            out(line)
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.callback()
