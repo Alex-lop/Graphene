@@ -85,6 +85,9 @@ def hider(root: Path) -> tuple:
     return hide, said
 
 
+unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
+
+
 def record(root: Path, out: Path, every: float = EVERY) -> int:
     """Record the plan of ``root`` into ``out`` until Ctrl-C or TERM, waiting for its store when there is
     none yet (a run that starts with `graphene init`). Returns how many changes it wrote."""

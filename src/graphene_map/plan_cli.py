@@ -18,6 +18,7 @@ import typer
 from . import board as B
 from . import cover
 from . import gate as G
+from . import note as N
 from . import plan as P
 from . import plan_text as T
 from . import views as V
@@ -870,6 +871,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if finer and coarser:
             fail("--finer or --coarser, not both", 2)
         planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
+
+    N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
 
     # -- graphene node ----------------------------------------------------------------------------
 
