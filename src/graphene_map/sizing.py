@@ -1,13 +1,16 @@
 """How coarse or fine the planner cuts a tree: the repo's files, lines and test layout, and the
 directories the ask names."""
 
+import os
 import re
+import stat
 from pathlib import Path, PurePosixPath
 
 SIZES = ("auto", "finer", "coarser")
 
 
 BIG = 20000  # lines: past this only "big" is used, so counting stops there
+READ = 4 << 20  # bytes read of one file at most: a sizing, not an audit, so a huge file counts short
 LOCKS = ("uv.lock", "poetry.lock", "Cargo.lock", "Gemfile.lock", "package-lock.json", "yarn.lock",
          "pnpm-lock.yaml", "composer.lock", "go.sum")  # fmt: skip
 
@@ -20,8 +23,11 @@ def _lines(root: Path, files: list[str]) -> int:
             break
         if PurePosixPath(p).name in LOCKS:
             continue
-        try:
-            data = (root / p).read_bytes()
+        try:  # a regular file only (a tracked link to a FIFO or /dev/zero never ends), and only its start
+            if not stat.S_ISREG(os.lstat(root / p).st_mode):
+                continue
+            with (root / p).open("rb") as f:
+                data = f.read(READ)
         except OSError:
             continue
         if b"\0" not in data[:8192]:
