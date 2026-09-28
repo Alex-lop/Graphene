@@ -294,3 +294,16 @@ def test_nothing_shaped_like_a_key_reaches_nano_the_store_or_the_terminal(repo, 
     with Store.open(repo) as store:
         [(_, d)] = C.run(store, repo, fork=scripted({"false": (1, "failed")}), again=True)
     assert d["why"].startswith("not read: ") and "Pr0xy" not in d["why"] and "proxyuser" not in d["why"]
+
+
+def test_a_red_left_unread_is_read_on_the_next_run_once_nano_can_be_asked(repo, nano, monkeypatch):
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
+    fork = scripted({"false": (1, "AssertionError")})
+    with Store.open(repo) as store:
+        leaves(store, "false")
+        [(_, first)] = C.run(store, repo, fork=fork)
+        assert first["why"].startswith("not read: ")
+        f = nano([said("red-right-reason", "the work is not done")])
+        [(_, second)] = C.run(store, repo, fork=fork)
+    assert not second.get("kept") and second["verdict"] == "red-right-reason" and len(f.requests) == 1

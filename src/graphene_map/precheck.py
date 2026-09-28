@@ -62,11 +62,12 @@ def verdict(code: int | None, out: str, command: str, scopes: list[str]) -> str 
 
 
 def current(store, node: P.Node, base: str | None) -> dict | None:
-    """The leaf's last verdict, while it is about this rev, this check and this commit."""
+    """The leaf's last verdict, while it is about this rev, this check and this commit, and finished."""
     rows = [r["detail"] for r in store.node_log(node.id, ("precheck",))]
     last = rows[-1] if rows else None
     fresh = last and (last["rev"], last["check"], last["base"]) == (node.rev, node.check, base)
-    return last if fresh and last["verdict"] != "not-run" else None
+    unfinished = last and (last["verdict"] == "not-run" or last["why"].startswith("not read"))
+    return last if fresh and not unfinished else None  # a check not run, or a red not read: try again
 
 
 def _prepare(exe: str) -> str | None:
