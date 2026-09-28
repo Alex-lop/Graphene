@@ -19,6 +19,9 @@ for the dry run), and the task repos are built outside this repository, in ~/gra
 Rung 6 reads feeds' sealed paragraph from docs/test/tasks/feeds/paragraph.md and passes it on; no line
 and no log holds it (<the sealed paragraph of feeds> stands in its place), no command's output is shown on
 that rung, and it stops at arm A's failure. The dry run never reads it: it passes a placeholder.
+
+Live, only the person climbs: from a shell with an agent's mark, rungs 2-7 run nothing and say so (rung 1
+prints the line to type with `!`).
 """
 
 from __future__ import annotations
@@ -231,7 +234,7 @@ def access(r: Rung) -> str:
     args = [sys.executable, str(HERE / "access.py"), "--out", str(out)]
     if DRY:
         args += ["--sandbox", "docker" if docker_runs() else "none"]
-    if not DRY and any(os.environ.get(m) for m in MARKS):  # an agent's shell: the classifier refuses it
+    if not DRY and marked():  # an agent's shell: the classifier refuses it
         typed = (f"! GRAPHENE_LEDGER={rel(LEDGER)} GRAPHENE_SPEND_CAP_USD={r.env['GRAPHENE_SPEND_CAP_USD']} "
                  f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
@@ -430,6 +433,9 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
     (r"ESCAPED",
      "a way out of the leaf's scope worked in the sandbox: containment does not hold there",
      "stop: run no leaf in a Sandbox until it is understood; rung-4.log has each command's exit"),
+    (r"an agent's mark",
+     "a live rung is yours to run: an agent's shell may not spend your key or be recorded as you",
+     "type the line above in a terminal where no agent's mark is set"),
     (r"yours to type",
      "the access check is yours to run: the session's classifier refuses it to an agent",
      "type the line above, with the '!'"),
@@ -507,6 +513,11 @@ def progress() -> dict:
         return {}
 
 
+def marked() -> str | None:
+    """The first agent's mark this shell carries, if any."""
+    return next((m for m in MARKS if os.environ.get(m)), None)
+
+
 def climb(n: int) -> bool:
     """One rung: PASS or FAIL, what it cost, the bill so far, how long, and the next command."""
     name, cap, _, rung = RUNGS[n]
@@ -514,6 +525,11 @@ def climb(n: int) -> bool:
     r, before, began = Rung(n, cap), spent(), time.monotonic()
     say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
     try:
+        mark = None if DRY or n == 1 else marked()  # rung 1 has its own way: the person types access.py
+        if mark:
+            raise Failed(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your key "
+                         f"and is recorded as you: nothing was run. Type it yourself, in a terminal where "
+                         f"no agent's mark is set:\n    {ME} {n}")  # fmt: skip
         said, ok = rung(r), True
     except Failed as no:
         said, ok = str(no), False

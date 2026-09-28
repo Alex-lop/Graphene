@@ -27,12 +27,17 @@ def docker_runs() -> bool:
     )
 
 
+def environment(tmp_path: Path, **env: str) -> dict[str, str]:
+    """This environment without a key, an agent's mark or the ladder's settings, its state in tmp_path."""
+    gone = ("GRAPHENE_", "PRACTICE_", "NEBIUS_", "CONTREE_")
+    base = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith(gone)}
+    return base | {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")} | env
+
+
 def ladder(tmp_path: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
     """practice.py as practice.sh starts it, its progress and its repos in tmp_path."""
-    base = {k: v for k, v in os.environ.items() if not k.startswith(("GRAPHENE_", "PRACTICE_"))}
-    base |= {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")} | env
-    return subprocess.run([sys.executable, str(PRACTICE), *args], env=base, capture_output=True, text=True,
-                          timeout=900)  # fmt: skip
+    return subprocess.run([sys.executable, str(PRACTICE), *args], env=environment(tmp_path, **env),
+                          capture_output=True, text=True, timeout=900)  # fmt: skip
 
 
 @pytest.mark.skipif(not docker_runs(), reason="needs a running Docker (the sandbox stand-in)")
@@ -90,6 +95,22 @@ def test_in_an_agents_shell_the_access_rung_is_typed_by_the_person(tmp_path):
     assert typed in done.stdout
     assert "then `! docs/test/practice.sh 1` again" in done.stdout
     assert "next: docs/test/practice.sh 1" in done.stdout
+
+
+def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
+    """Live, rungs 2-7 spend on the person's key and are recorded as the person: an agent's shell runs
+    none of them. Should one run anyway, nothing leaves the machine: no key, and a proxy that answers
+    nothing."""
+    dead = {"HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""}
+    for n, mark in zip(range(2, 8), MARKS, strict=False):
+        done = ladder(tmp_path, str(n), **{mark: "1"}, **dead)
+        assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, done.stdout + done.stderr
+        assert f"an agent's mark ({mark})" in done.stdout
+        assert f"    docs/test/practice.sh {n}\n" in done.stdout
+        assert "most likely: a live rung is yours to run" in done.stdout
+        assert not (tmp_path / "work").exists()  # nothing was built, nothing was run
+    dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1")  # the dry run spends nothing and records no one
+    assert dry.returncode == 0 and "· PASS · rung 2 · " in dry.stdout, dry.stdout + dry.stderr
 
 
 def test_the_dry_run_removes_only_a_state_it_made(tmp_path):
