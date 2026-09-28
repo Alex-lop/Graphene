@@ -114,6 +114,18 @@ def groups(store) -> list[tuple[str, list[dict]]]:
     return [(name, shown) for name, shown in out if shown]
 
 
+def waiting(store) -> tuple[int, str | None]:
+    """How many items wait on the person, and the line `graphene plan` says it in (None: none do):
+    "the board: 2 questions, 1 risk open (`graphene board`)"."""
+    open_ = [(name, group) for name, group in groups(store) if name in dict(GROUPS)]
+    if not open_:
+        return 0, None
+    said = ", ".join(
+        f"{len(g)} {name[:-1] if len(g) == 1 and name.endswith('s') else name}" for name, g in open_
+    )
+    return sum(len(g) for _, g in open_), f"the board: {said} open (`graphene board`)"
+
+
 def shown(store) -> list[dict]:
     """The items a screen lists, in display order (``groups``), without the dropped ones."""
     return [it for name, group in groups(store) if name != "dropped" for it in group]

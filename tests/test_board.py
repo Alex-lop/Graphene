@@ -542,3 +542,17 @@ def test_an_edit_with_no_board_still_forgets_a_planners_sentence_whose_tree_is_g
         text, opened = T.render(store)
         T.apply(store, text, ALEX, opened)
         assert store.meta("goal:proposed") is None
+
+
+def test_graphene_plan_says_what_the_board_waits_on_you_for(repo, tmp_path):
+    with Store.open(repo) as store:
+        T.apply(store, "question: q1?  [q1]\nquestion: q2?  [q2]\nrisk: r  [r]\n", PLANNER, None)
+    bare = person("plan").stdout.splitlines()
+    assert bare[0] == "the board: 2 questions, 1 risk open (`graphene board`)"
+    assert bare[1].startswith("nothing is planned here yet")
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+    person("board", "park", "r")
+    shown = person("plan").stdout
+    assert "\nthe board: 2 questions open (`graphene board`)\n" in shown
+    assert "waiting on you: 2 on the board (`graphene board`)" in shown
