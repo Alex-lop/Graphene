@@ -434,7 +434,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def show(store) -> None:
             nodes, words, goal = V.inputs(store)
-            chosen = V.choose(nodes, width, height) if name == "auto" else name
+            chosen = V.choose(nodes, words, goal, width, height) if name == "auto" else name
             drawn = V.VIEWS[chosen].draw(nodes, words, goal, width, height, None) if V.VIEWS[chosen] else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:

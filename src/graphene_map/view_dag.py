@@ -31,6 +31,7 @@ from .plan_view import depths, outline
 from .views import Drawn
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
+NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
 
 
 def _box() -> dict[tuple[int, int, int, int], str]:

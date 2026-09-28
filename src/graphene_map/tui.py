@@ -860,7 +860,7 @@ class Watch(App):
         setting, else the outline. `auto` is the view that suits this plan at this size (views.choose)."""
         name = self.wanted or store.meta("view") or "outline"
         if name == "auto":
-            return V.choose(self.nodes, *self.view_room())
+            return V.choose(self.nodes, self.words, self.goal_text, *self.view_room())
         if name not in V.VIEWS:
             self.message = f"no view named {name} here: the outline"
             return "outline"

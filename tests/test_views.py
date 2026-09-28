@@ -28,7 +28,7 @@ class Grid:
 
     @classmethod
     def suits(cls, nodes, width, height) -> int:
-        return 1
+        return 60
 
     @classmethod
     def draw(cls, nodes, words, goal, width, height, cursor):
@@ -56,7 +56,7 @@ class Wide(Grid):
 
     @classmethod
     def suits(cls, nodes, width, height) -> int:
-        return 5
+        return 70
 
 
 @pytest.fixture
@@ -257,8 +257,14 @@ def test_a_view_that_does_not_fit_gives_way_to_the_outline_and_says_so(repo, gri
     assert f"the wide does not fit at {size[0]} columns: the outline" in seen["status"]
     seen = look(repo, ["tab", "tab"], size)  # Tab skips what does not fit: grid, then the outline
     assert seen["showing"] == "outline"
-    assert V.choose([], *size) == "wide"  # it says it suits best; the screen still falls back
-    assert look(repo, [], size, view="auto")["showing"] == "outline"
+    assert look(repo, [], size, view="auto")["showing"] == "grid"  # auto: the best that draws
+
+
+def test_auto_never_picks_a_view_that_does_not_draw(grid, monkeypatch):
+    """`suits` is a preference and `draw` decides the fit: auto took the wide, which scores 70 and
+    never draws, and fell back to the outline past the grid, which draws."""
+    monkeypatch.setitem(V.VIEWS, "wide", Wide)
+    assert V.choose([], {}, "g", 80, 24) == "grid"
 
 
 def test_the_screen_opens_in_the_repositorys_view_setting(repo, grid):
@@ -277,11 +283,46 @@ def test_tab_with_only_the_outline_says_so(repo):
 
 
 def test_choose_is_the_outline_unless_a_view_scores_higher(grid, monkeypatch):
-    assert V.choose([], 80, 24) == "grid"  # Grid scores 1
-    monkeypatch.setattr(Grid, "suits", classmethod(lambda cls, *_: 0))
-    assert V.choose([], 80, 24) == "outline"  # a tie goes to the outline
+    assert V.choose([], {}, "g", 80, 24) == "grid"  # Grid scores 60, the outline BASELINE
+    monkeypatch.setattr(Grid, "suits", classmethod(lambda cls, *_: V.BASELINE))
+    assert V.choose([], {}, "g", 80, 24) == "outline"  # a tie goes to the outline
     monkeypatch.delattr(Grid, "suits")
-    assert V.choose([], 80, 24) == "outline"  # a view with no suits scores 0
+    assert V.choose([], {}, "g", 80, 24) == "outline"  # a view with no suits scores 0
+
+
+def node(i, parent=None, needs=(), state=P.OPEN):
+    return P.Node(
+        i, f"the {i} leaf", scope=[f"{i}.py"], check="true", parent=parent, state=state, needs=list(needs)
+    )
+
+
+def test_auto_keeps_the_outline_for_a_view_taller_than_its_rows_unless_it_shows_needs(grid, monkeypatch):
+    """A view that scrolls beat the outline, which shows the plan in one look: the tree of twelve
+    nested sub-goals (40 lines in 10 rows), and the graph of the thirty-leaf plan, whose 10 rows at
+    80x24 showed done leaves and no line."""
+    from graphene_map import view_dag, view_tree
+
+    nodes = [node("n1")]  # the grid of one node: a goal line and a line of cells, 2 lines
+    assert V.choose(nodes, {"n1": "ready"}, "g", 80, 2) == "grid"
+    assert V.choose(nodes, {"n1": "ready"}, "g", 80, 1) == "outline"  # taller than its rows
+    monkeypatch.setattr(Grid, "NEEDS", True, raising=False)
+    assert V.choose(nodes, {"n1": "ready"}, "g", 80, 1) == "grid"  # it shows needs: scrolling is its cost
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "tree": view_tree, "dag": view_dag})
+    deep = [node(f"s{k}", f"s{k - 1}" if k else None) for k in range(12)] + [node("leaf", "s11")]
+    words = {n.id: P.reads(n, deep) for n in deep}
+    assert V.choose(deep, words, "g", 78, 10) == "outline"
+    subs = ["reader", "dialects", "validate", "report", "cli"]
+    thirty = [node(s) for s in subs] + [
+        node(f"{s[0]}{k}", s, state=P.DONE if s in subs[:2] else P.OPEN) for s in subs for k in range(6)
+    ]
+    thirty += [
+        node("v-rules", "validate", ["v0"]),
+        node("c-exit", "cli", ["c0"]),
+        node("c-prog", "cli", ["c0"]),
+    ]
+    words = {n.id: P.reads(n, thirty) for n in thirty}
+    assert V.choose(thirty, words, "g", 78, 10) == "outline"
+    assert V.choose(thirty, words, "g", 118, 16) == "tree"  # its leaves listed down fit; the graph scrolls
 
 
 def test_the_replay_allows_tab_and_still_refuses_writes(tmp_path, monkeypatch, grid):

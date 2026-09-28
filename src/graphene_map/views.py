@@ -5,7 +5,14 @@ pure `draw(nodes, words, goal, width, height, cursor) -> Drawn | None` and, if i
 `suits(nodes, width, height) -> int` saying how well it fits this plan at this size. It is added to
 VIEWS by name. A view never reads the store: it is given the plan's drawn nodes, the word each one
 reads as (`plan.reads`), the goal, and the node under the cursor, and it returns None when it does
-not fit the width (it may be taller than the screen: the screen scrolls it).
+not fit the width (it may be taller than the screen: the screen scrolls it). Its first line is the
+goal's: the cursor on it is on the goal, as on the outline's first row.
+
+Which view opens by itself (`--view auto`, `choose`): the outline scores BASELINE, and a view opens
+only when its own `suits` scores more. `suits` is a preference, `draw` decides the fit: a view whose
+draw returns None is never chosen, and neither is one taller than the rows it has (it would scroll,
+where the outline shows the plan in one look) unless it shows what the outline cannot, which leaf
+waits on which (a view that draws `needs` says so with `NEEDS = True`). A tie goes to the outline.
 """
 
 from __future__ import annotations
@@ -29,16 +36,20 @@ class Drawn:
 
 
 VIEWS: dict[str, object] = {"outline": None}  # a name -> its module (draw, and suits if it has one)
+BASELINE = 50  # what the outline scores, of the 0 to 100 a view's `suits` gives: it must do better
 
 
-def choose(nodes: list[P.Node], width: int, height: int) -> str:
-    """The view this plan at this size is best seen in: the registered view that scores highest by
-    its own `suits`, where the outline scores 0 and wins every tie."""
-    best, score = "outline", 0
+def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int) -> str:
+    """The view this plan at this size is best seen in, by the rule above: the outline, unless a view
+    that draws here, in the rows it has or showing needs, scores more by its own `suits`."""
+    best, score = "outline", BASELINE
     for name, view in VIEWS.items():
         suits = getattr(view, "suits", None)
         mark = suits(nodes, width, height) if suits else 0
-        if mark > score:
+        if mark <= score:
+            continue
+        drawn = view.draw(nodes, words, goal, width, height, None)
+        if drawn is not None and (len(drawn.lines) <= height or getattr(view, "NEEDS", False)):
             best, score = name, mark
     return best
 
