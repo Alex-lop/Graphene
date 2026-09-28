@@ -103,14 +103,14 @@ def _end(proc: subprocess.Popen) -> None:
 
 def _end_group(pid: int, gone: Callable[[], bool]) -> None:
     """TERM to a process group, then KILL, each given its time: nothing is handed on while the old
-    executor may still write."""
+    executor may still write. A group that refuses the signal is waited for all the same: macOS
+    refuses one (EPERM) whose last process is ending, and it is not gone until ``gone`` says so (CI
+    caught a stop that returned while the executor was still ending, its exit code not yet known)."""
     for sig, grace in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 5)):
         if gone():
             return
-        try:
+        with contextlib.suppress(OSError):
             os.killpg(pid, sig)
-        except OSError:
-            return
         until = time.monotonic() + grace
         while not gone() and time.monotonic() < until:
             time.sleep(0.05)
