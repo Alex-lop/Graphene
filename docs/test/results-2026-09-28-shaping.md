@@ -434,3 +434,53 @@ Under the tables goes one sentence on what they show, whatever it is.
 7. **What this is evidence about.** Shaping one proposal from the Claude planner, by Claude
    sub-agents standing in for the person, measured with the keystroke-level model. Not about
    whether the shaped plan runs or passes, and not about Nemotron, Token Factory or Sandboxes.
+
+### Study 2 results
+
+*Written after all eight runs, below the registered section, which is not changed. The people were
+Claude model stand-ins (claude-opus-5-5, the session's model; the judges the same model), the planner
+was Claude Code, and nothing ran: no `graphene run`, no executor, no session. This is evidence about
+shaping one Claude-planned proposal, not about Nemotron, Token Factory or Sandboxes. Every number
+comes from `python3 docs/test/attention.py <run> --arm tree` (outline runs) or `--arm board` (board
+runs) and from `<run>/judge.md`; runs live in `~/graphene-shaping-runs/`. No run logs a `run`, so
+the whole log is the part up to R, and `attention.py`'s `to_run` equals its totals in all eight.*
+
+**Valid.** All eight are valid under rule 4: `env.sh` puts `~/graphene-shaping-venv/bin` first on
+`PATH`, that venv was installed from the wheel whose sha256 matches `build.txt` (`5408b89f…`); both
+arms of each task share one `base.sha`; no run log has a `run` entry, no `node_log` row records a
+start, and `git status` in every run's repo shows no change. No rerun was made.
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | feeds-shape-outline-1 | yes | 668.9 = 223.7 + 4.1 + 441.1 | 799 | 3 | 802 | 1838 | yes | 18 of 20 |
+| feeds | board | feeds-shape-board-1 | yes | 1277.3 = 362.9 + 13.5 + 901.0 | 1296 | 10 | 1306 | 3754 | yes | 19 of 19 |
+| inventory | outline | inventory-shape-outline-1 | yes | 426.7 = 62.2 + 4.1 + 360.5 | 222 | 3 | 225 | 1502 | yes | 13 of 13 |
+| inventory | board | inventory-shape-board-1 | yes | 1064.0 = 77.6 + 10.8 + 975.6 | 277 | 8 | 285 | 4065 | yes | 13 of 13 |
+| logs | outline | logs-shape-outline-1 | yes | 324.1 = 0.0 + 2.7 + 321.4 | 0 | 2 | 2 | 1339 | partly | 12 of 16 |
+| logs | board | logs-shape-board-1 | yes | 822.5 = 278.9 + 14.9 + 528.7 | 996 | 11 | 1007 | 2203 | yes | 16 of 16 |
+| report | outline | report-shape-outline-1 | yes | 293.2 = 0.0 + 1.4 + 291.8 | 0 | 1 | 1 | 1216 | yes | 12 of 12 |
+| report | board | report-shape-board-1 | yes | 649.9 = 0.0 + 8.1 + 641.8 | 0 | 6 | 6 | 2674 | yes | 12 of 12 |
+
+The three parts are K × typed, M × acts and words × 60 / 250, each rounded to 0.1 s, so feeds
+board's parts sum to 1277.4 against `attention.py`'s 1277.3. Board commands per board run: feeds
+take 5, pick 1; inventory take 4, park 1; logs take 4, answer 2; report take 5.
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | +608.4 / +637.3 / +498.4 / +356.7 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: words read | +1916 / +2563 / +864 / +1458 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: typed | +497 / +55 / +996 / 0 | 0 of 4 | no difference shown; three tasks go the other way (board higher), report ties at 0 |
+| H6: faithful to the card | feeds same ruling (yes), carried 19 of 19 against 18 of 20 / inventory same (yes, 13 of 13) / logs yes against partly, 16 of 16 against 12 of 16 / report same (yes, 12 of 12) | 4 of 4 | board at least as faithful on all four tasks, one run each: more faithful on logs and feeds, tied on inventory and report |
+
+**After the fact.** (1) The two feeds judges counted the card's constraints differently (20 and
+19); board is ahead on feeds whether counted (19 against 18) or as a share (100% against 90%), so
+the choice does not change the direction. (2) Two runs report reading outside the log: logs board
+read two `--help` screens without logging them (its words read are low by those screens), and
+inventory board's first `git ls-files` went unlogged and was run again through the log. Neither
+voids a run under rule 4, and neither would change a direction above.
+
+On four tasks, one run each, with model stand-ins shaping a Claude Code proposal and nothing run,
+answering the board first cost more modelled attention on every task (H1 and H3 show no difference
+in the registered direction; board went the other way on person-seconds and words read on all four,
+and on typed characters on three with report tied) while the shaped plan was at least as faithful to
+the card on all four (H6: more faithful on logs and feeds, tied on inventory and report).
