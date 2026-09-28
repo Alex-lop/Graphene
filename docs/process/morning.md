@@ -3,33 +3,42 @@
 ## The brief
 
 **Do first**
-1. The key in `~/.zshenv` (2 min): `export NEBIUS_API_KEY=…  NEBIUS_PROJECT_ID=…`, then open a new shell.
-2. The access check, typed by you (1 min): `! uv run python docs/test/access.py` (the classifier refuses it to an agent).
-3. The ladder: being built tonight (`docs/test/practice.sh`); this line says when it is ready.
+1. The key in `~/.zshenv` (2 min): `export NEBIUS_API_KEY=…  NEBIUS_PROJECT_ID=…`, then a new shell.
+2. Take out a fake key a reviewer's test wrote into your login keychain at about 02:00 (10 s; the
+   classifier refused it to me): `security delete-generic-password -s graphene -a token-factory`
+3. The ladder, in a terminal of your own, not inside Claude Code (about 10 min for rungs 1-3):
+   `docs/test/practice.sh`, one rung at a time; `docs/test/PRACTICE.md` is the whole of it.
 
-**New tonight** (in flight, nothing merged yet; this list changes at every merge)
-- nothing merged yet
+**New tonight** (all merged into `shaping`; this list changes at every merge)
+- The board: the planner asks instead of guessing, you answer with a key: `graphene board`
+- The plan as a tree and as a graph of what waits on what: `graphene plan --view dag`, Tab in `watch`
+- Settings you state once: `graphene config`, `graphene key check`
+- Talking on the tree: `?` on a node in `graphene watch` (why, split, merge, another way)
+- Nemotron while you shape, three prototypes against a stand-in: `docs/process/ideas.md`
 
 **Decide**
-- nothing yet
+- (written at the end of the run)
 
 **Broken or risky**
-- nothing yet
+- The keychain item above. Every test now runs with the keychain off (`GRAPHENE_KEYCHAIN=off`).
+- (the rest written at the end of the run)
 
 ---
 
 (Everything below the brief: decisions, evidence, screens, the state of every branch. The winning
 run's morning is `morning-2026-09-26.md`.)
 
-## Lanes in flight (00:35 start)
+## Where the run stands (03:35)
 
-| Lane | What | Where |
-| --- | --- | --- |
-| A | the view seam, a top-down tree, a left-to-right graph with the critical path, the board's model and the planner that asks, the page's views | worktrees, one per piece |
-| B | keys, standing conditions, plan size, `graphene config` | run through Graphene itself, in `~/graphene-night` (`docs/process/shaping/as-the-person.md`) |
-| C | `practice.sh`, `PRACTICE.md`, the dry run, the sealed paragraphs and the pre-registration | worktrees |
-| D | the shaping study's pre-registration and its board arm | worktree |
-| E | twenty-plus ideas for Nemotron in the shaping loop, scored | worktree |
+| Lane | State |
+| --- | --- |
+| A | The board, the views, talking on the tree: merged. Two board screens were built and tried by three stand-ins (`docs/process/shaping/evaluation.md`); the rows board won a tie, and what the stand-ins stalled on is being fixed now. |
+| B | Run through Graphene itself (`docs/process/shaping/as-the-person.md`), reviewed (42 findings, 30 fixed), measured (`sizing.md` on its branch): merged. |
+| C | The ladder and its dry climb, the sealed paragraphs, the live pre-registration, arm A's harness: merged. The live directive's draft and the table script: in flight. |
+| D | Pre-registered (`docs/test/results-2026-09-28-shaping.md`), deviations written before the first run, twelve runs in flight on build `668c7fd`. |
+| E | Twenty ideas ranked (`docs/process/ideas.md`); three prototypes built, reviewed, fixed and merged behind `GRAPHENE_SHAPE`. |
+| F | `HACKATHON.md` and the storyboard around shaping: in flight. |
+| G | From 06:00. |
 
 ## Rollback
 
