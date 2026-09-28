@@ -139,6 +139,13 @@ def proposal_in(said: str) -> str:
     return said[start.start() :] if start else ""
 
 
+def reask_argv(store, size: str) -> list[str] | None:
+    """The command a screen's re-ask key runs: the last sentence asked of a planner (not a follow-up
+    about one node), again, sized finer or coarser. None when nothing was asked yet."""
+    asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
+    return ["graphene", "ask", asked[-1]["note"], f"--{size}"] if asked else None
+
+
 def _replace_last(store) -> list[str]:
     """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
     to prune in their place, not a second beside them. Returns the ids dropped."""

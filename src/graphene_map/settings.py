@@ -80,6 +80,19 @@ def elsewhere(store) -> list[str]:
     ]
 
 
+def for_screen(store) -> dict:
+    """The settings as the page's plan carries them, for the root row of the board and the graph."""
+    return {k: _list(store, k) for k in (*GLOBS, "never")} | {"size": size(store)}
+
+
+def lines_for_screen(store) -> list[str]:
+    """What `?` in graphene watch shows under the keys: every setting, a line each, then how to change
+    them. The key's whereabouts are left to `graphene config`: a screen never asks the keychain."""
+    said = [line.removeprefix("# ") for line in elsewhere(store)]
+    said += [line for line in render(store).splitlines() if line and not line.startswith("#")]
+    return [*said, "graphene config edit changes them"]
+
+
 def render(store) -> str:
     out = [HEAD.rstrip("\n"), *elsewhere(store), ""]
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
