@@ -187,9 +187,10 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
     except P.Refused as no:
         say(f"the plan would refuse it ({no}); nothing is offered")
         return None
-    words = ["node", "add", sentence] if node is None else ["node", "set", target]
+    words = ["node", "add"] if node is None else ["node", "set", target]
     words += [w for g in changes.get("scope", []) for w in ("--scope", g)]
     words += [w for key in ("check", "goal") if key in changes for w in (f"--{key}", changes[key])]
+    words += ["--", sentence] if node is None else []  # the title last, after --: a note may start with -
     command = shlex.join(["graphene", *words])
     store.log_node(node.id if node else "*", P._now(), "suggested", WHO, None, None, {
         "note": sentence, "command": command, "reason": why, "rev": node.rev if node else None,

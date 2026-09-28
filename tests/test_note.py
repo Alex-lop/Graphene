@@ -98,8 +98,8 @@ def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, 
     fake([answer("new", scope_add=["api.py"], check="python3 -c 'import api'"), answer("new"),
           answer("ids", scope_add=["api.py/{a,b}"])])  # fmt: skip
     offer, _, _, _ = routed(repo)
-    add = ["graphene", "node", "add", "ids come back sorted", "--scope", "api.py", "--check"]
-    add.append("python3 -c 'import api'")
+    add = ["graphene", "node", "add", "--scope", "api.py", "--check", "python3 -c 'import api'", "--"]
+    add.append("ids come back sorted")
     assert offer.command == shlex.join(add)
     offer, said, _, _ = routed(repo)
     assert offer is None and said[0].startswith("a new leaf needs a scope and a check")
@@ -228,3 +228,14 @@ def test_an_answer_cut_off_at_the_token_limit_says_so(repo, fake):
     assert offer is None and said == [
         f"the model's answer was cut off at {note.MAX_TOKENS} tokens; nothing is offered"
     ]
+
+
+def test_a_new_leaf_whose_note_starts_with_a_dash_prints_a_command_that_runs(repo, fake):
+    planned(repo)
+    fake([answer("new", scope_add=["api.py"], check="grep -q quiet api.py")])
+    with Store.open(repo) as store:
+        offer = note.route(store, repo, "-v flag should be quiet")
+    took = person(*shlex.split(offer.command)[1:])
+    assert took.exit_code == 0, took.output
+    with Store.open(repo) as store:
+        assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["api.py"]]
