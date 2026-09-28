@@ -282,8 +282,9 @@ exit $code
                 subprocess.run(["docker", rm, "-f", *made[kind].read_text().split()], capture_output=True)
 
 
+@pytest.mark.parametrize("n", [1, 3])  # rung 1's access check runs the sandbox smoke on ConTree
 @pytest.mark.parametrize("killed", [False, True])
-def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypatch, capsys, killed):
+def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypatch, capsys, killed, n):
     """Live, a stop does not cancel a ConTree operation already sent; and a command killed after 120 s
     did not clean up: the STOPPED line says so rather than that all was cleaned up. Nothing runs."""
     practice = load_practice(tmp_path, monkeypatch)
@@ -292,9 +293,9 @@ def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypat
         r.killed = killed
         raise KeyboardInterrupt
 
-    monkeypatch.setitem(practice.RUNGS, 3, (*practice.RUNGS[3][:3], stopped))
+    monkeypatch.setitem(practice.RUNGS, n, (*practice.RUNGS[n][:3], stopped))
     try:
-        assert practice.climb(3) == "STOPPED"
+        assert practice.climb(n) == "STOPPED"
     finally:
         signal.signal(signal.SIGINT, signal.default_int_handler)
     said = capsys.readouterr().out

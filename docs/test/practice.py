@@ -566,7 +566,7 @@ def climb(n: int) -> str:
                     "made may be left (a Docker sandbox's are named graphene-*)")  # fmt: skip
         said += (f"\nleft behind: this rung's repos\nto clean: {shlex.join(['rm', '-rf', *left])}" if left
                  else "\nleft behind: nothing")  # fmt: skip
-        if not DRY and n in (3, 4, 6, 7):  # sandbox.Sandbox.halt: ConTree's operation is not cancelled
+        if not DRY and n in (1, 3, 4, 6, 7):  # rung 1's smoke too: a ConTree operation sent is not cancelled
             said += "\nleft running, maybe: a ConTree operation already sent runs on to its own time limit"
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
