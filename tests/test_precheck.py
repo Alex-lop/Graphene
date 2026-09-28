@@ -125,6 +125,10 @@ def test_a_missing_module_is_the_environment_unless_a_scope_makes_it(repo):
     assert C.verdict(127, "bash: pyest: command not found", "pyest", scopes) == "cannot-run"
     assert C.verdict(5, "no tests ran", "python3 -m pytest -k xml", scopes) == "cannot-run"
     assert C.verdict(5, "", "./run-it", scopes) is None  # 5 is pytest's only from pytest
+    src = ["src/pkg/new.py", "src/app/**"]  # a src layout, as this repository has
+    assert C.verdict(1, "No module named 'pkg.new'", "pytest", src) is None
+    assert C.verdict(1, "No module named 'app.feed'", "pytest", src) is None
+    assert C.verdict(1, "No module named 'yaml'", "pytest", src) == "cannot-run"
 
 
 def test_a_proposed_check_with_no_sandbox_never_runs_here(repo, monkeypatch):

@@ -56,7 +56,8 @@ def verdict(code: int | None, out: str, command: str, scopes: list[str]) -> str 
         return "cannot-run"
     for name in _MISSING.findall(out):
         stem = name.replace(".", "/")
-        if not any(P.in_scope(p, scopes) for p in (f"{stem}.py", f"{stem}/__init__.py")):
+        made = [f"{top}{stem}{end}" for top in ("", "src/") for end in (".py", "/__init__.py")]
+        if not any(P.in_scope(p, scopes) for p in made):  # at the top, or in a src layout
             return "cannot-run"
     return None
 
