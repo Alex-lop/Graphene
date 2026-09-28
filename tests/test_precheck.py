@@ -23,8 +23,10 @@ RED = "python3 -c 'import app; assert app.greet() == \"hello\"'"
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "GRAPHENE_AS", "GRAPHENE_SANDBOX"):
-        monkeypatch.delenv(name, raising=False)
+    for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "GRAPHENE_AS", "GRAPHENE_SANDBOX",
+                 "NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):  # fmt: skip
+        monkeypatch.delenv(name, raising=False)  # nothing here reaches Token Factory or ConTree live
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
     for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "T"]):
         subprocess.run(["git", "-C", str(tmp_path), *args], check=True)
     (tmp_path / ".gitignore").write_text(".graphene/\n")
@@ -350,10 +352,9 @@ def test_an_id_named_twice_is_run_and_logged_once(repo):
         assert len(rows) == 1 and len(store.node_log("l0", ("precheck",))) == 1
 
 
-def test_on_board_puts_up_one_risk_per_check_that_cannot_tell_the_work_is_done(repo, monkeypatch):
+def test_on_board_puts_up_one_risk_per_check_that_cannot_tell_the_work_is_done(repo):
     from types import SimpleNamespace
 
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)  # the red is left unread: nothing is asked
 
     up = []
 
