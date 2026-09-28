@@ -491,9 +491,16 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
 
 
 def _edge(source: ViewNode, target: ViewNode) -> ViewEdge:
-    """Out of the source's right edge, into the target's left edge, turning halfway between them."""
+    """Out of the source's right edge, into the target's left edge. Between neighbouring columns it
+    turns halfway across the gap between them. An edge that skips a column never runs through it: it
+    drops into the gap under its source's row, crosses there, and rises in the gap before its target,
+    where no box is."""
     sx, sy = source.x + NODE_W, source.y + NODE_H / 2
     tx, ty = target.x, target.y + NODE_H / 2
-    middle = max(sx, (sx + tx) / 2)
-    points = [[sx, sy], [tx, ty]] if sy == ty else [[sx, sy], [middle, sy], [middle, ty], [tx, ty]]
+    if tx - sx > COL_GAP:
+        under, out, back = source.y + NODE_H + ROW_GAP / 2, sx + COL_GAP / 2, tx - COL_GAP / 2
+        points = [[sx, sy], [out, sy], [out, under], [back, under], [back, ty], [tx, ty]]
+    else:
+        middle = max(sx, (sx + tx) / 2)
+        points = [[sx, sy], [tx, ty]] if sy == ty else [[sx, sy], [middle, sy], [middle, ty], [tx, ty]]
     return ViewEdge(f"{source.id}>{target.id}", source.id, target.id, points)

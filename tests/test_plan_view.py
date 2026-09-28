@@ -82,6 +82,28 @@ def test_an_edge_runs_from_the_right_of_its_source_to_the_left_of_its_target(sto
     assert all(point[0] >= edge["points"][0][0] for point in edge["points"])
 
 
+def through(edge, box):
+    """Whether any straight piece of an edge runs inside a box (its edges excluded)."""
+    x, y, w, h = box
+    pieces = zip(edge["points"], edge["points"][1:], strict=False)
+    return any(
+        min(a[0], b[0]) < x + w and max(a[0], b[0]) > x and min(a[1], b[1]) < y + h and max(a[1], b[1]) > y
+        for a, b in pieces
+    )
+
+
+def test_no_edge_runs_through_a_box_even_one_that_skips_a_column(store):
+    plan.propose(store, [node("a"), node("b", needs=["a"]), node("c", needs=["a", "b"])], ALEX)
+    plan.propose(store, [node("x"), node("y"), node("z", needs=["x"]), node("w", needs=["z", "y"])], ALEX)
+    plan.propose(store, [node("p", owner="alex"), node("q", needs=["p", "c"])], ALEX)
+    view = build_plan_view(store)
+    at = {n["id"]: (n["x"], n["y"], n["width"], n["height"]) for n in view["nodes"]}
+    assert "a>c" in {e["id"] for e in view["edges"]} and at["a"][1] == at["b"][1] == at["c"][1]  # one row
+    crossed = [(e["id"], i) for e in view["edges"] for i, box in at.items()
+               if i not in (e["source"], e["target"]) and through(e, box)]  # fmt: skip
+    assert crossed == []
+
+
 def test_fifty_nodes_lay_out_without_overlapping(store):
     chain = [node("n0")] + [node(f"n{i}", needs=[f"n{i - 1}"]) for i in range(1, 25)]
     chain += [node(f"m{i}", needs=["n0"], owner="alex") for i in range(25)]
