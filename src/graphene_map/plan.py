@@ -2200,7 +2200,7 @@ def set_paused(store, value: bool, who: Caller) -> None:
 # -- undo: the person's last act on the plan's shape, put back ----------------------------------------
 
 UNDO_KEPT = 20
-_GOALS = ("goal", "goal:proposed")
+_GOALS = ("goal", "goal:proposed", "board")  # the board (board.py): an answer undoes with what it changed
 
 
 def _shape(store) -> dict:
@@ -2261,6 +2261,8 @@ def undo(store, who: Caller, now: str | None = None) -> str:
                 f"cannot undo {act['what']!r}: {', '.join(hanging)} was put under or made to wait on what it "
                 "added, since; drop that first"
             )
+        if "board" in act["meta"] and current["meta"]["board"] != act["meta"]["board"][1]:
+            raise Refused(f"cannot undo {act['what']!r}: the board changed since, and undoing would lose it")
         if moved:
             states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
             raise Refused(
