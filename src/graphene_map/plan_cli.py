@@ -112,13 +112,21 @@ def register(cli: typer.Typer, root, open_store, fail):
             ]
         if not [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]:
             return ["next: nothing; every node is done"]
-        agents = [n for n in P.ready(everything, P.Caller("agent", False)) if n.id != but]
-        mine = [n for n in P.ready(everything, who) if n.id != but]
+        # a leaf that came back reads so, as on the screen and in `plan --view`: it is said after the
+        # leaves that are ready, and in its own word, since its next move is the person's
+        back = {n.id for n in everything if P.came_back(store, n)}
+        agents = sorted((n for n in P.ready(everything, P.Caller("agent", False)) if n.id != but),
+                        key=lambda n: n.id in back)  # fmt: skip
+        mine = sorted((n for n in P.ready(everything, who) if n.id != but), key=lambda n: n.id in back)
+
+        def is_(n: P.Node) -> str:
+            return f"came back (`graphene node show {n.id}`)" if n.id in back else "is ready"
+
         if who.person:
             if agents:
                 first, more = agents[0], len(agents) - 1
                 also = f", and {more} more" if more else ""
-                return [f"next: {first.id} ({first.title}) is ready{also}: `graphene run` runs "
+                return [f"next: {first.id} ({first.title}) {is_(first)}{also}: `graphene run` runs "
                         f"{'them' if more else 'it'}"]  # fmt: skip
             if mine:
                 return [f"next: {mine[0].id} ({mine[0].title}) is yours to do"]
@@ -127,8 +135,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             first, more = mine[0], len(mine) - 1
             also = f", and {more} more" if more else ""
             return [
-                f"next: {first.id} ({first.title}) is ready{also}: `graphene node start {first.id}` takes "
-                "it, with its contract as it stands now"
+                f"next: {first.id} ({first.title}) {is_(first)}{also}: `graphene node start {first.id}` "
+                "takes it, with its contract as it stands now"
             ]
         return [f"next: nothing is ready for you, so you can stop{rest}"]
 
@@ -335,8 +343,8 @@ def register(cli: typer.Typer, root, open_store, fail):
     def one_row(store, n: P.Node, depth: int = 0) -> str:
         """A node the command just made or moved, in the row grammar `graphene plan` and the screen
         use: glyph, title, id, the word its state reads as."""
-        everything = P.nodes(store)
-        word = P.reads(P.get(store, n.id), everything)
+        everything, now = P.nodes(store), P.get(store, n.id)
+        word = P.reads(now, everything, {n.id} if P.came_back(store, now) else set())
         return f"{'  ' * depth}{P.look(word)[0]} {n.title}  {n.id}  {word}"
 
     def log_line(e: dict, with_node: int = 0, who_wide: int = 16) -> str:

@@ -494,3 +494,21 @@ def test_node_set_adds_to_a_scope_or_a_goal_without_retyping_it(repo):
     assert person("plan", "undo").exit_code == 0
     [shown] = json.loads(person("plan", "--json").stdout)["nodes"]
     assert (shown["goal"], shown["scope"]) == ("ids", ["api.py"])
+
+
+def test_a_leaf_that_came_back_reads_came_back_in_every_view_and_in_the_next_line(repo):
+    """The evaluation's side finding: `graphene plan --view` ended "next: v-dupes (…) is ready", where the
+    screen called that leaf "came back"."""
+    text = "goal: g\n- api work  [api]\n    scope: api.py\n    check: true\n"
+    as_alex = {"GRAPHENE_AS": "person:alex"}
+    proposed = runner.invoke(build(), ["plan", "propose", "-"], input=text, env=as_alex)
+    assert proposed.exit_code == 0, proposed.output
+    person("plan", "accept")
+    agent("node", "start", "api")
+    agent("node", "release", "api", "--why", "cannot")
+    for view in ("outline", "dag", "tree"):
+        drawn = person("plan", "--view", view, "--width", "120", "--height", "36").stdout
+        assert "↩ api" in drawn and "ready" not in drawn, (view, drawn)  # its glyph, and its word
+    assert "came back" in person("plan", "--view", "outline").stdout
+    said = agent("plan", "--view", "outline").stdout.splitlines()[-1]
+    assert said.startswith("next: api (api work) came back (`graphene node show api`): `graphene node start")
