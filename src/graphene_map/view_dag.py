@@ -109,10 +109,10 @@ def note(nodes: list[P.Node], words: dict[str, str]) -> str:
         return "no leaves yet"
     if all(words.get(n.id) == "done" for n in g.leaves):
         return "every leaf done"
-    now = at_once(nodes, words)
+    now = [i for i in at_once(nodes, words) if words.get(i, "") not in KINDS]  # one that came back is on you
     count = dict.fromkeys(["at once", "wait", "running", "on you", "done"], 0)
     for n in g.leaves:
-        count["at once" if n.id in now else KINDS.get(words.get(n.id, ""), "wait")] += 1
+        count[KINDS.get(words.get(n.id, "")) or ("at once" if n.id in now else "wait")] += 1
     ready = all(words.get(i) == "ready" for i in now)
     said = [f"{count['at once']} at once{' now' if now and ready else ''}", f"{count['wait']} wait"]
     said += [f"{count[k]} {k}" for k in ("running", "on you", "done") if count[k]]
