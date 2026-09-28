@@ -153,6 +153,11 @@ def decided(store, node: P.Node | None = None) -> list[str]:
     return [said(it) for it in items(store) if told(it) and it.get("about") in on]
 
 
+def about_gone(store, item: dict) -> bool:
+    """Is the node the item is about out of the plan? Then no executor is told it."""
+    return bool(item.get("about")) and (store.node_row(item["about"]) or {}).get("state") in (None, *P.GONE)
+
+
 def dropped(store) -> list[str]:
     """The words of what the person dropped, for a planner that is asked again not to bring it back."""
     return [it["text"] for it in items(store) if it["state"] == "dropped"]
@@ -371,8 +376,17 @@ def settle(
                 f"{item_id} is {item['state']} already ({_one(item['answer']) or 'yes'}); "
                 "`graphene plan undo` takes an answer back"
             )
+        if state in DECIDED and reads(item) == "noted":
+            raise P.Refused(
+                f"{item_id} is your note, told as you wrote it; park or drop it, or put up another"
+            )
         if state == "open" and item["state"] != "parked":
             raise P.Refused(f"{item_id} is {reads(item)}, not parked")
+        if state in DECIDED and about_gone(store, item):  # its answer would be told to no executor
+            raise P.Refused(
+                f"{item_id} is about {item['about']}, which has left the plan; drop it, or give it another "
+                "about: in `graphene plan edit`"
+            )
         effects: list[str] = []
         answer = None
         if state == "taken":
@@ -410,6 +424,17 @@ def settle(
     return item
 
 
+def lifted(item: dict) -> list[str]:
+    """What dropping an answered item leaves, in lines: its read-only globs no longer bind, and what
+    its answer changed in the tree stays (`graphene plan undo` takes both back, as one act)."""
+    if item["state"] != "dropped":
+        return []
+    out = [f"no longer read-only: {', '.join(item['conditions'])}"] if item.get("conditions") else []
+    return out + [
+        f"what it changed stays: {line}" for line in item.get("became") or [] if " may write " not in line
+    ]
+
+
 def take(store, item_id: str, who: P.Caller, files: list[str] | None = None) -> dict:
     return settle(store, item_id, "taken", who, files=files)
 
@@ -435,15 +460,15 @@ def drop(store, item_id: str, who: P.Caller) -> dict:
 
 
 def rehome(store, gone: set[str], who: P.Caller, now: str | None = None) -> list[tuple[dict, str]]:
-    """What the person answered (or parked) about a node that left the plan becomes about the whole
-    plan, so it is still told to every executor rather than to none. Returns (item, the node it was
-    about)."""
+    """What is on the board about a node that left the plan (answered, parked or still open) becomes
+    about the whole plan, so it is, or once answered will be, told to every executor rather than to
+    none. Returns (item, the node it was about)."""
     now = now or P._now()
     moved = []
     with store.claim():
         board = items(store)
         for item in board:
-            if item.get("about") in gone and (told(item) or item["state"] == "parked"):
+            if item.get("about") in gone and item["state"] != "dropped":
                 moved.append((item, item["about"]))
                 item.update(about=None, rev=item["rev"] + 1, updated_at=now)
                 _log(store, item, "moved to the whole plan", who, now, was=moved[-1][1])
@@ -619,6 +644,12 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 raise P.Refused(
                     f"line {f['no']}: [{f['id']}] was changed by someone else since this text was opened"
                 )
+            answered = known["state"] in DECIDED
+            if answered and any(f[k] != base[k] for k in ("default", "then", "options")):
+                raise P.Refused(  # what it was answered with, and what that changed, would no longer match
+                    f"line {f['no']}: [{f['id']}] is {known['state']} ({_one(known['answer']) or 'yes'}); "
+                    "`graphene plan undo` takes the answer back before its default, options or then: change"
+                )
             _check(store, f, at)
             _reword(store, f, who, now)
             said.append(f"{f['id']}: changed")
@@ -637,8 +668,8 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 f"[{item_id}], whose lines were deleted, was changed by someone else since this text was "
                 "opened"
             )
-        settle(store, item_id, "dropped", who, now=now)
-        said.append(f"dropped {item_id}: {board[item_id]['text']}")
+        gone = settle(store, item_id, "dropped", who, now=now)
+        said += [f"dropped {item_id}: {board[item_id]['text']}", *(f"  {line}" for line in lifted(gone))]
     return said
 
 

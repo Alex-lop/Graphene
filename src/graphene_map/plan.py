@@ -771,8 +771,14 @@ def run_check(
             code, out, err = _ended(command, tree, env, began)
             made = [p for p in leave_out if os.path.lexists(tree / p)]
     except subprocess.TimeoutExpired:
-        return False, (f"timed out after {CHECK_TIMEOUT:g} s, and was stopped with everything it started: a "
-                       "check must end by itself (one that waits for input, or serves, never does)"), []
+        return (
+            False,
+            (
+                f"timed out after {CHECK_TIMEOUT:g} s, and was stopped with everything it started: a "
+                "check must end by itself (one that waits for input, or serves, never does)"
+            ),
+            [],
+        )
     except (Refused, OSError) as no:  # it never ran, which is no pass
         return False, f"the check could not be run: {no}", []
     text = (out + err).strip()
@@ -2447,9 +2453,14 @@ LOOK = {
 
 def goal_plus(goal: str, sentence: str) -> str | None:
     """``goal`` ending with ``sentence``, as a board's `then: goal` and `node set --add-goal` add one:
-    after a full stop, never twice. None when the goal says it already."""
+    after a full stop, never twice. None when the goal has each of its sentences already (a sentence
+    the goal only contains, as "do not add X" contains "add X", is not one it has)."""
     goal, sentence = goal.strip(), " ".join(sentence.split())
-    if sentence.lower() in goal.lower():
+
+    def sentences(text: str) -> set[str]:
+        return {p.strip(" .!?:;").lower() for p in re.split(r"(?<=[.!?:;])\s+", text)} - {""}
+
+    if sentences(sentence) <= sentences(" ".join(goal.split())):
         return None
     return f"{goal}{'' if goal.endswith(('.', '!', '?', ':', ';')) else '.'} {sentence}" if goal else sentence
 

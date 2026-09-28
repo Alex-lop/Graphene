@@ -181,6 +181,8 @@ def hints(item: dict, room: int) -> list[str]:
     if state == "dropped":
         return ["dropped: u undoes it if it was your last act", "a note"]
     rest = ["d drop", "p unpark" if state == "parked" else "p park", "Enter answer", "a note"]
+    if state == "noted":  # the person's own note: told as written, so there is nothing to take or answer
+        return ["noted: u undoes your last act", "d drop", "p park", "a note"]
     if state not in ("open", "parked"):
         return [f"{state}: u undoes your last act", "d drop", "a note"]
     many = len(item["options"]) > 3
@@ -235,8 +237,14 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
             out.field("decided", Text.assemble(item.get("answer") or "yes", (how, "dim")))
         for line in item["became"] if state in B.DECIDED else []:
             out.field("changed", line)
+        node = by_id.get(item.get("about") or "")
         whom = f"the executors of {item['about']} and under it" if item.get("about") else "every executor"
-        out.field("told", f"to {whom}, as a decided: line" if B.told(item) else "to no one")
+        told = f"to {whom}, as a decided: line" if B.told(item) else "to no one"
+        if item.get("about") and (node is None or node.state in P.GONE):
+            told = (
+                f"to no one: {item['about']} has left the plan (`graphene plan edit` gives it another about:)"
+            )
+        out.field("told", told)
         out.gap()
     if item["default"] or item["then"]:
         key = "y default" if state in ("open", "parked") else "default"
