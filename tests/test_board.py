@@ -132,8 +132,10 @@ def test_the_person_takes_picks_drops_parks_and_answers_each_by_cli(repo, tmp_pa
     unknown = person("board", "park", "nothing")
     assert unknown.exit_code == 1 and "no item nothing on the board" in unknown.stderr
     shown = person("board").stdout.splitlines()
-    assert shown[0] == "the board: 0 open, 1 parked, 4 settled"
-    assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled"]
+    # walk 2026-09-28: the dropped item vanished here while watch counted it: it is listed, last
+    assert shown[0] == "the board: 0 open, 1 parked, 4 settled, 1 dropped"
+    assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled", "dropped"]
+    assert any(" paging " in line and line.endswith("dropped") for line in shown)
 
 
 def test_an_agent_cannot_answer_and_its_note_waits_for_the_person(repo, tmp_path):

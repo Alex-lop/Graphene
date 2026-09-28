@@ -25,12 +25,12 @@ def rows(store) -> list[str]:
     """The board as `graphene board` prints it: each group under its name, an item in the row
     grammar (glyph, words, id, the word its state reads as); what is open with its default and its
     options, what is settled in one line; last, the commands that answer."""
-    shown = [(name, group) for name, group in B.groups(store) if name != "dropped"]
-    if not shown:
+    shown = B.groups(store)  # dropped too, last: gone from what executors are told, not from sight
+    if all(name == "dropped" for name, _ in shown):  # nothing but what was dropped reads as empty
         return [EMPTY]
     count = {name: len(group) for name, group in shown}
     opened = sum(n for name, n in count.items() if name not in ("parked", "settled", "dropped"))
-    head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled") if k in count]
+    head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled", "dropped") if k in count]
     out = [f"the board: {', '.join(head)}"]
     listed = [it for _, group in shown for it in group]
     # one row grammar, as `graphene plan` prints a node: glyph and words, id, state word. The id and the
@@ -45,6 +45,8 @@ def rows(store) -> list[str]:
             title = f"  {B.look(item)[0]} {first}"
             out.append(f"{T.pad(title, wt)}  {item['id'].ljust(wid)}  {B.reads(item)}".rstrip())
             out += [f"    {line}" for line in rest]
+            if name == "dropped":
+                continue
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
                 out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
