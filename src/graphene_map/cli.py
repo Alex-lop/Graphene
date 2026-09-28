@@ -209,6 +209,9 @@ def build():
     from .board_cli import register as board
 
     board(cli, root, open_store, fail)
+    from .talk import register as talk
+
+    talk(cli, root, open_store, fail)
 
     WHO = ("planner", "executor")
     # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs

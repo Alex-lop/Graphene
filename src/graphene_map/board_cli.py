@@ -4,6 +4,7 @@ gives it is a command a person could type."""
 from __future__ import annotations
 
 import json
+import textwrap
 
 import typer
 
@@ -41,6 +42,8 @@ def rows(store) -> list[str]:
             mark = f"  · {item['by']}'s" if item["agent"] and item["kind"] == "note" else ""
             title = f"  {B.look(item)[0]} {T.elide(words, wt - 4)}"
             out.append(f"{title.ljust(wt)}  {item['id'].ljust(wid)}  {word.ljust(ww)}{mark}".rstrip())
+            if item["kind"] == "note" and len(words) > wt - 4:  # a note is its words: cut, it says nothing
+                out += [f"      {line}" for line in textwrap.wrap(words, 72)]
             if name == "settled":
                 out += [f"      → {item['answer']}"] if item.get("answer") else []
                 out += [f"      changed: {line}" for line in item["became"]]

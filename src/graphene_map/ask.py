@@ -97,7 +97,9 @@ leave out: what you would not do, and why  [short-id]
 - Write no file and start no work: what you print is all of your answer."""
 
 
-def prompt_for(store, sentence: str, about: str | None = None, split: bool = False) -> str:
+def prompt_for(
+    store, sentence: str, about: str | None = None, split: bool = False, talk: str | None = None
+) -> str:
     text, _ = T.render(store)
     lines = [
         "You are the planner for a plan that a person and their coding agents share (Graphene). The "
@@ -111,7 +113,7 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
         told = P.contract(node, P.trail(store, node), B.decided(store, node))
         lines += ["", "It is about this node:", told]
         last = (store.node_log(about, ("released",)) or [None])[-1]
-        if last is not None and not split:
+        if last is not None and not split and not talk:
             wanted = P.wanted(store, node)
             lines += [
                 f"It came back from its executor: {last['detail'].get('why', '')}",
@@ -124,8 +126,43 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
                 f"Split {about} into smaller leaves: write its line with its [{about}], and the new leaves "
                 "under it; together they do all of it, and its check still says it is done."
             )
+    lines += ["", talk] if talk else []
     lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", "", RULES]
     return "\n".join(lines)
+
+
+def talking(store, kind: str, ids: list[str]) -> str:
+    """What the planner is asked when the person talks on the tree (`graphene talk`), after the node
+    it is about: why it is there (a note on the board), one leaf for several (merge), or another way
+    to reach what it is for. Whether to merge, or which way, is the person's: Graphene puts that
+    question on the board itself, so the planner is asked for the leaves only."""
+    node = P.get(store, ids[0])
+    under = (
+        f"write {node.parent}'s line as it is above, with its [{node.parent}], and under it"
+        if node.parent
+        else "at the left edge, write"
+    )
+    if kind == "why":
+        taken = {it["id"] for it in B.items(store)} | {n.id for n in P.nodes(store)}
+        return (
+            f"Say why {ids[0]} is in the plan: what it is for, and why its scope and check are what they "
+            "are, in two or three sentences, from the plan and the repository. Print it as a note on the "
+            f"board about it; the whole block is:\n```plan\nnote: what you would say  "
+            f"[{T.slug(f'why {ids[0]}', taken)}]\n    about: {ids[0]}\n```"
+        )
+    if kind == "merge":
+        others = [P.get(store, i) for i in ids[1:]]
+        others = [P.contract(n, P.trail(store, n), B.decided(store, n)) for n in others]
+        return "\n".join([
+            "And about these:", *others,
+            f"Propose one leaf that does all of {', '.join(ids)}: its scope takes in theirs, and its check "
+            f"says all of it is done. {under[0].upper()}{under[1:]} that one new leaf, and nothing else.",
+        ])  # fmt: skip
+    return (
+        f"Propose another way to reach what {ids[0]} is for: {under} one new leaf, or one new sub-goal "
+        f"with its leaves, that would do it by other means in place of {ids[0]} and all under it; and "
+        "nothing else."
+    )
 
 
 def proposal_in(said: str) -> str:
@@ -150,6 +187,7 @@ def ask(
     about: str | None = None,
     split: bool = False,
     say: Callable[[str], None] = print,
+    talk: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
@@ -161,7 +199,7 @@ def ask(
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
-    asked = prompt = prompt_for(store, sentence, about, split)
+    asked = prompt = prompt_for(store, sentence, about, split, talk)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
