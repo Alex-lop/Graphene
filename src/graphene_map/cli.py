@@ -67,6 +67,8 @@ def build():
             name = param.opts[0] if param.param_type_name == "option" else f"<{param.name}>"
             what = (getattr(param, "help", None) or "").strip().rstrip(".")
             return f"{path} needs {name}" + (f": {what[:1].lower()}{what[1:]}" if what else "")
+        if path.startswith("graphene key"):  # what was typed may be a pasted key: never say it back
+            return f"{path} takes no words; the key is read from a hidden prompt (`{path} --help`)"
         said = error.format_message().strip().rstrip(".")
         helped = f" (`{path} --help` says what it takes)" if error.ctx else ""  # the parser names none
         return f"{path}: {said[:1].lower()}{said[1:]}{helped}"

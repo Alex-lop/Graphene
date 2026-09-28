@@ -19,6 +19,12 @@ def test_config_and_key_are_commands():
         assert said.exit_code == 0, said.output
 
 
+@pytest.mark.parametrize("argv", [["check"], ["remove"], [], ["set", "--"]])
+def test_a_key_pasted_after_any_key_command_is_never_echoed(argv):
+    said = runner.invoke(build(), ["key", *argv, "sk-SECRET-111"], env={"GRAPHENE_AS": "person:alex"})
+    assert said.exit_code != 0 and "sk-SECRET" not in said.output, said.output
+
+
 def test_init_writes_each_default_and_keeps_what_is_set(repo):
     assert person("init", "--planner", "claude", "--executor", "claude").exit_code == 0
     with Store.open(repo) as store:
