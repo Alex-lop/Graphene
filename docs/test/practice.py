@@ -14,7 +14,8 @@ bill so far from the ledger every Token Factory call is written to (GRAPHENE_LED
 and the next command. A failure says what it most likely means and what to try. Progress, the ledger,
 each rung's log and the recordings are kept in .graphene/practice/ (git-ignored; .graphene/practice-dry/
 for the dry run), and the task repos are built outside this repository, in ~/graphene-practice/
-(~/graphene-practice-dry/). PRACTICE_STATE and PRACTICE_WORK move them.
+(~/graphene-practice-dry/). PRACTICE_STATE and PRACTICE_WORK move them; the dry run and the live ladder
+never share a state directory (each refuses the other's).
 
 Rung 6 reads feeds' sealed paragraph from docs/test/tasks/feeds/paragraph.md and passes it on; no line
 and no log holds it (<the sealed paragraph of feeds> stands in its place), no command's output is shown on
@@ -45,7 +46,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
-from graphene_map.demo import KEY as KEY_SHAPED  # noqa: E402
+from graphene_map import tokenfactory as tf  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 
 DRY = "--dry" in sys.argv or os.environ.get("PRACTICE_DRY") == "1"
@@ -58,6 +59,7 @@ PROGRESS = STATE / "progress.json"
 PARAGRAPH = HERE / "tasks" / "feeds" / "paragraph.md"  # the sealer's: passed on, never printed or shown
 SEALED = "<the sealed paragraph of feeds>"  # what a line or the log says in its place
 MADE_BY = ".made-by-the-practice-ladder"  # in a state directory the ladder made: only such a one is removed
+MODE = "dry" if DRY else "live"  # what MADE_BY holds: a dry run and the live ladder never share a state
 ME = "docs/test/practice.sh" + (" --dry" if DRY else "")
 TAG = "dry run, stand-ins · " if DRY else ""  # every line of the dry run says so
 # what an agent's shell carries (plan.caller reads them): the person runs the ladder, so none is passed on
@@ -87,7 +89,7 @@ def mask(text: str) -> str:
         value = os.environ.get(name) or ""
         if len(value) >= 6:
             text = text.replace(value, f"[{name}]")
-    return KEY_SHAPED.sub("[removed: shaped like a key]", text)
+    return tf.unkeyed(text)  # the whole word, not its first twenty characters
 
 
 def spent() -> float:
@@ -111,6 +113,10 @@ def docker_runs() -> bool:
 
 class Failed(Exception):
     """A rung's FAIL, with what was seen."""
+
+
+class Refused(Failed):
+    """A FAIL before anything ran (an agent's shell): said, and not recorded, so what is on record stays."""
 
 
 def last(out: str, n: int = 1) -> str:
@@ -250,7 +256,7 @@ def access(r: Rung) -> str:
                  f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
         if not fresh:
-            raise Failed(
+            raise Refused(
                 f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME} 1` again"
             )
         say(f"  reading what you ran today: {out}")
@@ -375,9 +381,12 @@ def recorded(r: Rung) -> str:
 
 
 def arms(r: Rung) -> str:
-    """Rung 6: one run of arm A (the paragraph to Nano as one leaf over the whole repo, no tree and no
-    check) and one of arm B (Ultra proposes from the paragraph, the tree accepted as proposed, which is
-    the winning directive's B′; Nano does the leaves in Sandboxes)."""
+    """Rung 6: arm A as one Graphene leaf (the paragraph to Nano, scope the whole repo, check `true`)
+    and B′ (Ultra proposes from the paragraph, the tree accepted as proposed; Nano does the leaves in
+    Sandboxes), both through `graphene run`. Neither is the evidence runs' harness: arm_a.py (one
+    `converse` session, no plan) and arm_bprime.py (bench.play_rounds, which reads the card's globs), and
+    `evidence.py add`, are tested against the fake only and first meet the live service in the evidence
+    runs."""
     if DRY:
         if not docker_runs():
             raise Failed(NO_DOCKER)
@@ -403,8 +412,9 @@ def arms(r: Rung) -> str:
     r.graphene(repo_b, "run", "--parallel", "4", "--with", "nemotron --placement sandbox", timeout=3600)
     b, b_cost = leaves(repo_b), spent() - before - a_cost
     landed = sum(s == P.DONE for s in b.values())
-    said = (f"arm A: its leaf landed, ${a_cost:.4f}; arm B: {landed} of {len(b)} leaves landed, "
-            f"${b_cost:.4f}; repos {repo_a.name}, {repo_b.name}")  # fmt: skip
+    said = (f"arm A as one leaf (not arm_a.py): it landed, ${a_cost:.4f}; B′ by `graphene run` (not "
+            f"arm_bprime.py): {landed} of {len(b)} leaves landed, ${b_cost:.4f}; "
+            f"repos {repo_a.name}, {repo_b.name}")  # fmt: skip
     if not landed:
         raise Failed(f"a run ended with nothing landed: {said}")
     return said
@@ -418,15 +428,21 @@ def demo_run(r: Rung) -> str:
     more = {"EXECUTOR": "nemotron --placement sandbox"} if DRY else {}
     if DRY and not docker_runs():
         raise Failed(NO_DOCKER)
-    code, out = r.sh(["bash", str(ROOT / "docs" / "proof" / "nemotron.sh"), str(r.where("demo"))], ROOT, 3600,
+    repo = r.where("demo")
+    code, out = r.sh(["bash", str(ROOT / "docs" / "proof" / "nemotron.sh"), str(repo)], ROOT, 3600,
                      RECORD=str(rec), **more)  # fmt: skip
     if code or "bill: $" not in out:
         raise Failed(f"nemotron.sh did not reach the bill (exit {code}): {last(out)}")
+    states = leaves(repo)
+    landed = sum(s == P.DONE for s in states.values())
+    if not landed:
+        raise Failed(f"the demo ran to the bill, and nothing landed: {len(states)} leaves, in {repo}")
     back, shown = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     if back:
         raise Failed(f"the recording does not replay: {last(shown)}")
     bills = [ln.strip() for ln in out.splitlines() if "bill: $" in ln]
-    return f"the demo ran to the bill; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
+    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed"
+    return f"{ran}; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
 
 
 # number: (name, what it may spend in dollars at list price, how long it takes live, the rung)
@@ -436,7 +452,7 @@ RUNGS = {
     3: ("one leaf in a Sandbox", 0.50, "3-8 min", in_sandbox),
     4: ("the escape test in the Sandbox", 0.05, "2-5 min", escape),
     5: ("a recorded leaf, replayed", 0.50, "2-5 min", recorded),
-    6: ("one run each of arms A and B on feeds", 3.00, "15-40 min", arms),
+    6: ("arm A as one leaf, and B′, on feeds", 3.00, "15-40 min", arms),
     7: ("the demo run, recorded", 3.00, "10-30 min", demo_run),
 }
 MEANS = [  # (what the log or the failure says, what it most likely means, what to try); the first match wins
@@ -473,7 +489,7 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
     (r"No module named 'contree_sdk'|ConTree is not configured \(SDK",
      "the ConTree SDK is not installed",
      "`uv sync --extra sandbox`, then the rung again"),
-    (r"ConTree needs NEBIUS_API_KEY|ConTree is not configured",
+    (r"ConTree needs (a key|NEBIUS_API_KEY)|ConTree is not configured",  # sandbox.Contree says the first
      "ConTree has no credentials: NEBIUS_PROJECT_ID is not set",
      "export NEBIUS_PROJECT_ID=… (the project's id, from the console) in ~/.zshenv, or `contree auth`"),
     (r"ImagePull|manifest unknown|pull access denied|failed to pull|image .{0,40}not found",
@@ -538,18 +554,18 @@ def climb(n: int) -> str:
     """One rung: PASS, FAIL or STOPPED, what it cost, the bill so far, how long, and the next command."""
     name, cap, _, rung = RUNGS[n]
     cap = float(os.environ.get("PRACTICE_CAP") or cap)
-    r, before, began = Rung(n, cap), spent(), time.monotonic()
+    r, before, began, refused = Rung(n, cap), spent(), time.monotonic(), False
     say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
     signal.signal(signal.SIGINT, interrupted)
     try:
         mark = None if DRY or n == 1 else marked()  # rung 1 has its own way: the person types access.py
         if mark:
-            raise Failed(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your key "
-                         f"and is recorded as you: nothing was run. Type it yourself, in a terminal where "
-                         f"no agent's mark is set:\n    {ME} {n}")  # fmt: skip
+            raise Refused(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your "
+                          f"key and is recorded as you: nothing was run. Type it yourself, in a terminal "
+                          f"where no agent's mark is set:\n    {ME} {n}")  # fmt: skip
         said, result = rung(r), "PASS"
     except Failed as no:
-        said, result = str(no), "FAIL"
+        said, result, refused = str(no), "FAIL", isinstance(no, Refused)
     except Exception as no:  # an SDK's or a sandbox's own error is a result here
         said, result = f"{type(no).__name__}: {no}", "FAIL"
     except KeyboardInterrupt:
@@ -560,14 +576,15 @@ def climb(n: int) -> str:
                     "made may be left (a Docker sandbox's are named graphene-*)")  # fmt: skip
         said += (f"\nleft behind: this rung's repos\nto clean: {shlex.join(['rm', '-rf', *left])}" if left
                  else "\nleft behind: nothing")  # fmt: skip
-        if not DRY and n in (3, 4, 6, 7):  # sandbox.Sandbox.halt: ConTree's operation is not cancelled
+        if not DRY and n in (1, 3, 4, 6, 7):  # rung 1's smoke too: a ConTree operation sent is not cancelled
             said += "\nleft running, maybe: a ConTree operation already sent runs on to its own time limit"
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
     rows = progress() | {str(n): {"result": result, "at": time.strftime("%Y-%m-%d %H:%M"),
                                    "seconds": round(took, 1),
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip
-    PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
+    if not refused:  # a rung that ran nothing leaves the record as it was
+        PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
     say(
         f"{result} · rung {n} · {took:.1f} s · this rung ${spent() - before:.4f} · bill so far ${spent():.4f}"
     )
@@ -633,7 +650,13 @@ def main(argv: list[str]) -> int:
     args = [a for a in argv if a != "--dry"]
     if not STATE.exists():
         STATE.mkdir(parents=True)
-        (STATE / MADE_BY).touch()
+        (STATE / MADE_BY).write_text(MODE)
+    if (STATE / MADE_BY).exists():  # an empty one is from before it said: the default paths tell them apart
+        made = (STATE / MADE_BY).read_text().strip() or ("dry" if STATE.name == "practice-dry" else "live")
+        if made != MODE:  # the live ledger is real spend; a dry row read as live is a stand-in shown as live
+            say(f"{STATE} is {'the dry run' if made == 'dry' else 'the live ladder'}'s: nothing was read, "
+                "removed or written; point PRACTICE_STATE at another directory")  # fmt: skip
+            return 2
     if args == ["status"]:
         status()
         return 0
@@ -649,7 +672,7 @@ def main(argv: list[str]) -> int:
             return 2
         shutil.rmtree(STATE)
         STATE.mkdir(parents=True)
-        (STATE / MADE_BY).touch()
+        (STATE / MADE_BY).write_text(MODE)
     if DRY:
         from fake_tokenfactory import Fake
 
