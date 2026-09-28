@@ -1347,7 +1347,7 @@ class Watch(App):
         for word in argv[1:]:  # `graphene node edit x: x: scope changed` says x once
             first = first.removeprefix(f"{word}: ")
         first = first.removeprefix(f"{' '.join(argv[:2])}: ")  # and `plan first on: plan first: on`
-        self.message = f"{'✗ ' if code else ''}graphene {shlex.join(argv)}" + (f": {first}" if first else "")
+        self.message = f"{'✗ ' if code else ''}graphene {as_typed(argv)}" + (f": {first}" if first else "")
         if not quiet:
             self.refresh_plan()
         return said if keep else code
@@ -1429,7 +1429,7 @@ class Watch(App):
         if len(lines) > 1:  # more than a line (a record, the log): it gets the side pane
             self.view = "said"
             self.query_one("#detail", Static).update(hanging("\n".join(lines), self.pane_room()[0]))
-            self.message = f"graphene {shlex.join(argv)}: {len(lines)} lines, in the pane"
+            self.message = f"graphene {as_typed(argv)}: {len(lines)} lines, in the pane"
             self.say_status()
 
     def action_escape(self) -> None:
@@ -1743,7 +1743,7 @@ class Watch(App):
                 stdout=sink, stderr=subprocess.STDOUT, start_new_session=True, env=env,
             )  # fmt: skip
         self.runs.append(proc)
-        self.message = f"graphene {shlex.join(argv)}: started (its output: {log.relative_to(self.root_path)})"
+        self.message = f"graphene {as_typed(argv)}: started (its output: {log.relative_to(self.root_path)})"
         self.say_status()
         threading.Thread(target=self.follow, args=(proc, argv, log), daemon=True).start()
 
@@ -1759,11 +1759,11 @@ class Watch(App):
         gist = (news[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
         named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
         mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
-        whole = [f"{mark}graphene {shlex.join(argv)} ended (exit {code}); all it said, kept in "
+        whole = [f"{mark}graphene {as_typed(argv)} ended (exit {code}); all it said, kept in "
                  f"{log.relative_to(self.root_path)}:", "", *said]  # fmt: skip
         # a run's own last line says what it did (`run: 3 done, …`): said once, not after "run ended"
         told = f"{mark}{gist}" if re.match(rf"{re.escape(argv[0])}\b", gist) else (
-            f"{mark}graphene {shlex.join(named)} ended: {gist}"
+            f"{mark}graphene {as_typed(named)} ended: {gist}"
         )  # fmt: skip
         made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
         if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
@@ -2022,6 +2022,12 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     return pane.render()
 
 
+def as_typed(argv: list[str]) -> str:
+    """A command as a person would type it: shlex's quoting, except that a word with an apostrophe and
+    nothing a shell expands inside double quotes is double-quoted (`"don't"`, not `'don'"'"'t'`)."""
+    return " ".join(f'"{w}"' if "'" in w and not re.search(r'["$`\\!]', w) else shlex.quote(w) for w in argv)
+
+
 def asked_about(node_id: str) -> list[str]:
     """What ? on a leaf that came back runs, and its pane shows as the command it is."""
     return ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
@@ -2032,7 +2038,7 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
     offers = [*P.offers(store, node), ("?", "ask the planner", asked_about(node.id))]
-    rows = [(key, _its(does, node.id), f"graphene {shlex.join(argv)}") for key, does, argv in offers]
+    rows = [(key, _its(does, node.id), f"graphene {as_typed(argv)}") for key, does, argv in offers]
     # one line each when every one fits whole; else two each, all alike: what the key does, then the
     # command under it (at 120 columns the pane is narrow, and the commands had gone)
     one = all(5 + len(does) + 2 + len(command) <= pane.wide for _, does, command in rows)

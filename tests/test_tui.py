@@ -1741,3 +1741,17 @@ def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo)
         top, keys = seen["status"].splitlines()[:2]
         assert "3/3 done, finished" in top, (size, top)
         assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
+    """Walk 2026-09-28: `+` echoed `graphene ask --finer '… Don'"'"'t touch legacy files.'`, the
+    person's own sentence shell-escaped. A word with an apostrophe is double-quoted when nothing in it
+    expands there; the line is still one a shell reads back as the same words."""
+    import shlex
+
+    from graphene_map.tui import as_typed as typed
+
+    words = (["ask", "--finer", "Load it. Don't touch legacy files."], ["ask", "it's $HOME"], ["x", "a b"])
+    for argv in words:
+        assert shlex.split(typed(argv)) == argv
+    assert typed(["ask", "Don't touch it"]) == "ask \"Don't touch it\""
