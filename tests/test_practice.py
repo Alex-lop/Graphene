@@ -35,7 +35,8 @@ def environment(tmp_path: Path, **env: str) -> dict[str, str]:
     """This environment without a key, an agent's mark or the ladder's settings, its state in tmp_path."""
     gone = ("GRAPHENE_", "PRACTICE_", "NEBIUS_", "CONTREE_")
     base = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith(gone)}
-    return base | {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")} | env
+    here = {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")}
+    return base | here | {"GRAPHENE_KEYCHAIN": "off"} | env  # never the person's real keychain
 
 
 def ladder(tmp_path: Path, *args: str, **env: str) -> subprocess.CompletedProcess:

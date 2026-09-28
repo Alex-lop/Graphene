@@ -14,7 +14,8 @@ The budget (--steps model calls, --seconds wall time) is the run's, not the mess
 gets what the earlier messages left, read from the conversation file. That file (by default
 arm-a.json beside the repo, never inside it) holds the messages and the bill, in the shape
 `logline.py <runlog> executor result --from-json <file>` reads: `total_cost_usd` is the session's
-running total, as `claude -p --resume` prints it, and `num_turns` is this message's model calls.
+running total, as `claude -p --resume` prints it, `num_turns` is this message's model calls, and
+`endpoint` is who answered ("token factory", or "a stand-in"), which evidence.py reads before it draws.
 Each call is in the night's ledger (GRAPHENE_LEDGER) under the tag `arm-a:<session>`.
 """
 
@@ -117,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         opening = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": f"{text}\n\n{mapped}"}]
         state = {"session_id": uuid.uuid4().hex[:12], "model": model[0], "messages": opening,
                  "total_cost_usd": 0.0, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                 "seconds_used": 0.0}  # fmt: skip
+                 "seconds_used": 0.0, "endpoint": tf.endpoint()}  # fmt: skip
     else:
         state = json.loads(saved.read_text(encoding="utf-8"))
         state["messages"] += unanswered(state["messages"]) + [{"role": "user", "content": text}]

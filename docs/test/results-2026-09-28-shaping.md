@@ -247,4 +247,240 @@ Checked against the build under test, `668c7fd` (wheel sha256 `5408b89f…`, in 
 
 ## Results
 
-*Empty until the runs exist.*
+*Filled on 2026-09-28 from `summarize.py` (written to `docs/test/runs-2026-09-28-shaping.json`) and
+`attention.py`, by the steps in `shaping-study.md`, "Filling the table". The people were Claude
+sub-agents standing in for a person, not people. The planner and the executor were Claude Code
+(sonnet). This is evidence about shaping, and none at all about Nemotron, Token Factory or
+Sandboxes, none of which ran.*
+
+**What happened to the twelve runs.**
+- **Paragraph arm, all four tasks: not run.** No `<task>-sealed-prompt-1` directory exists under
+  `~/graphene-shaping-runs`, so each stand-in found no brief and did nothing. `summarize.py` has no
+  row for them.
+- **Seven runs are void** (outline on all four tasks, board on inventory, logs and report). Each
+  one's `opening_is_sealed` is false because its `runlog.jsonl` is empty: nothing was ever sent. In
+  each, the stand-in's first launch of the `claude -p` executor was refused by Claude Code's
+  auto-mode permission classifier ("Create Unsafe Agents"), and the stand-in stopped without a
+  workaround. The reason is in each run's `void.txt`. This is a harness failure, so an
+  infrastructure rerun is allowed (rule 5), and none was made tonight.
+- **One run is valid: feeds, board.** It sent the sealed paragraph, took all three board items
+  and accepted the proposed tree without an edit. Then the same classifier refused
+  `graphene run --with "claude -p ..."` before any leaf started, so nothing was built and the change
+  of mind was never sent. None of the three registered void cases applies, so it stays valid.
+  **After the fact:** its accept and quality are those of the untouched base repo, which the void
+  feeds outline repo also scores 10/20 and 0/12. Its to run is cut at the opening message, because
+  it logged no `run` (`attention.py`'s note).
+
+Every outline cell carries the deviation written before the first run: the build teaches the board
+to the outline arm's session, `plan --text` prints the board, and a tree runs whatever its board
+holds, so this outline arm is not the 23 September arm. The outline cells are void as well.
+
+| task | arm | run | valid | accept | quality | person-s, MODELLED = typing + acts + reading | to run, MODELLED | typed | acts | keys | words read | caught (judged / candidates) | restarts / unmandated | outside intent | cost $ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | paragraph | not run: no run directory | | | | | | | | | | n/a | | | |
+| feeds | outline † | feeds-sealed-tree-1 | void: nothing sent, the executor launch was refused | | | | | | | | | | | | |
+| feeds | board | feeds-sealed-board-1 | yes; stopped before `graphene run` | 10/20, the base repo | 0/12, the base repo | 733.6 = 512.96 + 9.45 + 211.20 | 514.3, cut at the opening | 1832 | 7 | 1839 | 880 | 0 / 0 | 0 / 0 | 0 | 0.234 |
+| inventory | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| inventory | outline † | inventory-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| inventory | board | inventory-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| logs | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| logs | outline † | logs-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| logs | board | logs-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| report | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| report | outline † | report-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| report | board | report-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+
+† The outline deviation above, written at 03:30 before the first run.
+
+The feeds board run in detail:
+- typing is 0.28 × 1832, acts 1.35 × 7, reading 0.24 × 880;
+- the 1832 typed characters are the sealed opening, the same in every arm;
+- the seven acts include three board `take`s;
+- the candidates are 0 from `caught_before_code_n`, plus 0 pick, answer or drop in `board_acts`,
+  and the judge's `judge.md` has no ruling to make.
+
+| hypothesis | board minus the other arm, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H2: person-s, board against paragraph | paragraph not run / board void, paragraph not run / same / same | 0 of 4 | no difference shown: every task void or not run |
+| H3: words read, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H3: typed, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H4: accept and quality, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H4: accept and quality, board against paragraph | paragraph not run / board void, paragraph not run / same / same | 0 of 4 | no difference shown: every task void or not run |
+| H5: caught, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+
+The tables show nothing about whether the board and the graph cost less attention: no task has two
+comparable runs, because the harness's permission classifier stopped every stand-in that reached
+an executor launch and the paragraph arm's runs were never created, so every hypothesis reads "no
+difference shown", and that null is a harness failure rather than a result about shaping.
+
+## Study 2: shaping only (pre-registered at about 04:00, before any of its runs)
+
+*Written and committed on 2026-09-28 at about 04:00, before any run of study 2. No study 2 run
+directory exists yet. Once the first of its runs starts, this section is not edited; anything decided
+later goes below it and is labelled **after the fact**. Study 1's section above is not changed.*
+
+### Why
+
+Study 1 failed for the harness, not for shaping. This session's permission classifier refuses a
+sub-agent that starts a Claude Code session, so no stand-in could send its paragraph to a session or
+start an executor (see "What happened to the twelve runs" above). Study 2 measures only the shaping
+moment, which needs neither: from a proposal already made to the moment the person would press R.
+Nothing is run, no executor starts, and no stand-in starts a session.
+
+### Design
+
+- **The proposal.** For each task, the coordinator runs `graphene ask` once, itself, in a fresh repo
+  from `make_task.py` on which `graphene init --planner claude --executor claude` was run as the
+  person. The Claude planner proposes once, from the task's sealed paragraph
+  (`docs/test/tasks/<task>/paragraph.md`). `shape_only.py setup TASK` makes that repo, in
+  `~/graphene-shaping-runs/TASK-shape-planned`.
+- **Two copies.** The planned directory is copied whole (`cp -R`) into one run directory per arm,
+  `TASK-shape-outline-1` and `TASK-shape-board-1` (`shape_only.py fork TASK ARM`), each with its own
+  empty `runlog.jsonl` and its own `env.sh`. Both arms of a task start from the identical proposal,
+  byte for byte, which study 1 could not promise: there each arm's session proposed on its own.
+- **The person.** A stand-in shapes its copy until it would press R, and stops there. It is the
+  person who wrote the paragraph, and its brief (`shape_only.py brief TASK ARM`) says so and shows
+  it the paragraph and the card.
+
+### The two arms
+
+| arm | what the person does | how they read the plan |
+|---|---|---|
+| **outline** | Prunes with `graphene plan accept`, `graphene node drop` and `graphene node set`. It ignores the board. | `graphene plan --text` and `graphene plan` |
+| **board** | First answers every open board item, one command each: `graphene board take`, `pick`, `drop`, `park`, `answer` or `note`. Then it prunes with the outline arm's commands. | `graphene board`, then `graphene plan --view auto` |
+
+The build under test has no `--add-scope` or `--add-goal` on `node set` (`graphene node set --help`
+at the build below), so neither brief names them; `--scope` replaces the scope and repeats.
+
+### Tasks and runs
+
+The tasks are `feeds`, `inventory`, `logs` and `report`. There is one run per arm per task: **8 runs,
+n = 1 per cell.** This is a pilot. It can show which way each difference goes on each task. It
+cannot show that a difference is real.
+
+### What is held equal
+
+- **The proposal.** One per task, the same bytes in both arms.
+- **The build.** `~/graphene-shaping-venv`, which is the wheel recorded in
+  `~/graphene-shaping-runs/build.txt` (commit `668c7fd`, sha256 `5408b89f…`). Its `bin` is first on
+  `PATH` in every shell (`env.sh`).
+- **The stand-in.** The same model, spawned the same way, one per run and never reused. Both briefs
+  come from one template in `shape_only.py` and differ only in the arm section. The stand-in is not
+  told what is measured.
+- **The card.** Each task's `intent.md`, whole, pasted into the brief by the script, as `standin.py`
+  does.
+
+### Metrics, all computed afterwards by a script or a judge
+
+| metric | from | notes |
+|---|---|---|
+| person-seconds, MODELLED | `attention.py` | K = 0.28 s per typed character, M = 1.35 s per act, reading at 250 words a minute, split into typing + acts + reading, up to the moment the person would press R. A model, never a clock. |
+| keys | `attention.py` | typed characters + acts |
+| typed characters | `attention.py` | by `attention.py`'s rules, unchanged |
+| words read | `attention.py` | every word logged as `read` |
+| acts | `attention.py` | every person entry except `read`; each board command is one act |
+| faithful to the card | a judge | A separate judge per run, with no part in it, reads the shaped plan (`graphene plan --text` and `graphene board` in the run's repo) against the card. It rules: does the plan do what the card asks and nothing it forbids: **yes / partly / no**. And it counts how many of the card's constraints a leaf, a check or a board answer carries, out of the card's total. The ruling is saved in the run directory. |
+
+### Hypotheses, each with its direction
+
+| | comparison | registered direction | measure |
+|---|---|---|---|
+| H1 | board against outline | board **lower** | modelled person-seconds |
+| H3 | board against outline | board **lower**, on each separately | words read; typed characters |
+| H6 | board against outline | board **at least as faithful** | the judge's ruling (yes > partly > no), then constraints carried |
+
+H1 and H3 keep study 1's names so they read side by side. H2, H4 and H5 need a run and are not tested.
+
+### The table that will be reported
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | | | | | | | | | |
+| feeds | board | | | | | | | | | |
+| inventory | outline | | | | | | | | | |
+| inventory | board | | | | | | | | | |
+| logs | outline | | | | | | | | | |
+| logs | board | | | | | | | | | |
+| report | outline | | | | | | | | | |
+| report | board | | | | | | | | | |
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | | of 4 | |
+| H3: words read | | of 4 | |
+| H3: typed | | of 4 | |
+| H6: faithful to the card | | of 4 | |
+
+Under the tables goes one sentence on what they show, whatever it is.
+
+### Analysis rules
+
+1. **n = 1 per cell, so there are no significance claims.** No p-value, interval or test. A
+   hypothesis's result is how many of the four tasks go the registered way, with each task's signed
+   difference beside it, in study 1's words ("lower" only if all four do; "on three of four tasks,
+   one run each" if three do; "no difference shown" if two or fewer do, or if any task is void or not
+   run; a task that goes the other way is reported as going the other way).
+2. **Every cell is reported,** void and not-run cells included, each with its reason. No mean or
+   median stands in for the rows.
+3. **Null results are reported,** in the tables and in the sentence.
+4. **A run is void** if the `graphene` on `PATH` is not the recorded build, if its copy did not start
+   from the task's one proposal, or if the stand-in ran anything (a `graphene run` or an executor).
+   A rerun is allowed only when the harness failed; it is named so, and the failed run is kept.
+5. **Nothing is tuned once the first run starts:** not the brief, the card, the paragraph, the
+   proposal or the build.
+6. **Anything decided after the data is labelled "after the fact",** including a re-cut, an
+   exclusion or a new column.
+7. **What this is evidence about.** Shaping one proposal from the Claude planner, by Claude
+   sub-agents standing in for the person, measured with the keystroke-level model. Not about
+   whether the shaped plan runs or passes, and not about Nemotron, Token Factory or Sandboxes.
+
+### Study 2 results
+
+*Written after all eight runs, below the registered section, which is not changed. The people were
+Claude model stand-ins (claude-opus-5-5, the session's model; the judges the same model), the planner
+was Claude Code, and nothing ran: no `graphene run`, no executor, no session. This is evidence about
+shaping one Claude-planned proposal, not about Nemotron, Token Factory or Sandboxes. Every number
+comes from `python3 docs/test/attention.py <run> --arm tree` (outline runs) or `--arm board` (board
+runs) and from `<run>/judge.md`; runs live in `~/graphene-shaping-runs/`. No run logs a `run`, so
+the whole log is the part up to R, and `attention.py`'s `to_run` equals its totals in all eight.*
+
+**Valid.** All eight are valid under rule 4: `env.sh` puts `~/graphene-shaping-venv/bin` first on
+`PATH`, that venv was installed from the wheel whose sha256 matches `build.txt` (`5408b89f…`); both
+arms of each task share one `base.sha`; no run log has a `run` entry, no `node_log` row records a
+start, and `git status` in every run's repo shows no change. No rerun was made.
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | feeds-shape-outline-1 | yes | 668.9 = 223.7 + 4.1 + 441.1 | 799 | 3 | 802 | 1838 | yes | 18 of 20 |
+| feeds | board | feeds-shape-board-1 | yes | 1277.3 = 362.9 + 13.5 + 901.0 | 1296 | 10 | 1306 | 3754 | yes | 19 of 19 |
+| inventory | outline | inventory-shape-outline-1 | yes | 426.7 = 62.2 + 4.1 + 360.5 | 222 | 3 | 225 | 1502 | yes | 13 of 13 |
+| inventory | board | inventory-shape-board-1 | yes | 1064.0 = 77.6 + 10.8 + 975.6 | 277 | 8 | 285 | 4065 | yes | 13 of 13 |
+| logs | outline | logs-shape-outline-1 | yes | 324.1 = 0.0 + 2.7 + 321.4 | 0 | 2 | 2 | 1339 | partly | 12 of 16 |
+| logs | board | logs-shape-board-1 | yes | 822.5 = 278.9 + 14.9 + 528.7 | 996 | 11 | 1007 | 2203 | yes | 16 of 16 |
+| report | outline | report-shape-outline-1 | yes | 293.2 = 0.0 + 1.4 + 291.8 | 0 | 1 | 1 | 1216 | yes | 12 of 12 |
+| report | board | report-shape-board-1 | yes | 649.9 = 0.0 + 8.1 + 641.8 | 0 | 6 | 6 | 2674 | yes | 12 of 12 |
+
+The three parts are K × typed, M × acts and words × 60 / 250, each rounded to 0.1 s, so feeds
+board's parts sum to 1277.4 against `attention.py`'s 1277.3. Board commands per board run: feeds
+take 5, pick 1; inventory take 4, park 1; logs take 4, answer 2; report take 5.
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | +608.4 / +637.3 / +498.4 / +356.7 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: words read | +1916 / +2563 / +864 / +1458 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: typed | +497 / +55 / +996 / 0 | 0 of 4 | no difference shown; three tasks go the other way (board higher), report ties at 0 |
+| H6: faithful to the card | feeds same ruling (yes), carried 19 of 19 against 18 of 20 / inventory same (yes, 13 of 13) / logs yes against partly, 16 of 16 against 12 of 16 / report same (yes, 12 of 12) | 4 of 4 | board at least as faithful on all four tasks, one run each: more faithful on logs and feeds, tied on inventory and report |
+
+**After the fact.** (1) The two feeds judges counted the card's constraints differently (20 and
+19); board is ahead on feeds whether counted (19 against 18) or as a share (100% against 90%), so
+the choice does not change the direction. (2) Two runs report reading outside the log: logs board
+read two `--help` screens without logging them (its words read are low by those screens), and
+inventory board's first `git ls-files` went unlogged and was run again through the log. Neither
+voids a run under rule 4, and neither would change a direction above.
+
+On four tasks, one run each, with model stand-ins shaping a Claude Code proposal and nothing run,
+answering the board first cost more modelled attention on every task (H1 and H3 show no difference
+in the registered direction; board went the other way on person-seconds and words read on all four,
+and on typed characters on three with report tied) while the shaped plan was at least as faithful to
+the card on all four (H6: more faithful on logs and feeds, tied on inventory and report).

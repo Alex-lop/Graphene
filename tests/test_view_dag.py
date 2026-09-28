@@ -171,11 +171,15 @@ def test_what_could_start_now_and_the_note():
     nodes = diamond_and_chain(done={"a"})
     words = words_of(nodes)
     assert V.at_once(nodes, words) == ["b", "c", "x1"]
-    assert V.note(nodes, words) == "3 at once now · 5 wait · 1 done · critical path: x1 > x2 > … > x5 (5)"
+    assert V.note(nodes, words) == "critical ━ x1 > x2 > … > x5 (5) · 3 ready · 5 wait · 1 done"
     proposed = [leaf("p"), leaf("q", needs=["p"])]
     for n in proposed:
         n.state = P.PROPOSED
-    assert V.note(proposed, words_of(proposed)) == "1 at once · 1 wait · critical path: p > q (2)"
+    said = V.note(proposed, words_of(proposed))
+    assert said == "critical ━ p > q (2) · none ready · 1 once accepted · 1 wait"
+    both = [*nodes, *proposed]
+    said = V.note(both, words_of(both))
+    assert said == "critical ━ x1 > x2 > … > x5 (5) · 3 ready · 1 more once accepted · 6 wait · 1 done"
 
 
 def test_the_notes_counts_add_up_to_the_leaves_and_a_flat_plan_has_no_critical_path():
@@ -184,10 +188,10 @@ def test_the_notes_counts_add_up_to_the_leaves_and_a_flat_plan_has_no_critical_p
     nodes = diamond_and_chain(done={"a"})
     words = {**words_of(nodes), "b": "came back", "x1": "review", "c": "running"}
     said = V.note(nodes, words)
-    assert said.startswith("0 at once · 5 wait · 1 running · 2 on you · 1 done")
-    assert sum(int(part.split()[0]) for part in said.split(" · ")[:5]) == len(nodes)
+    assert said.endswith("none ready · 5 wait · 1 running · 2 on you · 1 done")
+    assert sum(int(part.split()[0]) for part in said.split(" · ")[2:]) == len(nodes)
     flat = [leaf(f"f{k}") for k in range(3)]
-    assert V.note(flat, words_of(flat)) == "3 at once now · 0 wait"
+    assert V.note(flat, words_of(flat)) == "3 ready · 0 wait"
 
 
 def style_at(line, x):
@@ -213,7 +217,7 @@ def test_the_diamond_and_the_chain_at_80_columns():
     assert style_at(drawn.lines[4], 10) == "bold" and style_at(drawn.lines[4], 2) == "bold"  # x1 > …
     assert style_at(drawn.lines[1], 0) == "green" and style_at(drawn.lines[1], 4) == "dim"  # a is done
     assert style_at(drawn.lines[1], 15) == "dim"  # and so is the line out of it
-    assert drawn.note == "3 at once now · 5 wait · 1 done · critical path: x1 > x2 > … > x5 (5)"
+    assert drawn.note == "critical ━ x1 > x2 > … > x5 (5) · 3 ready · 5 wait · 1 done"
 
 
 def test_every_line_fits_and_titles_go_before_ids_and_then_the_graph():

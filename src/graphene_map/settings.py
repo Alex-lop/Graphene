@@ -31,7 +31,11 @@ def protected(store) -> list[str]:
 
 
 def readonly(store) -> list[str]:
-    return _list(store, "readonly")
+    """The read-only globs: the person's in `graphene config`, then the ones they chose on the board
+    (`then: condition GLOB`), which `plan undo` takes back with the answer."""
+    from graphene_map import board as B
+
+    return list(dict.fromkeys([*_list(store, "readonly"), *B.conditions(store)]))
 
 
 def never(store) -> list[str]:
@@ -73,16 +77,22 @@ def broken(store, files: list[str]) -> list[str]:
 
 def elsewhere(store) -> list[str]:
     """The settings changed by their own commands, shown as comment lines: a save never reads them."""
+    from graphene_map import board as B
+
+    chosen = B.conditions(store)
     return [
         f"# planner: {store.meta('planner') or 'none chosen'} (graphene init --planner)",
         f"# executor: {store.meta('executor') or 'none chosen'} (graphene init --executor)",
         f"# plan first: {'on' if P.plan_first(store) else 'off'} (graphene plan first on|off)",
+        *([f"# board: readonly {', '.join(chosen)} (plan undo takes it back)"]
+          if chosen else []),  # fmt: skip
     ]
 
 
 def for_screen(store) -> dict:
     """The settings as the page's plan carries them, for the root row of the board and the graph."""
-    return {k: _list(store, k) for k in (*GLOBS, "never")} | {"size": size(store)}
+    return {"protected": protected(store), "readonly": readonly(store), "never": never(store),
+            "size": size(store)}  # fmt: skip
 
 
 def lines_for_screen(store) -> list[str]:

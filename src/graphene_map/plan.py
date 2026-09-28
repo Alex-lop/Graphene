@@ -2397,6 +2397,15 @@ LOOK = {
 }
 
 
+def goal_plus(goal: str, sentence: str) -> str | None:
+    """``goal`` ending with ``sentence``, as a board's `then: goal` and `node set --add-goal` add one:
+    after a full stop, never twice. None when the goal says it already."""
+    goal, sentence = goal.strip(), " ".join(sentence.split())
+    if sentence.lower() in goal.lower():
+        return None
+    return f"{goal}{'' if goal.endswith(('.', '!', '?', ':', ';')) else '.'} {sentence}" if goal else sentence
+
+
 def came_back(store, node: Node) -> bool:
     """Open, and its last hold ended with its executor handing it back, and the person has not
     changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again)."""

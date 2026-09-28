@@ -126,7 +126,9 @@ class Rung:
         self.killed = False  # a command that did not end when told to, and was killed where it stood
         self.log = STATE / f"rung-{n}.log"
         self.log.write_text("", encoding="utf-8")
-        env = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith("GRAPHENE_")}
+        keep = ("GRAPHENE_KEYCHAIN",)  # a shell that turned the keychain off keeps it off (every test does)
+        ours = {k for k in os.environ if k.startswith("GRAPHENE_") and k not in keep}
+        env = {k: v for k, v in os.environ.items() if k not in MARKS and k not in ours}
         env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"  # this graphene
         if DRY:
             env = {k: v for k, v in env.items() if not k.startswith(("NEBIUS_", "CONTREE_"))}
