@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -32,6 +33,27 @@ KEY = "NEBIUS_API_KEY"
 TRIES = 6  # a 429 or a 5xx is tried again, waiting what the server asks or twice as long each time
 TIMEOUT = 300  # seconds for one completion: a long reasoning answer from the largest model takes minutes
 LISTED = 10  # seconds a try at the model list waits for an answer: offline, init must not wait a minute
+
+
+# Shaped like a key: 20 or more letters and digits in a row, a capital, a small letter and a digit among
+# them (a key, a token, a JWT's part). The whole word it sits in goes (up to a space, a slash or a quote),
+# so no piece of a key is left. A git sha, a uuid, a node's id, a log's name and a model's name have none.
+ALNUM = "[A-Za-z0-9]"
+SHAPED = re.compile(rf"(?<!{ALNUM})(?={ALNUM}*[A-Z])(?={ALNUM}*[a-z])(?={ALNUM}*[0-9]){ALNUM}{{20}}")
+WORD = re.compile(r"[\w.\-]{20,}", re.ASCII)
+# base64, which a word above ends at a / or a + (an AWS secret access key): 30 or more of its letters with a
+# capital, a small letter, a digit and a / or a +, and its padding. A . - or _ breaks it, so a path is kept
+# unless 30 of its characters in a row are letters, digits and slashes alone.
+B64 = "[A-Za-z0-9+/]"
+BASE64 = re.compile(
+    rf"(?<!{B64})(?={B64}*[A-Z])(?={B64}*[a-z])(?={B64}*[0-9])(?={B64}*[+/]){B64}{{30,}}=*"
+)
+REMOVED = "[removed: shaped like a key]"
+
+
+def unkeyed(value: str) -> str:
+    """``value`` with every word shaped like a key, and every run of base64 shaped like one, taken out."""
+    return WORD.sub(lambda word: REMOVED if SHAPED.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
 
 
 class Unreachable(Exception):
@@ -243,17 +265,26 @@ def spent() -> float:
     return total
 
 
-def chat(model: str, messages: list[dict], tools: list[dict] | None = None, tag: str = "", **params) -> dict:
+def chat(
+    model: str,
+    messages: list[dict],
+    tools: list[dict] | None = None,
+    tag: str = "",
+    tries: int | None = None,
+    timeout: float | None = None,
+    **params,
+) -> dict:
     """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model"}``: the
     assistant's message as Token Factory sent it (``content``, ``tool_calls``, any reasoning), its usage,
     and that usage at list price. ``params`` go into the request as they are (temperature, max_tokens,
-    and whatever a model reads beyond those). ``tag`` names the caller in the ledger (a leaf's id)."""
+    and whatever a model reads beyond those). ``tag`` names the caller in the ledger (a leaf's id).
+    ``tries`` and ``timeout`` are the request's: a helper nobody waits on asks once, briefly."""
     limit = cap()
     if limit is not None and _ledger() is not None and spent() >= limit:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
     began = time.monotonic()
-    said, headers = _request("POST", "chat/completions", body, timeout=TIMEOUT)
+    said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
     took = time.monotonic() - began
     try:
         message = said["choices"][0]["message"]
