@@ -2,7 +2,7 @@
 constrains, and comes back as the command that would change that leaf.
 
 One Nano call reads the note beside every open or proposed leaf's contract and answers in a JSON
-schema: which leaf (or "new", or "none"), the globs to add to or take out of its scope, a check, and
+schema: which leaf (or "(new)", or "(none)"), the globs to add to or take out of its scope, a check, and
 whether the note belongs in its goal. Graphene checks the answer before anything is shown: the leaf
 is open or proposed, an added glob matches a tracked file or falls under the leaf's scope, a removed
 glob is in it, a check names nothing no leaf may create, and the change, made and rolled back, is
@@ -29,14 +29,15 @@ from . import tokenfactory as tf
 
 MAX_TOKENS = 2048  # Nano reasons before it answers: a cut-off answer is said to be one
 TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
+NEW, NONE = "(new)", "(none)"  # the answers that are no leaf: no leaf's id has brackets
 WHO = "note:nemotron"  # the actor of its rows; each usage row's `endpoint` says who answered
 SYSTEM = """\
 A person typed a note about their plan. The plan's leaves still to be done follow, each with its
-contract. Say which one leaf the note constrains: its id; "new" when it asks for work no leaf covers;
-"none" when it constrains no leaf. Then only what the note asks of that leaf: scope_add, the globs to
-add to its scope (for "new", its whole scope); scope_remove, globs to take out, as its scope writes
-them; check, a new check command when the note changes how done is shown, else null; goal_add, true
-when the note itself belongs in the leaf's goal. why: one sentence."""
+contract. Say which one leaf the note constrains: its id; "(new)" when it asks for work no leaf
+covers; "(none)" when it constrains no leaf. Then only what the note asks of that leaf: scope_add,
+the globs to add to its scope (for "(new)", its whole scope); scope_remove, globs to take out, as its
+scope writes them; check, a new check command when the note changes how done is shown, else null;
+goal_add, true when the note itself belongs in the leaf's goal. why: one sentence."""
 _LIST = {"type": "array", "items": {"type": "string"}}
 SCHEMA = {"name": "note", "strict": True, "schema": {
     "type": "object", "additionalProperties": False,
@@ -48,7 +49,7 @@ SCHEMA = {"name": "note", "strict": True, "schema": {
 
 @dataclass(frozen=True)
 class Offer:
-    target: str  # a leaf's id, or "new"
+    target: str  # a leaf's id, or NEW
     command: str  # what the person types to take it
     why: str  # the model's reason, one sentence
     endpoint: str  # who answered, as the usage row says it: "token factory" or "a stand-in"
@@ -124,11 +125,11 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
 
 
 def _offer(store, root, sentence, a, target, why, leaves, files, everything, endpoint, say) -> Offer | None:
-    if target == "none":
+    if target == NONE:
         say(f"it constrains no leaf: {why}" if why else "it constrains no leaf; nothing is offered")
         return None
     node = next((n for n in leaves if n.id == target), None)
-    if target != "new" and node is None:
+    if target != NEW and node is None:
         say(f"the model named {target!r}, which is not an open or proposed leaf; nothing is offered")
         return None
     scope, add, remove = node.scope if node else [], _strs(a.get("scope_add")), _strs(a.get("scope_remove"))
@@ -213,6 +214,6 @@ def register(plan_cli: typer.Typer, root, open_store, fail) -> None:
             raise typer.Exit(1)
         live = offer.endpoint == "token factory"  # never said of a stand-in's answer
         who = "Nemotron on Token Factory" if live else "a stand-in, not Token Factory,"
-        where = "finds no leaf for it: a new one" if offer.target == "new" else f"places it on {offer.target}"
+        where = "finds no leaf for it: a new one" if offer.target == NEW else f"places it on {offer.target}"
         typer.echo(f"{who} {where}: {offer.why}" if offer.why else f"{who} {where}")
         typer.echo(f"take it:  {offer.command}")

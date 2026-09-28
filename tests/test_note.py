@@ -95,7 +95,7 @@ def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scop
 
 def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, fake):
     planned(repo)
-    fake([answer("new", scope_add=["api.py"], check="python3 -c 'import api'"), answer("new"),
+    fake([answer(note.NEW, scope_add=["api.py"], check="python3 -c 'import api'"), answer(note.NEW),
           answer("ids", scope_add=["api.py/{a,b}"])])  # fmt: skip
     offer, _, _, _ = routed(repo)
     add = ["graphene", "node", "add", "--scope", "api.py", "--check", "python3 -c 'import api'", "--"]
@@ -109,7 +109,7 @@ def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, 
 
 def test_an_answer_that_is_not_json_offers_nothing_and_its_bill_is_kept(repo, fake):
     planned(repo)
-    fake([{"content": "I think it is the ids leaf."}, answer("none", why="it is about style")])
+    fake([{"content": "I think it is the ids leaf."}, answer(note.NONE, why="it is about style")])
     offer, said, [bill], _ = routed(repo)
     assert offer is None and said == [
         "the model's answer is not the JSON it was asked for; nothing is offered"
@@ -232,10 +232,22 @@ def test_an_answer_cut_off_at_the_token_limit_says_so(repo, fake):
 
 def test_a_new_leaf_whose_note_starts_with_a_dash_prints_a_command_that_runs(repo, fake):
     planned(repo)
-    fake([answer("new", scope_add=["api.py"], check="grep -q quiet api.py")])
+    fake([answer(note.NEW, scope_add=["api.py"], check="grep -q quiet api.py")])
     with Store.open(repo) as store:
         offer = note.route(store, repo, "-v flag should be quiet")
     took = person(*shlex.split(offer.command)[1:])
     assert took.exit_code == 0, took.output
     with Store.open(repo) as store:
         assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["api.py"]]
+
+
+def test_leaves_named_new_and_none_are_leaves_not_the_special_answers(repo, fake):
+    with Store.open(repo) as store:
+        P.propose(store, [{**LEAVES[0], "id": "new"}, {**LEAVES[1], "id": "none"}], ALEX)
+    fake([answer("none", goal_add=True), answer("new", goal_add=True),
+          answer(note.NEW, scope_add=["api.py"], check="true"), answer(note.NONE)])  # fmt: skip
+    assert routed(repo)[0].command.startswith("graphene node set none --goal")
+    assert routed(repo)[0].command.startswith("graphene node set new --goal")
+    assert routed(repo)[0].command.startswith("graphene node add --scope api.py")
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said[0].startswith("it constrains no leaf")
