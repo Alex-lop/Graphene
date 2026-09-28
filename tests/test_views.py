@@ -380,6 +380,26 @@ def test_plan_view_prints_the_outline_or_the_view_as_text(repo, grid):
     assert unknown.exit_code == 2 and "no view named nope" in unknown.output
 
 
+@pytest.mark.parametrize("size", SIZES)
+def test_plan_view_draws_in_the_room_the_screen_gives_a_view_at_that_size(repo, monkeypatch, size):
+    """`plan --view auto` at 120 x 36 drew and chose at the whole terminal, while the screen draws a
+    view in less than half its rows: a deep plan printed the tree and opened in the outline."""
+    seen = []
+
+    class Spy(Grid):
+        @classmethod
+        def draw(cls, nodes, words, goal, width, height, cursor):
+            seen.append((width, height))
+            return super().draw(nodes, words, goal, width, height, cursor)
+
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "grid": Spy})
+    proposed(repo)
+    person("plan", "--view", "auto", "--width", str(size[0]), "--height", str(size[1]))
+    printed, seen[:] = set(seen), []
+    look(repo, [], size, view="auto")
+    assert printed == set(seen) != set()
+
+
 def test_watch_takes_the_view_too(repo, grid, monkeypatch):
     proposed(repo)
     monkeypatch.setenv("COLUMNS", "80")

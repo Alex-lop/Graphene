@@ -41,6 +41,14 @@ VIEWS: dict[str, object] = {"outline": None}  # name -> module (draw, suits), in
 BASELINE = 50  # what the outline scores, of the 0 to 100 a view's `suits` gives: it must do better
 
 
+def room(width: int, height: int) -> tuple[int, int]:
+    """The columns and rows a view is drawn in on a terminal of this size, on the screen and in
+    `graphene plan --view` alike: the whole width, less the scrollbar and the gap after it, and up to
+    half the rows, the node pane under it at every size. Beside the pane a view had 71 of 120 columns:
+    a tree lost its titles there and the thirty-leaf plan did not draw."""
+    return width - 2, max(3, (height - 3) // 2)
+
+
 def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int) -> str:
     """The view this plan at this size is best seen in, by the rule above: the outline, unless a view
     that draws here, in the rows it has or showing needs, scores more by its own `suits`."""
