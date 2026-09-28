@@ -640,6 +640,7 @@ class Watch(App):
         self.showing: str | None = None  # the view where the outline goes: "outline", or one in views.VIEWS
         self.drawn: V.Drawn | None = None  # that view as last drawn; None while the outline shows
         self.here: str | None = None  # the node under that view's cursor; None: its first line, the goal
+        self.mapped: tuple[str, str] | None = None  # a node the view has no cell for, and its stand-in
         self.goal_text = ""
         self.view = "contract"  # or "tail", "record", "said": what the side pane shows for the selected node
         self.message = ""  # what the last command said: the bottom line's, until the cursor moves
@@ -878,15 +879,20 @@ class Watch(App):
         width, height = self.view_room()
         drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
-            self.here = self.stand_in(drawn)
+            was, self.here = self.here, self.stand_in(drawn)
+            if was in self.by_id and self.here is not None:
+                self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
             drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         return drawn
 
     def stand_in(self, drawn: V.Drawn) -> str | None:
-        """The cell for a node a view has none for: its first node. A node gone from the plan (dropped):
-        the next in the order it was in, else the one before, as the outline moves. Else the goal."""
+        """The cell for a node a view has none for: a sub-goal's first node drawn under it (a graph of
+        leaves), else its nearest drawn one above it (a fold). A node gone from the plan (dropped): the
+        next in the order it was in, else the one before, as the outline moves. Else the goal (None)."""
         if self.here in self.by_id:
-            return drawn.order[0] if drawn.order else None
+            under = [n.id for n in P.below(self.here, self.nodes)]
+            up = [a.id for a in P.above(self.by_id[self.here], self.by_id)]
+            return next((i for i in under + up if i in drawn.at), None)
         was = self.drawn.order if self.drawn is not None else []
         if self.here not in was:
             return None
@@ -941,7 +947,7 @@ class Watch(App):
         outline's do. None is the goal."""
         if node_id == self.here:
             return
-        self.here = node_id
+        self.here, self.mapped = node_id, None
         if self.view == "said":
             self.view = "contract"
         self.message = ""
@@ -964,6 +970,9 @@ class Watch(App):
         then the outline again. The cursor stays on its node; the bottom line says the command that
         opens this view, and what it shows at a glance."""
         names, here, was = list(V.VIEWS), self.selected(), self.showing or "outline"
+        if self.mapped is not None and self.mapped[1] == here:  # on a stand-in: the node the person was on
+            here = self.mapped[0]
+        self.mapped = None
         for name in [*names[names.index(was) + 1 :], "outline"]:
             self.here = here
             if name == "outline" or self.draw_view(name) is not None:

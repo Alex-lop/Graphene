@@ -156,6 +156,22 @@ def test_a_drop_in_a_view_keeps_the_place_the_next_node_as_the_outline_does(repo
 
 
 @pytest.mark.parametrize("size", SIZES)
+def test_tab_on_a_sub_goal_the_graph_shows_its_first_leaf_and_tab_back_the_sub_goal(repo, size, monkeypatch):
+    """The graph draws leaves only: Tab on a sub-goal put the cursor on the plan's first leaf, and Tab
+    back left the outline there."""
+    from graphene_map import view_dag
+
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "dag": view_dag})
+    proposed(repo)
+    seen = look(repo, ["j", "tab"], size)  # j: the sub-goal api, whose leaves are ids and docs
+    assert seen["showing"] == "dag" and seen["cursor"] == "ids"
+    back = look(repo, ["j", "tab", "tab"], size)
+    assert back["showing"] == "outline" and back["cursor"] == "api"
+    moved = look(repo, ["j", "tab", "j", "tab"], size)  # moved in the graph: the outline follows it
+    assert moved["cursor"] != "api"
+
+
+@pytest.mark.parametrize("size", SIZES)
 def test_y_d_and_e_act_on_the_node_under_the_views_cursor(repo, grid, size, monkeypatch):
     proposed(repo)
     nodes = order(repo)
