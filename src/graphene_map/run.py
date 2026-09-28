@@ -32,6 +32,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -220,13 +221,15 @@ def _let_go(store, node_id: str) -> bool:
     return last is not None and (last["kind"] == "dropped" or bool(last["detail"].get("person")))
 
 
-def prompt_for(node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None) -> str:
+def prompt_for(
+    node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None, decided: list[str] = ()
+) -> str:
     lines = [
         "You are doing one leaf of a plan that a person and their agents share. `why` is the path from "
         "the plan's goal down to your leaf, in the person's words: it is what your work is for. The "
         "leaf is the whole of what you are asked to do.",
         "",
-        P.contract(node, why),
+        P.contract(node, why, decided),
         *(f"  sent back with: {note}" for note in notes),
         "",
         "Read anything you need; write only inside the scope. When it is done, run "
@@ -284,7 +287,9 @@ def run_node(
                 raise KeyboardInterrupt
             argv = command_for(
                 template,
-                prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node)),
+                prompt_for(
+                    node, P.notes(store, node.id), refusal, P.trail(store, node), B.decided(store, node)
+                ),
                 session,
                 attempt > 1,
             )

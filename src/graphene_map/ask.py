@@ -20,6 +20,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
 from . import plan_text as T
 from .run import _splits, command_for
@@ -88,7 +89,8 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
     ]
     if about:
         node = P.get(store, about)
-        lines += ["", "It is about this node:", P.contract(node, P.trail(store, node))]
+        told = P.contract(node, P.trail(store, node), B.decided(store, node))
+        lines += ["", "It is about this node:", told]
         last = (store.node_log(about, ("released",)) or [None])[-1]
         if last is not None and not split:
             wanted = P.wanted(store, node)

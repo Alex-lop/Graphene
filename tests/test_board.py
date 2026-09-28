@@ -17,6 +17,7 @@ from graphene_map import board as B
 from graphene_map import plan as P
 from graphene_map import plan_text as T
 from graphene_map.cli import build
+from graphene_map.run import run_plan
 from graphene_map.store import Store
 
 ALEX = P.Caller("alex", True)
@@ -150,6 +151,34 @@ def test_an_agent_cannot_answer_and_its_note_waits_for_the_person(repo, tmp_path
     assert person("board", "take", mine["id"]).exit_code == 0
     with Store.open(repo) as store:
         assert B.decided(store) == ["the tests are slow"]
+
+
+EXECUTOR = """
+import os, pathlib, sys
+pathlib.Path(os.environ["TOLD"]).write_text(sys.argv[-1])
+pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
+"""
+
+
+def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
+    planned(repo, tmp_path)
+    person("plan", "accept")
+    person("board", "pick", "which-id", "1")
+    person("board", "take", "int-ids")
+    person("board", "note", "keep", "it", "short")
+    shown = person("node", "show", "users").stdout
+    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py\n" in shown
+    assert "  decided: assumed: ids are integers\n" in shown
+    assert "  decided: keep it short\n" in shown  # the person's own note is told as written
+    script, told = repo.parent / f"{repo.name}-executor.py", repo.parent / f"{repo.name}-told.txt"
+    script.write_text(EXECUTOR)  # beside the repo, so neither is anybody's stray file
+    monkeypatch.setenv("TOLD", str(told))
+    with Store.open(repo) as store:
+        run_plan(store, repo, f"{sys.executable} {script}", say=lambda _: None, logs=repo / ".graphene/runs")
+        assert P.get(store, "users").state == P.DONE
+    told = told.read_text()
+    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py" in told
+    assert told.index("decided:") < told.index("scope:  api.py, schema.py")
 
 
 EFFECTS = """\

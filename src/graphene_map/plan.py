@@ -735,13 +735,15 @@ def _end_check(proc: subprocess.Popen) -> None:
 # -- the operations -------------------------------------------------------------------------------
 
 
-def contract(node: Node, why: list[str] | None = None) -> str:
+def contract(node: Node, why: list[str] | None = None, decided: list[str] | tuple = ()) -> str:
     """The node as its executor is told it: the whole of what they are bound to, and why it is being
-    done at all (``trail``: from the plan's goal down to this node, in the person's words)."""
+    done at all (``trail``: from the plan's goal down to this node, in the person's words), and what
+    the person decided on the board that bears on it (``board.decided``)."""
     lines = [
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
+        *(f"  decided: {line}" for line in decided),
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
