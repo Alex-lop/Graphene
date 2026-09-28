@@ -216,6 +216,50 @@ verb (asks, assumes, risk, leaves out, note). What is settled, parked or dropped
 each key does there. `graphene plan` says `the board: 2 questions, 1 risk open (graphene board)` while
 anything waits.
 
+## P1e. Views of the plan, and talking on it
+
+`views.py`. The outline is the screen's tree and `graphene plan`'s print. A view is a module with a
+pure `draw(nodes, words, goal, width, height, cursor)`, which returns `None` when the view does not fit
+the width, and optionally `suits(...)`, a score from 0 to 100. There are two:
+
+- `tree` (`view_tree.py`) draws the plan top-down, the goal at the top and each parent centred over
+  its children. A node is its glyph and id in its state's colour, with its title under them when there
+  is room and `←2` for how many nodes it waits on. When the tree is too wide it drops the titles, then
+  lists each sub-goal's leaves downwards, then folds sub-goals whose leaves are all done, and only then
+  gives up.
+- `dag` (`view_dag.py`) draws only leaves, left to right. A leaf's column is the longest chain of
+  `needs` before it, so one column can run at once. A line goes from the leaf that is needed into the
+  one that waits, and never through a cell. A need already implied by another is not drawn. The
+  critical path (the longest chain of leaves not done) is bold and heavy.
+
+`Tab` in `graphene watch` goes to the next view that draws at this size, then back to the outline; the
+cursor stays on its node, and `h` `l` move to the cell beside. `--view auto` (`views.choose`) opens a
+view only when its `suits` beats the outline's 50, it draws, and it fits the rows it has; a view that
+draws `needs` may be taller. A tie goes to the outline. `graphene plan --view NAME [--width --height]`
+prints what `Tab` shows, in plain text. A view that does not fit prints the outline and says so on
+stderr. The page (`graphene ui`, §6) draws the same outline, tree and graph from the same critical path
+and `at_once` (`plan_view.py`).
+
+**Talking on a node** (`talk.py`). `?` on a node opens one line:
+- `w`: `graphene talk why ID`. The planner's answer is a note on the board about the node, by the
+  planner, which the person takes or drops.
+- `s`: `graphene node split ID`, leaves under it, proposed.
+- `m`: `graphene talk merge ID ID…` on the rows selected with `V`. One proposed leaf for all of them,
+  and a question on the board. Its default drops them; its option, keep them apart, drops the new one.
+- `a`: `graphene talk another ID`. Another way, proposed beside it, and a question whose default keeps
+  the node and whose option takes the other way.
+- Anything else is `graphene ask WORDS --about ID`.
+
+Each is `graphene ask --about` with its own words to the planner (`ask.talking`), so every planner
+answers it. Graphene puts the question up in the planner's name, so its `then:` lines are right
+whatever the planner wrote.
+
+**What changed since the person last looked.** `graphene plan seen` (`m` on the screen) keeps a mark,
+the last row of the plan's log the person has seen (meta `seen:NAME`). `graphene plan changes` lists
+what anyone else did after it: added, edited, dropped, the board. The screen puts `+` (added) or `~`
+(changed) before such a row's id, and `~` on a folded row when anything inside it changed. The bottom
+line counts them. Only the person moves the mark, so a planner's revision cannot slip past.
+
 ## P2. The boundary: what makes a node done
 
 `graphene node start <id>` refuses unless the node is open, everything it needs is done, the caller
@@ -698,7 +742,9 @@ grading is simply absent rather than being guessed at from something else (P6).
 
 `graphene` with no command prints the plan when the repo has one, and otherwise one line saying how
 to start one. `graphene watch` is the plan on one screen (P1a); `graphene plan --text` the plan as
-text (P1c). `graphene node show <id>` is a node's record (P6). `graphene ui` is the plan and, behind
+text (P1c). `graphene node show <id>` is a node's record (P6). `graphene board` is the board (P1d),
+`graphene plan --view NAME` a view of the plan and `graphene plan changes` what changed since you last
+looked (P1e), and `graphene config` the settings (P1f). `graphene ui` is the plan and, behind
 it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
 
 `graphene ui` draws what the store holds, the plan and the sessions the hooks recorded, and asks git
@@ -740,7 +786,10 @@ ignores itself in git through a `.gitignore` of its own, so the repo's `.gitigno
 `graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
 first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners
 (agents first, then each person), and every position is computed in Python
-(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The second
+(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The same nodes are
+also laid out as the tree a person draws, the goal at the top; buttons choose the outline, the tree or
+the graph, and `auto` chooses from the plan's shape. Under each, the critical path and what can start
+at once are said in words. The page does not show the board. The second
 screen is the record of a run: lanes of agents over rows of files (`graph.py`).
 
 The page can change the plan only when a person started `graphene ui` (started from an agent's
