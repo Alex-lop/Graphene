@@ -1776,3 +1776,17 @@ def test_an_ask_that_adds_nothing_says_so(repo):
     seen, _ = watch(repo, [], before=ask_ends)
     said = seen["status"].splitlines()[-1]
     assert said.startswith("the planner proposed nothing and put nothing on the board"), said
+
+
+def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
+    """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
+    line offered `y accept it all`."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
+    seen, _ = watch(repo, [])
+    keys = seen["status"].splitlines()[1]
+    assert "you: 1" in seen["status"] and not keys.startswith("y accept"), keys

@@ -838,6 +838,7 @@ class Watch(App):
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
+            "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
             "board": len(self.board.open),  # they wait on the person too: `you: 1 + 5 on the board`
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
@@ -1284,7 +1285,7 @@ class Watch(App):
             return [":ask what you want", *tail]
         if self.on_goal():
             ended = ":plan archive puts it away" if self.counts.get("finished") else "R run all ready"
-            keys = ["y accept it all"] if self.counts.get("you") else [ended]
+            keys = ["y accept it all"] if self.counts.get("proposed") else [ended]
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
             return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
