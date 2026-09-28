@@ -270,3 +270,37 @@ def test_a_long_reason_is_cut_to_one_short_line(repo, fake):
     with Store.open(repo) as store:
         [row] = store.node_log("ids", ("suggested",))
     assert row["detail"]["reason"] == offer.why
+
+
+def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(repo, fake, monkeypatch):
+    import sys
+    import types
+
+    put = []
+    board = types.ModuleType("graphene_map.board")
+
+    def add(store, kind, text, who, default=None, then=None, options=None, about=None):
+        put.append(dict(kind=kind, text=text, by=who.label, agent=not who.person, default=default, then=then))
+        return {**put[-1], "about": about}
+
+    board.add = add
+    monkeypatch.setitem(sys.modules, "graphene_map.board", board)  # lane A's board, as its add() is called
+    planned(repo)
+    fake([answer("ids", scope_add=["schema.py"], check="grep -q sorted api.py"),
+          answer("ids", goal_add=True), answer("sorting")])  # fmt: skip
+    with Store.open(repo) as store:
+        item = note.to_board(store, repo, "ids come back sorted")
+        assert item == {
+            "kind": "note", "by": "note:nemotron", "agent": True, "about": "ids",
+            "text": "you said 'ids come back sorted'; a stand-in, not Token Factory, places it on ids: "
+            "it says so",
+            "default": "take it: scope ids + schema.py; check ids: grep -q sorted api.py",
+            "then": ["scope ids + schema.py", "check ids: grep -q sorted api.py"],
+        }  # fmt: skip
+        item = note.to_board(store, repo, "ids come back sorted")
+        assert item["then"] == [] and item["default"] == (
+            "run it yourself: graphene node set ids --goal 'users returns ids; ids come back sorted'"
+        )
+        said = []
+        assert note.to_board(store, repo, "ids come back sorted", say=said.append) is None and len(said) == 1
+    assert len(put) == 2

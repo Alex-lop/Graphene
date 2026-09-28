@@ -54,6 +54,14 @@ class Offer:
     command: str  # what the person types to take it
     why: str  # the model's reason, one sentence
     endpoint: str  # who answered, as the usage row says it: "token factory" or "a stand-in"
+    then: tuple[str, ...] = ()  # the board's `then:` lines that make the whole change; () when it has none
+
+    def said(self) -> str:
+        """Who answered and where it goes, as the person reads it: never live when a stand-in answered."""
+        live = self.endpoint == "token factory"
+        who = "Nemotron on Token Factory" if live else "a stand-in, not Token Factory,"
+        where = "finds no leaf for it: a new one" if self.target == NEW else f"places it on {self.target}"
+        return f"{who} {where}: {self.why}" if self.why else f"{who} {where}"
 
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # ESC, CR, BEL...: what could redraw a terminal line
@@ -204,7 +212,28 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
     store.log_node(node.id if node else "*", P._now(), "suggested", WHO, None, None, {
         "note": sentence, "command": command, "reason": why, "rev": node.rev if node else None,
         "endpoint": endpoint})  # fmt: skip
-    return Offer(target, command, why, endpoint)
+    grown = [g for g in add if g not in scope]
+    spelled = node is not None and not remove and "goal" not in changes  # all of it in the board's forms
+    # ponytail: a glob holding a comma is split by the board's reader; quote-aware when one turns up
+    then = ((f"scope {target} + {shlex.join(grown)}",) if spelled and grown else ()) + (
+        (f"check {target}: {changes['check']}",) if spelled and "check" in changes else ())  # fmt: skip
+    return Offer(target, command, why, endpoint, then)
+
+
+def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> dict | None:
+    """Place a note and put the offer on the board, for a board screen to call outside a claim: a `note`
+    item by note:nemotron about the leaf, waiting on the person. Its default, taken, makes the change
+    when the board can spell all of it (scope NODE + GLOB, check NODE: COMMAND); a change it cannot (a
+    goal, a glob taken out, a new leaf) is the command in the default's words, for the person to run.
+    Returns the item, or None when nothing is offered (``say`` hears why)."""
+    from . import board as B  # lane A's board: here once the coordinator merges it
+
+    offer = route(store, root, sentence, say)
+    if offer is None:
+        return None
+    default = f"take it: {'; '.join(offer.then)}" if offer.then else f"run it yourself: {offer.command}"
+    return B.add(store, "note", f"you said '{sentence}'; {offer.said()}", P.Caller(WHO, False), default,
+                 list(offer.then), about=None if offer.target == NEW else offer.target)  # fmt: skip
 
 
 def register(plan_cli: typer.Typer, root, open_store, fail) -> None:
@@ -220,8 +249,5 @@ def register(plan_cli: typer.Typer, root, open_store, fail) -> None:
             fail(str(no), 1)
         if offer is None:
             raise typer.Exit(1)
-        live = offer.endpoint == "token factory"  # never said of a stand-in's answer
-        who = "Nemotron on Token Factory" if live else "a stand-in, not Token Factory,"
-        where = "finds no leaf for it: a new one" if offer.target == NEW else f"places it on {offer.target}"
-        typer.echo(f"{who} {where}: {offer.why}" if offer.why else f"{who} {where}")
+        typer.echo(offer.said())
         typer.echo(f"take it:  {offer.command}")
