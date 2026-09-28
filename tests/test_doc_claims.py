@@ -72,3 +72,15 @@ def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratc
     assert f"`{before}` on a scratch plan of four proposed leaves" in hackathon
     assert f"`{after}` here" in storyboard and f"`… · {before.split(' · ')[-1]}` before" in storyboard
     assert "2 at once" not in hackathon + storyboard and "Two leaves can start at once" not in storyboard
+
+
+def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
+    import inspect
+
+    from graphene_map import precheck
+
+    forks = inspect.getsource(precheck._forks)
+    assert 'or "contree"' in forks and "S.pack(root)" in forks  # ConTree by default, the checkout packed
+    privacy = doc("README.md").split("## Privacy")[1].split("## ")[0]
+    assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in privacy
+    assert "whatever the planner" in privacy

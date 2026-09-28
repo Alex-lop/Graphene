@@ -385,7 +385,11 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
   (`graphene key set`); a command the model runs, and every check, gets an environment without it.
   With Claude Code or Codex, Graphene itself sends nothing anywhere: `graphene run` and `graphene ask`
   start the executor or planner you name, with the permissions you give it. The prototypes
-  (`plan cover`, `plan note`, `plan precheck`, `GRAPHENE_SHAPE`) are the exception: they ask Nano.
+  (`plan cover`, `plan note`, `plan precheck`, and `GRAPHENE_SHAPE`, which runs them after every
+  `graphene ask`) are the exception, whatever the planner: `plan cover` and `plan note` ask Nano, and
+  `plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set (to Docker on
+  this machine with `GRAPHENE_SANDBOX=docker`) to run each check, and asks Nano only about a failing
+  check whose exit code does not say why.
 - What a Nemotron leaf cost is Token Factory's own token count at its list price: in the leaf's
   record, on `graphene watch`'s status line, and on the run's last line.
 - Graphene reads no Claude Code transcript. What it knows of a session is what its hooks recorded
