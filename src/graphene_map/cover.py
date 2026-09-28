@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 from collections.abc import Callable
 from pathlib import Path
 
@@ -109,10 +108,18 @@ def _nano() -> str:
     return found["nano"]
 
 
-def offer(node: P.Node, clause: str) -> str:
-    """The command that puts the person's clause, as they wrote it, at the end of the leaf's goal."""
-    goal = f"{node.goal.strip().rstrip('.')}; {clause}" if node.goal.strip() else clause
-    return f"graphene node set {node.id} --goal {shlex.quote(goal)}"
+def take(store, u: dict, who: P.Caller) -> str:
+    """Put an uncovered clause, as the person wrote it, at the end of its nearest leaf's goal as that
+    goal is now (read at this moment, so an edit made since the cover ran stays). Says what changed."""
+    if not u.get("nearest"):
+        raise P.Refused(f"no open leaf is near '{u['note']}': add it in `graphene plan edit`")
+    node = P.get(store, u["nearest"])
+    if u["note"].lower() in node.goal.lower():
+        raise P.Refused(f"{node.id}'s goal carries it already: {node.goal}")
+    goal = f"{node.goal.strip().rstrip('.')}; {u['note']}" if node.goal.strip() else u["note"]
+    was = node.goal
+    node = P.edit(store, node.id, {"goal": goal}, who)
+    return f"{node.id} is now revision {node.rev}; goal: {was} → {node.goal}"
 
 
 def cover(store, paragraph: str | None = None, say: Callable[[str], None] = print) -> list[dict]:
@@ -190,7 +197,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         + (f"; dropped, not your words: {len(dropped)}" if dropped else "")
         + (f"; dropped, a piece of a clause: {pieces}" if pieces else ""))  # fmt: skip
     for k, u in enumerate(uncovered, 1):
-        take = f"Take it: `{offer(by_id[u['nearest']], u['note'])}`" if u["nearest"] else (
+        near = u["nearest"]
+        take = f"Take it: `graphene plan cover --take {k}` puts it at the end of {near}'s goal" if near else (
             "No open leaf is near it: add it in `graphene plan edit`")  # fmt: skip
         say(f"{k}. You said '{u['note']}'; no leaf carries it. {take}")
     if uncovered:
@@ -224,6 +232,7 @@ def command(plan_cli: typer.Typer, run, out) -> None:
                                        help="The paragraph, from a file. Default: the last one "
                                        "`graphene ask` was given."),  # fmt: skip
         dismiss: int = typer.Option(None, "--dismiss", help="Set clause N of the last cover aside for good."),
+        take_: int = typer.Option(None, "--take", help="Put clause N at the end of its nearest leaf's goal."),
     ) -> None:
         """Nano says which leaf carries each clause of your paragraph; for one no leaf carries, you are
         offered the command that puts your own words, as you wrote them, on the nearest leaf."""
@@ -232,11 +241,13 @@ def command(plan_cli: typer.Typer, run, out) -> None:
         def go(store):
             if not who.person:
                 raise P.Refused("cover is the person's: it asks Nano, and spends")
-            if dismiss is None:
+            if dismiss is None and take_ is None:
                 return cover(store, paragraph.read_text(encoding="utf-8") if paragraph else None, say)
-            now = last(store)
-            if not 1 <= dismiss <= len(now):
-                raise P.Refused(f"the last cover found {len(now)} clause(s) no leaf carries: no {dismiss}")
+            now, n = last(store), dismiss or take_
+            if not 1 <= n <= len(now):
+                raise P.Refused(f"the last cover found {len(now)} clause(s) no leaf carries: no {n}")
+            if take_ is not None:
+                return say(take(store, now[n - 1], who))
             clause = now[dismiss - 1]["note"]
             store.log_node("*", P._now(), "dismissed", who.label, None, None, {"note": clause})
             say(f"set aside for good: '{clause}'")

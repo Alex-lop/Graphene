@@ -110,7 +110,8 @@ def test_a_clause_no_leaf_carries_is_one_row_and_its_offer_is_the_persons_words(
     assert "answered by a stand-in, not Token Factory" in said[0]
     assert said[1] == "your paragraph, in clauses: 3; the plan carries 2, no leaf carries 1"
     offered = said[2].split("`")[1]
-    assert said[2].startswith(f"1. You said '{SAID}'; no leaf carries it. Take it: `graphene node set")
+    assert said[2] == (f"1. You said '{SAID}'; no leaf carries it. Take it: `graphene plan cover --take 1` "
+                       "puts it at the end of xml-wiring's goal")  # fmt: skip
     took = person(*shlex.split(offered)[1:])  # the command as the person would paste it
     assert took.exit_code == 0, took.output
     with Store.open(repo) as store:
@@ -222,3 +223,17 @@ def test_a_piece_of_a_clause_is_never_offered_as_the_persons_words(repo, fake):
     assert got == ["keep its order", "Prices are in cents", "do not multiply them"]  # the last is a piece
     assert read["detail"]["pieces"] == 6 and read["detail"]["dropped"] == []
     assert said[1].endswith("no leaf carries 3; dropped, a piece of a clause: 6")
+
+
+def test_taking_a_clause_keeps_an_edit_made_since_the_cover_ran(repo, fake):
+    fake([nano(ANSWER)])
+    with planned(repo) as store:
+        C.cover(store, say=lambda s: None)
+    edited = person("node", "set", "xml-wiring", "--goal", "read the XML feed into items, in order")
+    assert edited.exit_code == 0, edited.output
+    took = person("plan", "cover", "--take", "1")
+    assert took.exit_code == 0, took.output
+    with Store.open(repo) as store:
+        assert P.get(store, "xml-wiring").goal == f"read the XML feed into items, in order; {SAID}"
+    again = person("plan", "cover", "--take", "1")
+    assert again.exit_code == 1 and "carries it already" in again.output
