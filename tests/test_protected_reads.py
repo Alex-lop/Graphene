@@ -104,3 +104,8 @@ def test_a_planner_cannot_reach_a_protected_file_by_its_case_or_a_tracked_link(r
     assert refused(hook(repo, "Read", file_path=str(repo / "docs/link.txt")))
     assert refused(hook(repo, "Grep", pattern="KEY", path="SECRETS"))
 
+
+def test_a_planners_grep_whose_glob_leaves_the_protected_files_out_is_let_through(repo, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PLANNER", "1")
+    assert hook(repo, "Grep", pattern="def", glob="*.py") is None
+    assert refused(hook(repo, "Grep", pattern="KEY", glob="*.txt"))

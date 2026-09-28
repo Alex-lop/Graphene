@@ -506,9 +506,10 @@ def _protected_read(store, event: dict, root: Path) -> str | None:
         return None
     base = "" if real in ("", ".") else real.rstrip("/").casefold() + "/"
     under = [f for f in P.in_tree(root) if f.casefold().startswith(base)]
-    pattern = tool_input.get("pattern") if tool == "Glob" else None
-    if isinstance(pattern, str) and pattern:
-        under = [f for f in under if P.in_scope(f[len(base) :], [pattern])]
+    pattern = tool_input.get("pattern" if tool == "Glob" else "glob")
+    if isinstance(pattern, str) and pattern:  # a Grep's glob with no / matches a name at any depth, as rg's
+        named = tool == "Grep" and "/" not in pattern
+        under = [f for f in under if P.in_scope(f.rsplit("/", 1)[-1] if named else f[len(base) :], [pattern])]
     return next((f for f in under if P.in_scope(f, hidden)), None)
 
 
@@ -543,8 +544,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
     hidden = _protected_read(store, event, root) if name == "PreToolUse" and planner else None
     if hidden is not None:
         store.log_node("*", P._now(), "denied", None, sid, None, {"path": hidden, "how": "planner read"})
-        return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so never "
-                     "sends it to a model. Search a narrower path that leaves it out")  # fmt: skip
+        return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so "
+                     "never sends it to a model. Search a narrower path, or a glob, that leaves it out")
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")
