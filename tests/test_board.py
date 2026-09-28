@@ -83,7 +83,7 @@ def test_the_planners_items_land_on_the_board_as_the_planners(repo, tmp_path):
     assert shown.exit_code == 0
     lines = shown.stdout.splitlines()
     assert lines[0] == "the board: 5 open"
-    assert lines[-1] == "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
+    assert lines[-1] == "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
     assert max(len(line) for line in lines) <= 80  # 80 columns
     assert lines[1] == "questions" and lines[2].split()[-2:] == ["which-id", "open"]
     assert "      default: the row id; schema.py already has it" in lines
@@ -556,3 +556,16 @@ def test_graphene_plan_says_what_the_board_waits_on_you_for(repo, tmp_path):
     shown = person("plan").stdout
     assert "\nthe board: 2 questions open (`graphene board`)\n" in shown
     assert "waiting on you: 2 on the board (`graphene board`)" in shown
+
+
+def test_unpark_opens_a_parked_item_again_and_is_one_undoable_command(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "assume: ids are integers  [int-ids]\n", PLANNER, None)
+    person("board", "park", "int-ids")
+    back = person("board", "unpark", "int-ids")
+    assert back.exit_code == 0 and back.stdout == "open int-ids: ids are integers\n"
+    again = person("board", "unpark", "int-ids")
+    assert again.exit_code == 1 and "int-ids is open, not parked" in again.stderr
+    assert person("plan", "undo").stdout == "undid: board unpark int-ids\n"
+    with Store.open(repo) as store:
+        assert B.get(store, "int-ids")["state"] == "parked"

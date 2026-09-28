@@ -350,7 +350,7 @@ def settle(
                 "`graphene plan undo` takes an answer back"
             )
         if state == "open" and item["state"] != "parked":
-            return item
+            raise P.Refused(f"{item_id} is {reads(item)}, not parked")
         effects: list[str] = []
         answer = None
         if state == "taken":
@@ -395,6 +395,10 @@ def answer(store, item_id: str, words: str, who: P.Caller) -> dict:
 
 def park(store, item_id: str, who: P.Caller) -> dict:
     return settle(store, item_id, "parked", who)
+
+
+def unpark(store, item_id: str, who: P.Caller) -> dict:
+    return settle(store, item_id, "open", who)
 
 
 def drop(store, item_id: str, who: P.Caller) -> dict:

@@ -17,7 +17,7 @@ EMPTY = (
     "you put up notes (`graphene board note '…'`)"
 )
 WIDE = 80  # the print is laid out to 80 columns, as `graphene plan`'s is
-ACTS = "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
+ACTS = "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
 
 
 def rows(store) -> list[str]:
@@ -150,6 +150,11 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     def park(item_id: str = typer.Argument(...)) -> None:
         """Park it: not now; it stays on the board, told to nobody."""
         act(f"board park {item_id}", lambda s, who, files: B.park(s, item_id, who))
+
+    @board_cli.command()
+    def unpark(item_id: str = typer.Argument(...)) -> None:
+        """Unpark it: it is open again, waiting on you."""
+        act(f"board unpark {item_id}", lambda s, who, files: B.unpark(s, item_id, who))
 
     @board_cli.command()
     def answer(item_id: str = typer.Argument(...), words: list[str] = typer.Argument(...)) -> None:
