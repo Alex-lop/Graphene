@@ -387,6 +387,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if ctx.invoked_subcommand is not None:
             return
         who = P.caller()
+        if view and (as_json or as_text):
+            fail("--view draws the plan; --json and --text print what it holds: one or the other", 2)
         if as_text:
             run(lambda s: out(T.render(s)[0].rstrip("\n")))
             return

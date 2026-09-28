@@ -385,8 +385,8 @@ def test_watch_takes_the_view_too(repo, grid, monkeypatch):
     assert unknown.exit_code == 2 and "no view named dag: the views are auto, outline, grid" in unknown.output
 
 
-def test_plan_view_outline_keeps_all(repo, tmp_path):
-    """`plan --view outline --all` dropped --all."""
+def test_plan_view_outline_keeps_all_and_a_view_with_json_or_text_is_refused(repo, tmp_path):
+    """`plan --view outline --all` dropped --all, and `--view` with --json printed the text tree."""
     import json
 
     person("plan", "goal", "ship invoices by email")
@@ -397,6 +397,9 @@ def test_plan_view_outline_keeps_all(repo, tmp_path):
     assert person("plan", "propose", str(tmp_path / "t.json")).exit_code == 0
     every = person("plan", "--all").stdout
     assert person("plan", "--view", "outline", "--all").stdout == every != person("plan").stdout
+    for other in ("--json", "--text"):
+        refused = person("plan", "--view", "auto", other)
+        assert refused.exit_code == 2 and "one or the other" in refused.output
 
 
 def test_watch_once_in_a_view_that_is_the_outline_says_what_just_happened(repo, monkeypatch):
