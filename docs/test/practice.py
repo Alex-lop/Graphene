@@ -21,7 +21,7 @@ and no log holds it (<the sealed paragraph of feeds> stands in its place), no co
 that rung, and it stops at arm A's failure. The dry run never reads it: it passes a placeholder.
 
 Live, only the person climbs: from a shell with an agent's mark, rungs 2-7 run nothing and say so (rung 1
-prints the line to type with `!`).
+prints the line to type with `!`). Ctrl-C stops a rung, cleans up, and says what is left and how to clean it.
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ class Rung:
     """One rung's run: its environment (its cap, the ledger, the stand-ins when dry), its log, its repos."""
 
     def __init__(self, n: int, cap: float):
-        self.n, self.cap, self.sealed = n, cap, []  # sealed: text no line and no log holds
+        self.n, self.cap, self.sealed, self.made = n, cap, [], []  # sealed: text no line and no log holds
         self.log = STATE / f"rung-{n}.log"
         self.log.write_text("", encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith("GRAPHENE_")}
@@ -155,7 +155,10 @@ class Rung:
             out, _ = proc.communicate(timeout=timeout)
         except KeyboardInterrupt:  # its own session misses the Ctrl-C: pass it on, and leave nothing running
             os.killpg(proc.pid, signal.SIGTERM)
-            proc.communicate(timeout=120)
+            try:
+                proc.communicate(timeout=120)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
             raise
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGTERM)  # graphene takes it as Ctrl-C: every executor is ended
@@ -181,7 +184,8 @@ class Rung:
 
     def where(self, name: str) -> Path:
         WORK.mkdir(parents=True, exist_ok=True)
-        return WORK / f"{self.n}-{name}-{time.strftime('%Y%m%d-%H%M%S')}"
+        self.made.append(WORK / f"{self.n}-{name}-{time.strftime('%Y%m%d-%H%M%S')}")
+        return self.made[-1]
 
     def feeds(self, name: str, recorder: Path | None = None) -> tuple[Path, subprocess.Popen | None]:
         """feeds, built fresh outside this repository, and `graphene init` for Nemotron; with ``recorder``,
@@ -518,45 +522,63 @@ def marked() -> str | None:
     return next((m for m in MARKS if os.environ.get(m)), None)
 
 
-def climb(n: int) -> bool:
-    """One rung: PASS or FAIL, what it cost, the bill so far, how long, and the next command."""
+def interrupted(signum, frame) -> None:
+    """The first Ctrl-C stops the rung; one more while it cleans up is ignored, so the cleanup ends whole."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    raise KeyboardInterrupt
+
+
+def climb(n: int) -> str:
+    """One rung: PASS, FAIL or STOPPED, what it cost, the bill so far, how long, and the next command."""
     name, cap, _, rung = RUNGS[n]
     cap = float(os.environ.get("PRACTICE_CAP") or cap)
     r, before, began = Rung(n, cap), spent(), time.monotonic()
     say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
+    signal.signal(signal.SIGINT, interrupted)
     try:
         mark = None if DRY or n == 1 else marked()  # rung 1 has its own way: the person types access.py
         if mark:
             raise Failed(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your key "
                          f"and is recorded as you: nothing was run. Type it yourself, in a terminal where "
                          f"no agent's mark is set:\n    {ME} {n}")  # fmt: skip
-        said, ok = rung(r), True
+        said, result = rung(r), "PASS"
     except Failed as no:
-        said, ok = str(no), False
+        said, result = str(no), "FAIL"
     except Exception as no:  # an SDK's or a sandbox's own error is a result here
-        said, ok = f"{type(no).__name__}: {no}", False
+        said, result = f"{type(no).__name__}: {no}", "FAIL"
+    except KeyboardInterrupt:
+        left = [str(p) for p in r.made if p.exists()]
+        said, result = "stopped by you (Ctrl-C): what it had started was ended and cleaned up", "STOPPED"
+        said += (f"\nleft behind: this rung's repos\nto clean: {shlex.join(['rm', '-rf', *left])}" if left
+                 else "\nleft behind: nothing")  # fmt: skip
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
-    rows = progress() | {str(n): {"result": "PASS" if ok else "FAIL", "at": time.strftime("%Y-%m-%d %H:%M"),
+    rows = progress() | {str(n): {"result": result, "at": time.strftime("%Y-%m-%d %H:%M"),
                                    "seconds": round(took, 1),
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip
     PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
     say(
-        f"{'PASS' if ok else 'FAIL'} · rung {n} · {took:.1f} s · this rung ${spent() - before:.4f} · "
-        f"bill so far ${spent():.4f}"
+        f"{result} · rung {n} · {took:.1f} s · this rung ${spent() - before:.4f} · bill so far ${spent():.4f}"
     )
     for line in said.splitlines():
         say(f"  {line}")
-    if not ok:
+    if result == "FAIL":
         means, then = likely(said + "\n" + r.log.read_text(encoding="utf-8"))
         say(f"  most likely: {means}")
         say(f"  try: {then}")
         if n != 6:  # rung 6's log holds the planner's tree of the sealed paragraph: it stays in the file
             for line in r.log.read_text(encoding="utf-8").strip().splitlines()[-6:]:
                 say(f"  | {line[:160]}")
+    if result != "PASS":
         say(f"next: {ME} {n}")
     else:
         say(f"next: {ME} {n + 1}" if n < 7 else "next: the ladder is climbed; `" + ME + " status` shows it")
-    return ok
+    if result != "STOPPED":  # stopped, the ladder is on its way out: one more Ctrl-C is ignored there too
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    return result
+
+
+EXIT = {"PASS": 0, "FAIL": 1, "STOPPED": 130}
 
 
 def status() -> None:
@@ -627,9 +649,9 @@ def main(argv: list[str]) -> int:
                 "the whole ladder, against the stand-ins; the Docker sandbox is "
                 + ("up" if docker_runs() else "NOT up")
             )
-            ok = all(climb(n) for n in RUNGS)  # stops at the first FAIL
+            result = next((got for got in map(climb, RUNGS) if got != "PASS"), "PASS")  # the first not passed
             status()
-            return 0 if ok else 1
+            return EXIT[result]
         rows = progress()
         n = (
             int(args[0])
@@ -640,7 +662,7 @@ def main(argv: list[str]) -> int:
             status()
             say("every rung has passed")
             return 0
-        return 0 if climb(n) else 1
+        return EXIT[climb(n)]
     finally:
         if FAKE is not None:
             FAKE.__exit__(None, None, None)

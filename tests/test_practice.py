@@ -2,12 +2,15 @@
 scripted fake Token Factory (tests/fake_tokenfactory.py, started by the ladder itself) and Docker in place of
 ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes."""
 
+import contextlib
 import importlib.util
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -171,7 +174,7 @@ def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(t
     monkeypatch.setattr(practice.Rung, "graphene", graphene)
     arm_a = "failed" if fails == "arm A's run" else "done"
     monkeypatch.setattr(practice, "leaves", lambda repo: {"arm-a": arm_a})
-    assert practice.climb(6) is False
+    assert practice.climb(6) == "FAIL"
     said = capsys.readouterr().out
     assert "FAIL · rung 6 · " in said
     for line in words.splitlines():
@@ -180,3 +183,27 @@ def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(t
         assert built == ["arm-a"] and "arm B was not started" in said  # nothing more is spent
     else:
         assert built == ["arm-a", "arm-b"] and "`graphene ask <the sealed paragraph of feeds>" in said
+
+
+@pytest.mark.skipif(not docker_runs(), reason="needs a running Docker (the sandbox stand-in)")
+def test_ctrl_c_stops_a_rung_and_says_what_is_left(tmp_path):
+    """Ctrl-C twice during the dry escape test, as a terminal sends it (to the whole process group): no
+    traceback, the sandbox cleaned up whole, the rung recorded as stopped, and the cleanup command."""
+    ladder_ = subprocess.Popen([sys.executable, str(PRACTICE), "--dry", "4"], env=environment(tmp_path),
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               start_new_session=True)  # fmt: skip
+    log, deadline = tmp_path / "state" / "rung-4.log", time.monotonic() + 600
+    while not (log.exists() and "[redirect]" in log.read_text()):  # inside the sandbox, mid-test
+        assert ladder_.poll() is None and time.monotonic() < deadline, ladder_.communicate()
+        time.sleep(0.1)
+    os.killpg(ladder_.pid, signal.SIGINT)
+    time.sleep(0.1)
+    with contextlib.suppress(PermissionError, ProcessLookupError):  # gone already: it cleaned up that fast
+        os.killpg(ladder_.pid, signal.SIGINT)  # impatient: the second one lands while it cleans up
+    said, err = ladder_.communicate(timeout=600)
+    assert ladder_.returncode == 130 and "Traceback" not in err, said + err
+    assert "· STOPPED · rung 4 · " in said and "stopped by you" in said
+    left = [ln for ln in said.splitlines() if "to clean: rm -rf " in ln]
+    assert left and str(tmp_path / "work" / "4-escape-") in left[0]
+    assert json.loads((tmp_path / "state" / "progress.json").read_text())["4"]["result"] == "STOPPED"
+    assert "next: docs/test/practice.sh --dry 4" in said
