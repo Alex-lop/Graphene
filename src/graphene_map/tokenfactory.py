@@ -244,20 +244,21 @@ def chat(
     tools: list[dict] | None = None,
     tag: str = "",
     tries: int = TRIES,
-    timeout: float = TIMEOUT,
+    timeout: float | None = None,
     **params,
 ) -> dict:
     """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model"}``: the
     assistant's message as Token Factory sent it (``content``, ``tool_calls``, any reasoning), its usage,
     and that usage at list price. ``params`` go into the request as they are (temperature, max_tokens,
     and whatever a model reads beyond those). ``tag`` names the caller in the ledger (a leaf's id).
-    ``tries`` and ``timeout`` bound the waiting: a helper nobody waits on asks once, briefly."""
+    ``tries`` and ``timeout`` bound the waiting: a helper nobody waits on asks once, briefly. The
+    default timeout is read when called, so a patched ``TIMEOUT`` holds."""
     limit = cap()
     if limit is not None and _ledger() is not None and spent() >= limit:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
     began = time.monotonic()
-    said, headers = _request("POST", "chat/completions", body, timeout=timeout, tries=tries)
+    said, headers = _request("POST", "chat/completions", body, timeout=timeout or TIMEOUT, tries=tries)
     took = time.monotonic() - began
     try:
         message = said["choices"][0]["message"]
