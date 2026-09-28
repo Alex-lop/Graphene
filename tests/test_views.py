@@ -172,6 +172,34 @@ def test_tab_on_a_sub_goal_the_graph_shows_its_first_leaf_and_tab_back_the_sub_g
     assert moved["cursor"] != "api"
 
 
+def test_a_graph_that_no_longer_fits_gives_the_outline_the_node_the_person_was_on(repo, monkeypatch):
+    """On a sub-goal the graph stands its first leaf in; when the terminal got too narrow, the outline
+    landed on that leaf, and the next Tab jumped back to the sub-goal."""
+    from graphene_map import view_dag
+
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "dag": view_dag})
+    proposed(repo)
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            for key in ("j", "tab"):  # j: the sub-goal api, whose first leaf is ids
+                await pilot.press(key)
+                await pilot.pause()
+            assert (app.showing, app.selected()) == ("dag", "ids")
+            await pilot.resize_terminal(8, 24)
+            app.refresh_plan()  # as a tick does
+            await pilot.pause()
+            assert (app.showing, app.selected()) == ("outline", "api")
+            await pilot.resize_terminal(120, 36)
+            app.refresh_plan()
+            await pilot.press("tab")
+            await pilot.pause()
+            assert (app.showing, app.selected()) == ("dag", "ids")
+
+    asyncio.run(go())
+
+
 @pytest.mark.parametrize("size", SIZES)
 def test_a_view_takes_the_whole_width_and_the_node_pane_goes_under_it(repo, grid, size):
     """Beside the node pane a view had 71 of 120 columns, and a tree lost its titles there."""

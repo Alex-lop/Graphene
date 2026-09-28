@@ -953,6 +953,9 @@ class Watch(App):
         if show and name != "outline" and drawn is None:
             self.showing = "outline"
             self.message = f"the {name} does not fit at {self.size.width} columns: the outline"
+            if self.mapped is not None and self.mapped[1] == self.here:  # a stand-in: the node itself
+                self.here = self.mapped[0]
+            self.mapped = None
             self.tree_to(self.here)
         self.drawn = drawn
         self.tree.display, box.display = show and drawn is None, drawn is not None
