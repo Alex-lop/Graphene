@@ -140,6 +140,86 @@ def test_a_sub_goal_counts_the_leaves_beneath_it_as_they_finish(store, repo, fin
     assert (at["top"]["leaves_done"], at["top"]["leaves_total"]) == (1, 2)
 
 
+def tree_boxes(view):
+    return [(n["tree_x"], n["tree_y"], n["width"], n["height"]) for n in view["nodes"]]
+
+
+def sub(node_id, *children):
+    return node(node_id, scope=[], check=None, children=list(children))
+
+
+def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_centred_over_its_children(
+    store,
+):
+    plan.set_goal(store, "feeds load", ALEX)
+    plan.propose(
+        store,
+        [
+            sub("readers", node("csv"), sub("xml", node("parse"), node("wire"), node("map")), node("json")),
+            node("alone"),
+            sub("proof", node("e2e", needs=["readers"])),
+        ],
+        ALEX,
+    )
+    first, second = build_plan_view(store), build_plan_view(store)
+    assert first["nodes"] == second["nodes"] and first["tree_links"] == second["tree_links"]
+    at = {n["id"]: n for n in first["nodes"]}
+    tree = {**first, "nodes": [{**n, "x": n["tree_x"], "y": n["tree_y"]} for n in first["nodes"]]}
+    assert overlapping(tree) == []
+    for parent in ("readers", "xml", "proof"):
+        kids = [n for n in first["nodes"] if n["parent"] == parent]
+        assert at[parent]["tree_x"] == (kids[0]["tree_x"] + kids[-1]["tree_x"]) / 2
+        assert all(k["tree_y"] >= at[parent]["tree_y"] + NODE_H + 40 for k in kids)  # below it, clear of it
+    tops = [n for n in first["nodes"] if n["depth"] == 0]
+    assert first["tree_goal"] == [(tops[0]["tree_x"] + tops[-1]["tree_x"]) / 2, 0.0]  # the goal on top
+    assert min(n["tree_y"] for n in first["nodes"]) > NODE_H
+    leaves = [n["id"] for n in sorted(first["nodes"], key=lambda n: n["tree_x"]) if not n["sub_goal"]]
+    assert leaves == ["csv", "parse", "wire", "map", "json", "alone", "e2e"]  # outline order, left to right
+    links = {(link["source"], link["target"]) for link in first["tree_links"]}
+    assert links == {("", "readers"), ("", "alone"), ("", "proof")} | {
+        (n["parent"], n["id"]) for n in first["nodes"] if n["parent"]
+    }
+    wire = next(link for link in first["tree_links"] if link["target"] == "wire")
+    assert wire["points"][0] == [at["xml"]["tree_x"] + NODE_W / 2, at["xml"]["tree_y"] + NODE_H]
+    assert wire["points"][-1] == [at["wire"]["tree_x"] + NODE_W / 2, at["wire"]["tree_y"]]
+    assert first["tree_width"] == max(n["tree_x"] for n in first["nodes"]) + NODE_W
+    assert first["tree_height"] == max(n["tree_y"] for n in first["nodes"]) + NODE_H
+
+
+def test_the_critical_path_on_a_diamond_is_the_longest_chain_and_a_tie_goes_to_the_plans_order(store):
+    plan.propose(
+        store, [node("a"), node("b", needs=["a"]), node("c", needs=["a"]), node("d", needs=["b", "c"])], ALEX
+    )
+    view = build_plan_view(store)
+    assert view["critical"] == ["a", "b", "d"]
+    assert {e["id"] for e in view["edges"] if e["critical"]} == {"a>b", "b>d"}
+    assert view["ready"] == ["a"]  # the one leaf that can start now
+
+
+def test_the_critical_path_through_a_chain_leaves_out_what_is_done_and_follows_a_need_on_a_sub_goal(
+    store, repo, finish
+):
+    plan.propose(
+        store,
+        [node("a"), node("b", needs=["a"]), sub("top", node("c"), node("d", needs=["c"])), node("e")],
+        ALEX,
+    )
+    plan.edit(store, "top", {"needs": ["b"]}, ALEX)  # everything under top waits on b
+    view = build_plan_view(store)
+    assert view["critical"] == ["a", "b", "c", "d"]
+    assert {e["id"] for e in view["edges"] if e["critical"]} == {"a>b", "b>top", "c>d"}
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    view = build_plan_view(store)
+    assert view["critical"] == ["b", "c", "d"] and view["ready"] == ["b", "e"]
+
+
+def test_with_nothing_waiting_on_anything_there_is_no_critical_path(store):
+    plan.propose(store, [node("a"), node("b")], ALEX)
+    view = build_plan_view(store)
+    assert view["critical"] == [] and not any(e["critical"] for e in view["edges"])
+
+
 # -- what the page says about a node ---------------------------------------------------------------
 
 
