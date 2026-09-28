@@ -83,7 +83,7 @@ def test_the_planners_items_land_on_the_board_as_the_planners(repo, tmp_path):
     assert shown.exit_code == 0
     lines = shown.stdout.splitlines()
     assert lines[0] == "the board: 5 open"
-    assert lines[-1] == "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
+    assert lines[-1] == "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
     assert max(len(line) for line in lines) <= 80  # 80 columns
     assert lines[1] == "questions" and lines[2].split()[-2:] == ["which-id", "open"]
     assert "      default: the row id; schema.py already has it" in lines
@@ -171,9 +171,14 @@ def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
     person("board", "take", "int-ids")
     person("board", "note", "keep", "it", "short")
     shown = person("node", "show", "users").stdout
-    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py\n" in shown
-    assert "  decided: assumed: ids are integers\n" in shown
-    assert "  decided: keep it short\n" in shown  # the person's own note is told as written
+    assert (
+        "  goal:   users returns ids\n"
+        "  decided:\n"
+        "          which id: the row id or a new uuid? → a uuid column, added to schema.py\n"
+        "          assumed: ids are integers\n"
+        "          keep it short\n"  # the person's own note is told as written
+        "  scope:  api.py, schema.py"
+    ) in shown  # each decision starts in the column every other value does
     script, told = repo.parent / f"{repo.name}-executor.py", repo.parent / f"{repo.name}-told.txt"
     script.write_text(EXECUTOR)  # beside the repo, so neither is anybody's stray file
     monkeypatch.setenv("TOLD", str(told))
@@ -181,7 +186,10 @@ def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
         run_plan(store, repo, f"{sys.executable} {script}", say=lambda _: None, logs=repo / ".graphene/runs")
         assert P.get(store, "users").state == P.DONE
     told = told.read_text()
-    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py" in told
+    assert (
+        "  decided:\n          which id: the row id or a new uuid? → a uuid column, added to schema.py"
+        in told
+    )
     assert told.index("decided:") < told.index("scope:  api.py, schema.py")
 
 
@@ -234,8 +242,16 @@ def test_undo_does_not_lose_what_the_planner_put_up_since(repo):
     person("board", "take", "one")
     with Store.open(repo) as store:
         T.apply(store, "assume: two  [two]\n", PLANNER, None)
-    undone = person("plan", "undo")
-    assert undone.exit_code == 1 and "the board changed since" in undone.stderr
+    person("board", "park", "two")
+    with Store.open(repo) as store:
+        T.apply(store, "risk: three  [three]\n", PLANNER, None)
+    for act in ("board park two", "board take one"):  # the person's own acts, last first
+        undone = person("plan", "undo")
+        assert undone.exit_code == 0 and undone.stdout == f"undid: {act}\n", undone.output
+    with Store.open(repo) as store:
+        assert [(it["id"], it["state"]) for it in B.items(store)] == [
+            ("one", "open"), ("two", "open"), ("three", "open")
+        ]  # fmt: skip
 
 
 def test_an_effect_or_about_that_names_no_node_is_refused_by_its_line(repo):
@@ -401,3 +417,164 @@ def test_a_board_with_nothing_but_dropped_items_reads_as_empty(repo):
     person("board", "note", "later")
     assert person("board", "drop", "later").exit_code == 0
     assert person("board").stdout == EMPTY + "\n"
+
+
+def test_a_leaf_effect_under_a_leaf_puts_the_new_leaf_beside_it_and_keeps_it_a_leaf(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "feed", "title": "the feed"},
+                          {"id": "zero", "title": "zero price", "parent": "feed", "scope": ["feed.py"],
+                           "check": "true"}], ALEX)  # fmt: skip
+        risk = 'risk: no zero sample  [r]\n    default: add one\n    then: leaf "a sample" under zero\n'
+        T.apply(store, risk, PLANNER, None)
+    took = person("board", "take", "r")
+    assert took.exit_code == 0, took.output
+    assert "  changed: proposed sample beside zero, a leaf, under feed" in took.stdout
+    with Store.open(repo) as store:
+        assert P.get(store, "sample").parent == "feed"
+        assert {n.id for n in P.leaves(P.nodes(store))} == {"zero", "sample"}
+
+
+@pytest.mark.parametrize(
+    "deleted, line",
+    [
+        ("question: which id?  [q-open]\n", 3),
+        ("risk: an effect with no words for its default  [r-bare]\n", 21),
+    ],
+)
+def test_deleting_only_an_items_own_line_is_refused_by_the_line_of_what_it_leaves(repo, deleted, line):
+    with Store.open(repo) as store:
+        T.apply(store, ALL, ALEX, None)
+        text, opened = T.render(store)
+        with pytest.raises(P.Refused, match=f"^line {line}: these lines belong to no board item"):
+            T.apply(store, text.replace(deleted, ""), ALEX, opened)
+        assert T.render(store)[0] == text  # nothing moved: not the goal, not the item above
+
+
+def test_wide_characters_keep_the_boards_columns_and_a_note_with_no_ascii_is_called_a_note(repo):
+    from rich.cells import cell_len
+
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        wide = B.note(store, "日本語のメモ", ALEX)
+        B.note(store, "plain words", ALEX)
+        assert wide["id"] == "note"  # not "node", which reads as the plan's
+        shown = rows(store)
+    at = [
+        cell_len(ln[: ln.index(f" {i} ")])
+        for i in ("note", "plain-words")
+        for ln in shown
+        if f"  {i}  " in ln
+    ]
+    assert len(at) == 2 and at[0] == at[1]
+    assert cell_len(T.elide("日本語のメモ " * 10, 12)) <= 12
+
+
+LONG = """\
+question: which XML parser: the standard library's ElementTree or lxml, faster but not installed?  [parser]
+    default: the standard library's ElementTree, because lxml is not installed and nothing else needs it here
+    option: lxml, added to pyproject.toml
+    then: scope users + pyproject.toml, requirements.txt, requirements-dev.txt, setup.cfg, tox.ini
+"""
+
+
+def test_the_board_shows_an_items_whole_text_wrapped_under_its_row(repo):
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, LONG, PLANNER, None)
+        shown = rows(store)
+    row = next(k for k, line in enumerate(shown) if line.endswith("parser  open"))
+    words = " ".join(line.split("  parser  ")[0].strip(" ◇") for line in shown[row : row + 3])
+    assert words.startswith("which XML parser: the standard library's ElementTree or lxml, faster")
+    assert "but not installed?" in words  # the whole question, not cut at 44 characters
+    assert shown[row + 1].startswith("    ") and "parser" not in shown[row + 1]  # under its row
+    default = " ".join(line.strip() for line in shown if line.startswith("      ") and "then:" not in line)
+    assert "because lxml is not installed and nothing else needs it here" in default
+
+
+def test_the_board_fits_80_columns_with_the_longest_id_an_agents_note_and_a_long_effect(repo):
+    from rich.cells import cell_len
+
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, LONG + "question: a question whose id is long?  [abcdefghijklmnopqrstuvwxyz012345]\n"
+                "    default: yes\n", PLANNER, None)  # fmt: skip
+        B.note(store, "the tests are slow on this machine", P.Caller("planner:script", False, "s1"))
+        shown = rows(store)
+    assert max(cell_len(line) for line in shown) <= 80, "\n".join(shown)
+    assert any(
+        line.rstrip().endswith("  abcdefghijklmnopqrstuvwxyz012345  open") for line in shown
+    )  # whole id
+    at = next(k for k, line in enumerate(shown) if line.startswith("         then: scope users + pyproject"))
+    assert shown[at + 1] == "               requirements-dev.txt, setup.cfg, tox.ini"  # wrapped, whole
+
+
+def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(repo):
+    from graphene_map.ask import prompt_for
+
+    with Store.open(repo) as store:
+        T.apply(store, "risk: a planner item added later  [later]\n", PLANNER, None)
+    assert person("board", "drop", "later").exit_code == 0
+    with Store.open(repo) as store:
+        prompt = prompt_for(store, "again")
+        assert "do not put them up again:\n- a planner item added later\n" in prompt
+        said = T.apply(store, "risk: A planner item  added later  [later]\n", PLANNER, None)
+        assert said == ["not put up again: A planner item added later (the person dropped it as later)"]
+        assert [it["state"] for it in B.items(store)] == ["dropped"]
+
+
+def test_a_condition_is_said_to_be_recorded_for_the_settings_never_changed(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "risk: vendored  [vendor]\n    default: leave it\n    then: condition vendor/**\n",
+                PLANNER, None)  # fmt: skip
+    took = person("board", "take", "vendor")
+    assert took.stdout.splitlines()[1:] == ["  recorded: condition vendor/**, for the settings"]
+    assert "      recorded: condition vendor/**, for the settings" in person("board").stdout
+    with Store.open(repo) as store:
+        assert B.conditions(store) == ["vendor/**"]  # the seam the settings read
+
+
+def test_under_inside_a_quoted_leaf_title_is_the_titles():
+    assert B.effect('leaf "profile under load"') == ("leaf", None, "profile under load")
+    assert B.effect("leaf 'profile under load' under users") == ("leaf", "users", "profile under load")
+    assert B.effect("leaf a sample under users") == ("leaf", "users", "a sample")
+
+
+def test_an_edit_with_no_board_still_forgets_a_planners_sentence_whose_tree_is_gone(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        store.set_meta("goal:proposed", "a sentence whose tree is gone")
+        text, opened = T.render(store)
+        T.apply(store, text, ALEX, opened)
+        assert store.meta("goal:proposed") is None
+
+
+def test_graphene_plan_says_what_the_board_waits_on_you_for(repo, tmp_path):
+    with Store.open(repo) as store:
+        T.apply(store, "question: q1?  [q1]\nquestion: q2?  [q2]\nrisk: r  [r]\n", PLANNER, None)
+    bare = person("plan").stdout.splitlines()
+    assert bare[0] == "the board: 2 questions, 1 risk open (`graphene board`)"
+    assert bare[1].startswith("nothing is planned here yet")
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+    person("board", "park", "r")
+    shown = person("plan").stdout
+    assert "\nthe board: 2 questions open (`graphene board`)\n" in shown
+    assert "waiting on you: 2 on the board (`graphene board`)" in shown
+
+
+def test_unpark_opens_a_parked_item_again_and_is_one_undoable_command(repo):
+    with Store.open(repo) as store:
+        T.apply(store, "assume: ids are integers  [int-ids]\n", PLANNER, None)
+    person("board", "park", "int-ids")
+    back = person("board", "unpark", "int-ids")
+    assert back.exit_code == 0 and back.stdout == "open int-ids: ids are integers\n"
+    again = person("board", "unpark", "int-ids")
+    assert again.exit_code == 1 and "int-ids is open, not parked" in again.stderr
+    assert person("plan", "undo").stdout == "undid: board unpark int-ids\n"
+    with Store.open(repo) as store:
+        assert B.get(store, "int-ids")["state"] == "parked"

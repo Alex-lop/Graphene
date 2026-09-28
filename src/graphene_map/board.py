@@ -10,8 +10,9 @@ effects in the plan's own words (``then:``), applied as the person's edit when i
     scope NODE + GLOB, …      NODE's scope takes in the globs
     check NODE: COMMAND       NODE's check becomes the command
     drop NODE                 NODE leaves the plan
-    leaf TITLE under NODE     a proposed leaf under NODE, for the person to fill in or prune
-    condition GLOB            a condition every plan runs under (``conditions``)
+    leaf TITLE under NODE     a proposed leaf under NODE (beside it, when NODE is a leaf), for the
+                              person to fill in or prune
+    condition GLOB            recorded for the settings (``conditions``); nothing enforces it yet
 
 The board lives in the one store, as the plan_meta key ``board`` (a JSON list, in the order the
 items were put up), so `graphene plan undo` puts back an answer with everything it changed. Every
@@ -40,9 +41,11 @@ _EFFECTS = (
     ("scope", re.compile(r"scope\s+(?P<node>[^\s+]+)\s*\+\s*(?P<arg>.+)")),
     ("check", re.compile(r"check\s+(?P<node>[^\s:]+)\s*:\s*(?P<arg>.+)")),
     ("drop", re.compile(r"drop\s+(?P<node>\S+)")),
-    ("leaf", re.compile(r"leaf\s+(?P<arg>.+?)(?:\s+under\s+(?P<node>\S+))?")),
+    # a quoted title is whole ("profile under load"); unquoted, the last "under NODE" names the node
+    ("leaf", re.compile(r"leaf\s+(?P<arg>\"[^\"]*\"|'[^']*'|.+?)(?:\s+under\s+(?P<node>\S+))?")),
     ("condition", re.compile(r"condition\s+(?P<arg>.+)")),
 )
+ORPHAN = "delete them with the item's line to drop it, or put its line back"
 FORMS = "scope NODE + GLOB, check NODE: COMMAND, drop NODE, leaf TITLE under NODE, or condition GLOB"
 
 
@@ -111,6 +114,18 @@ def groups(store) -> list[tuple[str, list[dict]]]:
     return [(name, shown) for name, shown in out if shown]
 
 
+def waiting(store) -> tuple[int, str | None]:
+    """How many items wait on the person, and the line `graphene plan` says it in (None: none do):
+    "the board: 2 questions, 1 risk open (`graphene board`)"."""
+    open_ = [(name, group) for name, group in groups(store) if name in dict(GROUPS)]
+    if not open_:
+        return 0, None
+    said = ", ".join(
+        f"{len(g)} {name[:-1] if len(g) == 1 and name.endswith('s') else name}" for name, g in open_
+    )
+    return sum(len(g) for _, g in open_), f"the board: {said} open (`graphene board`)"
+
+
 def shown(store) -> list[dict]:
     """The items a screen lists, in display order (``groups``), without the dropped ones."""
     return [it for name, group in groups(store) if name != "dropped" for it in group]
@@ -132,8 +147,15 @@ def decided(store, node: P.Node | None = None) -> list[str]:
     return [said(it) for it in items(store) if told(it) and it.get("about") in on]
 
 
+def dropped(store) -> list[str]:
+    """The words of what the person dropped, for a planner that is asked again not to bring it back."""
+    return [it["text"] for it in items(store) if it["state"] == "dropped"]
+
+
 def conditions(store) -> list[str]:
-    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen."""
+    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen.
+    The one seam for the settings: nothing reads it yet but `graphene board --json`, so nothing may
+    say a condition is enforced until the settings' read-only list is wired to it."""
     return [c for it in items(store) if it["state"] in DECIDED for c in it.get("conditions", [])]
 
 
@@ -181,11 +203,17 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         P.drop(store, node_id, who, now)
         return f"dropped {node_id}"
     if verb == "leaf":
-        leaf = T.slug(what, {n.id for n in P.nodes(store)})
-        P.propose(store, [{"id": leaf, "title": what, "parent": node_id}], who, now, files, proposals={leaf})
+        everything = P.nodes(store)
+        leaf = T.slug(what, {n.id for n in everything})
+        parent = node_id
+        if node_id and not any(n.parent == node_id and n.state not in P.GONE for n in everything):
+            parent = P.get(store, node_id).parent  # a leaf stays a leaf: its work is never left to no one
+        P.propose(store, [{"id": leaf, "title": what, "parent": parent}], who, now, files, proposals={leaf})
+        if parent != node_id:
+            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
     conditions += what
-    return f"condition {', '.join(what)}"
+    return f"recorded: condition {', '.join(what)}, for the settings"  # nothing enforces it yet
 
 
 # -- the acts -------------------------------------------------------------------------------------
@@ -252,9 +280,11 @@ def add(
     with store.claim():
         board = items(store)
         taken = {it["id"] for it in board} | {n.id for n in P.nodes(store)}
+        kind = _ALIAS.get(kind, kind)
+        fresh = T.slug(text, taken, kind.replace(" ", "-"))  # a note in Japanese is "note", not "node"
         item = {
-            "id": item_id if item_id and item_id not in taken else T.slug(text, taken),
-            "kind": _ALIAS.get(kind, kind), "text": _one(text), "default": _one(default) or None,
+            "id": item_id if item_id and item_id not in taken else fresh,
+            "kind": kind, "text": _one(text), "default": _one(default) or None,
             "then": [_one(e) for e in then or []],
             "options": [{"text": _one(o["text"]), "then": [_one(e) for e in o.get("then", [])]}
                         for o in options or []],
@@ -320,7 +350,7 @@ def settle(
                 "`graphene plan undo` takes an answer back"
             )
         if state == "open" and item["state"] != "parked":
-            return item
+            raise P.Refused(f"{item_id} is {reads(item)}, not parked")
         effects: list[str] = []
         answer = None
         if state == "taken":
@@ -367,6 +397,10 @@ def park(store, item_id: str, who: P.Caller) -> dict:
     return settle(store, item_id, "parked", who)
 
 
+def unpark(store, item_id: str, who: P.Caller) -> dict:
+    return settle(store, item_id, "open", who)
+
+
 def drop(store, item_id: str, who: P.Caller) -> dict:
     return settle(store, item_id, "dropped", who)
 
@@ -376,13 +410,16 @@ def drop(store, item_id: str, who: P.Caller) -> dict:
 
 def lines(item: dict) -> list[str]:
     """One item in the plan's text: its line at the left edge, then its own lines under it."""
-    out = [f"{item['kind']}: {item['text']}  [{item['id']}]"]
+    return [f"{item['kind']}: {item['text']}  [{item['id']}]", *_own(item, spelled(item))]
+
+
+def _own(item: dict, answer: str | None) -> list[str]:
+    out = []
     if item["default"] or item["then"]:
         out += [f"    default: {item['default'] or ''}".rstrip(), *(f"    then: {e}" for e in item["then"])]
     for o in item["options"]:
         out += [f"    option: {o['text']}", *(f"    then: {e}" for e in o["then"])]
     out += [f"    about: {item['about']}"] if item.get("about") else []
-    answer = spelled(item)
     return out + ([f"    answer: {answer}"] if answer else [])
 
 
@@ -418,6 +455,7 @@ def split(text: str) -> tuple[str, list[dict]]:
     found: list[dict] = []
     item: dict | None = None
     choice: dict | None = None
+    tree = False  # a node's line was seen: indented lines from here on are the tree's
     for no, raw in enumerate(kept, 1):
         body = raw.strip()
         if not body or body.startswith("#") or body.startswith(T._FENCE):
@@ -428,6 +466,7 @@ def split(text: str) -> tuple[str, list[dict]]:
         if raw[:1] not in (" ", "\t") or T._MARK.fullmatch(body):
             item = None
             if not (keyed and word in KINDS):
+                tree = tree or not (keyed and word == "goal")
                 continue
             value = keyed["value"].strip()
             at_end = T._ID_AT_END.search(" " + value)
@@ -438,12 +477,16 @@ def split(text: str) -> tuple[str, list[dict]]:
                 )
             text_ = (" " + value)[: at_end.start()].strip() if at_end else value
             item = {"kind": word, "text": _one(text_), "id": ident, "default": None, "then": [],
-                    "options": [], "about": None, "answer": None, "at": {"item": no}, "no": no}  # fmt: skip
+                    "options": [], "about": None, "answer": None, "at": {"item": no}, "no": no,
+                    "own": []}  # fmt: skip
             choice = None
             found.append(item)
         elif item is None:
+            if keyed and word in SUB and not tree:
+                raise P.Refused(f"line {no}: these lines belong to no board item; {ORPHAN}")
             continue
         elif keyed and word in SUB:
+            item["own"].append((no, _one(body)))
             value = _one(keyed["value"])
             if word in ("default", "about", "answer") and word in item["at"]:
                 raise P.Refused(
@@ -484,11 +527,19 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
     (only new items count; one already on the board, unchanged, is passed over). Returns one line
     per change, for whoever applied it."""
     now = now or P._now()
+    if opened is not None:
+        _orphans(found, opened)
     said: list[str] = []
     board = {it["id"]: it for it in items(store)}
+    gone = {_one(it["text"]).lower(): it["id"] for it in board.values() if it["state"] == "dropped"}
     seen: dict[str, int] = {}
     for f in found:
         at = f["at"]
+        if opened is None and not who.person and _one(f["text"]).lower() in gone:
+            said.append(
+                f"not put up again: {f['text']} (the person dropped it as {gone[_one(f['text']).lower()]})"
+            )
+            continue
         if f["id"] in seen:
             raise P.Refused(
                 f"line {f['no']}: [{f['id']}] is on line {seen[f['id']]} too; give each its own id"
@@ -543,6 +594,24 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
         settle(store, item_id, "dropped", who, now=now)
         said.append(f"dropped {item_id}: {board[item_id]['text']}")
     return said
+
+
+def _orphans(found: list[dict], opened: dict[str, dict]) -> None:
+    """Refuse the own lines of an item whose line alone was deleted: they are left under the item
+    written above it, where they would silently become that item's."""
+    ids, seen = list(opened), {f["id"] for f in found}
+    for f in found:
+        k = ids.index(f["id"]) if f["id"] in opened else len(ids)
+        if k + 1 >= len(ids) or ids[k + 1] in seen:
+            continue
+        mine = [_one(x) for x in _own(opened[f["id"]], opened[f["id"]]["answer"])]
+        theirs = [_one(x) for x in _own(opened[ids[k + 1]], opened[ids[k + 1]]["answer"])]
+        got = [body for _, body in f["own"]]
+        if theirs and got[: len(mine) + len(theirs)] == mine + theirs:
+            raise P.Refused(
+                f"line {f['own'][len(mine)][0]}: these lines belong to no board item ([{ids[k + 1]}]'s own "
+                f"line was deleted); {ORPHAN}"
+            )
 
 
 def _answered(store, item_id: str, spelled_: str | None, who, files, now, at: dict) -> list[str]:

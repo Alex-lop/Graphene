@@ -743,7 +743,8 @@ def contract(node: Node, why: list[str] | None = None, decided: list[str] | tupl
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
-        *(f"  decided: {line}" for line in decided),
+        *(["  decided:"] if decided else []),  # its lines start where every other key's value does
+        *(f"          {line}" for line in decided),
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
@@ -2232,11 +2233,24 @@ def _keep(store, what: str, before: dict, after: dict) -> None:
     rows = {
         i: [before["rows"].get(i), row] for i, row in after["rows"].items() if before["rows"].get(i) != row
     }
-    meta = {k: [before["meta"][k], after["meta"][k]] for k in _GOALS if before["meta"][k] != after["meta"][k]}
-    if rows or meta:
+    meta = {
+        k: [before["meta"][k], after["meta"][k]]
+        for k in _GOALS
+        if k != "board" and before["meta"][k] != after["meta"][k]
+    }
+    board = _items_moved(before["meta"]["board"], after["meta"]["board"])
+    if rows or meta or board:
         stack = json.loads(store.meta("undo") or "[]")[-(UNDO_KEPT - 1) :]
-        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta})
+        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board})
         store.set_meta("undo", json.dumps(stack))
+
+
+def _items_moved(before: str | None, after: str | None) -> dict:
+    """The board items an act changed, each as [before, after] (None: not there): an undo puts back
+    only these, so what anyone put up on the board since is kept."""
+    was = {it["id"]: it for it in json.loads(before or "[]")}
+    now = {it["id"]: it for it in json.loads(after or "[]")}
+    return {i: [was.get(i), now.get(i)] for i in {**was, **now} if was.get(i) != now.get(i)}
 
 
 def undo(store, who: Caller, now: str | None = None) -> str:
@@ -2263,8 +2277,14 @@ def undo(store, who: Caller, now: str | None = None) -> str:
                 f"cannot undo {act['what']!r}: {', '.join(hanging)} was put under or made to wait on what it "
                 "added, since; drop that first"
             )
-        if "board" in act["meta"] and current["meta"]["board"] != act["meta"]["board"][1]:
-            raise Refused(f"cannot undo {act['what']!r}: the board changed since, and undoing would lose it")
+        board = json.loads(current["meta"]["board"] or "[]")
+        items = act.get("board", {})
+        changed = [it["id"] for it in board if it["id"] in items and it != items[it["id"]][1]]
+        if changed:
+            raise Refused(
+                f"cannot undo {act['what']!r}: {', '.join(changed)} changed on the board since, and undoing "
+                "it would lose that"
+            )
         if moved:
             states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
             raise Refused(
@@ -2285,6 +2305,9 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
         for key, (before, _) in act["meta"].items():
             store.set_meta(key, before)
+        if items:  # each item the act changed, as it was; one it put up goes; the rest stay as they are
+            back = [items[it["id"]][0] if it["id"] in items else it for it in board]
+            store.set_meta("board", json.dumps([it for it in back if it is not None]))
         try:
             # never put back a node whose parent or need is gone since; a state the plan was just in
             # is not asked the rules for a new node

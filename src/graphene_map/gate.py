@@ -117,6 +117,9 @@ TEACH = (
     "propose it in this text, and the person prunes it (they see it at once in `graphene watch`):\n"
     "graphene plan propose - <<'EOF'\n"
     "goal: their aim, in one sentence\n"
+    "question: what their words leave open and the repo cannot settle  [q-id]\n"
+    "    default: what you will assume if they do not answer\n"
+    "assume: what you took for granted that they should confirm  [a-id]\n"
     "- a sub-goal  [short-id]\n"
     "  - a leaf: one piece of work  [leaf-id]\n"
     "      what it should achieve, in a line\n"
@@ -126,7 +129,10 @@ TEACH = (
     "EOF\n"
     "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
-    "`needs` orders leaves that build on each other."
+    "`needs` orders leaves that build on each other. Ask instead of guessing: put up on the board, at the "
+    "left edge before the tree, a question: with its default (and option: lines), an assume:, a risk: or a "
+    "leave out: for what the repo cannot answer, never what a file answers. Only the person answers them "
+    "(`graphene board`); what they decide is told to you in your leaf's contract."
 )
 FREE = (  # plan first off: the session's judgement, and decision 18 while a plan is in force
     "When the person describes work bigger than one quick change, or asks for a plan, do not start it: "

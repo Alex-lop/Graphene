@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 
 import typer
+from rich.cells import cell_len, chop_cells
 
 from . import board as B
 from . import plan as P
@@ -15,7 +16,8 @@ EMPTY = (
     "the board is empty. The planner puts up what it would ask you (`graphene ask '…'`); "
     "you put up notes (`graphene board note '…'`)"
 )
-ACTS = "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
+WIDE = 80  # the print is laid out to 80 columns, as `graphene plan`'s is
+ACTS = "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
 
 
 def rows(store) -> list[str]:
@@ -30,31 +32,62 @@ def rows(store) -> list[str]:
     head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled") if k in count]
     out = [f"the board: {', '.join(head)}"]
     listed = [it for _, group in shown for it in group]
-    # one row grammar, as `graphene plan` prints a node: glyph and words (cut at a word), id, state word
-    wt = min(48, max(len(it["text"]) for it in listed) + 4)
+    # one row grammar, as `graphene plan` prints a node: glyph and words, id, state word. The id and the
+    # state are whole (an id is what a command takes); the words take what is left of 80 columns, and
+    # wrap under the row rather than being cut
     wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
+    wt = min(48, max(cell_len(_words(it)) for it in listed) + 4, WIDE - 4 - wid - ww)
     for name, group in shown:
         out.append(name)
         for item in group:
-            word = B.reads(item)
-            words = item["text"]
-            mark = f"  · {item['by']}'s" if item["agent"] and item["kind"] == "note" else ""
-            title = f"  {B.look(item)[0]} {T.elide(words, wt - 4)}"
-            out.append(f"{title.ljust(wt)}  {item['id'].ljust(wid)}  {word.ljust(ww)}{mark}".rstrip())
+            first, *rest = _wrap(_words(item), wt - 4)
+            title = f"  {B.look(item)[0]} {first}"
+            out.append(f"{T.pad(title, wt)}  {item['id'].ljust(wid)}  {B.reads(item)}".rstrip())
+            out += [f"    {line}" for line in rest]
             if name == "settled":
-                out += [f"      → {item['answer']}"] if item.get("answer") else []
-                out += [f"      changed: {line}" for line in item["became"]]
+                out += _hang("      → ", item["answer"]) if item.get("answer") else []
+                out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
                 continue
             if item["default"] or item["then"]:
-                out += [f"      default: {item['default'] or ''}".rstrip(), *_then(item["then"])]
+                out += [*_hang("      default: ", item["default"] or ""), *_then(item["then"])]
             for k, option in enumerate(item["options"], 1):
-                out += [f"      {k}: {option['text']}", *_then(option["then"])]
+                out += [*_hang(f"      {k}: ", option["text"]), *_then(option["then"])]
             out += [f"      about {item['about']}"] if item.get("about") else []
     return [*out, ACTS]
 
 
+def _words(item: dict) -> str:
+    """An item's words as its row shows them: an agent's note says whose it is."""
+    return item["text"] + (f" · {item['by']}'s" if item["agent"] and item["kind"] == "note" else "")
+
+
+def _wrap(text: str, wide: int) -> list[str]:
+    """``text`` in lines of at most ``wide`` terminal cells, broken between words (a word longer than
+    a line is cut where it must)."""
+    lines, line = [], ""
+    for word in text.split():
+        for piece in chop_cells(word, wide):
+            if line and cell_len(line) + 1 + cell_len(piece) > wide:
+                lines.append(line)
+                line = piece
+            else:
+                line = f"{line} {piece}" if line else piece
+    return [*lines, line]
+
+
+def _hang(head: str, text: str) -> list[str]:
+    """``head`` and ``text`` wrapped to 80 columns, each line after the first under the text's start."""
+    first, *rest = _wrap(text, WIDE - len(head))
+    return [f"{head}{first}".rstrip(), *(" " * len(head) + line for line in rest)]
+
+
+def _became(line: str) -> str:
+    """What an answer did: a change to the plan, or a condition only recorded (nothing enforces it)."""
+    return line if line.startswith("recorded:") else f"changed: {line}"
+
+
 def _then(effects: list[str]) -> list[str]:
-    return [f"         then: {line}" for line in effects]
+    return [ln for line in effects for ln in _hang("         then: ", line)]
 
 
 def register(cli: typer.Typer, root, open_store, fail) -> None:
@@ -78,7 +111,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         answer = f" → {item['answer']}" if item.get("answer") else ""
         out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
-            out(f"  changed: {line}")
+            out(f"  {_became(line)}")
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.callback()
@@ -117,6 +150,11 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     def park(item_id: str = typer.Argument(...)) -> None:
         """Park it: not now; it stays on the board, told to nobody."""
         act(f"board park {item_id}", lambda s, who, files: B.park(s, item_id, who))
+
+    @board_cli.command()
+    def unpark(item_id: str = typer.Argument(...)) -> None:
+        """Unpark it: it is open again, waiting on you."""
+        act(f"board unpark {item_id}", lambda s, who, files: B.unpark(s, item_id, who))
 
     @board_cli.command()
     def answer(item_id: str = typer.Argument(...), words: list[str] = typer.Argument(...)) -> None:
