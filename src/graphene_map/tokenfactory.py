@@ -265,8 +265,8 @@ def chat(
     messages: list[dict],
     tools: list[dict] | None = None,
     tag: str = "",
-    tries: int = TRIES,
-    timeout: float = TIMEOUT,
+    tries: int | None = None,
+    timeout: float | None = None,
     **params,
 ) -> dict:
     """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model"}``: the
@@ -279,7 +279,7 @@ def chat(
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
     began = time.monotonic()
-    said, headers = _request("POST", "chat/completions", body, timeout=timeout, tries=tries)
+    said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
     took = time.monotonic() - began
     try:
         message = said["choices"][0]["message"]
