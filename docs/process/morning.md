@@ -74,7 +74,13 @@ Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read
 
 ## The closing review
 
-(Filled in when it ends.)
+Five adversaries (the board, the views, settings and keys, the ladder, the claims) went over
+`cb2ce54..2111115`, each finding reproduced from scratch by a skeptic before any fix: 48 findings,
+45 confirmed, 3 refuted. Six were blockers, all fixed with a test each (DIRECTION 100): a re-ask that
+lost the tree when the planner failed, a re-ask that took a split's proposals with it, a crash on a
+joined emoji, a shell write to a git-ignored protected path that nothing saw, a key echoed back in a
+Token Factory error, and `HACKATHON.md` hiding the studies' result. Before it, three walkers of the
+whole path filed 72 rough edges (`docs/process/shaping/walks.md`); 18 were fixed and 3 in part (lane F).
 
 ## State of every branch
 
