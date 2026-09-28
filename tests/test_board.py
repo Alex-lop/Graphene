@@ -714,3 +714,19 @@ def test_plan_edit_does_not_reword_an_item_already_answered(repo):
             T.apply(store, edited, ALEX, opened)
         assert B.get(store, "which-id")["default"] == "the row id" and B.conditions(store) == ["schema.py"]
         T.apply(store, text.replace("which id?  [which-id]", "which id, then?  [which-id]"), ALEX, opened)
+
+
+def test_a_goal_effect_is_skipped_only_when_the_goal_has_that_sentence_not_when_it_says_the_opposite(repo):
+    no_uuid = "Return the row id; do not add a uuid column."
+    assert P.goal_plus(no_uuid, "add a uuid column.") == f"{no_uuid} add a uuid column."
+    assert P.goal_plus("Do not enable the source.", "Enable the source.") is not None
+    assert P.goal_plus("Keep ids", "id") == "Keep ids. id"
+    assert P.goal_plus("Keep ids. Return them sorted.", "return them sorted") is None  # it has it already
+    assert P.goal_plus("Keep ids; add a uuid column", "Add a uuid column.") is None
+    with Store.open(repo) as store:
+        users = {"id": "users", "title": "users", "goal": no_uuid, "scope": ["api.py"], "check": "true"}
+        P.propose(store, [users], ALEX)
+        T.apply(store, "question: which id?  [which-id]\n    default: the row id\n    option: a uuid column\n"
+                "    then: goal users + add a uuid column.\n", PLANNER, None)  # fmt: skip
+    picked = person("board", "pick", "which-id", "1")
+    assert "users: goal + add a uuid column." in picked.stdout and "says it already" not in picked.stdout
