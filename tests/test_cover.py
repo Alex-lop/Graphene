@@ -206,3 +206,19 @@ def test_no_control_character_reaches_the_terminal_or_the_store(repo, fake):
     shown = "\n".join(said)
     assert not any(ch in shown + json.loads(json.dumps(stored)) for ch in "\x1b‮\x07")
     assert "You said 'Prices are [31min cents'" in shown
+
+
+def test_a_piece_of_a_clause_is_never_offered_as_the_persons_words(repo, fake):
+    words = "Load the XML feed into items and keep its order. Prices are in cents, so do not multiply them."
+    fake([nano({"clauses": [
+        {"text": t, "leaf": None, "nearest": "prices"}
+        for t in ("multiply them", "a", "Load the XML feed", "Prices are in cent", "rices are in cents",
+                  "and keep its order", "Prices are in cents", "so do not multiply them", "not multiply them")
+    ]})])  # fmt: skip
+    said = []
+    with planned(repo) as store:
+        got = [u["note"] for u in C.cover(store, paragraph=words, say=said.append)]
+        [read] = store.node_log("*", ("covered",))
+    assert got == ["keep its order", "Prices are in cents", "do not multiply them"]  # the last is a piece
+    assert read["detail"]["pieces"] == 6 and read["detail"]["dropped"] == []
+    assert said[1].endswith("no leaf carries 3; dropped, a piece of a clause: 6")

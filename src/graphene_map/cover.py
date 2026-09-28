@@ -48,6 +48,27 @@ FORMAT = {"type": "json_schema", "json_schema": {"name": "clauses", "strict": Tr
 CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
+# where one clause of a paragraph ends and the next begins: a stop or a mark, or a word that joins two
+EDGE = set(".,;:!?()[]\"'—–-")
+JOIN = {"and", "but", "or", "nor", "so", "then", "yet", "while", "because", "unless", "if", "when", "also"}
+
+
+def whole(flat: str, words: str, taken: list[range]) -> re.Match | None:
+    """Where ``words`` stand in the paragraph as a whole clause (case aside): starting and ending at a
+    clause's edge, not a piece of one ("multiply them" out of "do not multiply them"), and not over a
+    clause already kept."""
+    for found in re.finditer(re.escape(words), flat, re.IGNORECASE):
+        before, after = flat[: found.start()].rstrip(), flat[found.end() :].lstrip()
+        starts = not before or before[-1] in EDGE or (
+            found.start() > len(before) and before.split()[-1].lower() in JOIN
+        )  # fmt: skip
+        ends = not after or after[0] in EDGE or (found.end() < len(flat) - len(after) and
+                                                 after.split()[0].lower() in JOIN)  # fmt: skip
+        if starts and ends and not any(found.start() < t.stop and t.start < found.end() for t in taken):
+            return found
+    return None
+
+
 def plain(say: Callable[[str], None]) -> Callable[[str], None]:
     """``say``, with nothing in a line that a terminal would act on."""
     return lambda line: say(CONTROL.sub("", line))
@@ -127,30 +148,36 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     flat = CONTROL.sub("", " ".join(paragraph.split()))
     by_id, gone = {n.id: n for n in everything}, dismissed(store)
     leaves = {n.id for n in P.leaves(everything) if n.state in (P.PROPOSED, P.OPEN)}
-    kept, dropped, uncovered, odd = [], [], [], 0
+    kept, dropped, uncovered, odd, pieces, taken = [], [], [], 0, 0, []
     for c in clauses:
         try:  # an item of any other shape is passed over: nothing the model writes breaks the command
             text, leaf, near = c["text"], c.get("leaf"), c.get("nearest")
-            if not isinstance(text, str) or not all(v is None or isinstance(v, str) for v in (leaf, near)):
+            words = CONTROL.sub("", " ".join(text.split())).rstrip(".,;:")
+            if not words or not all(v is None or isinstance(v, str) for v in (leaf, near)):
                 raise TypeError
         except (TypeError, KeyError, IndexError, AttributeError):
             odd += 1
             continue
-        words = CONTROL.sub("", " ".join(text.split())).rstrip(".,;:")
-        found = re.search(re.escape(words), flat, re.IGNORECASE) if words else None
-        if found is None:  # not the person's words: dropped, never offered
+        if not re.search(re.escape(words), flat, re.IGNORECASE):  # not the person's words: never offered
             dropped.append(words)
             continue
-        clause = found.group(0)  # as the paragraph has it, not as the model wrote it
-        if clause in (k["text"] for k in kept):
+        head, _, rest = words.partition(" ")
+        words = rest if head.lower() in JOIN and rest else words  # "and keep its order": the clause is after
+        if any(k["text"].lower() == words.lower() for k in kept):
             continue
+        found = whole(flat, words, taken)
+        if found is None:  # theirs, but a piece of a clause (or of one kept): its sense may be lost
+            pieces += 1
+            continue
+        clause = found.group(0)  # as the paragraph has it, not as the model wrote it
+        taken.append(range(found.start(), found.end()))
         leaf = leaf if leaf in by_id else None
         kept.append({"text": clause, "leaf": leaf})
         if leaf is None and clause not in gone:
             near = near if near in leaves else None
             uncovered.append({"note": clause, "nearest": near})
     run = P._now()
-    read = {"run": run, "clauses": kept, "dropped": dropped}
+    read = {"run": run, "clauses": kept, "dropped": dropped, "pieces": pieces}
     with store.claim():
         store.log_node("*", run, "covered", ACTOR, None, None, read)
         for u in uncovered:
@@ -160,7 +187,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     aside, bare = len(kept) - carried - len(uncovered), len(uncovered)
     say(f"your paragraph, in clauses: {len(kept)}; the plan carries {carried}, no leaf carries {bare}"
         + (f"; set aside before: {aside}" if aside else "")
-        + (f"; dropped, not your words: {len(dropped)}" if dropped else ""))  # fmt: skip
+        + (f"; dropped, not your words: {len(dropped)}" if dropped else "")
+        + (f"; dropped, a piece of a clause: {pieces}" if pieces else ""))  # fmt: skip
     for k, u in enumerate(uncovered, 1):
         take = f"Take it: `{offer(by_id[u['nearest']], u['note'])}`" if u["nearest"] else (
             "No open leaf is near it: add it in `graphene plan edit`")  # fmt: skip
