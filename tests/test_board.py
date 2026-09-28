@@ -672,3 +672,27 @@ def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_rea
     system, prompt = (" ".join(m["content"].split()) for m in f.requests[0]["messages"][:2])
     assert "carries the then: lines that make that change (goal, scope, check, drop, leaf)" in system
     assert RULE in prompt
+
+
+def test_an_item_about_a_node_that_left_the_plan_is_not_answered_and_the_pane_says_told_to_no_one(repo):
+    from graphene_map import board_rows as BR
+
+    with Store.open(repo) as store:
+        users = {"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}
+        P.propose(
+            store, [users, {"id": "docs", "title": "docs", "scope": ["README.md"], "check": "true"}], ALEX
+        )
+        asked = "question: which id?  [which-id]\n    default: the row id\n    about: users\n"
+        asked += "question: which docs?  [which-docs]\n    default: the readme\n    about: docs\n"
+        T.apply(store, asked, PLANNER, None)
+    assert person("board", "take", "which-docs").exit_code == 0
+    assert person("node", "drop", "users").exit_code == 0
+    assert person("node", "drop", "docs").exit_code == 0
+    for act in (["take", "which-id"], ["answer", "which-id", "a", "uuid"]):
+        refused = person("board", *act)
+        assert refused.exit_code == 1 and "which-id is about users, which has left the plan" in refused.stderr
+    assert person("board", "drop", "which-id").exit_code == 0  # dropping it is still the person's
+    with Store.open(repo) as store:
+        board = BR.read(store)
+        pane = str(BR.pane(board, BR.Row("item", "which-docs"), {n.id: n for n in P.nodes(store)}, 80))
+    assert "to no one: docs has left the plan" in pane and "the executors of docs" not in pane

@@ -252,7 +252,7 @@ def _replace_last(store, say: Callable[[str], None], session: str | None) -> lis
     stands = []
     for item, was in B.rehome(store, gone, P.caller()):
         say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")
-        stands.append(B.said(item))
+        stands += [B.said(item)] if B.told(item) or item["state"] == "parked" else []  # an answer
     for item in B.items(store):
         for line in item.get("became") or []:
             node, _, what = line.partition(": goal + ")

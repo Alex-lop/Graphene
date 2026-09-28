@@ -127,3 +127,18 @@ def test_a_reask_after_a_failed_one_still_replaces_the_tree(repo, tmp_path, monk
         "users-api2": "proposed",
         "ids2": "proposed",
     }
+
+
+ASKED_OPEN = ASKED.replace('print("    then: goal ids + \\"ids stay numbers\\"")\n', "")
+
+
+def test_an_item_still_open_about_a_dropped_node_is_told_to_every_executor_once_answered(
+    repo, tmp_path, monkeypatch
+):
+    assert person("ask", "add ids", "--with", planner(tmp_path, ASKED_OPEN, monkeypatch)).exit_code == 0
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FINER, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert "id-type was about ids, which is dropped: it is about the whole plan now" in again.output
+    assert person("board", "take", "id-type").exit_code == 0
+    with Store.open(repo) as store:
+        assert B.decided(store, A.P.get(store, "ids2")) == ["ids as numbers or strings? → numbers"]

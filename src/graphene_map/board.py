@@ -153,6 +153,11 @@ def decided(store, node: P.Node | None = None) -> list[str]:
     return [said(it) for it in items(store) if told(it) and it.get("about") in on]
 
 
+def about_gone(store, item: dict) -> bool:
+    """Is the node the item is about out of the plan? Then no executor is told it."""
+    return bool(item.get("about")) and (store.node_row(item["about"]) or {}).get("state") in (None, *P.GONE)
+
+
 def dropped(store) -> list[str]:
     """The words of what the person dropped, for a planner that is asked again not to bring it back."""
     return [it["text"] for it in items(store) if it["state"] == "dropped"]
@@ -370,6 +375,11 @@ def settle(
             )
         if state == "open" and item["state"] != "parked":
             raise P.Refused(f"{item_id} is {reads(item)}, not parked")
+        if state in DECIDED and about_gone(store, item):  # its answer would be told to no executor
+            raise P.Refused(
+                f"{item_id} is about {item['about']}, which has left the plan; drop it, or give it another "
+                "about: in `graphene plan edit`"
+            )
         effects: list[str] = []
         answer = None
         if state == "taken":
@@ -425,15 +435,15 @@ def drop(store, item_id: str, who: P.Caller) -> dict:
 
 
 def rehome(store, gone: set[str], who: P.Caller, now: str | None = None) -> list[tuple[dict, str]]:
-    """What the person answered (or parked) about a node that left the plan becomes about the whole
-    plan, so it is still told to every executor rather than to none. Returns (item, the node it was
-    about)."""
+    """What is on the board about a node that left the plan (answered, parked or still open) becomes
+    about the whole plan, so it is, or once answered will be, told to every executor rather than to
+    none. Returns (item, the node it was about)."""
     now = now or P._now()
     moved = []
     with store.claim():
         board = items(store)
         for item in board:
-            if item.get("about") in gone and (told(item) or item["state"] == "parked"):
+            if item.get("about") in gone and item["state"] != "dropped":
                 moved.append((item, item["about"]))
                 item.update(about=None, rev=item["rev"] + 1, updated_at=now)
                 _log(store, item, "moved to the whole plan", who, now, was=moved[-1][1])
