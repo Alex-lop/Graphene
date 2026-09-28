@@ -80,7 +80,7 @@ Five adversaries (the board, the views, settings and keys, the ladder, the claim
 lost the tree when the planner failed, a re-ask that took a split's proposals with it, a crash on a
 joined emoji, a shell write to a git-ignored protected path that nothing saw, a key echoed back in a
 Token Factory error, and `HACKATHON.md` hiding the studies' result. Before it, three walkers of the
-whole path filed 60-odd rough edges; 18 were fixed (lane F).
+whole path filed 72 rough edges (`docs/process/shaping/walks.md`); 18 were fixed and 3 in part (lane F).
 
 ## State of every branch
 
