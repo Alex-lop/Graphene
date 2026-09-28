@@ -25,9 +25,13 @@ def _keychain() -> bool:
 
 
 def _run(argv: list[str], stdin: str | None = None) -> subprocess.CompletedProcess | None:
-    if not _keychain() or shutil.which(argv[0]) is None:
+    exe = shutil.which(argv[0]) if _keychain() else None
+    if exe is None:
         return None
-    return subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=30)
+    try:  # the one found, never the next on the PATH when this one cannot start
+        return subprocess.run([exe, *argv[1:]], input=stdin, capture_output=True, text=True, timeout=30)
+    except OSError:
+        return None
 
 
 def find() -> str | None:

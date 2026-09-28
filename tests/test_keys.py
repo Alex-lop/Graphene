@@ -128,3 +128,14 @@ def test_reached_says_what_stood_in_the_way_without_the_key(monkeypatch):
     line = keys.reached()
     tf._listed.cache_clear()
     assert line.startswith("Token Factory: not reached") and "not-shown" not in line and "\n" not in line
+
+
+def test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path(keychain, tmp_path, monkeypatch):
+    tool = "security" if keys.PLATFORM == "darwin" else "secret-tool"
+    broken = tmp_path / "broken" / tool
+    broken.parent.mkdir()
+    broken.write_text("#!/nonexistent/interpreter\n")
+    broken.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{broken.parent}:{keychain}")
+    assert keys.find() is None
+    assert not (keychain / "argv.log").exists()  # the next one on the PATH was never started
