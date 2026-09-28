@@ -1,0 +1,1 @@
+Now that I can see real lines going through, I realise I asked for the wrong summary. Don't count by level, count by hour: how many events in the 09 hour, the 10 hour and so on, across every event parsed, legacy lines included, sorted by hour. One line per hour, and nothing about levels anywhere in it.
