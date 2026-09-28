@@ -131,6 +131,13 @@ def widths(board: Board) -> list[int]:
     return [6 + len(it["text"]) for it in [*board.open, *board.folded]]
 
 
+def goal(text: str, board: Board) -> str:
+    """The goal line of a view other than the outline (tree, graph): how many items on the board
+    wait on the person, first, so a cut goal never hides it."""
+    n = len(board.open)
+    return f"◇ {n} open on the board · {text}" if n else text
+
+
 def landing(was: list[str], board: Board, at, fresh: bool):
     """Where the cursor goes when the board changed: onto the first open item when there were none
     and the cursor is on the goal (or the screen just opened); after an item under the cursor is

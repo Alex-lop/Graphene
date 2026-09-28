@@ -12,8 +12,9 @@ from test_tui import TREE, shown
 
 from graphene_map import board as B
 from graphene_map import board_rows as BR
-from graphene_map import demo
+from graphene_map import demo, view_tree
 from graphene_map import plan as P
+from graphene_map import views as V
 from graphene_map.store import Store
 from graphene_map.tui import Ask, Watch
 
@@ -172,6 +173,13 @@ def test_the_side_pane_shows_the_item_whole_and_what_its_answer_changed(repo, si
         assert said in pane, (said, pane)
     assert fold["at"] == "fold"
     assert "the board: 1 settled" in fold["detail"]
+
+
+def test_the_views_goal_line_counts_the_open_items(repo, monkeypatch):
+    monkeypatch.setitem(V.VIEWS, "tree", view_tree)
+    planned(repo)
+    [seen] = drive(repo, [["tab"]], (120, 36))
+    assert "◇ 5 open on the board · users come back with their ids" in seen["view"][0]
 
 
 def test_no_board_no_board_rows(repo):

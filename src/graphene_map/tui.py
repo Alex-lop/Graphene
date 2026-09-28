@@ -880,12 +880,12 @@ class Watch(App):
         view = V.VIEWS.get(name)
         if view is None:
             return None
-        width, height = self.view_room()
-        drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+        (width, height), goal = self.view_room(), BR.goal(self.goal_text, self.board)  # board: its count
+        drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
         if drawn is not None and self.here not in drawn.at:
             self.here = drawn.order[0] if drawn.order else None
             if self.here is not None:
-                drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+                drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
         return drawn
 
     def paint(self, show: bool) -> None:
