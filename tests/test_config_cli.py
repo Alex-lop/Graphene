@@ -89,8 +89,14 @@ def test_a_setting_left_out_is_cleared(repo, monkeypatch, tmp_path):
             store, "protected: vendor/**\nreadonly: docs/**\nnever: x\nsize: coarser\n", P.caller(env=PERSON)
         )
     editor(monkeypatch, tmp_path, "text = '\\n'.join(l for l in text.splitlines() if l.startswith('#'))")
-    assert config("edit").exit_code == 0
+    assert config("edit").exit_code == 1  # no setting line at all: taken as a slip, nothing is applied
+    assert stored(repo) == (["vendor/**"], ["docs/**"], ["x"], "coarser")
+    editor(monkeypatch, tmp_path, "text = 'size: auto\\n'")
+    edited = config("edit")
+    assert edited.exit_code == 0
     assert stored(repo) == ([], [], [], "auto")
+    for line in ("protected: vendor/**", "readonly: docs/**", "never: x", "size: coarser"):
+        assert f"removed: {line}" in edited.stdout  # a removal is said, as an addition is
 
 
 def test_a_bad_line_is_refused_by_its_number_and_nothing_is_applied(repo, monkeypatch, tmp_path):

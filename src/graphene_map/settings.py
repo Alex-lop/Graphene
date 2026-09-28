@@ -109,6 +109,9 @@ def apply(store, text: str, who: P.Caller, opened: str | None = None) -> list[st
             if not all(globs):
                 raise P.Refused(f"line {no}: {key}: needs globs, comma-separated, none empty")
             got[key] += [_glob(no, g) for g in globs if _glob(no, g) not in got[key]]
+    if not (said_size or any(got.values())):  # an emptied text is a slip (an editor's crash), as in plan edit
+        raise P.Refused("nothing is applied from a text with no setting in it; to clear them all, save "
+                        "`size: auto` alone")  # fmt: skip
     with store.claim():
         now_said = render(store)
         if opened is not None and now_said != opened:

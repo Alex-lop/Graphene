@@ -27,7 +27,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     def edit() -> None:
         """Edit the settings in your editor (a person only); the save is applied all or none. A line
         that cannot be read is refused by its number: at a terminal the text goes back to the editor
-        with the reason under that line; with none, it is kept and nothing is applied."""
+        with the reason under that line; with none, it is kept and nothing is applied. A text with no
+        setting in it is refused. `graphene plan undo` does not reach the settings: each change is
+        logged with what was there before, and each line added or removed is printed."""
         who = P.caller()
         try:
             P._person_only(who, "changing Graphene's settings")
@@ -70,9 +72,11 @@ def register(cli: typer.Typer, root, open_store, fail):
                 first = False
                 continue
             path.unlink(missing_ok=True)
-            was = set(before.splitlines())
-            for line in [line for line in after if line not in was and not line.startswith("#")]:
+            was, now = before.splitlines(), after
+            for line in [line for line in now if line not in was and not line.startswith("#")]:
                 typer.echo(line)
+            for line in [line for line in was if line not in now and not line.startswith("#")]:
+                typer.echo(f"removed: {line}")
             if "\n".join(after) + "\n" == before:
                 typer.echo("nothing changed")
             return
