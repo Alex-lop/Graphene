@@ -293,3 +293,41 @@ def test_the_plans_record_bills_the_cover_apart_from_the_planner(repo, fake):
     record = person("plan", "record")
     assert record.exit_code == 0, record.output
     assert "the planner's bill" not in record.stdout and "cover:nemotron's bill: $" in record.stdout
+
+
+def test_the_standing_clauses_go_on_the_board_as_notes_about_their_leaf(repo, fake):
+    three = {"clauses": [
+        {"text": "Load the XML feed into items", "leaf": None, "nearest": "xml-wiring"},
+        {"text": "Prices are in cents", "leaf": None, "nearest": "prices"},
+        {"text": EMPTY, "leaf": None, "nearest": None},
+    ]}  # fmt: skip
+    fake([nano(three)])
+    put = []
+
+    def add(store, kind, text, who, default=None, then=None, options=None, about=None):  # board.add's shape
+        if about == "prices":
+            raise P.Refused("prices is not a node in the plan")
+        put.append({"kind": kind, "text": text, "by": who.label, "agent": not who.person, "default": default,
+                    "then": then, "about": about})  # fmt: skip
+        return put[-1]
+
+    with planned(repo) as store:
+        C.cover(store, say=lambda s: None)
+        said = C.to_board(store, add)
+        assert put[0] == {
+            "kind": "note", "by": "shaper:nemotron", "agent": True, "about": "xml-wiring", "then": [],
+            "text": f"you said 'Load the XML feed into items'; no leaf carries it{C.STAND_IN}",
+            "default": "add it to the end of xml-wiring's goal",
+        }  # fmt: skip
+        assert put[1]["about"] is None and put[1]["default"] == "add it to a leaf in `graphene plan edit`"
+        assert said[0] == "cover: put on the board: 2"
+        assert said[1] == "cover: 'Prices are in cents' is not on the board: prices is not a node in the plan"
+        store.set_meta("board", json.dumps(put))
+        put.clear()
+        assert C.to_board(store, add) == ["cover: put on the board: 0; on the board already: 2", said[1]]
+        store.set_meta("board", "[]")
+        took = C.take(store, C.standing(store)[0], P.Caller("alex", True))
+        assert took.startswith("xml-wiring is now revision 2")
+        put.clear()
+        C.to_board(store, add)
+        assert [p["about"] for p in put] == [None]  # taken: its leaf carries it now

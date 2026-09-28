@@ -187,8 +187,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
             uncovered.append({"note": clause, "nearest": near})
     run = P._now()
     # what the model made up is counted whole, and a little of it kept to read: never a large row
-    read = {"run": run, "clauses": kept, "dropped": [d[:200] for d in dropped[:20]], "invented": len(dropped),
-            "pieces": pieces}  # fmt: skip
+    read = {"run": run, "endpoint": whose, "clauses": kept, "dropped": [d[:200] for d in dropped[:20]],
+            "invented": len(dropped), "pieces": pieces}  # fmt: skip
     with store.claim():
         store.log_node("*", run, "covered", ACTOR, None, None, read)
         for u in uncovered:
@@ -210,6 +210,42 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     if odd:
         say(f"cover: items of its answer that are not a clause, passed over: {odd}")
     return uncovered
+
+
+STAND_IN = " (read by a stand-in, not Nemotron)"
+
+
+def to_board(store, add: Callable[..., dict]) -> list[str]:
+    """Put the last cover's standing clauses on the board, for a board screen to call with
+    ``board.add``: one note each, by shaper:nemotron, about the leaf nearest it as the plan is now,
+    whose default is the offer. The board has no effect that adds to a goal, so taking the default tells
+    that leaf's executor; `graphene plan cover --take N` makes the edit. A clause on the board already
+    (in any state: dropping it there sets it aside), or that its leaf's goal now carries, is not put up.
+    Returns the lines to show: how many went up, and one for each that could not."""
+    runs = store.node_log("*", ("covered",))
+    live = runs and runs[-1]["detail"].get("endpoint") == "token factory"
+    by = "" if live else STAND_IN
+    there = {" ".join(str(it.get("text") or "").split()) for it in json.loads(store.meta("board") or "[]")}
+    who, put, known, said = P.Caller("shaper:nemotron", False), 0, 0, []
+    open_ = {n.id: n for n in P.leaves(P.nodes(store)) if n.state in (P.PROPOSED, P.OPEN)}
+    for u in standing(store):
+        try:
+            leaf = open_.get(u.get("nearest") or "")
+            if leaf is not None and u["note"].lower() in leaf.goal.lower():
+                continue
+            text = f"you said '{u['note']}'; no leaf carries it{by}"
+            if text in there:
+                known += 1
+                continue
+            if leaf is None:
+                add(store, "note", text, who, default="add it to a leaf in `graphene plan edit`", then=[])
+            else:
+                add(store, "note", text, who, default=f"add it to the end of {leaf.id}'s goal", then=[],
+                    about=leaf.id)  # fmt: skip
+            put += 1
+        except Exception as no:  # one clause that cannot go up does not keep the others off
+            said.append(CONTROL.sub("", f"cover: '{u['note']}' is not on the board: {no}"))
+    return [f"cover: put on the board: {put}" + (f"; on the board already: {known}" if known else ""), *said]
 
 
 def shaping() -> set[str]:
