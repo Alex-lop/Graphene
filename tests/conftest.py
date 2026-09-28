@@ -25,6 +25,16 @@ def no_token_factory(monkeypatch, tmp_path):
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
 
 
+@pytest.fixture(autouse=True)
+def no_agent_marks(monkeypatch):
+    """A leaf's check runs with its executor's marks set: the suite takes nobody for an agent, or a
+    stand-in, because of the shell it was started from."""
+    from graphene_map import plan
+
+    for name in (*plan.AGENT_MARKS, "GRAPHENE_AS"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def finish():
     """Do a node's work and finish it: a node with nothing changed inside its scope is not done, so
