@@ -37,7 +37,7 @@ class Drawn:
     tall: int = 1  # the lines each cell takes, from its line down: a click on any of them is on it
 
 
-VIEWS: dict[str, object] = {"outline": None}  # a name -> its module (draw, and suits if it has one)
+VIEWS: dict[str, object] = {"outline": None}  # name -> module (draw, suits), in Tab's order
 BASELINE = 50  # what the outline scores, of the 0 to 100 a view's `suits` gives: it must do better
 
 
@@ -104,3 +104,9 @@ def inputs(store) -> tuple[list[P.Node], dict[str, str], str]:
     back = {n.id for n in nodes if P.came_back(store, n)}
     goal = P.goal(store) or store.meta("goal:proposed") or "no goal yet"
     return nodes, {n.id: P.reads(n, nodes, back) for n in nodes}, goal
+
+
+from . import view_dag, view_tree  # noqa: E402  (they import Drawn and elide from here)
+
+VIEWS["tree"] = view_tree
+VIEWS["dag"] = view_dag

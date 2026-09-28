@@ -61,7 +61,8 @@ class Wide(Grid):
 
 @pytest.fixture
 def grid(monkeypatch):
-    monkeypatch.setitem(V.VIEWS, "grid", Grid)
+    """The grid alone beside the outline: the seam, apart from the views registered in src."""
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "grid": Grid})
 
 
 def look(repo, keys, size, view=None):
@@ -276,7 +277,8 @@ def test_the_screen_opens_in_the_repositorys_view_setting(repo, grid):
     assert look(repo, [], (80, 24), view="outline")["showing"] == "outline"  # --view wins
 
 
-def test_tab_with_only_the_outline_says_so(repo):
+def test_tab_with_only_the_outline_says_so(repo, monkeypatch):
+    monkeypatch.setattr(V, "VIEWS", {"outline": None})
     proposed(repo)
     seen = look(repo, ["tab"], (80, 24))
     assert seen["showing"] == "outline" and "graphene watch --view outline: the only view" in seen["status"]
@@ -373,8 +375,8 @@ def test_plan_view_prints_the_outline_or_the_view_as_text(repo, grid):
     assert "the grid does not fit at 40 columns: the outline" in narrow.stderr
     auto = person("plan", "--view", "auto", "--width", "80")
     assert auto.stdout == drawn.stdout
-    unknown = person("plan", "--view", "dag")
-    assert unknown.exit_code == 2 and "no view named dag" in unknown.output
+    unknown = person("plan", "--view", "nope")
+    assert unknown.exit_code == 2 and "no view named nope" in unknown.output
 
 
 def test_watch_takes_the_view_too(repo, grid, monkeypatch):
@@ -382,8 +384,9 @@ def test_watch_takes_the_view_too(repo, grid, monkeypatch):
     monkeypatch.setenv("COLUMNS", "80")
     printed = person("watch", "--view", "grid")  # no terminal: printed, as `plan --view` prints it
     assert printed.exit_code == 0 and printed.stdout.splitlines()[-1] == "4 in a grid"
-    unknown = person("watch", "--view", "dag")
-    assert unknown.exit_code == 2 and "no view named dag: the views are auto, outline, grid" in unknown.output
+    unknown = person("watch", "--view", "nope")
+    assert unknown.exit_code == 2
+    assert "no view named nope: the views are auto, outline, grid" in unknown.output
 
 
 def test_plan_view_outline_keeps_all_and_a_view_with_json_or_text_is_refused(repo, tmp_path):
@@ -463,3 +466,19 @@ def test_a_click_on_either_line_of_a_tree_cell_puts_the_cursor_there(repo, monke
             return app.drawn.tall, got
 
     assert asyncio.run(go()) == (2, ["docs", "schema", "ids"])
+
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_tree_and_the_graph_are_registered_and_tab_cycles_outline_tree_dag(repo, size):
+    """The views were built but not registered: Tab said "the only view" and --view knew neither."""
+    assert list(V.VIEWS) == ["outline", "tree", "dag"]
+    proposed(repo)
+    seen = [look(repo, ["j", "j", *["tab"] * k], size) for k in range(4)]
+    assert [s["showing"] for s in seen] == ["outline", "tree", "dag", "outline"]
+    assert {s["cursor"] for s in seen} == {"ids"}  # Tab keeps the node
+    assert "graphene watch --view tree" in seen[1]["status"]
+    assert "graphene watch --view dag" in seen[2]["status"]
+    assert seen[1]["view"][0].strip().startswith("users come back with their ids")  # the goal's line
+    said = person("plan", "--help").output
+    assert "auto, outline, tree, dag" in " ".join(said.split())
