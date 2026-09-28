@@ -156,6 +156,66 @@ on its own (a finished background task, a reminder, a slash command) is never th
 A `--check` that fails refuses the stop once, with its output; asked to stop again, the leaf closes
 and its record says the check failed. A session is never trapped by it.
 
+## P1d. The board
+
+`board.py`. Beside the tree, the planner puts up what the repository cannot answer:
+- a `question`, with the `default` it would assume and `option` lines when there is more than one way;
+- `assume` for what it took for granted, `risk` for what could go wrong, `leave out` for what it would
+  not do.
+
+Anyone may put up a `note`. The board is one JSON list in the store's meta (key `board`), in the order
+items were put up, so `graphene plan undo` puts back an answer with everything it changed. Every act is
+a `board` row in the plan's log, on the node the item is `about`, else on `*`, so what changed since the
+person last looked (P1e) covers it.
+
+Only the person answers (`board.settle`, refused to an agent):
+
+| Command | Key on its row | The item becomes |
+| --- | --- | --- |
+| `graphene board take ID` | `y` | `taken`: the default, a confirmed assumption, an agreed leave-out |
+| `graphene board pick ID N` | `1`..`9` | `picked`: option N |
+| `graphene board answer ID WORDS` | `Enter` | `answered`, in the person's words |
+| `graphene board park ID` / `unpark ID` | `p` | `parked` (told to nobody), or open again |
+| `graphene board drop ID` | `d` | `dropped`: told to nobody, and a planner asked again is told not to bring it back |
+| `graphene board note WORDS [--about ID]` | `a` | a note: the person's is told as written; an agent's waits for `take` |
+
+A default or an option may carry `then:` lines, in the plan's own words. They are applied when it is
+chosen, as the person's edit, in the same transaction:
+
+| `then:` | Does |
+| --- | --- |
+| `scope NODE + GLOB, …` | NODE's scope takes in the globs |
+| `check NODE: COMMAND` | NODE's check becomes the command |
+| `goal NODE + TEXT` | NODE's goal ends with the sentence (`node set --add-goal` does the same) |
+| `drop NODE` | NODE leaves the plan |
+| `leaf TITLE under NODE` | a proposed leaf under NODE (beside it, when NODE is a leaf) |
+| `condition GLOB` | a read-only glob (P1f) until the answer is undone |
+
+An effect that names no node in the plan is refused when the item is put up, by its line. What is told
+(`board.decided`: every answered, picked or taken item, and the person's own notes) reaches each
+executor it is about as `decided:` lines in its contract (`plan.contract`). That covers an item about the
+whole plan, the leaf itself, or a sub-goal above it. The planner is given the same lines when asked
+about a node.
+
+**In the text form** (P1c) the board comes first, after the goal: an item's line at the left edge
+(`question: words  [id]`), its own lines indented under it (`default:`, `option:`, `then:`, `about:`,
+`answer:` as `default`, `option N`, `parked` or words). `plan edit` reads a changed `answer:` as the
+person's answer, a changed item as a rewording and a deleted item as dropped. From an agent, only new
+items count; an agent's text that answers one, or rewords one already there, is refused by its line.
+
+**Asked for.** The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 3)
+tells it to read the repository first. It asks only what the code cannot settle, at most about five
+items, most important first. It writes each leaf as the default has it, and gives every option that
+changes a leaf the `then:` lines that make the change. Plan first's instruction to a Claude Code
+session says the same (`gate.TEACH`).
+
+**On the screen** (`board_rows.py`), each open item is a row directly under the goal, before the first
+sub-goal, in the row grammar: glyph and colour from `plan.LOOK`, its words, its id, and its kind as a
+verb (asks, assumes, risk, leaves out, note). What is settled, parked or dropped folds into one row
+(`✓ 3 settled · 1 parked`). The screen opens on the first open item, and the bottom line says what
+each key does there. `graphene plan` says `the board: 2 questions, 1 risk open (graphene board)` while
+anything waits.
+
 ## P2. The boundary: what makes a node done
 
 `graphene node start <id>` refuses unless the node is open, everything it needs is done, the caller
@@ -486,6 +546,9 @@ with nemotron`) only where the long form still fits with it.
   of the nodes is refused at `done`.
 - `.claude/settings*.json` is not protected by anything here. An agent that removes the hook from
   it has removed the hook; the boundary still holds.
+- A board answer changes the tree only through its `then:` lines. One with none (words, or a default
+  the planner gave no `then:`) reaches an executor only as a `decided:` line in its contract: it is
+  told, and the scope and the check are what bind.
 
 ## P6. A node's record
 
