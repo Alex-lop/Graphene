@@ -206,10 +206,9 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         P.edit(store, node_id, {"check": what}, who, now, files)
         return f"{node_id}: check is now {what}"
     if verb == "goal":
-        goal = P.get(store, node_id).goal.strip()
-        if what.lower() in goal.lower():
+        goal = P.goal_plus(P.get(store, node_id).goal, what)
+        if goal is None:
             return f"{node_id}: its goal says it already"
-        goal = f"{goal}{'' if goal.endswith(('.', '!', '?', ':', ';')) else '.'} {what}" if goal else what
         P.edit(store, node_id, {"goal": goal}, who, now, files)
         return f"{node_id}: goal + {what}"
     if verb == "drop":

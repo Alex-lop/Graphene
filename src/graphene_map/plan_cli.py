@@ -934,8 +934,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         node_id: str = typer.Argument(...),
         title: str = typer.Option(None, "--title"),
         scope: list[str] = typer.Option(None, "--scope", help="Replaces the scope; repeat it."),
+        add_scope: list[str] = typer.Option(None, "--add-scope", help="Adds a glob to the scope; repeat it."),
         check: str = typer.Option(None, "--check"),
-        goal: str = typer.Option(None, "--goal"),
+        goal: str = typer.Option(None, "--goal", help="Replaces the goal."),
+        add_goal: str = typer.Option(None, "--add-goal", help="Adds a sentence at the end of the goal."),
         needs: list[str] = typer.Option(None, "--needs", help="Replaces what it waits on; 'none' clears it."),
         owner: str = typer.Option(None, "--owner", help="'agent', 'me', or a person's name."),
         signoff: bool = typer.Option(None, "--signoff/--no-signoff"),
@@ -947,14 +949,22 @@ def register(cli: typer.Typer, root, open_store, fail):
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
             edits["signoff"] = signoff
-        if not edits:
+        for said, adds in (("scope", add_scope), ("goal", add_goal)):
+            if adds and said in edits:
+                fail(f"--{said} replaces the {said} and --add-{said} adds to it: one or the other", 2)
+        if not (edits or add_scope or add_goal):
             fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
                  "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
 
         files = tracked()
 
         def go(store):
-            before = P.get(store, node_id).rev
+            now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
+            before = now.rev
+            if add_scope:
+                edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
+            if add_goal:
+                edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
             node = P.edit(store, node_id, edits, P.caller(), files=files)
             last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
             return node, last
