@@ -396,3 +396,10 @@ def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(t
 
     where, applied = asyncio.run(go())
     assert applied == 1 and where.endswith(f"not Nemotron · {head['day']} · ×10: a wait, cut")
+
+
+def test_a_recording_carries_the_board(tmp_path):
+    repo = git_repo(tmp_path / "r")
+    with Store.open(repo) as store:
+        store.set_meta("board", '[{"id": "q"}]')
+        assert demo._snapshot(store.conn, 0)[2]["board"] == '[{"id": "q"}]'
