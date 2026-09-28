@@ -482,3 +482,12 @@ def test_the_tree_and_the_graph_are_registered_and_tab_cycles_outline_tree_dag(r
     assert seen[1]["view"][0].strip().startswith("users come back with their ids")  # the goal's line
     said = person("plan", "--help").output
     assert "auto, outline, tree, dag" in " ".join(said.split())
+
+
+def test_a_view_opened_from_the_outline_keeps_the_goal_line_in_sight(repo, grid):
+    """Opening the view scrolled it one line down, before its pane had a height: the goal was hidden."""
+    person("plan", "goal", "forty leaves")
+    for k in range(40):
+        person("node", "add", f"leaf {k}", "--id", f"n{k:02}", "--scope", f"f{k}.txt", "--check", "true")
+    seen = look(repo, ["j", "tab"], (80, 24))
+    assert seen["cursor"] == "n00" and seen["view"][0].startswith("forty leaves")

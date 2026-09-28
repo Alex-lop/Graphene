@@ -933,7 +933,7 @@ class Watch(App):
             lines[line].stylize("reverse", first, last + 1)
         box.query_one("#drawn", Static).update(Text("\n").join(lines))
         line = drawn.at[self.here][0] if self.here in drawn.at else 0
-        rows = max(box.scrollable_content_region.height, 1)
+        rows = box.scrollable_content_region.height or self.view_room()[1]  # not laid out yet: its room
         if not box.scroll_y <= line < box.scroll_y + rows:
             box.call_after_refresh(box.scroll_to, y=max(line - rows // 2, 0), animate=False)
 
