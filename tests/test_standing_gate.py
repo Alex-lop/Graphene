@@ -132,3 +132,21 @@ def test_done_refuses_a_changed_protected_path_git_ignores(tmp_path):
     (repo / ".env").write_text("SECRET=real\n")
     with Store.open(repo) as store:
         assert plan.finish(store, "n1", G.BOT).state == DONE
+
+
+def test_an_asides_record_never_calls_a_standing_path_in_scope(ruled, repo):
+    """An aside is a record, not a fence, so it closes; its record judges the scope as it binds, as the
+    store's own `outside` does, and never calls a protected path in scope."""
+    from graphene_map import node_record as NR
+
+    plan.propose(ruled, [{"id": "t", "title": "typo", "scope": ["**"]}], ALEX, aside=True)
+    plan.start(ruled, "t", ALEX, repo)
+    (repo / "src/db/schema.py").write_text("TABLES = [1]\n")
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    plan.close_aside(ruled, "t", ALEX)
+    lines = NR.render(NR.node_record(ruled, repo, plan.get(ruled, "t")))
+    assert "    outside the scope: src/db/schema.py  (git, when it ended)" in lines
+    assert "    in scope: src/api/users.py  (git, when it ended)" in lines
+    assert any("had changed under this node, 1 inside its scope" in line for line in lines)
+    rolled = NR.rolled_up(ruled, repo, [plan.get(ruled, "t")])
+    assert any("2 paths git said had changed under them, 1 inside the scope" in line for line in rolled)
