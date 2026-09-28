@@ -140,12 +140,13 @@ def test_a_proposed_check_with_no_sandbox_never_runs_here(repo, monkeypatch):
 
 
 def test_an_accepted_check_runs_here_without_the_key_and_no_key_leaves_a_red_unread(repo, monkeypatch):
-    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")  # a key the check must not see
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")  # a key the check must not see, set while it runs
     with Store.open(repo) as store:
         leaves(store, 'test -z "$NEBIUS_API_KEY"', "false", who=ME)
+        [(_, seen)] = C.run(store, repo, ["l0"])  # it passes: no model is asked, the key goes nowhere
         monkeypatch.delenv("NEBIUS_API_KEY")
         rows = {n.id: d for n, d in C.run(store, repo)}
-    assert rows["l0"]["verdict"] == "passes" and rows["l0"]["where"] == "here"
+    assert seen["verdict"] == "passes" and seen["where"] == "here"
     assert rows["l1"]["verdict"] == "red" and "NEBIUS_API_KEY is not set" in rows["l1"]["why"]
 
 
