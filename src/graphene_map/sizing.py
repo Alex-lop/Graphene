@@ -29,8 +29,8 @@ def layout(files: list[str]) -> str:
 
 
 def named_dirs(sentence: str, files: list[str]) -> set[str]:
-    """The directories of the repo the sentence names, by path or by last name; a named file names its
-    directory."""
+    """The directories of the repo the sentence names, by path or by a last name only one directory has;
+    a named file names its directory."""
     dirs = {str(d) for p in files for d in PurePosixPath(p).parents if str(d) != "."}
     by_name: dict[str, set[str]] = {}
     for d in dirs:
@@ -43,8 +43,8 @@ def named_dirs(sentence: str, files: list[str]) -> set[str]:
             found.add(word)
         elif parent.get(word, ".") != ".":
             found.add(parent[word])
-        else:
-            found |= by_name.get(word, set())
+        elif len(by_name.get(word, ())) == 1:  # a name many directories share ('sub', 'logs') means none
+            found |= by_name[word]
     return found
 
 
@@ -57,7 +57,7 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
     dirs = len(named_dirs(sentence, files))
     # ponytail: fixed line thresholds, tune against the four tasks and the public repos
     lo, hi = (1, 3) if lines < 2000 else (2, 6) if lines < 20000 else (4, 10)
-    lo = max(lo, dirs)
+    lo = max(lo, min(dirs, hi))  # the directories named raise the floor, up to the repo's own bound
     hi = max(hi, lo + 1)
     if size == "finer":
         lo, hi = lo * 2, hi * 2

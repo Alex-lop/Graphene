@@ -59,3 +59,11 @@ def test_bigger_repo_cuts_finer(tmp_path):
 def test_bad_size(tmp_path):
     with pytest.raises(ValueError):
         measure(tmp_path, "x", [], "huge")
+
+
+def test_a_word_naming_many_directories_does_not_set_the_floor(tmp_path):
+    files = repo(tmp_path, {f"pkg{i}/sub/m.py": 1 for i in range(30)})
+    assert named_dirs("fix a typo in sub", files) == set()  # 30 directories answer to it: none is meant
+    assert named_dirs("fix a typo in pkg3/sub", files) == {"pkg3/sub"}
+    lo, hi = leaves(measure(tmp_path, "fix a typo in pkg1 pkg2 pkg3 pkg4 pkg5 pkg6 pkg7", files))
+    assert lo <= hi <= 7  # directories named by path count, and never past the repo's own bound twice
