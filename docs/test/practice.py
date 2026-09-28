@@ -16,8 +16,9 @@ each rung's log and the recordings are kept in .graphene/practice/ (git-ignored;
 for the dry run), and the task repos are built outside this repository, in ~/graphene-practice/
 (~/graphene-practice-dry/). PRACTICE_STATE and PRACTICE_WORK move them.
 
-Rung 6 reads feeds' sealed paragraph from docs/test/tasks/feeds/paragraph.md and passes it on; nothing
-here prints it, and that rung prints no log tail. The dry run never reads it: it passes a placeholder.
+Rung 6 reads feeds' sealed paragraph from docs/test/tasks/feeds/paragraph.md and passes it on; no line
+and no log holds it (<the sealed paragraph of feeds> stands in its place), no command's output is shown on
+that rung, and it stops at arm A's failure. The dry run never reads it: it passes a placeholder.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ WORK = Path(os.environ.get("PRACTICE_WORK") or Path.home() / f"graphene-practice
 LEDGER = STATE / "ledger.jsonl"
 PROGRESS = STATE / "progress.json"
 PARAGRAPH = HERE / "tasks" / "feeds" / "paragraph.md"  # the sealer's: passed on, never printed or shown
+SEALED = "<the sealed paragraph of feeds>"  # what a line or the log says in its place
 MADE_BY = ".made-by-the-practice-ladder"  # in a state directory the ladder made: only such a one is removed
 ME = "docs/test/practice.sh" + (" --dry" if DRY else "")
 TAG = "dry run, stand-ins · " if DRY else ""  # every line of the dry run says so
@@ -115,7 +117,7 @@ class Rung:
     """One rung's run: its environment (its cap, the ledger, the stand-ins when dry), its log, its repos."""
 
     def __init__(self, n: int, cap: float):
-        self.n, self.cap, self.sealed = n, cap, []  # sealed: text the log never holds
+        self.n, self.cap, self.sealed = n, cap, []  # sealed: text no line and no log holds
         self.log = STATE / f"rung-{n}.log"
         self.log.write_text("", encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith("GRAPHENE_")}
@@ -125,11 +127,17 @@ class Rung:
             env |= FAKE.env() | {"GRAPHENE_SANDBOX": "docker", "CONTREE_HOME": str(STATE / "no-contree")}
         self.env = env | {"GRAPHENE_LEDGER": str(LEDGER), "GRAPHENE_SPEND_CAP_USD": f"{spent() + cap:.4f}"}
 
-    def note(self, text: str) -> None:
+    def seal(self, text: str) -> str:
+        """The sealed paragraph, whole or any line of it, replaced by SEALED."""
         for sealed in self.sealed:
-            text = text.replace(sealed, "[the sealed paragraph]")
+            for part in [sealed, *sorted({ln.strip() for ln in sealed.splitlines()}, key=len, reverse=True)]:
+                if len(part) >= 12:  # ponytail: a shorter line, or a fragment of one, is not caught
+                    text = text.replace(part, SEALED)
+        return text
+
+    def note(self, text: str) -> None:
         with self.log.open("a", encoding="utf-8") as f:
-            f.write(mask(text).rstrip("\n") + "\n")
+            f.write(mask(self.seal(text)).rstrip("\n") + "\n")
 
     def start(self, args: list[str], cwd: Path, **more: str) -> subprocess.Popen:
         self.note(f"$ {shlex.join(args)}   (in {cwd})")
@@ -163,8 +171,9 @@ class Rung:
 
     def must(self, repo: Path, *args: str, timeout: float = 300) -> str:
         code, out = self.graphene(repo, *args, timeout=timeout)
-        if code:
-            raise Failed(f"`graphene {' '.join(args[:2])}` failed: {last(out)}")
+        if code:  # with a sealed paragraph about, no output is shown: it is in the log, sealed there
+            shown = " ".join(SEALED if a in self.sealed else a for a in args[:2])
+            raise Failed(f"`graphene {shown}` failed: {'rung-6.log has why' if self.sealed else last(out)}")
         return out
 
     def where(self, name: str) -> Path:
@@ -370,17 +379,20 @@ def arms(r: Rung) -> str:
     # Graphene needs a leaf to have a check; `true` holds nothing, which is arm A's "no check"
     r.propose(repo_a, [{"id": "arm-a", "title": "arm A: the paragraph, no tree", "goal": paragraph,
                         "scope": ["**"], "check": "true"}])  # fmt: skip
-    r.graphene(repo_a, "run", "--parallel", "2", "--with", "nemotron", timeout=3600)
+    code, _ = r.graphene(repo_a, "run", "--parallel", "2", "--with", "nemotron", timeout=3600)
     a, a_cost = leaves(repo_a)["arm-a"], spent() - before
+    if code or a != P.DONE:  # arm B is not started: nothing more is spent on a rung that has failed
+        raise Failed(f"arm A's leaf did not land (it is {a}, exit {code}), ${a_cost:.4f}, in {repo_a.name}; "
+                     "arm B was not started; rung-6.log has the run")  # fmt: skip
     repo_b, _ = r.feeds("arm-b")
     r.must(repo_b, "ask", paragraph, "--with", "nemotron", timeout=1800)
     r.must(repo_b, "plan", "accept")
     r.graphene(repo_b, "run", "--parallel", "4", "--with", "nemotron --placement sandbox", timeout=3600)
     b, b_cost = leaves(repo_b), spent() - before - a_cost
     landed = sum(s == P.DONE for s in b.values())
-    said = (f"arm A: its leaf {'landed' if a == P.DONE else 'is ' + a}, ${a_cost:.4f}; arm B: {landed} of "
-            f"{len(b)} leaves landed, ${b_cost:.4f}; repos {repo_a.name}, {repo_b.name}")  # fmt: skip
-    if a != P.DONE or not landed:
+    said = (f"arm A: its leaf landed, ${a_cost:.4f}; arm B: {landed} of {len(b)} leaves landed, "
+            f"${b_cost:.4f}; repos {repo_a.name}, {repo_b.name}")  # fmt: skip
+    if not landed:
         raise Failed(f"a run ended with nothing landed: {said}")
     return said
 
@@ -507,7 +519,7 @@ def climb(n: int) -> bool:
         said, ok = str(no), False
     except Exception as no:  # an SDK's or a sandbox's own error is a result here
         said, ok = f"{type(no).__name__}: {no}", False
-    took = time.monotonic() - began
+    said, took = r.seal(said), time.monotonic() - began
     rows = progress() | {str(n): {"result": "PASS" if ok else "FAIL", "at": time.strftime("%Y-%m-%d %H:%M"),
                                    "seconds": round(took, 1),
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip

@@ -2,6 +2,7 @@
 scripted fake Token Factory (tests/fake_tokenfactory.py, started by the ladder itself) and Docker in place of
 ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes."""
 
+import importlib.util
 import json
 import os
 import shutil
@@ -11,8 +12,12 @@ from pathlib import Path
 
 import pytest
 
+from graphene_map.plan import AGENT_MARKS
+
 ROOT = Path(__file__).resolve().parents[1]
 PRACTICE = ROOT / "docs" / "test" / "practice.py"
+MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CODEX_SESSION_ID",
+         "CODEX_SANDBOX", "AI_AGENT", *AGENT_MARKS)  # fmt: skip
 
 
 def docker_runs() -> bool:
@@ -103,3 +108,54 @@ def test_every_line_of_the_dry_run_says_so(tmp_path):
         lines = said.strip().splitlines()
         assert lines and all(ln.startswith("dry run, stand-ins · ") for ln in lines)
         assert "typed by you" not in said  # the dry run types everything itself
+
+
+def load_practice(tmp_path: Path, monkeypatch):
+    """practice.py in this process, live (not dry), its state in tmp_path and no agent's mark set."""
+    monkeypatch.delenv("PRACTICE_DRY", raising=False)
+    for mark in MARKS:
+        monkeypatch.delenv(mark, raising=False)
+    spec = importlib.util.spec_from_file_location("practice_under_test", PRACTICE)
+    practice = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(practice)
+    state = tmp_path / "state"
+    state.mkdir()
+    for name, path in {"STATE": state, "WORK": tmp_path / "work", "LEDGER": state / "ledger.jsonl",
+                       "PROGRESS": state / "progress.json"}.items():  # fmt: skip
+        monkeypatch.setattr(practice, name, path)
+    return practice
+
+
+@pytest.mark.parametrize("fails", ["arm A's run", "arm B's ask"])
+def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(tmp_path, monkeypatch, capsys,
+                                                                                 fails):  # fmt: skip
+    """Rung 6 with graphene stubbed: nothing runs, and a stand-in paragraph (not the sealed one) is passed."""
+    practice = load_practice(tmp_path, monkeypatch)
+    words = "Stand-in words that must stay sealed:\nthe second line of them, also sealed."
+    (tmp_path / "paragraph.md").write_text(words + "\n")
+    monkeypatch.setattr(practice, "PARAGRAPH", tmp_path / "paragraph.md")
+    built = []
+
+    def feeds(r, name, recorder=None):
+        built.append(name)
+        (tmp_path / name).mkdir()
+        return tmp_path / name, None
+
+    def graphene(r, repo, *args, timeout=900):  # a failure that says the paragraph back, whole and in part
+        failing = args[0] == ("run" if fails == "arm A's run" else "ask")
+        return (1, f"could not do it: {words}\n{words.splitlines()[1]}") if failing else (0, "ok")
+
+    monkeypatch.setattr(practice.Rung, "feeds", feeds)
+    monkeypatch.setattr(practice.Rung, "propose", lambda r, repo, nodes: None)
+    monkeypatch.setattr(practice.Rung, "graphene", graphene)
+    arm_a = "failed" if fails == "arm A's run" else "done"
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"arm-a": arm_a})
+    assert practice.climb(6) is False
+    said = capsys.readouterr().out
+    assert "FAIL · rung 6 · " in said
+    for line in words.splitlines():
+        assert line not in said and line not in (tmp_path / "state" / "rung-6.log").read_text()
+    if fails == "arm A's run":
+        assert built == ["arm-a"] and "arm B was not started" in said  # nothing more is spent
+    else:
+        assert built == ["arm-a", "arm-b"] and "`graphene ask <the sealed paragraph of feeds>" in said
