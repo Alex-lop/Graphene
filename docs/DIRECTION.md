@@ -1191,6 +1191,28 @@ as written and the change is named here.
     four. `tests/test_ask.py::test_the_planner_is_told_the_board_carries_only_what_changes_the_tree`;
     `docs/test/results-2026-09-28-shaping.md` ("Study 3"); runs under `~/graphene-shaping3-runs/`.
     98's claim stands: the board does not yet save attention.
+100. **What the closing review changed.** Five adversaries went over the diff `cb2ce54..2111115`,
+     one each on the board, the views, settings and keys, the ladder, and the claims, and a skeptic
+     reproduced every finding from scratch. That gave 48 findings, all collected before any was
+     fixed: 45 confirmed and 3 refuted (with why, in the review's record). Each fix has a test that
+     fails before it, on the `g-fix-*` branches merged into `shaping`. The six blockers:
+     - **A re-ask (`+`, `-`) dropped the waiting tree before the planner ran,** so a planner that
+       failed left nothing, and it dropped a split's and another way's proposals with it. It now
+       drops only the last ask's own tree, and only once a new proposal has landed (this revises 91).
+       A planner that writes a board item again with changes keeps the board's own and lands the
+       rest, rather than losing the whole proposal.
+     - **The graph crashed on a title holding a joined emoji** (a family of three). Cells are measured
+       whole now, and variation selectors count right.
+     - **A shell write to a git-ignored protected or read-only path passed the hook and `done`** (the
+       README's own `.env` example). The ignored files a condition covers are hashed at start and
+       checked at `done` (this extends 90).
+     - **A Token Factory error body that echoed the key was printed, stored and recordable.** It is
+       masked by shape before it is printed or kept (this extends 89).
+     - **`HACKATHON.md` said no shaping number existed.** It now reports studies 2 and 3 as they came.
+     - Also fixed: the ladder's dry climb could delete the live ladder's ledger when both shared a
+       state directory; `practice.mask` hid only a key's first twenty characters; `plan precheck`
+       ran an accepted leaf's check with the keychain on; an answer about a leaf that left the plan
+       was accepted and told to no one; the docs described prompt versions 2 and 3.
 
 ## What does not bind (say it wherever you sell it)
 
