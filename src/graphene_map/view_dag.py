@@ -29,7 +29,7 @@ from rich.text import Text
 from . import plan as P
 from . import plan_view
 from .plan_view import depths, outline
-from .views import Drawn, elide
+from .views import Drawn, elide, graphemes
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
 KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
@@ -361,9 +361,9 @@ def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str,
 
 def _columns(text: str, how: str) -> list[tuple[str, str]]:
     """Text as one entry a terminal column, as the grid is laid out: a wide character's second column
-    is "", and a character that takes none (a combining accent) joins the one before it."""
+    is "", and what a terminal draws as one (`graphemes`) is one entry."""
     out: list[tuple[str, str]] = []
-    for char in text:
+    for char in graphemes(text):
         wide = cell_len(char)
         if wide == 0 and out:
             out[-1] = (out[-1][0] + char, how)

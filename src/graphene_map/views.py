@@ -56,6 +56,19 @@ def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, he
     return best
 
 
+def graphemes(text: str) -> list[str]:
+    """Text as what a terminal draws as one, each measured whole by `cell_len`: a character with the
+    zero-width ones after it (a combining accent, the variation selector of ❤️) and whatever a
+    zero-width joiner joins to it (👩‍👩‍👧 is two cells, not six)."""
+    out: list[str] = []
+    for char in text:
+        if out and (cell_len(char) == 0 or out[-1].endswith("\u200d")):
+            out[-1] += char
+        else:
+            out.append(char)
+    return out
+
+
 def elide(text: str, wide: int) -> str:
     """`plan_text.elide` counted in terminal cells, as a view lays out its columns: one line of at most
     ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells)."""

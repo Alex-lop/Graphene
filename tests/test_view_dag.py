@@ -7,7 +7,7 @@ import sys
 import types
 from dataclasses import dataclass
 
-from rich.cells import cell_len
+from rich.cells import split_graphemes
 from rich.text import Text
 
 try:
@@ -54,10 +54,11 @@ def words_of(nodes):
 
 
 def cells(text):
-    """A line as one entry a terminal column: a wide character's second column is a NUL."""
+    """A line as one entry a terminal column, as rich measures it: a wide character's second column
+    is a NUL, and what a terminal draws as one (❤️, 👩‍👩‍👧) is one entry."""
     out = []
-    for c in text:
-        out += [c] + ["\0"] * (cell_len(c) - 1)
+    for a, b, wide in split_graphemes(text)[0]:
+        out += [text[a:b]] + ["\0"] * (wide - 1)
     return out
 
 
@@ -265,6 +266,15 @@ def test_wide_characters_take_two_columns_and_the_lines_still_meet():
         checked(nodes, width)
     goal = V.draw(nodes, words_of(nodes), "目標を書く " * 30, 80, 24, None).lines[0]
     assert goal.cell_len <= 80 and goal.plain.endswith("…")
+
+
+def test_an_emoji_takes_the_cells_a_terminal_gives_it_and_the_lines_still_meet():
+    """A joined emoji (👩‍👩‍👧, two cells) raised IndexError: each code point took columns of its own,
+    six in all."""
+    for title in ("thank the 👩‍👩‍👧 team", "👩‍👩‍👧 " * 9):
+        nodes = [leaf("a", "read the feed"), leaf("b", title, ["a"]), leaf("c", "x", ["b"])]
+        for width in range(20, 90, 7):
+            checked(nodes, width)
 
 
 def test_a_fan_out_past_seven_crosses_nothing():
