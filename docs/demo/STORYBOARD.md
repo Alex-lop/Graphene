@@ -11,8 +11,8 @@ That is where Graphene differs from the rest of the field (`docs/process/field.m
 differs", item 1). The run, the forks and the bill come after it and are shorter, because forking
 from one checkpoint is the field's most common pattern (item 3 there).
 
-<!-- For the coordinator: the board, the tree and graph views, `?` talk, `graphene config` and the
-Nemotron shaping commands are on `integ` tonight (at 50f12e7), not yet on `shaping` or `main`.
+<!-- For Alex: the board, the tree and graph views, `?` talk, `graphene config` and the Nemotron
+shaping commands are merged into `shaping` (at 2111115), not yet into `main`.
 docs/proof/nemotron.sh and nemotron.tape do not yet show the board or press Tab; the tape needs the
 new keys before this can be recorded. -->
 
@@ -20,8 +20,8 @@ new keys before this can be recorded. -->
 | --- | --- | --- |
 | 0:00–0:10 | Two panes, each 80x24: a terminal on the left, `graphene watch` on the right, empty. The left pane shows `graphene config`: the protected paths, the plan's size, the planner and the executor, and where the key was found (never the key). | "This is Graphene, on a small Python repository. I said once what no agent may touch. Now I'll ask for a feature in a paragraph, and NVIDIA Nemotron models will plan it and build it on Nebius Token Factory." |
 | 0:10–0:30 | The paragraph typed into `graphene ask`. The right pane fills with a tree, every row `?`. The left pane lists `proposed …` lines, then `put up …` lines. | "The planner is Nemotron 3 Ultra, called through Token Factory's OpenAI-compatible API. It reads the repository with read-only tools (list, grep, read) and answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done. What the code can't tell it, it asks." |
-| 0:30–0:55 | **The board** (frames B1 to B3 below). `graphene board`; then `graphene board pick parser 1`, `take cents`, `take no-zero`, `park json-variant`. The right pane gains a leaf; the left pane shows `node show` with its `decided:` lines. | "Before anything runs, the planner asks instead of guessing: questions with a default, what it assumed, the risks it sees, what it left out. I answer each with one command. Picking lxml widens the reader's scope, as my edit. Taking the risk's default adds a leaf. Each answer goes to that leaf's executor, as a decided line." |
-| 0:55–1:15 | **The graph** (frames G1 and G2 below). `Tab` in the right pane: the tree. `Tab` again: the graph, the critical path heavy, and its note on the bottom line. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. Two leaves can start at once, two wait, and the heavy line is the critical path." |
+| 0:30–0:55 | **The board** (frames B1 to B3 below). `graphene board`; then `graphene board pick parser 1`, `take cents`, `take no-zero`, `park json-variant`. The right pane gains a leaf; the left pane shows `node show` with its `decided:` lines. | "Before anything runs, the planner asks instead of guessing: at most three questions or risks, each with a default, and only what changes the tree. I answer each with one command. Picking lxml widens the reader's scope, as my edit. Taking the risk's default adds a leaf. What I take or pick goes to that leaf's executor, as a decided line; what I park is told to no one." |
+| 0:55–1:15 | **The graph** (frames G1 and G2 below). `Tab` in the right pane: the tree. `Tab` again: the graph, the critical path heavy, and its note on the bottom line. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path: the chain the rest waits on." |
 | 1:15–1:30 | `j` to a leaf, `?`, then `w`: the planner's why lands on the board. *Only if this ran live on the recording night; if not, cut it and give the time to the run.* | "I can talk to the plan: question mark on a leaf asks the planner why it's there, and the answer lands on the board for me to keep or drop." |
 | 1:30–1:40 | `Enter` on a leaf shows its scope and check; `E` opens the plan in the editor and a path leaves a scope; `y` on the goal accepts. | "Then I prune. I take one path out of this leaf's scope, and accept the rest." |
 | 1:40–2:10 | `R`. Leaves turn yellow at once; the node pane shows the executor, its sandbox, its last step and seconds since. | "R runs every ready leaf. Each gets a Nemotron Nano executor on Token Factory, and every tool call it makes runs in a Token Factory Sandbox forked from one checkpoint of the repository. Its write tools refuse a path outside the scope, the sandbox refuses it too, and the leaf is done only when Graphene's own check passes." |
@@ -32,18 +32,17 @@ new keys before this can be recorded. -->
 
 ## The board and the graph, frame by frame
 
-What the viewer sees at 80x24 in each pane, and the keys pressed. These frames were rendered at
-`integ` 50f12e7 from a scratch repository, with a scripted planner standing in for Nemotron
+What the viewer sees at 80x24 in each pane, and the keys pressed. B1 to B3 were rendered at `integ`
+50f12e7 (since merged into `shaping`), and G1 and G2 at `shaping` 2111115, from a scratch repository, with a scripted planner standing in for Nemotron
 (`graphene ask --with`), a person set by `GRAPHENE_AS=person:alex`, and no model called. The
 recording's words will be whatever Ultra puts up that night; the layout, the commands and the keys
 are these. The path on each screen's first line is shortened, and in G1 and G2 the empty rows of
 the lower pane are shown as `…`.
 
-<!-- integ only: every command in these frames. The watch screen does not show the board or count
-its open items tonight (its status line read "you: 1" with four items open), which is why the
-board is answered in the left pane. If a board view in graphene watch merges before the recording
-(lane-a-board-view or lane-a-board-rows), shoot B1 and B2 in the right pane with its keys instead
-(y takes the default, 1 picks option 1, p parks). -->
+<!-- For Alex: these frames were rendered before the rows board merged (decision 84), so
+they answer the board in the left pane. `graphene watch` now shows each item as a row under the goal
+and counts the open ones on its status line ("+ N on the board"): shoot B1 and B2 in the right pane
+with its keys instead (y takes the default, 1 picks option 1, p parks, d drops, Enter answers). -->
 
 **B1, 0:30. Left pane, typed: `graphene board` Enter.**
 
@@ -117,7 +116,8 @@ xml-reader (revision 2): an XML reader that returns rows
 (The line for the risk is wider than 80 columns and wraps in the pane.)
 
 **G1, 0:55. Right pane, key: `Tab`.** The tree, top-down; `←1` and `←2` count what each leaf still
-waits on. The bottom line names the command and the note:
+waits on. The bottom line names the command and the note (G1 and G2 rendered again at `shaping`
+2111115, with the same scratch plan and board answers):
 
 ```
  the plan of …
@@ -132,7 +132,12 @@ waits on. The bottom line names the command and the note:
  the Northwind XML feed loads the way csv and json already do
  the goal · proposed with the tree: accepting any of it accepts it
  …
- you: 1 · 0 running · none ready · 0/0 done · plan first: off
+ ? Northwind XML loads like csv and json                         xml  proposed
+ …
+ waiting  xml is proposed, for you to accept or prune
+ …
+ you: 1 · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
  graphene watch --view tree: 1 sub-goal · 5 leaves · 6 proposed
 ```
 
@@ -150,13 +155,20 @@ the Northwind XML feed loads the way csv and json already do
  the Northwind XML feed loads the way csv and json already do
  the goal · proposed with the tree: accepting any of it accepts it
  …
- you: 1 · 0 running · none ready · 0/0 done · plan first: off
- graphene watch --view dag: 2 at once · 3 wait · critical path: xml-reader >…
+ ? Northwind XML loads like csv and json                         xml  proposed
+ …
+ waiting  xml is proposed, for you to accept or prune
+ …
+ you: 1 · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
+ graphene watch --view dag: critical ━ xml-reader > xml-wire > xml-e2e (3)…
 ```
 
-A third `Tab` goes back to the outline. Before the board's new leaf, the same graph's note reads
-`2 at once · 2 wait · critical path: xml-reader > xml-wire > xml-e2e (3)`.
-<!-- For the coordinator: after the board's new leaf, the note counts zero-price-product among
+A third `Tab` goes back to the outline. At 80 columns the bottom line keeps only the critical path;
+`graphene plan --view dag --width 80` prints the whole note, which ends
+`critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
+`… · 2 wait` before the board's new leaf.
+<!-- For Alex: after the board's new leaf, the note counts zero-price-product among
 "3 wait", though it waits on nothing; it has no scope or check yet, which may be why. Worth a look
 before it is on camera. -->
 
@@ -167,8 +179,8 @@ before it is on camera. -->
   named for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
 - The board and the questions on it are Nemotron's, from that run: the frames above show the layout,
   not the words.
-- The work on `integ` (the board, the views, `?` talk, `graphene config`) is merged, and
-  `docs/proof/nemotron.sh` and its tape show the board and press `Tab`.
+- The board, the views, `?` talk and `graphene config` are on `main`, and `docs/proof/nemotron.sh`
+  and its tape show the board and press `Tab`.
 - Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `?` talk appear only
   if they ran live in that recording. Until then they are not on camera.
 - Nothing recorded in the Docker stand-in is shown or described as a Token Factory Sandbox.

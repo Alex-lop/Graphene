@@ -204,9 +204,10 @@ about a node.
 person's answer, a changed item as a rewording and a deleted item as dropped. From an agent, only new
 items count; an agent's text that answers one, or rewords one already there, is refused by its line.
 
-**Asked for.** The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 3)
-tells it to read the repository first. It asks only what the code cannot settle, at most about five
-items, most important first. It writes each leaf as the default has it, and gives every option that
+**Asked for.** The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 4)
+tells it to read the repository first. It asks only what the code cannot settle and what changes the
+tree, at most three items, each a question or a risk, most important first; an assumption it is sure
+of is a sentence in the goal of the leaf it bears on, not an item. It writes each leaf as the default has it, and gives every option that
 changes a leaf the `then:` lines that make the change. Plan first's instruction to a Claude Code
 session says the same (`gate.TEACH`).
 

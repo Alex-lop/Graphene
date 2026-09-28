@@ -1323,8 +1323,9 @@ as written and the change is named here.
    Its evidence tooling is in: `docs/test/evidence.py` fills the pre-registered table and draws the
    chart (and refuses a stand-in's rows unless told), `docs/test/arm_bprime.py` runs arm B′, and
    `docs/test/standin.py` prints arm A's brief. Each is tested against the scripted fake.
-3. The board, made to save attention (decision 98): fewer items, only those that change the tree, a
-   compact print. Then study 2's design again, on the screen and on a build with decision 83.
+3. The board, made to save attention (decision 98). Fewer items, only those that change the tree,
+   is prompt version 4, and study 3 ran study 2's design again on it: the board still cost more. Next,
+   a compact print, and the design again on the screen.
 4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
    `docs/process/ideas.md` says, by 20 October.

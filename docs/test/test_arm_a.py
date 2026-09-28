@@ -133,3 +133,14 @@ def test_a_follow_up_after_a_stop_answers_the_call_that_never_ran():
     messages = [{"role": "assistant", "content": "", "tool_calls": [{"id": "a"}, {"id": "b"}]},
                 {"role": "tool", "tool_call_id": "a", "content": "exit 0"}]  # fmt: skip
     assert [m["tool_call_id"] for m in arm_a.unanswered(messages)] == ["b"]
+
+
+def test_a_follow_up_answered_by_another_endpoint_names_both(run):
+    repo, tmp, start = run
+    start([call("done"), call("done")])
+    base = [str(repo), "--steps", "5", "--conversation", str(tmp / "a.json")]
+    assert arm_a.main([*base, "--paragraph-file", str(tmp / "paragraph.md")]) == 0
+    said = json.loads((tmp / "a.json").read_text())
+    (tmp / "a.json").write_text(json.dumps(said | {"endpoint": "token factory"}))  # as a live first message
+    assert arm_a.main([*base, "--follow-up-file", str(tmp / "follow.md")]) == 0  # the stand-in answers it
+    assert json.loads((tmp / "a.json").read_text())["endpoint"] == "token factory then a stand-in"

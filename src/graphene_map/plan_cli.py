@@ -485,7 +485,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             None,
             "--view",
             help=f"Open in this view: {', '.join(['auto', *V.VIEWS])}. Tab goes to the next that fits. "
-            "Left out: the repository's `view` setting, else the outline.",
+            "Left out: the outline.",
         ),
     ) -> None:
         """The plan on one screen, live, with vim keys: the tree, the node under the cursor, the
