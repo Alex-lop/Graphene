@@ -210,7 +210,7 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
   macOS, `secret-tool` on Linux), read from a hidden prompt and never from the command line.
   `graphene key check` says `Token Factory: reached, N NVIDIA models` or what stood in the way,
   never the key; `graphene key remove` takes it out. Graphene looks in `NEBIUS_API_KEY` first, then
-  the keychain, and never in a file.
+  the keychain, and never in a file. `GRAPHENE_KEYCHAIN=off` keeps it out of the keychain.
 - **Protected paths.** `protected: secrets/**, .env` in `graphene config edit`: no scope may cover
   them, the planner is told never to read them, its tools and the hook refuse to, and they are not
   uploaded to a sandbox.
@@ -221,11 +221,12 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
 - **How big a plan is.** `size: auto`, `finer` or `coarser`. The planner is told the repo's files,
   lines and test layout and the directories your ask names, and a number of leaves from them.
   `graphene ask "…" --finer` (or `--coarser`) sizes one ask and replaces the planner's last
-  proposal still waiting on you.
+  proposal still waiting on you. `+` and `-` in `graphene watch` do that for the last ask.
 
 `graphene config` prints them all, with the planner, the executor, plan first and where the key was
 found. `graphene config edit` edits them the way `plan edit` edits the plan: a line it cannot read is
-refused by its number, and the rest is applied all or none.
+refused by its number, and the rest is applied all or none. In `graphene watch`, `?` shows them
+under the keys, and the standing conditions are a row under the goal.
 
 ## What works today
 
@@ -326,6 +327,8 @@ before a write, and how:
   executor runs can read it (as it can any file your user can), a Codex planner is only told not to,
   and a leaf's check in a sandbox fork runs on the whole checkout, so a test the leaf wrote could
   print it.
+- A `never:` line is told to the planner and enforced nowhere: a proposal that breaks it is shown
+  like any other, and only your pruning catches it.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
 
@@ -360,10 +363,11 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
 
 - With Nemotron as planner or executor, Graphene sends Token Factory the prompts about your
   repository and the files the model reads, and in a sandbox it sends Sandboxes the leaf's checkout.
-  The key is read from your environment at each call and written nowhere; a command the model runs,
-  and every check, gets an environment without it. With Claude Code or Codex, Graphene itself sends
-  nothing anywhere: `graphene run` and `graphene ask` start the executor or planner you name, with the
-  permissions you give it.
+  The key is read from your environment, else the keychain, and written nowhere but the keychain
+  (`graphene key set`); a command the model runs, and every check, gets an environment without it.
+  With Claude Code or Codex, Graphene itself sends nothing anywhere: `graphene run` and `graphene ask`
+  start the executor or planner you name, with the permissions you give it. The prototypes
+  (`plan cover`, `plan note`, `plan precheck`, `GRAPHENE_SHAPE`) are the exception: they ask Nano.
 - What a Nemotron leaf cost is Token Factory's own token count at its list price: in the leaf's
   record, on `graphene watch`'s status line, and on the run's last line.
 - Graphene reads no Claude Code transcript. What it knows of a session is what its hooks recorded
