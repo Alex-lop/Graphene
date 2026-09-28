@@ -24,13 +24,17 @@ from . import plan as P
 from . import tokenfactory as tf
 from .store import Store, repo_root
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: the board (questions with a default, assumptions, risks, leave-outs)
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
 (list, glob, grep, read) until you know which files each piece of work must change and which command
-shows it is done. Then answer with the proposal in the form the request gives, and nothing else but one
-or two sentences after it for anything you could not settle. You write no file and run nothing."""
+shows it is done. Ask instead of guessing, and bring only what the repository cannot answer: for each
+thing the request leaves open that the code cannot settle, put a question on the board with the default
+you would assume, and say what you assumed, the risks you see and what you would leave out, at most
+about five, most important first. Never ask what a file answers; plan on the file. Then answer with the
+proposal in the form the request gives, and nothing else but one or two sentences after it. You write
+no file and run nothing."""
 
 
 def _tool(name: str, description: str, required: tuple[str, ...] = (), **properties: str) -> dict:

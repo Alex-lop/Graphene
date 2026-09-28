@@ -47,7 +47,7 @@ def test_a_person_writes_a_tree_and_it_reads_back_as_written(store):
     )
     assert template.state == OPEN  # a person's lines are in the plan at once
     text, opened = T.render(store)
-    assert set(opened) == {"*goal", "pdf", "render", "template", "docs"}  # and the goal, as it was shown
+    assert set(opened) == {"*goal", "*board", "pdf", "render", "template", "docs"}  # goal, board
     # read back and applied again, it changes nothing: the text is the plan
     assert T.apply(store, text, ALEX, opened) == []
 
