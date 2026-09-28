@@ -2,7 +2,7 @@
 """One arm of one task, counted. Nothing here is estimated, judged or asked of a model.
 
     docs/test/tally.py <repo> --base <sha> --intent <intent_globs.txt> \\
-        --accept <accept.py> [--quality <quality.py>] --arm <prompt|graphene> \\
+        --accept <accept.py> [--quality <quality.py>] --arm <prompt|graphene|tree|board> \\
         --runlog <runlog.jsonl>
 
 Every number comes from one of four places and the output says which:
@@ -334,7 +334,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--intent", required=True, help="intent_globs.txt")
     ap.add_argument("--accept", required=True, help="accept.py")
     ap.add_argument("--quality", help="quality.py: the same checks on inputs the code never saw")
-    ap.add_argument("--arm", required=True, choices=("prompt", "graphene", "tree"))
+    ap.add_argument("--arm", required=True, choices=("prompt", "graphene", "tree", "board"))
     ap.add_argument("--runlog", required=True, help="runlog.jsonl")
     args = ap.parse_args(argv[1:])
 
