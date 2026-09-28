@@ -267,6 +267,22 @@ export const clip = (text: string, width: number, per: number): string => {
 /** The two things the page can show: what will happen, and what did. The plan is the default. */
 export type View = "plan" | "record";
 
+/** The three ways the page draws the plan: the outline the terminal prints, the tree top-down, and
+ * the graph of what waits on what, left to right. */
+export type Layout = "outline" | "tree" | "graph";
+
+/** Why the page shows the layout it shows, when the viewer has not picked one. */
+export const BECAUSE: Record<Layout, string> = {
+  graph: "some nodes wait on others",
+  tree: "nothing waits on anything, and the tree fits",
+  outline: "nothing waits on anything, and the tree is wider than the window",
+};
+
+/** The layout the plan's shape calls for: the graph when anything waits on anything, else the tree
+ * when it fits `room` pixels across, else the outline. */
+export const layoutFor = (plan: Plan, room: number): Layout =>
+  plan.edges.length > 0 ? "graph" : plan.tree_width + 32 <= room ? "tree" : "outline";
+
 /** What a state is called on screen. It is printed as words beside the shape, never as colour alone. */
 export const STATE: Record<Shown, string> = {
   proposed: "proposed",

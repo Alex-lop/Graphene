@@ -6,8 +6,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-import { PlanHeader, PlanInspector, PlanTree } from "./Plan";
-import type { Plan, PlanNode } from "./types";
+import { layoutFor } from "./model";
+import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView } from "./Plan";
+import type { Plan, PlanEdge, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   id,
@@ -39,6 +40,8 @@ const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   row: 0,
   x: 0,
   y: 0,
+  tree_x: 0,
+  tree_y: 124,
   width: 200,
   height: 76,
   ...extra,
@@ -67,6 +70,22 @@ const plan: Plan = {
   holes: { scope: "", check: "", stop: "", person: "" },
   writable: false,
   token: null,
+  critical: [],
+  ready: [],
+  tree_width: 200,
+  tree_height: 200,
+  tree_goal: [0, 0],
+  tree_links: [],
+};
+
+// feeds, as plan_view.py lays it out: two chains into one leaf, the longer one critical
+const edge = (source: string, target: string, critical: boolean): PlanEdge => ({ id: `${source}>${target}`, source, target, points: [[200, 38], [240, 38]], critical });
+const feeds: Plan = {
+  ...plan,
+  nodes: [node("xml-reader"), node("xml-wire", { needs: ["xml-reader"], display_state: "waiting" }), node("zero-rule"), node("xml-e2e", { needs: ["xml-wire", "zero-rule"], display_state: "waiting" })],
+  edges: [edge("xml-reader", "xml-wire", true), edge("xml-wire", "xml-e2e", true), edge("zero-rule", "xml-e2e", false)],
+  critical: ["xml-reader", "xml-wire", "xml-e2e"],
+  ready: ["xml-reader", "zero-rule"],
 };
 
 test("the tree is indented by depth, and a sub-goal counts its leaves instead of naming a scope", () => {
@@ -139,4 +158,50 @@ test("with no Claude Code session recorded, the record screen cannot be opened a
   const record = (html: string) => html.slice(html.lastIndexOf("<button", html.indexOf("the record")));
   expect(record(header(0))).toMatch(/^<button[^>]* disabled="" title="no Claude Code session was recorded in this repo/);
   expect(record(header(1))).not.toContain("disabled");
+});
+
+test("the page draws the plan the way its shape calls for: the graph when anything waits, else the tree when it fits, else the outline", () => {
+  expect(layoutFor(feeds, 2000)).toBe("graph");
+  expect(layoutFor(feeds, 100)).toBe("graph"); // what waits on what is the thing to see, and it pans
+  expect(layoutFor(plan, 1000)).toBe("tree");
+  expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toBe("outline");
+});
+
+test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start now in words", () => {
+  const bar = (picked: boolean) => renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" picked={picked} onLayout={() => undefined} />);
+  const html = bar(false);
+  expect(html).toMatch(/data-layout="graph"/);
+  expect(html.match(/<button/g)).toHaveLength(3);
+  expect(html).toMatch(/aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*class="on" aria-pressed="true"[^>]*>graph<\/button>/);
+  expect(html).toContain("chosen: some nodes wait on others");
+  expect(html).toContain("critical path: xml-reader → xml-wire → xml-e2e");
+  expect(html).toContain("can start now: xml-reader, zero-rule");
+  expect(bar(true)).toContain("your choice, kept in this browser");
+  expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" picked={false} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+});
+
+test("in the graph the critical path is drawn heavier, its edges and its boxes, and a leaf that can start now is marked", () => {
+  const html = renderToStaticMarkup(<PlanView plan={feeds} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/data-edge="xml-reader&gt;xml-wire" data-critical="true" class="edge critical"/);
+  expect(html).toMatch(/data-edge="xml-wire&gt;xml-e2e" data-critical="true" class="edge critical"/);
+  expect(html).toMatch(/data-edge="zero-rule&gt;xml-e2e" data-critical="false" class="edge"/);
+  expect(html).toMatch(/class="node critical now" data-node="xml-reader"/);
+  expect(html).toMatch(/class="node critical" data-node="xml-e2e"/);
+  expect(html).toMatch(/class="node now" data-node="zero-rule" data-state="ready" data-critical="false" data-now="true"/);
+  expect(html).toMatch(/data-pans="false"/); // a static render measures no pane, so it draws the plan whole
+});
+
+test("the tree is drawn top-down from Python's positions: the goal on top, a link to each node, the same boxes", () => {
+  const tree: Plan = {
+    ...plan,
+    tree_goal: [112, 0],
+    tree_links: [{ id: ">signin", source: "", target: "signin", points: [[212, 76], [212, 124]], critical: false }],
+  };
+  const html = renderToStaticMarkup(<PlanTopDown plan={tree} picked="api" onPick={() => undefined} />);
+  expect(html).toMatch(/data-goal="" transform="translate\(128,16\)"/);
+  expect(html).toContain("people can sign in");
+  expect(html).toMatch(/data-link="&gt;signin" class="edge link" points="228,92 228,140"/);
+  expect(html).toMatch(/class="node" data-node="signin" data-state="sub-goal"[^>]*transform="translate\(16,140\)"/);
+  expect(html).toMatch(/class="node on" data-node="api"/);
+  expect(html).not.toContain("lane-band"); // the tree has no lanes: whose a node is, is in the box
 });

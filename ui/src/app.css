@@ -299,7 +299,7 @@ svg [hidden] { display: none; }
 .goal { margin: 0; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the tree: hierarchy is meaning, so it is read as an outline; the canvas below it draws the order */
-.tree { border-bottom: 1px solid var(--line); background: var(--panel); padding: 8px 20px 10px; max-height: 34vh; overflow: auto; }
+.tree { flex: 1; background: var(--panel); padding: 8px 20px 10px; overflow: auto; }
 .tree ul { margin: 0; padding: 0; list-style: none; }
 .tree .row {
   display: flex;
@@ -328,7 +328,8 @@ svg [hidden] { display: none; }
 .why li { border: 0; padding: 1px 0; color: var(--muted); }
 .why li:last-child { color: var(--text); }
 
-.plan-canvas { flex: 1; overflow: auto; background: var(--bg); padding: 0 0 16px; }
+.plan-canvas { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
+.plan-canvas[data-pans="true"] { overflow: hidden; cursor: grab; }
 .plan-canvas svg { display: block; }
 .plan-canvas text { fill: var(--text); font: 13px var(--ui); }
 
@@ -337,6 +338,10 @@ svg [hidden] { display: none; }
 .lane-band text { fill: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
 
 .edge { fill: none; stroke: var(--neutral); stroke-width: 1.4; opacity: 0.8; }
+/* the critical path: the longest chain of leaves not yet done, heavier, never colour alone (its ids are
+   written above the drawing) */
+.edge.critical { stroke: var(--text); stroke-width: 3; opacity: 1; }
+.edge.link { opacity: 0.6; }
 
 .node { cursor: pointer; }
 .node .box { fill: var(--panel); stroke-width: 1.5; }
@@ -347,6 +352,25 @@ svg [hidden] { display: none; }
 .node .who, .node .says, .node .tag { font-size: 11px; fill: var(--muted); }
 .node .says { font-family: var(--mono); font-size: 10px; }
 .node .tag { fill: var(--ask); }
+.node.critical .box { stroke-width: 3; }
+.node.now .box { fill: color-mix(in srgb, var(--accent) 10%, var(--panel)); } /* it can start now */
+.goal-box { cursor: default; }
+.goal-box .box { fill: var(--sunk); stroke: var(--line); }
+.goal-box .state { fill: var(--muted); }
+
+/* how the plan is drawn, and its two facts in words */
+.layout-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; }
+
+/* a phone: one column, the drawing a pane of its own that pans, the node's detail under it */
+@media (max-width: 800px) {
+  .app.plan { display: flex; flex-direction: column; height: auto; }
+  .app.plan .header { flex-wrap: wrap; gap: 8px; }
+  .app.plan .goal { white-space: normal; }
+  .app.plan .inspector { width: auto; border-left: 0; border-top: 1px solid var(--line); }
+  .app.plan .plan-canvas { flex: none; height: 60vh; }
+  .app.plan .tree { flex: none; }
+  .tree .row .state { width: auto; }
+}
 
 /* a node's contract, edited in place: the same four sizes, nothing new */
 .inspector .waits { margin-top: 8px; }

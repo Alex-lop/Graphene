@@ -12,6 +12,13 @@ the leaves beneath it), and ``why`` — the path from the plan's ``goal`` down t
 words, the same lines ``graphene node start`` prints to its executor. ``nodes`` come out parents
 first, so the page indents by ``depth`` and decides no order of its own. The columns, the lanes and
 every position are unchanged: hierarchy is meaning, and the edges here are still order.
+
+The same nodes are laid out a second time as the tree a person draws (``tree_x``/``tree_y``, the
+goal's box at ``tree_goal``, the links in ``tree_links``): the goal at the top, each node under the
+one it helps achieve, each leaf in its own slot left to right in outline order and each parent
+centred over its first and last child. ``critical`` is the longest chain of leaves not yet done
+through what each waits on, and ``ready`` the leaves that can start now; both are the plan's, read
+the same way whichever view the page shows.
 TODO: ``why`` asks the store for the whole plan once per node; one walk would do, and the page polls
 every two seconds. Not worth a second copy of ``plan.trail`` until a plan is large enough to feel it.
 
@@ -34,6 +41,8 @@ COL_GAP = 40  # between a node's right edge and the next column's left edge
 ROW_GAP = 12
 LANE_PAD = 26  # room above a lane's first row for the lane's name
 LANE_GAP = 20
+TREE_GAP = 24  # between two boxes side by side in the tree
+TREE_DROP = 48  # between a parent's bottom edge and its children's top edge
 LOG_TAIL = 12  # log entries kept per node, newest last; the page polls, so every entry is paid for every 2 s
 SAID_CAP = 400  # a check's output is up to 2000 characters; the inspector shows its head
 STATES = (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW, P.DONE)  # a dropped node is not drawn, as in the terminal
@@ -97,6 +106,8 @@ class ViewNode:
     row: int
     x: float
     y: float
+    tree_x: float = 0.0  # where it sits in the top-down tree
+    tree_y: float = 0.0
     width: int = NODE_W
     height: int = NODE_H
 
@@ -117,6 +128,7 @@ class ViewEdge:
     source: str  # the node that must finish
     target: str  # the node that waits on it
     points: list[list[float]]
+    critical: bool = False  # on the longest chain of leaves not yet done: drawn heavier
 
 
 @dataclass(slots=True)
@@ -137,6 +149,12 @@ class PlanView:
     all_done: bool = False  # every node done: still in force until the person archives or pauses
     forecast: dict = field(default_factory=dict)
     holes: dict = field(default_factory=lambda: dict(HOLES))
+    critical: list[str] = field(default_factory=list)  # the longest chain of leaves not yet done, first first
+    ready: list[str] = field(default_factory=list)  # the leaves that can start now: plan.ready
+    tree_width: float = 0.0
+    tree_height: float = 0.0
+    tree_goal: list[float] = field(default_factory=lambda: [0.0, 0.0])  # the goal's box, at the top
+    tree_links: list[ViewEdge] = field(default_factory=list)  # parent to child; "" is the goal
 
 
 def depths(nodes: list[P.Node]) -> dict[str, int]:
@@ -174,6 +192,60 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
         out.append((node, depth))
         stack += [(kid, depth + 1) for kid in reversed(under.get(node.id, []))]
     return out
+
+
+def tidy(tree: list[tuple[P.Node, int]], under: dict) -> dict[str, tuple[float, float]]:
+    """The top-down tree: each leaf takes the next slot left to right in outline order, and each
+    parent sits centred over its first and last child, so no two boxes touch and a parent is always
+    above what it is made of. The goal is the top row; a node's row is its depth plus one."""
+    slots = iter(range(len(tree)))
+    x = {n.id: next(slots) * (NODE_W + TREE_GAP) for n, _ in tree if not under.get(n.id)}
+    for n, _ in reversed(tree):  # children before their parents
+        if n.id not in x:
+            x[n.id] = (x[under[n.id][0].id] + x[under[n.id][-1].id]) / 2
+    return {n.id: (x[n.id], (depth + 1) * (NODE_H + TREE_DROP)) for n, depth in tree}
+
+
+def _link(source: str, at: tuple[float, float], target: str, to: tuple[float, float]) -> ViewEdge:
+    """Down from the parent's bottom edge to the child's top edge, turning halfway between them."""
+    sx, sy = at[0] + NODE_W / 2, at[1] + NODE_H
+    tx, ty = to[0] + NODE_W / 2, to[1]
+    middle = sy + TREE_DROP / 2
+    points = [[sx, sy], [tx, ty]] if sx == tx else [[sx, sy], [sx, middle], [tx, middle], [tx, ty]]
+    return ViewEdge(f"{source}>{target}", source, target, points)
+
+
+def critical(live: list[P.Node], under: dict) -> tuple[list[str], set[str]]:
+    """The longest chain of leaves not yet done through what each waits on, and the edges the page
+    draws for it. A need on a sub-goal is a wait on every leaf beneath it (decision 14), and it is
+    drawn as the edge that carries the need. Ties go to the chain that comes first in ``plan.order``.
+    A chain of one is no path: when nothing waits on anything, the list is empty."""
+    by_id = {n.id: n for n in live}
+    rank = {n.id: i for i, n in enumerate(P.order(live))}
+    todo = {n.id for n in live if not under.get(n.id) and n.state != P.DONE}
+
+    def waits_on(leaf: P.Node) -> list[tuple[str, str]]:  # (a leaf it waits on, the edge drawn for it)
+        out = []
+        for carrier in (leaf, *P.above(leaf, by_id)):
+            for need in carrier.needs:
+                if need in by_id:
+                    out += [(n.id, f"{need}>{carrier.id}") for n in (by_id[need], *P.below(need, live))
+                            if n.id in todo]  # fmt: skip
+        return sorted(out, key=lambda pair: rank[pair[0]])
+
+    best: dict[str, tuple[list[str], list[str]]] = {}  # the longest chain ending at a leaf, and its edges
+
+    def chain(leaf_id: str, trail: frozenset[str]) -> tuple[list[str], list[str]]:
+        if leaf_id not in best:  # a cycle is refused by `validate`; the trail stops one read as it stands
+            on = trail | {leaf_id}
+            found = [(chain(d, on), edge) for d, edge in waits_on(by_id[leaf_id]) if d not in on]
+            (ids, edges), edge = max(found, key=lambda f: len(f[0][0]), default=(([], []), None))
+            best[leaf_id] = (ids + [leaf_id], edges + ([edge] if edge else []))
+        return best[leaf_id]
+
+    ends = sorted(todo, key=rank.__getitem__)
+    ids, edges = max((chain(i, frozenset()) for i in ends), key=lambda c: len(c[0]), default=([], []))
+    return (ids, set(edges)) if len(ids) > 1 else ([], set())
 
 
 def rolls_up(node: P.Node, nodes: list[P.Node], under: dict) -> tuple[int, int]:
@@ -393,21 +465,42 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
         y += height + LANE_GAP
 
     view.nodes = [placed[n.id] for n, _ in tree]  # parents before their children: the page indents
+    view.critical, on_path = critical(live, under)
+    view.ready = [n.id for n in P.ready(live)]
     for n in ordered:
         for need in n.needs:
             source, target = placed.get(need), placed[n.id]
             if source is None:
                 continue  # a dropped node it still names: `validate` refuses it, the view skips it
             view.edges.append(_edge(source, target))
+            view.edges[-1].critical = view.edges[-1].id in on_path
     view.width = max(n.x + NODE_W for n in view.nodes)
     view.height = y - LANE_GAP
+
+    at = tidy(tree, under)
+    for shown in view.nodes:
+        shown.tree_x, shown.tree_y = at[shown.id]
+    roots = [n.id for n, d in tree if d == 0]
+    view.tree_goal = [(at[roots[0]][0] + at[roots[-1]][0]) / 2, 0.0]
+    view.tree_links = [_link("", tuple(view.tree_goal), r, at[r]) for r in roots] + [
+        _link(n.parent, at[n.parent], n.id, at[n.id]) for n, d in tree if d > 0
+    ]
+    view.tree_width = max(x for x, _ in at.values()) + NODE_W
+    view.tree_height = max(y for _, y in at.values()) + NODE_H
     return asdict(view)
 
 
 def _edge(source: ViewNode, target: ViewNode) -> ViewEdge:
-    """Out of the source's right edge, into the target's left edge, turning halfway between them."""
+    """Out of the source's right edge, into the target's left edge. Between neighbouring columns it
+    turns halfway across the gap between them. An edge that skips a column never runs through it: it
+    drops into the gap under its source's row, crosses there, and rises in the gap before its target,
+    where no box is."""
     sx, sy = source.x + NODE_W, source.y + NODE_H / 2
     tx, ty = target.x, target.y + NODE_H / 2
-    middle = max(sx, (sx + tx) / 2)
-    points = [[sx, sy], [tx, ty]] if sy == ty else [[sx, sy], [middle, sy], [middle, ty], [tx, ty]]
+    if tx - sx > COL_GAP:
+        under, out, back = source.y + NODE_H + ROW_GAP / 2, sx + COL_GAP / 2, tx - COL_GAP / 2
+        points = [[sx, sy], [out, sy], [out, under], [back, under], [back, ty], [tx, ty]]
+    else:
+        middle = max(sx, (sx + tx) / 2)
+        points = [[sx, sy], [tx, ty]] if sy == ty else [[sx, sy], [middle, sy], [middle, ty], [tx, ty]]
     return ViewEdge(f"{source.id}>{target.id}", source.id, target.id, points)
