@@ -48,8 +48,9 @@ are the first rows under the goal, answered with a key each (`y` take, `1`-`9` p
 park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
 the board`).
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
-plan as your own act, which `graphene plan undo` takes back. Every answer reaches the executors'
-contracts as a `decided:` line, so the leaf's executor is told what you chose. Only the person
+plan as your own act, which `graphene plan undo` takes back. What you take, pick or answer in your
+own words, and every note of yours, reaches the executors' contracts as a `decided:` line, so the
+leaf's executor is told what you chose; a dropped or parked item is told to no one. Only the person
 answers: an agent that tries is refused in one line (`tests/test_board.py`). Both planners, Claude
 Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to three items in version
 4; for Nemotron, `test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).

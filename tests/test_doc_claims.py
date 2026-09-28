@@ -109,3 +109,13 @@ def test_the_drafts_carry_no_integ_only_marker_now_that_every_command_they_named
         said = doc(path)
         assert "integ only" not in said and "For the coordinator" not in said, path
         assert "not yet on `shaping`" not in said, path
+
+
+def test_the_submission_says_only_taken_picked_and_answered_items_reach_the_executors():
+    from graphene_map import board as B
+
+    assert set(B.DECIDED) == {"taken", "picked", "answered"}  # what board.told() passes on, with notes
+    said = doc("docs/HACKATHON.md")
+    assert "Every answer reaches the executors'" not in said
+    assert "a dropped or parked item is told to no one" in said
+    assert "Each answer goes to that leaf's executor" not in doc("docs/demo/STORYBOARD.md")
