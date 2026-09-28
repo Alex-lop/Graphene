@@ -36,6 +36,7 @@ QUIET = ("red-right-reason", "red")  # the verdicts a check should have before t
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict", "why"], "properties": {
     "verdict": {"type": "string", "enum": ["red-right-reason", "environment", "typo", "other"]},
     "why": {"type": "string"}}}  # fmt: skip
+QUICK = 30  # seconds Nano gets for one reading, asked once: it runs behind `ask`, and must not wait a minute
 _MISSING = re.compile(r"No module named '?([\w.]+)")
 
 
@@ -124,8 +125,8 @@ def _forks(root: Path, prepare: str | None):
 
 
 def _nano() -> str:
-    """Nano's id, as the live list has it (the smallest Nemotron listed); asked twice at most."""
-    listed = tf.resolve([], "executor", tf.models(tries=2))[0]
+    """Nano's id, as the live list has it (the smallest Nemotron listed); asked once."""
+    listed = tf.resolve([], "executor", tf.models(tries=1))[0]
     if not listed:
         raise tf.Unreachable("Token Factory lists no Nemotron model")
     return listed[0]
@@ -140,7 +141,8 @@ def _read(store, node: P.Node, tail: str, model: str) -> tuple[str, str]:
               "(other)? Answer with the verdict and why, in one sentence.")  # fmt: skip
     fmt = {"type": "json_schema", "json_schema": {"name": "precheck", "strict": True, "schema": SCHEMA}}
     said = tf.chat(model, [{"role": "user", "content": prompt}], tag=f"precheck:{node.id}",
-                   response_format=fmt, reasoning_effort="low", temperature=0, max_tokens=2048)  # fmt: skip
+                   response_format=fmt, reasoning_effort="low", temperature=0, max_tokens=2048,
+                   tries=1, timeout=QUICK)  # fmt: skip
     usage = said["usage"]
     store.log_node("*", P._now(), "usage", "precheck:nemotron", None, None, {
         "model": model, "calls": 1, "prompt_tokens": usage.get("prompt_tokens") or 0,
@@ -209,13 +211,13 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
             found, why, by = read[key]
         elif found is None:
             try:
-                if isinstance(model, tf.Unreachable):  # the list is asked once a run
+                if isinstance(model, Exception):  # a run asks Nano until the first failure, not after
                     raise model
                 model = model or _nano()
                 found, why = _read(store, node, text[-P.TAIL :], model)
                 by = f"{model.rsplit('/', 1)[-1]}, {tf.endpoint()}"
             except Exception as no:  # an endpoint or a reply that breaks the reading: this red, unread
-                model = model or no if isinstance(no, tf.Unreachable) else model
+                model = no if isinstance(no, tf.Unreachable) else model
                 found, why = "red", f"not read: {' '.join(str(no).split())}"
             read[key] = (found, why, by)
         detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": why,

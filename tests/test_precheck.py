@@ -250,3 +250,15 @@ def test_one_leaf_that_breaks_is_one_line_and_the_others_still_run(repo, nano, m
         rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
     assert rows["l0"]["verdict"] == "not-run" and "the fork broke" in rows["l0"]["why"]
     assert rows["l1"]["verdict"] == "red" and rows["l1"]["why"].startswith("not read: ")
+
+
+def test_a_failing_endpoint_is_tried_once_with_no_backoff_and_then_not_again(repo, nano, monkeypatch):
+    f = nano([500] * 12)
+    waits = []
+    monkeypatch.setattr(tf.time, "sleep", waits.append)
+    fork = scripted({"false": (1, "AssertionError"), "exit 3": (3, "")})
+    with Store.open(repo) as store:
+        leaves(store, "false", "exit 3")
+        rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
+    assert waits == [] and len(f.requests) == 1
+    assert all(d["verdict"] == "red" and d["why"].startswith("not read: ") for d in rows.values())
