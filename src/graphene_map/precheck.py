@@ -40,6 +40,7 @@ QUICK = 30  # seconds Nano gets for one reading, asked once: it runs behind `ask
 # an escape sequence (CSI, OSC) or any other control character: what a check or a model wrote must not
 # move the person's cursor, clear a line or draw a verdict of its own over the real one
 _CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|[\x00-\x1f\x7f-\x9f]")
+_USER = re.compile(r"(//)[^/@\s]+@")  # a URL's user and password (a proxy's): never stored or said
 _MISSING = re.compile(r"No module named '?([\w.]+)")
 
 
@@ -135,7 +136,16 @@ def _nano() -> str:
     return listed[0]
 
 
-def _read(store, node: P.Node, tail: str, model: str) -> tuple[str, str]:
+def _hider(root: Path):
+    """demo.py's hider (the key in the environment, anything shaped like a key, the repository's path)
+    and a URL's user and password: for what Nano is sent, and every verdict stored or said."""
+    from .demo import hider  # here: it brings the screen's imports, which only a run that reads needs
+
+    hide = hider(root)[0]
+    return lambda text: hide(_USER.sub(r"\1", str(text)))
+
+
+def _read(store, node: P.Node, tail: str, model: str, hide=str) -> tuple[str, str]:
     """Nano's reading of a red tail: (verdict, why). One call, billed on the plan's log."""
     prompt = (f"A coding agent will be given this work: {node.title}\n{node.goal}\n\nThe check that will say "
               f"it is done was run before any work, and failed:\n$ {node.check}\n{tail}\n\nIs it red because "
@@ -143,7 +153,7 @@ def _read(store, node: P.Node, tail: str, model: str) -> tuple[str, str]:
               "(environment), because the command or a path in it is misspelt (typo), or something else "
               "(other)? Answer with the verdict and why, in one sentence.")  # fmt: skip
     fmt = {"type": "json_schema", "json_schema": {"name": "precheck", "strict": True, "schema": SCHEMA}}
-    said = tf.chat(model, [{"role": "user", "content": prompt}], tag=f"precheck:{node.id}",
+    said = tf.chat(model, [{"role": "user", "content": hide(prompt)}], tag=f"precheck:{node.id}",
                    response_format=fmt, reasoning_effort="low", temperature=0, max_tokens=2048,
                    tries=1, timeout=QUICK)  # fmt: skip
     usage = said["usage"]
@@ -154,7 +164,7 @@ def _read(store, node: P.Node, tail: str, model: str) -> tuple[str, str]:
     try:
         answer = json.loads(said["message"].get("content") or "")
         if answer["verdict"] in SCHEMA["properties"]["verdict"]["enum"]:
-            return answer["verdict"], " ".join(str(answer["why"]).split())[:300]
+            return answer["verdict"], " ".join(hide(str(answer["why"])).split())[:300]
     except (ValueError, KeyError, TypeError):
         pass
     return "red", "not read: Nano's answer was not the verdict asked for"
@@ -200,6 +210,7 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
     todo = [n for n in todo if n.check]
     kept = {} if again else {n.id: current(store, n, base) for n in todo}
     ran = _runs([n for n in todo if not kept.get(n.id)], root, fork, prepare)
+    hide = _hider(root) if ran else str
     scopes, model = [g for n in everything for g in n.scope if g != "**"], None
     for node in todo:
         if kept.get(node.id):
@@ -207,7 +218,7 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
             continue
         key = (node.check, node.state == P.PROPOSED)
         code, text, where = ran[key]
-        found, why, by = verdict(code, text, node.check, scopes), _gist(text), None
+        found, why, by = verdict(code, text, node.check, scopes), _gist(hide(text)), None
         if found == "passes":
             why = "it exits 0 before any work is done"
         elif found is None and key in read:
@@ -217,14 +228,15 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
                 if isinstance(model, Exception):  # a run asks Nano until the first failure, not after
                     raise model
                 model = model or _nano()
-                found, why = _read(store, node, text[-P.TAIL :], model)
+                found, why = _read(store, node, hide(text)[-P.TAIL :], model, hide)
                 by = f"{model.rsplit('/', 1)[-1]}, {tf.endpoint()}"
             except Exception as no:  # an endpoint or a reply that breaks the reading: this red, unread
                 model = no if isinstance(no, tf.Unreachable) else model
                 found, why = "red", f"not read: {' '.join(str(no).split())}"
             read[key] = (found, why, by)
-        detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": _plain(why),
-                  "exit": code, "where": where, "by": by and _plain(by)}  # fmt: skip
+        why, by = _plain(hide(why)), by and _plain(hide(by))  # hidden whole, before any cut
+        detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": why,
+                  "exit": code, "where": where, "by": by}  # fmt: skip
         store.log_node(node.id, P._now(), "precheck", "graphene:precheck", None, None, detail)
         out.append((node, detail))
     return out

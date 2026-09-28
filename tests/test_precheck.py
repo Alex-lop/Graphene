@@ -276,3 +276,21 @@ def test_no_control_character_a_check_or_nano_writes_reaches_the_store_or_the_te
     shown = "\n".join(C.said(rows))
     assert not any(ord(c) < 32 or 127 <= ord(c) < 160 for c in "".join(stored) + shown.replace("\n", ""))
     assert stored[0].startswith("boom l0") and "[2K" not in stored[0] and "[2K" not in stored[1]
+
+
+def test_nothing_shaped_like_a_key_reaches_nano_the_store_or_the_terminal(repo, nano, monkeypatch):
+    secret = "ghp_" + "Ab1" * 12
+    f = nano([said("other", f"it printed {secret}")])
+    fork = scripted({"false": (1, f"token={secret}\nAWS wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\nfailed")})
+    with Store.open(repo) as store:
+        leaves(store, "false")
+        rows = C.run(store, repo, fork=fork)
+        stored = json.dumps([r["detail"] for r in store.node_log("l0", ("precheck",))])
+    assert secret not in json.dumps(f.requests) and "wJalrXUtnFEMI" not in json.dumps(f.requests)
+    assert secret not in stored and secret not in "\n".join(C.said(rows))
+    proxy = "http://proxyuser:Pr0xyS3cretT0kenAbcdefgh@127.0.0.1:9/v1/"
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", proxy)
+    tf._listed.cache_clear()
+    with Store.open(repo) as store:
+        [(_, d)] = C.run(store, repo, fork=scripted({"false": (1, "failed")}), again=True)
+    assert d["why"].startswith("not read: ") and "Pr0xy" not in d["why"] and "proxyuser" not in d["why"]
