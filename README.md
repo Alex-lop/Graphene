@@ -185,12 +185,14 @@ the plan instead of taking the screen.
 
 ### The board
 
-With the tree, the planner puts up what your words leave open and the repository cannot answer: a
-question with the default it would assume (and options, when there is more than one way), what it
-assumed, a risk, what it would leave out. They are the first rows under the goal, and the screen opens
-on the first. On one, `y` takes the default, `1` to `9` picks an option, `Enter` answers in your own
-words, `p` parks it (again: brings it back), `d` drops it, and `a` puts up a note of yours. Each is
-`graphene board take|pick|answer|park|unpark|drop|note`, and `graphene board` prints the board.
+With the tree, the planner puts up what your words leave open and the repository cannot answer, and
+only what changes the tree, at most three items: a question with the default it would assume (and
+options, when there is more than one way), or a risk with what it would do about it. An assumption it
+is sure of is a sentence in the goal of the leaf it bears on. They are the first rows under the goal,
+and the screen opens on the first. On one, `y` takes the default, `1` to `9` picks an option,
+`Enter` answers in your own words, `p` parks it (again: brings it back), `d` drops it, and `a` puts up
+a note of yours. Each is `graphene board take|pick|answer|park|unpark|drop|note`, and `graphene
+board` prints the board.
 
 What you decide is told to every executor it is about, as `decided:` lines in its contract. A default
 or an option can also carry `then:` lines that change the tree when you choose it: `scope LEAF +

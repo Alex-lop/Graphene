@@ -41,8 +41,8 @@ repository and proposes a tree: the goal at the top, sub-goals under it, and lea
 files it may change (its scope) and the command that proves it done (its check). Then you shape it.
 
 **The board: the planner asks instead of guessing.** Beside the tree, the planner puts up what the
-code cannot answer: questions, each with a default and its options, the assumptions it made, the
-risks it sees and what it left out. You answer each with one command:
+code cannot answer and what changes the tree, at most three items: questions, each with a default and
+its options, and risks, each with what it would do about it. You answer each with one command:
 `graphene board take ID` for the default, `pick ID N` for an option, `drop`, `park` or `unpark`,
 `answer ID …` in your own words, and `note …` for something of yours.
 <!-- integ only: graphene board and every subcommand above (board_cli.py). -->
@@ -50,8 +50,8 @@ An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and p
 plan as your own act, which `graphene plan undo` takes back. Every answer reaches the executors'
 contracts as a `decided:` line, so the leaf's executor is told what you chose. Only the person
 answers: an agent that tries is refused in one line (`tests/test_board.py`). Both planners, Claude
-Code's and Nemotron's, were changed to ask this way (prompt version 2; for Nemotron,
-`test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
+Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to three items in version
+4; for Nemotron, `test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
 
 **The graph: what runs at once and what waits.** You read the plan in `graphene watch`, a terminal
 screen with vim keys. Tab cycles the outline, a top-down tree, and a left-to-right graph of the
@@ -135,9 +135,10 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   call at a time: view, edit, write, run, done, or release. The reasoning budget is each call's
   `max_tokens`, doubled up to 32,768 when a reply is cut off at the limit. Any other model parameter
   passes through with `--param`. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read
-  as the calls they mean. Since prompt version 2, Ultra is also told to read the repository first,
-  never to ask what a file answers, and to put up the rest as questions with a default, assumptions,
-  risks and leave-outs, about five at most (`planner.py`, `PROMPT_VERSION`).
+  as the calls they mean. Since prompt version 4, Ultra is also told to read the repository first,
+  never to ask what a file answers, and to put up only what changes the tree, at most three items,
+  each a question with a default or a risk; an assumption it is sure of goes in the goal of the leaf
+  it bears on (`planner.py`, `PROMPT_VERSION`).
 - **Nano, while you shape.** Each of the three prototypes is one Nano call through
   `tokenfactory.chat`, with a JSON schema for its answer. Graphene checks the answer before showing
   anything: a clause must be in your paragraph, a leaf must exist and be open, a glob must match a
