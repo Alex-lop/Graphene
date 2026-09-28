@@ -27,6 +27,7 @@ import typer
 from . import plan as P
 from . import tokenfactory as tf
 
+MAX_TOKENS = 2048  # Nano reasons before it answers: a cut-off answer is said to be one
 TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
 WHO = "note:nemotron"  # the actor of its rows; each usage row's `endpoint` says who answered
 SYSTEM = """\
@@ -97,7 +98,7 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"The note: {sentence}\n\nThe leaves:\n\n"
              + ("\n\n".join(P.contract(n) for n in leaves) or "(none yet)")},
-        ], tag="note", tries=1, timeout=TIMEOUT, temperature=0, max_tokens=2048,
+        ], tag="note", tries=1, timeout=TIMEOUT, temperature=0, max_tokens=MAX_TOKENS,
             response_format={"type": "json_schema", "json_schema": SCHEMA})  # fmt: skip
     except tf.Unreachable as no:
         raise P.Refused(f"the note was not placed: {no}") from None
@@ -106,6 +107,9 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
         "model": chosen[0], "calls": 1, "prompt_tokens": usage.get("prompt_tokens") or 0,
         "completion_tokens": usage.get("completion_tokens") or 0, "dollars": round(said["dollars"], 6),
         "endpoint": endpoint})  # fmt: skip
+    if said.get("finish") == "length":  # one try: a longer cap is the next run's to set, not a retry's
+        say(f"the model's answer was cut off at {MAX_TOKENS} tokens; nothing is offered")
+        return None
     try:
         a = json.loads(said["message"].get("content") or "")
         target, why = str(a["target"]).strip(), _shown(a.get("why") or "")

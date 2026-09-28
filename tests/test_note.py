@@ -219,3 +219,12 @@ def test_a_note_asks_once_with_a_short_timeout_and_says_so_in_one_line(repo, fak
         except P.Refused as no:
             assert "answered 500" in str(no) and "asked once" in str(no)
     assert len(f.requests) == 1 and note.TIMEOUT <= 30
+
+
+def test_an_answer_cut_off_at_the_token_limit_says_so(repo, fake):
+    planned(repo)
+    fake([{"content": '{"target": "ids", "scope_a', "_finish": "length"}])
+    offer, said, [bill], _ = routed(repo)
+    assert offer is None and said == [
+        f"the model's answer was cut off at {note.MAX_TOKENS} tokens; nothing is offered"
+    ]
