@@ -215,7 +215,7 @@ def test_the_critical_path_on_a_diamond_is_the_longest_chain_and_a_tie_goes_to_t
     view = build_plan_view(store)
     assert view["critical"] == ["a", "b", "d"]
     assert {e["id"] for e in view["edges"] if e["critical"]} == {"a>b", "b>d"}
-    assert view["ready"] == ["a"]  # the one leaf that can start now
+    assert view["at_once"] == ["a"]  # the one leaf that can start now
 
 
 def test_the_critical_path_through_a_chain_leaves_out_what_is_done_and_follows_a_need_on_a_sub_goal(
@@ -233,13 +233,43 @@ def test_the_critical_path_through_a_chain_leaves_out_what_is_done_and_follows_a
     plan.start(store, "a", BOT, repo)
     finish(store, repo, "a", BOT)
     view = build_plan_view(store)
-    assert view["critical"] == ["b", "c", "d"] and view["ready"] == ["b", "e"]
+    assert view["critical"] == ["b", "c", "d"] and view["at_once"] == ["b", "e"]
 
 
 def test_with_nothing_waiting_on_anything_there_is_no_critical_path(store):
     plan.propose(store, [node("a"), node("b")], ALEX)
     view = build_plan_view(store)
     assert view["critical"] == [] and not any(e["critical"] for e in view["edges"])
+
+
+def test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once(store):
+    """One definition, in plan_view, for the page and for the terminal's graph (view_dag): the path is
+    none when no leaf needs another, and what can start at once counts a proposal whose needs are done
+    (the shaping is before acceptance), never the person's own leaf."""
+    from graphene_map import view_dag
+    from graphene_map.views import inputs
+
+    def both():
+        view, (nodes, words, _) = build_plan_view(store), inputs(store)
+        assert view_dag.critical_path(nodes) == view["critical"]
+        assert view_dag.at_once(nodes, words) == view["at_once"]
+        return view["critical"], view["at_once"]
+
+    plan.propose(store, [node("a"), node("b")], BOT)
+    assert both() == ([], ["a", "b"])
+    plan.propose(store, [node("c", needs=["a"]), node("d", needs=["a"]), node("e", needs=["c", "d"])], BOT)
+    assert both() == (["a", "c", "e"], ["a", "b"])
+    plan.propose(store, [node("mine", owner="alex")], ALEX)
+    assert both()[1] == ["a", "b"]
+
+
+def test_an_accepted_leaf_with_a_proposed_child_is_still_the_leaf_on_the_critical_path(store):
+    """A proposal binds nobody (plan.leaves): b stays the leaf that runs, and the path goes through it."""
+    plan.propose(store, [node("a"), node("b", needs=["a"]), node("c", needs=["b"])], ALEX)
+    plan.propose(store, [node("b1", parent="b")], BOT)
+    view = build_plan_view(store)
+    assert view["critical"] == ["a", "b", "c"]
+    assert {e["id"] for e in view["edges"] if e["critical"]} == {"a>b", "b>c"}
 
 
 # -- what the page says about a node ---------------------------------------------------------------

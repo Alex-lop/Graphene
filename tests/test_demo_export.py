@@ -108,7 +108,7 @@ def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_
     # waits on anything, so there is no critical path, and the two that came back can start again
     ends = (at["csv-reader"]["tree_x"] + at["parser"]["tree_x"]) / 2
     assert plan["tree_goal"][0] == readers["tree_x"] == ends
-    assert plan["critical"] == [] and plan["ready"] == ["json-reader", "parser"]
+    assert plan["critical"] == [] and plan["at_once"] == ["json-reader", "parser"]
     assert {i: n["state"] for i, n in at.items()} == {
         "csv-reader": "done", "xml-reader": "done", "json-reader": "open", "yaml-reader": "review",
         "parser": "open",

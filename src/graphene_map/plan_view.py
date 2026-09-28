@@ -17,8 +17,8 @@ The same nodes are laid out a second time as the tree a person draws (``tree_x``
 goal's box at ``tree_goal``, the links in ``tree_links``): the goal at the top, each node under the
 one it helps achieve, each leaf in its own slot left to right in outline order and each parent
 centred over its first and last child. ``critical`` is the longest chain of leaves not yet done
-through what each waits on, and ``ready`` the leaves that can start now; both are the plan's, read
-the same way whichever view the page shows.
+through what each waits on, and ``at_once`` the leaves that can start now; both are the plan's, read
+the same way whichever view the page shows and in the terminal's graph (`critical_path`, `at_once`).
 TODO: ``why`` asks the store for the whole plan once per node; one walk would do, and the page polls
 every two seconds. Not worth a second copy of ``plan.trail`` until a plan is large enough to feel it.
 
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import asdict, dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 
 from . import plan as P
@@ -150,7 +151,7 @@ class PlanView:
     forecast: dict = field(default_factory=dict)
     holes: dict = field(default_factory=lambda: dict(HOLES))
     critical: list[str] = field(default_factory=list)  # the longest chain of leaves not yet done, first first
-    ready: list[str] = field(default_factory=list)  # the leaves that can start now: plan.ready
+    at_once: list[str] = field(default_factory=list)  # the leaves that can start now, proposals too
     tree_width: float = 0.0
     tree_height: float = 0.0
     tree_goal: list[float] = field(default_factory=lambda: [0.0, 0.0])  # the goal's box, at the top
@@ -215,37 +216,66 @@ def _link(source: str, at: tuple[float, float], target: str, to: tuple[float, fl
     return ViewEdge(f"{source}>{target}", source, target, points)
 
 
-def critical(live: list[P.Node], under: dict) -> tuple[list[str], set[str]]:
-    """The longest chain of leaves not yet done through what each waits on, and the edges the page
-    draws for it. A need on a sub-goal is a wait on every leaf beneath it (decision 14), and it is
-    drawn as the edge that carries the need. Ties go to the chain that comes first in ``plan.order``.
-    A chain of one is no path: when nothing waits on anything, the list is empty."""
+def leaf_needs(nodes: list[P.Node]) -> tuple[list[P.Node], dict[str, list[str]]]:
+    """The leaves (`plan.leaves`: a proposed child under an accepted leaf does not make it a sub-goal)
+    in `plan.order`, and for each the leaves it waits on: what it and everything above it needs, where
+    a need on a sub-goal is a wait on each leaf beneath it (decision 14)."""
+    by_id = {n.id: n for n in nodes}
+    leaves = P.order(P.leaves(nodes))
+    ids = {n.id for n in leaves}
+    needs = {}
+    for leaf in leaves:
+        got = []
+        for need in P.all_needs(leaf, by_id):
+            got += [need] if need in ids else [n.id for n in P.below(need, nodes) if n.id in ids]
+        needs[leaf.id] = [i for i in dict.fromkeys(got) if i != leaf.id]
+    return leaves, needs
+
+
+def critical_path(nodes: list[P.Node]) -> list[str]:
+    """The critical path, the page's and the terminal's alike: the longest chain through what each
+    waits on of leaves not done, counted in leaves, first first. Ties go to `plan.order`'s first. A
+    chain of one is no path: when no leaf not done needs another, there is none."""
+    leaves, needs = leaf_needs(nodes)
+    todo = {n.id for n in leaves if n.state != P.DONE}
+    rank = {n.id: k for k, n in enumerate(leaves)}
+    try:  # what a leaf waits on comes first; `validate` refuses a cycle, and one read as it is has no path
+        ahead = list(TopologicalSorter({i: needs[i] for i in todo}).static_order())
+    except CycleError:
+        return []
+    best: dict[str, list[str]] = {}  # the longest chain ending at each leaf
+    for i in (i for i in ahead if i in todo):
+        before = sorted((d for d in needs[i] if d in todo), key=rank.__getitem__)
+        best[i] = max((best[d] for d in before), key=len, default=[]) + [i]
+    path = max((best[i] for i in sorted(best, key=rank.__getitem__)), key=len, default=[])
+    return path if len(path) > 1 else []
+
+
+def at_once(nodes: list[P.Node]) -> list[str]:
+    """What can start at once, the page's and the terminal's alike: the leaves not done, not running,
+    not in review and not the person's own, with a scope to work in and nothing left to wait on,
+    proposed or accepted alike (the shaping comes before acceptance), in `plan.order`."""
+    by_id = {n.id: n for n in nodes}
+    return [
+        n.id
+        for n in leaf_needs(nodes)[0]
+        if n.state in (P.PROPOSED, P.OPEN) and n.owner == P.AGENT and n.scope and not P.unmet(n, by_id)
+    ]
+
+
+def _critical_edges(path: list[str], live: list[P.Node]) -> set[str]:
+    """The edges the page draws heavier for the path: each carries the need one leaf on it has on the
+    one before, from the leaf itself or from what it sits under, on that leaf or on what it sits under."""
     by_id = {n.id: n for n in live}
-    rank = {n.id: i for i, n in enumerate(P.order(live))}
-    todo = {n.id for n in live if not under.get(n.id) and n.state != P.DONE}
-
-    def waits_on(leaf: P.Node) -> list[tuple[str, str]]:  # (a leaf it waits on, the edge drawn for it)
-        out = []
-        for carrier in (leaf, *P.above(leaf, by_id)):
-            for need in carrier.needs:
-                if need in by_id:
-                    out += [(n.id, f"{need}>{carrier.id}") for n in (by_id[need], *P.below(need, live))
-                            if n.id in todo]  # fmt: skip
-        return sorted(out, key=lambda pair: rank[pair[0]])
-
-    best: dict[str, tuple[list[str], list[str]]] = {}  # the longest chain ending at a leaf, and its edges
-
-    def chain(leaf_id: str, trail: frozenset[str]) -> tuple[list[str], list[str]]:
-        if leaf_id not in best:  # a cycle is refused by `validate`; the trail stops one read as it stands
-            on = trail | {leaf_id}
-            found = [(chain(d, on), edge) for d, edge in waits_on(by_id[leaf_id]) if d not in on]
-            (ids, edges), edge = max(found, key=lambda f: len(f[0][0]), default=(([], []), None))
-            best[leaf_id] = (ids + [leaf_id], edges + ([edge] if edge else []))
-        return best[leaf_id]
-
-    ends = sorted(todo, key=rank.__getitem__)
-    ids, edges = max((chain(i, frozenset()) for i in ends), key=lambda c: len(c[0]), default=([], []))
-    return (ids, set(edges)) if len(ids) > 1 else ([], set())
+    out = set()
+    for before, leaf in zip(path, path[1:], strict=False):
+        for carrier in (by_id[leaf], *P.above(by_id[leaf], by_id)):
+            beneath = {i: {i} | {n.id for n in P.below(i, live)} for i in carrier.needs}
+            need = next((i for i in carrier.needs if before in beneath[i]), None)
+            if need:
+                out.add(f"{need}>{carrier.id}")
+                break
+    return out
 
 
 def rolls_up(node: P.Node, nodes: list[P.Node], under: dict) -> tuple[int, int]:
@@ -465,8 +495,8 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
         y += height + LANE_GAP
 
     view.nodes = [placed[n.id] for n, _ in tree]  # parents before their children: the page indents
-    view.critical, on_path = critical(live, under)
-    view.ready = [n.id for n in P.ready(live)]
+    view.critical, view.at_once = critical_path(live), at_once(live)
+    on_path = _critical_edges(view.critical, live)
     for n in ordered:
         for need in n.needs:
             source, target = placed.get(need), placed[n.id]

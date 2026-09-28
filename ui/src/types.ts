@@ -259,7 +259,7 @@ export interface Plan {
   writable: boolean; // false for an exported file, and for a page opened from an agent's shell
   token: string | null; // this launch's, and never in an export
   critical: string[]; // the longest chain of leaves not yet done, first first; empty when nothing waits
-  ready: string[]; // the leaves that can start now
+  at_once: string[]; // the leaves that can start now, proposals whose needs are done too: plan_view.at_once
   tree_width: number;
   tree_height: number;
   tree_goal: number[]; // the goal's box, at the top of the tree

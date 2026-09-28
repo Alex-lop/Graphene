@@ -71,7 +71,7 @@ const plan: Plan = {
   writable: false,
   token: null,
   critical: [],
-  ready: [],
+  at_once: [],
   tree_width: 200,
   tree_height: 200,
   tree_goal: [0, 0],
@@ -85,7 +85,7 @@ const feeds: Plan = {
   nodes: [node("xml-reader"), node("xml-wire", { needs: ["xml-reader"], display_state: "waiting" }), node("zero-rule"), node("xml-e2e", { needs: ["xml-wire", "zero-rule"], display_state: "waiting" })],
   edges: [edge("xml-reader", "xml-wire", true), edge("xml-wire", "xml-e2e", true), edge("zero-rule", "xml-e2e", false)],
   critical: ["xml-reader", "xml-wire", "xml-e2e"],
-  ready: ["xml-reader", "zero-rule"],
+  at_once: ["xml-reader", "zero-rule"],
 };
 
 test("the tree is indented by depth, and a sub-goal counts its leaves instead of naming a scope", () => {
@@ -167,7 +167,7 @@ test("the page draws the plan the way its shape calls for: the graph when anythi
   expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toBe("outline");
 });
 
-test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start now in words", () => {
+test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start at once in words, as the terminal names it", () => {
   const bar = (picked: boolean) => renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" picked={picked} onLayout={() => undefined} />);
   const html = bar(false);
   expect(html).toMatch(/data-layout="graph"/);
@@ -175,7 +175,7 @@ test("the switch has the three layouts, says why this one was chosen, and says t
   expect(html).toMatch(/aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*class="on" aria-pressed="true"[^>]*>graph<\/button>/);
   expect(html).toContain("chosen: some nodes wait on others");
   expect(html).toContain("critical path: xml-reader → xml-wire → xml-e2e");
-  expect(html).toContain("can start now: xml-reader, zero-rule");
+  expect(html).toContain("2 at once: xml-reader, zero-rule");
   expect(bar(true)).toContain("your choice, kept in this browser");
   expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" picked={false} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
 });

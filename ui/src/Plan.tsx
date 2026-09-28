@@ -225,7 +225,7 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
 const BUTTONS: Layout[] = ["outline", "tree", "graph"];
 
 /** Which way the plan is drawn, the record's toggle again. Under it, the plan's own two facts in
- * words, whichever layout is shown: the critical path and what can start now. */
+ * words, whichever layout is shown: the critical path and what can start at once, as the terminal says them. */
 export function LayoutBar({ plan, layout, picked, onLayout }: { plan: Plan; layout: Layout; picked: boolean; onLayout: (l: Layout) => void }): ReactElement {
   return (
     <div className="layout-bar" data-testid="layout" data-layout={layout}>
@@ -240,7 +240,9 @@ export function LayoutBar({ plan, layout, picked, onLayout }: { plan: Plan; layo
       <span data-testid="critical">
         {plan.critical.length > 0 ? `critical path: ${plan.critical.join(" → ")}` : "no critical path: nothing waits on anything"}
       </span>
-      <span data-testid="ready">can start now: {plan.ready.join(", ") || "nothing"}</span>
+      <span data-testid="at-once">
+        {plan.at_once.length} at once{plan.at_once.length > 0 ? `: ${plan.at_once.join(", ")}` : ""}
+      </span>
     </div>
   );
 }
@@ -306,7 +308,7 @@ const points = (edge: PlanEdge, dx: number, dy: number): string => edge.points.m
 export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
   const width = PAD_X + plan.width + 24;
   const on = new Set(plan.critical);
-  const now = new Set(plan.ready);
+  const now = new Set(plan.at_once);
   return (
     <Pan width={width} height={plan.height + PAD_Y * 2} label="the plan, as a graph of what waits on what" onClear={() => onPick(null)}>
       {plan.lanes.map((lane) => (
@@ -331,7 +333,7 @@ export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string 
  * the leaves at the ends of the branches. The same boxes, the same states and colours as the graph. */
 export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
   const on = new Set(plan.critical);
-  const now = new Set(plan.ready);
+  const now = new Set(plan.at_once);
   const [gx, gy] = [PAD_Y + (plan.tree_goal[0] ?? 0), PAD_Y + (plan.tree_goal[1] ?? 0)];
   const goal = plan.goal || "no goal yet";
   return (
