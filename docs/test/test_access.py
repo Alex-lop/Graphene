@@ -63,3 +63,34 @@ def test_the_sandbox_steps_are_timed(tmp_path, monkeypatch, capsys):
     steps = {"make and run (import the image if needed)", "fork from the image it made", "two forks at once"}
     assert set(report["sandbox"]["steps"]) == steps
     assert "Sandboxes (docker): works; make and run" in capsys.readouterr().out
+
+
+def test_a_stop_during_the_sandbox_smoke_removes_its_container(tmp_path):
+    """The ladder stops access.py as it stops every command, with a TERM to its process group: the
+    container the smoke was running is removed on the way out. The docker here is a stand-in that holds
+    `start` and writes down every call; no key, so nothing is sent."""
+    import os
+    import signal
+    import time
+
+    calls, held = tmp_path / "calls", tmp_path / "held"
+    docker = tmp_path / "bin" / "docker"
+    docker.parent.mkdir()
+    docker.write_text(f'#!/bin/sh\necho "$@" >> {calls}\n'
+                      f'[ "$1" = start ] && touch {held} && exec sleep 60\necho made\n')  # fmt: skip
+    docker.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("NEBIUS_", "GRAPHENE_", "CONTREE_"))}
+    env |= {"PATH": f"{docker.parent}{os.pathsep}{env['PATH']}", "GRAPHENE_KEYCHAIN": "off"}
+    here = Path(__file__).resolve().parent
+    smoke = subprocess.Popen([sys.executable, str(here / "access.py"), "--sandbox", "docker", "--out",
+                              str(tmp_path / "a.json")], env=env, start_new_session=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # fmt: skip
+    deadline = time.monotonic() + 60
+    while not held.exists():
+        assert smoke.poll() is None and time.monotonic() < deadline, smoke.communicate()
+        time.sleep(0.05)
+    os.killpg(smoke.pid, signal.SIGTERM)
+    smoke.communicate(timeout=60)
+    said = calls.read_text().splitlines()
+    box = next(ln.split()[3] for ln in said if ln.startswith("create "))
+    assert f"rm -f {box}" in said, said

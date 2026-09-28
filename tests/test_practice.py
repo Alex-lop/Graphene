@@ -1,6 +1,8 @@
 """docs/test/practice.sh, the ladder for the first hour with a key, climbed whole against the stand-ins: the
 scripted fake Token Factory (tests/fake_tokenfactory.py, started by the ladder itself) and Docker in place of
-ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes."""
+ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes, on the ladder's
+own path: rung 6's arms are not arm_a.py or arm_bprime.py, which first meet the live service in the
+evidence runs."""
 
 import contextlib
 import importlib.util
@@ -57,7 +59,7 @@ def test_the_whole_ladder_climbs_against_the_stand_ins(tmp_path):
     for n in range(1, 7):
         assert f"· PASS · rung {n} · " in said and f"next: docs/test/practice.sh --dry {n + 1}" in said
     assert "next: the ladder is climbed" in said
-    assert "arm B: 2 of 2 leaves landed" in said and "a scripted stand-in" in said
+    assert "(not arm_bprime.py): 2 of 2 leaves landed" in said and "a scripted stand-in" in said
     assert "the demo ran to the bill" in said and "(a stand-in's usage)" in said
     rows = json.loads((tmp_path / "state" / "progress.json").read_text())
     assert {r["result"] for r in rows.values()} == {"PASS"} and len(rows) == 7
@@ -126,7 +128,8 @@ def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
         assert f"    docs/test/practice.sh {n}\n" in done.stdout
         assert "most likely: a live rung is yours to run" in done.stdout
         assert not (tmp_path / "work").exists()  # nothing was built, nothing was run
-    dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1")  # the dry run spends nothing and records no one
+    dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1",  # the dry run spends nothing and records no one
+                 PRACTICE_STATE=str(tmp_path / "dry-state"))  # fmt: skip
     assert dry.returncode == 0 and "· PASS · rung 2 · " in dry.stdout, dry.stdout + dry.stderr
 
 
@@ -281,8 +284,9 @@ exit $code
                 subprocess.run(["docker", rm, "-f", *made[kind].read_text().split()], capture_output=True)
 
 
+@pytest.mark.parametrize("n", [1, 3])  # rung 1's access check runs the sandbox smoke on ConTree
 @pytest.mark.parametrize("killed", [False, True])
-def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypatch, capsys, killed):
+def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypatch, capsys, killed, n):
     """Live, a stop does not cancel a ConTree operation already sent; and a command killed after 120 s
     did not clean up: the STOPPED line says so rather than that all was cleaned up. Nothing runs."""
     practice = load_practice(tmp_path, monkeypatch)
@@ -291,12 +295,112 @@ def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypat
         r.killed = killed
         raise KeyboardInterrupt
 
-    monkeypatch.setitem(practice.RUNGS, 3, (*practice.RUNGS[3][:3], stopped))
+    monkeypatch.setitem(practice.RUNGS, n, (*practice.RUNGS[n][:3], stopped))
     try:
-        assert practice.climb(3) == "STOPPED"
+        assert practice.climb(n) == "STOPPED"
     finally:
         signal.signal(signal.SIGINT, signal.default_int_handler)
     said = capsys.readouterr().out
     assert "left running, maybe: a ConTree operation already sent runs on to its own time limit" in said
     assert ("was killed, so what it made may be left" in said) is killed
     assert ("was ended and cleaned up" in said) is not killed
+
+
+def test_a_word_shaped_like_a_key_is_taken_out_whole(tmp_path, monkeypatch):
+    """A key not in the ladder's environment (the keychain's, say) is masked by its shape: the whole word
+    goes, not its first twenty characters. The tokens are made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    for fake in ("Ab1" + "x" * 17 + "SECRETTAILpart9876543210", "sk-" + "a1B2" * 12):
+        said = practice.mask(f"Authorization: Bearer {fake}")
+        assert said == "Authorization: Bearer [removed: shaped like a key]", said
+
+
+def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, monkeypatch):
+    """What sandbox.Contree says with a key but no project id (a stub SDK, nothing sent) is read as that,
+    both said by the rung (4) and only in the log under a leaf that did not land (3)."""
+    import types
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, "contree_sdk", types.SimpleNamespace(ContreeSync=None))
+    monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree"))
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake")
+    monkeypatch.delenv("NEBIUS_PROJECT_ID", raising=False)
+    with pytest.raises(RuntimeError) as no:
+        sandbox.choose("contree")
+    said = f"RuntimeError: {no.value}"
+    landed = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {said}"
+    for text in (said, landed):
+        assert practice.likely(text)[0] == "ConTree has no credentials: NEBIUS_PROJECT_ID is not set"
+
+
+def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
+    """A refused rung ran nothing: `status` does not show it as failed, and a result already on record
+    (the person's PASS) stays."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / ".made-by-the-practice-ladder").touch()
+    passed = {"result": "PASS", "at": "2026-09-28 09:00", "seconds": 60.0, "dollars": 0.1}
+    (state / "progress.json").write_text(json.dumps({"3": passed}))
+    for n in ("1", "2", "3"):
+        assert ladder(tmp_path, n, CLAUDECODE="1").returncode == 1
+    assert json.loads((state / "progress.json").read_text()) == {"3": passed}
+    status = ladder(tmp_path, "status").stdout
+    assert " FAIL " not in status and "3. one leaf in a Sandbox" in status and " PASS " in status
+
+
+def test_the_dry_run_and_the_live_ladder_never_share_a_state(tmp_path):
+    """With one PRACTICE_STATE for both, the dry run removes nor writes nothing of the live ladder's (its
+    ledger is real spend), and the live ladder reads nothing a dry run wrote."""
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "docker").write_text("#!/bin/sh\nexit 1\n")  # were it to climb, it stops at rung 3, fast
+    (stub / "docker").chmod(0o755)
+    path = f"{stub}{os.pathsep}{os.environ['PATH']}"
+    assert ladder(tmp_path, "status").returncode == 0  # the live ladder makes its state
+    state = tmp_path / "state"
+    real = '{"at": 1, "tag": "access", "dollars": 0.37}\n'
+    (state / "ledger.jsonl").write_text(real)
+    for args in (["--dry"], ["--dry", "2"], ["--dry", "status"]):
+        done = ladder(tmp_path, *args, PATH=path)
+        assert done.returncode == 2 and "the live ladder's" in done.stdout, done.stdout + done.stderr
+        assert (state / "ledger.jsonl").read_text() == real and not (state / "progress.json").exists()
+    assert "bill so far $0.3700" in ladder(tmp_path, "status").stdout
+    dry = {"PRACTICE_STATE": str(tmp_path / "dry-state")}
+    assert ladder(tmp_path, "--dry", "2", PATH=path, **dry).returncode == 0
+    for args in (["status"], ["2"]):  # and the live ladder refuses the dry run's
+        done = ladder(tmp_path, *args, **dry)
+        assert done.returncode == 2 and "the dry run's" in done.stdout, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("landed", [0, 1])
+def test_the_demo_rung_passes_only_when_a_leaf_landed(tmp_path, monkeypatch, capsys, landed):
+    """Rung 7 with nemotron.sh and the replay stubbed: a demo that ran to the bill with nothing landed is
+    a FAIL that says so, and a PASS says how many leaves landed. Nothing runs."""
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setattr(practice.Rung, "sh", lambda r, args, cwd, timeout=900, **more: (0, "bill: $0.01"))
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"one": "done" if landed else "open", "two": "open"})
+    assert practice.climb(7) == ("PASS" if landed else "FAIL")
+    said = capsys.readouterr().out
+    if landed:
+        assert "1 of 2 leaves landed" in said
+    else:
+        assert "nothing landed" in said and "the model did not finish the work" in said
+
+
+def test_rung_6_says_its_arms_are_not_the_evidence_runs_harnesses(tmp_path, monkeypatch, capsys):
+    """Rung 6 runs arm A as one Graphene leaf and B′ through `graphene run`, not arm_a.py or arm_bprime.py:
+    its name and its PASS line say so. graphene is stubbed; nothing runs."""
+    practice = load_practice(tmp_path, monkeypatch)
+    (tmp_path / "paragraph.md").write_text("A stand-in paragraph for this test only.\n")
+    monkeypatch.setattr(practice, "PARAGRAPH", tmp_path / "paragraph.md")
+    monkeypatch.setattr(practice.Rung, "feeds", lambda r, name, recorder=None: (tmp_path / name, None))
+    monkeypatch.setattr(practice.Rung, "propose", lambda r, repo, nodes: None)
+    monkeypatch.setattr(practice.Rung, "graphene", lambda r, repo, *args, timeout=900: (0, "ok"))
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"arm-a": "done", "one": "done"})
+    assert "arms A and B" not in practice.RUNGS[6][0]
+    assert practice.climb(6) == "PASS"
+    said = capsys.readouterr().out
+    assert "arm A as one leaf (not arm_a.py)" in said and "B′ by `graphene run` (not arm_bprime.py)" in said

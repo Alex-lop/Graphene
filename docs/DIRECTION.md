@@ -1053,7 +1053,8 @@ as written and the change is named here.
 93. **The ladder: seven rungs you climb one at a time, each with its own spend cap, one PASS or FAIL
     line, the bill so far and the next command.**
     - **The rungs:** 1 access, 2 one leaf local, 3 one leaf in a Sandbox, 4 the escape test in
-      ConTree, 5 a recorded leaf, 6 one run each of arms A and B on feeds, 7 the demo run, recorded.
+      ConTree, 5 a recorded leaf, 6 arm A as one Graphene leaf and B′ on feeds, 7 the demo run,
+      recorded.
       Caps run from $0.05 (rung 4) to $3 (rungs 6 and 7): $7.80 is one pass of each, and a rerun
       gets its cap afresh.
     - **Live, only you climb.** From a shell with an agent's mark, rungs 2 to 7 run nothing and say
@@ -1071,7 +1072,12 @@ as written and the change is named here.
     the scripted fake and Docker; `tests/test_practice.py`
     (`test_the_whole_ladder_climbs_against_the_stand_ins`, `test_in_an_agents_shell_no_live_rung_runs`,
     `test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed`,
-    `test_ctrl_c_stops_a_rung_and_says_what_is_left`). Only the live calls are new tomorrow.
+    `test_ctrl_c_stops_a_rung_and_says_what_is_left`). Only the live calls are new tomorrow on the
+    ladder's own path. Rung 6 is not the evidence runs' arms: its arm A is a Graphene leaf (scope
+    `**`, check `true`), not `arm_a.py`'s one `converse` session, and its B′ goes through `graphene
+    run`, not `arm_bprime.py`. Those two harnesses and `evidence.py add` are tested against the fake
+    only (`test_arm_a.py`, `test_arm_bprime.py`, `test_evidence.py`) and first meet the live service
+    in the evidence runs.
 94. **Nemotron while you shape: three prototypes, chosen from twenty ranked ideas, behind
     `GRAPHENE_SHAPE` (unset: none runs). Each is also a command, and each puts what it found on the
     board.**
