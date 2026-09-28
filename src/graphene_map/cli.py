@@ -203,9 +203,16 @@ def build():
         if ctx.invoked_subcommand is None:
             if plan_or_nothing():
                 return
-            empty(NO_PLAN)
+            empty(NO_PLAN if initialised() else f"{NO_PLAN}. {NOT_INIT}")
 
-    from .plan_cli import NO_PLAN, register
+    from .plan_cli import NO_PLAN, NOT_INIT, register
+
+    def initialised() -> bool:
+        db = root() / ".graphene" / "graphene.db"
+        if not db.exists():
+            return False
+        with open_store(root()) as store:
+            return store.meta("plan_first") is not None
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
     from .board_cli import register as board
@@ -395,6 +402,7 @@ def build():
             )
             if not shell_lists_enabled():
                 say(SHELL_LISTS_HINT)
+        say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "

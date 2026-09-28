@@ -282,3 +282,17 @@ def test_the_page_opens_on_the_plan_in_a_repo_where_no_session_was_recorded(repo
     assert result.exit_code == 0, one_line(result)
     page = out.read_text(encoding="utf-8")
     assert "the users endpoint" in page and '"waiting_on_person"' in page
+
+
+def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo):
+    """Walk 2026-09-28: bare `graphene` in a repository never set up did not name `graphene init`,
+    and `init` ended without a next step."""
+    result = run()
+    assert result.exit_code == 1
+    said = one_line(result)
+    assert said.startswith("nothing is planned here yet") and "`graphene init` chooses who plans" in said
+    done = run("init")
+    assert done.exit_code == 0, done.output
+    assert "next: `graphene ask" in done.output
+    again = run()
+    assert "graphene init" not in again.output and "nothing is planned here yet" in again.output

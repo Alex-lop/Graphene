@@ -113,6 +113,7 @@ def test_each_key_answers_the_item_under_the_cursor_and_says_its_command(repo, s
         ["p"],  # empty-check: parked
         ["d"],  # paging: dropped
         ["enter", *"keep it", "enter"],  # shape: answered in words
+        ["y"],  # one y too many: on the settled fold it does nothing
     ]
     seen = drive(repo, steps, size)
     board = items(repo)
@@ -127,9 +128,13 @@ def test_each_key_answers_the_item_under_the_cursor_and_says_its_command(repo, s
     assert said[2].startswith("graphene board park empty-check: parked empty-check")
     assert said[3].startswith("graphene board drop paging: dropped paging")
     assert said[4].startswith("graphene board answer shape 'keep it': answered shape")
-    # after each answer the cursor is on the next open item, and after the last, in the tree
-    assert [s["at"] for s in seen] == ["int-ids", "empty-check", "paging", "shape", "api"]
-    fold = [r for r in seen[-1]["tree"] if "settled" in r]
+    # after each answer the cursor is on the next open item, and after the last on the settled fold,
+    # not on a node where the same y would accept it (walk 2026-09-28: a quick `y y y` or `a` there
+    # edited the plan)
+    assert [s["at"] for s in seen] == ["int-ids", "empty-check", "paging", "shape", "fold", "fold"]
+    with Store.open(repo) as store:
+        assert all(n.state == P.PROPOSED for n in P.nodes(store))  # the extra y accepted nothing
+    fold = [r for r in seen[-2]["tree"] if "settled" in r]
     assert fold and "3 settled · 1 parked · 1 dropped" in fold[0]
 
 
