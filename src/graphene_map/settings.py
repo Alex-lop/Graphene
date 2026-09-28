@@ -57,8 +57,17 @@ def conditions_for_planner(store) -> str:
     return "\n".join(lines)
 
 
+def elsewhere(store) -> list[str]:
+    """The settings changed by their own commands, shown as comment lines: a save never reads them."""
+    return [
+        f"# planner: {store.meta('planner') or 'none chosen'} (graphene init --planner)",
+        f"# executor: {store.meta('executor') or 'none chosen'} (graphene init --executor)",
+        f"# plan first: {'on' if P.plan_first(store) else 'off'} (graphene plan first on|off)",
+    ]
+
+
 def render(store) -> str:
-    out = [HEAD]
+    out = [HEAD.rstrip("\n"), *elsewhere(store), ""]
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
     out += [f"never: {n}" for n in never(store)]
     out.append(f"size: {size(store)}")

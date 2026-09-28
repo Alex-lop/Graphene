@@ -44,6 +44,13 @@ def find() -> str | None:
     return _from_keychain() if _keychain() else None
 
 
+def where() -> str | None:
+    """Where the key was found, never what it is: 'in NEBIUS_API_KEY', 'in the keychain', or None."""
+    if os.environ.get(KEY, "").strip():
+        return f"in {KEY}"
+    return "in the keychain" if _keychain() and _from_keychain() else None
+
+
 @functools.cache
 def _from_keychain() -> str | None:
     """Asked once a process: a leaf of N turns would otherwise start the keychain tool N times."""

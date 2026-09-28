@@ -20,8 +20,11 @@ def register(cli: typer.Typer, root, open_store, fail):
     def show(ctx: typer.Context) -> None:
         """Print the settings as `graphene config edit` opens them."""
         if ctx.invoked_subcommand is None:
+            from . import keys
+
             with open_store(root()) as store:
                 typer.echo(S.render(store), nl=False)
+            typer.echo(f"# the Token Factory key: {keys.where() or 'none found'} (graphene key set)")
 
     @config_cli.command()
     def edit() -> None:
