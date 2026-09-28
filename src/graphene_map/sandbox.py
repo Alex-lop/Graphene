@@ -54,7 +54,9 @@ def credentials() -> bool:
     """Has ConTree something to sign in with: a key and a project here, or a saved profile?"""
     env = os.environ
     home = Path(env.get("CONTREE_HOME") or Path.home() / ".config" / "contree")
-    return bool(env.get("NEBIUS_API_KEY") and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
+    from . import keys  # the environment's key, else the keychain's
+
+    return bool(keys.find() and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
 
 
 def _fixed(glob: str) -> str:
@@ -184,9 +186,12 @@ class Contree:
 
         self.image = image
         if not credentials():  # else the SDK sends the variable's name as the token, and gets a 401
-            raise RuntimeError("ConTree needs NEBIUS_API_KEY and NEBIUS_PROJECT_ID in the environment, or a "
-                               "profile saved by `contree auth`")  # fmt: skip
-        self.sdk = ContreeSync()
+            raise RuntimeError("ConTree needs a key (NEBIUS_API_KEY or `graphene key set`) and "
+                               "NEBIUS_PROJECT_ID, or a profile saved by `contree auth`")
+        from . import keys
+
+        token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
+        self.sdk = ContreeSync(token=token) if token else ContreeSync()
         self.base = self.sdk.images.oci(image)
         self.ops = 1
 

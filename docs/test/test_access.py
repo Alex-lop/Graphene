@@ -48,7 +48,8 @@ def test_the_docs_suite_never_reaches_the_real_keychain(monkeypatch):
 def test_without_a_key_nothing_is_sent(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     assert access.main(["--sandbox", "none", "--out", str(tmp_path / "a.json")]) == 1
-    assert "NEBIUS_API_KEY is not set in this shell; nothing was sent" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert "NEBIUS_API_KEY is not set in this shell and no key is in the keychain; nothing was sent" in said
 
 
 @pytest.mark.skipif(subprocess.run(["docker", "info"], capture_output=True).returncode != 0

@@ -188,3 +188,23 @@ def test_a_key_with_a_line_break_is_refused_without_being_said(monkeypatch):
     line = keys.reached()
     tf._listed.cache_clear()
     assert line.startswith("Token Factory: not reached") and "LINE" not in line and "line break" in line
+
+
+def test_contree_and_the_access_check_count_a_key_kept_in_the_keychain(tmp_path, monkeypatch, capsys):
+    import importlib
+    import pathlib
+
+    from graphene_map import sandbox
+
+    monkeypatch.setattr(keys, "find", lambda: "fake-key-in-keychain")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
+    assert sandbox.credentials()
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[1] / "docs" / "test"))
+    access = importlib.import_module("access")
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
+    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    tf._listed.cache_clear()
+    access.main(["--sandbox", "none", "--out", str(tmp_path / "a.json")])
+    tf._listed.cache_clear()
+    said = capsys.readouterr().out
+    assert "is not set" not in said and "fake-key-in-keychain" not in said
