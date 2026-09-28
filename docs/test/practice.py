@@ -143,7 +143,8 @@ class Rung:
             f.write(mask(self.seal(text)).rstrip("\n") + "\n")
 
     def start(self, args: list[str], cwd: Path, **more: str) -> subprocess.Popen:
-        self.note(f"$ {shlex.join(args)}   (in {cwd})")
+        shown = [SEALED if a in self.sealed else a for a in args]  # quoted by shlex, seal() would miss it
+        self.note(f"$ {shlex.join(shown)}   (in {cwd})")
         return subprocess.Popen(args, cwd=cwd, env=self.env | more, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                 start_new_session=True)  # fmt: skip

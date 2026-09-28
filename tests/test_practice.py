@@ -153,9 +153,11 @@ def load_practice(tmp_path: Path, monkeypatch):
 @pytest.mark.parametrize("fails", ["arm A's run", "arm B's ask"])
 def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(tmp_path, monkeypatch, capsys,
                                                                                  fails):  # fmt: skip
-    """Rung 6 with graphene stubbed: nothing runs, and a stand-in paragraph (not the sealed one) is passed."""
+    """Rung 6 with graphene stubbed by a python that says the failure: it is started as graphene is, so its
+    command line is logged, and a stand-in paragraph (not the sealed one) is passed. Its apostrophes are
+    what shlex quotes as '"'"' in a logged command line."""
     practice = load_practice(tmp_path, monkeypatch)
-    words = "Stand-in words that must stay sealed:\nthe second line of them, also sealed."
+    words = "Stand-in words that don't stay out in the open:\nthe second line of them, it's sealed as well."
     (tmp_path / "paragraph.md").write_text(words + "\n")
     monkeypatch.setattr(practice, "PARAGRAPH", tmp_path / "paragraph.md")
     built = []
@@ -167,7 +169,9 @@ def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(t
 
     def graphene(r, repo, *args, timeout=900):  # a failure that says the paragraph back, whole and in part
         failing = args[0] == ("run" if fails == "arm A's run" else "ask")
-        return (1, f"could not do it: {words}\n{words.splitlines()[1]}") if failing else (0, "ok")
+        said = f"could not do it: {words}\n{words.splitlines()[1]}" if failing else "ok"
+        script = "import os, sys; print(os.environ['SAID']); sys.exit(int(os.environ['FAILING']))"
+        return r.sh([sys.executable, "-c", script, *args], repo, timeout, SAID=said, FAILING=f"{failing:d}")
 
     monkeypatch.setattr(practice.Rung, "feeds", feeds)
     monkeypatch.setattr(practice.Rung, "propose", lambda r, repo, nodes: None)
@@ -177,8 +181,10 @@ def test_a_failing_rung_6_never_prints_the_paragraph_and_stops_where_it_failed(t
     assert practice.climb(6) == "FAIL"
     said = capsys.readouterr().out
     assert "FAIL · rung 6 · " in said
+    log = (tmp_path / "state" / "rung-6.log").read_text()
     for line in words.splitlines():
-        assert line not in said and line not in (tmp_path / "state" / "rung-6.log").read_text()
+        for part in [line, *line.split("'")]:  # whole, and in the pieces shlex quotes around an apostrophe
+            assert part not in said and part not in log, part
     if fails == "arm A's run":
         assert built == ["arm-a"] and "arm B was not started" in said  # nothing more is spent
     else:
