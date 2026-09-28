@@ -107,7 +107,8 @@ def _request(
                 raise Unreachable(f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
                                   "GRAPHENE_TOKENFACTORY_URL?") from None  # fmt: skip
         except urllib.error.HTTPError as no:
-            said = no.read().decode("utf-8", "replace")[:300]
+            # a gateway's page may echo the Authorization header: the key goes before the cut can halve it
+            said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key, "…"))[:300]
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
