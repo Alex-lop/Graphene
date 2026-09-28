@@ -231,7 +231,7 @@ def _replace_last(store, say: Callable[[str], None], session: str | None) -> lis
     """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
     another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
     place, not a second beside it. What the person answered about a dropped node
-    becomes about the whole plan (``board.rehome``), and a goal sentence an answer added to one is
+    becomes about the whole plan (``board.rehome``), and the goal, scope or check an answer gave one is
     named, so neither goes nowhere unsaid. Returns what stands, for the planner (None: nothing was
     dropped)."""
     mine = {
@@ -254,11 +254,17 @@ def _replace_last(store, say: Callable[[str], None], session: str | None) -> lis
         say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")
         stands += [B.said(item)] if B.told(item) or item["state"] == "parked" else []  # an answer
     for item in B.items(store):
-        for line in item.get("became") or []:
-            node, _, what = line.partition(": goal + ")
-            if what and node in gone and item["state"] != "dropped":
-                say(f"{node} is dropped, and with it its goal + {what} (from {item['id']})")
-                stands.append(f'{B.said(item)} (it added to the goal of {node}: "{what}")')
+        for line in item.get("became") or []:  # what the answer did to a dropped node: its goal, scope, check
+            node, _, what = line.partition(": ")
+            if not what or node not in gone or item["state"] == "dropped" or what.startswith("its goal says"):
+                continue
+            say(f"{node} is dropped, and with it its {what} (from {item['id']})")
+            sentence = what.removeprefix("goal + ")
+            stands.append(
+                f'{B.said(item)} (it added to the goal of {node}: "{sentence}")'
+                if sentence != what
+                else f"{B.said(item)} (it changed {node}: {what})"
+            )
     return stands
 
 

@@ -142,3 +142,26 @@ def test_an_item_still_open_about_a_dropped_node_is_told_to_every_executor_once_
     assert person("board", "take", "id-type").exit_code == 0
     with Store.open(repo) as store:
         assert B.decided(store, A.P.get(store, "ids2")) == ["ids as numbers or strings? → numbers"]
+
+
+ASKED_SCOPE = ASKED.replace(
+    'print("    then: goal ids + \\"ids stay numbers\\"")\n',
+    'print("    option: strings")\n'
+    'print("    then: scope ids + schema.py")\n'
+    'print("    then: check ids: grep -q str schema.py")\n',
+)
+
+
+def test_a_reask_says_the_scope_and_check_an_answer_gave_a_dropped_leaf(repo, tmp_path, monkeypatch):
+    assert person("ask", "add ids", "--with", planner(tmp_path, ASKED_SCOPE, monkeypatch)).exit_code == 0
+    assert person("board", "pick", "id-type", "1").exit_code == 0
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FINER, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert "ids is dropped, and with it its scope + schema.py (from id-type)" in again.output
+    assert "ids is dropped, and with it its check is now grep -q str schema.py (from id-type)" in again.output
+    prompt = prompts(tmp_path)[-1]
+    assert "- ids as numbers or strings? → strings (it changed ids: scope + schema.py)" in prompt
+    assert (
+        "- ids as numbers or strings? → strings (it changed ids: check is now grep -q str schema.py)"
+        in prompt
+    )
