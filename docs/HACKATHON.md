@@ -22,7 +22,8 @@ model you cannot trust does not save your attention. It spends it: on reading di
 up after them. So the question a Token Factory customer is really asking is *how do I hand real work
 to a cheap model and trust what comes back?*
 
-Our answer is to spend your attention where it buys the most: before anything runs. However many
+Our bet is to spend your attention before anything runs (the board, our first try at that moment,
+does not yet save it: see What we learned). However many
 tokens an agent gets, it still has to guess what you meant, and with most agents you find out what it
 guessed from the diff at the end. Graphene makes the moment between your paragraph and the first
 line of code a place of its own. The plan is on screen as a tree. What the agent would otherwise have
@@ -190,11 +191,10 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   paragraph also passed 20 of 20 hidden acceptance checks and 12 of 12 held-out checks, and it cost
   less of the person's modelled time: 2,626 modelled person-seconds against 3,869, medians of two
   runs (`docs/test/results-2026-09-23.md`). A frontier agent does not need a tree to get a small task
-  right. So the claim is not that a tree beats a paragraph by itself. What we test next is the moment
-  before anything runs: the board and the graph against the outline and against the paragraph
-  (pre-registered in `docs/test/results-2026-09-28-shaping.md`), and a cheap model with the person's
-  prune against the same paragraph sent to Nano with no tree
-  (`docs/test/results-2026-09-28-live-prereg.md`).
+  right. So the claim is not that a tree beats a paragraph by itself. We then measured the moment
+  before anything runs, the board against the outline, and the board cost more (What we learned).
+  What is left to test is the board against the paragraph, and a cheap model with the person's prune
+  against the same paragraph sent to Nano with no tree (`docs/test/results-2026-09-28-live-prereg.md`).
 - **The planner's questions were prose, and scrolled away.** On 28 September we put our own work
   through Graphene, with Claude Code as planner and executors and an agent standing in for the
   person (`docs/process/shaping/as-the-person.md`). After its tree the planner wrote about 250 words
@@ -227,8 +227,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
 
 ## What we learned
 
-(The evidence runs fill this in. Until they exist this field says only what the challenges above
-say.)
+(The live evidence run fills in the rest.)
 
 **The chart goes here.** One panel per pre-registered question, drawn from its table as registered
 and never tuned to a target:
@@ -240,8 +239,14 @@ and never tuned to a target:
   tree from Ultra with Nano on the leaves against the paragraph sent to Nano alone, in correctness,
   the person's attention and dollars.
 
-Neither has run, so the chart has no number yet. It goes in the README, the video, the demo page and
-here, whatever it says.
+The shaping panel has a number, and it goes against the board. With Claude model stand-ins shaping
+one Claude Code proposal per task, and nothing run, answering the board first cost more modelled
+attention than pruning the outline alone on all four tasks: +356.7 to +637.3 person-seconds (study
+2), and still +272.8 to +398.6 once the planner put up one or two items instead of five or six
+(study 3, exploratory), mostly in reading. The shaped plan was at least as faithful to the task's
+card on all four, one run each (`docs/test/results-2026-09-28-shaping.md`). The board against the
+paragraph, and the live Nemotron panel, have not run. The chart goes in the README, the video, the
+demo page and here, whatever it says.
 
 ## What's next for Graphene
 
@@ -332,7 +337,8 @@ service itself.)
 | `2 at once · 2 wait · critical path … (3)` | `graphene plan --view dag --width 80` on a scratch plan of four leaves from a scripted planner, at `integ` 50f12e7 |
 | 150 random plans; 22 widths from 20 to 167 | `tests/test_view_dag.py`, `tests/test_view_tree.py` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
-| the board and the graph against the outline and the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
+| the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `docs/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
+| the board against the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
 
 ## Testing instructions
 
