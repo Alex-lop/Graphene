@@ -20,8 +20,12 @@
 - (written at the end of the run)
 
 **Broken or risky**
+- **The board did not save attention.** Stand-ins shaping one Claude proposal per task spent about twice
+  the modelled seconds with the board as with the outline, on 4 of 4 tasks, mostly reading; their plans
+  were as faithful or more (`docs/test/results-2026-09-28-shaping.md`, study 2). Lane A's "done" is not met.
+- The full study (with executors) never ran: the session's classifier refuses a sub-agent that starts
+  Claude Code sessions. Its harness is ready for a session you allow.
 - The keychain item above. Every test now runs with the keychain off (`GRAPHENE_KEYCHAIN=off`).
-- (the rest written at the end of the run)
 
 ---
 
