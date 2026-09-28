@@ -3,30 +3,26 @@
 ## The brief
 
 **Do first**
-1. Take out a fake key a reviewer's test wrote into your login keychain at about 02:00 (10 s; the
-   classifier refused it to me): `security delete-generic-password -s graphene -a token-factory`
-2. The key in `~/.zshenv` (2 min): `export NEBIUS_API_KEY=…  NEBIUS_PROJECT_ID=…`, then a new shell.
-3. The ladder, in a terminal of your own, not inside Claude Code (rungs 1-3, about 10 min):
-   `docs/test/practice.sh`, one rung at a time; `docs/test/PRACTICE.md` is the whole of it.
+1. (10 s) Remove a fake key a test left in your keychain: `security delete-generic-password -s graphene -a token-factory`
+2. (2 min) The key in `~/.zshenv`: `export NEBIUS_API_KEY=… NEBIUS_PROJECT_ID=…`, then a new shell.
+3. (10 min) In a terminal of your own, not Claude Code: `docs/test/practice.sh`, rungs 1-3 (`docs/test/PRACTICE.md`).
 
 **New tonight**
-- The board, the planner's questions answered with a key: `graphene board`, or `graphene watch`
-- The plan as a tree and as a graph of what waits on what: `graphene plan --view dag` (Tab in `watch`)
+- The planner asks, you answer with a key: `graphene board` (rows under the goal in `graphene watch`)
+- The plan as a tree and a graph of what waits: `graphene plan --view dag` (Tab in `watch`)
 - Settings you state once: `graphene config`, `graphene key check`
 - Talking on the tree: `?` on a node in `graphene watch`; `graphene plan changes`
 - Ready for the key: `docs/test/practice.sh --dry` climbs all seven rungs on stand-ins (3 min)
 
 **Decide**
-- The board cost more attention than the outline in both shaping studies (it bought fidelity). Keep
-  it on by default? My default: yes, and the next run makes it replace reading the tree (DIRECTION 98-99).
-- The full study with executors never ran: this session's classifier refuses a sub-agent that starts
-  Claude Code. My default: run it in the live run, with `graphene run` starting the executors.
-- `+`/`-` re-asks now move your answers about dropped leaves to the whole plan. My default: keep.
+- Keep the board on by default though it cost more attention than the outline? Default: yes (DIRECTION 98-99).
+- Run the full study (with executors) inside the live run, `graphene run` starting them? Default: yes.
+- Re-asking with `+`/`-` moves your answers about dropped leaves to the whole plan. Default: keep.
 
 **Broken or risky**
-- The board does not yet save attention: about twice the modelled seconds in study 2, less in study 3.
-- CI fails now and then on stop-timing tests from the last run's review (a fix is in this PR if it landed; see below).
-- The keychain item in "Do first". Every test now runs with the keychain off.
+- The board does not yet save attention: about twice the modelled seconds (study 2), less with 1-2 items (study 3).
+- CI fails now and then on the last run's stop-timing tests (see "The closing review" below).
+- The keychain item in step 1. Every test now runs with the keychain off.
 
 ---
 
