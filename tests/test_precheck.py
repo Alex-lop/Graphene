@@ -332,3 +332,12 @@ def test_an_uncommitted_change_makes_a_kept_verdict_stale(repo, monkeypatch):
         [(_, after)] = C.run(store, repo)
         assert first["verdict"] == "passes" and kept.get("kept")
         assert not after.get("kept") and after["verdict"] == "red"
+
+
+def test_no_graphene_command_pays_for_the_token_factory_client_until_a_precheck_reads():
+    import sys
+
+    heavy = "{'graphene_map.tokenfactory', 'urllib.request'}"
+    probe = f"import sys, graphene_map.cli as c; c.build(); print(sorted({heavy} & set(sys.modules)))"
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == "[]"

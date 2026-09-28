@@ -25,7 +25,6 @@ import time
 from pathlib import Path
 
 from . import plan as P
-from . import tokenfactory as tf
 
 FLAG = "precheck"
 PROMPT_VERSION = "precheck-1"
@@ -113,6 +112,8 @@ def _prepare(exe: str) -> str | None:
 
 def _here(command: str, root: Path) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
+    from . import tokenfactory as tf  # here: every graphene command imports this module, few read
+
     began = time.monotonic()
     env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_AS": "agent:check"}
     try:
@@ -158,6 +159,8 @@ def _forks(root: Path, prepare: str | None):
 
 def _nano() -> str:
     """Nano's id, as the live list has it (the smallest Nemotron listed); asked once."""
+    from . import tokenfactory as tf
+
     listed = tf.resolve([], "executor", tf.models(tries=1))[0]
     if not listed:
         raise tf.Unreachable("Token Factory lists no Nemotron model")
@@ -175,6 +178,8 @@ def _hider(root: Path):
 
 def _read(store, node: P.Node, tail: str, model: str, hide=str) -> tuple[str, str]:
     """Nano's reading of a red tail: (verdict, why). One call, billed on the plan's log."""
+    from . import tokenfactory as tf
+
     prompt = (f"A coding agent will be given this work: {node.title}\n{node.goal}\n\nThe check that will say "
               f"it is done was run before any work, and failed:\n$ {node.check}\n{tail}\n\nIs it red because "
               "the work is not done yet (red-right-reason), because the environment cannot run it "
@@ -228,6 +233,8 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
         again: bool = False) -> list[tuple[P.Node, dict]]:  # fmt: skip
     """Every check of the proposed and open leaves (or of ``ids``) at the checkout as git sees it now,
     each verdict a row. ``fork`` runs a proposed leaf's check in a sandbox; None makes one when needed."""
+    from . import tokenfactory as tf
+
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
     todo = [P.get(store, i) for i in ids] or [n for n in everything if n.state in (P.PROPOSED, P.OPEN)]
     for n in todo:
