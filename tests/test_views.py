@@ -439,3 +439,26 @@ def test_tab_on_an_empty_plan_says_so_and_changes_nothing(repo, grid):
     """Tab on an empty plan switched to the grid with nothing shown, the keyboard on the hidden tree."""
     seen = look(repo, ["tab"], (80, 24))
     assert seen["showing"] == "outline" and "nothing is planned yet" in seen["status"]
+
+
+def test_a_click_on_either_line_of_a_tree_cell_puts_the_cursor_there(repo, monkeypatch):
+    """A tree cell is its head and its title under it: a click on the title did nothing."""
+    from graphene_map import view_tree
+
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "tree": view_tree})
+    proposed(repo)
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("tab")
+            await pilot.pause()
+            got = []
+            for node_id, down in (("docs", 1), ("schema", 0), ("ids", 1)):
+                line, first, _ = app.drawn.at[node_id]
+                await pilot.click("#drawn", offset=(first + 2, line + down))
+                await pilot.pause()
+                got.append(app.selected())
+            return app.drawn.tall, got
+
+    assert asyncio.run(go()) == (2, ["docs", "schema", "ids"])

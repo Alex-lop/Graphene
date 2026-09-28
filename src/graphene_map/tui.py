@@ -467,7 +467,7 @@ class PlanView(VerticalScroll):
         if spot.y == 0:
             self.app.go(None)
         for node_id, (line, first, last) in drawn.at.items():
-            if line == spot.y and first <= spot.x <= last:
+            if line <= spot.y < line + drawn.tall and first <= spot.x <= last:
                 self.app.go(node_id)
 
 

@@ -34,6 +34,7 @@ class Drawn:
     at: dict[str, tuple[int, int, int]]  # node id -> (line, first column, last column) of its cell
     order: list[str]  # the reading order j and k walk
     note: str  # what the view says at a glance, for the bottom line
+    tall: int = 1  # the lines each cell takes, from its line down: a click on any of them is on it
 
 
 VIEWS: dict[str, object] = {"outline": None}  # a name -> its module (draw, and suits if it has one)

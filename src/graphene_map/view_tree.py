@@ -143,7 +143,7 @@ class _Tree:
         said = elide(goal or "no goal yet", width)
         self.put(0, min(max(mid - cell_len(said) // 2, 0), width - cell_len(said)), Text(said, "bold"))
         order = [n.id for n in self.walk(None)]
-        return Drawn(self.lines(), dict(self.at), order, note(list(self.by_id.values()), self.words))
+        return Drawn(self.lines(), dict(self.at), order, note(list(self.by_id.values()), self.words), self.h)
 
     def visible(self, n: P.Node) -> bool:
         return not any(a.id in self.folded for a in P.above(n, self.by_id))
