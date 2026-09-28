@@ -224,19 +224,34 @@ class Docker:
         self.made = [i for i in self.made if i in keep]
 
     def _docker(self, *args: str, data: bytes | None = None) -> subprocess.CompletedProcess:
-        return subprocess.run(["docker", *args], input=data, capture_output=True)
+        """docker's CLI, in a session of its own: a terminal's Ctrl-C reaches Graphene, not it. A call a
+        stop lands in is let end first (its input cut short), so what it made is known to the cleanup:
+        a container by its name, a committed image in ``made``."""
+        given = subprocess.DEVNULL if data is None else subprocess.PIPE
+        with subprocess.Popen(["docker", *args], stdin=given, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              start_new_session=True) as call:  # fmt: skip
+            try:
+                out, err = call.communicate(data)
+            except BaseException:
+                if call.stdin:
+                    call.stdin.close()
+                out, _ = call.communicate()
+                if args[0] == "commit" and call.returncode == 0:
+                    self.made.append(out.decode().strip())
+                raise
+        return subprocess.CompletedProcess(call.args, call.returncode, out, err)
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
         return self.run(self.base, script, {"/tmp/graphene/repo.tar": tar.read_bytes()}, timeout)
 
     def run(self, image: str, script: str, files: dict[str, bytes], timeout: float) -> tuple[str, int, str]:
         self.ops += 1
-        made = self._docker("create", "-i", image, "bash", "-c", script)
-        if made.returncode != 0:
-            return image, 125, made.stderr.decode("utf-8", "replace")
-        box = made.stdout.decode().strip()
+        box = f"graphene-{os.getpid()}-{os.urandom(6).hex()}"  # named before it is made: a stop finds it
         self.running.add(box)
         try:
+            made = self._docker("create", "-i", "--name", box, image, "bash", "-c", script)
+            if made.returncode != 0:
+                return image, 125, made.stderr.decode("utf-8", "replace")
             if files:
                 buf = io.BytesIO()
                 with tarfile.open(fileobj=buf, mode="w") as tar:
@@ -246,7 +261,8 @@ class Docker:
                         tar.addfile(info, io.BytesIO(data))
                 self._docker("cp", "-", f"{box}:/", data=buf.getvalue())
             try:
-                ran = subprocess.run(["docker", "start", "-a", box], capture_output=True, timeout=timeout)
+                ran = subprocess.run(["docker", "start", "-a", box], capture_output=True, timeout=timeout,
+                                     start_new_session=True)  # fmt: skip
                 code = int(self._docker("inspect", "-f", "{{.State.ExitCode}}", box).stdout.decode().strip())
             except subprocess.TimeoutExpired:
                 self._docker("kill", box)

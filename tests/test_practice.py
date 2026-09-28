@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -213,3 +214,76 @@ def test_ctrl_c_stops_a_rung_and_says_what_is_left(tmp_path):
     assert left and str(tmp_path / "work" / "4-escape-") in left[0]
     assert json.loads((tmp_path / "state" / "progress.json").read_text())["4"]["result"] == "STOPPED"
     assert "next: docs/test/practice.sh --dry 4" in said
+
+
+@pytest.mark.skipif(not docker_runs(), reason="needs a running Docker (the sandbox stand-in)")
+@pytest.mark.parametrize("verb, nth", [("create", 1), ("create", 2), ("commit", 1)])
+def test_ctrl_c_as_docker_makes_something_leaves_nothing_in_docker(tmp_path, verb, nth):
+    """Ctrl-C twice, to the whole process group, the moment `docker <verb>` has made the dry escape rung's
+    nth container or image and before its id is back (a docker on PATH holds it back two seconds): the rung
+    stops, and no container (none left in the Created state) and no image it made is left in Docker."""
+    real, here, stub = shutil.which("docker"), tmp_path / "made", tmp_path / "bin" / "docker"
+    here.mkdir()
+    stub.parent.mkdir()
+    q, h = shlex.quote, shlex.quote(str(tmp_path / "made"))
+    stub.write_text(f"""#!/bin/sh
+case "$1" in create|commit) ;; *) exec {q(real)} "$@" ;; esac
+{q(real)} "$@" > {h}/out; code=$?
+cat {h}/out; cat {h}/out >> {h}/"$1"
+n=$(wc -l < {h}/"$1"); [ "$1" = {verb} ] && [ $n -eq {nth} ] && touch {h}/held && sleep 2
+exit $code
+""")  # fmt: skip
+    stub.chmod(0o755)
+    env = environment(tmp_path, PATH=f"{stub.parent}{os.pathsep}{os.environ['PATH']}")
+    ladder_ = subprocess.Popen([sys.executable, str(PRACTICE), "--dry", "4"], env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)  # fmt: skip
+    made = {kind: here / kind for kind in ("create", "commit")}
+    try:
+        deadline = time.monotonic() + 300
+        while not (here / "held").exists():
+            assert ladder_.poll() is None and time.monotonic() < deadline, ladder_.communicate()
+            time.sleep(0.05)
+        os.killpg(ladder_.pid, signal.SIGINT)
+        time.sleep(0.1)
+        with contextlib.suppress(PermissionError, ProcessLookupError):
+            os.killpg(ladder_.pid, signal.SIGINT)
+        said, err = ladder_.communicate(timeout=300)
+        assert ladder_.returncode == 130 and "Traceback" not in err, said + err
+        assert "· STOPPED · rung 4 · " in said and "next: docs/test/practice.sh --dry 4" in said
+        boxes = made["create"].read_text().split()
+        images = made["commit"].read_text().split() if made["commit"].exists() else []
+        assert len(boxes) == nth if verb == "create" else len(images) == nth
+
+        def listed(*args: str) -> set[str]:
+            return set(subprocess.run(["docker", *args], capture_output=True, text=True).stdout.split())
+
+        assert not set(boxes) & listed("ps", "-aq", "--no-trunc")
+        assert not listed("ps", "-aq", "--filter", f"name=graphene-{ladder_.pid}-")
+        assert not set(images) & listed("images", "-aq", "--no-trunc")
+    finally:
+        if ladder_.poll() is None:
+            os.killpg(ladder_.pid, signal.SIGKILL)
+        for kind, rm in (("create", "rm"), ("commit", "rmi")):  # what a failure left is not left to the next
+            if made[kind].exists() and made[kind].read_text().split():
+                subprocess.run(["docker", rm, "-f", *made[kind].read_text().split()], capture_output=True)
+
+
+@pytest.mark.parametrize("killed", [False, True])
+def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypatch, capsys, killed):
+    """Live, a stop does not cancel a ConTree operation already sent; and a command killed after 120 s
+    did not clean up: the STOPPED line says so rather than that all was cleaned up. Nothing runs."""
+    practice = load_practice(tmp_path, monkeypatch)
+
+    def stopped(r):
+        r.killed = killed
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(practice.RUNGS, 3, (*practice.RUNGS[3][:3], stopped))
+    try:
+        assert practice.climb(3) == "STOPPED"
+    finally:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    said = capsys.readouterr().out
+    assert "left running, maybe: a ConTree operation already sent runs on to its own time limit" in said
+    assert ("was killed, so what it made may be left" in said) is killed
+    assert ("was ended and cleaned up" in said) is not killed

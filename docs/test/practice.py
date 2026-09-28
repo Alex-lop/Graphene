@@ -121,6 +121,7 @@ class Rung:
 
     def __init__(self, n: int, cap: float):
         self.n, self.cap, self.sealed, self.made = n, cap, [], []  # sealed: text no line and no log holds
+        self.killed = False  # a command that did not end when told to, and was killed where it stood
         self.log = STATE / f"rung-{n}.log"
         self.log.write_text("", encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith("GRAPHENE_")}
@@ -160,6 +161,7 @@ class Rung:
                 proc.communicate(timeout=120)
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
+                self.killed = True
             raise
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGTERM)  # graphene takes it as Ctrl-C: every executor is ended
@@ -325,9 +327,9 @@ def escape(r: Rung) -> str:
                  ["-c", "user.name=p", "-c", "user.email=p@e", "commit", "-qm", "start"]):  # fmt: skip
         subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
     box = S.choose("docker" if DRY else "contree")
-    place = S.Sandbox(root, ["app.py", "tests/test_new.py"], box)
     escaped = []
-    try:
+    try:  # a stop while the sandbox is being made cleans up too
+        place = S.Sandbox(root, ["app.py", "tests/test_new.py"], box)
         for name, command in {**FAILS, **MADE, **dict.fromkeys(INS)}.items():
             code, out = place.run(command or name)
             r.note(f"[{'in' if command is None else name}] exit {code}: {out.strip()[-300:]}")
@@ -336,8 +338,7 @@ def escape(r: Rung) -> str:
             if command is None and code != 0:
                 raise Failed(f"a write inside the scope failed in the sandbox: {name}: {last(out)}")
     finally:
-        place.close()
-        if hasattr(box, "forget"):
+        if hasattr(box, "forget"):  # every checkpoint the rung made, the sandbox's first ones too
             box.forget()
     kept = {"other.py": "x = 1\n", "tests/test_app.py": "import app\n"}
     escaped += [p for p, text in kept.items() if (root / p).read_text() != text]
@@ -550,8 +551,13 @@ def climb(n: int) -> str:
     except KeyboardInterrupt:
         left = [str(p) for p in r.made if p.exists()]
         said, result = "stopped by you (Ctrl-C): what it had started was ended and cleaned up", "STOPPED"
+        if r.killed:
+            said = ("stopped by you (Ctrl-C): a command did not end within 120 s and was killed, so what it "
+                    "made may be left (a Docker sandbox's are named graphene-*)")  # fmt: skip
         said += (f"\nleft behind: this rung's repos\nto clean: {shlex.join(['rm', '-rf', *left])}" if left
                  else "\nleft behind: nothing")  # fmt: skip
+        if not DRY and n in (3, 4, 6, 7):  # sandbox.Sandbox.halt: ConTree's operation is not cancelled
+            said += "\nleft running, maybe: a ConTree operation already sent runs on to its own time limit"
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
     rows = progress() | {str(n): {"result": result, "at": time.strftime("%Y-%m-%d %H:%M"),
