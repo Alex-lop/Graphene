@@ -492,3 +492,30 @@ def test_a_view_opened_from_the_outline_keeps_the_goal_line_in_sight(repo, grid)
         person("node", "add", f"leaf {k}", "--id", f"n{k:02}", "--scope", f"f{k}.txt", "--check", "true")
     seen = look(repo, ["j", "tab"], (80, 24))
     assert seen["cursor"] == "n00" and seen["view"][0].startswith("forty leaves")
+
+
+def test_tab_says_once_which_view_it_went_past_because_it_does_not_fit(repo, monkeypatch):
+    """At 80 columns Tab skipped the tree with no word, and none of the stand-ins learned it was there.
+    Now the first Tab past a view says so, once a width; then the view's note is said as before."""
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "wide": Wide, "grid": Grid})
+    proposed(repo)
+    first = look(repo, ["tab"], (80, 24))
+    assert first["status"].endswith("graphene watch --view grid: the wide does not fit at 80 columns")
+    again = look(repo, ["tab", "tab", "tab"], (80, 24))  # grid, the outline, the grid again
+    assert again["status"].endswith("graphene watch --view grid: 4 in a grid")
+
+
+def test_the_graphs_note_names_the_critical_path_first_and_counts_ready_as_the_status_line_does(repo):
+    """The dag's footer read `8 at once · 3 wait · … · critical path: …`, cut before the path at 80
+    columns, and its 8 disagreed with `R: 4 ready`: it counted proposals too. The path comes first
+    now, and ready is what R starts, the proposals that could start once accepted said apart."""
+    proposed(repo)
+    assert person("plan", "accept", "ids").exit_code == 0  # ready; docs waits on it; schema proposed
+    for size in SIZES:
+        seen = look(repo, ["tab", "tab"], size, view="outline")
+        top, _, note = seen["status"].splitlines()
+        assert "R: 1 ready" in top or "R runs 1 ready" in top, top
+        said = "graphene watch --view dag: critical ━ ids > docs (2) · 1 ready · 1 more once"
+        assert note.startswith(said), note
+        moved = look(repo, ["tab", "tab", "j"], size, view="outline")
+        assert moved["status"].splitlines()[-1].startswith("critical ━ ids > docs (2) · 1 ready")  # it stays

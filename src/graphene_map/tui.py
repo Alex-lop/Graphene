@@ -707,6 +707,7 @@ class Watch(App):
         self.heard: set = set()  # the steps up the ladder the bottom line has said
         self.board = BR.Board()  # board: the items shown as rows above the tree
         self.opened: list[str] = []  # board: the open items' ids when the tree was last built
+        self.skips: set[tuple[str, int]] = set()  # the views Tab went past, and at what width, said once
 
     # -- the screen ----------------------------------------------------------------------------------
 
@@ -1022,10 +1023,12 @@ class Watch(App):
         if self.mapped is not None and self.mapped[1] == here:  # on a stand-in: the node the person was on
             here = self.mapped[0]
         self.mapped = None
+        skipped = []
         for name in [*names[names.index(was) + 1 :], "outline"]:
             self.here = here
             if name == "outline" or self.draw_view(name) is not None:
                 break
+            skipped.append(name)
         self.showing, self.here, self.anchor = name, here, None
         if self.view == "said":
             self.view = "contract"
@@ -1035,6 +1038,13 @@ class Watch(App):
         note = self.drawn.note if self.drawn is not None else ""
         if name == was == "outline":
             note = f"no other view fits at {self.size.width} columns" if len(names) > 1 else "the only view"
+        # a view Tab went past is said once a width (what the view shows is on the line under the keys
+        # from the next move on): the stand-ins never learned the tree was there at 80 columns
+        news = [v for v in skipped if (v, self.size.width) not in self.skips]
+        self.skips.update((v, self.size.width) for v in news)
+        if news:
+            verb = "do" if len(news) > 1 else "does"
+            note = f"the {' and the '.join(news)} {verb} not fit at {self.size.width} columns"
         self.message = f"graphene watch --view {name}" + (f": {note}" if note else "")
         self.say_status()
 
