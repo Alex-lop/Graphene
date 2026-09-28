@@ -226,11 +226,15 @@ def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lamb
     when the board can spell all of it (scope NODE + GLOB, check NODE: COMMAND); a change it cannot (a
     goal, a glob taken out, a new leaf) is the command in the default's words, for the person to run.
     Returns the item, or None when nothing is offered (``say`` hears why)."""
-    from . import board as B  # lane A's board: here once the coordinator merges it
-
-    offer = route(store, root, sentence, say)
+    try:  # a screen calls it: a model it cannot reach is one line, not a raise
+        offer = route(store, root, sentence, say)
+    except P.Refused as no:
+        say(_shown(no))
+        return None
     if offer is None:
         return None
+    from . import board as B  # lane A's board: here once the coordinator merges it
+
     default = f"take it: {'; '.join(offer.then)}" if offer.then else f"run it yourself: {offer.command}"
     return B.add(store, "note", f"you said '{sentence}'; {offer.said()}", P.Caller(WHO, False), default,
                  list(offer.then), about=None if offer.target == NEW else offer.target)  # fmt: skip
