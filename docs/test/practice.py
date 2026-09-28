@@ -14,7 +14,8 @@ bill so far from the ledger every Token Factory call is written to (GRAPHENE_LED
 and the next command. A failure says what it most likely means and what to try. Progress, the ledger,
 each rung's log and the recordings are kept in .graphene/practice/ (git-ignored; .graphene/practice-dry/
 for the dry run), and the task repos are built outside this repository, in ~/graphene-practice/
-(~/graphene-practice-dry/). PRACTICE_STATE and PRACTICE_WORK move them.
+(~/graphene-practice-dry/). PRACTICE_STATE and PRACTICE_WORK move them; the dry run and the live ladder
+never share a state directory (each refuses the other's).
 
 Rung 6 reads feeds' sealed paragraph from docs/test/tasks/feeds/paragraph.md and passes it on; no line
 and no log holds it (<the sealed paragraph of feeds> stands in its place), no command's output is shown on
@@ -58,6 +59,7 @@ PROGRESS = STATE / "progress.json"
 PARAGRAPH = HERE / "tasks" / "feeds" / "paragraph.md"  # the sealer's: passed on, never printed or shown
 SEALED = "<the sealed paragraph of feeds>"  # what a line or the log says in its place
 MADE_BY = ".made-by-the-practice-ladder"  # in a state directory the ladder made: only such a one is removed
+MODE = "dry" if DRY else "live"  # what MADE_BY holds: a dry run and the live ladder never share a state
 ME = "docs/test/practice.sh" + (" --dry" if DRY else "")
 TAG = "dry run, stand-ins · " if DRY else ""  # every line of the dry run says so
 # what an agent's shell carries (plan.caller reads them): the person runs the ladder, so none is passed on
@@ -638,7 +640,13 @@ def main(argv: list[str]) -> int:
     args = [a for a in argv if a != "--dry"]
     if not STATE.exists():
         STATE.mkdir(parents=True)
-        (STATE / MADE_BY).touch()
+        (STATE / MADE_BY).write_text(MODE)
+    if (STATE / MADE_BY).exists():  # an empty one is from before it said: the default paths tell them apart
+        made = (STATE / MADE_BY).read_text().strip() or ("dry" if STATE.name == "practice-dry" else "live")
+        if made != MODE:  # the live ledger is real spend; a dry row read as live is a stand-in shown as live
+            say(f"{STATE} is {'the dry run' if made == 'dry' else 'the live ladder'}'s: nothing was read, "
+                "removed or written; point PRACTICE_STATE at another directory")  # fmt: skip
+            return 2
     if args == ["status"]:
         status()
         return 0
@@ -654,7 +662,7 @@ def main(argv: list[str]) -> int:
             return 2
         shutil.rmtree(STATE)
         STATE.mkdir(parents=True)
-        (STATE / MADE_BY).touch()
+        (STATE / MADE_BY).write_text(MODE)
     if DRY:
         from fake_tokenfactory import Fake
 

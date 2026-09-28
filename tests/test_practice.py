@@ -126,7 +126,8 @@ def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
         assert f"    docs/test/practice.sh {n}\n" in done.stdout
         assert "most likely: a live rung is yours to run" in done.stdout
         assert not (tmp_path / "work").exists()  # nothing was built, nothing was run
-    dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1")  # the dry run spends nothing and records no one
+    dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1",  # the dry run spends nothing and records no one
+                 PRACTICE_STATE=str(tmp_path / "dry-state"))  # fmt: skip
     assert dry.returncode == 0 and "· PASS · rung 2 · " in dry.stdout, dry.stdout + dry.stderr
 
 
@@ -345,3 +346,27 @@ def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
     assert json.loads((state / "progress.json").read_text()) == {"3": passed}
     status = ladder(tmp_path, "status").stdout
     assert " FAIL " not in status and "3. one leaf in a Sandbox" in status and " PASS " in status
+
+
+def test_the_dry_run_and_the_live_ladder_never_share_a_state(tmp_path):
+    """With one PRACTICE_STATE for both, the dry run removes nor writes nothing of the live ladder's (its
+    ledger is real spend), and the live ladder reads nothing a dry run wrote."""
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "docker").write_text("#!/bin/sh\nexit 1\n")  # were it to climb, it stops at rung 3, fast
+    (stub / "docker").chmod(0o755)
+    path = f"{stub}{os.pathsep}{os.environ['PATH']}"
+    assert ladder(tmp_path, "status").returncode == 0  # the live ladder makes its state
+    state = tmp_path / "state"
+    real = '{"at": 1, "tag": "access", "dollars": 0.37}\n'
+    (state / "ledger.jsonl").write_text(real)
+    for args in (["--dry"], ["--dry", "2"], ["--dry", "status"]):
+        done = ladder(tmp_path, *args, PATH=path)
+        assert done.returncode == 2 and "the live ladder's" in done.stdout, done.stdout + done.stderr
+        assert (state / "ledger.jsonl").read_text() == real and not (state / "progress.json").exists()
+    assert "bill so far $0.3700" in ladder(tmp_path, "status").stdout
+    dry = {"PRACTICE_STATE": str(tmp_path / "dry-state")}
+    assert ladder(tmp_path, "--dry", "2", PATH=path, **dry).returncode == 0
+    for args in (["status"], ["2"]):  # and the live ladder refuses the dry run's
+        done = ladder(tmp_path, *args, **dry)
+        assert done.returncode == 2 and "the dry run's" in done.stdout, done.stdout + done.stderr
