@@ -117,10 +117,16 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         return []
     flat, by_id, gone = " ".join(paragraph.split()), {n.id: n for n in everything}, dismissed(store)
     leaves = {n.id for n in P.leaves(everything) if n.state in (P.PROPOSED, P.OPEN)}
-    kept, dropped, uncovered = [], [], []
+    kept, dropped, uncovered, odd = [], [], [], 0
     for c in clauses:
-        c = c if isinstance(c, dict) else {}
-        words = " ".join(str(c.get("text") or "").split()).rstrip(".,;:")
+        try:  # an item of any other shape is passed over: nothing the model writes breaks the command
+            text, leaf, near = c["text"], c.get("leaf"), c.get("nearest")
+            if not isinstance(text, str) or not all(v is None or isinstance(v, str) for v in (leaf, near)):
+                raise TypeError
+        except (TypeError, KeyError, IndexError, AttributeError):
+            odd += 1
+            continue
+        words = " ".join(text.split()).rstrip(".,;:")
         found = re.search(re.escape(words), flat, re.IGNORECASE) if words else None
         if found is None:  # not the person's words: dropped, never offered
             dropped.append(words)
@@ -128,10 +134,10 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         clause = found.group(0)  # as the paragraph has it, not as the model wrote it
         if clause in (k["text"] for k in kept):
             continue
-        leaf = c.get("leaf") if c.get("leaf") in by_id else None
+        leaf = leaf if leaf in by_id else None
         kept.append({"text": clause, "leaf": leaf})
         if leaf is None and clause not in gone:
-            near = c.get("nearest") if c.get("nearest") in leaves else None
+            near = near if near in leaves else None
             uncovered.append({"note": clause, "nearest": near})
     run = P._now()
     read = {"run": run, "clauses": kept, "dropped": dropped}
@@ -151,6 +157,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         say(f"{k}. You said '{u['note']}'; no leaf carries it. {take}")
     if uncovered:
         say("not wanted? `graphene plan cover --dismiss N` sets clause N aside for good")
+    if odd:
+        say(f"cover: items of its answer that are not a clause, passed over: {odd}")
     return uncovered
 
 
@@ -166,6 +174,8 @@ def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
             cover(store, sentence, say)
         except P.Refused as no:
             say(f"cover: {no}")
+        except Exception as no:  # a helper that runs after the proposal landed never takes the ask down
+            say(f"cover: it broke ({type(no).__name__}: {no}); the proposal stands")
 
 
 def command(plan_cli: typer.Typer, run, out) -> None:

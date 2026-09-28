@@ -168,3 +168,28 @@ def test_the_flag_runs_it_once_the_proposal_has_landed(repo, fake, monkeypatch, 
         assert P.get(store, "xml-wiring").state == P.PROPOSED  # the proposal stands either way
     assert len(f.requests) == (2 if flag else 1)
     assert any(f"You said '{SAID}'" in line for line in said) == bool(flag)
+
+
+def test_an_item_of_the_wrong_shape_is_one_line_and_crashes_nothing(repo, fake, monkeypatch):
+    from graphene_map.ask import ask, named
+
+    odd = {"clauses": [
+        {"text": "Prices are in cents", "leaf": ["prices"], "nearest": None},
+        {"text": "Load the XML feed into items", "leaf": None, "nearest": {"x": 1}},
+        None, 3, "str", {"text": ["Load"], "leaf": None, "nearest": None},
+        {"text": EMPTY, "leaf": None, "nearest": None},
+    ]}  # fmt: skip
+    fake([nano(odd)])
+    said = []
+    with planned(repo) as store:
+        [u] = C.cover(store, say=said.append)
+        assert u["note"] == SAID and u["nearest"] is None
+    assert said[1] == "your paragraph, in clauses: 1; the plan carries 0, no leaf carries 1"
+    assert said[-1] == "cover: items of its answer that are not a clause, passed over: 6"
+    monkeypatch.setenv("GRAPHENE_SHAPE", "cover")
+    monkeypatch.setattr(C, "cover", lambda *a: 1 / 0)  # whatever breaks in it, the ask stands
+    fake([{"content": f"```plan\n{PLAN}```"}])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, PARAGRAPH, named("nemotron"), say=said.append)
+    assert said[-1] == "cover: it broke (ZeroDivisionError: division by zero); the proposal stands"
