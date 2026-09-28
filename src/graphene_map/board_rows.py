@@ -179,6 +179,8 @@ def hints(item: dict, room: int) -> list[str]:
     if state == "dropped":
         return ["dropped: u undoes it if it was your last act", "a note"]
     rest = ["d drop", "p unpark" if state == "parked" else "p park", "Enter answer", "a note"]
+    if state == "noted":  # the person's own note: told as written, so there is nothing to take or answer
+        return ["noted: u undoes your last act", "d drop", "p park", "a note"]
     if state not in ("open", "parked"):
         return [f"{state}: u undoes your last act", "d drop", "a note"]
     many = len(item["options"]) > 3

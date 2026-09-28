@@ -373,6 +373,10 @@ def settle(
                 f"{item_id} is {item['state']} already ({_one(item['answer']) or 'yes'}); "
                 "`graphene plan undo` takes an answer back"
             )
+        if state in DECIDED and reads(item) == "noted":
+            raise P.Refused(
+                f"{item_id} is your note, told as you wrote it; park or drop it, or put up another"
+            )
         if state == "open" and item["state"] != "parked":
             raise P.Refused(f"{item_id} is {reads(item)}, not parked")
         if state in DECIDED and about_gone(store, item):  # its answer would be told to no executor

@@ -307,3 +307,15 @@ def test_plus_and_minus_ask_the_plan_again_finer_and_coarser(repo, size, monkeyp
     assert finer["status"].startswith("graphene ask --finer") and coarser["status"].startswith(
         "graphene ask --coarser"
     )
+
+
+def test_on_the_persons_own_note_the_bottom_line_names_every_key_that_acts(repo, size=(80, 24)):
+    assert person("board", "note", "keep", "the", "shape").exit_code == 0
+    [note] = items(repo).values()
+    hints = BR.hints(note, 80)
+    assert hints == ["noted: u undoes your last act", "d drop", "p park", "a note"]
+    for act in (["take"], ["answer", note["id"], "yes"], ["pick", note["id"], "1"]):  # y, Enter, 1: not named
+        refused = person("board", *act if len(act) > 1 else [*act, note["id"]])
+        assert refused.exit_code == 1 and "your note, told as you wrote it" in refused.stderr, refused.output
+    assert person("board", "park", note["id"]).exit_code == 0  # p, named: parks it
+    assert items(repo)[note["id"]]["state"] == "parked"
