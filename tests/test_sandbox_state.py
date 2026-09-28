@@ -85,3 +85,30 @@ def test_leaves_at_one_commit_fork_one_checkpoint_each_with_its_own_scope(repo, 
         finally:
             a.close()
             b.close()
+
+
+def test_a_protected_file_is_never_uploaded_to_the_sandbox(repo):
+    import tarfile
+
+    from graphene_map import settings
+    from graphene_map.plan import Caller
+    from graphene_map.store import Store
+
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / "prod.txt").write_text("KEY=do-not-send\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    uploaded: list[str] = []
+
+    class Box:
+        ops = 0
+
+        def start(self, tar, script, timeout):
+            with tarfile.open(tar) as t:
+                uploaded.extend(t.getnames())
+            return "image", 1, "stopped here"
+
+    with Store.open(repo) as store:
+        settings.apply(store, "protected: secrets/**\n", Caller("alex", True))
+        with pytest.raises(RuntimeError, match="could not be made"):
+            sandbox.Sandbox(repo, ["src/**"], Box(), store, "a")
+    assert "src/data/f001.txt" in uploaded and "secrets/prod.txt" not in uploaded

@@ -373,17 +373,22 @@ class Sandbox:
         self.strays: set[str] = set()
         self.timings: list[float] = []
         self.shared: str | None = None  # the checkpoint of the commit, which other leaves fork too
+        from . import settings
+
+        hidden = settings.protected(store) if store is not None else []  # never uploaded, so never read
         files = P.in_tree(source)
+        kept_back = [f for f in files if P.in_scope(f, hidden)]
+        files = [f for f in files if f not in kept_back]
         dirs = {str(p) for f in files for p in Path(f).parents if str(p) != "."}
         began = time.monotonic()
-        key = self._key(source, prepare)
+        key = self._key(source, prepare, hidden)
         shared = store.meta(key) if store is not None and key else None
         if shared:  # a leaf at this commit made the checkpoint already: fork it, with this leaf's grants
             self.image, code, out = self.box.run(shared, layer2(scope, files, dirs), {}, 600)
             self.shared = shared if code == 0 else None  # gone (a pruned box): made again below
         self.reused = bool(self.shared)
         if not self.shared:
-            tar = pack(source)
+            tar = pack(source, kept_back)
             try:
                 if key:  # a clean commit: its checkpoint is kept for the other leaves at it
                     shared, code, out = self.box.start(tar, base(prepare), 1800)
@@ -406,7 +411,7 @@ class Sandbox:
         self.seen = state[1]
         self.ops = self.box.ops  # what making it took: the box is its own until it forks
 
-    def _key(self, checkout: Path, prepare: str | None) -> str | None:
+    def _key(self, checkout: Path, prepare: str | None, hidden: list[str] = ()) -> str | None:
         """Where the checkpoint of this checkout's commit is kept, or None when the checkout is not
         exactly a commit (anything uncommitted is this leaf's own)."""
         try:
@@ -416,7 +421,7 @@ class Sandbox:
         except (P.Refused, OSError):
             return None
         box = getattr(self.box, "box", self.box)  # a wrapper's box is the box
-        made = f"{type(box).__name__}|{getattr(box, 'image', IMAGE)}|{prepare or ''}"
+        made = f"{type(box).__name__}|{getattr(box, 'image', IMAGE)}|{prepare or ''}|{','.join(hidden)}"
         return f"sandbox:{head}:{hashlib.sha1(made.encode()).hexdigest()[:12]}"
 
     def fork(self, root: Path) -> Sandbox:
