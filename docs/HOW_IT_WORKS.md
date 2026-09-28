@@ -226,7 +226,7 @@ the width, and optionally `suits(...)`, a score from 0 to 100. There are two:
 - `tree` (`view_tree.py`) draws the plan top-down, the goal at the top and each parent centred over
   its children. A node is its glyph and id in its state's colour, with its title under them when there
   is room and `←2` for how many nodes it waits on. When the tree is too wide it drops the titles, then
-  lists each sub-goal's leaves downwards, then folds sub-goals whose leaves are all done, and only then
+  folds sub-goals whose leaves are all done, then lists each sub-goal's leaves down, and only then
   gives up.
 - `dag` (`view_dag.py`) draws only leaves, left to right. A leaf's column is the longest chain of
   `needs` before it, so one column can run at once. A line goes from the leaf that is needed into the

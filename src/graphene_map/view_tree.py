@@ -4,8 +4,8 @@ under it, their leaves under them, each parent centred over its children with a 
 It is about the plan's shape. A node is its glyph and its id in its state's colour (the one row
 grammar: `plan.look`), its title under them when there is room, and how many nodes it waits on
 (`←2`), never which: the graph of needs is another view's. When the tree is wider than the screen
-it drops the titles, then lists each sub-goal's leaves down under it instead of across, then folds
-the sub-goals whose leaves are all done to one cell (`✓ reader 6/6`), and only then gives up (None),
+it drops the titles, then folds the sub-goals whose leaves are all done to one cell (`✓ reader 6/6`),
+then lists each sub-goal's leaves down under it instead of across, and only then gives up (None),
 so the screen falls back to the outline. A pure function of the nodes the screen already read: it
 never reads the store."""
 
@@ -35,7 +35,7 @@ def draw(
 
 def suits(nodes: list[P.Node], width: int, height: int) -> int:
     """How well this view shows the plan at this size, 0 to 100: 90 when the whole tree fits with its
-    titles, 10 less for each step it has to take (ids alone, leaves listed down, folding), a third of
+    titles, 10 less for each step it has to take (ids alone, folding, leaves listed down), a third of
     that when it is taller than the screen, and 0 when it cannot be drawn in the width."""
     words = {n.id: P.reads(n, nodes) for n in nodes}
     drawn, form = _pick(nodes, words, "", width, height, None)
