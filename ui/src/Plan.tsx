@@ -383,6 +383,7 @@ function Box({
       ? `${node.executor} · since ${clock(node.started_at)}`
       : `${node.executor} · finished ${clock(node.finished_at)}`
     : null;
+  const who = `${node.id} · ${node.owner === "agent" ? "any agent" : node.owner} · revision ${node.rev}`;
   const says = node.sub_goal ? rolled(node) : (held ?? node.waits[0] ?? node.scope.join(", "));
   return (
     <g
@@ -412,7 +413,8 @@ function Box({
         <title>{node.title}</title>
       </text>
       <text x={12} y={58} className="who">
-        {node.id} · {node.owner === "agent" ? "any agent" : node.owner} · revision {node.rev}
+        {clip(who, node.width - 24, SMALL)}
+        <title>{who}</title>
       </text>
       <text x={12} y={70} className="says">
         {clip(says, node.width - 24, SMALL)}

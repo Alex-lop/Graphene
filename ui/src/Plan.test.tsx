@@ -205,3 +205,9 @@ test("the tree is drawn top-down from Python's positions: the goal on top, a lin
   expect(html).toMatch(/class="node on" data-node="api"/);
   expect(html).not.toContain("lane-band"); // the tree has no lanes: whose a node is, is in the box
 });
+
+test("a box's id line is cut to the box like its title, so a long id never runs into the next box", () => {
+  const long: Plan = { ...plan, nodes: [node("a-thirty-one-character-long-id1")] };
+  const html = renderToStaticMarkup(<PlanTopDown plan={long} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/class="who">a-thirty-one-character-lon[^<]*…<title>a-thirty-one-character-long-id1 · any agent · revision 1<\/title>/);
+});
