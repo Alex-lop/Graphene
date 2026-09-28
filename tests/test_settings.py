@@ -56,6 +56,7 @@ def test_a_setting_left_out_is_cleared(store):
         ("protected: a, , b", 2, "none empty"),
         ("readonly: !docs", 2, "'!'"),
         ("never:", 2, "never propose"),
+        ("protected: .env  # secrets", 2, "a note goes on a line of its own"),
         ("size: auto\nsize: finer", 3, "line 2"),
     ],
 )

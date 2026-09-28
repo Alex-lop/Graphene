@@ -8,6 +8,7 @@ plan.py imports this module inside functions only: this one imports plan."""
 from __future__ import annotations
 
 import json
+import re
 
 from graphene_map import plan as P
 
@@ -68,6 +69,8 @@ def _glob(no: int, glob: str) -> str:
     bare = glob.removeprefix("./")
     if bare.startswith(("/", "~")) or ".." in bare.split("/"):
         raise P.Refused(f"line {no}: {glob!r} is not inside the repo; a glob is repo-relative")
+    if re.search(r"\s#", bare):  # read as part of the glob, it would match nothing and protect nothing
+        raise P.Refused(f"line {no}: {glob!r}: a note goes on a line of its own, starting with '#'")
     if bare.startswith("!"):
         raise P.Refused(f"line {no}: {glob!r}: a '!' glob is not read here; name only what it covers")
     return bare
