@@ -201,10 +201,21 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
     return out
 
 
+# what the page's `clip` counts two that neither of the rules in `cols` does
+PICTURED = "©®‼⁉™ℹ↔◻◼⤴⤵〰〽㉈㉉㉊㉋㉌㉍㉎㉏"
+
+
 def cols(text: str) -> int:
-    """The columns a text takes, an East Asian wide or fullwidth character (and an emoji) counting two,
-    as the page's `clip` counts them (ui/src/model.ts)."""
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+    """The columns a text takes, never fewer than the page's `clip` counts (ui/src/model.ts), so a
+    box sized to its title holds it: two for an East Asian wide or fullwidth character, a symbol past
+    the letterlike ones (every emoji, ❤ ✔ ⚠ too, which the page counts two by Extended_Pictographic)
+    and PICTURED; checked against the page's regex over every assigned character, 2026-09-28, where
+    it counts more than the page only for rarer symbols (⇐, ─, Tangut)."""
+
+    def two(c: str) -> bool:
+        return unicodedata.east_asian_width(c) in "WF" or (unicodedata.category(c) == "So" and c > "⅏")
+
+    return sum(2 if two(c) or c in PICTURED else 1 for c in text)
 
 
 def tree_w(node: P.Node) -> float:
@@ -299,15 +310,20 @@ def critical_path(nodes: list[P.Node]) -> list[str]:
     return path if len(path) > 1 else []
 
 
-def at_once(nodes: list[P.Node]) -> list[str]:
+def at_once(nodes: list[P.Node], back: set[str] | frozenset[str] = frozenset()) -> list[str]:
     """What can start at once, the page's and the terminal's alike: the leaves not done, not running,
-    not in review and not the person's own, with a scope to work in and nothing left to wait on,
-    proposed or accepted alike (the shaping comes before acceptance), in `plan.order`."""
+    not in review, not the person's own and not come back (``back``, `plan.came_back`: that waits on
+    the person), with a scope to work in and nothing left to wait on, proposed or accepted alike (the
+    shaping comes before acceptance), in `plan.order`."""
     by_id = {n.id: n for n in nodes}
     return [
         n.id
         for n in leaf_needs(nodes)[0]
-        if n.state in (P.PROPOSED, P.OPEN) and n.owner == P.AGENT and n.scope and not P.unmet(n, by_id)
+        if n.state in (P.PROPOSED, P.OPEN)
+        and n.owner == P.AGENT
+        and n.scope
+        and n.id not in back
+        and not P.unmet(n, by_id)
     ]
 
 
@@ -547,7 +563,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
         y += height + LANE_GAP
 
     view.nodes = [placed[n.id] for n, _ in tree]  # parents before their children: the page indents
-    view.critical, view.at_once = critical_path(live), at_once(live)
+    view.critical, view.at_once = critical_path(live), at_once(live, back)
     on_path = _critical_edges(view.critical, live)
     for n in ordered:
         for need in n.needs:
@@ -569,7 +585,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     view.tree_links = [_link("", (goal, 0.0, NODE_W), n.id, box[n.id]) for n, d in tree if d == 0] + [
         _link(n.parent, box[n.parent], n.id, box[n.id]) for n, d in tree if d > 0
     ]
-    view.tree_width = max(x + w for x, _, w in box.values())
+    view.tree_width = max(goal + NODE_W, *(x + w for x, _, w in box.values()))  # the goal box too
     view.tree_height = max(y for _, y, _ in box.values()) + NODE_H
     return asdict(view)
 

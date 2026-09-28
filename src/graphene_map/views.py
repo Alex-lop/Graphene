@@ -41,6 +41,14 @@ VIEWS: dict[str, object] = {"outline": None}  # name -> module (draw, suits), in
 BASELINE = 50  # what the outline scores, of the 0 to 100 a view's `suits` gives: it must do better
 
 
+def room(width: int, height: int) -> tuple[int, int]:
+    """The columns and rows a view is drawn in on a terminal of this size, on the screen and in
+    `graphene plan --view` alike: the whole width, less the scrollbar and the gap after it, and up to
+    half the rows, the node pane under it at every size. Beside the pane a view had 71 of 120 columns:
+    a tree lost its titles there and the thirty-leaf plan did not draw."""
+    return width - 2, max(3, (height - 3) // 2)
+
+
 def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int) -> str:
     """The view this plan at this size is best seen in, by the rule above: the outline, unless a view
     that draws here, in the rows it has or showing needs, scores more by its own `suits`."""
@@ -56,9 +64,23 @@ def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, he
     return best
 
 
+def graphemes(text: str) -> list[str]:
+    """Text as what a terminal draws as one, each measured whole by `cell_len`: a character with the
+    zero-width ones after it (a combining accent, the variation selector of ❤️) and whatever a
+    zero-width joiner joins to it (👩‍👩‍👧 is two cells, not six)."""
+    out: list[str] = []
+    for char in text:
+        if out and (cell_len(char) == 0 or out[-1].endswith("\u200d")):
+            out[-1] += char
+        else:
+            out.append(char)
+    return out
+
+
 def elide(text: str, wide: int) -> str:
     """`plan_text.elide` counted in terminal cells, as a view lays out its columns: one line of at most
-    ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells)."""
+    ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells), never inside
+    what a terminal draws as one (`graphemes`)."""
     text = " ".join(str(text).split())
     if cell_len(text) <= wide:
         return text
@@ -66,10 +88,12 @@ def elide(text: str, wide: int) -> str:
         return "…"[: max(wide, 0)]
 
     def upto(cells: int) -> str:  # the longest start of the text in this many cells
-        k = used = 0
-        while k < len(text) and used + cell_len(text[k]) <= cells:
-            used, k = used + cell_len(text[k]), k + 1
-        return text[:k]
+        out = ""
+        for piece in graphemes(text):
+            if cell_len(out + piece) > cells:
+                break
+            out += piece
+        return out
 
     cut = upto(wide).rfind(" ")
     return (text[:cut] if cut > 0 else upto(wide - 1)).rstrip(" ,;:·") + "…"

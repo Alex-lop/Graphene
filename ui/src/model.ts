@@ -259,7 +259,7 @@ export const linksBy = (graph: Graph, kind: Link["kind"]): Link[] => graph.links
 // East Asian wide and fullwidth characters, and emoji, take two columns (a CJK glyph is about 1 em)
 const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]|\p{Extended_Pictographic}/u;
 
-/** How many columns a character takes: 2 for a wide one, as plan_view.cols counts them. */
+/** How many columns a character takes: 2 for a wide one; plan_view.cols never counts fewer. */
 export const cols = (char: string): number => (WIDE.test(char) ? 2 : 1);
 
 /** A label that has to fit a fixed width, cut with an ellipsis; the whole text stays in the title. */

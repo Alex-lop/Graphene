@@ -922,10 +922,8 @@ class Watch(App):
         return name
 
     def view_room(self) -> tuple[int, int]:
-        """The columns and rows a view is drawn in: the whole width, less the scrollbar and the gap
-        after it, and up to half the rows, the node pane under it at every size. Beside the pane a view
-        had 71 of 120 columns: a tree lost its titles there and the thirty-leaf plan did not draw."""
-        return self.size.width - 2, max(3, (self.size.height - 3) // 2)
+        """The columns and rows a view is drawn in at this screen's size (`views.room`)."""
+        return V.room(self.size.width, self.size.height)
 
     def draw_view(self, name: str) -> V.Drawn | None:
         """A registered view drawn at the room it has, its cursor on the node under the cursor, or on
@@ -965,6 +963,9 @@ class Watch(App):
         if show and name != "outline" and drawn is None:
             self.showing = "outline"
             self.message = f"the {name} does not fit at {self.size.width} columns: the outline"
+            if self.mapped is not None and self.mapped[1] == self.here:  # a stand-in: the node itself
+                self.here = self.mapped[0]
+            self.mapped = None
             self.tree_to(self.here)
         self.drawn = drawn
         self.tree.display, box.display = show and drawn is None, drawn is not None

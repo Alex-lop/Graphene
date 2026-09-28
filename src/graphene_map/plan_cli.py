@@ -444,8 +444,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def print_view(name: str, width: int | None, height: int | None, outline) -> None:
         """`graphene plan --view NAME`: the plan as that view draws it, in plain text, at $COLUMNS (or
-        --width) by $LINES (or --height), for a script, a test or a stand-in; what the screen shows
-        when Tab reaches it. `auto` is the view that suits the plan at that size. The outline, a view
+        --width) by $LINES (or --height), for a script, a test or a stand-in; what a screen of that size
+        shows when Tab reaches it, drawn in the room the screen gives a view (`views.room`). `auto` is
+        the view such a screen opens in. The outline, a view
         that does not fit (said on stderr, as the screen says it) and an empty plan print as
         ``outline()`` does: `graphene plan`, with --all if asked, or `watch --once`, with what just
         happened."""
@@ -455,8 +456,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def show(store) -> bool:
             nodes, words, goal = V.inputs(store)
-            chosen = V.choose(nodes, words, goal, width, height) if name == "auto" else name
-            drawn = V.VIEWS[chosen].draw(nodes, words, goal, width, height, None) if V.VIEWS[chosen] else None
+            wide, high = V.room(width, height)
+            chosen = V.choose(nodes, words, goal, wide, high) if name == "auto" else name
+            drawn = V.VIEWS[chosen].draw(nodes, words, goal, wide, high, None) if V.VIEWS[chosen] else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)

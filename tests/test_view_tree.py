@@ -1,6 +1,7 @@
 """The plan drawn top-down (`view_tree`): a pure function of the nodes, so every test builds nodes and
 reads what is drawn, with no store."""
 
+import re
 import sys
 import types
 from dataclasses import dataclass
@@ -250,6 +251,32 @@ def test_an_empty_plan_is_its_goal():
 def test_note_counts_what_waits_on_the_person_and_what_is_proposed():
     nodes = [P.Node("x", "x", state=P.PROPOSED), leaf("y", "x", P.PROPOSED), leaf("z", state=P.REVIEW)]
     assert view_tree.note(nodes, words(nodes)) == "1 sub-goal · 2 leaves · 1 waits on you · 2 proposed"
+
+
+def test_an_emoji_with_a_variation_selector_is_counted_in_the_two_cells_it_takes():
+    """❤️ ✔️ ⚠️ are two cells, but a character at a time they counted one: `elide` cut ❤️ x 8 to
+    11 cells at 6, and three such titles at 40 ran into each other and to 45 cells."""
+    assert cell_len(view_tree.elide("❤️" * 8, 6)) <= 6
+    nodes = [leaf(i, title="emoji ❤️❤️❤️❤️ hearts") for i in "abc"] + [leaf("d", title="ok ✔️ ⚠️ done")]
+    for width in range(30, 81, 5):
+        d = drawn(nodes, width, 10)
+        assert d is None or all(line.cell_len <= width for line in d.lines)
+        assert d is None or all(last < width for _, _, last in d.at.values())
+
+
+def test_the_docs_name_the_narrowing_steps_in_the_order_the_tree_takes_them():
+    """The module's and `suits`' docstrings, and HOW_IT_WORKS, said the leaves are listed down before
+    finished sub-goals fold; FORMS folds first."""
+    from pathlib import Path
+
+    fold = next(k for k, (f, _, _) in enumerate(view_tree.FORMS) if f)
+    stack = next(k for k, (_, s, _) in enumerate(view_tree.FORMS) if s)
+    assert fold < stack
+    how = (Path(__file__).parents[1] / "docs" / "HOW_IT_WORKS.md").read_text()
+    how = how[how.index("- `tree` (`view_tree.py`)") :][:600]
+    for said in (view_tree.__doc__, view_tree.suits.__doc__, how):
+        said = " ".join(said.split())
+        assert said.index("fold") < re.search(r"leaves (listed )?down", said).start(), said
 
 
 def test_wide_characters_are_counted_in_cells():
