@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from graphene_map import plan
-from graphene_map.plan_view import HOLES, NODE_H, NODE_W, TREE_MIN, build_plan_view
+from graphene_map.plan_view import HOLES, NODE_H, NODE_W, TREE_MIN, build_plan_view, cols
 from graphene_map.store import Store
 
 ALEX = plan.Caller("alex", True)
@@ -262,6 +262,14 @@ def test_with_nothing_waiting_on_anything_there_is_no_critical_path(store):
     plan.propose(store, [node("a"), node("b")], ALEX)
     view = build_plan_view(store)
     assert view["critical"] == [] and not any(e["critical"] for e in view["edges"])
+
+
+def test_a_box_counts_an_emoji_at_least_as_wide_as_the_pages_clip_does():
+    """❤ ✔ ⚠ are narrow by East Asian width but two columns to the page's `clip` (Extended_Pictographic):
+    a box sized to 'ship it ✅ ❤ ⚡ ✔ ⚠ ☕ done' at 27 columns was clipped at the page's 30."""
+    assert cols("ship it ✅ ❤ ⚡ ✔ ⚠ ☕ done") == 30
+    assert all(cols(c) == 2 for c in "©®‼⁉™ℹ↔◻⤴〰〽㉈❤✔⚠☀✈⌚⏩▶")
+    assert cols("a → b, 3 ≤ 4") == 12  # an arrow or a sign that is no emoji stays one
 
 
 def test_the_tree_is_as_wide_as_its_goal_box_on_a_plan_narrower_than_it(store):

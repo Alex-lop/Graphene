@@ -201,10 +201,21 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
     return out
 
 
+# what the page's `clip` counts two that neither of the rules in `cols` does
+PICTURED = "©®‼⁉™ℹ↔◻◼⤴⤵〰〽㉈㉉㉊㉋㉌㉍㉎㉏"
+
+
 def cols(text: str) -> int:
-    """The columns a text takes, an East Asian wide or fullwidth character (and an emoji) counting two,
-    as the page's `clip` counts them (ui/src/model.ts)."""
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+    """The columns a text takes, never fewer than the page's `clip` counts (ui/src/model.ts), so a
+    box sized to its title holds it: two for an East Asian wide or fullwidth character, a symbol past
+    the letterlike ones (every emoji, ❤ ✔ ⚠ too, which the page counts two by Extended_Pictographic)
+    and PICTURED; checked against the page's regex over every assigned character, 2026-09-28, where
+    it counts more than the page only for rarer symbols (⇐, ─, Tangut)."""
+
+    def two(c: str) -> bool:
+        return unicodedata.east_asian_width(c) in "WF" or (unicodedata.category(c) == "So" and c > "⅏")
+
+    return sum(2 if two(c) or c in PICTURED else 1 for c in text)
 
 
 def tree_w(node: P.Node) -> float:
