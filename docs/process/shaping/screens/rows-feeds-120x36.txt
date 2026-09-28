@@ -1,0 +1,36 @@
+ the plan of …-AllThingsAgenticHackathon/d3d5effe-ac06-450c-8a0f-177242891dc7/scratchpad/render-repos/rows-feeds-120x36
+▼ ? Load the Northwind XML feed with the same `cli.main…      proposed   │ What should the source be called on the
+├   ◇ What should the source be called on the…    src-name    asks       │ command line?
+├   ◇ `config/defaults.py` says "Ops edits…       enable      asks       │ src-name · question · open · put up by the
+├   ◇ "Skip a price of 0" applies only to the…    zero-scope  assumes    │ planner (graphene ask)
+├   ◇ The end-to-end check could pass with the…   e2e-hollow  risk       │
+├   ◇ `vendor/tinydec.py`…                        hands-off   leaves out │ y default  `xml`, which matches the
+└ ▼ ? Northwind XML loads like csv and json       xml         proposed   │            existing format-named sources
+  ├   ? Reader for the XML feed                   xml-reader  proposed   │            `csv` and `json`
+  ├   ? Zero price is skipped for every source    zero-skip   proposed   │ 1          `northwind`, named after the
+  └   ? Wire the source end to end                xml-wire    proposed   │            supplier
+                                                                         │ about      xml-wire  Wire the source end to
+                                                                         │            end
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 6 · executors: none · nothing ready to run · 0/0 done · plan first: on (P)
+ y take: `xml`, which matches the… · 1 pick: `northwind`, named after… · d drop · p park · Enter answer · a note
