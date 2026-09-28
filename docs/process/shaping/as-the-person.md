@@ -63,3 +63,12 @@ lane's sub-agent to it.
     check was its tests alone, while `wire`'s ruff ran on a checkout without `told`'s change. Each
     leaf's check passed; the merged whole did not. A check is about its leaf, and nothing checks
     the sum. The review of the lane fixes them.
+12. **02:05, the same paragraph again, to the planner that asks.** In a fresh clone at the same
+    commit, the board-aware planner (prompt version 2) put up five items instead of five paragraphs:
+    three questions with a default each (does a broad scope that covers a protected file get
+    refused, or have the protected paths cut out of it; does `--finer` drop the earlier proposals;
+    are never-propose lines sentences or globs), one assumption (settings live in the store), and one
+    risk I had not seen at all: an executor's own shell can run `security find-generic-password` on
+    Graphene's keychain item, so the keychain protects the key from files, not from the executors.
+    Every one of the five was a decision lane B's executors made silently tonight. Each would have
+    been one key.
