@@ -108,7 +108,7 @@ def test_a_clause_no_leaf_carries_is_one_row_and_its_offer_is_the_persons_words(
     assert "Prices are in cents" in asked["messages"][1]["content"]
     assert "[xml-wiring]" in asked["messages"][1]["content"]
     assert "answered by a stand-in, not Token Factory" in said[0]
-    assert said[1] == "of your 3 clauses, 2 are carried by the plan and 1 are not"
+    assert said[1] == "your paragraph, in clauses: 3; the plan carries 2, no leaf carries 1"
     offered = said[2].split("`")[1]
     assert said[2].startswith(f"1. You said '{SAID}'; no leaf carries it. Take it: `graphene node set")
     took = person(*shlex.split(offered)[1:])  # the command as the person would paste it
@@ -128,7 +128,7 @@ def test_a_clause_the_model_invents_is_dropped_and_an_unknown_leaf_is_uncovered(
         assert u == {"note": "Prices are in cents", "nearest": None, "run": u["run"]}
         [read] = store.node_log("*", ("covered",))
         assert read["detail"]["dropped"] == ["Prices must never be zero"]
-    assert "1 it gave are not your words, and were dropped" in said[1]
+    assert said[1].endswith("no leaf carries 1; dropped, not your words: 1")
     assert "zero" not in "\n".join(said[2:]) and "No open leaf is near it" in said[2]
 
 
@@ -150,7 +150,7 @@ def test_a_dismissed_clause_is_not_flagged_again(repo, fake):
     assert set_aside.exit_code == 0 and set_aside.stdout.strip() == f"set aside for good: '{SAID}'"
     again = person("plan", "cover")
     assert again.exit_code == 0, again.output
-    assert "1 are not" not in again.stdout and "You said" not in again.stdout
+    assert "no leaf carries 0; set aside before: 1" in again.stdout and "You said" not in again.stdout
     with Store.open(repo) as store:
         assert len(store.node_log("*", ("uncovered",))) == 1 and C.standing(store) == []
     assert person("plan", "cover", "--dismiss", "1").exit_code == 1  # the last cover found none

@@ -141,8 +141,10 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
             u["run"] = run
             store.log_node("*", run, "uncovered", ACTOR, None, None, u)
     carried = sum(k["leaf"] is not None for k in kept)
-    say(f"of your {len(kept)} clauses, {carried} are carried by the plan and {len(uncovered)} are not"
-        + (f"; {len(dropped)} it gave are not your words, and were dropped" if dropped else ""))
+    aside, bare = len(kept) - carried - len(uncovered), len(uncovered)
+    say(f"your paragraph, in clauses: {len(kept)}; the plan carries {carried}, no leaf carries {bare}"
+        + (f"; set aside before: {aside}" if aside else "")
+        + (f"; dropped, not your words: {len(dropped)}" if dropped else ""))  # fmt: skip
     for k, u in enumerate(uncovered, 1):
         take = f"Take it: `{offer(by_id[u['nearest']], u['note'])}`" if u["nearest"] else (
             "No open leaf is near it: add it in `graphene plan edit`")  # fmt: skip
