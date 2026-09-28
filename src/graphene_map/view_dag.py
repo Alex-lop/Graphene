@@ -31,6 +31,7 @@ from .plan_view import depths, outline
 from .views import Drawn, elide
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
+KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
 NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
 
 
@@ -117,26 +118,24 @@ def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
 
 
 def note(nodes: list[P.Node], words: dict[str, str]) -> str:
-    """What the graph says at a glance, for the bottom line: `3 at once now · 2 wait · critical
-    path: a > b > c (3)`."""
+    """What the graph says at a glance, for the bottom line: `3 at once now · 2 wait · 1 running · 1 on
+    you · 4 done · critical path: a > b > c (3)`. Every leaf is counted once, so the counts add up to
+    the leaves drawn; "wait" is every other leaf not done. A path of one leaf is no path."""
     g = _graph(nodes)
     if not g.leaves:
         return "no leaves yet"
     if all(words.get(n.id) == "done" for n in g.leaves):
         return "every leaf done"
     now = at_once(nodes, words)
-    wait = [
-        n.id
-        for n in g.leaves
-        if words.get(n.id) != "done" and any(words.get(x) != "done" for x in g.needs[n.id])
-    ]
+    count = dict.fromkeys(["at once", "wait", "running", "on you", "done"], 0)
+    for n in g.leaves:
+        count["at once" if n.id in now else KINDS.get(words.get(n.id, ""), "wait")] += 1
     ready = all(words.get(i) == "ready" for i in now)
-    said = [f"{len(now)} at once{' now' if now and ready else ''}", f"{len(wait)} wait"]
-    running = sum(words.get(n.id) == "running" for n in g.leaves)
-    said += [f"{running} running"] if running else []
-    path = _critical(g)
+    said = [f"{count['at once']} at once{' now' if now and ready else ''}", f"{count['wait']} wait"]
+    said += [f"{count[k]} {k}" for k in ("running", "on you", "done") if count[k]]
+    path = critical_path(nodes)
     shown = path if len(path) <= 4 else [*path[:2], "…", path[-1]]
-    return " · ".join(said + ([f"critical path: {' > '.join(shown)} ({len(path)})"] if path else []))
+    return " · ".join(said + ([f"critical path: {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []))
 
 
 # -- where everything goes ---------------------------------------------------------------------------
