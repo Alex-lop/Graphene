@@ -193,3 +193,16 @@ def test_an_item_of_the_wrong_shape_is_one_line_and_crashes_nothing(repo, fake, 
     with Store.open(repo) as store:
         ask(store, repo, PARAGRAPH, named("nemotron"), say=said.append)
     assert said[-1] == "cover: it broke (ZeroDivisionError: division by zero); the proposal stands"
+
+
+def test_no_control_character_reaches_the_terminal_or_the_store(repo, fake):
+    red = "Prices are \x1b[31min cents‮\x07"
+    fake([nano({"clauses": [{"text": red, "leaf": None, "nearest": "prices"}]})])
+    said = []
+    with planned(repo) as store:
+        [u] = C.cover(store, paragraph=f"Load the XML feed. {red}.", say=said.append)
+        assert u["note"] == "Prices are [31min cents"
+        stored = json.dumps([e["detail"] for e in store.node_log("*", ("covered", "uncovered"))])
+    shown = "\n".join(said)
+    assert not any(ch in shown + json.loads(json.dumps(stored)) for ch in "\x1b‮\x07")
+    assert "You said 'Prices are [31min cents'" in shown

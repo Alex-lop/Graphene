@@ -44,6 +44,15 @@ FORMAT = {"type": "json_schema", "json_schema": {"name": "clauses", "strict": Tr
     "properties": {"clauses": {"type": "array", "items": _CLAUSE}}}}}  # fmt: skip
 
 
+# what a terminal acts on rather than shows: C0 and C1 controls, and the marks that turn text around
+CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def plain(say: Callable[[str], None]) -> Callable[[str], None]:
+    """``say``, with nothing in a line that a terminal would act on."""
+    return lambda line: say(CONTROL.sub("", line))
+
+
 def paragraph_of(store) -> str | None:
     """The last paragraph `graphene ask` was given for the plan (not a question about one node)."""
     asked = [e for e in store.node_log("*", ("asked",)) if not e["detail"].get("about")]
@@ -87,7 +96,7 @@ def offer(node: P.Node, clause: str) -> str:
 
 def cover(store, paragraph: str | None = None, say: Callable[[str], None] = print) -> list[dict]:
     """Ask Nano, keep what is the person's, record it, say it. Returns the uncovered rows' details."""
-    paragraph = paragraph or paragraph_of(store)
+    paragraph, say = paragraph or paragraph_of(store), plain(say)
     if not (paragraph or "").strip():
         raise P.Refused("no paragraph to account for: `graphene ask` keeps one, or give --paragraph FILE")
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
@@ -115,7 +124,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     except (ValueError, KeyError, TypeError, AssertionError):
         say("its answer is not the JSON asked for: nothing is recorded")
         return []
-    flat, by_id, gone = " ".join(paragraph.split()), {n.id: n for n in everything}, dismissed(store)
+    flat = CONTROL.sub("", " ".join(paragraph.split()))
+    by_id, gone = {n.id: n for n in everything}, dismissed(store)
     leaves = {n.id for n in P.leaves(everything) if n.state in (P.PROPOSED, P.OPEN)}
     kept, dropped, uncovered, odd = [], [], [], 0
     for c in clauses:
@@ -126,7 +136,7 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         except (TypeError, KeyError, IndexError, AttributeError):
             odd += 1
             continue
-        words = " ".join(text.split()).rstrip(".,;:")
+        words = CONTROL.sub("", " ".join(text.split())).rstrip(".,;:")
         found = re.search(re.escape(words), flat, re.IGNORECASE) if words else None
         if found is None:  # not the person's words: dropped, never offered
             dropped.append(words)
@@ -170,6 +180,7 @@ def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
     """GRAPHENE_SHAPE=cover: account for the paragraph once the proposal has landed. What goes wrong
     here is one line; the proposal stands."""
     if "cover" in shaping():
+        say = plain(say)
         try:
             cover(store, sentence, say)
         except P.Refused as no:
@@ -188,18 +199,18 @@ def command(plan_cli: typer.Typer, run, out) -> None:
     ) -> None:
         """Nano says which leaf carries each clause of your paragraph; for one no leaf carries, you are
         offered the command that puts your own words, as you wrote them, on the nearest leaf."""
-        who = P.caller()
+        who, say = P.caller(), plain(out)
 
         def go(store):
             if not who.person:
                 raise P.Refused("cover is the person's: it asks Nano, and spends")
             if dismiss is None:
-                return cover(store, paragraph.read_text(encoding="utf-8") if paragraph else None, out)
+                return cover(store, paragraph.read_text(encoding="utf-8") if paragraph else None, say)
             now = last(store)
             if not 1 <= dismiss <= len(now):
                 raise P.Refused(f"the last cover found {len(now)} clause(s) no leaf carries: no {dismiss}")
             clause = now[dismiss - 1]["note"]
             store.log_node("*", P._now(), "dismissed", who.label, None, None, {"note": clause})
-            out(f"set aside for good: '{clause}'")
+            say(f"set aside for good: '{clause}'")
 
         run(go)
