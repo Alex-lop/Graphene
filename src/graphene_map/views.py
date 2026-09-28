@@ -71,7 +71,8 @@ def graphemes(text: str) -> list[str]:
 
 def elide(text: str, wide: int) -> str:
     """`plan_text.elide` counted in terminal cells, as a view lays out its columns: one line of at most
-    ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells)."""
+    ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells), never inside
+    what a terminal draws as one (`graphemes`)."""
     text = " ".join(str(text).split())
     if cell_len(text) <= wide:
         return text
@@ -79,10 +80,12 @@ def elide(text: str, wide: int) -> str:
         return "…"[: max(wide, 0)]
 
     def upto(cells: int) -> str:  # the longest start of the text in this many cells
-        k = used = 0
-        while k < len(text) and used + cell_len(text[k]) <= cells:
-            used, k = used + cell_len(text[k]), k + 1
-        return text[:k]
+        out = ""
+        for piece in graphemes(text):
+            if cell_len(out + piece) > cells:
+                break
+            out += piece
+        return out
 
     cut = upto(wide).rfind(" ")
     return (text[:cut] if cut > 0 else upto(wide - 1)).rstrip(" ,;:·") + "…"

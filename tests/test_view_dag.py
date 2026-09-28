@@ -270,8 +270,9 @@ def test_wide_characters_take_two_columns_and_the_lines_still_meet():
 
 def test_an_emoji_takes_the_cells_a_terminal_gives_it_and_the_lines_still_meet():
     """A joined emoji (👩‍👩‍👧, two cells) raised IndexError: each code point took columns of its own,
-    six in all."""
-    for title in ("thank the 👩‍👩‍👧 team", "👩‍👩‍👧 " * 9):
+    six in all. An emoji with a variation selector (❤️, two cells) was counted one, so a line ran
+    past the width."""
+    for title in ("thank the 👩‍👩‍👧 team", "👩‍👩‍👧 " * 9, "❤️" * 12, "ok ✔️ ⚠️ done 👍🏽"):
         nodes = [leaf("a", "read the feed"), leaf("b", title, ["a"]), leaf("c", "x", ["b"])]
         for width in range(20, 90, 7):
             checked(nodes, width)

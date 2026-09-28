@@ -252,6 +252,17 @@ def test_note_counts_what_waits_on_the_person_and_what_is_proposed():
     assert view_tree.note(nodes, words(nodes)) == "1 sub-goal · 2 leaves · 1 waits on you · 2 proposed"
 
 
+def test_an_emoji_with_a_variation_selector_is_counted_in_the_two_cells_it_takes():
+    """❤️ ✔️ ⚠️ are two cells, but a character at a time they counted one: `elide` cut ❤️ x 8 to
+    11 cells at 6, and three such titles at 40 ran into each other and to 45 cells."""
+    assert cell_len(view_tree.elide("❤️" * 8, 6)) <= 6
+    nodes = [leaf(i, title="emoji ❤️❤️❤️❤️ hearts") for i in "abc"] + [leaf("d", title="ok ✔️ ⚠️ done")]
+    for width in range(30, 81, 5):
+        d = drawn(nodes, width, 10)
+        assert d is None or all(line.cell_len <= width for line in d.lines)
+        assert d is None or all(last < width for _, _, last in d.at.values())
+
+
 def test_wide_characters_are_counted_in_cells():
     """Titles and the goal were cut by characters: CJK lines ran to 123 cells at 80, cut with no …"""
     nodes = [
