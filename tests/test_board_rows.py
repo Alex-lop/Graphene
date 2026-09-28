@@ -168,7 +168,7 @@ def test_the_side_pane_shows_the_item_whole_and_what_its_answer_changed(repo, si
     pane = " ".join(after["detail"].split())
     for said in (
         "which-id · question · picked", "decided a uuid column, added to schema.py (option 1)",
-        "changed ids: scope + schema.py", "told decided: which id: the row id or a new uuid?",
+        "changed ids: scope + schema.py", "told to the executors of ids and under it, as a decided: line",
     ):  # fmt: skip
         assert said in pane, (said, pane)
     assert fold["at"] == "fold"

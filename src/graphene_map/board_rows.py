@@ -222,6 +222,16 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
     head = Text.assemble((item["id"], "dim"), f" · {KIND[item['kind']]} · ", (state, B.look(item)[1]))
     out.text(head.append(f" · put up by {P.said_by(item['by'])}"))
     out.gap()
+    if state not in ("open", "parked"):  # what was decided first: it is what executors are told
+        if item.get("answer") or state in B.DECIDED:
+            how = {"taken": "the default", "picked": f"option {item.get('option')}", "answered": "your words"}
+            how = f"  ({how.get(state, state)})"
+            out.field("decided", Text.assemble(item.get("answer") or "yes", (how, "dim")))
+        for line in item["became"] if state in B.DECIDED else []:
+            out.field("changed", line)
+        whom = f"the executors of {item['about']} and under it" if item.get("about") else "every executor"
+        out.field("told", f"to {whom}, as a decided: line" if B.told(item) else "to no one")
+        out.gap()
     if item["default"] or item["then"]:
         key = "y default" if state in ("open", "parked") else "default"
         out.field(key, _then(item["default"] or "yes", item["then"]))
@@ -230,16 +240,6 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
     if item.get("about"):
         node = by_id.get(item["about"])
         out.field("about", Text.assemble(item["about"], (f"  {node.title}" if node else "", "dim")))
-    if state in ("open", "parked"):
-        return out.render()
-    out.gap()
-    if item.get("answer") or state in B.DECIDED:
-        how = {"taken": "the default", "picked": f"option {item.get('option')}", "answered": "in your words"}
-        how = f"  ({how.get(state, state)})"
-        out.field("decided", Text.assemble(item.get("answer") or "yes", (how, "dim")))
-    for line in item["became"] if state in B.DECIDED else []:
-        out.field("changed", line)
-    out.field("told", f"decided: {B.said(item)}" if B.told(item) else "to no one")
     return out.render()
 
 
