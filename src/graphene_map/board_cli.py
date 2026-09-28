@@ -115,6 +115,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
             out(f"  {_became(line)}")
+        if item["state"] == "answered" and item.get("then"):  # words carry no `then:`, a default does
+            out(f"  your words go to executors as written and change no leaf; `graphene plan undo`, then "
+                f"`graphene board take {item['id']}`, applies the default's change")  # fmt: skip
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.callback()

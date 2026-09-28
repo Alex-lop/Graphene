@@ -700,3 +700,17 @@ def test_a_finer_ask_that_drops_a_leaf_a_board_answer_changed_says_the_change_is
     assert again.exit_code == 0, again.output
     lost = [ln for ln in again.stdout.splitlines() if "which-id" in ln and "not on the new tree" in ln]
     assert lost and "users: scope + schema.py" in lost[0] and "graphene node set" in lost[0], again.stdout
+
+
+def test_an_answer_in_words_to_an_item_whose_default_changes_the_plan_says_it_changed_nothing(repo, tmp_path):
+    """Walk 2026-09-28: `board answer` on a risk whose default adds a leaf changed nothing in the tree,
+    and nothing said so."""
+    planned(repo, tmp_path)
+    said = person("board", "answer", "empty-check", "yes,", "add", "a", "sample").stdout.splitlines()
+    assert said[0].startswith("answered empty-check")
+    assert said[1] == (
+        "  your words go to executors as written and change no leaf; `graphene plan undo`, "
+        "then `graphene board take empty-check`, applies the default's change"
+    )
+    plain = person("board", "answer", "shape", "keep", "it").stdout.splitlines()
+    assert len(plain) == 1  # a note has no change to apply: nothing more is said
