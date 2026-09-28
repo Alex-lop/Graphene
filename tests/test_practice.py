@@ -6,6 +6,7 @@ evidence runs."""
 
 import contextlib
 import importlib.util
+import inspect
 import json
 import os
 import shlex
@@ -404,3 +405,14 @@ def test_rung_6_says_its_arms_are_not_the_evidence_runs_harnesses(tmp_path, monk
     assert practice.climb(6) == "PASS"
     said = capsys.readouterr().out
     assert "arm A as one leaf (not arm_a.py)" in said and "B′ by `graphene run` (not arm_bprime.py)" in said
+
+
+def test_practice_md_says_the_caps_are_token_factory_s_and_which_dry_rungs_need_docker(tmp_path, monkeypatch):
+    """The caps bound only Token Factory's ledger; the dry rungs raising NO_DOCKER are the ones it names."""
+    practice = load_practice(tmp_path, monkeypatch)
+    said = " ".join((ROOT / "docs" / "test" / "PRACTICE.md").read_text().split())
+    assert "anywhere" not in said
+    assert "The caps are Token Factory's only: Sandboxes" in said and "rung 4 calls no model" in said
+    docker = [n for n, rung in practice.RUNGS.items() if "NO_DOCKER" in inspect.getsource(rung[3])]
+    assert f"rungs {', '.join(map(str, docker[:-1]))} and {docker[-1]} need Docker running" in said
+    assert f"${sum(r[1] for r in practice.RUNGS.values()):.2f} of Token Factory" in said

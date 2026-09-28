@@ -9,10 +9,9 @@ key, so the Nemotron path has run only against a scripted stand-in for Token Fac
 (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The fields that need the evidence
 run say so and are left empty until it exists.*
 
-<!-- For the coordinator: the board, the views, talking on the tree, the settings and the three
-Nemotron prototypes are on `integ` tonight (at 50f12e7), not yet on `shaping` or `main`. Every
-command that exists only there is marked "integ only" in a comment where it first appears. Check
-each one after the merge, and send this text only once it is on main. -->
+<!-- For Alex: the board, the views, talking on the tree, the settings and the three Nemotron
+prototypes are merged into `shaping` (checked at 2111115: every command named here answers --help),
+not yet into `main`. Send this text only once it is on main. -->
 
 ## Inspiration
 
@@ -22,7 +21,8 @@ model you cannot trust does not save your attention. It spends it: on reading di
 up after them. So the question a Token Factory customer is really asking is *how do I hand real work
 to a cheap model and trust what comes back?*
 
-Our answer is to spend your attention where it buys the most: before anything runs. However many
+Our bet is to spend your attention before anything runs (the board, our first try at that moment,
+does not yet save it: see What we learned). However many
 tokens an agent gets, it still has to guess what you meant, and with most agents you find out what it
 guessed from the diff at the end. Graphene makes the moment between your paragraph and the first
 line of code a place of its own. The plan is on screen as a tree. What the agent would otherwise have
@@ -40,26 +40,27 @@ repository and proposes a tree: the goal at the top, sub-goals under it, and lea
 files it may change (its scope) and the command that proves it done (its check). Then you shape it.
 
 **The board: the planner asks instead of guessing.** Beside the tree, the planner puts up what the
-code cannot answer: questions, each with a default and its options, the assumptions it made, the
-risks it sees and what it left out. You answer each with one command:
+code cannot answer and what changes the tree, at most three items: questions, each with a default and
+its options, and risks, each with what it would do about it. You answer each with one command:
 `graphene board take ID` for the default, `pick ID N` for an option, `drop`, `park` or `unpark`,
-`answer ID …` in your own words, and `note …` for something of yours.
-<!-- integ only: graphene board and every subcommand above (board_cli.py). -->
+`answer ID …` in your own words, and `note …` for something of yours. In `graphene watch` the items
+are the first rows under the goal, answered with a key each (`y` take, `1`-`9` pick, `d` drop, `p`
+park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
+the board`).
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
-plan as your own act, which `graphene plan undo` takes back. Every answer reaches the executors'
-contracts as a `decided:` line, so the leaf's executor is told what you chose. Only the person
+plan as your own act, which `graphene plan undo` takes back. What you take, pick or answer in your
+own words, and every note of yours, reaches the executors' contracts as a `decided:` line, so the
+leaf's executor is told what you chose; a dropped or parked item is told to no one. Only the person
 answers: an agent that tries is refused in one line (`tests/test_board.py`). Both planners, Claude
-Code's and Nemotron's, were changed to ask this way (prompt version 2; for Nemotron,
-`test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
+Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to three items in version
+4; for Nemotron, `test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
 
 **The graph: what runs at once and what waits.** You read the plan in `graphene watch`, a terminal
 screen with vim keys. Tab cycles the outline, a top-down tree, and a left-to-right graph of the
 leaves' needs, with the critical path drawn heavy and a note under it:
-`2 at once · 2 wait · critical path: xml-reader > xml-wire > xml-e2e (3)` on a scratch plan of four
-leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
+`critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
+scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
 `graphene ui` draws the same three.
-<!-- integ only: Tab between views in graphene watch, graphene plan --view, graphene watch --view,
-and the page's three layouts. -->
 
 **You prune.** Drop a leaf you did not mean, take a path out of a scope, accept the rest, each with a
 key (`d`, `e`, `y`).
@@ -70,8 +71,6 @@ board. A merge or another way comes back as proposed leaves and a question on th
 drops the way not taken, all one act you can undo. A row someone else changed since you last looked
 reads `+` or `~` before its id, `graphene plan changes` lists what changed and by whom, and `m`
 marks it seen.
-<!-- integ only: ? on a node in graphene watch, graphene talk why|split|merge|another, graphene plan
-changes, graphene plan seen, the m key. -->
 
 **Settings you state once.** `graphene key set` keeps the Token Factory key in the system keychain,
 read from a hidden prompt, and `graphene key check` says whether Token Factory answered and never
@@ -79,13 +78,10 @@ prints the key. `graphene config edit` holds the paths no scope may cover, the g
 write, the lines the planner must never propose, and the plan's size (`auto`, `finer` or `coarser`).
 A scope that covers a protected or read-only path is refused when it is proposed, edited or started,
 a change to a read-only path is refused at `done`, and `graphene ask "…" --finer` sizes one ask.
-<!-- integ only: graphene key set|check|remove, graphene config, graphene config edit, graphene ask
---finer/--coarser. -->
 
 **Nemotron works for you while you shape.** Three prototypes, each a command and each run after a
 proposal lands when `GRAPHENE_SHAPE` names it. Each makes one Nano call with a JSON schema. They are
 built and tested against the scripted stand-in, and **none has run live yet**:
-<!-- integ only: graphene plan cover, graphene plan note, graphene plan precheck, GRAPHENE_SHAPE. -->
 
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
@@ -134,9 +130,10 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   call at a time: view, edit, write, run, done, or release. The reasoning budget is each call's
   `max_tokens`, doubled up to 32,768 when a reply is cut off at the limit. Any other model parameter
   passes through with `--param`. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read
-  as the calls they mean. Since prompt version 2, Ultra is also told to read the repository first,
-  never to ask what a file answers, and to put up the rest as questions with a default, assumptions,
-  risks and leave-outs, about five at most (`planner.py`, `PROMPT_VERSION`).
+  as the calls they mean. Since prompt version 4, Ultra is also told to read the repository first,
+  never to ask what a file answers, and to put up only what changes the tree, at most three items,
+  each a question with a default or a risk; an assumption it is sure of goes in the goal of the leaf
+  it bears on (`planner.py`, `PROMPT_VERSION`).
 - **Nano, while you shape.** Each of the three prototypes is one Nano call through
   `tokenfactory.chat`, with a JSON schema for its answer. Graphene checks the answer before showing
   anything: a clause must be in your paragraph, a leaf must exist and be open, a glob must match a
@@ -190,11 +187,10 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   paragraph also passed 20 of 20 hidden acceptance checks and 12 of 12 held-out checks, and it cost
   less of the person's modelled time: 2,626 modelled person-seconds against 3,869, medians of two
   runs (`docs/test/results-2026-09-23.md`). A frontier agent does not need a tree to get a small task
-  right. So the claim is not that a tree beats a paragraph by itself. What we test next is the moment
-  before anything runs: the board and the graph against the outline and against the paragraph
-  (pre-registered in `docs/test/results-2026-09-28-shaping.md`), and a cheap model with the person's
-  prune against the same paragraph sent to Nano with no tree
-  (`docs/test/results-2026-09-28-live-prereg.md`).
+  right. So the claim is not that a tree beats a paragraph by itself. We then measured the moment
+  before anything runs, the board against the outline, and the board cost more (What we learned).
+  What is left to test is the board against the paragraph, and a cheap model with the person's prune
+  against the same paragraph sent to Nano with no tree (`docs/test/results-2026-09-28-live-prereg.md`).
 - **The planner's questions were prose, and scrolled away.** On 28 September we put our own work
   through Graphene, with Claude Code as planner and executors and an agent standing in for the
   person (`docs/process/shaping/as-the-person.md`). After its tree the planner wrote about 250 words
@@ -227,8 +223,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
 
 ## What we learned
 
-(The evidence runs fill this in. Until they exist this field says only what the challenges above
-say.)
+(The live evidence run fills in the rest.)
 
 **The chart goes here.** One panel per pre-registered question, drawn from its table as registered
 and never tuned to a target:
@@ -240,8 +235,14 @@ and never tuned to a target:
   tree from Ultra with Nano on the leaves against the paragraph sent to Nano alone, in correctness,
   the person's attention and dollars.
 
-Neither has run, so the chart has no number yet. It goes in the README, the video, the demo page and
-here, whatever it says.
+The shaping panel has a number, and it goes against the board. With Claude model stand-ins shaping
+one Claude Code proposal per task, and nothing run, answering the board first cost more modelled
+attention than pruning the outline alone on all four tasks: +356.7 to +637.3 person-seconds (study
+2), and still +272.8 to +398.6 once the planner put up one or two items instead of five or six
+(study 3, exploratory), mostly in reading. The shaped plan was at least as faithful to the task's
+card on all four, one run each (`docs/test/results-2026-09-28-shaping.md`). The board against the
+paragraph, and the live Nemotron panel, have not run. The chart goes in the README, the video, the
+demo page and here, whatever it says.
 
 ## What's next for Graphene
 
@@ -250,8 +251,6 @@ here, whatever it says.
 - Nemotron's three shaping prototypes run live, each measured as `docs/process/ideas.md` sets out:
   for `cover`, the clauses a blind judge says the tree dropped; for `note`, how often a note finds the
   right leaf; for `precheck`, its verdicts against hand labels and the seconds per fork.
-- The board as keys in `graphene watch`. Tonight it is answered by command; the screen does not yet
-  show it or count its open items.
 - The escape test live in ConTree, and a live leaf recorded and replayed in CI.
 - A real open-source repository's issue done through the tree, with the patch offered upstream by a
   person.
@@ -281,8 +280,7 @@ commit is 10 August 2026.
   replay, and the front door. 27 to 28 September: shaping: the board, the tree and graph views,
   talking on the tree, settings you state once, and three Nemotron prototypes for the moment before
   anything runs.
-  <!-- integ only: everything in the 27 to 28 September line; the line counts above are still those
-  at 0334168 and were not measured again. -->
+  <!-- The line counts above are still those at 0334168 and were not measured again. -->
 - 181 commits predate the period, and 421 were made after it opened, at `0334168`.
 
 Commands: `git rev-list --count --until='2026-08-26T16:00:00Z' HEAD`, `git rev-list --count
@@ -329,10 +327,11 @@ service itself.)
 | 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
 | about 250 words in five paragraphs; five items instead; each a decision made silently | `docs/process/shaping/as-the-person.md`, items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
 | 32 ideas, 20 after merging, three judges, the top three built | `docs/process/ideas.md` |
-| `2 at once · 2 wait · critical path … (3)` | `graphene plan --view dag --width 80` on a scratch plan of four leaves from a scripted planner, at `integ` 50f12e7 |
+| `critical ━ … (3) · none ready · 2 once accepted · 2 wait` | `graphene plan --view dag --width 80` on a scratch plan of four proposed leaves from a scripted planner, at `shaping` 2111115; `tests/test_doc_claims.py` |
 | 150 random plans; 22 widths from 20 to 167 | `tests/test_view_dag.py`, `tests/test_view_tree.py` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
-| the board and the graph against the outline and the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
+| the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `docs/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
+| the board against the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
 
 ## Testing instructions
 
@@ -350,7 +349,7 @@ uv run pytest tests/test_board.py tests/test_cover.py tests/test_note.py tests/t
 
 In the replay, Tab shows the same plan as a tree and then as a graph. The recorded plan has two
 leaves and neither waits on the other, so its graph is two rows.
-<!-- integ only: Tab in the replay, and the four test files. Checked at integ 50f12e7: Tab in the
+<!-- Checked at integ 50f12e7, since merged into shaping: Tab in the
 replay at 80x24 showed "graphene watch --view tree: 1 sub-goal · 2 leaves", then "graphene watch
 --view dag: every leaf done", and the four files with test_view_dag, test_view_tree and test_talk
 gave 233 passed. test_precheck.py runs one test in Docker where Docker runs and skips it
@@ -364,7 +363,6 @@ graphene ask "…what you want…"    # the planner proposes a tree and puts up 
 graphene board                    # what it asks you; answer with take, pick, drop, park or answer
 graphene watch                    # Tab for the tree and the graph
 ```
-<!-- integ only: graphene board, Tab in graphene watch. -->
 
 With a key for Token Factory (it spends at list price, and prints the bill at the end):
 

@@ -191,6 +191,22 @@ def test_rows_that_are_not_live_are_refused_unless_stand_in_and_then_the_chart_s
     assert "C, Claude Code, is a reference point" in drawn and "<title>C · " not in drawn
 
 
+def test_a_tree_row_with_leaves_no_usage_row_holds_and_a_c_row_with_no_total_are_not_live(tmp_path, capsys):
+    """The planner's usage row alone came from Token Factory; three leaf attempts wrote none (a Claude Code or
+    scripted executor), and a C row whose run log holds no Claude Code total: neither is drawn as live."""
+    rows, ledger = tmp_path / "rows.jsonl", tmp_path / "ledger.jsonl"
+    ledger.write_text("")
+    argv = ["report", "--rows", str(rows), "--ledger", str(ledger), "--svg", str(tmp_path / "e.svg")]
+    for bad, said in (
+        (row("feeds", "B", 1, 2000, 6, calls=1, unpriced=3), "B feeds-B-1: an attempt with no usage row"),
+        (row("feeds", "C", 1, 6000, 6, calls=0, endpoints=[]), "C feeds-C-1: no Claude Code total"),
+    ):
+        rows.write_text(json.dumps(bad) + "\n")
+        assert evidence.main(argv) == 2 and said in capsys.readouterr().out
+        assert evidence.main([*argv, "--stand-in"]) == 0
+        assert "**STAND-IN, NOT LIVE:**" in capsys.readouterr().out
+
+
 ACCEPT = """import json, sys
 sys.path.insert(0, sys.argv[1])
 from app import greet

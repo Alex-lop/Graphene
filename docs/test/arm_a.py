@@ -15,7 +15,8 @@ gets what the earlier messages left, read from the conversation file. That file 
 arm-a.json beside the repo, never inside it) holds the messages and the bill, in the shape
 `logline.py <runlog> executor result --from-json <file>` reads: `total_cost_usd` is the session's
 running total, as `claude -p --resume` prints it, `num_turns` is this message's model calls, and
-`endpoint` is who answered ("token factory", or "a stand-in"), which evidence.py reads before it draws.
+`endpoint` is who answered ("token factory", or "a stand-in"), which evidence.py reads before it draws;
+a follow-up answered by another endpoint than the one before it adds " then <that one>".
 Each call is in the night's ledger (GRAPHENE_LEDGER) under the tag `arm-a:<session>`.
 """
 
@@ -122,6 +123,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         state = json.loads(saved.read_text(encoding="utf-8"))
         state["messages"] += unanswered(state["messages"]) + [{"role": "user", "content": text}]
+        now = tf.endpoint()  # a session answered by two endpoints names both, so evidence.py refuses it
+        if state["endpoint"].split(" then ")[-1] != now:
+            state["endpoint"] += f" then {now}"
 
     steps = args.steps - state["calls"]
     seconds = args.seconds - state["seconds_used"] if args.seconds else None
