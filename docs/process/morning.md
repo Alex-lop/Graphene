@@ -62,7 +62,9 @@ Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read
 - **The suite:** 1359 passed, 2 skipped at `5fadf9b` (the full suite, 29 min); the three 60 ms hook
   time-budget tests failed under a load of about 30 and pass on the final head once it is quiet (4
   passed). The race fixes merged after it (`g-flaky`, four files) were run on their own: 85 passed.
-  ruff clean. CI on the final head: see "CI" below.
+  ruff clean.
+- **CI: green on all seven jobs at `71e0e17`** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the
+  page), the last commit that changes code; later commits touch only `docs/process/morning.md`.
 - **The ladder, dry, on the final head:** all seven rungs PASS in 1 min 43 s, bill $0.0049 against
   the stand-ins; the fake key given to it appears in nothing it wrote.
 - **The evaluation:** 12 board trials and 3 graph trials by three stand-ins in a logged tmux seat, at
