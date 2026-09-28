@@ -572,3 +572,61 @@ sentence on what they show, whatever it is.
 
 **Study 3 is reported whatever it shows:** if the board still costs more, if it now costs less, or if
 the tasks split, and if any run is void or not run, with its reason.
+
+### Study 3 results
+
+*Written after all eight runs, below study 3's registered section, which is not changed. As in study
+2, the people were Claude model stand-ins (claude-opus-5-5, the session's model; the judges the same
+model), the planner was Claude Code at prompt version 4, and nothing ran: no `graphene run`, no
+executor, no session. Every number comes from `python3 docs/test/attention.py <run> --arm tree`
+(outline runs) or `--arm board` (board runs) and from `<run>/judge.md`; runs live in
+`~/graphene-shaping3-runs/`. No run logs a `run`, so the whole log is the part up to R, and
+`attention.py`'s `to_run` equals its totals in all eight.*
+
+**Valid.** All eight are valid under rule 4: `env.sh` puts `~/graphene-shaping3-venv/bin` first on
+`PATH`, that venv was installed from `~/graphene-shaping3-runs/dist/graphene_map-0.5.0-py3-none-any.whl`,
+whose sha256 matches `build.txt` (`6da50769…`); both arms of each task share one `base.sha`; no run
+log has a `run` entry, no `node_log` row records a start, and `git status` in every run's repo shows
+no change. No rerun was made.
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | feeds-shape-outline-1 | yes | 446.6 = 0.0 + 1.4 + 445.2 | 0 | 1 | 1 | 1855 | yes | 20 of 20 |
+| feeds | board | feeds-shape-board-1 | yes | 795.3 = 0.0 + 4.1 + 791.3 | 0 | 3 | 3 | 3297 | yes | 20 of 20 |
+| inventory | outline | inventory-shape-outline-1 | yes | 542.9 = 133.3 + 4.1 + 405.6 | 476 | 3 | 479 | 1690 | yes | 13 of 13 |
+| inventory | board | inventory-shape-board-1 | yes | 865.5 = 116.8 + 8.1 + 740.6 | 417 | 6 | 423 | 3086 | yes | 13 of 13 |
+| logs | outline | logs-shape-outline-1 | yes | 282.1 = 0.0 + 2.7 + 279.4 | 0 | 2 | 2 | 1164 | partly | 13 of 16 |
+| logs | board | logs-shape-board-1 | yes | 680.7 = 1.4 + 5.4 + 673.9 | 5 | 4 | 9 | 2808 | partly | 14 of 16 |
+| report | outline | report-shape-outline-1 | yes | 406.8 = 105.3 + 2.7 + 298.8 | 376 | 2 | 378 | 1245 | yes | 12 of 12 |
+| report | board | report-shape-board-1 | yes | 679.6 = 107.5 + 5.4 + 566.6 | 384 | 4 | 388 | 2361 | yes | 12 of 12 |
+
+The three parts are K × typed, M × acts and words × 60 / 250, each rounded to 0.1 s, so feeds
+board's parts sum to 795.4 and report board's to 679.5 against `attention.py`'s 795.3 and 679.6.
+Board commands per board run: feeds take 2; inventory take 2; logs take 1; report take 2.
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | +348.7 / +322.6 / +398.6 / +272.8 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: words read | +1442 / +1396 / +1644 / +1116 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: typed | 0 / −59 / +5 / +8 | 1 of 4 | no difference shown; board lower on inventory only, feeds ties at 0, logs and report go the other way (board higher) |
+| H6: faithful to the card | feeds same (yes, 20 of 20) / inventory same (yes, 13 of 13) / logs same ruling (partly), carried 14 of 16 against 13 of 16 / report same (yes, 12 of 12) | 4 of 4 | board at least as faithful on all four tasks, one run each: more constraints carried on logs, tied on feeds, inventory and report |
+
+Board items the planner put up (the count of `put up` lines in each study's `<task>-shape-ask.txt`),
+beside each study's board-minus-outline person-seconds:
+
+| task | items put up, study 2 | items put up, study 3 | board minus outline person-s, study 2 | board minus outline person-s, study 3 |
+|---|---|---|---|---|
+| feeds | 6 | 2 | +608.4 | +348.7 |
+| inventory | 5 | 2 | +637.3 | +322.6 |
+| logs | 6 | 1 | +498.4 | +398.6 |
+| report | 5 | 2 | +356.7 | +272.8 |
+
+**After the fact.** (1) Both feeds judges counted 20 constraints and both note that merging the two
+parts of one constraint gives 19 of 19; neither count changes a direction. (2) No run's notes report
+reading outside the log; the `--help` screens the runs read are in their logs as `read`.
+
+*Exploratory and after the fact, and an observation only since the two studies shaped different
+proposals:* with the board cut from five or six items to one or two, answering it first still cost
+more modelled attention on all four tasks (H1 and H3 show no difference in the registered direction)
+at the same or better faithfulness (H6, 4 of 4), though each task's board-minus-outline gap in
+person-seconds was smaller than in study 2.
