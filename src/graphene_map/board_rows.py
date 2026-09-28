@@ -21,6 +21,7 @@ from rich.text import Text
 from . import board as B
 from . import plan as P
 from . import plan_text as T
+from . import settings as S
 
 
 @dataclass(frozen=True)
@@ -83,10 +84,13 @@ class Board:
 
 
 def standing(store) -> str | None:
-    """LANE B's PLACE: the one line its standing conditions (settings a person states once) say at the
-    board's root, e.g. `conditions: vendor/** read-only · never touch migrations`. None until those
-    settings land; then this reads them, and the row shows above the items, dim, no key acting on it."""
-    return None
+    """The one line the standing conditions (`graphene config`, settings a person states once) say at
+    the board's root and on a view's goal line: `conditions: protected secrets/** · read-only vendor/**
+    · never add a dependency`. None when there are none."""
+    said = [f"protected {', '.join(S.protected(store))}"] if S.protected(store) else []
+    said += [f"read-only {', '.join(S.readonly(store))}"] if S.readonly(store) else []
+    said += [f"never {n}" for n in S.never(store)]
+    return "conditions: " + " · ".join(said) if said else None
 
 
 def read(store) -> Board:
@@ -133,9 +137,9 @@ def widths(board: Board) -> list[int]:
 
 def goal(text: str, board: Board) -> str:
     """The goal line of a view other than the outline (tree, graph): how many items on the board
-    wait on the person, first, so a cut goal never hides it."""
+    wait on the person, then the standing conditions, first, so a cut goal never hides them."""
     n = len(board.open)
-    return f"◇ {n} open on the board · {text}" if n else text
+    return " · ".join([*([f"◇ {n} open on the board"] if n else []), *filter(None, [board.standing]), text])
 
 
 def landing(was: list[str], board: Board, at, fresh: bool):

@@ -14,6 +14,7 @@ from graphene_map import board as B
 from graphene_map import board_rows as BR
 from graphene_map import demo, view_tree
 from graphene_map import plan as P
+from graphene_map import settings as S
 from graphene_map import views as V
 from graphene_map.store import Store
 from graphene_map.tui import Ask, Watch
@@ -31,6 +32,7 @@ risk: the check could pass on an empty list  [empty-check]
 leave out: pagination; nobody asked for it  [paging]
 note: keep the response shape  [shape]
 """
+ALEX = P.Caller("alex", True)
 OPEN = ["which-id", "int-ids", "empty-check", "paging", "shape"]
 
 
@@ -61,6 +63,7 @@ def drive(repo, steps, size):
                 row = app.board_row()
                 seen.append({
                     "status": str(app.query_one("#status").render()).splitlines()[-1],
+                    "lines": str(app.query_one("#status").render()).splitlines(),
                     "at": row.id or row.kind if row is not None else app.selected(),
                     "detail": str(app.query_one("#detail").render()),
                     "tree": shown(app, app.query_one("#tree").scrollable_content_region),
@@ -231,3 +234,76 @@ def test_the_replay_refuses_every_board_key(tmp_path, monkeypatch):
     with Store.open(repo) as store:
         assert [it["state"] for it in B.items(store)] == ["open"]
     assert BR.argv({"id": "x", "state": "parked"}, "p") == ["board", "unpark", "x"]
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said(repo, size):
+    """Four trials lost the key hints: an answer moved the cursor onto the next item and the bottom
+    line still held the command, so the next item's keys were nowhere. Now the keys have a line of
+    their own and the command's words take a third."""
+    planned(repo)
+    [seen] = drive(repo, [["y"]], size)
+    _, keys, said = seen["lines"]
+    assert seen["at"] == "int-ids"
+    assert keys.startswith("y confirm · d drop · p park"), keys  # the assumption's own keys
+    assert said.startswith("graphene board take which-id")
+
+
+def test_board_items_are_counted_apart_from_the_plan(repo):
+    """rows counted the board's open items into `you: N` with nothing saying so (`you: 6` against the
+    view candidate's `you: 1`); they do wait on the person, so they stay counted, but apart."""
+    planned(repo)
+    for size, said in (((80, 24), "you: 2 + 5 on the board · "), ((120, 36), "waiting on you: 2 + 5 on")):
+        [seen] = drive(repo, [[]], size)
+        assert seen["lines"][0].startswith(said), seen["lines"]
+
+
+def test_the_standing_conditions_are_a_dim_row_at_the_root_and_on_a_views_goal_line(repo, monkeypatch):
+    """Lane B's settings a person states once show where the plan starts: a row of their own above the
+    board's items, no key acting on it, and first on the tree's and the graph's goal line."""
+    planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "protected: secrets/**\nreadonly: vendor/**\nnever: add a dependency\n", ALEX)
+        assert (
+            BR.standing(store)
+            == "conditions: protected secrets/** · read-only vendor/** · never add a dependency"
+        )
+    first, standing, view = drive(repo, [[], ["k"], ["tab"]], (120, 36))
+    rows = [r for r in first["tree"] if r.strip()]
+    assert "conditions: protected secrets/**" in rows[1] and " which-id " in rows[2]  # above the items
+    assert first["at"] == "which-id"  # the screen still opens on the first item
+    assert standing["at"] == "standing" and "graphene config shows them" in standing["status"]
+    assert standing["detail"].startswith("conditions: protected secrets/**")
+    goal = view["view"][0]
+    assert goal.lstrip().startswith("◇ 5 open on the board · conditions: protected secrets/**"), goal
+    with Store.open(repo) as store:
+        S.apply(store, "size: auto\n", ALEX)
+        assert BR.standing(store) is None
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_plus_and_minus_ask_the_plan_again_finer_and_coarser(repo, size, monkeypatch):
+    """One key re-asks the last sentence finer, one coarser: `graphene ask --finer` in the background,
+    named on the bottom line with its flag first, so a cut line still says which. Nothing asked yet:
+    the line says so and nothing starts."""
+    planned(repo)
+    started = []
+
+    def background(self, argv):
+        started.append(argv)
+        self.message = f"graphene {' '.join(argv)}: started"
+        self.say_status()
+
+    monkeypatch.setattr(Watch, "background", background)
+    [none] = drive(repo, [["plus"]], size)
+    assert not started and none["status"].startswith("✗ graphene ask --finer: no plan was asked for yet")
+    with Store.open(repo) as store:
+        store.log_node("*", P._now(), "asked", "alex", None, None, {"note": "users come back with ids"})
+    finer, coarser = drive(repo, [["plus"], ["minus"]], size)
+    assert started == [
+        ["ask", "--finer", "users come back with ids"],
+        ["ask", "--coarser", "users come back with ids"],
+    ]
+    assert finer["status"].startswith("graphene ask --finer") and coarser["status"].startswith(
+        "graphene ask --coarser"
+    )

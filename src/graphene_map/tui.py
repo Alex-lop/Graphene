@@ -50,54 +50,40 @@ from .node_record import bill, forks, models, sandbox
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
+HELP_WIDE = 72  # a help row's columns: from twice this the groups sit in two columns
 PANE = 44  # beside the tree, the node pane keeps at least this many columns
 QUIET = 120  # seconds without a sign of life before a running leaf reads "quiet for n min"
 WRAP = Console(width=400, color_system=None)  # only for Text.wrap: styled text wrapped at words
 
 HELP = (
     ("move", (
-        ("j k", "down, up"), ("gg G", "the goal, the last row"), ("/", "search; n the next match"),
+        ("j k", "down, up"), ("gg G / n", "the goal, the last row; search, the next match"),
         ("Esc", "ends a search, a selection, a pane"),
         ("Tab", "the next view that fits (graphene watch --view)"),
         ("h l", "in a view: the node to the left, to the right"),
     )),
-    ("fold", (("za", "fold or unfold here (on the goal: all)"),
-              ("zo zc", "unfold, fold; a folded row counts the leaves inside by state"),
-              ("zR zM", "all open, all closed"), ("zx", "as it opened: what is done folded, the rest open"))),
+    ("fold", (("za zo zc", "fold or unfold, unfold, fold (on the goal: all)"),
+              ("zR zM zx", "all open, all closed, as it opened"))),
     ("shape", (
-        ("y", "accept a proposal; sign off a leaf in review; your own leaf is done"),
-        ("d", "drop"), ("e", "edit its contract in $EDITOR"), ("E", "edit it with what is under it, as text"),
-        ("a A", "add a sibling, a child"), ("s", "the planner splits it into leaves"),
-        ("u", "undo your last act on the plan"), ("V", "select several, then y or d"),
-        ("?", "on a node: ask the planner why, split, merge the selection (V), another way, or your words"),
+        ("y d", "accept, sign off, it is done; drop"), ("e E", "edit it in $EDITOR; with what is under it"),
+        ("a A s", "add a sibling, a child; the planner splits it"),
+        ("?", "ask the planner why, split, merge, another way"),
+        ("+ -", "the plan asked again, finer, coarser"), ("V u", "select several, then y or d; undo"),
+        ("m", "seen: what changes after it reads + or ~"),
     )),
-    ("run", (
-        ("R", "run every ready leaf"), ("r", "run the ready leaves under this one"),
-        ("x", "release a running leaf; send back one in review; reopen a done one"),
-        ("P", "plan first on or off: a session proposes a tree before any code"),
-    )),
-    ("see", (("Enter", "the record: who held it, what changed, the check"), ("l", "the executor's output"),
-             ("ctrl-d ctrl-u", "scroll the pane"),
-             ("m", "seen: from here on, a row someone else changes reads + or ~ before its id"))),
-    ("a leaf that came back", (
-        ("w", "widen its scope to what it wanted"), ("b", "a sibling leaf for that, which it waits on"),
-        ("n", "wait on the leaves its reason names"), ("?", "ask the planner what would let it be done"),
-    )),
-    (":", (
-        (":<command>", "any graphene command, as you would type it (:node show x, :plan log)"),
-        (":ask <what>", "the planner proposes it"), (":stop", "stops a run started here"),
-        ("? on the goal", "this help"), ("q", "quit; a run started here goes on"),
-    )),
-    ("the board: on an item above the tree", (
-        ("y", "take the default; confirm an assumption, agree to a leave-out"), ("1..9", "pick that option"),
-        ("d p", "drop it; park it (p again: unpark)"), ("Enter", "answer it in your own words"),
-        ("a", "a note of yours (about what the item is about)"),
-    )),
+    ("run", (("R r", "run every ready leaf; the ready ones under this"),
+             ("x", "release it; send it back; reopen it"), ("P", "plan first on or off"))),
+    ("see", (("Enter l", "the record; the executor's output"), ("ctrl-d -u", "scroll the pane"))),
+    ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
+                   ("?", "ask the planner what would let it be done"))),
+    ("board", (("y 1..9", "take the default, confirm, agree; pick one"),
+               ("d p", "drop it; park it (p again: unpark)"), ("Enter a", "answer in your words; a note"))),
+    (":", ((":<command>", "any graphene command (:ask, :stop, :node set)"),
+           ("q", "quit; a run started here goes on"))),
 )  # fmt: skip
-HELP_END = (
-    "Every key is a graphene command, and the bottom line says which it ran. Two agents work here: "
-    "the planner proposes the tree (a session, or :ask), the executors do its leaves (R, r)."
-)
+HELP_END = "Every key is a graphene command; the bottom line says which it ran."
+# the glyphs and colours every row, view and pane uses, the help's first line
+LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
 EMPTY = (
     "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the tree "
     "here. Or :ask <what you want>. ? lists the keys."
@@ -344,25 +330,43 @@ class Ask(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+def legend(wide: int) -> Text:
+    """The glyphs and colours, one line: what each state reads as, and the graph's heavy line; where
+    the words do not fit, the person's move (magenta: yours, review, came back) as one."""
+    looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
+    short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
+    for form in (looks, short):
+        out = Text()
+        for glyph, colour, word in form:
+            out.append(glyph, colour).append(f" {word}  ")
+        out.append("━", "bold").append(" critical path" if form is looks else " critical")
+        if out.cell_len <= wide or form is short:
+            return out
+    return out
+
+
 def help_text(groups, wide: int) -> Text:
+    """The keys, a row each: the group's name on its first row, the keys, what they do, cut at a word
+    rather than wrapped, so a group is as tall as its keys."""
     out = Pane(wide)
+    names = max(len(name) for name, _ in groups) + 2
+    keys = max(len(k) for _, rows in groups for k, _ in rows) + 2
     for name, rows in groups:
-        keys = max(len(k) for k, _ in rows) + 2
-        out.gap()
-        out.text(name, "bold")
-        for key, what in rows:
-            lines = list(Text(what).wrap(WRAP, wide - keys - 2))
-            out.line(Text.assemble("  ", (key.ljust(keys), "bold"), lines[0]))
-            for more in lines[1:]:
-                out.line(Text.assemble(" " * (keys + 2), more))
+        for k, (key, what) in enumerate(rows):
+            head = (name if k == 0 else "").ljust(names)
+            what = T.elide(what, wide - names - keys)
+            out.line(Text.assemble((head, "dim"), (key.ljust(keys), "bold"), what))
     return out.render()
 
 
-def help_groups() -> tuple:
-    """HELP, less the keys of the views when the outline is the only one."""
-    if len(V.VIEWS) > 1:
-        return HELP
-    return tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+def help_groups(settings: list[str] = ()) -> tuple:
+    """HELP, less the keys of the views when the outline is the only one, then the settings
+    (`settings.lines_for_screen`), a row each, as `graphene config` shows them."""
+    groups = HELP
+    if len(V.VIEWS) <= 1:
+        groups = tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+    said = [tuple(line.split(": ", 1)) for line in settings[:-1] if ": " in line]
+    return (*groups, ("settings", tuple(said))) if said else groups
 
 
 class Help(ModalScreen[None]):
@@ -383,22 +387,28 @@ class Help(ModalScreen[None]):
     }
     Help #help { width: auto; height: auto; }
     Help #help > Static { width: auto; padding: 0 1; }
-    Help #end { width: auto; padding: 1 1 0 1; color: $text-muted; }
+    Help #end { width: auto; padding: 0 1; color: $text-muted; }
+    Help #legend { width: auto; padding: 0 1; }
     """
 
     def compose(self) -> ComposeResult:
+        from .settings import lines_for_screen
+
         width = self.app.size.width
-        two = width >= WIDE
-        column = min(56, (width - 10) // 2) if two else max(width - 8, 30)
+        said = self.app.read(lines_for_screen, []) if hasattr(self.app, "read") else []
+        groups = help_groups(said)
+        two = width >= 2 * HELP_WIDE + 10
+        column = HELP_WIDE if two else max(width - 8, 30)
         with VerticalScroll():
+            yield Static(legend(column * (2 if two else 1)), id="legend")
             with Horizontal(id="help"):
-                groups = help_groups()
                 if two:
-                    yield Static(help_text(groups[:3], column))
-                    yield Static(help_text(groups[3:], column))
+                    yield Static(help_text(groups[:5], column))
+                    yield Static(help_text(groups[5:], column))
                 else:
                     yield Static(help_text(groups, column))
-            yield Static(Text("\n".join(textwrap.wrap(HELP_END, column * (2 if two else 1)))), id="end")
+            end = f"{HELP_END} {said[-1]}." if said else HELP_END
+            yield Static(Text("\n".join(textwrap.wrap(end, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
         self.query_one(VerticalScroll).scroll_relative(y=lines, animate=False)
@@ -624,7 +634,7 @@ class Watch(App):
     #main.-stacked #view { width: 100%; }
     #main.-stacked #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
     #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
-    #status { height: 2; background: $boost; padding: 0 1; }
+    #status { height: 2; background: $boost; padding: 0 1; }  /* 3 while a command has spoken */
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
     #line.-open { display: block; }
     """
@@ -655,6 +665,8 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("m", "seen", show=False),
+        Binding("plus", "reask('finer')", show=False),
+        Binding("minus", "reask('coarser')", show=False),
         Binding("ctrl+d", "page(1)", show=False),
         Binding("ctrl+u", "page(-1)", show=False),
         # board: on an item p parks it and 1..9 picks an option (y d a Enter answer it too, see action_board)
@@ -818,7 +830,8 @@ class Watch(App):
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
         self.counts = {
-            "you": len(tops) + len(yours) + len(self.board.open),
+            "you": len(tops) + len(yours),
+            "board": len(self.board.open),  # they wait on the person too: `you: 1 + 5 on the board`
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
             "done": f"{done}/{len(leaves)} done",
@@ -1169,19 +1182,23 @@ class Watch(App):
         self.refresh_plan()
 
     def say_status(self) -> None:
-        """Two lines, each fitted at a word: the plan (what waits on the person, the executors, what
-        R would start, how much is done, plan first), then the moment (what the last command said,
-        else what the keys do here). The short forms at 80 columns; whole pieces drop off the end. What
-        R starts, when `graphene init` chose it, is named only where the long form still fits with it."""
+        """Two lines, each fitted at a word, and a third when there is something to say: the plan (what
+        waits on the person, the executors, what R would start, how much is done, plan first), what the
+        keys do on the row under the cursor, then what the last command said (in a view, else what the
+        view shows at a glance). The keys never give way to what a command said: after an answer on the
+        board the cursor is on the next item, and its keys are what the person needs next. The short
+        forms at 80 columns; whole pieces drop off the end. What R starts, when `graphene init` chose
+        it, is named only where the long form still fits with it."""
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
         c = self.counts or {"you": 0, "running": 0, "ready": 0, "done": "0/0 done", "first": False}
-        you = "magenta" if c["you"] else ""
+        board = f" + {c['board']} on the board" if c.get("board") else ""
+        you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
         first = "on" if c["first"] else "off"
         long = [
-            (f"waiting on you: {c['you']}", you),
+            (f"waiting on you: {c['you']}{board}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
@@ -1189,7 +1206,7 @@ class Watch(App):
             *([(f"{money(c['spent'])} at list price", "dim")] if c.get("spent") is not None else []),
         ]
         short = [
-            (f"you: {c['you']}", you),
+            (f"you: {c['you']}{board}", you),
             (f"{c['running']} running", busy),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
@@ -1199,14 +1216,16 @@ class Watch(App):
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
-        said = self.busy or self.message
+        lines = [top, fit([(k, "") for k in self.keys()], room)]
+        said = self.busy or self.message or (self.drawn.note if self.drawn is not None else "")
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))
             if bottom.plain.startswith("✗"):  # red is for a command that failed, and only its mark
                 bottom.stylize("red", 0, 1)
-        else:
-            bottom = fit([(k, "") for k in self.keys()], room)
-        self.query_one("#status", Static).update(Text.assemble(top, "\n", bottom))
+            lines.append(bottom)
+        status = self.query_one("#status", Static)
+        status.styles.height = len(lines)
+        status.update(Text("\n").join(lines))
 
     def keys(self) -> list[str]:
         """What the keys do on the row under the cursor, for the bottom line. In a view the outline's
@@ -1235,6 +1254,8 @@ class Watch(App):
             item = self.board.get(row)
             if item is not None:
                 return [*BR.hints(item, max(self.size.width - 2, 20)), *tail]
+            if row == BR.STANDING:
+                return ["standing conditions: graphene config shows them", *tail]
             fold = ["za fold" if self.tree.cursor_node.is_expanded else "za unfold"] if row == BR.FOLD else []
             return [*fold, "a note", *tail]
         if not self.nodes:
@@ -1506,6 +1527,17 @@ class Watch(App):
 
     def action_undo(self) -> None:
         self.did(["plan", "undo"])
+
+    def action_reask(self, size: str) -> None:
+        """+ and -: the last sentence asked of the planner, asked again for a finer or a coarser tree,
+        which takes the place of the proposals still waiting (graphene ask --finer, --coarser)."""
+        from .ask import reask_argv
+
+        argv = self.read(lambda s: reask_argv(s, size))
+        if argv is None:
+            self.message = f"✗ graphene ask --{size}: no plan was asked for yet (:ask what you want)"
+            return self.say_status()
+        self.background(["ask", f"--{size}", *argv[2:-1]])  # the flag first: a cut line still names it
 
     def action_run(self, here: bool) -> None:
         node_id = self.selected()
