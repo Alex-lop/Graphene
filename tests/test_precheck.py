@@ -107,13 +107,17 @@ def test_deterministic_verdicts_need_no_model_and_one_red_needs_exactly_one_call
 
 
 def test_a_red_for_another_reason_is_marked_and_nano_is_not_trusted_beyond_its_schema(repo, nano):
-    nano([said("typo", "tests/test_app.py is spelt test/test_app.py"), {"content": "sure, looks red"}])
-    fork = scripted({"python3 test/x.py": (2, "can't open file"), "make check": (2, "Error 2")})
+    nano([said("typo", "tests/test_app.py is spelt test/test_app.py"), {"content": "sure, looks red"},
+          {"content": json.dumps({"verdict": "typo", "why": {"a": 1}})},
+          {"content": json.dumps({"verdict": "typo", "why": "x", "sure": True})}])  # fmt: skip
+    fork = scripted({"python3 test/x.py": (2, "can't open file"), "make check": (2, "Error 2"),
+                     "exit 3": (3, ""), "exit 9": (9, "")})  # fmt: skip
     with Store.open(repo) as store:
-        leaves(store, "python3 test/x.py", "make check")
+        leaves(store, "python3 test/x.py", "make check", "exit 3", "exit 9")
         rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
     assert rows["l0"]["verdict"] == "typo" and rows["l0"]["by"] == "Nemotron-3-Nano-fake, a stand-in"
-    assert rows["l1"]["verdict"] == "red" and rows["l1"]["why"].startswith("not read")
+    for unread in ("l1", "l2", "l3"):  # prose, a why that is not a string, a key the schema has not
+        assert rows[unread]["verdict"] == "red" and rows[unread]["why"].startswith("not read")
 
 
 def test_a_missing_module_is_the_environment_unless_a_scope_makes_it(repo):

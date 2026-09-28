@@ -191,7 +191,8 @@ def _read(store, node: P.Node, tail: str, model: str, hide=str) -> tuple[str, st
         "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()})  # fmt: skip
     try:
         answer = json.loads(said["message"].get("content") or "")
-        if answer["verdict"] in SCHEMA["properties"]["verdict"]["enum"]:
+        if (set(answer) == set(SCHEMA["required"]) and isinstance(answer["why"], str)
+                and answer["verdict"] in SCHEMA["properties"]["verdict"]["enum"]):  # fmt: skip
             return answer["verdict"], " ".join(hide(str(answer["why"])).split())[:300]
     except (ValueError, KeyError, TypeError):
         pass
