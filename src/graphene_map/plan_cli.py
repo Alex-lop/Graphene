@@ -391,7 +391,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             run(lambda s: out(T.render(s)[0].rstrip("\n")))
             return
         if view:
-            return print_view(view, width, height)
+            return print_view(view, width, height, lambda: run(lambda s: print_plan(s, who, everything)))
         run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who, everything))
 
     @plan_cli.command("goal")
@@ -423,29 +423,33 @@ def register(cli: typer.Typer, root, open_store, fail):
         if name != "auto" and name not in V.VIEWS:
             fail(f"no view named {name}: the views are {', '.join(['auto', *V.VIEWS])}", 2)
 
-    def print_view(name: str, width: int | None, height: int | None) -> None:
+    def print_view(name: str, width: int | None, height: int | None, outline) -> None:
         """`graphene plan --view NAME`: the plan as that view draws it, in plain text, at $COLUMNS (or
         --width) by $LINES (or --height), for a script, a test or a stand-in; what the screen shows
-        when Tab reaches it. `auto` is the view that suits the plan at that size. A view that does not
-        fit prints the outline, and says so, as the screen does."""
+        when Tab reaches it. `auto` is the view that suits the plan at that size. The outline, a view
+        that does not fit (said on stderr, as the screen says it) and an empty plan print as
+        ``outline()`` does: `graphene plan`, with --all if asked, or `watch --once`, with what just
+        happened."""
         known_view(name)
         size = shutil.get_terminal_size()
         width, height = width or size.columns, height or size.lines
 
-        def show(store) -> None:
+        def show(store) -> bool:
             nodes, words, goal = V.inputs(store)
             chosen = V.choose(nodes, words, goal, width, height) if name == "auto" else name
             drawn = V.VIEWS[chosen].draw(nodes, words, goal, width, height, None) if V.VIEWS[chosen] else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)
-                return print_plan(store, P.caller())
+                return False
             for line in drawn.lines:
                 out(line.plain.rstrip())
             if drawn.note:
                 out(drawn.note)
+            return True
 
-        run(show)
+        if not run(show):
+            outline()
 
     @cli.command()
     def watch(
@@ -471,7 +475,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         if view:
             known_view(view)
         if (once or not sys.stdout.isatty()) and view not in (None, "outline"):
-            return print_view(view, None, None)
+            return print_view(view, None, None, lambda: print_once(who, everything))
         if once or not sys.stdout.isatty():
             return print_once(who, everything)
         try:

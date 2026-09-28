@@ -383,3 +383,25 @@ def test_watch_takes_the_view_too(repo, grid, monkeypatch):
     assert printed.exit_code == 0 and printed.stdout.splitlines()[-1] == "4 in a grid"
     unknown = person("watch", "--view", "dag")
     assert unknown.exit_code == 2 and "no view named dag: the views are auto, outline, grid" in unknown.output
+
+
+def test_plan_view_outline_keeps_all(repo, tmp_path):
+    """`plan --view outline --all` dropped --all."""
+    import json
+
+    person("plan", "goal", "ship invoices by email")
+    person("node", "add", "the HTTP surface", "--id", "api")
+    tree = {"nodes": [{"id": f"l{k}", "parent": "api", "title": f"leaf {k}", "scope": [f"f{k}.txt"],
+                       "check": "true"} for k in range(14)]}  # fmt: skip
+    (tmp_path / "t.json").write_text(json.dumps(tree))
+    assert person("plan", "propose", str(tmp_path / "t.json")).exit_code == 0
+    every = person("plan", "--all").stdout
+    assert person("plan", "--view", "outline", "--all").stdout == every != person("plan").stdout
+
+
+def test_watch_once_in_a_view_that_is_the_outline_says_what_just_happened(repo, monkeypatch):
+    """`watch --once --view auto` printed the plan without its "just now" when auto chose the outline."""
+    monkeypatch.setattr(V, "VIEWS", {"outline": None})
+    proposed(repo)
+    once = person("watch", "--once").stdout
+    assert "just now" in once and person("watch", "--once", "--view", "auto").stdout == once
