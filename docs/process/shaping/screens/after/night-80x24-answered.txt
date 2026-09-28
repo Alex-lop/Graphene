@@ -1,0 +1,24 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpb8i16o9n/night
+▼ ? Graphene has settings a person states once: where the Token…     proposed
+├   ◇ what does graphene ask --finer (or --coarser)…     reask       asks
+├   ◇ "things the planner must never propose": is this…  never       asks
+├   ◇ the settings live in the store's plan_meta…        store       assumes
+├   ◇ a key passed on argv shows up in ps, and an…       keychain    risk
+├ ▶ ✓ 1 settled
+├ ▶ ? the Token Factory key                              keys        3 proposed
+├ ▶ ? standing conditions                                conditions  3 proposed
+├ ▶ ? plan size                                          size        3 proposed
+└ ▶ ? graphene config                                    config      2 proposed
+────────────────────────────────────────────────────────────────────────────────
+ what does graphene ask --finer (or --coarser) re-ask?
+ reask · question · open · put up by the planner (graphene ask)
+
+ y default  it sets the size for that one ask only and leaves the setting as
+            it is; with no sentence it asks again with the last sentence in
+            the plan's log ("asked"), and the earlier proposals stay for the
+            person to drop
+ 1          the same, but the earlier proposals from that sentence that were
+            never accepted are dropped first
+ you: 4 + 4 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y take: it sets the… · 1 pick · d drop · p park · Enter answer · a note
+ graphene board take overlap: taken overlap: does a broad scope that also…

@@ -1,0 +1,36 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmp6wtjixxg/thirty
+     ◇ 5 open on the board · csv feeds import cleanly, and every bad row is named with its line
+  ┌──────────────────┬──────────────────┬─────────┴────────┬──────────────────┬────────────────────┐
+  ✓ reader           ✓ dialects         ○ validate         ○ report           ○ cli                ? docs
+  │ read every…      │ the dialects…    │ every row…       │ the bad rows…    │ one command…       │ the importer…
+  ├ ✓ csv-open       ├ ✓ tsv            ├ ✓ v-types        ├ ✓ r-lines        ├ ○ cli-import       ├ ? d-usage
+  │   open a feed…   │   tab…           │   numbers…       │   each bad row…  │   feeds import…    │   usage in the…
+  ├ ✓ csv-sniff      ├ ✓ semicolon      ├ ✓ v-required     ├ ◆ r-format       ├ ○ cli-dry          ├ ? d-dialects
+  │   sniff the…     │   semicolons…    │   required…      │   the report…    │   a dry run that…  │   which…
+  ├ ✓ csv-header     ├ ✓ excel          ├ ● v-price        ├ ● r-json         ├ ◌ cli-exit ←1      └ ? d-report
+  │   map the…       │   what Excel…    │   a zero or…     │   the report…    │   the exit code…       how to read…
+  ├ ✓ csv-quotes     ├ ✓ fixed          ├ ↩ v-dupes        ├ ○ r-email        ├ ◌ cli-progress ←1
+  │   quoted…        │   fixed width…   │   duplicate…     │   mail the…      │   a progress…
+  ├ ✓ csv-bom        └ ✓ gzip           ├ ◌ v-rules ←1     └ ○ r-limit        └ ◇ cli-review
+  │   a byte order…      gzipped feeds  │   rules a…           cap the…           try it on last…
+  └ ✓ csv-stream                        └ ? v-empty
+      stream a…                             an empty row…
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ csv feeds import cleanly, and every bad row is named with its line
+ the goal · 14/26 done
+
+ ✓ read every feed as rows                                                                          reader    done
+ ✓ the dialects our suppliers send                                                                  dialects  done
+ ○ every row checked before it is imported                                                          validate  2/5 done
+ ○ the bad rows report                                                                              report    1/5 done
+ ○ one command imports a feed                                                                       cli       0/5 done
+ ? the importer documented                                                                          docs      proposed
+
+ waiting  v-dupes came back · v-rules on v-dupes (came back) · r-format is in review · cli-exit on cli-import (ready)
+          · cli-progress on cli-import (ready) · cli-review is yours · v-empty and docs are proposed, for you to
+          accept or prune
+
+
+ waiting on you: 5 + 5 on the board · executors: 2 running · R runs 4 ready · 14/26 done · plan first: on (P)
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
+ graphene watch --view tree: 6 sub-goals · 30 leaves · 3 wait on you · 5 proposed

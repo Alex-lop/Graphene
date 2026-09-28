@@ -1,0 +1,24 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpb8i16o9n/night
+◇ 5 open on the board · Graphene has settings a person states once: where the…
+┌───────────────────┬─────────┴─────────┬───────────────────┐
+? keys              ? conditions        ? size              ? config
+│ the Token…        │ standing…         │ plan size         │ graphene config
+├ ? key-store       ├ ? settings        ├ ? sizing          ├ ? config-cli ←2
+│   find, store…    │   the settings…   │   measure the…    │   graphene…
+├ ? key-use ←1      ├ ? cond-gate ←1    ├ ? ask-told ←2     └ ? cli-wire ←2
+│   Token Factory…  │   the gate…       │   the planner…        register key…
+└ ? key-cli ←1      └ ? cond-reads ←1   └ ? ask-flags ←1
+    graphene key…       protected…          graphene ask…
+────────────────────────────────────────────────────────────────────────────────
+ Graphene has settings a person states once: where the Token Factory key is
+ found, standing conditions the gate enforces, and the plan size, all shown
+ and edited with graphene config
+ the goal · proposed with the tree: accepting any of it accepts it
+
+ ? the Token Factory key                                  keys        proposed
+ ? standing conditions                                    conditions  proposed▂
+ ? plan size                                              size        proposed
+ ? graphene config                                        config      proposed
+ you: 4 + 5 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
+ graphene watch --view tree: 4 sub-goals · 11 leaves · 15 proposed
