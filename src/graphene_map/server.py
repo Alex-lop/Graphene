@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import plan as P
+from . import settings
 from .commits import refresh_commits
 from .graph import build_graph, to_json
 from .plan_view import build_plan_view
@@ -106,6 +107,7 @@ def payload(
     plan_view = build_plan_view(store, export=only, checkout=checkout) | {
         "writable": writable,
         "token": token,
+        "settings": settings.for_screen(store),  # the standing conditions, for the root row
     }
     return (
         '{"runs": '

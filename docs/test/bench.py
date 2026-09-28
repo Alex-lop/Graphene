@@ -117,8 +117,8 @@ def logger(runlog: Path):
     return log
 
 
-def prepare(run_dir: Path, task: str, tree: Path, log) -> tuple[Path, str, dict]:
-    """The repo, fresh, with graphene init run and the tree loaded as the person."""
+def prepare(run_dir: Path, task: str, tree: Path | None, log) -> tuple[Path, str, dict]:
+    """The repo, fresh, with graphene init run and the tree (when there is one) loaded as the person."""
     repo = run_dir / "repo"
     (run_dir / "tmp").mkdir(parents=True)
     base = make_task.build(task, repo)
@@ -126,6 +126,8 @@ def prepare(run_dir: Path, task: str, tree: Path, log) -> tuple[Path, str, dict]
     env = {k: v for k, v in os.environ.items() if k not in MARKS}
     env |= {"GRAPHENE_AS": f"person:{PERSON.name}", "TMPDIR": str(run_dir / "tmp")}
     graphene(repo, env, "init")
+    if tree is None:
+        return repo, base, env
     graphene(repo, env, "plan", "propose", str(tree))
     graphene(repo, env, "plan", "accept")
     log("accept", f"graphene plan propose {shlex.quote(str(tree))} && graphene plan accept")
@@ -274,9 +276,80 @@ def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool], signalled: set
                 "dollars": round(sum(u.get("dollars") or 0 for u in usage), 6),
                 "models": sorted({u["model"] for u in usage if u.get("model")}),
                 "unpriced_attempts": max(0, attempts - len(usage)),
+                **tally.forks_and_escalations(log),
                 "wall_seconds": round(wall, 1),
             })  # fmt: skip
     return rows
+
+
+def left_to_run(repo: Path) -> list[str]:
+    """The open leaves that have not come back: what the next round runs (a refused one is not run again)."""
+    with Store.open(repo) as store:
+        return [n.id for n in P.leaves(P.nodes(store)) if n.state == P.OPEN and not P.came_back(store, n)]
+
+
+def play_rounds(
+    repo: Path,
+    env: dict,
+    log,
+    run_dir: Path,
+    intent: list[str],
+    args,
+    cap: float,
+    only: list[str] | None = None,
+    done: int = 0,
+) -> tuple[int, str | None, bool, set[str]]:
+    """`graphene run` and the mechanical person's offers, round after round, at most args.rounds: (rounds,
+    what stopped it, whether the cap of rounds was hit, the leaves a signal stopped). `only` is the leaves
+    the first round runs (all that are ready when None); `done` is the rounds an earlier part ran, so
+    round files and lines go on numbering."""
+    only = only or []
+    signalled: set[str] = set()
+    stopped, cap_hit, rounds = None, False, 0
+    while True:
+        rounds += 1
+        with Store.open(repo) as store:
+            since = len(store.node_log())
+        argv = ["run", "--parallel", str(args.parallel), "--with", args.executor]
+        argv += [x for i in only for x in ("--node", i)]
+        log("run", "graphene " + shlex.join(argv))
+        said, cut = one_round(repo, env, argv, run_dir / f"round-{done + rounds}.txt", args.timeout)
+        print(f"round {done + rounds}: {said}")
+        decisions = []
+        with Store.open(repo) as store:
+            ran = {e["node_id"] for e in store.node_log()[since:] if e["kind"] == "started"}
+            for n in P.nodes(store):
+                if n.id in ran and P.came_back(store, n) and P.offers(store, n):
+                    decisions.append((n.id, *play(store, n, intent)))
+        if cut is SIGNALLED:
+            signalled, stopped = ran, "a signal (SIGTERM or Ctrl-C)"
+            print("stopped: the bench was sent SIGTERM or Ctrl-C; the run is counted as far as it got")
+            break
+        for node, command, paths, said in decisions:
+            if command:
+                graphene(repo, env, *command)
+                log("widen", "graphene " + shlex.join(command), node=node, paths=paths)
+            else:
+                outside = [p for p in paths if not P.in_scope(p, intent)]
+                log("refuse", f"not taken: {said}", node=node, paths=paths, outside_intent=outside)
+            print(f"  {node} came back: {said}: {'taken' if command else 'refused'}")
+        with Store.open(repo) as store:
+            everything = P.nodes(store)
+            left = [n for n in P.leaves(everything) if n.state == P.OPEN and not P.came_back(store, n)]
+            only = [n.id for n in left]
+            ready = [n.id for n in P.ready(everything, P.Caller("agent", False)) if n.id in only]
+        if tf.spent() >= cap:  # before the end of the run is looked at: the cap may be what ended it
+            stopped = "the spend cap"
+            not_run = f"; {', '.join(ready)} not run" if ready else ""
+            print(f"stopped: the ledger is at ${tf.spent():.2f} of ${cap:.2f}{not_run}")
+            break
+        if not ran or not ready:
+            break
+        if rounds == args.rounds:
+            cap_hit = True
+            print(f"the cap of {args.rounds} rounds is hit: {', '.join(ready)} not run again")
+            break
+    return rounds, stopped, cap_hit, signalled
 
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
@@ -352,53 +425,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"checks passing at the base commit, which are not checks: {', '.join(flagged)} (fix the tree)")
     intent = tally.intent_globs(card / "intent_globs.txt")
 
-    only: list[str] = []
-    signalled: set[str] = set()
-    stopped, cap_hit, rounds, began = None, False, 0, time.monotonic()
     was = signal.signal(signal.SIGTERM, signal.default_int_handler)  # a kill stops the round, as Ctrl-C does
-    while True:
-        rounds += 1
-        with Store.open(repo) as store:
-            since = len(store.node_log())
-        argv = ["run", "--parallel", str(args.parallel), "--with", args.executor]
-        argv += [x for i in only for x in ("--node", i)]
-        log("run", "graphene " + shlex.join(argv))
-        said, cut = one_round(repo, env, argv, run_dir / f"round-{rounds}.txt", args.timeout)
-        print(f"round {rounds}: {said}")
-        decisions = []
-        with Store.open(repo) as store:
-            ran = {e["node_id"] for e in store.node_log()[since:] if e["kind"] == "started"}
-            for n in P.nodes(store):
-                if n.id in ran and P.came_back(store, n) and P.offers(store, n):
-                    decisions.append((n.id, *play(store, n, intent)))
-        if cut is SIGNALLED:
-            signalled, stopped = ran, "a signal (SIGTERM or Ctrl-C)"
-            print("stopped: the bench was sent SIGTERM or Ctrl-C; the run is counted as far as it got")
-            break
-        for node, command, paths, said in decisions:
-            if command:
-                graphene(repo, env, *command)
-                log("widen", "graphene " + shlex.join(command), node=node, paths=paths)
-            else:
-                outside = [p for p in paths if not P.in_scope(p, intent)]
-                log("refuse", f"not taken: {said}", node=node, paths=paths, outside_intent=outside)
-            print(f"  {node} came back: {said}: {'taken' if command else 'refused'}")
-        with Store.open(repo) as store:
-            everything = P.nodes(store)
-            left = [n for n in P.leaves(everything) if n.state == P.OPEN and not P.came_back(store, n)]
-            only = [n.id for n in left]
-            ready = [n.id for n in P.ready(everything, P.Caller("agent", False)) if n.id in only]
-        if tf.spent() >= cap:  # before the end of the run is looked at: the cap may be what ended it
-            stopped = "the spend cap"
-            not_run = f"; {', '.join(ready)} not run" if ready else ""
-            print(f"stopped: the ledger is at ${tf.spent():.2f} of ${cap:.2f}{not_run}")
-            break
-        if not ran or not ready:
-            break
-        if rounds == args.rounds:
-            cap_hit = True
-            print(f"the cap of {args.rounds} rounds is hit: {', '.join(ready)} not run again")
-            break
+    began = time.monotonic()
+    rounds, stopped, cap_hit, signalled = play_rounds(repo, env, log, run_dir, intent, args, cap)
     wall = time.monotonic() - began
     signal.signal(signal.SIGTERM, was)
 
@@ -429,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
         "dollars": dollars, "unpriced_attempts": unpriced, "tokens_in": sum(r["tokens_in"] for r in leaves),
         "tokens_out": sum(r["tokens_out"] for r in leaves),
         "cost_per_landed_usd": per_landed,
+        "forks": sum(r["forks"] for r in leaves), "escalations": sum(r["escalations"] for r in leaves),
         "rounds": rounds, "rounds_cap_hit": cap_hit, "stopped": stopped, "wall_seconds": round(wall, 1),
         "files_outside_intent_final": outside,
         "person_actions": tally.read_runlog(runlog, [])["person_actions"],

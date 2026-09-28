@@ -9,9 +9,11 @@ here is typed by hand.
 runlog.jsonl. A run with a `void.txt` beside its runlog is printed in the per-run table with
 `valid` = NO and its reason, and is left out of every median.
 
-`style` is how the stand-in wrote (`dense` or `tuesday`); `arm` is `prompt`, `graphene` (21
-September) or `tree` (23 September, whose attention numbers come from attention.py and are
-MODELLED person-seconds, printed beside the raw counts they are made of). A run directory from the
+`style` is how the stand-in wrote (`dense` or `tuesday`, or `sealed` on 28 September: every arm opens
+with the task's sealed paragraph, and `opening_is_sealed` says whether the run's first prompt is it,
+byte for byte); `arm` is `prompt`, `graphene` (21 September), `tree` (23 September) or `board` (28
+September). The attention numbers come from attention.py and are MODELLED person-seconds, printed
+beside the raw counts they are made of. A run directory from the
 20 September test, named <task>-<arm>-<rep>, still reads: its style is recorded as `dense`, which
 is what those stand-ins wrote.
 
@@ -49,7 +51,7 @@ sys.path.insert(0, str(HERE))
 from attention import attention  # noqa: E402
 
 TASKS = ("feeds", "report", "inventory", "logs")
-ARMS = ("prompt", "graphene", "tree")
+ARMS = ("prompt", "graphene", "tree", "board")
 COLUMNS = [
     ("files_changed_final_n", "files"),
     ("files_outside_intent_final_n", "outside (final)"),
@@ -87,7 +89,7 @@ def spec_chars(db: Path, entries: list[dict], arm: str) -> int:
         for e in entries
         if e.get("who") == "person" and e.get("type") in ("prompt", "correction")
     )
-    if arm in ("graphene", "tree") and db.exists():
+    if arm in ("graphene", "tree", "board") and db.exists():
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
         for state, data in conn.execute("SELECT state, data FROM nodes"):
             if state == "dropped":
@@ -103,6 +105,15 @@ def spec_chars(db: Path, entries: list[dict], arm: str) -> int:
             )
         conn.close()
     return total
+
+
+def opening_is_sealed(entries: list[dict], paragraph: Path) -> bool | None:
+    """Whether the person's first prompt is the sealed paragraph byte for byte; None with no paragraph."""
+    if not paragraph.exists():
+        return None
+    first = next((e for e in entries if e.get("who") == "person" and e.get("type") == "prompt"), None)
+    sealed = paragraph.read_text(encoding="utf-8").rstrip("\n")  # `MSG=$(cat …)` drops final newlines
+    return first is not None and str(first.get("text") or "").rstrip("\n") == sealed
 
 
 def name_of(run: Path) -> tuple[str, str, str, int] | None:
@@ -168,11 +179,17 @@ def collect(runs_dir: Path) -> list[dict]:
             to_run_seconds=seen["to_run"]["modelled_seconds"],
             caught_before_code_n=seen["caught_before_code_n"],
             caught_before_code=seen["caught_before_code"],
+            board_acts=seen["board_acts"],
             attention_notes=seen["notes"],
         )
         void = run / "void.txt"
         tally.update(
             unforced_messages=unforced,
+            opening_is_sealed=(
+                opening_is_sealed(entries, HERE / "tasks" / task / "paragraph.md")
+                if style == "sealed"
+                else None
+            ),
             valid=not void.exists(),
             void_reason=void.read_text().strip() if void.exists() else "",
             run=run.name,
@@ -224,7 +241,7 @@ def medians(runs: list[dict], by: str) -> str:
     lines = ["| " + " | ".join(head) + " |", "|" + "|".join(["---"] * len(head)) + "|"]
     keys = [
         k
-        for k in (TASKS if by == "task" else ("dense", "tuesday"))
+        for k in (TASKS if by == "task" else ("dense", "tuesday", "sealed"))
         if any((k, arm) in groups for arm in ARMS)
     ]
     for key in [*keys, "all"]:

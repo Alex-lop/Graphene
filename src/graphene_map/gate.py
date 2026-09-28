@@ -117,6 +117,13 @@ TEACH = (
     "propose it in this text, and the person prunes it (they see it at once in `graphene watch`):\n"
     "graphene plan propose - <<'EOF'\n"
     "goal: their aim, in one sentence\n"
+    "question: what their words leave open and the repo cannot settle  [q-id]\n"
+    "    default: what you will assume if they do not answer\n"
+    "    option: another way, when there is one\n"
+    "    then: goal leaf-id + what the leaf does instead, in a sentence\n"
+    "risk: what could make a check pass on nothing, or a leaf go wrong  [r-id]\n"
+    "    default: what you would do about it\n"
+    "    then: check leaf-id: python3 -m pytest tests/pdf -q\n"
     "- a sub-goal  [short-id]\n"
     "  - a leaf: one piece of work  [leaf-id]\n"
     "      what it should achieve, in a line\n"
@@ -126,7 +133,16 @@ TEACH = (
     "EOF\n"
     "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
-    "`needs` orders leaves that build on each other."
+    "`needs` orders leaves that build on each other. Ask instead of guessing, and only what changes the "
+    "tree: put up on the board, at the left edge before the tree, at most three items, each a question: "
+    "with its default (and option: lines) or a risk: with its default, for what the repo cannot answer, "
+    "never what a file answers. An assumption you are confident of is not an item but a sentence in the "
+    "goal of the leaf it bears on; never put up an item whose answer would change nothing. Write each "
+    "leaf as the default has it; an option (or a default the leaves do not follow) that changes what a "
+    "leaf does, which files it may touch or how it is checked carries the then: lines that make the "
+    'change (goal LEAF + SENTENCE, scope LEAF + GLOB, check LEAF: COMMAND, drop LEAF, leaf "TITLE" '
+    "under NODE), so the answer changes the tree. Only the person "
+    "answers them (`graphene board`); what they decide is told to you in your leaf's contract."
 )
 FREE = (  # plan first off: the session's judgement, and decision 18 while a plan is in force
     "When the person describes work bigger than one quick change, or asks for a plan, do not start it: "
@@ -412,10 +428,15 @@ def scope_refused(
     """Why a write of ``rel`` by whoever holds ``held`` is refused, or None when a scope covers it. The
     refusal is logged on the node, where a hand-back's offers are read from. The Claude Code hook and
     the Nemotron executor's write tools both say it, so an agent of either meets the same words."""
-    if any(P.in_scope(rel, n.scope) for n in held):
+    standing = P.standing(store)
+    if any(P.binds(rel, n, standing) for n in held):
         return None
     n = held[0]
     store.log_node(n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
+    kept = P.kept_out_by(rel, standing)
+    if kept:
+        return (f"{rel} is kept out of every scope by the setting `{kept}` (`graphene config`); only the "
+                "person changes that. Leave it as it is")  # fmt: skip
     scopes = "; ".join(f"{h.id}: {', '.join(h.scope)}" for h in held)
     way_out = _how_out(store, session, held, [rel])
     return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
@@ -470,6 +491,44 @@ def _first_write(event: dict, root: Path) -> str | None:
     return None
 
 
+READ_TOOLS = {"Read", "Grep", "Glob"}
+
+
+def _protected_read(store, event: dict, root: Path) -> str | None:
+    """The protected path a Read, Grep or Glob would reach, or None. A Read names its file; a Grep or a
+    Glob reaches every file under its path (a Glob, those its pattern matches), so one that would pass
+    over a protected file is refused whole: what a planner reads is sent to its model."""
+    from . import settings  # here, not at the top: it imports plan, as this module does
+
+    tool = event.get("tool_name")
+    hidden = settings.protected(store) if tool in READ_TOOLS else []
+    if not hidden:
+        return None
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+    path = tool_input.get("file_path" if tool == "Read" else "path") or cwd or str(root)
+    rel = _rel(path, root, cwd) if isinstance(path, str) else None
+    if rel is None:
+        return None
+    # what the path reaches, not how it is spelled: a tracked link is followed, and on a disk that
+    # ignores case (a Mac's) SECRETS/ is secrets/, so the globs are matched casefolded
+    full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
+    real = _rel(os.path.realpath(full), Path(os.path.realpath(root)), None) or rel
+    folded = [g.casefold() for g in hidden]
+    for spelled in (rel, real):
+        if P.in_scope(spelled.casefold(), folded):
+            return spelled
+    if tool == "Read":
+        return None
+    base = "" if real in ("", ".") else real.rstrip("/").casefold() + "/"
+    under = [f for f in P.in_tree(root) if f.casefold().startswith(base)]
+    pattern = tool_input.get("pattern" if tool == "Glob" else "glob")
+    if isinstance(pattern, str) and pattern:  # a Grep's glob with no / matches a name at any depth, as rg's
+        named = tool == "Grep" and "/" not in pattern
+        under = [f for f in under if P.in_scope(f.rsplit("/", 1)[-1] if named else f[len(base) :], [pattern])]
+    return next((f for f in under if P.in_scope(f, hidden)), None)
+
+
 def decide(store, event: dict, root: Path) -> dict | None:
     """The hook's answer for this event, or None to say nothing."""
     name = event.get("hook_event_name")
@@ -498,6 +557,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
             store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
             return _deny("you are the planner: your only output is the proposal you print. Write no file"
                          if planner else _first_refused(store))  # fmt: skip
+    hidden = _protected_read(store, event, root) if name == "PreToolUse" and planner else None
+    if hidden is not None:
+        store.log_node("*", P._now(), "denied", None, sid, None, {"path": hidden, "how": "planner read"})
+        return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so "
+                     "never sends it to a model. Search a narrower path, or a glob, that leaves it out")
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")
@@ -542,6 +606,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         from .shell import bash_written_paths
 
         held = _held(store, sid)
+        standing = P.standing(store)
         rels = []
         for written, _kind in bash_written_paths(command, Path(cwd or root)):
             if not written.strip():
@@ -552,11 +617,13 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
-            if rel is not None and not (held and any(P.in_scope(rel, n.scope) for n in held)):
+            bound = held and any(P.binds(rel, n, standing) for n in held)
+            if rel is not None and not bound:
                 rels.append(rel)
-        ignored = _ignored(root, rels)  # a build leftover git ignores is nobody's change
+        # a build leftover git ignores is nobody's change; a standing path (an ignored .env) is never one
+        ignored = {r for r in _ignored(root, rels) if not P.kept_out_by(r, standing)}
         for rel in rels:
-            if rel in ignored or (held and any(P.in_scope(rel, n.scope) for n in held)):
+            if rel in ignored or (held and any(P.binds(rel, n, standing) for n in held)):
                 continue
             answer = _check_write(store, held, rel, event, "shell", root)
             if answer is not None:
@@ -571,8 +638,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
-        stray = [r for r in changed if r and not any(P.in_scope(r, n.scope) for n in held)]
-        ignored = _ignored(root, stray)
+        standing = P.standing(store)
+        stray = [r for r in changed if r and not any(P.binds(r, n, standing) for n in held)]
+        ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:
             return None

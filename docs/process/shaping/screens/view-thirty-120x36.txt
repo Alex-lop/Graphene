@@ -1,0 +1,36 @@
+ the plan of …AllThingsAgenticHackathon/d3d5effe-ac06-450c-8a0f-177242891dc7/scratchpad/render-repos/view-thirty-120x36
+the board: 5 open
+questions
+  ◇ which encodings does open a feed try, and in what order?                                         encodings    open
+    y  utf-8, then cp1252, the two our suppliers have sent this year
+    1  utf-8, cp1252 and latin-1, with chardet to guess
+       then scope csv-open + pyproject.toml
+    2  utf-8 only; anything else is a bad feed
+       about csv-open: open a feed whatever its encoding
+assumptions
+  ◇ a supplier's feed is under 200 MB, so the report can hold every bad row in memory                under-200mb  open
+risks
+  ◇ the dry run could still write the report file, and a person reads it as an import that happened  dry-writes   open
+    y  the dry run writes nothing but stdout
+       then check cli-dry: python -m feeds import --dry samples/ok.csv && test ! -e report.txt
+left out
+  ◇ mailing the report (r-email): nobody has asked for it and it needs SMTP settings                 no-email     open
+    y  r-email leaves the plan
+       then drop r-email
+notes
+  ◇ the old system's fixed width feeds end in March; keep that leaf small                            fixed-ends   open
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ question encodings · open
+ put up by the planner
+
+ which encodings does open a feed try, and in what order?
+
+ y default  utf-8, then cp1252, the two our suppliers have sent this year
+ 1 option   utf-8, cp1252 and latin-1, with chardet to guess
+   then     scope csv-open + pyproject.toml
+ 2 option   utf-8 only; anything else is a bad feed
+ about      csv-open: open a feed whatever its encoding
+
+
+ waiting on you: 5 · executors: 2 running · R runs 4 ready · 14/26 done · plan first: on (P)
+ y take: utf-8, then… · 1 pick: utf-8, cp1252… · 2 pick: utf-8 only… · d drop · p park · Enter answer · a note

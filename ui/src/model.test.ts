@@ -197,4 +197,8 @@ test("a read-only page disables every control, with the same reason", () => {
 test("a label that has to fit is cut with an ellipsis, never mid-layout", () => {
   expect(clip("users endpoint", 200, 6.4)).toBe("users endpoint");
   expect(clip("a title far too long to fit in this box", 60, 6.4)).toBe("a title …"); // nine characters fit at 6.4 px each, and the last is the ellipsis
+  // an East Asian wide character, or an emoji, takes two: four of them and the ellipsis in the same nine
+  expect(clip("読み込みの仕組みを作る", 60, 6.4)).toBe("読み込み…");
+  expect(clip("🚀🚀🚀🚀🚀🚀", 60, 6.4)).toBe("🚀🚀🚀🚀…");
+  expect(clip("読み込み", 60, 6.4)).toBe("読み込み");
 });

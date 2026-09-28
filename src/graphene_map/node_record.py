@@ -118,7 +118,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         node.title,
         node.state,
         node.owner,
-        list(node.scope),
+        P.as_scoped(node, P.standing(store)),  # as it binds: a standing path is in no scope, an aside's too
         P.done_means(node),
         at,
         windows,
@@ -375,7 +375,7 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
     blind = [w.n for w in windows if w.under is None]
     counts = {
         "changed_files": len(under),  # what git itself said had changed under the node
-        "changed_in_scope": sum(P.in_scope(path, node.scope) for path in under),
+        "changed_in_scope": sum(P.in_scope(path, P.as_scoped(node, P.standing(store))) for path in under),
         "changed_edit": 0,
         "changed_shell": 0,
         "changed_nothing": len(under),
@@ -699,10 +699,10 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
     records = [(n, node_record(store, root, n, at)) for n in held]
     counted = [(n, r) for n, r in records if r.coverage.get("changed_computed")]
     paths: dict[str, bool] = {}
-    for n, r in counted:
+    for _, r in counted:
         for w in r.windows:
             for path in w.under or []:
-                paths[path] = paths.get(path, False) or P.in_scope(path, n.scope)
+                paths[path] = paths.get(path, False) or P.in_scope(path, r.scope)
     total = {k: sum(r.coverage[k] for _, r in counted) for k in ("changed_edit", "changed_shell")}
     done = sum(1 for n in leaves if n.state == P.DONE)
     lines = [

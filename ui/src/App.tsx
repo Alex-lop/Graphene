@@ -6,15 +6,20 @@ import type { ReactElement } from "react";
 import { Footer, Header, Rail } from "./Chrome";
 import { Inspector } from "./Inspector";
 import { MapView } from "./Map";
-import { PlanHeader, PlanInspector, PlanStrip, PlanTree, PlanView } from "./Plan";
+import { LayoutBar, PlanHeader, PlanInspector, PlanStrip, PlanTopDown, PlanTree, PlanView } from "./Plan";
 import { exported, load, send } from "./data";
-import { chain, matching } from "./model";
-import type { Counter, Selection, View } from "./model";
+import { chain, matching, shownLayout } from "./model";
+import type { Counter, Mode, Selection, View } from "./model";
 import type { Payload } from "./types";
 
 const EVERY = 2000; // milliseconds between reads of the plan while the tab is in front
+const INSPECTOR = 380; // the plan's right column, beside the drawing on a wide window (app.css)
+
+/** How wide the drawing's pane is, near enough to choose a layout by. */
+const room = (): number => (typeof window === "undefined" ? Infinity : window.innerWidth - (window.innerWidth > 800 ? INSPECTOR : 0));
 
 export function App(): ReactElement {
+  const [mode, setMode] = useState<Mode>(null); // what the viewer clicked on this page; kept nowhere
   const [payload, setPayload] = useState<Payload | null>(null);
   const [failed, setFailed] = useState(false);
   const [session, setSession] = useState<string | null>(null);
@@ -95,13 +100,16 @@ export function App(): ReactElement {
   const current = graph.run.sessions.map((s) => s.id);
 
   if (shown === "plan") {
+    const { layout: drawn, mode: pressed, why: because } = shownLayout(plan, mode, room());
     return (
       <div className="app plan">
         <PlanHeader plan={plan} view={shown} onView={setView} recorded={runs.length} />
         <main className="centre">
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
-          <PlanTree plan={plan} picked={picked} onPick={setPicked} />
-          <PlanView plan={plan} picked={picked} onPick={setPicked} />
+          <LayoutBar plan={plan} layout={drawn} mode={pressed} why={because} onLayout={setMode} />
+          {drawn === "outline" && <PlanTree plan={plan} picked={picked} onPick={setPicked} />}
+          {drawn === "tree" && <PlanTopDown plan={plan} picked={picked} onPick={setPicked} />}
+          {drawn === "graph" && <PlanView plan={plan} picked={picked} onPick={setPicked} />}
         </main>
         <PlanInspector plan={plan} picked={picked} write={write} />
       </div>

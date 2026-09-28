@@ -1,0 +1,36 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpkg464cs4/night
+▼ ? Graphene has settings a person states once: where the…      proposed │ Graphene has settings a person states once:
+├ ▼ ? the Token Factory key                         keys        proposed │ where the Token Factory key is found,
+│ ├   ? find, store and remove the key: the…        key-store   proposed │ standing conditions the gate enforces, and
+│ ├   ? Token Factory calls use keys.find()…        key-use     proposed │ the plan size, all shown and edited with
+│ └   ? graphene key set, check and remove, for a…  key-cli     proposed │ graphene config
+├ ▼ ? standing conditions                           conditions  proposed │ the goal · proposed with the tree:
+│ ├   ? the settings, their text form and their…    settings    proposed │ accepting any of it accepts it
+│ ├   ? the gate refuses a scope that breaks a…     cond-gate   proposed │
+│ └   ? protected paths are never read by a…        cond-reads  proposed │ ? the Token Factory key            proposed
+├ ▼ ? plan size                                     size        proposed │ ? standing conditions              proposed
+│ ├   ? measure the repo and the ask, and say…      sizing      proposed │ ? plan size                        proposed
+│ ├   ? the planner is told the conditions and…     ask-told    proposed │ ? graphene config                  proposed
+│ └   ? graphene ask --finer and --coarser          ask-flags   proposed │
+└ ▼ ? graphene config                               config      proposed │ waiting  keys, conditions, size and config
+  ├   ? graphene config and graphene config edit    config-cli  proposed │          are proposed, for you to accept or
+  └   ? register key and config, and init writes…   cli-wire    proposed │          prune
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 4 · executors: none · nothing ready to run · 0/0 done · plan first: on (P)
+ graphene watch --view outline

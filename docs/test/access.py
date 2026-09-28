@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import signal
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from graphene_map import keys  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
 
@@ -84,19 +85,21 @@ def sandbox_smoke(kind: str) -> dict:
         steps[name] = round(time.monotonic() - began, 2)
         return result
 
-    image, code, out = timed("make and run (import the image if needed)", lambda: box.run(
-        S.IMAGE, "python3 -c 'print(6 * 7)' > /tmp/answer; cat /tmp/answer", {}, 300))  # fmt: skip
-    if code != 0:
-        return {"ok": False, "steps": steps, "said": out[-300:]}
-    forked, fcode, fout = timed("fork from the image it made",
-                                lambda: box.run(image, "cat /tmp/answer", {}, 300))  # fmt: skip
-    with ThreadPoolExecutor(2) as pool:
-        both = timed("two forks at once", lambda: list(pool.map(
-            lambda k: box.run(image, f"echo fork{k} $(cat /tmp/answer)", {}, 300), (1, 2))))  # fmt: skip
+    try:  # a stop or a failure removes the checkpoints it made too
+        image, code, out = timed("make and run (import the image if needed)", lambda: box.run(
+            S.IMAGE, "python3 -c 'print(6 * 7)' > /tmp/answer; cat /tmp/answer", {}, 300))  # fmt: skip
+        if code != 0:
+            return {"ok": False, "steps": steps, "said": out[-300:]}
+        forked, fcode, fout = timed("fork from the image it made",
+                                    lambda: box.run(image, "cat /tmp/answer", {}, 300))  # fmt: skip
+        with ThreadPoolExecutor(2) as pool:
+            both = timed("two forks at once", lambda: list(pool.map(
+                lambda k: box.run(image, f"echo fork{k} $(cat /tmp/answer)", {}, 300), (1, 2))))  # fmt: skip
+    finally:
+        if hasattr(box, "forget"):
+            box.forget()
     forks = [b[2].strip() for b in both]
     ok = out.strip() == "42" and fout.strip() == "42" and forks == ["fork1 42", "fork2 42"]
-    if hasattr(box, "forget"):
-        box.forget()
     return {"ok": ok, "steps": steps, "operations": box.ops}
 
 
@@ -105,10 +108,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sandbox", choices=("contree", "docker", "none"), default="contree")
     ap.add_argument("--out", type=Path, default=Path(__file__).parent / f"access-{date.today()}.json")
     args = ap.parse_args(argv)
-    report: dict = {"at": time.strftime("%Y-%m-%d %H:%M %Z"), "key": bool(os.environ.get(tf.KEY))}
+    # the ladder stops it with a TERM: taken as Ctrl-C, so the sandbox's own cleanup (its container) runs
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    report: dict = {"at": time.strftime("%Y-%m-%d %H:%M %Z"), "key": bool(keys.find())}
     lines = [f"Access, checked {report['at']} (docs/test/access.py):"]
     if not report["key"]:
-        lines.append("- Token Factory: NEBIUS_API_KEY is not set in this shell; nothing was sent.")
+        lines.append("- Token Factory: NEBIUS_API_KEY is not set in this shell and no key is in the "
+                     "keychain; nothing was sent.")
     else:
         try:
             listed = tf.models()
