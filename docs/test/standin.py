@@ -291,6 +291,11 @@ WHEN YOU ARE FINISHED
 """
 
 
+def card(task: str, tasks: Path = HERE / "tasks") -> str:
+    """The task's card, whole: pasted at the end of a brief and read by nobody who starts a run."""
+    return (tasks / task / "intent.md").read_text(encoding="utf-8")
+
+
 def brief(task: str, style: str, arm: str, run_dir: Path, venv: str, tasks: Path = HERE / "tasks") -> str:
     base = (run_dir / "base.sha").read_text().strip()
     paragraph, change = tasks / task / "paragraph.md", tasks / task / "change.md"
@@ -308,7 +313,7 @@ def brief(task: str, style: str, arm: str, run_dir: Path, venv: str, tasks: Path
         style=STYLES[style].format(paragraph=paragraph, change=written),
         arm=ARMS[arm].format(base=base, executor=EXECUTOR),
         by_hand=BY_HAND,
-        card=(tasks / task / "intent.md").read_text(encoding="utf-8"),
+        card=card(task, tasks),
     )
 
 
