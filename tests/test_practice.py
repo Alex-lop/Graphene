@@ -80,6 +80,11 @@ def test_in_an_agents_shell_the_access_rung_is_typed_by_the_person(tmp_path):
     assert "most likely: the access check is yours to run" in done.stdout
     assert not (tmp_path / "state" / "access.json").exists()  # nothing was run
     assert not done.stdout.startswith("dry run")
+    # the line to type holds the rung's cap and the locked environment, and names the rung as `next` does
+    typed = "GRAPHENE_SPEND_CAP_USD=0.2500 uv run --frozen --extra sandbox python docs/test/access.py"
+    assert typed in done.stdout
+    assert "then `! docs/test/practice.sh 1` again" in done.stdout
+    assert "next: docs/test/practice.sh 1" in done.stdout
 
 
 def test_the_dry_run_removes_only_a_state_it_made(tmp_path):

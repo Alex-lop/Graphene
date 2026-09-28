@@ -223,12 +223,12 @@ def access(r: Rung) -> str:
     if DRY:
         args += ["--sandbox", "docker" if docker_runs() else "none"]
     if not DRY and any(os.environ.get(m) for m in MARKS):  # an agent's shell: the classifier refuses it
-        typed = f"! GRAPHENE_LEDGER={rel(LEDGER)} uv run --extra sandbox python docs/test/access.py"
-        typed += f" --out {rel(out)}"
+        typed = (f"! GRAPHENE_LEDGER={rel(LEDGER)} GRAPHENE_SPEND_CAP_USD={r.env['GRAPHENE_SPEND_CAP_USD']} "
+                 f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
         if not fresh:
             raise Failed(
-                f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME}` again"
+                f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME} 1` again"
             )
         say(f"  reading what you ran today: {out}")
     else:
