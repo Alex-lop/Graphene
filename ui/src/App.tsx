@@ -120,13 +120,14 @@ export function App(): ReactElement {
   const current = graph.run.sessions.map((s) => s.id);
 
   if (shown === "plan") {
-    const drawn = layout ?? layoutFor(plan, room());
+    const [chosen, because] = layoutFor(plan, room());
+    const drawn = layout ?? chosen;
     return (
       <div className="app plan">
         <PlanHeader plan={plan} view={shown} onView={setView} recorded={runs.length} />
         <main className="centre">
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
-          <LayoutBar plan={plan} layout={drawn} picked={layout !== null} onLayout={pick} />
+          <LayoutBar plan={plan} layout={drawn} why={layout !== null ? "your choice, kept in this browser" : `chosen: ${because}`} onLayout={pick} />
           {drawn === "outline" && <PlanTree plan={plan} picked={picked} onPick={setPicked} />}
           {drawn === "tree" && <PlanTopDown plan={plan} picked={picked} onPick={setPicked} />}
           {drawn === "graph" && <PlanView plan={plan} picked={picked} onPick={setPicked} />}

@@ -197,6 +197,7 @@ export interface PlanNode {
   y: number;
   tree_x: number; // where it sits in the top-down tree
   tree_y: number;
+  tree_w: number; // its box's width in the tree, sized to what it says
   width: number;
   height: number;
 }

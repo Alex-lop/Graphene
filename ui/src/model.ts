@@ -281,17 +281,24 @@ export type View = "plan" | "record";
  * the graph of what waits on what, left to right. */
 export type Layout = "outline" | "tree" | "graph";
 
-/** Why the page shows the layout it shows, when the viewer has not picked one. */
-export const BECAUSE: Record<Layout, string> = {
-  graph: "some nodes wait on others",
-  tree: "nothing waits on anything, and the tree fits",
-  outline: "nothing waits on anything, and the tree is wider than the window",
-};
+export const PAD_X = 132; // the graph's lane-name gutter, which is the page's own margin, not a position
+export const PAD_Y = 16;
+const FIT = 0.8; // the least scale a drawing is chosen at: below it the says line is about 8 px
 
-/** The layout the plan's shape calls for: the graph when anything waits on anything, else the tree
- * when it fits `room` pixels across, else the outline. */
-export const layoutFor = (plan: Plan, room: number): Layout =>
-  plan.edges.length > 0 ? "graph" : plan.tree_width + 32 <= room ? "tree" : "outline";
+/** How wide each drawing is on the page, gutters and all. */
+export const graphWidth = (plan: Plan): number => PAD_X + plan.width + 24;
+export const treeWidth = (plan: Plan): number => plan.tree_width + PAD_Y * 2;
+
+/** The layout the plan's shape calls for, and why: the graph when anything waits on anything and it
+ * fits `room` pixels across at 0.8, else the tree when it fits, else the outline. Only the width
+ * counts: a drawing taller than its pane pans down. */
+export const layoutFor = (plan: Plan, room: number): [Layout, string] => {
+  const waits = plan.edges.length > 0;
+  const fits = (width: number) => width * FIT <= room;
+  if (waits && fits(graphWidth(plan))) return ["graph", "some nodes wait on others, and the graph fits"];
+  if (fits(treeWidth(plan))) return ["tree", waits ? "the graph is too wide for the window, and the tree fits" : "nothing waits on anything, and the tree fits"];
+  return ["outline", waits ? "the graph and the tree are too wide for the window" : "nothing waits on anything, and the tree is too wide for the window"];
+};
 
 /** What a state is called on screen. It is printed as words beside the shape, never as colour alone. */
 export const STATE: Record<Shown, string> = {

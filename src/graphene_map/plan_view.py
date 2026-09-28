@@ -28,7 +28,9 @@ changes what an agent can do or says where the mechanism behind it stops; none o
 
 from __future__ import annotations
 
+import math
 import subprocess
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
@@ -43,6 +45,8 @@ ROW_GAP = 12
 LANE_PAD = 26  # room above a lane's first row for the lane's name
 LANE_GAP = 20
 TREE_GAP = 24  # between two boxes side by side in the tree
+TREE_MIN = 140  # the narrowest box in the tree: its state word and a sign-off tag side by side
+CHAR, SMALL = 6.4, 5.9  # the page's pixels a column of a title (13 px) and of the id line (11 px) take
 TREE_DROP = 48  # between a parent's bottom edge and its children's top edge
 LOG_TAIL = 12  # log entries kept per node, newest last; the page polls, so every entry is paid for every 2 s
 SAID_CAP = 400  # a check's output is up to 2000 characters; the inspector shows its head
@@ -109,6 +113,7 @@ class ViewNode:
     y: float
     tree_x: float = 0.0  # where it sits in the top-down tree
     tree_y: float = 0.0
+    tree_w: float = NODE_W  # its box's width in the tree: as its title and id line need (tree_w)
     width: int = NODE_W
     height: int = NODE_H
 
@@ -195,22 +200,64 @@ def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
     return out
 
 
-def tidy(tree: list[tuple[P.Node, int]], under: dict) -> dict[str, tuple[float, float]]:
-    """The top-down tree: each leaf takes the next slot left to right in outline order, and each
-    parent sits centred over its first and last child, so no two boxes touch and a parent is always
-    above what it is made of. The goal is the top row; a node's row is its depth plus one."""
-    slots = iter(range(len(tree)))
-    x = {n.id: next(slots) * (NODE_W + TREE_GAP) for n, _ in tree if not under.get(n.id)}
+def cols(text: str) -> int:
+    """The columns a text takes, an East Asian wide or fullwidth character (and an emoji) counting two,
+    as the page's `clip` counts them (ui/src/model.ts)."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def tree_w(node: P.Node) -> float:
+    """A box in the tree, as wide as its title and its id line need, from TREE_MIN to NODE_W: a plan
+    of short leaves fits a window a fixed width would not. The revision is left out, so an edit never
+    moves a box; the page cuts what does not fit."""
+    who = f"{node.id} · {'any agent' if node.owner == P.AGENT else node.owner}"
+    return float(min(NODE_W, max(TREE_MIN, math.ceil(24 + max(CHAR * cols(node.title), SMALL * cols(who))))))
+
+
+def tidy(tree: list[tuple[P.Node, int]], under: dict, wide: dict[str, float]) -> tuple[dict, float]:
+    """The top-down tree: the leaves side by side left to right in outline order, each in a slot as
+    wide as its box, and each parent centred over its first and last child. Each subtree is laid out
+    on its own and then placed beside the one before, so no two boxes touch at any depth, and a parent
+    wider than what is under it widens its subtree instead. The goal (NODE_W wide) is the top row; a
+    node's row is its depth plus one. Returns each node's (x, y) and the goal's x."""
+    rel: dict[str, dict[str, float]] = {}  # each subtree's xs, from its own left edge
+    span: dict[str, float] = {}
+
+    def beside(ids: list[str]) -> tuple[dict[str, float], float]:
+        out, left = {}, 0.0
+        for i in ids:
+            out |= {k: x + left for k, x in rel[i].items()}
+            left += span[i] + TREE_GAP
+        return out, left - TREE_GAP
+
+    def over(xs: dict[str, float], ids: list[str], width: float) -> float:
+        return (xs[ids[0]] + wide[ids[0]] / 2 + xs[ids[-1]] + wide[ids[-1]] / 2) / 2 - width / 2
+
     for n, _ in reversed(tree):  # children before their parents
-        if n.id not in x:
-            x[n.id] = (x[under[n.id][0].id] + x[under[n.id][-1].id]) / 2
-    return {n.id: (x[n.id], (depth + 1) * (NODE_H + TREE_DROP)) for n, depth in tree}
+        kids = [k.id for k in under.get(n.id, [])]
+        if not kids:
+            rel[n.id], span[n.id] = {n.id: 0.0}, wide[n.id]
+            continue
+        xs, width = beside(kids)
+        x = over(xs, kids, wide[n.id])
+        shift = max(0.0, -x)
+        rel[n.id] = {k: v + shift for k, v in xs.items()} | {n.id: x + shift}
+        span[n.id] = max(width + shift, x + shift + wide[n.id])
+    roots = [n.id for n, depth in tree if depth == 0]
+    xs, _ = beside(roots)
+    goal = over(xs, roots, NODE_W)
+    shift = max(0.0, -goal)
+    return {n.id: (xs[n.id] + shift, (depth + 1) * (NODE_H + TREE_DROP)) for n, depth in tree}, goal + shift
 
 
-def _link(source: str, at: tuple[float, float], target: str, to: tuple[float, float]) -> ViewEdge:
-    """Down from the parent's bottom edge to the child's top edge, turning halfway between them."""
-    sx, sy = at[0] + NODE_W / 2, at[1] + NODE_H
-    tx, ty = to[0] + NODE_W / 2, to[1]
+Box = tuple[float, float, float]  # a box in the tree: x, y, width
+
+
+def _link(source: str, at: Box, target: str, to: Box) -> ViewEdge:
+    """Down from the parent's bottom edge to the child's top edge, turning halfway between them; each
+    box is (x, y, width)."""
+    sx, sy = at[0] + at[2] / 2, at[1] + NODE_H
+    tx, ty = to[0] + to[2] / 2, to[1]
     middle = sy + TREE_DROP / 2
     points = [[sx, sy], [tx, ty]] if sx == tx else [[sx, sy], [sx, middle], [tx, middle], [tx, ty]]
     return ViewEdge(f"{source}>{target}", source, target, points)
@@ -507,16 +554,18 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     view.width = max(n.x + NODE_W for n in view.nodes)
     view.height = y - LANE_GAP
 
-    at = tidy(tree, under)
+    wide = {n.id: tree_w(n) for n, _ in tree}
+    at, goal = tidy(tree, under, wide)
+    box = {i: (x, y, wide[i]) for i, (x, y) in at.items()}
     for shown in view.nodes:
         shown.tree_x, shown.tree_y = at[shown.id]
-    roots = [n.id for n, d in tree if d == 0]
-    view.tree_goal = [(at[roots[0]][0] + at[roots[-1]][0]) / 2, 0.0]
-    view.tree_links = [_link("", tuple(view.tree_goal), r, at[r]) for r in roots] + [
-        _link(n.parent, at[n.parent], n.id, at[n.id]) for n, d in tree if d > 0
+        shown.tree_w = wide[shown.id]
+    view.tree_goal = [goal, 0.0]
+    view.tree_links = [_link("", (goal, 0.0, NODE_W), n.id, box[n.id]) for n, d in tree if d == 0] + [
+        _link(n.parent, box[n.parent], n.id, box[n.id]) for n, d in tree if d > 0
     ]
-    view.tree_width = max(x for x, _ in at.values()) + NODE_W
-    view.tree_height = max(y for _, y in at.values()) + NODE_H
+    view.tree_width = max(x + w for x, _, w in box.values())
+    view.tree_height = max(y for _, y, _ in box.values()) + NODE_H
     return asdict(view)
 
 

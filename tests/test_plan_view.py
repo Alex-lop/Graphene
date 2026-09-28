@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from graphene_map import plan
-from graphene_map.plan_view import HOLES, NODE_H, NODE_W, build_plan_view
+from graphene_map.plan_view import HOLES, NODE_H, NODE_W, TREE_MIN, build_plan_view
 from graphene_map.store import Store
 
 ALEX = plan.Caller("alex", True)
@@ -163,11 +163,15 @@ def test_a_sub_goal_counts_the_leaves_beneath_it_as_they_finish(store, repo, fin
 
 
 def tree_boxes(view):
-    return [(n["tree_x"], n["tree_y"], n["width"], n["height"]) for n in view["nodes"]]
+    return [(n["tree_x"], n["tree_y"], n["tree_w"], n["height"]) for n in view["nodes"]]
 
 
 def sub(node_id, *children):
     return node(node_id, scope=[], check=None, children=list(children))
+
+
+def centre(n):
+    return n["tree_x"] + n["tree_w"] / 2
 
 
 def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_centred_over_its_children(
@@ -178,7 +182,7 @@ def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_c
         store,
         [
             sub("readers", node("csv"), sub("xml", node("parse"), node("wire"), node("map")), node("json")),
-            node("alone"),
+            node("alone", title="a leaf whose title is far too long for any box the tree would give it"),
             sub("proof", node("e2e", needs=["readers"])),
         ],
         ALEX,
@@ -186,15 +190,17 @@ def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_c
     first, second = build_plan_view(store), build_plan_view(store)
     assert first["nodes"] == second["nodes"] and first["tree_links"] == second["tree_links"]
     at = {n["id"]: n for n in first["nodes"]}
-    tree = {**first, "nodes": [{**n, "x": n["tree_x"], "y": n["tree_y"]} for n in first["nodes"]]}
+    drawn = [{**n, "x": n["tree_x"], "y": n["tree_y"], "width": n["tree_w"]} for n in first["nodes"]]
+    tree = {**first, "nodes": drawn}
     assert overlapping(tree) == []
     for parent in ("readers", "xml", "proof"):
         kids = [n for n in first["nodes"] if n["parent"] == parent]
-        assert at[parent]["tree_x"] == (kids[0]["tree_x"] + kids[-1]["tree_x"]) / 2
+        assert centre(at[parent]) == (centre(kids[0]) + centre(kids[-1])) / 2
         assert all(k["tree_y"] >= at[parent]["tree_y"] + NODE_H + 40 for k in kids)  # below it, clear of it
     tops = [n for n in first["nodes"] if n["depth"] == 0]
-    assert first["tree_goal"] == [(tops[0]["tree_x"] + tops[-1]["tree_x"]) / 2, 0.0]  # the goal on top
+    assert first["tree_goal"] == [(centre(tops[0]) + centre(tops[-1])) / 2 - NODE_W / 2, 0.0]  # on top
     assert min(n["tree_y"] for n in first["nodes"]) > NODE_H
+    assert min(n["tree_x"] for n in first["nodes"]) >= 0 and first["tree_goal"][0] >= 0
     leaves = [n["id"] for n in sorted(first["nodes"], key=lambda n: n["tree_x"]) if not n["sub_goal"]]
     assert leaves == ["csv", "parse", "wire", "map", "json", "alone", "e2e"]  # outline order, left to right
     links = {(link["source"], link["target"]) for link in first["tree_links"]}
@@ -202,10 +208,25 @@ def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_c
         (n["parent"], n["id"]) for n in first["nodes"] if n["parent"]
     }
     wire = next(link for link in first["tree_links"] if link["target"] == "wire")
-    assert wire["points"][0] == [at["xml"]["tree_x"] + NODE_W / 2, at["xml"]["tree_y"] + NODE_H]
-    assert wire["points"][-1] == [at["wire"]["tree_x"] + NODE_W / 2, at["wire"]["tree_y"]]
-    assert first["tree_width"] == max(n["tree_x"] for n in first["nodes"]) + NODE_W
+    assert wire["points"][0] == [centre(at["xml"]), at["xml"]["tree_y"] + NODE_H]
+    assert wire["points"][-1] == [centre(at["wire"]), at["wire"]["tree_y"]]
+    assert first["tree_width"] == max(n["tree_x"] + n["tree_w"] for n in first["nodes"])
     assert first["tree_height"] == max(n["tree_y"] for n in first["nodes"]) + NODE_H
+
+
+def test_a_tree_slot_is_as_wide_as_what_its_box_says_so_a_plan_of_short_leaves_fits_the_window(store):
+    """A box in the tree is sized to its title and its id line, between TREE_MIN and NODE_W, a wide
+    character counting two columns; the graph keeps its one width. Five short leaves then fit the
+    page's pane at 1280 (900 px beside the inspector), where five slots of NODE_W would not."""
+    plan.propose(store, [node(f"l{k}") for k in range(5)], ALEX)
+    view = build_plan_view(store)
+    assert {n["tree_w"] for n in view["nodes"]} == {TREE_MIN}
+    assert {n["width"] for n in view["nodes"]} == {NODE_W}
+    assert view["tree_width"] + 32 <= 900 < 5 * (NODE_W + 24) - 24 + 32
+    wide, latin = node("cjk", title="読み込みの仕組みを作る長い題名"), node("latin", title="x" * 15)
+    plan.propose(store, [wide, latin], ALEX)
+    at = {n["id"]: n for n in build_plan_view(store)["nodes"]}
+    assert at["cjk"]["tree_w"] == NODE_W > at["latin"]["tree_w"]  # 15 wide characters are 30 columns
 
 
 def test_the_critical_path_on_a_diamond_is_the_longest_chain_and_a_tie_goes_to_the_plans_order(store):

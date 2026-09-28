@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
 import { layoutFor } from "./model";
-import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView } from "./Plan";
+import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, startScale } from "./Plan";
 import type { Plan, PlanEdge, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
@@ -40,6 +40,7 @@ const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   row: 0,
   x: 0,
   y: 0,
+  tree_w: 200,
   tree_x: 0,
   tree_y: 124,
   width: 200,
@@ -160,15 +161,32 @@ test("with no Claude Code session recorded, the record screen cannot be opened a
   expect(record(header(1))).not.toContain("disabled");
 });
 
-test("the page draws the plan the way its shape calls for: the graph when anything waits, else the tree when it fits, else the outline", () => {
-  expect(layoutFor(feeds, 2000)).toBe("graph");
-  expect(layoutFor(feeds, 100)).toBe("graph"); // what waits on what is the thing to see, and it pans
-  expect(layoutFor(plan, 1000)).toBe("tree");
-  expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toBe("outline");
+test("the page draws the plan the way its shape calls for: the graph when anything waits and it fits at 0.8, else the tree when it fits, else the outline", () => {
+  // feeds' graph is 132 + 440 + 24 = 596 px wide; its tree 200 + 32
+  const wide = { ...feeds, width: 440, tree_width: 200 };
+  expect(layoutFor(wide, 2000)).toEqual(["graph", "some nodes wait on others, and the graph fits"]);
+  expect(layoutFor(wide, 596 * 0.8)[0]).toBe("graph"); // drawn at 0.8, still readable
+  expect(layoutFor(wide, 596 * 0.8 - 1)).toEqual(["tree", "the graph is too wide for the window, and the tree fits"]);
+  expect(layoutFor({ ...wide, tree_width: 4000 }, 300)).toEqual(["outline", "the graph and the tree are too wide for the window"]);
+  expect(layoutFor(plan, 1000)).toEqual(["tree", "nothing waits on anything, and the tree fits"]);
+  expect(layoutFor({ ...plan, tree_width: 4000 }, 1000)).toEqual(["outline", "nothing waits on anything, and the tree is too wide for the window"]);
+});
+
+test("a drawing starts at the scale that fits its width, never below 0.6, and one only taller than its pane is not shrunk", () => {
+  expect(startScale(500, 900)).toBe(1); // narrower than the pane: however tall, drawn at 1 and panned down
+  expect(startScale(1000, 900)).toBe(0.9);
+  expect(startScale(3000, 900)).toBe(0.6); // a layout the viewer picked though it is far too wide: readable, dragged
+});
+
+test("the tree's boxes are as wide as Python sized them", () => {
+  const sized: Plan = { ...plan, nodes: [node("a", { tree_w: 140 })] };
+  const html = renderToStaticMarkup(<PlanTopDown plan={sized} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/data-node="a"[^>]*><rect class="box" width="140"/);
 });
 
 test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start at once in words, as the terminal names it", () => {
-  const bar = (picked: boolean) => renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" picked={picked} onLayout={() => undefined} />);
+  const bar = (picked: boolean) =>
+    renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" why={picked ? "your choice, kept in this browser" : "chosen: some nodes wait on others"} onLayout={() => undefined} />);
   const html = bar(false);
   expect(html).toMatch(/data-layout="graph"/);
   expect(html.match(/<button/g)).toHaveLength(3);
@@ -177,7 +195,7 @@ test("the switch has the three layouts, says why this one was chosen, and says t
   expect(html).toContain("critical path: xml-reader → xml-wire → xml-e2e");
   expect(html).toContain("2 at once: xml-reader, zero-rule");
   expect(bar(true)).toContain("your choice, kept in this browser");
-  expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" picked={false} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+  expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" why="" onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
 });
 
 test("in the graph the critical path is drawn heavier, its edges and its boxes, and a leaf that can start now is marked", () => {
