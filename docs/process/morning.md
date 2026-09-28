@@ -59,12 +59,13 @@ Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read
 
 ## The evidence
 
-- **The suite:** 1359 passed, 2 skipped at `5fadf9b` (the full suite, 29 min); the three 60 ms hook
+- **The suite:** 1359 passed, 2 skipped at `ba7701a` (the full suite, 29 min); the three 60 ms hook
   time-budget tests failed under a load of about 30 and pass on the final head once it is quiet (4
   passed). The race fixes merged after it (`g-flaky`, four files) were run on their own: 85 passed.
   ruff clean.
-- **CI: green on all seven jobs at `71e0e17`** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the
-  page), the last commit that changes code; later commits touch only `docs/process/morning.md`.
+- **CI: green on all seven jobs for this code** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the
+  page). It ran before the reshaping, as `71e0e17`; `172bd1d` is the same tree, the last commit that
+  changes code, and CI runs again on the new head.
 - **The ladder, dry, on the final head:** all seven rungs PASS in 1 min 43 s, bill $0.0049 against
   the stand-ins; the fake key given to it appears in nothing it wrote.
 - **The evaluation:** 12 board trials and 3 graph trials by three stand-ins in a logged tmux seat, at
@@ -81,7 +82,7 @@ Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read
 ## The closing review
 
 Five adversaries (the board, the views, settings and keys, the ladder, the claims) went over
-`cb2ce54..2111115`, each finding reproduced from scratch by a skeptic before any fix: 48 findings,
+`cb2ce54..125fc7c`, each finding reproduced from scratch by a skeptic before any fix: 48 findings,
 45 confirmed, 3 refuted. Six were blockers, all fixed with a test each (DIRECTION 100): a re-ask that
 lost the tree when the planner failed, a re-ask that took a split's proposals with it, a crash on a
 joined emoji, a shell write to a git-ignored protected path that nothing saw, a key echoed back in a
@@ -91,6 +92,11 @@ whole path filed 72 rough edges (`docs/process/shaping/walks.md`); 18 were fixed
 ## State of every branch
 
 - **`shaping`:** this run, pushed; draft PR #31.
+- **The history was reshaped** on the morning of 28 September, at your request: 333 commits became
+  46, one per feature or step, each a state the branch really passed through, and the last one's tree
+  identical to what CI passed. Every hash in this file and in `DIRECTION.md` is in the new history, except where one says it is the old one.
+  The old 333 are on `shaping-full-history` (`git push --force origin shaping-full-history:shaping`
+  puts them back).
 - **Merged into `shaping`** and kept (`git branch -d` drops them): every lane, fix and study branch
   tonight (`lane-*`, `integ`, `a-final*`, `f-*`, `g-*`, `study3`, `scribe`, `cover-fix`, `note-fix`,
   `precheck-fix`, `worktree-*`), and `lane-b` from `~/graphene-night`.

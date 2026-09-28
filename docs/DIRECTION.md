@@ -1135,15 +1135,16 @@ as written and the change is named here.
     PATH; and the ladder gave each rung an environment without any `GRAPHENE_` setting, so the tests'
     rung 1 asked your real keychain for a key, and found that fake one. *Now:* `tests/conftest.py`
     and `docs/test/conftest.py` set `GRAPHENE_KEYCHAIN=off` for every test, only the tool `which()`
-    found is run, and a rung keeps `GRAPHENE_KEYCHAIN=off` when the shell sets it (`1770539`). The
+    found is run, and a rung keeps `GRAPHENE_KEYCHAIN=off` when the shell sets it (`30266c1`). The
     reproductions used a fake `security` on the PATH, whose call log stayed empty through the suite.
     *Evidence:* `tests/test_keys.py::test_the_suite_never_reaches_the_real_keychain`,
     `docs/test/test_access.py::test_the_docs_suite_never_reaches_the_real_keychain`,
     `test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path`,
     `tests/test_practice.py::test_in_a_terminal_of_your_own_the_access_rung_runs_the_check_itself`.
 97. **The shaping study ran on one pinned build, and its first design never ran.** The build is a
-    wheel of `668c7fd` in a venv of its own, first on the PATH of every run; the commit and the
-    wheel's sha256 (`5408b89f…`) are in `~/graphene-shaping-runs/build.txt`, and a run on any other
+    wheel of `f1311dd` in a venv of its own, first on the PATH of every run; the commit (as
+    `668c7fd`, its hash before the history was reshaped: the same tree) and the wheel's sha256
+    (`5408b89f…`) are in `~/graphene-shaping-runs/build.txt`, and a run on any other
     `graphene` is void. *Why:* nothing is tuned once the first run starts. Study 1 (the paragraph,
     the outline, and the board with the graph, on four tasks, with Claude Code planning and
     executing) was pre-registered before any run, its deviations before the first. It never ran:
@@ -1191,7 +1192,7 @@ as written and the change is named here.
     four. `tests/test_ask.py::test_the_planner_is_told_the_board_carries_only_what_changes_the_tree`;
     `docs/test/results-2026-09-28-shaping.md` ("Study 3"); runs under `~/graphene-shaping3-runs/`.
     98's claim stands: the board does not yet save attention.
-100. **What the closing review changed.** Five adversaries went over the diff `cb2ce54..2111115`,
+100. **What the closing review changed.** Five adversaries went over the diff `cb2ce54..125fc7c`,
      one each on the board, the views, settings and keys, the ladder, and the claims, and a skeptic
      reproduced every finding from scratch. That gave 48 findings, all collected before any was
      fixed: 45 confirmed and 3 refuted (with why, in the review's record). Each fix has a test that
