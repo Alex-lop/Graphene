@@ -410,6 +410,17 @@ def settle(
     return item
 
 
+def lifted(item: dict) -> list[str]:
+    """What dropping an answered item leaves, in lines: its read-only globs no longer bind, and what
+    its answer changed in the tree stays (`graphene plan undo` takes both back, as one act)."""
+    if item["state"] != "dropped":
+        return []
+    out = [f"no longer read-only: {', '.join(item['conditions'])}"] if item.get("conditions") else []
+    return out + [
+        f"what it changed stays: {line}" for line in item.get("became") or [] if " may write " not in line
+    ]
+
+
 def take(store, item_id: str, who: P.Caller, files: list[str] | None = None) -> dict:
     return settle(store, item_id, "taken", who, files=files)
 
@@ -643,8 +654,8 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 f"[{item_id}], whose lines were deleted, was changed by someone else since this text was "
                 "opened"
             )
-        settle(store, item_id, "dropped", who, now=now)
-        said.append(f"dropped {item_id}: {board[item_id]['text']}")
+        gone = settle(store, item_id, "dropped", who, now=now)
+        said += [f"dropped {item_id}: {board[item_id]['text']}", *(f"  {line}" for line in lifted(gone))]
     return said
 
 

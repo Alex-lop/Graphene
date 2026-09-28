@@ -730,3 +730,23 @@ def test_a_goal_effect_is_skipped_only_when_the_goal_has_that_sentence_not_when_
                 "    then: goal users + add a uuid column.\n", PLANNER, None)  # fmt: skip
     picked = person("board", "pick", "which-id", "1")
     assert "users: goal + add a uuid column." in picked.stdout and "says it already" not in picked.stdout
+
+
+def test_dropping_an_answered_item_says_the_read_only_glob_it_lifts_and_the_edits_that_stay(repo):
+    risk = "risk: someone edits schema.py  [schema]\n    default: leave it\n    then: condition schema.py\n"
+    risk += "    then: goal users + Never touch the schema.\n"
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, risk + "risk: again  [again]\n" + risk.split("\n", 1)[1], PLANNER, None)
+    assert person("board", "take", "schema").exit_code == 0
+    dropped = person("board", "drop", "schema").stdout.splitlines()
+    assert dropped[1:] == [
+        "  no longer read-only: schema.py",
+        "  what it changed stays: users: goal + Never touch the schema.",
+    ]
+    assert person("board", "take", "again").exit_code == 0
+    with Store.open(repo) as store:
+        text, opened = T.render(store)
+        start = text.index("risk: again")
+        said = T.apply(store, text[:start] + text[text.index("\n- ", start) :], ALEX, opened)
+    assert any("no longer read-only: schema.py" in line for line in said), said

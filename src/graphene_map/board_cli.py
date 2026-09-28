@@ -113,6 +113,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
             out(f"  {_became(line)}")
+        for line in B.lifted(item):
+            out(f"  {line}")
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.callback()
@@ -144,7 +146,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     @board_cli.command()
     def drop(item_id: str = typer.Argument(...)) -> None:
-        """Drop it: it is not told to anyone."""
+        """Drop it: it is not told to anyone. An answer's read-only globs are lifted; what it changed in
+        the tree stays (`graphene plan undo` takes an answer back with all of it)."""
         act(f"board drop {item_id}", lambda s, who, files: B.drop(s, item_id, who))
 
     @board_cli.command()
