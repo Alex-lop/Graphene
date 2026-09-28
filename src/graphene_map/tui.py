@@ -57,7 +57,7 @@ HELP = (
     ("move", (
         ("j k", "down, up"), ("gg G", "the goal, the last row"), ("/", "search; n the next match"),
         ("Esc", "ends a search, a selection, a pane"),
-        ("Tab", "the next view of the plan that fits, then the outline again (graphene watch --view)"),
+        ("Tab", "the next view that fits (graphene watch --view)"),
         ("h l", "in a view: the node to the left, to the right"),
     )),
     ("fold", (("za", "fold or unfold here (on the goal: all)"),
@@ -345,6 +345,13 @@ def help_text(groups, wide: int) -> Text:
     return out.render()
 
 
+def help_groups() -> tuple:
+    """HELP, less the keys of the views when the outline is the only one."""
+    if len(V.VIEWS) > 1:
+        return HELP
+    return tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+
+
 class Help(ModalScreen[None]):
     """The keys, grouped as the README groups them: two columns from 110 columns, one below."""
 
@@ -372,11 +379,12 @@ class Help(ModalScreen[None]):
         column = min(56, (width - 10) // 2) if two else max(width - 8, 30)
         with VerticalScroll():
             with Horizontal(id="help"):
+                groups = help_groups()
                 if two:
-                    yield Static(help_text(HELP[:3], column))
-                    yield Static(help_text(HELP[3:], column))
+                    yield Static(help_text(groups[:3], column))
+                    yield Static(help_text(groups[3:], column))
                 else:
-                    yield Static(help_text(HELP, column))
+                    yield Static(help_text(groups, column))
             yield Static(Text("\n".join(textwrap.wrap(HELP_END, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
@@ -451,13 +459,15 @@ class PlanView(VerticalScroll):
                 self.app.action_end(0)
 
     def on_click(self, event) -> None:
-        """A click on a node's cell puts the cursor there."""
+        """A click on a node's cell puts the cursor there; on the first line, the goal's, on the goal."""
         spot = event.get_content_offset(self.query_one("#drawn"))
         drawn = self.app.drawn
         if spot is None or drawn is None:
             return
+        if spot.y == 0:
+            self.app.go(None)
         for node_id, (line, first, last) in drawn.at.items():
-            if line == spot.y and first <= spot.x <= last:
+            if line <= spot.y < line + drawn.tall and first <= spot.x <= last:
                 self.app.go(node_id)
 
 
@@ -596,6 +606,9 @@ class Watch(App):
     #drawn { width: auto; }
     Screen.-narrow #tree, Screen.-narrow #view { height: 3fr; width: 100%; }
     Screen.-narrow #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
+    #main.-stacked { layout: vertical; }
+    #main.-stacked #view { width: 100%; }
+    #main.-stacked #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
     #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
     #status { height: 2; background: $boost; padding: 0 1; }
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
@@ -637,7 +650,8 @@ class Watch(App):
         self.wanted = view  # the view asked for (`--view`); None: the repository's `view` setting
         self.showing: str | None = None  # the view where the outline goes: "outline", or one in views.VIEWS
         self.drawn: V.Drawn | None = None  # that view as last drawn; None while the outline shows
-        self.here: str | None = None  # the node under that view's cursor
+        self.here: str | None = None  # the node under that view's cursor; None: its first line, the goal
+        self.mapped: tuple[str, str] | None = None  # a node the view has no cell for, and its stand-in
         self.goal_text = ""
         self.view = "contract"  # or "tail", "record", "said": what the side pane shows for the selected node
         self.message = ""  # what the last command said: the bottom line's, until the cursor moves
@@ -700,7 +714,13 @@ class Watch(App):
         return _node(node.data) if node is not None else None
 
     def on_goal(self) -> bool:
-        return self.drawn is None and self.tree.show_root and self.tree.cursor_node is self.tree.root
+        if self.drawn is not None:  # a view's first line is the goal's: no node under the cursor
+            return self.here is None
+        return self.tree.show_root and self.tree.cursor_node is self.tree.root
+
+    def stops(self) -> list[str | None]:
+        """Where j and k stop in a view: the goal (None), then the view's reading order."""
+        return [None, *(self.drawn.order if self.drawn is not None else [])]
 
     def word(self, node_id: str | None) -> str:
         return self.words.get(node_id or "", "")
@@ -711,9 +731,9 @@ class Watch(App):
         if self.anchor is None:
             return [i for i in [self.selected()] if i]
         if self.drawn is not None:
-            order = self.drawn.order
-            low, high = sorted((self.anchor, order.index(self.here) if self.here in order else self.anchor))
-            return order[low : high + 1]
+            stops = self.stops()
+            low, high = sorted((self.anchor, stops.index(self.here) if self.here in stops else self.anchor))
+            return [i for i in stops[low : high + 1] if i is not None]
         low, high = sorted((self.anchor, self.tree.cursor_line))
         out = []
         for line in range(low, high + 1):
@@ -848,32 +868,46 @@ class Watch(App):
         setting, else the outline. `auto` is the view that suits this plan at this size (views.choose)."""
         name = self.wanted or store.meta("view") or "outline"
         if name == "auto":
-            return V.choose(self.nodes, *self.view_room())
+            return V.choose(self.nodes, self.words, self.goal_text, *self.view_room())
         if name not in V.VIEWS:
             self.message = f"no view named {name} here: the outline"
             return "outline"
         return name
 
     def view_room(self) -> tuple[int, int]:
-        """The columns and rows a view is drawn in: the outline's place, beside the node pane (which
-        keeps PANE) from 110 columns, above it below that. Less the scrollbar and the gap after it."""
-        if self.size.width >= WIDE:
-            return self.size.width - PANE - 5, self.size.height - 3
-        return self.size.width - 2, self.tree_room()
+        """The columns and rows a view is drawn in: the whole width, less the scrollbar and the gap
+        after it, and up to half the rows, the node pane under it at every size. Beside the pane a view
+        had 71 of 120 columns: a tree lost its titles there and the thirty-leaf plan did not draw."""
+        return self.size.width - 2, max(3, (self.size.height - 3) // 2)
 
     def draw_view(self, name: str) -> V.Drawn | None:
         """A registered view drawn at the room it has, its cursor on the node under the cursor, or on
-        its first node when that one is not in it; None when it does not fit."""
+        the one standing in for it when the view has no cell for it; None when it does not fit."""
         view = V.VIEWS.get(name)
         if view is None:
             return None
         width, height = self.view_room()
         drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
-        if drawn is not None and self.here not in drawn.at:
-            self.here = drawn.order[0] if drawn.order else None
-            if self.here is not None:
-                drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+        if drawn is not None and self.here is not None and self.here not in drawn.at:
+            was, self.here = self.here, self.stand_in(drawn)
+            if was in self.by_id and self.here is not None:
+                self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
+            drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         return drawn
+
+    def stand_in(self, drawn: V.Drawn) -> str | None:
+        """The cell for a node a view has none for: a sub-goal's first node drawn under it (a graph of
+        leaves), else its nearest drawn one above it (a fold). A node gone from the plan (dropped): the
+        next in the order it was in, else the one before, as the outline moves. Else the goal (None)."""
+        if self.here in self.by_id:
+            under = [n.id for n in P.below(self.here, self.nodes)]
+            up = [a.id for a in P.above(self.by_id[self.here], self.by_id)]
+            return next((i for i in under + up if i in drawn.at), None)
+        was = self.drawn.order if self.drawn is not None else []
+        if self.here not in was:
+            return None
+        k = was.index(self.here)
+        return next((i for i in [*was[k + 1 :], *reversed(was[:k])] if i in drawn.at), None)
 
     def paint(self, show: bool) -> None:
         """The view where the outline goes, when it is not the outline: its lines, with its cursor and
@@ -892,17 +926,22 @@ class Watch(App):
         if drawn is None:
             return
         lines = [line.copy() for line in drawn.lines]
+        if self.here is None and lines:  # on the goal
+            lines[0].stylize("reverse")
         for node_id in self.chosen() if self.anchor is not None else []:
             line, first, last = drawn.at.get(node_id, (0, 0, -1))
             lines[line].stylize("reverse", first, last + 1)
         box.query_one("#drawn", Static).update(Text("\n").join(lines))
         line = drawn.at[self.here][0] if self.here in drawn.at else 0
-        rows = max(box.scrollable_content_region.height, 1)
+        rows = box.scrollable_content_region.height or self.view_room()[1]  # not laid out yet: its room
         if not box.scroll_y <= line < box.scroll_y + rows:
             box.call_after_refresh(box.scroll_to, y=max(line - rows // 2, 0), animate=False)
 
     def tree_to(self, node_id: str | None) -> None:
-        """The outline's cursor on this node, its branch unfolded to it."""
+        """The outline's cursor on this node, its branch unfolded to it; None, the goal."""
+        if node_id is None and self.tree.show_root:
+            with self.prevent(Tree.NodeHighlighted):
+                self.tree.move_cursor(self.tree.root)
         for node in _walk(self.tree.root):
             if node.data == node_id:
                 parent = node.parent
@@ -915,34 +954,38 @@ class Watch(App):
 
     def go(self, node_id: str | None) -> None:
         """The view's cursor on this node: the node pane and the bottom line follow it, as the
-        outline's do."""
-        if node_id is None or node_id == self.here:
+        outline's do. None is the goal."""
+        if node_id == self.here:
             return
-        self.here = node_id
+        self.here, self.mapped = node_id, None
         if self.view == "said":
             self.view = "contract"
         self.message = ""
         self.refresh_plan()
 
     def action_step(self, way: int) -> None:
-        order = self.drawn.order if self.drawn is not None else []
-        if order:
-            at = order.index(self.here) if self.here in order else -1
-            self.go(order[max(0, min(at + way, len(order) - 1))])
+        stops = self.stops()
+        at = stops.index(self.here) if self.here in stops else 0
+        self.go(stops[max(0, min(at + way, len(stops) - 1))])
 
     def action_end(self, which: int) -> None:
-        if self.drawn is not None and self.drawn.order:
-            self.go(self.drawn.order[which])
+        self.go(self.stops()[which])
 
     def action_beside(self, way: int) -> None:
-        if self.drawn is not None:
-            self.go(V.beside(self.drawn, self.here, way))
+        if self.drawn is not None and (to := V.beside(self.drawn, self.here, way)) is not None:
+            self.go(to)
 
     def action_next_view(self) -> None:
         """Tab: the next view that fits this plan at this size, in the order the views were added,
         then the outline again. The cursor stays on its node; the bottom line says the command that
         opens this view, and what it shows at a glance."""
+        if not self.nodes:  # nothing to draw: Tab would switch to a view no one sees
+            self.message = "graphene watch --view: nothing is planned yet (:ask what you want)"
+            return self.say_status()
         names, here, was = list(V.VIEWS), self.selected(), self.showing or "outline"
+        if self.mapped is not None and self.mapped[1] == here:  # on a stand-in: the node the person was on
+            here = self.mapped[0]
+        self.mapped = None
         for name in [*names[names.index(was) + 1 :], "outline"]:
             self.here = here
             if name == "outline" or self.draw_view(name) is not None:
@@ -966,19 +1009,18 @@ class Watch(App):
     def size_panes(self, nodes: list[P.Node], ids: int, words: int) -> None:
         """At 110 columns and more the tree is as wide as its rows need, and the node pane has the
         rest (never less than PANE); below that the tree is as tall as its rows, up to half the
-        screen, and the node pane has what is left under it. A view is sized as the tree is."""
+        screen, and the node pane has what is left under it. A view is as tall as its lines, up to
+        its room, over the whole width, and the node pane under it at every width."""
         tree, width = self.tree, self.size.width
         if not width:
             return
+        self.query_one("#main").set_class(self.drawn is not None, "-stacked")
         if self.drawn is not None:
             lines, box = self.drawn.lines, self.query_one("#view", PlanView)
-            widest = max((line.cell_len for line in lines), default=0) + 2
-            wide = ("wide", max(30, min(widest, width - PANE - 3)), "view")
-            sized = wide if width >= WIDE else ("narrow", max(3, min(len(lines), self.tree_room())), "view")
+            sized = ("narrow", max(3, min(len(lines), self.view_room()[1])), "view")
             if sized != self.sized:
                 self.sized = sized
-                box.styles.width = sized[1] if sized[0] == "wide" else None
-                box.styles.height = sized[1] if sized[0] == "narrow" else None
+                box.styles.height = sized[1]
             return
         by_id = {n.id: n for n in nodes}
         if not tree.display:
@@ -1458,8 +1500,9 @@ class Watch(App):
         self.refresh_plan()
 
     def action_visual(self) -> None:
-        order = self.drawn.order if self.drawn is not None else []
-        here = order.index(self.here) if self.here in order else self.tree.cursor_line
+        stops = self.stops()
+        in_view = self.drawn is not None and self.here in stops
+        here = stops.index(self.here) if in_view else self.tree.cursor_line
         self.anchor = None if self.anchor is not None else here
         self.refresh_plan()
 

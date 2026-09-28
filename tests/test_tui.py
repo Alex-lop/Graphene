@@ -903,7 +903,7 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     assert top == "waiting on you: 4 · executors: 1 running · R runs 1 ready · 1/8 done · plan first: on (P)"
-    assert bottom == "y sign off · x send back · Enter record · ? help · q quit"
+    assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
     assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first: on"
