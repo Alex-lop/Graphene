@@ -7,9 +7,19 @@ from pathlib import Path, PurePosixPath
 SIZES = ("auto", "finer", "coarser")
 
 
+BIG = 20000  # lines: past this only "big" is used, so counting stops there
+LOCKS = ("uv.lock", "poetry.lock", "Cargo.lock", "Gemfile.lock", "package-lock.json", "yarn.lock",
+         "pnpm-lock.yaml", "composer.lock", "go.sum")  # fmt: skip
+
+
 def _lines(root: Path, files: list[str]) -> int:
+    """Lines of text in ``files``, lockfiles left out, counted up to BIG (a big repo is not read whole)."""
     total = 0
     for p in files:
+        if total >= BIG:
+            break
+        if PurePosixPath(p).name in LOCKS:
+            continue
         try:
             data = (root / p).read_bytes()
         except OSError:
@@ -56,7 +66,7 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
     tests = layout(files)
     dirs = len(named_dirs(sentence, files))
     # ponytail: fixed line thresholds, tune against the four tasks and the public repos
-    lo, hi = 1, 3 if lines < 2000 else 6 if lines < 20000 else 10  # the repo bounds it from above only
+    lo, hi = 1, 3 if lines < 2000 else 6 if lines < BIG else 10  # the repo bounds it from above only
     lo = max(lo, min(dirs, hi))  # the directories named raise the floor, up to the repo's own bound
     hi = max(hi, lo + 1)
     if size == "finer":
@@ -73,6 +83,7 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
         named = f"the ask names {dirs} director{'y' if dirs == 1 else 'ies'}"
     leaves = f"{lo} leaf" if lo == hi == 1 else f"{lo} to {hi} leaves"
     return (
-        f"The repo has {len(files):,} files and {lines:,} lines, {named}, and {where}: "
+        f"The repo has {len(files):,} files and {f'over {BIG:,}' if lines >= BIG else f'{lines:,}'} lines, "
+        f"{named}, and {where}: "
         f"cut the tree into about {leaves} ({size})."
     )

@@ -73,3 +73,15 @@ def test_a_small_ask_in_a_big_repo_can_be_one_leaf(tmp_path):
     files = repo(tmp_path, {f"m{i}.py": 1000 for i in range(25)})
     lo, hi = leaves(measure(tmp_path, "fix a typo in the README", files))
     assert lo == 1 and hi >= 6  # the repo's size bounds the tree from above, never from below
+
+
+def test_counting_stops_once_the_largest_bucket_is_reached_and_skips_lockfiles(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    files = repo(tmp_path, {f"m{i:02}.py": 1000 for i in range(40)} | {"uv.lock": 50000})
+    read = []
+    real = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: read.append(self.name) or real(self))
+    said = measure(tmp_path, "go", files)
+    assert "over 20,000 lines" in said and len(read) == 20 and "uv.lock" not in read
+    assert "over 20,000" not in measure(tmp_path, "go", ["uv.lock", "m00.py"])  # a lockfile is not code
