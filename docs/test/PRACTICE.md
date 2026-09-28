@@ -1,5 +1,5 @@
 # Practice: the first hour with the key
-| | 1 access | 2 local leaf | 3 Sandbox | 4 escape | 5 recorded | 6 arms A+B | 7 demo |
+| | 1 access | 2 local leaf | 3 Sandbox | 4 escape | 5 recorded | 6 A leaf + B′ | 7 demo |
 |---|---|---|---|---|---|---|---|
 | cap, min | $0.25, 1 | $0.50, 2-5 | $0.50, 3-8 | $0.05, 2-5 | $0.50, 2-5 | $3, 15-40 | $3, 10-30 |
 

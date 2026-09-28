@@ -381,9 +381,12 @@ def recorded(r: Rung) -> str:
 
 
 def arms(r: Rung) -> str:
-    """Rung 6: one run of arm A (the paragraph to Nano as one leaf over the whole repo, no tree and no
-    check) and one of arm B (Ultra proposes from the paragraph, the tree accepted as proposed, which is
-    the winning directive's B′; Nano does the leaves in Sandboxes)."""
+    """Rung 6: arm A as one Graphene leaf (the paragraph to Nano, scope the whole repo, check `true`)
+    and B′ (Ultra proposes from the paragraph, the tree accepted as proposed; Nano does the leaves in
+    Sandboxes), both through `graphene run`. Neither is the evidence runs' harness: arm_a.py (one
+    `converse` session, no plan) and arm_bprime.py (bench.play_rounds, which reads the card's globs), and
+    `evidence.py add`, are tested against the fake only and first meet the live service in the evidence
+    runs."""
     if DRY:
         if not docker_runs():
             raise Failed(NO_DOCKER)
@@ -409,8 +412,9 @@ def arms(r: Rung) -> str:
     r.graphene(repo_b, "run", "--parallel", "4", "--with", "nemotron --placement sandbox", timeout=3600)
     b, b_cost = leaves(repo_b), spent() - before - a_cost
     landed = sum(s == P.DONE for s in b.values())
-    said = (f"arm A: its leaf landed, ${a_cost:.4f}; arm B: {landed} of {len(b)} leaves landed, "
-            f"${b_cost:.4f}; repos {repo_a.name}, {repo_b.name}")  # fmt: skip
+    said = (f"arm A as one leaf (not arm_a.py): it landed, ${a_cost:.4f}; B′ by `graphene run` (not "
+            f"arm_bprime.py): {landed} of {len(b)} leaves landed, ${b_cost:.4f}; "
+            f"repos {repo_a.name}, {repo_b.name}")  # fmt: skip
     if not landed:
         raise Failed(f"a run ended with nothing landed: {said}")
     return said
@@ -448,7 +452,7 @@ RUNGS = {
     3: ("one leaf in a Sandbox", 0.50, "3-8 min", in_sandbox),
     4: ("the escape test in the Sandbox", 0.05, "2-5 min", escape),
     5: ("a recorded leaf, replayed", 0.50, "2-5 min", recorded),
-    6: ("one run each of arms A and B on feeds", 3.00, "15-40 min", arms),
+    6: ("arm A as one leaf, and B′, on feeds", 3.00, "15-40 min", arms),
     7: ("the demo run, recorded", 3.00, "10-30 min", demo_run),
 }
 MEANS = [  # (what the log or the failure says, what it most likely means, what to try); the first match wins

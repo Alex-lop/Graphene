@@ -612,7 +612,7 @@ one rung at a time:
 3. one leaf in a Sandbox;
 4. the escape test there;
 5. a recorded leaf;
-6. arms A and B on feeds;
+6. arm A as one leaf, and B′, on feeds (practice: not the evidence runs' harnesses);
 7. the demo run.
 
 Each rung has its own spend cap (`GRAPHENE_SPEND_CAP_USD` on top of what the ladder has spent), and

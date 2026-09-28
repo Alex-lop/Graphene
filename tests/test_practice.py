@@ -1,6 +1,8 @@
 """docs/test/practice.sh, the ladder for the first hour with a key, climbed whole against the stand-ins: the
 scripted fake Token Factory (tests/fake_tokenfactory.py, started by the ladder itself) and Docker in place of
-ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes."""
+ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes, on the ladder's
+own path: rung 6's arms are not arm_a.py or arm_bprime.py, which first meet the live service in the
+evidence runs."""
 
 import contextlib
 import importlib.util
@@ -57,7 +59,7 @@ def test_the_whole_ladder_climbs_against_the_stand_ins(tmp_path):
     for n in range(1, 7):
         assert f"· PASS · rung {n} · " in said and f"next: docs/test/practice.sh --dry {n + 1}" in said
     assert "next: the ladder is climbed" in said
-    assert "arm B: 2 of 2 leaves landed" in said and "a scripted stand-in" in said
+    assert "(not arm_bprime.py): 2 of 2 leaves landed" in said and "a scripted stand-in" in said
     assert "the demo ran to the bill" in said and "(a stand-in's usage)" in said
     rows = json.loads((tmp_path / "state" / "progress.json").read_text())
     assert {r["result"] for r in rows.values()} == {"PASS"} and len(rows) == 7
@@ -386,3 +388,19 @@ def test_the_demo_rung_passes_only_when_a_leaf_landed(tmp_path, monkeypatch, cap
         assert "1 of 2 leaves landed" in said
     else:
         assert "nothing landed" in said and "the model did not finish the work" in said
+
+
+def test_rung_6_says_its_arms_are_not_the_evidence_runs_harnesses(tmp_path, monkeypatch, capsys):
+    """Rung 6 runs arm A as one Graphene leaf and B′ through `graphene run`, not arm_a.py or arm_bprime.py:
+    its name and its PASS line say so. graphene is stubbed; nothing runs."""
+    practice = load_practice(tmp_path, monkeypatch)
+    (tmp_path / "paragraph.md").write_text("A stand-in paragraph for this test only.\n")
+    monkeypatch.setattr(practice, "PARAGRAPH", tmp_path / "paragraph.md")
+    monkeypatch.setattr(practice.Rung, "feeds", lambda r, name, recorder=None: (tmp_path / name, None))
+    monkeypatch.setattr(practice.Rung, "propose", lambda r, repo, nodes: None)
+    monkeypatch.setattr(practice.Rung, "graphene", lambda r, repo, *args, timeout=900: (0, "ok"))
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"arm-a": "done", "one": "done"})
+    assert "arms A and B" not in practice.RUNGS[6][0]
+    assert practice.climb(6) == "PASS"
+    said = capsys.readouterr().out
+    assert "arm A as one leaf (not arm_a.py)" in said and "B′ by `graphene run` (not arm_bprime.py)" in said

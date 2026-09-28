@@ -42,7 +42,7 @@ Submissions close on 30 October at 10:00 PT. The prototypes must be measured by 
 
 ### 1. First contact: the ladder as the run's first hour
 
-**Why.** First contact with a beta service breaks things, and the ladder was built so that seeing what broke takes minutes. A dry climb passes against the fake and Docker (`practice.sh --dry`, 99 s here, 169 s in the skeptic's climb: `PRACTICE.md`), so only the live calls are new.
+**Why.** First contact with a beta service breaks things, and the ladder was built so that seeing what broke takes minutes. A dry climb passes against the fake and Docker (`practice.sh --dry`, 99 s here, 169 s in the skeptic's climb: `PRACTICE.md`), so only the live calls are new on the ladder's own path (not on the arms' harnesses: below).
 
 **What each failure most likely means** (from `practice.py`'s `MEANS`; the first match wins):
 
@@ -54,10 +54,10 @@ Submissions close on 30 October at 10:00 PT. The prototypes must be measured by 
 | 3 Sandbox | image pull; `setpriv` or `useradd` | `python:3.12` not pulled; the image's users differ from Docker's | the log has the service's words; the sandbox needs bash, git, useradd and setpriv |
 | 4 escape | `ESCAPED` | a way out of the scope worked in the Sandbox | stop, as above; this is the finding, and it goes in the brief first |
 | 5 recorded | the replay does not end with the leaf done | the recorder or the replay disagrees with a live run | `graphene demo .graphene/practice/leaf.jsonl --once`; the top line must say "as it ran, live" |
-| 6 arms A+B | `no sealed paragraph`; `did not land` | the paragraph missing; the model did not finish | the sealer's file; a finding about the model |
+| 6 A leaf + B′ | `no sealed paragraph`; `did not land` | the paragraph missing; the model did not finish | the sealer's file; a finding about the model |
 | 7 demo | `did not reach the bill`; timed out | `nemotron.sh` stopped early; a slow call | the log's last command is the slow one |
 
-**Rung 6's arm B is B′** (the tree accepted as proposed), and rungs 6 and 7 are practice: none of their rows enter the table.
+**Rung 6 is not the evidence runs' arms.** Its arm A is one Graphene leaf over the whole repo, not `arm_a.py`; its arm B is B′ (the tree accepted as proposed) through `graphene run`, not `arm_bprime.py`. So `arm_a.py`, `arm_bprime.py` and `evidence.py add` first meet the live service in the first evidence run: watch that run's first minutes. Rungs 6 and 7 are practice: none of their rows enter the table.
 
 **Also:** record rung 5's live leaf in the replay format, sanitised, and replay it in CI, so the live behaviour is pinned (the winning directive's item 1).
 
