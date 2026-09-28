@@ -50,6 +50,7 @@ WORK = Path(os.environ.get("PRACTICE_WORK") or Path.home() / f"graphene-practice
 LEDGER = STATE / "ledger.jsonl"
 PROGRESS = STATE / "progress.json"
 PARAGRAPH = HERE / "tasks" / "feeds" / "paragraph.md"  # the sealer's: passed on, never printed or shown
+MADE_BY = ".made-by-the-practice-ladder"  # in a state directory the ladder made: only such a one is removed
 ME = "docs/test/practice.sh" + (" --dry" if DRY else "")
 TAG = "dry run, stand-ins · " if DRY else ""  # every line of the dry run says so
 # what an agent's shell carries (plan.caller reads them): the person runs the ladder, so none is passed on
@@ -569,7 +570,9 @@ def scripted(body: dict) -> dict:
 def main(argv: list[str]) -> int:
     global FAKE
     args = [a for a in argv if a != "--dry"]
-    STATE.mkdir(parents=True, exist_ok=True)
+    if not STATE.exists():
+        STATE.mkdir(parents=True)
+        (STATE / MADE_BY).touch()
     if args == ["status"]:
         status()
         return 0
@@ -578,8 +581,13 @@ def main(argv: list[str]) -> int:
         return 2
     whole = DRY and not args  # the dry run climbs the whole ladder, from nothing
     if whole:
+        if not (STATE / MADE_BY).exists() and any(STATE.iterdir()):
+            say(f"{STATE} holds what the ladder did not make (it has no {MADE_BY}): nothing was removed; "
+                "point PRACTICE_STATE at a new directory")  # fmt: skip
+            return 2
         shutil.rmtree(STATE)
         STATE.mkdir(parents=True)
+        (STATE / MADE_BY).touch()
     if DRY:
         from fake_tokenfactory import Fake
 

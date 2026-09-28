@@ -80,3 +80,13 @@ def test_in_an_agents_shell_the_access_rung_is_typed_by_the_person(tmp_path):
     assert "most likely: the access check is yours to run" in done.stdout
     assert not (tmp_path / "state" / "access.json").exists()  # nothing was run
     assert not done.stdout.startswith("dry run")
+
+
+def test_the_dry_run_removes_only_a_state_it_made(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "mine.txt").write_text("not the ladder's")
+    done = ladder(tmp_path, "--dry")
+    assert done.returncode == 2 and (state / "mine.txt").read_text() == "not the ladder's"
+    assert "the ladder did not make" in done.stdout and "nothing was removed" in done.stdout
+    assert not (tmp_path / "work").exists()
