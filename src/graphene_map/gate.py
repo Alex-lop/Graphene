@@ -494,12 +494,18 @@ def _protected_read(store, event: dict, root: Path) -> str | None:
     rel = _rel(path, root, cwd) if isinstance(path, str) else None
     if rel is None:
         return None
-    if P.in_scope(rel, hidden):
-        return rel
+    # what the path reaches, not how it is spelled: a tracked link is followed, and on a disk that
+    # ignores case (a Mac's) SECRETS/ is secrets/, so the globs are matched casefolded
+    full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
+    real = _rel(os.path.realpath(full), Path(os.path.realpath(root)), None) or rel
+    folded = [g.casefold() for g in hidden]
+    for spelled in (rel, real):
+        if P.in_scope(spelled.casefold(), folded):
+            return spelled
     if tool == "Read":
         return None
-    base = "" if rel in ("", ".") else rel.rstrip("/") + "/"
-    under = [f for f in P.in_tree(root) if f.startswith(base)]
+    base = "" if real in ("", ".") else real.rstrip("/").casefold() + "/"
+    under = [f for f in P.in_tree(root) if f.casefold().startswith(base)]
     pattern = tool_input.get("pattern") if tool == "Glob" else None
     if isinstance(pattern, str) and pattern:
         under = [f for f in under if P.in_scope(f[len(base) :], [pattern])]

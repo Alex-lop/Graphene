@@ -93,3 +93,14 @@ def test_a_claude_code_planner_is_refused_a_read_grep_or_glob_reaching_a_protect
 def test_outside_a_planner_the_hook_leaves_reads_alone(repo, monkeypatch):
     monkeypatch.delenv("GRAPHENE_PLANNER", raising=False)
     assert hook(repo, "Read", file_path=str(repo / "secrets/prod.txt")) is None
+
+
+def test_a_planner_cannot_reach_a_protected_file_by_its_case_or_a_tracked_link(repo, monkeypatch):
+    (repo / "docs").mkdir()
+    (repo / "docs" / "link.txt").symlink_to("../secrets/prod.txt")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    monkeypatch.setenv("GRAPHENE_PLANNER", "1")
+    assert refused(hook(repo, "Read", file_path=str(repo / "SECRETS/prod.txt")))
+    assert refused(hook(repo, "Read", file_path=str(repo / "docs/link.txt")))
+    assert refused(hook(repo, "Grep", pattern="KEY", path="SECRETS"))
+
