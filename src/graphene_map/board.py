@@ -619,6 +619,12 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 raise P.Refused(
                     f"line {f['no']}: [{f['id']}] was changed by someone else since this text was opened"
                 )
+            answered = known["state"] in DECIDED
+            if answered and any(f[k] != base[k] for k in ("default", "then", "options")):
+                raise P.Refused(  # what it was answered with, and what that changed, would no longer match
+                    f"line {f['no']}: [{f['id']}] is {known['state']} ({_one(known['answer']) or 'yes'}); "
+                    "`graphene plan undo` takes the answer back before its default, options or then: change"
+                )
             _check(store, f, at)
             _reword(store, f, who, now)
             said.append(f"{f['id']}: changed")

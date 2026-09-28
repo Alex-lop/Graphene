@@ -696,3 +696,21 @@ def test_an_item_about_a_node_that_left_the_plan_is_not_answered_and_the_pane_sa
         board = BR.read(store)
         pane = str(BR.pane(board, BR.Row("item", "which-docs"), {n.id: n for n in P.nodes(store)}, 80))
     assert "to no one: docs has left the plan" in pane and "the executors of docs" not in pane
+
+
+def test_plan_edit_does_not_reword_an_item_already_answered(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        asked = "question: which id?  [which-id]\n    default: the row id\n    then: condition schema.py\n"
+        T.apply(store, asked + "    about: users\n", PLANNER, None)
+        B.take(store, "which-id", ALEX)
+        text, opened = T.render(store)
+        edited = text.replace("default: the row id", "default: a new uuid").replace(
+            "condition schema.py", "condition api.py"
+        )
+        with pytest.raises(
+            P.Refused, match=r"^line \d+: \[which-id\] is taken \(the row id\); `graphene plan undo`"
+        ):
+            T.apply(store, edited, ALEX, opened)
+        assert B.get(store, "which-id")["default"] == "the row id" and B.conditions(store) == ["schema.py"]
+        T.apply(store, text.replace("which id?  [which-id]", "which id, then?  [which-id]"), ALEX, opened)
