@@ -574,7 +574,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     view.tree_links = [_link("", (goal, 0.0, NODE_W), n.id, box[n.id]) for n, d in tree if d == 0] + [
         _link(n.parent, box[n.parent], n.id, box[n.id]) for n, d in tree if d > 0
     ]
-    view.tree_width = max(x + w for x, _, w in box.values())
+    view.tree_width = max(goal + NODE_W, *(x + w for x, _, w in box.values()))  # the goal box too
     view.tree_height = max(y for _, y, _ in box.values()) + NODE_H
     return asdict(view)
 

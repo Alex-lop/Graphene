@@ -210,7 +210,8 @@ def test_the_top_down_tree_is_deterministic_no_two_boxes_touch_and_a_parent_is_c
     wire = next(link for link in first["tree_links"] if link["target"] == "wire")
     assert wire["points"][0] == [centre(at["xml"]), at["xml"]["tree_y"] + NODE_H]
     assert wire["points"][-1] == [centre(at["wire"]), at["wire"]["tree_y"]]
-    assert first["tree_width"] == max(n["tree_x"] + n["tree_w"] for n in first["nodes"])
+    goal_edge = first["tree_goal"][0] + NODE_W
+    assert first["tree_width"] == max(goal_edge, *(n["tree_x"] + n["tree_w"] for n in first["nodes"]))
     assert first["tree_height"] == max(n["tree_y"] for n in first["nodes"]) + NODE_H
 
 
@@ -261,6 +262,14 @@ def test_with_nothing_waiting_on_anything_there_is_no_critical_path(store):
     plan.propose(store, [node("a"), node("b")], ALEX)
     view = build_plan_view(store)
     assert view["critical"] == [] and not any(e["critical"] for e in view["edges"])
+
+
+def test_the_tree_is_as_wide_as_its_goal_box_on_a_plan_narrower_than_it(store):
+    """A one-leaf plan's tree was 170 wide, its goal box 200: the page cut the goal's right side off."""
+    plan.set_goal(store, "fix it", ALEX)
+    plan.propose(store, [node("a", title="fix it")], ALEX)
+    view = build_plan_view(store)
+    assert view["tree_width"] >= view["tree_goal"][0] + NODE_W == 200
 
 
 def test_the_page_and_the_terminal_read_one_critical_path_and_one_at_once(store):
