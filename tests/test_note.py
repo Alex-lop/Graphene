@@ -139,3 +139,17 @@ def test_the_command_says_a_stand_in_answered_and_an_agent_is_refused_before_any
     ]
     assert "Nemotron" not in said.stdout
     assert runner.invoke(build(), ["plan", "note", "x"], env={"GRAPHENE_AS": "person:alex"}).exit_code == 1
+
+
+def raw(**said):
+    return {"content": json.dumps({**json.loads(answer("ids")["content"]), **said})}
+
+
+def test_nothing_the_model_writes_crashes_the_command_and_each_says_one_line(repo, fake):
+    planned(repo)
+    odd = [raw(scope_add=5), raw(scope_remove=7), raw(scope_add={"schema.py": 1}), raw(scope_add=["["]),
+           raw(check=["true"], goal_add="yes")]  # fmt: skip
+    fake(odd)
+    for _ in odd:
+        offer, said, _, _ = routed(repo)
+        assert offer is None and len(said) == 1, said

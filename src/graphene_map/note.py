@@ -56,7 +56,9 @@ class _Tried(Exception):
 
 
 def _strs(v) -> list[str]:
-    return [s.strip() for s in ([v] if isinstance(v, str) else v or []) if isinstance(s, str) and s.strip()]
+    if v is not None and not isinstance(v, list):
+        raise ValueError(f"a list of globs, not {type(v).__name__}")
+    return [s.strip() for s in v or [] if isinstance(s, str) and s.strip()]
 
 
 def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> Offer | None:
@@ -91,6 +93,14 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
     except (ValueError, KeyError, TypeError, AttributeError):
         say("the model's answer is not the JSON it was asked for; nothing is offered")
         return None
+    try:  # whatever the model wrote, the command ends in one line, never a traceback
+        return _offer(store, root, sentence, a, target, why, leaves, files, everything, endpoint, say)
+    except Exception as no:  # noqa: BLE001  (the answer is untrusted; a bug here must not crash the command)
+        say(f"the model's answer could not be read ({type(no).__name__}: {no}); nothing is offered")
+        return None
+
+
+def _offer(store, root, sentence, a, target, why, leaves, files, everything, endpoint, say) -> Offer | None:
     if target == "none":
         say(f"it constrains no leaf: {why}" if why else "it constrains no leaf; nothing is offered")
         return None
