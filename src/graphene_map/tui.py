@@ -68,6 +68,7 @@ HELP = (
         ("d", "drop"), ("e", "edit its contract in $EDITOR"), ("E", "edit it with what is under it, as text"),
         ("a A", "add a sibling, a child"), ("s", "the planner splits it into leaves"),
         ("u", "undo your last act on the plan"), ("V", "select several, then y or d"),
+        ("?", "on a node: ask the planner why, split, merge the selection (V), another way, or your words"),
     )),
     ("run", (
         ("R", "run every ready leaf"), ("r", "run the ready leaves under this one"),
@@ -75,15 +76,16 @@ HELP = (
         ("P", "plan first on or off: a session proposes a tree before any code"),
     )),
     ("see", (("Enter", "the record: who held it, what changed, the check"), ("l", "the executor's output"),
-             ("ctrl-d ctrl-u", "scroll the pane"))),
+             ("ctrl-d ctrl-u", "scroll the pane"),
+             ("m", "seen: from here on, a row someone else changes reads + or ~ before its id"))),
     ("a leaf that came back", (
         ("w", "widen its scope to what it wanted"), ("b", "a sibling leaf for that, which it waits on"),
-        ("n", "wait on the leaves its reason names"), ("?", "ask the planner (elsewhere ? is this help)"),
+        ("n", "wait on the leaves its reason names"), ("?", "ask the planner what would let it be done"),
     )),
     (":", (
         (":<command>", "any graphene command, as you would type it (:node show x, :plan log)"),
         (":ask <what>", "the planner proposes it"), (":stop", "stops a run started here"),
-        ("q", "quit; a run started here goes on"),
+        ("? on the goal", "this help"), ("q", "quit; a run started here goes on"),
     )),
 )  # fmt: skip
 HELP_END = (
@@ -146,12 +148,13 @@ def _cli(argv: list[str]) -> tuple[int, str]:
 
 def row(
     glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside="",
-    least=4,
+    least=4, mark="",
 ) -> Text:
     """One row: glyph, the title cut at a word, the id (dim) and the state word in its colour, in
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
     what the row may take; an id is never cut, the title gives way, to ``least`` columns. ``inside``:
-    a folded row's count of its leaves by state, in the word's column, each state in its own colour."""
+    a folded row's count of its leaves by state, in the word's column, each state in its own colour.
+    ``mark``: `+` or `~` in the gap before the id, when it changed since the person last looked."""
     colour = _look(word)[1] if word else ""
     title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), least)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
@@ -159,7 +162,11 @@ def row(
     out = Text()
     out.append(f"{glyph} ", colour)
     out.append(T.elide(title, title_w).ljust(title_w), "bold" if bold else "")
-    if ids and node_id:
+    if ids and node_id and mark:
+        out.append(" ")
+        out.append(mark, "bold")
+        out.append(node_id.ljust(ids), "dim")
+    elif ids and node_id:
         out.append(f"  {node_id.ljust(ids)}", "dim")
     if not inside:
         out.append(f"  {word.ljust(words)}", colour)
@@ -503,7 +510,8 @@ class PlanTree(Tree[str]):
         # a fork's row is a level below its leaf's: its title (the model's name) gives way further, so
         # its id and word stay in their columns as deep as its leaf's do
         least = 1 if isinstance(node.data, tuple) else 4
-        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least)
+        mark = self.app.mark(node)
+        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least, mark)
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)
@@ -627,6 +635,7 @@ class Watch(App):
         Binding("w", "offer('w')", show=False),
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
+        Binding("m", "seen", show=False),
         Binding("ctrl+d", "page(1)", show=False),
         Binding("ctrl+u", "page(-1)", show=False),
     ]
@@ -810,6 +819,7 @@ class Watch(App):
         if len(where) > room:  # the repository's own name, and what is above it as far as it fits
             where = "…" + where[len(where) - room + 1 :]
         self.query_one("#where", Static).update(Text(f"the plan of {where}", "bold"))
+        self.look_changed(store)
         self.show_detail(store)
 
     def relabel(self, nodes: list[P.Node], under: dict, goal_word: str, goal: str) -> None:
@@ -1127,7 +1137,7 @@ class Watch(App):
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
-        top = fit(fits[0] if fits else short, room)
+        top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
         said = self.busy or self.message
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))
@@ -1147,9 +1157,10 @@ class Watch(App):
         return ["Esc back" if k == "l back" else k for k in keys]
 
     def row_keys(self) -> list[str]:
-        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? help", "q quit"]
+        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? talk" if self.selected() else "? help"]
+        tail.append("q quit")
         if self.anchor is not None:
-            return ["VISUAL", "y accept", "d drop", "j k widen it", "Esc ends"]
+            return ["VISUAL", "y accept", "d drop", "? m merge", "j k widen it", "Esc ends"]
         if self.view == "record":
             offers = [OFFERED[k] for k in self.offer_keys()]
             ask = ["? ask the planner", "q quit"] if offers else tail  # there ? is no help: it spends
@@ -1249,6 +1260,8 @@ class Watch(App):
             self.background(
                 ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
             )
+        elif node_id is not None:
+            self.talk_to()
         else:
             self.push_screen(Help())
 
@@ -1478,6 +1491,61 @@ class Watch(App):
         side = self.query_one("#side", VerticalScroll)
         side.scroll_relative(y=way * max(side.size.height - 2, 3), animate=False)
 
+    # -- talking on the tree: `?` on a node (graphene talk), `m` (graphene plan seen) -----------------
+
+    TALK = {"w": "why", "s": "split", "m": "merge", "a": "another", "another way": "another", "?": "help"}
+    changed: tuple[dict[str, str], int] = ({}, 0)  # talk.marks: what changed since the person last looked
+
+    def talk_to(self) -> None:
+        """`?` on a node: one line saying what to ask the planner about it, or about the selection."""
+        ids, here = self.chosen(), self.selected()
+        about = ", ".join(ids) if len(ids) > 1 else here
+        said = f"{about}: w why · s split · m merge · a another way · ? help · or your words"
+        self.push_screen(Ask(said), lambda words: self.talked(ids, here, words))
+
+    def talked(self, ids: list[str], here: str, words: str | None) -> None:
+        """What the line said, as the command it runs: slow, so off the screen, and the bottom line
+        says which. One letter or the word picks; anything else is asked as it was typed."""
+        self.anchor = None
+        low = (words or "").lower()
+        kind = self.TALK.get(low, low if low in ("why", "split", "merge", "another", "help") else None)
+        if not words:
+            return self.refresh_plan()
+        if kind == "help":
+            return self.push_screen(Help())
+        if kind == "split":
+            return self.action_split()  # graphene node split, refused on what is running or done
+        if kind:
+            return self.background(["talk", kind, *(ids if kind == "merge" else [here])])
+        self.background(["ask", words, "--about", here])
+
+    def action_seen(self) -> None:
+        self.did(["plan", "seen"])
+
+    def look_changed(self, store) -> None:
+        from .talk import marks
+
+        now = marks(store, P.caller().name)
+        if now != self.changed:
+            self.changed = now
+            self.tree._invalidate()  # a mark is not a row's cell: its rows are laid out again
+
+    def mark(self, node) -> str:
+        """`+` (added) or `~` (changed) before a row's id when someone else changed it since the person
+        last looked; on a folded row, `~` when anything inside it did, so no change hides in a fold."""
+        marks, data = self.changed[0], node.data
+        if not marks or not isinstance(data, str):  # the goal's row has no id; a fork's is its leaf's
+            return ""
+        if data in marks or node.is_expanded or not node.allow_expand:
+            return marks.get(data, "")
+        return "~" if any(n.id in marks for n in P.below(data, self.nodes)) else ""
+
+    def news(self) -> list[tuple[str, str]]:
+        """The first bottom line's first words, while anything changed since the person last looked."""
+        count = self.changed[1]
+        return [(f"{count} changed since you last looked", "magenta"), ("graphene plan changes", ""),
+                ("m seen", "")] if count else []  # fmt: skip
+
     # -- what runs on its own ------------------------------------------------------------------------
 
     def background(self, argv: list[str]) -> None:
@@ -1508,7 +1576,7 @@ class Watch(App):
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
         news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
-        gist = (news[-1] if argv[0] == "run" else news[0]) if news else ""
+        gist = (news[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
         named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
         mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
         whole = [f"{mark}graphene {shlex.join(argv)} ended (exit {code}); all it said, kept in "

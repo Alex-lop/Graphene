@@ -5,6 +5,7 @@ anyone else changed since the person last looked is marked until they say they h
 is a script that prints what a model would (as in tests/test_ask.py), and Nemotron is the scripted fake
 (tests/fake_tokenfactory.py). The screen is driven by keys at 80x24 and 120x36."""
 
+import asyncio
 import json
 import re
 import sys
@@ -12,7 +13,7 @@ import sys
 import pytest
 from fake_tokenfactory import Fake
 from test_plan_cli import AGENT_ENV, agent, person, repo, runner  # noqa: F401  (fixtures)
-from test_tui import proposed, states
+from test_tui import SIZES, proposed, shown, states, watch
 
 from graphene_map import board as B
 from graphene_map import plan as P
@@ -21,6 +22,7 @@ from graphene_map import tokenfactory as tf
 from graphene_map.ask import named
 from graphene_map.cli import build
 from graphene_map.store import Store
+from graphene_map.tui import Watch
 
 # one script for every kind: it answers what the prompt asks, as a model would
 TALKER = r"""
@@ -200,3 +202,118 @@ def test_changes_since_seen_are_others_and_only_after_the_mark(repo, talker):
     assert refused.exit_code == 1 and "the mark is the person's" in refused.stderr
     assert person("plan", "seen").stdout.startswith("2 changes marked as seen")
     assert person("plan", "changes").stdout == "nothing changed since you last looked\n"
+
+
+# -- the screen -----------------------------------------------------------------------------------
+
+
+def revised(repo):
+    """A plan the person has seen, and a planner's revision after it: a leaf under api."""
+    accepted(repo)
+    person("plan", "seen")
+    paging = "- the API  [api]\n  ? paging  [paging]\n      scope: pages.py\n      check: true\n"
+    said = agent("plan", "propose", "-", input=paging)
+    assert said.exit_code == 0, said.output
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_row_changed_since_the_person_looked_is_marked_until_m(repo, size):
+    revised(repo)
+    seen, _ = watch(repo, [], size)
+    rows = [r for r in seen["tree"] if r.strip()]
+    [paging] = [r for r in rows if "paging" in r]
+    [schema] = [r for r in rows if "schema" in r]
+    assert " +paging" in paging and "+" not in schema
+    assert paging.rindex("paging") == schema.rindex("schema")  # the id column, where it always is
+    assert sum("+" in r or "~" in r for r in rows) == 1
+    top = seen["status"].splitlines()[0]
+    assert top.startswith("1 changed since you last looked · graphene plan changes · m seen · you: 1")
+    assert len(top) <= size[0] - 2
+    folded, _ = watch(repo, ["j", "z", "c"], size)  # api folded: the change inside it is not hidden
+    [api] = [r for r in folded["tree"] if " api " in r or "~api" in r]
+    assert "~api" in api
+    after, _ = watch(repo, ["m"], size)
+    assert "graphene plan seen: 1 change marked as seen" in after["status"]
+    assert not any("+paging" in r for r in after["tree"]) and "changed since" not in after["status"]
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_question_mark_on_a_node_opens_the_chooser_and_each_choice_runs_its_command(repo, size, monkeypatch):
+    accepted(repo)
+    started = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    goal, _ = watch(repo, [], size)
+    assert "? help" in goal["status"]  # on the goal ? is the help, as it was
+    seen, _ = watch(repo, ["question_mark"], size)
+    assert seen["screen"] == "Help"
+    seen, _ = watch(repo, ["j", "j"], size)
+    assert "? talk" in seen["status"] and "? help" not in seen["status"]
+    seen, _ = watch(repo, ["j", "j", "question_mark"], size)
+    assert seen["screen"] == "Ask"
+    for typed, argv in (
+        (["w"], ["talk", "why", "ids"]),
+        (list("why"), ["talk", "why", "ids"]),
+        (["a"], ["talk", "another", "ids"]),
+        (["s"], ["node", "split", "ids"]),
+        (list("make it faster"), ["ask", "make it faster", "--about", "ids"]),
+    ):
+        started.clear()
+        watch(repo, ["j", "j", "question_mark", *typed, "enter"], size)
+        assert started == [argv], (typed, started)
+    started.clear()
+    seen, _ = watch(repo, ["j", "j", "V", "j", "question_mark", "m", "enter"], size)  # the selection, merged
+    assert started == [["talk", "merge", "ids", "docs"]] and "VISUAL" not in seen["status"]
+    started.clear()
+    seen, _ = watch(repo, ["j", "j", "question_mark", "question_mark", "enter"], size)
+    assert seen["screen"] == "Help" and started == []
+    seen, _ = watch(repo, ["j", "j", "question_mark", "w", "escape"], size)
+    assert seen["screen"] == "Screen" and started == []
+
+
+def test_the_chooser_says_its_choices_at_80_columns(repo):
+    accepted(repo)
+
+    async def before(app, pilot):
+        await pilot.press("j", "j", "question_mark")
+        await pilot.pause()
+        line = "\n".join(shown(app, app.screen.query_one("#ask").region))
+        assert "ids: w why · s split · m merge · a another way · ? help · or your words" in line, line
+
+    watch(repo, [], (80, 24), before=before)
+
+
+def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker):
+    accepted(repo)
+    with Store.open(repo) as store:
+        store.set_meta("planner", talker)
+
+    async def before(app, pilot):
+        await pilot.press("j", "j", "question_mark", "w", "enter")
+        await pilot.pause()
+        assert "graphene talk why ids: started" in str(app.query_one("#status").render())
+        await asyncio.to_thread(app.runs[0].wait, 60)
+        await pilot.pause(0.3)
+
+    seen, _ = watch(repo, [], before=before)
+    assert "graphene talk why ids ended: the planner on ids: ids is there so the API" in seen["status"]
+    assert "put up why-ids on the board" in seen["detail"]
+    with Store.open(repo) as store:
+        assert B.get(store, "why-ids")["about"] == "ids"
+
+
+def test_the_replay_refuses_m(tmp_path, monkeypatch):
+    from graphene_map import demo
+
+    head, lines = demo.load(demo.SHIPPED)
+    repo = demo.repository(tmp_path, head)
+    app = demo.Replay(repo, head, lines)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("m")
+            await pilot.pause()
+            return str(app.query_one("#status").render()).splitlines()[-1]
+
+    assert asyncio.run(go()) == demo.REFUSED
+    with Store.open(repo) as store:
+        assert store.meta("seen:alex") is None and store.meta(f"seen:{P.person_name()}") is None

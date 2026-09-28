@@ -152,7 +152,7 @@ def test_enter_the_colon_line_and_help_work_from_the_view(repo, grid, size):
 
     async def go():
         async with app.run_test(size=size) as pilot:
-            await pilot.press("tab", "question_mark")
+            await pilot.press("tab", "question_mark", "question_mark", "enter")  # ? on a node: the chooser
             await pilot.pause()
             return type(app.screen).__name__
 
