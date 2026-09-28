@@ -69,8 +69,8 @@ def whole(flat: str, words: str, taken: list[range]) -> re.Match | None:
 
 
 def plain(say: Callable[[str], None]) -> Callable[[str], None]:
-    """``say``, with nothing in a line that a terminal would act on."""
-    return lambda line: say(CONTROL.sub("", line))
+    """``say``, with nothing in a line that a terminal would act on, and nothing shaped like a key."""
+    return lambda line: say(tf.unkeyed(CONTROL.sub("", line)))
 
 
 def paragraph_of(store) -> str | None:
@@ -124,7 +124,7 @@ def take(store, u: dict, who: P.Caller) -> str:
 
 def cover(store, paragraph: str | None = None, say: Callable[[str], None] = print) -> list[dict]:
     """Ask Nano, keep what is the person's, record it, say it. Returns the uncovered rows' details."""
-    paragraph, say = paragraph or paragraph_of(store), plain(say)
+    paragraph, say = tf.unkeyed(paragraph or paragraph_of(store) or ""), plain(say)
     if not (paragraph or "").strip():
         raise P.Refused("no paragraph to account for: `graphene ask` keeps one, or give --paragraph FILE")
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
@@ -152,14 +152,14 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     except (ValueError, KeyError, TypeError, AssertionError):
         say("its answer is not the JSON asked for: nothing is recorded")
         return []
-    flat = CONTROL.sub("", " ".join(paragraph.split()))
+    flat = tf.unkeyed(CONTROL.sub("", " ".join(paragraph.split())))
     by_id, gone = {n.id: n for n in everything}, dismissed(store)
     leaves = {n.id for n in P.leaves(everything) if n.state in (P.PROPOSED, P.OPEN)}
     kept, dropped, uncovered, odd, pieces, taken = [], [], [], 0, 0, []
     for c in clauses:
         try:  # an item of any other shape is passed over: nothing the model writes breaks the command
             text, leaf, near = c["text"], c.get("leaf"), c.get("nearest")
-            words = CONTROL.sub("", " ".join(text.split())).rstrip(".,;:")
+            words = tf.unkeyed(CONTROL.sub("", " ".join(text.split()))).rstrip(".,;:")
             if not words or not all(v is None or isinstance(v, str) for v in (leaf, near)):
                 raise TypeError
         except (TypeError, KeyError, IndexError, AttributeError):
@@ -184,7 +184,9 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
             near = near if near in leaves else None
             uncovered.append({"note": clause, "nearest": near})
     run = P._now()
-    read = {"run": run, "clauses": kept, "dropped": dropped, "pieces": pieces}
+    # what the model made up is counted whole, and a little of it kept to read: never a large row
+    read = {"run": run, "clauses": kept, "dropped": [d[:200] for d in dropped[:20]], "invented": len(dropped),
+            "pieces": pieces}  # fmt: skip
     with store.claim():
         store.log_node("*", run, "covered", ACTOR, None, None, read)
         for u in uncovered:

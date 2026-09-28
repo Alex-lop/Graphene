@@ -237,3 +237,20 @@ def test_taking_a_clause_keeps_an_edit_made_since_the_cover_ran(repo, fake):
         assert P.get(store, "xml-wiring").goal == f"read the XML feed into items, in order; {SAID}"
     again = person("plan", "cover", "--take", "1")
     assert again.exit_code == 1 and "carries it already" in again.output
+
+
+def test_a_key_shaped_string_never_lands_in_the_store_or_the_output_and_a_long_answer_is_capped(repo, fake):
+    shaped = "sk-AbCdEfGh1234567890IjKlMnOp"
+    words = f"Use the token {shaped} for the feed. Prices are in cents."
+    invented = [{"text": f"NEBIUS_API_KEY={shaped}", "leaf": None, "nearest": None}]
+    invented += [{"text": f"made up {k} " + "x" * 400, "leaf": None, "nearest": None} for k in range(5000)]
+    f = fake([nano({"clauses": [{"text": f"Use the token {shaped} for the feed", "leaf": None,
+                                 "nearest": "prices"}, *invented]})])  # fmt: skip
+    said = []
+    with planned(repo) as store:
+        C.cover(store, paragraph=words, say=said.append)
+        rows = json.dumps([e["detail"] for e in store.node_log("*", ("covered", "uncovered"))])
+    assert shaped[3:] not in f.requests[0]["messages"][1]["content"]  # nor is it sent
+    assert shaped[3:] not in rows and shaped[3:] not in "\n".join(said)
+    assert "Use the token [removed: shaped like a key] for the feed" in "\n".join(said)
+    assert len(rows) < 20_000 and "dropped, not your words: 5001" in said[1]
