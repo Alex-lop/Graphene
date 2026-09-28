@@ -180,8 +180,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         the goal, then the tree folded to what is still moving. ``everything`` unfolds it; without
         ``archive`` a finished plan is not told how to put it away (a replay's repository is gone)."""
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
+        asked, board = B.waiting(store)  # what the board waits on the person for
         if not alive:
-            return [NO_PLAN]
+            return [board, NO_PLAN] if board else [NO_PLAN]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
         leaves = [n for n in P.leaves(alive) if not n.aside]
@@ -210,7 +211,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         ]
         if not P.paused(store) and leaves and count[P.DONE] == len(leaves) and not stuck:
             head += " · finished" + ("; `graphene plan archive` puts it away" if archive else "")
-        lines.append(head)
+        lines += [head, *([board] if board else [])]
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
             n
@@ -220,7 +221,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         back = {n.id for n in alive if P.came_back(store, n)}  # it came back: the next move is the person's
         words = {n.id: P.reads(n, alive, back) for n in alive}  # the words the screen and the text use
         yours += [n for n in alive if words[n.id] == "yours"]  # a person's own leaf, scope or none
-        if who.person and (yours or stuck or back):
+        if who.person and (yours or stuck or back or asked):
             seen: list[str] = []
             told = [
                 f"{n.id} ({words[n.id]}"
@@ -231,6 +232,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             ]
             told += [f"{n.id} (its leaves are done and its own check fails)" for n in stuck]
             told += [f"{n.id} (came back: `graphene node show {n.id}`)" for n in alive if n.id in back]
+            told += [f"{asked} on the board (`graphene board`)"] if asked else []
             more = (
                 f", and {len(told) - 8} more (`graphene plan --all`)"
                 if len(told) > 8 and not everything
