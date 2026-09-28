@@ -203,6 +203,8 @@ def _check(store, item: dict, at: dict | None = None) -> None:
         raise P.Refused(f"{_line(at, 'item')}a board item is a {', '.join(KINDS)}, not {item['kind']!r}")
     if not item["text"]:
         raise P.Refused(f"{_line(at, 'item')}a {item['kind']} needs its words after the colon")
+    if any(not o["text"] for o in item["options"]):
+        raise P.Refused(f"{_line(at, 'option')}an option: needs its words")
     if item["options"] and item["kind"] != "question":
         raise P.Refused(
             f"{_line(at, 'option')}option: is a question's; a {item['kind']} has a default: at most"
@@ -375,8 +377,8 @@ def drop(store, item_id: str, who: P.Caller) -> dict:
 def lines(item: dict) -> list[str]:
     """One item in the plan's text: its line at the left edge, then its own lines under it."""
     out = [f"{item['kind']}: {item['text']}  [{item['id']}]"]
-    if item["default"]:
-        out += [f"    default: {item['default']}", *(f"    then: {e}" for e in item["then"])]
+    if item["default"] or item["then"]:
+        out += [f"    default: {item['default'] or ''}".rstrip(), *(f"    then: {e}" for e in item["then"])]
     for o in item["options"]:
         out += [f"    option: {o['text']}", *(f"    then: {e}" for e in o["then"])]
     out += [f"    about: {item['about']}"] if item.get("about") else []

@@ -82,13 +82,14 @@ def test_the_planners_items_land_on_the_board_as_the_planners(repo, tmp_path):
     shown = person("board")
     assert shown.exit_code == 0
     lines = shown.stdout.splitlines()
-    assert lines[0] == (
-        "the board: 5 open · graphene board take|drop|park ID, pick ID N, answer ID WORDS"
-    )
+    assert lines[0] == "the board: 5 open"
+    assert lines[-1] == "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
+    assert max(len(line) for line in lines) <= 80  # 80 columns
     assert lines[1] == "questions" and lines[2].split()[-2:] == ["which-id", "open"]
     assert "      default: the row id; schema.py already has it" in lines
-    assert "      1: a uuid column, added to schema.py  → scope users + schema.py" in lines
-    assert [line for line in lines if not line.startswith(" ")] == [
+    option = lines.index("      1: a uuid column, added to schema.py")
+    assert lines[option + 1] == "         then: scope users + schema.py"
+    assert [line for line in lines[:-1] if not line.startswith(" ")] == [
         lines[0], "questions", "assumptions", "risks", "left out", "notes"
     ]  # fmt: skip
     as_json = json.loads(person("board", "--json").stdout)
@@ -131,8 +132,8 @@ def test_the_person_takes_picks_drops_parks_and_answers_each_by_cli(repo, tmp_pa
     unknown = person("board", "park", "nothing")
     assert unknown.exit_code == 1 and "no item nothing on the board" in unknown.stderr
     shown = person("board").stdout.splitlines()
-    assert shown[0].startswith("the board: 0 open, 1 parked, 4 settled")
-    assert [line for line in shown if not line.startswith(" ")][1:] == ["parked", "settled"]
+    assert shown[0] == "the board: 0 open, 1 parked, 4 settled"
+    assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled"]
 
 
 def test_an_agent_cannot_answer_and_its_note_waits_for_the_person(repo, tmp_path):
@@ -246,6 +247,7 @@ def test_an_effect_or_about_that_names_no_node_is_refused_by_its_line(repo):
             ("risk: r  [r]\n    then: drop users\n", "line 2: then: goes under the default: or option:"),
             ("risk: r  [r]\n    default: d\n    then: rename users\n", "line 3: then: 'rename users' is not"),
             ("assume: a  [a]\n    option: o\n", "line 2: option: is a question's"),
+            ("question: q  [q]\n    option:\n", "line 2: an option: needs its words"),
             ("assume: a  [a]\n    default: d\n    scope: x\n", "line 3: 'scope: x' is under a assume"),
         ):
             with pytest.raises(P.Refused, match=said.replace("(", r"\(")):
@@ -274,6 +276,9 @@ risk: parked  [r-parked]
     answer: parked
 leave out: answered  [l-answered]
     answer: not this week
+risk: an effect with no words for its default  [r-bare]
+    default:
+    then: condition vendor/*
 note: open  [n-open]
 
 - users  [users]
@@ -296,7 +301,8 @@ def test_the_text_form_round_trips_every_kind_and_state(repo):
         assert T.render(store)[0] == text
         states = {it["id"]: it["state"] for it in B.items(store)}
         assert states == {"q-open": "open", "q-picked": "picked", "a-taken": "taken", "r-parked": "parked",
-                          "l-answered": "answered", "n-open": "open", "gone": "dropped"}  # fmt: skip
+                          "l-answered": "answered", "r-bare": "open", "n-open": "open",
+                          "gone": "dropped"}  # fmt: skip
 
 
 def test_plan_edit_answers_by_adding_answer_lines_and_drops_by_deleting(repo, tmp_path, monkeypatch):
@@ -386,3 +392,12 @@ def test_the_replay_works_with_a_plan_that_has_a_board(repo, tmp_path):
     replayed = runner.invoke(build(), ["demo", str(out), "--once"])
     assert replayed.exit_code == 0, replayed.output
     assert "users returns ids" in replayed.stdout
+
+
+def test_a_board_with_nothing_but_dropped_items_reads_as_empty(repo):
+    from graphene_map.board_cli import EMPTY
+
+    assert person("board").stdout == EMPTY + "\n"
+    person("board", "note", "later")
+    assert person("board", "drop", "later").exit_code == 0
+    assert person("board").stdout == EMPTY + "\n"

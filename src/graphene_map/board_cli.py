@@ -15,47 +15,46 @@ EMPTY = (
     "the board is empty. The planner puts up what it would ask you (`graphene ask '…'`); "
     "you put up notes (`graphene board note '…'`)"
 )
-ACTS = "graphene board take|drop|park ID, pick ID N, answer ID WORDS"
+ACTS = "graphene board take|drop|park ID · pick ID N · answer ID WORDS · note WORDS"
 
 
 def rows(store) -> list[str]:
     """The board as `graphene board` prints it: each group under its name, an item in the row
     grammar (glyph, words, id, the word its state reads as); what is open with its default and its
-    options, what is settled in one line."""
-    shown = B.groups(store)
+    options, what is settled in one line; last, the commands that answer."""
+    shown = [(name, group) for name, group in B.groups(store) if name != "dropped"]
     if not shown:
         return [EMPTY]
     count = {name: len(group) for name, group in shown}
     opened = sum(n for name, n in count.items() if name not in ("parked", "settled", "dropped"))
     head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled") if k in count]
-    out = [f"the board: {', '.join(head)} · {ACTS}"]
-    listed = [it for name, group in shown if name != "dropped" for it in group]
+    out = [f"the board: {', '.join(head)}"]
+    listed = [it for _, group in shown for it in group]
     # one row grammar, as `graphene plan` prints a node: glyph and words (cut at a word), id, state word
     wt = min(48, max(len(it["text"]) for it in listed) + 4)
     wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
     for name, group in shown:
-        if name == "dropped":
-            continue
         out.append(name)
         for item in group:
             word = B.reads(item)
-            words = B.said(item) if name == "settled" else item["text"]
+            words = item["text"]
             mark = f"  · {item['by']}'s" if item["agent"] and item["kind"] == "note" else ""
             title = f"  {B.look(item)[0]} {T.elide(words, wt - 4)}"
             out.append(f"{title.ljust(wt)}  {item['id'].ljust(wid)}  {word.ljust(ww)}{mark}".rstrip())
             if name == "settled":
+                out += [f"      → {item['answer']}"] if item.get("answer") else []
                 out += [f"      changed: {line}" for line in item["became"]]
                 continue
-            if item["default"]:
-                out.append(f"      default: {item['default']}" + _then(item["then"]))
+            if item["default"] or item["then"]:
+                out += [f"      default: {item['default'] or ''}".rstrip(), *_then(item["then"])]
             for k, option in enumerate(item["options"], 1):
-                out.append(f"      {k}: {option['text']}" + _then(option["then"]))
+                out += [f"      {k}: {option['text']}", *_then(option["then"])]
             out += [f"      about {item['about']}"] if item.get("about") else []
-    return out
+    return [*out, ACTS]
 
 
-def _then(effects: list[str]) -> str:
-    return f"  → {'; '.join(effects)}" if effects else ""
+def _then(effects: list[str]) -> list[str]:
+    return [f"         then: {line}" for line in effects]
 
 
 def register(cli: typer.Typer, root, open_store, fail) -> None:
