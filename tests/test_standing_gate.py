@@ -86,3 +86,11 @@ def test_an_aside_that_types_a_standing_scope_is_refused_like_any_leaf(ruled, re
     with pytest.raises(Refused, match="protected: src/db/"):
         item = {"id": "t", "title": "t", "scope": ["src/db/**"]}
         plan.propose(ruled, [item], ALEX, files=plan.tracked(repo), aside=True)
+
+
+def test_a_leaf_that_a_later_setting_covers_is_refused_at_start_naming_it(store, repo):
+    plan.propose(store, [api_node(id="a", scope=["src/**"])], ALEX, files=plan.tracked(repo))
+    S.apply(store, "protected: src/db/**\n", ALEX)
+    with pytest.raises(Refused, match="protected: src/db/"):
+        plan.start(store, "a", BOT, repo)
+    assert plan.get(store, "a").state == "open"

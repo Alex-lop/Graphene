@@ -1562,6 +1562,7 @@ def start(
         node = get(store, node_id)
         everything = nodes(store)
         _may_start(store, node, who, everything)
+        _keeps_standing(node, standing(store), files)  # a setting made since it was proposed binds it too
         if away:
             raise Refused(f"{node.id} waits on {'; '.join(away)}")
         for other in everything:
