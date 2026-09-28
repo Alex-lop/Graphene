@@ -84,3 +84,13 @@ def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
     privacy = doc("README.md").split("## Privacy")[1].split("## ")[0]
     assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in privacy
     assert "whatever the planner" in privacy
+
+
+def test_watch_help_names_no_view_setting_that_no_command_can_set():
+    """`config edit` refuses a `view:` line and no command writes one, so --help never sends you to it."""
+    from typer.testing import CliRunner
+
+    from graphene_map.cli import build
+
+    said = " ".join(CliRunner().invoke(build(), ["watch", "--help"], env={"COLUMNS": "200"}).stdout.split())
+    assert "Left out: the outline." in said and "view` setting" not in said
