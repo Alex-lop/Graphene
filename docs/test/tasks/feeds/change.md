@@ -1,0 +1,1 @@
+Good, the XML feed loads now. One more thing: I'd like to stop typing --source at all. Work the source out from the file's extension, so that load samples/prices.xml and load samples/prices.csv both just go.

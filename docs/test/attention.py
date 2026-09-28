@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A person's attention in one run, modelled, and the proposals they changed before any code ran.
 
-    docs/test/attention.py <run-dir> [--arm prompt|tree]
+    docs/test/attention.py <run-dir> [--arm prompt|tree|board]
 
 <run-dir> holds runlog.jsonl and repo/.graphene/graphene.db, as newrun.sh makes it; the arm is read
 off its name (<task>-<style>-<arm>-<rep>) unless given. Added for the 23 September test, whose
@@ -14,13 +14,17 @@ question is attention rather than characters. Nothing here is estimated or asked
   edit, reopen, widen, sibling          the values the command carried: --title, --goal, --scope,
                                         --check, --needs, --owner, --note, --why, and any path after
                                         the node id. `graphene node set n2` is a key in graphene watch
+  board (28 September, the board arm)   the words the person typed: `answer ID WORDS` and `note WORDS`
+                                        count WORDS; `take`, `pick ID N`, `drop` and `park` are keys,
+                                        and the item id and pick's N are chosen, not typed. A board
+                                        command not in BOARD_CHOSEN counts everything after `board`
   accept, drop, run, review, read       nothing: a key (y, d, R), or reading
 
 The key that makes an act is not counted as a keystroke, in either arm (sending a message is a
 key too); M below is the whole cost of an act.
 
 **Acts** are every person entry except `read`: each message, accept, drop, edit, widen, sibling,
-run, reopen, handwork and review.
+run, reopen, handwork, review and board command. `board_acts` counts the board commands by name.
 
 **Person-seconds are MODELLED**, with the keystroke-level model (Card, Moran & Newell 1980):
 K = 0.28 s a typed character (an average typist), M = 1.35 s of mental preparation an act, and
@@ -45,6 +49,7 @@ import re
 import shlex
 import sqlite3
 import sys
+from collections import Counter
 from pathlib import Path
 
 K, M, WPM = 0.28, 1.35, 250
@@ -52,6 +57,28 @@ WHOLE = ("prompt", "correction", "shape", "handwork")
 KEYS = ("accept", "drop", "run", "review", "read")
 VALUES = ("--title", "--goal", "--scope", "--check", "--needs", "--owner", "--note", "--why")
 AGENT = re.compile(r"^(claude|codex|run):|^an agent$")
+# a board command: how many words after it the person chose rather than typed (the item's id, and
+# pick's option number); every word after those is typed
+BOARD_CHOSEN = {"take": 1, "pick": 2, "drop": 1, "park": 1, "answer": 1, "note": 0}
+
+
+def board_words(text: str) -> list[str]:
+    """The words after `graphene board` (or after `board`, or the whole text if neither is there)."""
+    try:
+        argv = shlex.split(text)
+    except ValueError:
+        argv = text.split()
+    at = argv.index("graphene") + 1 if "graphene" in argv else 0
+    return argv[at + 1 :] if argv[at : at + 1] == ["board"] else argv[at:]
+
+
+def board_typed(text: str, notes: list[str]) -> int:
+    words = board_words(text)
+    sub = words[0] if words else ""
+    if sub not in BOARD_CHOSEN:
+        notes.append(f"a board command `{sub}` not in BOARD_CHOSEN was counted whole: {text[:60]!r}")
+        return len(" ".join(words))
+    return len(" ".join(words[1 + BOARD_CHOSEN[sub] :]))
 
 
 def typed(entry: dict, notes: list[str]) -> int:
@@ -62,6 +89,8 @@ def typed(entry: dict, notes: list[str]) -> int:
         return len(text)
     if kind in KEYS:
         return 0
+    if kind == "board":
+        return board_typed(text, notes)
     try:
         argv = shlex.split(text)
     except ValueError:
@@ -138,6 +167,7 @@ def attention(run: Path, arm: str) -> dict:
             break
         notes.append(f"no `{starter}` in the run log: to_run is cut at the next thing that set work going")
     found = caught(run / "repo" / ".graphene" / "graphene.db") if arm != "prompt" else []
+    said = [board_words(str(e.get("text") or "")) for e in person if e.get("type") == "board"]
     return {
         "arm": arm,
         "model": "keystroke-level model, MODELLED not measured: K=0.28 s/char, M=1.35 s/act, 250 wpm",
@@ -145,6 +175,7 @@ def attention(run: Path, arm: str) -> dict:
         "to_run": model(person if cut is None else person[: cut + 1], []),
         "caught_before_code": found,
         "caught_before_code_n": len(found),
+        "board_acts": dict(Counter(words[0] if words else "" for words in said)),
         "notes": notes,
     }
 
@@ -152,7 +183,7 @@ def attention(run: Path, arm: str) -> dict:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("run")
-    ap.add_argument("--arm", choices=("prompt", "tree", "graphene"))
+    ap.add_argument("--arm", choices=("prompt", "tree", "graphene", "board"))
     args = ap.parse_args(argv[1:])
     run = Path(args.run).expanduser().resolve()
     arm = args.arm or run.name.split("-")[-2]
