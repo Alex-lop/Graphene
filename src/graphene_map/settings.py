@@ -57,6 +57,22 @@ def conditions_for_planner(store) -> str:
     return "\n".join(lines)
 
 
+def broken(store, files: list[str]) -> list[str]:
+    """A line for each leaf not yet done whose scope a standing condition now covers: it is refused
+    at start (and at done), so the person narrows it before an executor spends an attempt on it."""
+    said = []
+    for node in P.nodes(store):
+        if node.aside or node.state not in (P.PROPOSED, P.OPEN) or not node.scope:
+            continue
+        for setting, glob in P.standing(store):
+            hit = P.overlap(node.scope, [glob], files)
+            if hit:
+                said.append(f"{node.id}: its scope ({', '.join(node.scope)}) now covers {hit[0]}, kept out "
+                            f"by `{setting}: {glob}`; narrow it: graphene plan edit {node.id}")  # fmt: skip
+                break
+    return said
+
+
 def elsewhere(store) -> list[str]:
     """The settings changed by their own commands, shown as comment lines: a save never reads them."""
     return [

@@ -82,4 +82,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 typer.echo(f"removed: {line}")
             if "\n".join(after) + "\n" == before:
                 typer.echo("nothing changed")
+            with open_store(root()) as store:
+                for line in S.broken(store, P.tracked(root())):
+                    typer.echo(line)
             return

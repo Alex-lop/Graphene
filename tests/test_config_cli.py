@@ -152,3 +152,15 @@ def test_a_save_from_a_text_another_writer_has_since_changed_is_refused(repo, mo
     assert edited.exit_code == 1 and "changed by someone else" in edited.stderr
     assert "protected: secrets/**" in edited.stderr  # what they say now, so it can be kept
     assert stored(repo) == (["secrets/**"], [], [], "auto")
+
+
+def test_a_new_protected_path_names_the_leaves_whose_scope_now_covers_it(repo, monkeypatch, tmp_path):
+    with Store.open(repo) as store:
+        leaf = {"id": "tv", "title": "t", "scope": ["*.py"], "check": "true"}
+        P.propose(store, [leaf], P.caller(env=PERSON))
+    python = "text = text.replace('\\nsize: auto\\n', '\\nprotected: api.py\\nsize: auto\\n')"
+    editor(monkeypatch, tmp_path, python)
+    edited = config("edit")
+    assert edited.exit_code == 0, edited.output
+    assert "tv: its scope (*.py) now covers api.py" in edited.stdout
+    assert "graphene plan edit tv" in edited.stdout
