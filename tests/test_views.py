@@ -114,29 +114,46 @@ def test_tab_opens_the_view_on_the_same_node_and_tab_again_the_outline(repo, gri
 def test_j_k_walk_the_order_h_l_the_cells_beside_and_gg_G_the_ends(repo, grid, size):
     proposed(repo)
     nodes = order(repo)  # the grid: nodes[0] nodes[1] on its first line of cells, nodes[2] nodes[3] under
-    assert look(repo, ["tab"], size)["cursor"] == nodes[0]  # the goal has no cell: the first node
-    assert look(repo, ["tab", "j", "j"], size)["cursor"] == nodes[2]
-    assert look(repo, ["tab", "j", "j", "k"], size)["cursor"] == nodes[1]
-    assert look(repo, ["tab", "l"], size)["cursor"] == nodes[1]
-    assert look(repo, ["tab", "l", "h"], size)["cursor"] == nodes[0]
-    assert look(repo, ["tab", "j", "j", "l"], size)["cursor"] == nodes[3]
-    assert look(repo, ["tab", "h"], size)["cursor"] == nodes[0]  # nothing to the left: it stays
+    assert look(repo, ["tab"], size)["cursor"] is None  # on the goal, as the outline was
+    assert look(repo, ["tab", "j"], size)["cursor"] == nodes[0]
+    assert look(repo, ["tab", "j", "j", "j"], size)["cursor"] == nodes[2]
+    assert look(repo, ["tab", "j", "j", "j", "k"], size)["cursor"] == nodes[1]
+    assert look(repo, ["tab", "j", "l"], size)["cursor"] == nodes[1]
+    assert look(repo, ["tab", "j", "l", "h"], size)["cursor"] == nodes[0]
+    assert look(repo, ["tab", "j", "j", "j", "l"], size)["cursor"] == nodes[3]
+    assert look(repo, ["tab", "j", "h"], size)["cursor"] == nodes[0]  # nothing to the left: it stays
     assert look(repo, ["tab", "G"], size)["cursor"] == nodes[-1]
-    assert look(repo, ["tab", "G", "g", "g"], size)["cursor"] == nodes[0]
-    folded = look(repo, ["tab", "z", "a"], size)  # folding is the outline's: za adds nothing here
+    assert look(repo, ["tab", "G", "g", "g"], size)["cursor"] is None  # gg: the goal, as in the outline
+    folded = look(repo, ["tab", "j", "z", "a"], size)  # folding is the outline's: za adds nothing here
     assert folded["cursor"] == nodes[0] and folded["showing"] == "grid" and len(order(repo)) == 4
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_views_first_line_is_the_goal_and_its_keys_are_the_goal_rows(repo, grid, size, monkeypatch):
+    """A view had no place for the goal: y (accept it all) and E (the plan as text) were out of reach."""
+    proposed(repo)
+    seen = look(repo, ["tab", "j", "k"], size)
+    assert seen["cursor"] is None and seen["view"][0].startswith("users come back with their ids")
+    assert "y accept it all" in seen["status"] and "E edit the plan as text" in seen["status"]
+    assert "za" not in seen["status"]  # folding is the outline's
+    look(repo, ["tab", "y"], size)
+    assert set(states(repo).values()) == {"open"}  # the whole plan accepted, as y on the goal row does
+    monkeypatch.setenv("EDITOR", "true")
+    assert "graphene plan edit" in look(repo, ["tab", "E"], size)["status"]
+    back = look(repo, ["j", "tab", "k", "tab"], size)  # the goal in the view is the goal in the outline
+    assert back["showing"] == "outline" and back["cursor"] is None
 
 
 @pytest.mark.parametrize("size", SIZES)
 def test_y_d_and_e_act_on_the_node_under_the_views_cursor(repo, grid, size, monkeypatch):
     proposed(repo)
     nodes = order(repo)
-    seen = look(repo, ["tab", "l", "y"], size)
+    seen = look(repo, ["tab", "j", "l", "y"], size)
     assert states(repo)[nodes[1]] == "open" and f"graphene plan accept {nodes[1]}" in seen["status"]
     seen = look(repo, ["tab", "G", "d"], size)
     assert states(repo)[nodes[-1]] == "dropped" and f"graphene node drop {nodes[-1]}" in seen["status"]
     monkeypatch.setenv("EDITOR", "true")  # an editor that changes nothing
-    seen = look(repo, ["tab", "l", "e"], size)
+    seen = look(repo, ["tab", "j", "l", "e"], size)
     assert f"graphene node edit {nodes[1]}" in seen["status"] and seen["showing"] == "grid"
 
 
@@ -144,10 +161,10 @@ def test_y_d_and_e_act_on_the_node_under_the_views_cursor(repo, grid, size, monk
 def test_enter_the_colon_line_and_help_work_from_the_view(repo, grid, size):
     proposed(repo)
     nodes = order(repo)
-    seen = look(repo, ["tab", "l", "enter"], size)
+    seen = look(repo, ["tab", "j", "l", "enter"], size)
     assert seen["cursor"] == nodes[1] and "record" in seen["detail"] and "Enter back" in seen["status"]
     seen = look(repo, ["tab", "colon", *"plan accept schema", "enter", "j"], size)
-    assert states(repo)["schema"] == "open" and seen["focus"] == "view" and seen["cursor"] == nodes[1]
+    assert states(repo)["schema"] == "open" and seen["focus"] == "view" and seen["cursor"] == nodes[0]
     app = Watch(repo, lambda: Store.open(repo), every=60)
 
     async def go():
@@ -182,7 +199,7 @@ def test_search_and_visual_act_in_the_view(repo, grid, size):
     seen = look(repo, ["tab", "slash", *"doc", "enter"], size)
     assert seen["cursor"] == "docs" and seen["showing"] == "grid" and "/doc: 1 of 1" in seen["status"]
     nodes = order(repo)
-    look(repo, ["tab", "l", "V", "j", "y"], size)  # nodes[1] and nodes[2], in the view's order
+    look(repo, ["tab", "j", "l", "V", "j", "y"], size)  # nodes[1] and nodes[2], in the view's order
     assert states(repo)[nodes[1]] == states(repo)[nodes[2]] == "open" and states(repo)[nodes[3]] == "proposed"
 
 

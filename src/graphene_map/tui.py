@@ -451,11 +451,13 @@ class PlanView(VerticalScroll):
                 self.app.action_end(0)
 
     def on_click(self, event) -> None:
-        """A click on a node's cell puts the cursor there."""
+        """A click on a node's cell puts the cursor there; on the first line, the goal's, on the goal."""
         spot = event.get_content_offset(self.query_one("#drawn"))
         drawn = self.app.drawn
         if spot is None or drawn is None:
             return
+        if spot.y == 0:
+            self.app.go(None)
         for node_id, (line, first, last) in drawn.at.items():
             if line == spot.y and first <= spot.x <= last:
                 self.app.go(node_id)
@@ -637,7 +639,7 @@ class Watch(App):
         self.wanted = view  # the view asked for (`--view`); None: the repository's `view` setting
         self.showing: str | None = None  # the view where the outline goes: "outline", or one in views.VIEWS
         self.drawn: V.Drawn | None = None  # that view as last drawn; None while the outline shows
-        self.here: str | None = None  # the node under that view's cursor
+        self.here: str | None = None  # the node under that view's cursor; None: its first line, the goal
         self.goal_text = ""
         self.view = "contract"  # or "tail", "record", "said": what the side pane shows for the selected node
         self.message = ""  # what the last command said: the bottom line's, until the cursor moves
@@ -700,7 +702,13 @@ class Watch(App):
         return _node(node.data) if node is not None else None
 
     def on_goal(self) -> bool:
-        return self.drawn is None and self.tree.show_root and self.tree.cursor_node is self.tree.root
+        if self.drawn is not None:  # a view's first line is the goal's: no node under the cursor
+            return self.here is None
+        return self.tree.show_root and self.tree.cursor_node is self.tree.root
+
+    def stops(self) -> list[str | None]:
+        """Where j and k stop in a view: the goal (None), then the view's reading order."""
+        return [None, *(self.drawn.order if self.drawn is not None else [])]
 
     def word(self, node_id: str | None) -> str:
         return self.words.get(node_id or "", "")
@@ -711,9 +719,9 @@ class Watch(App):
         if self.anchor is None:
             return [i for i in [self.selected()] if i]
         if self.drawn is not None:
-            order = self.drawn.order
-            low, high = sorted((self.anchor, order.index(self.here) if self.here in order else self.anchor))
-            return order[low : high + 1]
+            stops = self.stops()
+            low, high = sorted((self.anchor, stops.index(self.here) if self.here in stops else self.anchor))
+            return [i for i in stops[low : high + 1] if i is not None]
         low, high = sorted((self.anchor, self.tree.cursor_line))
         out = []
         for line in range(low, high + 1):
@@ -869,10 +877,9 @@ class Watch(App):
             return None
         width, height = self.view_room()
         drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
-        if drawn is not None and self.here not in drawn.at:
+        if drawn is not None and self.here is not None and self.here not in drawn.at:
             self.here = drawn.order[0] if drawn.order else None
-            if self.here is not None:
-                drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
+            drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         return drawn
 
     def paint(self, show: bool) -> None:
@@ -892,6 +899,8 @@ class Watch(App):
         if drawn is None:
             return
         lines = [line.copy() for line in drawn.lines]
+        if self.here is None and lines:  # on the goal
+            lines[0].stylize("reverse")
         for node_id in self.chosen() if self.anchor is not None else []:
             line, first, last = drawn.at.get(node_id, (0, 0, -1))
             lines[line].stylize("reverse", first, last + 1)
@@ -902,7 +911,10 @@ class Watch(App):
             box.call_after_refresh(box.scroll_to, y=max(line - rows // 2, 0), animate=False)
 
     def tree_to(self, node_id: str | None) -> None:
-        """The outline's cursor on this node, its branch unfolded to it."""
+        """The outline's cursor on this node, its branch unfolded to it; None, the goal."""
+        if node_id is None and self.tree.show_root:
+            with self.prevent(Tree.NodeHighlighted):
+                self.tree.move_cursor(self.tree.root)
         for node in _walk(self.tree.root):
             if node.data == node_id:
                 parent = node.parent
@@ -915,8 +927,8 @@ class Watch(App):
 
     def go(self, node_id: str | None) -> None:
         """The view's cursor on this node: the node pane and the bottom line follow it, as the
-        outline's do."""
-        if node_id is None or node_id == self.here:
+        outline's do. None is the goal."""
+        if node_id == self.here:
             return
         self.here = node_id
         if self.view == "said":
@@ -925,18 +937,16 @@ class Watch(App):
         self.refresh_plan()
 
     def action_step(self, way: int) -> None:
-        order = self.drawn.order if self.drawn is not None else []
-        if order:
-            at = order.index(self.here) if self.here in order else -1
-            self.go(order[max(0, min(at + way, len(order) - 1))])
+        stops = self.stops()
+        at = stops.index(self.here) if self.here in stops else 0
+        self.go(stops[max(0, min(at + way, len(stops) - 1))])
 
     def action_end(self, which: int) -> None:
-        if self.drawn is not None and self.drawn.order:
-            self.go(self.drawn.order[which])
+        self.go(self.stops()[which])
 
     def action_beside(self, way: int) -> None:
-        if self.drawn is not None:
-            self.go(V.beside(self.drawn, self.here, way))
+        if self.drawn is not None and (to := V.beside(self.drawn, self.here, way)) is not None:
+            self.go(to)
 
     def action_next_view(self) -> None:
         """Tab: the next view that fits this plan at this size, in the order the views were added,
@@ -1458,8 +1468,9 @@ class Watch(App):
         self.refresh_plan()
 
     def action_visual(self) -> None:
-        order = self.drawn.order if self.drawn is not None else []
-        here = order.index(self.here) if self.here in order else self.tree.cursor_line
+        stops = self.stops()
+        in_view = self.drawn is not None and self.here in stops
+        here = stops.index(self.here) if in_view else self.tree.cursor_line
         self.anchor = None if self.anchor is not None else here
         self.refresh_plan()
 
