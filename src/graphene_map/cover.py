@@ -28,6 +28,7 @@ from . import plan_text as T
 from . import tokenfactory as tf
 
 ACTOR = "cover:nemotron"
+BRIEF = 30  # seconds Nano is given, asked once: it runs after the proposal has landed, and nobody waits on it
 SYSTEM = """\
 You account for a person's words. They wrote a paragraph asking for work, and a planner proposed a
 plan: a tree of nodes, each with an [id]. Split the paragraph into clauses: each thing the person asked
@@ -101,7 +102,7 @@ def dismissed(store) -> set[str]:
 
 def _nano() -> str:
     try:
-        found = tf.roles()
+        found = tf.roles(tf.models(tries=1))
     except tf.Unreachable as no:
         raise P.Refused(f"Nano could not be asked: {no}") from None
     if "nano" not in found:
@@ -135,8 +136,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     shown = f"The paragraph:\n{paragraph.strip()}\n\nThe plan:\n{text}"
     ask = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": shown}]
     try:
-        said = tf.chat(model, ask, tag="cover", response_format=FORMAT, reasoning_effort="low",
-                       temperature=0, max_tokens=4096)  # fmt: skip
+        said = tf.chat(model, ask, tag="cover", tries=1, timeout=BRIEF, response_format=FORMAT,
+                       reasoning_effort="low", temperature=0, max_tokens=4096)  # fmt: skip
     except tf.Unreachable as no:
         raise P.Refused(f"Nano could not be asked: {no}") from None
     usage, whose = said["usage"], tf.endpoint()

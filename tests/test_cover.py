@@ -270,3 +270,17 @@ def test_the_screen_and_dismiss_number_the_clauses_alike(repo, fake):
     assert person("plan", "cover", "--dismiss", "2").exit_code == 0
     with Store.open(repo) as store:
         assert [u["n"] for u in C.standing(store)] == [3]
+
+
+def test_a_failing_nano_is_asked_once_and_waits_for_nothing(repo, fake, monkeypatch):
+    waited = []
+    monkeypatch.setattr(tf.time, "sleep", waited.append)
+    monkeypatch.setenv("GRAPHENE_SHAPE", "cover")
+    f = fake([500] * 6)
+    said = []
+    with planned(repo) as store:
+        C.after_ask(store, PARAGRAPH, said.append)
+        assert store.node_log("*", ("covered", "usage")) == []
+    assert len(f.requests) == 1 and waited == []
+    [line] = said
+    assert line.startswith("cover: Nano could not be asked: Token Factory answered 500")
