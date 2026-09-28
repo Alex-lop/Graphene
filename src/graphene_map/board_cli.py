@@ -82,8 +82,8 @@ def _hang(head: str, text: str) -> list[str]:
 
 
 def _became(line: str) -> str:
-    """What an answer did: a change to the plan, or a condition only recorded (nothing enforces it)."""
-    return line if line.startswith("recorded:") else f"changed: {line}"
+    """What an answer did to the plan, or to what a leaf may write."""
+    return f"changed: {line}"
 
 
 def _then(effects: list[str]) -> list[str]:

@@ -530,15 +530,35 @@ def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(rep
         assert [it["state"] for it in B.items(store)] == ["dropped"]
 
 
-def test_a_condition_is_said_to_be_recorded_for_the_settings_never_changed(repo):
+def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
+    """`then: condition GLOB` was only recorded ("nothing enforces it yet"): it now feeds the settings'
+    read-only list, so a scope over it is refused and `graphene config` shows it, until plan undo."""
+    from graphene_map import settings as S
+
+    (repo / "vendor").mkdir()
+    (repo / "vendor" / "lib.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "vendor"], cwd=repo, check=True)  # judged against what git tracks
     with Store.open(repo) as store:
         T.apply(store, "risk: vendored  [vendor]\n    default: leave it\n    then: condition vendor/**\n",
                 PLANNER, None)  # fmt: skip
+        with pytest.raises(P.Refused, match=r"^line 3: '/etc' is not inside the repo"):
+            T.apply(store, "risk: r  [r]\n    default: d\n    then: condition /etc\n", PLANNER, None)
     took = person("board", "take", "vendor")
-    assert took.stdout.splitlines()[1:] == ["  recorded: condition vendor/**, for the settings"]
-    assert "      recorded: condition vendor/**, for the settings" in person("board").stdout
+    said = "  changed: no leaf may write vendor/** (read-only, as `graphene config` shows)"
+    assert took.stdout.splitlines()[1:] == [said]
+    assert "      changed: no leaf may write vendor/**" in person("board").stdout
     with Store.open(repo) as store:
-        assert B.conditions(store) == ["vendor/**"]  # the seam the settings read
+        assert B.conditions(store) == ["vendor/**"] == S.readonly(store)
+        assert S.for_screen(store)["readonly"] == ["vendor/**"]
+        assert "No leaf may write these paths: vendor/**." in S.conditions_for_planner(store)
+    config = person("config").stdout
+    assert "# readonly, chosen on the board: vendor/** (graphene board; plan undo takes it back)" in config
+    refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
+    assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
+    assert person("plan", "undo").exit_code == 0
+    with Store.open(repo) as store:
+        assert S.readonly(store) == []
+    assert person("node", "add", "lib", "--scope", "vendor/**", "--check", "true").exit_code == 0
 
 
 def test_under_inside_a_quoted_leaf_title_is_the_titles():

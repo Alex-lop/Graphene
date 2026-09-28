@@ -159,9 +159,9 @@ def dropped(store) -> list[str]:
 
 
 def conditions(store) -> list[str]:
-    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen.
-    The one seam for the settings: nothing reads it yet but `graphene board --json`, so nothing may
-    say a condition is enforced until the settings' read-only list is wired to it."""
+    """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen:
+    the settings' read-only list reads them (``settings.readonly``), so the gate refuses a write to one
+    and the plan a scope over one, until `plan undo` takes the answer back."""
     return [c for it in items(store) if it["state"] in DECIDED for c in it.get("conditions", [])]
 
 
@@ -178,7 +178,14 @@ def effect(line: str, no: int = 0) -> tuple[str, str | None, str | list[str]]:
         if found:
             node = (found.groupdict().get("node") or "").strip("[]`") or None
             arg = found["arg"] if "arg" in found.groupdict() else ""
-            if verb in ("scope", "condition"):
+            if verb == "condition":  # a read-only glob, read as `graphene config` reads one
+                from . import settings as S
+
+                try:
+                    return verb, node, [S._glob(no, g) for g in T._words(arg or "", no)]
+                except P.Refused as bad:
+                    raise P.Refused(str(bad).removeprefix("line 0: ")) from None
+            if verb == "scope":
                 return verb, node, T._words(arg or "", no)
             if verb in ("leaf", "goal") and len(arg) > 1 and arg[0] == arg[-1] and arg[0] in "'\"":
                 arg = arg[1:-1]
@@ -225,7 +232,7 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
             return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
         return f"proposed {leaf} under {node_id or 'the goal'}"
     conditions += what
-    return f"recorded: condition {', '.join(what)}, for the settings"  # nothing enforces it yet
+    return f"no leaf may write {', '.join(what)} (read-only, as `graphene config` shows)"
 
 
 # -- the acts -------------------------------------------------------------------------------------
