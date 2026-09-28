@@ -686,3 +686,17 @@ def test_an_ask_that_puts_up_board_items_names_the_board_as_what_waits(repo, tmp
     monkeypatch.setenv("GRAPHENE_WATCH", "")
     again = planned(repo, tmp_path)
     assert "at the top, y takes, d drops" in again.stdout and "`graphene watch`" not in again.stdout
+
+
+def test_a_finer_ask_that_drops_a_leaf_a_board_answer_changed_says_the_change_is_not_carried(repo, tmp_path):
+    """Walk 2026-09-28 (all three walkers): a pick widened a leaf, `+` asked again finer, the leaf was
+    dropped with the old tree, the new one lacked the change, and nothing said so. It is said now; the
+    change is not carried over (the new tree's ids are the planner's), so the line says where to put it."""
+    planned(repo, tmp_path)
+    assert person("board", "pick", "which-id", "1").exit_code == 0
+    script = tmp_path / "planner.py"
+    sentence, planner = "users should come back with their ids", f"{sys.executable} {script}"
+    again = person("ask", sentence, "--finer", "--with", planner)
+    assert again.exit_code == 0, again.output
+    lost = [ln for ln in again.stdout.splitlines() if "which-id" in ln and "not on the new tree" in ln]
+    assert lost and "users: scope + schema.py" in lost[0] and "graphene node set" in lost[0], again.stdout

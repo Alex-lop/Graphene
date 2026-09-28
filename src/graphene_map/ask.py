@@ -215,16 +215,28 @@ def reask_argv(store, size: str) -> list[str] | None:
     return ["graphene", "ask", asked[-1]["note"], f"--{size}"] if asked else None
 
 
+def _not_carried(store, dropped: list[str]) -> list[str]:
+    """What a board answer changed on a node this ask dropped with the tree it replaced: the new tree's
+    ids are the planner's, so the change is not carried over, and the person is told where it went."""
+    return [
+        f"the board's {it['id']} changed {line}, and {line.split(':')[0]} went with the old tree: its change "
+        "is not on the new tree (`graphene node set` puts it on a leaf)"
+        for it in B.items(store)
+        for line in it.get("became") or []
+        if line.split(":")[0] in dropped
+    ]
+
+
 def _replace_last(store) -> list[str]:
     """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
-    to prune in their place, not a second beside them. Returns the ids dropped."""
+    to prune in their place, not a second beside them. Returns the ids dropped, and those under them."""
     pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
     ids = {n.id for n in pending}
     dropped = []
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
             P.drop(store, n.id, P.caller())
-            dropped.append(n.id)
+            dropped += [n.id, *(c.id for c in P.below(n.id, pending))]
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
     return dropped
@@ -255,7 +267,8 @@ def ask(
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    if size and about is None and not split and _replace_last(store):  # asked again, finer or coarser
+    replaced = _replace_last(store) if size and about is None and not split else []
+    if replaced:  # asked again, finer or coarser
         asked = prompt = prompt.replace(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             "dropped, so propose the whole tree afresh.\n\n" + RULES)  # fmt: skip
@@ -293,6 +306,8 @@ def ask(
                     say("the planner says:")
                     for line in said_lines:
                         say(f"  {line[:300]}")
+                for line in _not_carried(store, replaced):
+                    say(line)
                 if about is None:  # GRAPHENE_SHAPE: what reads the proposal once it has landed
                     cover.after_ask(store, sentence, say)
                 said += precheck.after_proposal(store, root, said.ids)  # GRAPHENE_SHAPE=precheck, after it
