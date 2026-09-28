@@ -170,6 +170,95 @@ class Attention(unittest.TestCase):
         self.assertTrue(any("no `run`" in n for n in self.no_tree["notes"]), self.no_tree["notes"])
 
 
+BOARD_LOG = [
+    {"who": "person", "type": "prompt", "text": "p" * 1000},  # 1000 typed, act 1
+    {"who": "executor", "type": "result", "text": "a board", "cost_usd": 0.3},  # not the person's
+    {"who": "person", "type": "read", "text": "one two three four five"},  # 5 words
+    {"who": "person", "type": "board", "text": "as_me graphene board take q1"},  # 0: a key, act 2
+    {"who": "person", "type": "board", "text": "as_me graphene board pick q2 2"},  # 0: 2 is chosen, act 3
+    # "by hour, not by level" is 21 typed; q3 is chosen, not typed. act 4
+    {"who": "person", "type": "board", "text": "as_me graphene board answer q3 by hour, not by level"},
+    {"who": "person", "type": "board", "text": "as_me graphene board note 'keep the README'"},  # 15, act 5
+    {"who": "person", "type": "board", "text": "as_me graphene board drop r1"},  # 0, act 6
+    {"who": "person", "type": "board", "text": "as_me graphene board park o1"},  # 0, act 7
+    {"who": "person", "type": "read", "text": " ".join(["w"] * 30)},  # 30 words
+    {"who": "person", "type": "accept", "text": "as_me graphene plan accept n1"},  # 0, act 8
+    {"who": "person", "type": "run", "text": "as_me graphene run --parallel 4 --with claude"},  # 0, act 9
+    {"who": "person", "type": "read", "text": " ".join(["w"] * 10)},  # 10 words
+    # a board command this script does not know is counted whole after `board`: "merge q1 q2", 11. act 10
+    {"who": "person", "type": "board", "text": "as_me graphene board merge q1 q2"},
+    {"who": "person", "type": "review", "text": "git diff"},  # 0, act 11
+]  # fmt: skip
+# typed 1000 + 21 + 15 + 11 = 1047; acts 11; words 5 + 30 + 10 = 45
+# seconds 0.28 * 1047 + 1.35 * 11 + 45 * 60 / 250 = 293.16 + 14.85 + 10.8 = 318.81
+# to the first run: typed 1036, acts 9, words 35: 290.08 + 12.15 + 8.4 = 310.63
+
+
+class BoardArm(unittest.TestCase):
+    """The board arm: each board command is an act, and only the words a person types are typed."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = Path(tempfile.mkdtemp(prefix="attention-board-"))
+        cls.board = attention(make_run(cls.dir, "feeds-sealed-board-1", BOARD_LOG, False))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def test_raw_counts(self):
+        self.assertEqual(self.board["arm"], "board")
+        self.assertEqual(self.board["typed_chars"], 1047)
+        self.assertEqual(self.board["acts"], 11)
+        self.assertEqual(self.board["read_words"], 45)
+
+    def test_modelled_seconds(self):
+        self.assertEqual(self.board["modelled_seconds"], 318.8)  # 318.81
+
+    def test_to_the_first_run(self):
+        self.assertEqual(
+            self.board["to_run"],
+            {"typed_chars": 1036, "acts": 9, "read_words": 35, "modelled_seconds": 310.6},  # 310.63
+        )
+
+    def test_board_acts_are_counted_by_command(self):
+        self.assertEqual(
+            self.board["board_acts"],
+            {"take": 1, "pick": 1, "answer": 1, "note": 1, "drop": 1, "park": 1, "merge": 1},
+        )
+        self.assertTrue(any("`merge`" in n for n in self.board["notes"]), self.board["notes"])
+
+    def test_logline_takes_a_board_act(self):
+        log = self.dir / "log.jsonl"
+        log.write_text("", encoding="utf-8")
+        subprocess.run(
+            [sys.executable, str(HERE / "logline.py"), str(log), "person", "board",
+             "as_me graphene board take q1"],
+            check=True, capture_output=True,
+        )  # fmt: skip
+        self.assertEqual(json.loads(log.read_text())["type"], "board")
+
+    def test_summarize_reads_a_board_run(self):
+        sys.path.insert(0, str(HERE))
+        from summarize import name_of
+
+        self.assertEqual(name_of(Path("feeds-sealed-board-1")), ("feeds", "sealed", "board", 1))
+
+    def test_the_opening_is_checked_against_the_sealed_paragraph(self):
+        sys.path.insert(0, str(HERE))
+        from summarize import opening_is_sealed
+
+        sealed = self.dir / "paragraph.md"
+        sealed.write_text("the feed, as written\n", encoding="utf-8")
+        log = [{"who": "executor", "type": "result", "text": "x"}, {"who": "person", "type": "prompt"}]
+        log[1]["text"] = "the feed, as written"  # `MSG=$(cat …)` drops the final newline
+        self.assertIs(opening_is_sealed(log, sealed), True)
+        log[1]["text"] = "the feed, as rewritten"
+        self.assertIs(opening_is_sealed(log, sealed), False)
+        self.assertIs(opening_is_sealed([], sealed), False)
+        self.assertIsNone(opening_is_sealed(log, self.dir / "none.md"))
+
+
 class TextEdit(unittest.TestCase):
     def test_a_text_edit_counts_what_was_added(self):
         d = Path(tempfile.mkdtemp(prefix="logline-edit-"))

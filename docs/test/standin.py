@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The brief a stand-in person is given, printed rather than written by hand each time.
 
-    docs/test/standin.py <task> <dense|tuesday> <prompt|tree> <run-dir> <venv-bin>
+    docs/test/standin.py <task> <dense|tuesday|sealed> <prompt|tree|board> <run-dir> <venv-bin>
 
 One generator for both arms and both styles, so anyone auditing can diff the two briefs and see
 that what differs between them is the method and the manner, and nothing else. The card is pasted
@@ -15,6 +15,12 @@ their paragraph to a session in the repo, whose hooks turn it into a proposed tr
 only with the commands `graphene watch`'s keys run. Every shell sources the run's env.sh (newrun.sh
 writes it), and everything the person reads is logged as `read`, in both arms, so attention can be
 modelled from the log rather than guessed.
+
+28 September (results-2026-09-28-shaping.md): the `board` arm answers the planner's board first, one
+`graphene board` command an item, each logged as a `board` act, then reads the tree as a graph
+(`plan --view auto`) and prunes and runs it with the tree arm's commands. The `sealed` style opens
+every arm with the task's sealed paragraph, byte for byte, and sends its written change of mind the
+same way, so a task's arms differ in what came after the opening and in nothing before it.
 """
 
 from __future__ import annotations
@@ -48,7 +54,19 @@ STYLES = {
   what happened, and if it is wrong you say so, briefly.
 
   Take that literally. Your opening message is under thirty words. Count them before you send it.""",
+    "sealed": """Your opening message is already written. You wrote it earlier, from your card, and
+  it is in {paragraph}. Send that file as it is, byte for byte, as your first message:
+  MSG=$(cat {paragraph}). Do not rewrite it, shorten it or add to it. {change}
+  These are the only files under docs/test/ you may read.
+
+  After that you are a busy, competent person. You read what you are shown. You change what is
+  wrong by your card and leave alone what is already right. Anything you type after the opening is
+  short and plain, in your own words.""",
 }
+CHANGE_WRITTEN = """Your change of mind is written too, in
+  {change}: when the time comes, send it the same way, byte for byte, MSG=$(cat {change})."""
+CHANGE_UNWRITTEN = """Your change of mind, if your card has one, is not written down: say it
+  in your own words when the time comes."""
 
 # Two lines were added to every brief between repetition 1 and repetition 2 of the 21 September
 # run, because repetition 1 showed they were needed, and both arms of a repetition always got the
@@ -111,6 +129,56 @@ ARMS = {
   7. A finished leaf that is wrong: did reopen "as_me graphene node reopen <id> --note '…'"
      [x], then run again. A reopen is a correction.
   8. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
+    "board": """There is a plan, and it is a tree: the root is what you want, its children are
+  how it will be done, the leaves are work an agent does. Before the tree there is a board: the
+  planner's questions, each with the answer it would assume if you said nothing, its options where
+  it sees more than one way, its assumptions, its risks, and what it would leave out. You say what
+  you want to a session in the repo, the way you always have; the repo's hooks make that session
+  put up the board and propose a tree instead of writing code. You answer the board first, then
+  read the tree as a graph, prune it, and let it run. The key in brackets is the key that runs the
+  same command in `graphene watch`; here you type the command.
+
+  1. Send your opening message to the executor, in the repo: it is the session that proposes.
+                                                                          -> log as `prompt`
+  2. Read its `result` and the board: `seen as_me graphene board`. Carry on in the same session
+     with `--resume <session_id>`, as many messages as you like. A message that is new information
+     or the next step is a `prompt`; a message that says "no, that is not what I meant" is a
+     `correction`.
+  3. Answer every item on the board before you look at the tree, each with one of these and
+     nothing else:
+       did board "as_me graphene board take <id>"              the answer it would assume
+       did board "as_me graphene board pick <id> <n>"          its option n
+       did board "as_me graphene board drop <id>"              not wanted
+       did board "as_me graphene board park <id>"              not now
+       did board "as_me graphene board answer <id> '<words>'"  your own answer, in your words
+       did board "as_me graphene board note '<words>'"         a note of your own, on no item
+     If there is no tree once the board is answered, ask the same session for one: a `prompt`.
+  4. Read the tree as a graph: `seen as_me graphene plan --view auto` (a proposal is marked).
+     Prune it with these, and nothing else:
+       did accept "as_me graphene plan accept <id>"      [y] it, what is above it and under it
+       did drop "as_me graphene node drop <id>"          [d] it, and everything under it
+       did edit "as_me graphene node set <id> --title '…' --goal '…' --scope '…' --check '…'"
+                                                         [e] one node's contract, any of those
+     or [E], the tree as text, changed in your own editing tool and saved back:
+       as_me graphene plan --text > "$TMPDIR/before.txt"; cp "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+       … change after.txt …
+       as_me env EDITOR="cp $TMPDIR/after.txt" graphene plan edit
+       log edit --edit "$TMPDIR/before.txt" "$TMPDIR/after.txt"
+     A proposal nobody accepts never runs.
+  5. did run "as_me graphene run --parallel 4 --with \\"{executor}\\" > \\"\\$TMPDIR/run-1.txt\\" 2>&1"
+                                                         [R] four leaves at once, each in its own
+     worktree, merged here when the merge is clean (run-2.txt the next time, and so on). Then
+     `seen as_me graphene plan --view auto`.
+  6. A leaf that came back: `seen as_me graphene node show <id>` says why, and what it offers:
+       did widen "as_me graphene node widen <id>"        [w] its scope, to the paths it wanted
+       did sibling "as_me graphene node sibling <id>"    [b] a leaf beside it, for those paths
+     Take an offer or not, and run again (step 5).
+  7. The change of mind on your card is a follow-up message to the same session, once the first
+     part works, and it costs you one of your three corrections. Log it as a `correction` with
+     `--mandated`. What it puts up, you answer on the board, prune and run as above.
+  8. A finished leaf that is wrong: did reopen "as_me graphene node reopen <id> --note '…'"
+     [x], then run again. A reopen is a correction.
+  9. Stop when the card is satisfied as far as you can tell, or the budget is gone.""",
 }
 
 BRIEF = """You are standing in for the person who wants a change made to a small codebase. Play
@@ -223,6 +291,27 @@ WHEN YOU ARE FINISHED
 """
 
 
+def brief(task: str, style: str, arm: str, run_dir: Path, venv: str, tasks: Path = HERE / "tasks") -> str:
+    base = (run_dir / "base.sha").read_text().strip()
+    paragraph, change = tasks / task / "paragraph.md", tasks / task / "change.md"
+    if style == "sealed" and not paragraph.exists():
+        raise FileNotFoundError(f"no sealed paragraph for {task}: {paragraph}")
+    written = CHANGE_WRITTEN.format(change=change) if change.exists() else CHANGE_UNWRITTEN
+    return BRIEF.format(
+        repo=run_dir / "repo",
+        base=base,
+        runlog=run_dir / "runlog.jsonl",
+        tmp=run_dir / "tmp",
+        run=run_dir,
+        venv=venv,
+        here=HERE,
+        style=STYLES[style].format(paragraph=paragraph, change=written),
+        arm=ARMS[arm].format(base=base, executor=EXECUTOR),
+        by_hand=BY_HAND,
+        card=(tasks / task / "intent.md").read_text(encoding="utf-8"),
+    )
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 6:
         sys.stderr.write(__doc__)
@@ -231,22 +320,11 @@ def main(argv: list[str]) -> int:
     if style not in STYLES or arm not in ARMS:
         sys.stderr.write(f"style is one of {', '.join(STYLES)}; arm is one of {', '.join(ARMS)}\n")
         return 2
-    base = (run_dir / "base.sha").read_text().strip()
-    print(
-        BRIEF.format(
-            repo=run_dir / "repo",
-            base=base,
-            runlog=run_dir / "runlog.jsonl",
-            tmp=run_dir / "tmp",
-            run=run_dir,
-            venv=venv,
-            here=HERE,
-            style=STYLES[style],
-            arm=ARMS[arm].format(base=base, executor=EXECUTOR),
-            by_hand=BY_HAND,
-            card=(HERE / "tasks" / task / "intent.md").read_text(encoding="utf-8"),
-        )
-    )
+    try:
+        print(brief(task, style, arm, run_dir, venv))
+    except FileNotFoundError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
     return 0
 
 
