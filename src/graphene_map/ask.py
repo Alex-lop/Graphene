@@ -66,13 +66,12 @@ question: what the words leave open and the repository cannot settle  [short-id]
     option: another reasonable way (a line each, only when there is more than one)
     then: scope leaf-id + pyproject.toml
     about: leaf-id
-assume: what you took for granted that the person should confirm  [short-id]
 risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
     default: what you would do about it
-leave out: what you would not do, and why  [short-id]
+    then: check leaf-id: python3 -m pytest tests/pdf -q
 - a sub-goal  [short-id]
   ? a leaf: one piece of work  [leaf-id]
-      what it should achieve, in a line or two
+      what it should achieve, in a line or two; what you assumed for it, in a sentence
       scope: src/pdf/**, tests/pdf/**
       check: python3 -m pytest tests/pdf -q
       needs: other-leaf-id
@@ -88,20 +87,22 @@ leave out: what you would not do, and why  [short-id]
   sentence after the block, and the person decides.
 - Mark every new line "?". Keep ids short, lower case, with dashes.
 - Read the repository before you ask anything. Never ask what it answers: name the file that answers
-  it in the leaf instead. For each thing the person's words leave open that the code cannot settle,
-  write a question: with the default you would assume (and option: lines when there is more than one
-  reasonable way) instead of guessing silently. Write assume: for what you took for granted, risk: for
-  what you see could go wrong, leave out: for what you would not do. At most about five of these, the
-  most important first, at the left edge after the goal and before the first node; none when nothing
-  is open. What is on the board above is answered or waiting: do not write it again.
+  it in the leaf instead. The board carries only what changes the tree: put up at most three items,
+  the most important first, at the left edge after the goal and before the first node, and none when
+  nothing is open. Each is a question: for what the person's words leave open and the code cannot
+  settle, with the default you would assume (and option: lines when there is more than one reasonable
+  way), or a risk: for what could go wrong, with the default you would do about it. An assumption you
+  are confident of is not an item: write it as a sentence in the goal of the leaf it bears on. Never
+  put up an item whose answer would change nothing in the tree. What is on the board above is answered
+  or waiting: do not write it again.
 - A then: line under a default: or option: is what choosing it changes in the plan: scope NODE +
   GLOB, check NODE: COMMAND, goal NODE + "SENTENCE", drop NODE, leaf "TITLE" under NODE, or condition
   GLOB (no leaf may write it); NODE is an [id] in the plan or in your block. Write each leaf as the
   default has it. Every option, and every default the leaves do not already follow, that changes what
   a leaf does, which files it may touch or how it is checked carries the then: lines that make that
   change (goal for what the leaf does instead, scope, check, drop, leaf), so choosing it changes the
-  tree and the person never rewrites a leaf by hand. Leave then: out only when choosing changes
-  nothing in the tree.
+  tree and the person never rewrites a leaf by hand. An item none of whose answers carries a then:
+  line changes nothing: do not put it up.
 - Write no file and start no work: what you print is all of your answer."""
 
 
