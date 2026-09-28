@@ -1,0 +1,96 @@
+# ruff: noqa: F811  (pytest fixtures imported from test_plan are named again as arguments)
+"""The standing conditions bind the gate: a scope that covers a protected path or a read-only glob
+is refused at propose and at edit, a change to one is refused at `done` before the check runs, and
+an aside's `**` leaves them out instead of being refused."""
+
+import pytest
+from test_plan import ALEX, BOT, api_node, repo, store  # noqa: F401  (fixtures)
+
+from graphene_map import plan
+from graphene_map import settings as S
+from graphene_map.plan import DONE, Refused
+from graphene_map.store import Store
+
+
+@pytest.fixture
+def ruled(store):
+    S.apply(store, "protected: src/db/**\nreadonly: README.md\n", ALEX)
+    return store
+
+
+@pytest.mark.parametrize(
+    "scope, setting, path",
+    [
+        (["src/**"], "protected", "src/db/schema.py"),
+        (["src/db/schema.py"], "protected", "src/db/schema.py"),
+        (["**"], "protected", "src/db/schema.py"),
+        (["README.md"], "readonly", "README.md"),
+    ],
+)
+def test_propose_refuses_a_scope_that_covers_a_standing_path(ruled, repo, scope, setting, path):
+    with pytest.raises(Refused) as no:
+        plan.propose(ruled, [api_node(id="a", scope=scope)], BOT, files=plan.tracked(repo))
+    assert setting in str(no.value) and path in str(no.value)
+    assert plan.nodes(ruled) == []
+
+
+def test_a_scope_clear_of_them_is_proposed_and_an_edit_into_them_is_refused(ruled, repo):
+    plan.propose(ruled, [api_node(id="a")], ALEX, files=plan.tracked(repo))
+    with pytest.raises(Refused, match="protected.*src/db/"):
+        plan.edit(ruled, "a", {"scope": ["src/**"]}, ALEX, files=plan.tracked(repo))
+    with pytest.raises(Refused, match="readonly"):  # also when the text form validates afterwards
+        plan.edit(ruled, "a", {"scope": ["README.md"]}, ALEX, check=False)
+    assert plan.get(ruled, "a").scope == api_node()["scope"]
+
+
+def test_done_refuses_a_changed_standing_path_before_the_check_runs(ruled, repo):
+    plan.propose(ruled, [api_node(id="a", check="touch ran")], ALEX)
+    plan.start(ruled, "a", BOT, repo)
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    (repo / "README.md").write_text("# changed\n")
+    with pytest.raises(Refused) as no:
+        plan.finish(ruled, "a", BOT)
+    assert "readonly: README.md" in str(no.value) and "README.md" in str(no.value)
+    assert not (repo / "ran").exists()
+    (repo / "README.md").write_text("# toy\n")
+    assert plan.finish(ruled, "a", BOT).state == DONE
+
+
+def test_an_asides_everything_leaves_them_out_and_is_not_refused(ruled, repo):
+    (typed,) = plan.propose(ruled, [{"id": "t", "title": "typo", "scope": ["**"]}], ALEX, aside=True)
+    assert plan.as_scoped(typed, plan.standing(ruled)) == ["**", "!src/db/**", "!README.md"]
+    plan.start(ruled, "t", ALEX, repo)
+    (repo / "src/db/schema.py").write_text("TABLES = [1]\n")
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    plan.close_aside(ruled, "t", ALEX)
+    (last,) = ruled.node_log("t", ("finished",))
+    assert last["detail"]["outside"] == ["src/db/schema.py"]
+
+
+def test_an_aside_is_refused_a_write_to_a_standing_path_by_the_hook(tmp_path):
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    (repo / "README.md").write_text("# toy\n")
+    with Store.open(repo) as store:
+        S.apply(store, "protected: src/db/**\nreadonly: README.md\n", ALEX)
+        plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    G.plan_first(repo, False)
+    G.hook(repo, "UserPromptSubmit", prompt="fix the schema and the readme")
+    assert "protected: src/db/**" in G.reason(G.write(repo, "src/db/schema.py"))
+    assert "readonly: README.md" in G.reason(G.bash(repo, "echo x > README.md"))
+    assert G.write(repo, "src/api/users.py") is None  # the rest of its `**` is still its own
+
+
+def test_an_aside_that_types_a_standing_scope_is_refused_like_any_leaf(ruled, repo):
+    with pytest.raises(Refused, match="protected: src/db/"):
+        item = {"id": "t", "title": "t", "scope": ["src/db/**"]}
+        plan.propose(ruled, [item], ALEX, files=plan.tracked(repo), aside=True)
+
+
+def test_a_leaf_that_a_later_setting_covers_is_refused_at_start_naming_it(store, repo):
+    plan.propose(store, [api_node(id="a", scope=["src/**"])], ALEX, files=plan.tracked(repo))
+    S.apply(store, "protected: src/db/**\n", ALEX)
+    with pytest.raises(Refused, match="protected: src/db/"):
+        plan.start(store, "a", BOT, repo)
+    assert plan.get(store, "a").state == "open"

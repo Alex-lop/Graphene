@@ -44,7 +44,7 @@ from pathlib import Path
 
 from textual.widgets import Static
 
-from . import __version__
+from . import __version__, keys
 from . import plan as P
 from . import tokenfactory as tf
 from .store import Store
@@ -57,8 +57,9 @@ LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what 
 NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
-# the plan_meta keys the screen reads, the board's included
-META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board")
+# the plan_meta keys the screen reads: the board's and the person's standing settings included
+META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
+        "settings:protected", "settings:readonly", "settings:never", "settings:size")  # read  # fmt: skip
 # Shaped like a key: 20 or more letters and digits in a row, a capital, a small letter and a digit among
 # them (a key, a token, a JWT's part). The whole word it sits in goes (up to a space, a slash or a quote),
 # so no piece of a key is left. A git sha, a uuid, a node's id, a log's name and a model's name have none.
@@ -82,7 +83,8 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~")] if len(home) > 1 else []
-    said += [(os.environ[k], "[removed]") for k in (tf.KEY, "NEBIUS_PROJECT_ID") if len(os.getenv(k, "")) > 7]
+    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # keychain's too
+    said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
     def hide(value):
         if isinstance(value, dict):

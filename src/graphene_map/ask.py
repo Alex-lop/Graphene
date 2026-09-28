@@ -99,7 +99,18 @@ leave out: what you would not do, and why  [short-id]
 - Write no file and start no work: what you print is all of your answer."""
 
 
-def prompt_for(store, sentence: str, about: str | None = None, split: bool = False) -> str:
+def prompt_for(
+    store,
+    sentence: str,
+    about: str | None = None,
+    split: bool = False,
+    root: Path | None = None,
+    files: list[str] | None = None,
+    size: str | None = None,
+) -> str:
+    """What the planner is told. `size` is this ask's (--finer/--coarser), else the saved one."""
+    from . import settings, sizing
+
     text, _ = T.render(store)
     lines = [
         "You are the planner for a plan that a person and their coding agents share (Graphene). The "
@@ -126,12 +137,18 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
                 f"Split {about} into smaller leaves: write its line with its [{about}], and the new leaves "
                 "under it; together they do all of it, and its check still says it is done."
             )
-    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)"]
+    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", ""]
     gone = B.dropped(store)
     if gone:
-        lines += ["", "The person dropped these from the board; do not put them up again:"]
-        lines += [f"- {words}" for words in gone]
-    lines += ["", RULES]
+        lines += ["The person dropped these from the board; do not put them up again:"]
+        lines += [f"- {words}" for words in gone] + [""]
+    conditions = settings.conditions_for_planner(store)  # the size is said once, by sizing.measure
+    if conditions:
+        lines += ["The person's standing conditions:", conditions, ""]
+    if root is not None and about is None:  # a split or a follow-up is about one node, not the whole tree
+        files = P.tracked(root) if files is None else files
+        lines += [sizing.measure(root, sentence, files, size or settings.size(store)), ""]
+    lines.append(RULES)
     return "\n".join(lines)
 
 
@@ -149,6 +166,28 @@ def proposal_in(said: str) -> str:
     return said[start.start() :] if start else ""
 
 
+def reask_argv(store, size: str) -> list[str] | None:
+    """The command a screen's re-ask key runs: the last sentence asked of a planner (not a follow-up
+    about one node), again, sized finer or coarser. None when nothing was asked yet."""
+    asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
+    return ["graphene", "ask", asked[-1]["note"], f"--{size}"] if asked else None
+
+
+def _replace_last(store) -> list[str]:
+    """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
+    to prune in their place, not a second beside them. Returns the ids dropped."""
+    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
+    ids = {n.id for n in pending}
+    dropped = []
+    for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
+        try:
+            P.drop(store, n.id, P.caller())
+            dropped.append(n.id)
+        except P.Refused:
+            pass  # something accepted waits on it: it stays, and the person sees both
+    return dropped
+
+
 def ask(
     store,
     root: Path,
@@ -157,6 +196,7 @@ def ask(
     about: str | None = None,
     split: bool = False,
     say: Callable[[str], None] = print,
+    size: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
@@ -168,13 +208,19 @@ def ask(
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
-    asked = prompt = prompt_for(store, sentence, about, split)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
+    asked = prompt = prompt_for(store, sentence, about, split, root, files, size)
+    if size and about is None and not split and _replace_last(store):  # asked again, finer or coarser
+        asked = prompt = prompt.replace(
+            RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
+            "dropped, so propose the whole tree afresh.\n\n" + RULES)  # fmt: skip
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
+        if argv0 != "nemotron":  # only Graphene's own planner calls Token Factory
+            env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
         env.pop("GRAPHENE_NODE", None)
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")

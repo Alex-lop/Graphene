@@ -299,6 +299,8 @@ def run_node(
             env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session,
                    "GRAPHENE_TRY": str(attempt)}  # fmt: skip
             env["GRAPHENE_EXECUTOR"] = name
+            if name != "nemotron":  # only Graphene's own executor calls Token Factory; the rest never look
+                env["GRAPHENE_KEYCHAIN"] = "off"
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None
             if logs is not None:  # streamed as it runs, so its tail can be read while it works

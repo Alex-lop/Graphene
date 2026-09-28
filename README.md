@@ -166,6 +166,30 @@ Everything the keys do is a command you can type yourself; the bottom line of th
 command each key just ran. Agents and scripts use the same commands. `graphene watch --once` prints
 the plan instead of taking the screen.
 
+### Settings you state once
+
+Each of these is yours: an agent (or a planner, or an executor) that runs them is refused.
+
+- **The key.** `graphene key set` keeps the Token Factory key in the system keychain (`security` on
+  macOS, `secret-tool` on Linux), read from a hidden prompt and never from the command line.
+  `graphene key check` says `Token Factory: reached, N NVIDIA models` or what stood in the way,
+  never the key; `graphene key remove` takes it out. Graphene looks in `NEBIUS_API_KEY` first, then
+  the keychain, and never in a file.
+- **Protected paths.** `protected: secrets/**, .env` in `graphene config edit`: no scope may cover
+  them, the planner is told never to read them, its tools and the hook refuse to, and they are not
+  uploaded to a sandbox.
+- **Read-only globs.** `readonly: docs/**`: no leaf may write them; a scope that covers one is
+  refused when it is proposed, edited or started, and a change to one is refused at `done`.
+- **What the planner must never propose.** `never: add a dependency`, a line each, told to it.
+- **How big a plan is.** `size: auto`, `finer` or `coarser`. The planner is told the repo's files,
+  lines and test layout and the directories your ask names, and a number of leaves from them.
+  `graphene ask "…" --finer` (or `--coarser`) sizes one ask and replaces the planner's last
+  proposal still waiting on you.
+
+`graphene config` prints them all, with the planner, the executor, plan first and where the key was
+found. `graphene config edit` edits them the way `plan edit` edits the plan: a line it cannot read is
+refused by its number, and the rest is applied all or none.
+
 ## What works today
 
 Each of these was run for real on the feeds task. The executors were Claude Code agents, not
@@ -253,6 +277,14 @@ before a write, and how:
   a one-line ask your session did there) can keep a leaf from landing. It waits in review, its pane
   says which file is in the way, and `y` signs it off once you have merged its branch; nothing is
   lost.
+- A key in the keychain is readable by any process of your user while the keychain is unlocked: an
+  agent that runs `security find-generic-password` gets it. Graphene turns its own lookup off in a
+  command the model runs, a check, and any planner or executor that is not its own Nemotron; a
+  sandbox run is the only real boundary.
+- A protected path is kept from the model where Graphene reads for it. A command the local Nemotron
+  executor runs can read it (as it can any file your user can), a Codex planner is only told not to,
+  and a leaf's check in a sandbox fork runs on the whole checkout, so a test the leaf wrote could
+  print it.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
 
