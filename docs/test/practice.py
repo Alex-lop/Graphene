@@ -45,7 +45,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
-from graphene_map.demo import KEY as KEY_SHAPED  # noqa: E402
+from graphene_map import tokenfactory as tf  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 
 DRY = "--dry" in sys.argv or os.environ.get("PRACTICE_DRY") == "1"
@@ -87,7 +87,7 @@ def mask(text: str) -> str:
         value = os.environ.get(name) or ""
         if len(value) >= 6:
             text = text.replace(value, f"[{name}]")
-    return KEY_SHAPED.sub("[removed: shaped like a key]", text)
+    return tf.unkeyed(text)  # the whole word, not its first twenty characters
 
 
 def spent() -> float:

@@ -300,3 +300,12 @@ def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypat
     assert "left running, maybe: a ConTree operation already sent runs on to its own time limit" in said
     assert ("was killed, so what it made may be left" in said) is killed
     assert ("was ended and cleaned up" in said) is not killed
+
+
+def test_a_word_shaped_like_a_key_is_taken_out_whole(tmp_path, monkeypatch):
+    """A key not in the ladder's environment (the keychain's, say) is masked by its shape: the whole word
+    goes, not its first twenty characters. The tokens are made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    for fake in ("Ab1" + "x" * 17 + "SECRETTAILpart9876543210", "sk-" + "a1B2" * 12):
+        said = practice.mask(f"Authorization: Bearer {fake}")
+        assert said == "Authorization: Bearer [removed: shaped like a key]", said
