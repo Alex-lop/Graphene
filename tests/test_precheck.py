@@ -213,3 +213,40 @@ def test_proposed_checks_run_in_a_docker_fork_and_nothing_they_write_comes_back(
         "l0": "passes", "l1": "red-right-reason", "l2": "passes"}  # fmt: skip
     assert rows["l0"]["where"] == "a Docker fork" and len(f.requests) == 1
     assert not (repo / "app.py.stray").exists()
+
+
+def test_any_executor_spelling_never_crashes_and_ask_keeps_its_proposal(repo, monkeypatch, tmp_path):
+    import sys
+
+    from graphene_map.ask import ask
+
+    assert C._prepare("nemotron --prepare='pip install -e .'") == "pip install -e ."
+    assert C._prepare("nemotron --prepare 'pip install -e .' --steps 3") == "pip install -e ."
+    assert C._prepare("nemotron --prepare-all x") is None and C._prepare("nemotron --prepare") is None
+    assert C._prepare("nemotron --prepare 'unclosed") is None
+    script = tmp_path / "planner.py"
+    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
+    monkeypatch.setenv("GRAPHENE_SHAPE", "precheck")
+    monkeypatch.setattr(C, "_runs", lambda *_: (_ for _ in ()).throw(RuntimeError("boom")))
+    seen = []
+    with Store.open(repo) as store:
+        store.set_meta("executor", "nemotron --prepare='pip install -e .'")
+        said = ask(store, repo, "say hello", f"{sys.executable} {script}", say=seen.append)
+        assert [n.id for n in P.nodes(store)] == ["hello"] and said
+    assert [line for line in seen if "boom" in line] == ["! the checks were not run first: boom"]
+
+
+def test_one_leaf_that_breaks_is_one_line_and_the_others_still_run(repo, nano, monkeypatch):
+    nano([])
+
+    def fork(command):
+        if command == "boom":
+            raise RuntimeError("the fork broke")
+        return (1, "AssertionError")
+
+    monkeypatch.setattr(C, "_read", lambda *_: (_ for _ in ()).throw(AttributeError("'list' has no .get")))
+    with Store.open(repo) as store:
+        leaves(store, "boom", "false")
+        rows = {n.id: d for n, d in C.run(store, repo, fork=fork)}
+    assert rows["l0"]["verdict"] == "not-run" and "the fork broke" in rows["l0"]["why"]
+    assert rows["l1"]["verdict"] == "red" and rows["l1"]["why"].startswith("not read: ")

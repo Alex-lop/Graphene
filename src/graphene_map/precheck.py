@@ -64,6 +64,20 @@ def current(store, node: P.Node, base: str | None) -> dict | None:
     return last if fresh and last["verdict"] != "not-run" else None
 
 
+def _prepare(exe: str) -> str | None:
+    """The executor setting's ``--prepare X`` or ``--prepare=X``, else None."""
+    try:
+        words = shlex.split(exe)
+    except ValueError:  # unbalanced quotes: `init` refuses those, an older store may hold one
+        return None
+    for i, word in enumerate(words):
+        if word.startswith("--prepare="):
+            return word.split("=", 1)[1]
+        if word == "--prepare" and i + 1 < len(words):
+            return words[i + 1]
+    return None
+
+
 def _here(command: str, root: Path) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
     began = time.monotonic()
@@ -85,14 +99,16 @@ def _forks(root: Path, prepare: str | None):
     name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
     if name != "docker" and not S.configured():
         return None, "needs a sandbox (ConTree's credentials, or GRAPHENE_SANDBOX=docker)"
-    tar = S.pack(root)
+    tar = None
     try:
+        tar = S.pack(root)
         box = S.Capped(S.choose(name))
         image, code, out = box.start(tar, S.base(prepare), 1800)
     except Exception as no:  # an SDK, a network, a docker that is not running
         return None, f"the sandbox could not be made: {no}"
     finally:
-        tar.unlink(missing_ok=True)
+        if tar is not None:
+            tar.unlink(missing_ok=True)
     if code:
         return None, f"the sandbox could not be made (exit {code}): {out.strip()[-200:]}"
 
@@ -153,7 +169,11 @@ def _runs(nodes: list[P.Node], root: Path, fork, prepare: str | None) -> dict:
                 if fork is None:  # every proposed check is then not run, and says why
                     fork, box = (lambda c, why=box: (None, why)), None
             runner = fork if key[1] else (lambda c: _here(c, root))
-            ran[key] = (*runner(node.check), getattr(runner, "where", "a sandbox fork") if key[1] else "here")
+            try:
+                code, text = runner(node.check)
+            except Exception as no:  # one check that breaks its runner is its own line, not the command's
+                code, text = None, f"could not be run: {' '.join(str(no).split())[:200]}"
+            ran[key] = (code, text, getattr(runner, "where", "a sandbox fork") if key[1] else "here")
     finally:
         if box is not None and hasattr(box, "forget"):
             box.forget()
@@ -170,10 +190,8 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
         if n.state not in (P.PROPOSED, P.OPEN):
             raise P.Refused(f"{n.id} is {n.state}: a check is run first only before its work starts")
     base, read, out = P.head(root), {}, []
-    exe = store.meta("executor") or ""
-    if prepare is None and "--prepare" in exe:  # the sandbox the repo's executor would make
-        words = shlex.split(exe)
-        prepare = words[words.index("--prepare") + 1] if words[-1] != "--prepare" else None
+    if prepare is None:  # the sandbox the repo's executor would make
+        prepare = _prepare(store.meta("executor") or "")
     todo = [n for n in todo if n.check]
     kept = {} if again else {n.id: current(store, n, base) for n in todo}
     ran = _runs([n for n in todo if not kept.get(n.id)], root, fork, prepare)
@@ -196,8 +214,8 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
                 model = model or _nano()
                 found, why = _read(store, node, text[-P.TAIL :], model)
                 by = f"{model.rsplit('/', 1)[-1]}, {tf.endpoint()}"
-            except tf.Unreachable as no:
-                model = model or no
+            except Exception as no:  # an endpoint or a reply that breaks the reading: this red, unread
+                model = model or no if isinstance(no, tf.Unreachable) else model
                 found, why = "red", f"not read: {' '.join(str(no).split())}"
             read[key] = (found, why, by)
         detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": why,
@@ -235,9 +253,14 @@ def shaped() -> bool:
 
 def after_proposal(store, root: Path, say=print) -> None:
     """`graphene ask` with GRAPHENE_SHAPE=precheck: the proposal's checks, run first as it lands."""
-    if shaped():
-        for line in said(run(store, root)):
-            say(line)
+    if not shaped():
+        return
+    try:
+        lines = said(run(store, root))
+    except Exception as no:  # the proposal has landed: nothing here may turn that into a failed ask
+        lines = [f"! the checks were not run first: {' '.join(str(no).split())[:200]}"]
+    for line in lines:
+        say(line)
 
 
 def register(plan_cli, root, open_store, fail) -> None:
