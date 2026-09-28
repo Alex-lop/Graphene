@@ -6,6 +6,7 @@ import types
 from dataclasses import dataclass
 
 import pytest
+from rich.cells import cell_len
 from rich.text import Text
 
 from graphene_map import plan as P
@@ -132,7 +133,7 @@ def heads(d, nodes):
         if n.id not in d.at:
             continue
         y, x0, x1 = d.at[n.id]
-        cut = d.lines[y].plain[x0 : x1 + 1]
+        cut = "".join(c + "\0" * (cell_len(c) - 1) for c in d.lines[y].plain)[x0 : x1 + 1].replace("\0", "")
         assert n.id in cut.split(), (n.id, cut)
 
 
@@ -173,8 +174,9 @@ def test_none_exactly_when_no_form_fits(name):
 
 def test_the_least_width_is_the_folded_ids_listed_down():
     """Thirty leaves under six sub-goals, two finished: each sub-goal is a column as wide as its
-    widest `├ ○ g2-leaf0`, once a finished one is folded to `✓ goal0 5/5`."""
-    least = 6 * len("├ ○ g2-leaf0") + 5
+    widest `├ ○ g2-leaf0`, and a finished one folded is as narrow as `✓ goal0 5/5`. Every slot was
+    as wide as the widest, so folding made the tree no narrower (6 x 12 + 5 columns, folded or not)."""
+    least = 2 * len("✓ goal0 5/5") + 4 * len("├ ○ g2-leaf0") + 5
     assert drawn(thirty(), least - 1) is None
     d = drawn(thirty(), least)
     assert "✓ goal0 5/5" in plain(d) and "g0-finished-leaf0" not in d.at
@@ -234,7 +236,7 @@ def test_order_walks_parents_before_children_left_to_right():
 
 def test_suits_a_shallow_tree_that_fits_and_not_one_that_cannot():
     assert view_tree.suits(small(), 80, 24) == 90
-    assert view_tree.suits(thirty(), 6 * 12 + 4, 24) == 0
+    assert view_tree.suits(thirty(), 2 * 11 + 4 * 12 + 4, 24) == 0
     assert 0 < view_tree.suits(thirty(), 120, 36) < view_tree.suits(small(), 120, 36)
     assert view_tree.suits(thirty(), 120, 5) < view_tree.suits(thirty(), 120, 36)
     assert view_tree.suits([], 80, 24) == 0
@@ -248,3 +250,18 @@ def test_an_empty_plan_is_its_goal():
 def test_note_counts_what_waits_on_the_person_and_what_is_proposed():
     nodes = [P.Node("x", "x", state=P.PROPOSED), leaf("y", "x", P.PROPOSED), leaf("z", state=P.REVIEW)]
     assert view_tree.note(nodes, words(nodes)) == "1 sub-goal · 2 leaves · 1 waits on you · 2 proposed"
+
+
+def test_wide_characters_are_counted_in_cells():
+    """Titles and the goal were cut by characters: CJK lines ran to 123 cells at 80, cut with no …"""
+    nodes = [
+        P.Node("r読む", "フィードを読む" * 4),
+        leaf("a読む", "r読む", title="行を解析する" * 5),
+        leaf("b", "r読む", title="価格" * 20),
+        leaf("c", title="報告書を書く"),
+    ]
+    for width in (40, 80, 120):
+        d = view_tree.draw(nodes, words(nodes), "目標を書く" * 30, width, 24, None)
+        assert d is not None and all(line.cell_len <= width for line in d.lines)
+        assert d.lines[0].plain.strip().endswith("…")
+        heads(d, nodes)

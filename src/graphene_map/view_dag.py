@@ -23,14 +23,16 @@ import unicodedata
 from dataclasses import dataclass, replace
 from functools import partial
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
-from . import plan_text as T
 from .plan_view import depths, outline
-from .views import Drawn
+from .views import Drawn, elide
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
+KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
+NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
 
 
 def _box() -> dict[tuple[int, int, int, int], str]:
@@ -116,26 +118,24 @@ def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
 
 
 def note(nodes: list[P.Node], words: dict[str, str]) -> str:
-    """What the graph says at a glance, for the bottom line: `3 at once now · 2 wait · critical
-    path: a > b > c (3)`."""
+    """What the graph says at a glance, for the bottom line: `3 at once now · 2 wait · 1 running · 1 on
+    you · 4 done · critical path: a > b > c (3)`. Every leaf is counted once, so the counts add up to
+    the leaves drawn; "wait" is every other leaf not done. A path of one leaf is no path."""
     g = _graph(nodes)
     if not g.leaves:
         return "no leaves yet"
     if all(words.get(n.id) == "done" for n in g.leaves):
         return "every leaf done"
     now = at_once(nodes, words)
-    wait = [
-        n.id
-        for n in g.leaves
-        if words.get(n.id) != "done" and any(words.get(x) != "done" for x in g.needs[n.id])
-    ]
+    count = dict.fromkeys(["at once", "wait", "running", "on you", "done"], 0)
+    for n in g.leaves:
+        count["at once" if n.id in now else KINDS.get(words.get(n.id, ""), "wait")] += 1
     ready = all(words.get(i) == "ready" for i in now)
-    said = [f"{len(now)} at once{' now' if now and ready else ''}", f"{len(wait)} wait"]
-    running = sum(words.get(n.id) == "running" for n in g.leaves)
-    said += [f"{running} running"] if running else []
-    path = _critical(g)
+    said = [f"{count['at once']} at once{' now' if now and ready else ''}", f"{count['wait']} wait"]
+    said += [f"{count[k]} {k}" for k in ("running", "on you", "done") if count[k]]
+    path = critical_path(nodes)
     shown = path if len(path) <= 4 else [*path[:2], "…", path[-1]]
-    return " · ".join(said + ([f"critical path: {' > '.join(shown)} ({len(path)})"] if path else []))
+    return " · ".join(said + ([f"critical path: {' > '.join(shown)} ({len(path)})"] if len(path) > 1 else []))
 
 
 # -- where everything goes ---------------------------------------------------------------------------
@@ -202,8 +202,9 @@ def _tracks(g: _Graph, row: dict[str, int]) -> list[list[str]]:
         for s, t in edges:
             if g.level[s] < k <= g.level[t]:
                 lead.setdefault(row[s], []).append(t)
-        # ponytail: every order up to 6 tracks in a gap (720); past that, top to bottom as they come
-        orders = itertools.permutations(bus) if len(bus) <= 6 else [tuple(bus)]
+        # ponytail: every order up to 6 tracks in a gap (720); past that, top to bottom or bottom to top,
+        # whichever crosses fewer (a fan-out crosses none bottom to top); a mixed gap may still comb
+        orders = itertools.permutations(bus) if len(bus) <= 6 else [tuple(bus), tuple(reversed(bus))]
         out.append(list(min(orders, key=partial(_crossings, lead=lead, joined=joined, row=row), default=())))
     return out
 
@@ -245,8 +246,8 @@ def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
     None when glyph and id do not fit."""
     levels = max(g.level.values(), default=-1) + 1
     cols = [[n for n in g.leaves if g.level[n.id] == k] for k in range(levels)]
-    base = [2 + max(len(n.id) for n in col) for col in cols]
-    want = [1 + max(len(n.title) for n in col) for col in cols]
+    base = [2 + max(cell_len(n.id) for n in col) for col in cols]
+    want = [1 + max(cell_len(n.title) for n in col) for col in cols]
     spare = width - sum(base) - sum(_gap(t) for t in tracks[1:])
     if spare < 0:
         return None
@@ -340,7 +341,7 @@ def draw(
     for (y, x), got in arms.items():
         grid[y][x] = (BOX.get(tuple(got.values()), "▸") if got else "▸", style[(y, x)])
     at: dict[str, tuple[int, int, int]] = {}
-    lines = [Text(T.elide(goal, width), "bold")] if goal else []
+    lines = [Text(elide(goal, width), "bold")] if goal else []
     for n in g.leaves:
         x, y = left[g.level[n.id]], row[n.id]
         for k, (char, how) in enumerate(cell[n.id]):
@@ -362,8 +363,21 @@ def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str,
     glyph, colour = P.look(word)
     done = word == "done"
     ident = "dim" if done else f"{colour} bold".strip() if critical else colour
-    out = [(glyph, colour), (" ", "")] + [(c, ident) for c in node.id]
+    out = [(glyph, colour), (" ", "")] + _columns(node.id, ident)
     room = wide - len(out) - 1
-    if room >= min(len(node.title), LEAST_TITLE):
-        out += [(" ", "")] + [(c, "dim" if done else "") for c in T.elide(node.title, room)]
+    if room >= min(cell_len(node.title), LEAST_TITLE):
+        out += [(" ", "")] + _columns(elide(node.title, room), "dim" if done else "")
+    return out
+
+
+def _columns(text: str, how: str) -> list[tuple[str, str]]:
+    """Text as one entry a terminal column, as the grid is laid out: a wide character's second column
+    is "", and a character that takes none (a combining accent) joins the one before it."""
+    out: list[tuple[str, str]] = []
+    for char in text:
+        wide = cell_len(char)
+        if wide == 0 and out:
+            out[-1] = (out[-1][0] + char, how)
+        else:
+            out += [(char, how)] + [("", how)] * (wide - 1)
     return out
