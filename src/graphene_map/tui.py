@@ -979,6 +979,9 @@ class Watch(App):
         """Tab: the next view that fits this plan at this size, in the order the views were added,
         then the outline again. The cursor stays on its node; the bottom line says the command that
         opens this view, and what it shows at a glance."""
+        if not self.nodes:  # nothing to draw: Tab would switch to a view no one sees
+            self.message = "graphene watch --view: nothing is planned yet (:ask what you want)"
+            return self.say_status()
         names, here, was = list(V.VIEWS), self.selected(), self.showing or "outline"
         if self.mapped is not None and self.mapped[1] == here:  # on a stand-in: the node the person was on
             here = self.mapped[0]

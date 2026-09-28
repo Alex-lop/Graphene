@@ -433,3 +433,9 @@ def test_help_lists_tab_and_h_l_only_when_there_is_a_view_and_on_one_line(repo, 
     said = help_says()
     assert "Tab" in said and "in a view: the node to the left" in said
     assert any("Tab" in line and "(graphene watch --view)" in line for line in said.splitlines())
+
+
+def test_tab_on_an_empty_plan_says_so_and_changes_nothing(repo, grid):
+    """Tab on an empty plan switched to the grid with nothing shown, the keyboard on the hidden tree."""
+    seen = look(repo, ["tab"], (80, 24))
+    assert seen["showing"] == "outline" and "nothing is planned yet" in seen["status"]
