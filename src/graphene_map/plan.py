@@ -743,7 +743,8 @@ def contract(node: Node, why: list[str] | None = None, decided: list[str] | tupl
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
-        *(f"  decided: {line}" for line in decided),
+        *(["  decided:"] if decided else []),  # its lines start where every other key's value does
+        *(f"          {line}" for line in decided),
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]

@@ -171,9 +171,14 @@ def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
     person("board", "take", "int-ids")
     person("board", "note", "keep", "it", "short")
     shown = person("node", "show", "users").stdout
-    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py\n" in shown
-    assert "  decided: assumed: ids are integers\n" in shown
-    assert "  decided: keep it short\n" in shown  # the person's own note is told as written
+    assert (
+        "  goal:   users returns ids\n"
+        "  decided:\n"
+        "          which id: the row id or a new uuid? → a uuid column, added to schema.py\n"
+        "          assumed: ids are integers\n"
+        "          keep it short\n"  # the person's own note is told as written
+        "  scope:  api.py, schema.py"
+    ) in shown  # each decision starts in the column every other value does
     script, told = repo.parent / f"{repo.name}-executor.py", repo.parent / f"{repo.name}-told.txt"
     script.write_text(EXECUTOR)  # beside the repo, so neither is anybody's stray file
     monkeypatch.setenv("TOLD", str(told))
@@ -181,7 +186,10 @@ def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
         run_plan(store, repo, f"{sys.executable} {script}", say=lambda _: None, logs=repo / ".graphene/runs")
         assert P.get(store, "users").state == P.DONE
     told = told.read_text()
-    assert "  decided: which id: the row id or a new uuid? → a uuid column, added to schema.py" in told
+    assert (
+        "  decided:\n          which id: the row id or a new uuid? → a uuid column, added to schema.py"
+        in told
+    )
     assert told.index("decided:") < told.index("scope:  api.py, schema.py")
 
 
