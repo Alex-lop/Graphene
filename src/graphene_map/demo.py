@@ -91,9 +91,14 @@ def hider(root: Path) -> tuple:
         for text, instead in said:  # as written, and as JSON writes it inside a node's or a log row's detail
             for form in {text, json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}:
                 value = value.replace(form, instead)
-        return WORD.sub(lambda word: REMOVED if KEY.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
+        return unkeyed(value)
 
     return hide, said
+
+
+def unkeyed(value: str) -> str:
+    """``value`` with anything shaped like a key taken out, whole word by whole word."""
+    return WORD.sub(lambda word: REMOVED if KEY.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
 
 
 def record(root: Path, out: Path, every: float = EVERY) -> int:

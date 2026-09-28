@@ -187,3 +187,23 @@ def test_an_offer_never_undoes_an_edit_made_while_the_model_was_asked(repo, fake
     assert nodes["ids"].scope == ["schema.py"]
     with Store.open(repo) as store:
         assert store.node_log(kinds=("suggested",)) == []
+
+
+def test_no_key_shaped_string_reaches_the_store_the_output_or_the_model(repo, fake):
+    planned(repo)
+    key = "nb-AbCdEfGhIjKlMnOpQrStUv0123456789XyZ"
+    f = fake([answer("ids", goal_add=True, why=f"use token {key}"), answer("ids", check=f"curl -H {key} x")])
+    offer, said, _, _ = routed(repo)
+    assert offer.why == "use token [removed: shaped like a key]"
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == [
+        "the model's answer holds something shaped like a key; nothing is offered"
+    ]
+    with Store.open(repo) as store:
+        assert key[3:] not in json.dumps(store.node_log())
+        try:
+            note.route(store, repo, f"my key is {key}")
+            raise AssertionError("a note holding a key was sent")
+        except P.Refused as no:
+            assert "shaped like a key" in str(no) and key[3:] not in str(no)
+    assert len(f.requests) == 2
