@@ -109,3 +109,13 @@ def test_a_planners_grep_whose_glob_leaves_the_protected_files_out_is_let_throug
     monkeypatch.setenv("GRAPHENE_PLANNER", "1")
     assert hook(repo, "Grep", pattern="def", glob="*.py") is None
     assert refused(hook(repo, "Grep", pattern="KEY", glob="*.txt"))
+
+
+def test_the_nemotron_planners_grep_does_not_follow_a_tracked_link_to_a_protected_file(repo):
+    from graphene_map import planner
+
+    (repo / "docs").mkdir()
+    (repo / "docs" / "link.txt").symlink_to("../secrets/prod.txt")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    seen = planner.Repo(repo, ["secrets/**"])
+    assert seen.grep("KEY") == "(no match)" and "protected" in seen.read("docs/link.txt")

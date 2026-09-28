@@ -89,8 +89,11 @@ class Repo:
         for f in self.files:
             if glob not in ("**", "*", "") and not (fnmatch.fnmatch(f, glob) or P.in_scope(f, [glob])):
                 continue
+            full = self._inside(f)  # a tracked link is read as what it reaches, as read() does
+            if full is None or str(full.relative_to(self.root.resolve())) not in self.shown:
+                continue
             try:
-                lines = (self.root / f).read_text(encoding="utf-8").splitlines()
+                lines = full.read_text(encoding="utf-8").splitlines()
             except (OSError, UnicodeDecodeError):
                 continue
             hits += [f"{f}:{k}: {line.strip()[:200]}" for k, line in enumerate(lines, 1) if find.search(line)]
