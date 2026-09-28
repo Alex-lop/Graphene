@@ -313,3 +313,124 @@ The tables show nothing about whether the board and the graph cost less attentio
 comparable runs, because the harness's permission classifier stopped every stand-in that reached
 an executor launch and the paragraph arm's runs were never created, so every hypothesis reads "no
 difference shown", and that null is a harness failure rather than a result about shaping.
+
+## Study 2: shaping only (pre-registered at about 04:00, before any of its runs)
+
+*Written and committed on 2026-09-28 at about 04:00, before any run of study 2. No study 2 run
+directory exists yet. Once the first of its runs starts, this section is not edited; anything decided
+later goes below it and is labelled **after the fact**. Study 1's section above is not changed.*
+
+### Why
+
+Study 1 failed for the harness, not for shaping. This session's permission classifier refuses a
+sub-agent that starts a Claude Code session, so no stand-in could send its paragraph to a session or
+start an executor (see "What happened to the twelve runs" above). Study 2 measures only the shaping
+moment, which needs neither: from a proposal already made to the moment the person would press R.
+Nothing is run, no executor starts, and no stand-in starts a session.
+
+### Design
+
+- **The proposal.** For each task, the coordinator runs `graphene ask` once, itself, in a fresh repo
+  from `make_task.py` on which `graphene init --planner claude --executor claude` was run as the
+  person. The Claude planner proposes once, from the task's sealed paragraph
+  (`docs/test/tasks/<task>/paragraph.md`). `shape_only.py setup TASK` makes that repo, in
+  `~/graphene-shaping-runs/TASK-shape-planned`.
+- **Two copies.** The planned directory is copied whole (`cp -R`) into one run directory per arm,
+  `TASK-shape-outline-1` and `TASK-shape-board-1` (`shape_only.py fork TASK ARM`), each with its own
+  empty `runlog.jsonl` and its own `env.sh`. Both arms of a task start from the identical proposal,
+  byte for byte, which study 1 could not promise: there each arm's session proposed on its own.
+- **The person.** A stand-in shapes its copy until it would press R, and stops there. It is the
+  person who wrote the paragraph, and its brief (`shape_only.py brief TASK ARM`) says so and shows
+  it the paragraph and the card.
+
+### The two arms
+
+| arm | what the person does | how they read the plan |
+|---|---|---|
+| **outline** | Prunes with `graphene plan accept`, `graphene node drop` and `graphene node set`. It ignores the board. | `graphene plan --text` and `graphene plan` |
+| **board** | First answers every open board item, one command each: `graphene board take`, `pick`, `drop`, `park`, `answer` or `note`. Then it prunes with the outline arm's commands. | `graphene board`, then `graphene plan --view auto` |
+
+The build under test has no `--add-scope` or `--add-goal` on `node set` (`graphene node set --help`
+at the build below), so neither brief names them; `--scope` replaces the scope and repeats.
+
+### Tasks and runs
+
+The tasks are `feeds`, `inventory`, `logs` and `report`. There is one run per arm per task: **8 runs,
+n = 1 per cell.** This is a pilot. It can show which way each difference goes on each task. It
+cannot show that a difference is real.
+
+### What is held equal
+
+- **The proposal.** One per task, the same bytes in both arms.
+- **The build.** `~/graphene-shaping-venv`, which is the wheel recorded in
+  `~/graphene-shaping-runs/build.txt` (commit `668c7fd`, sha256 `5408b89f…`). Its `bin` is first on
+  `PATH` in every shell (`env.sh`).
+- **The stand-in.** The same model, spawned the same way, one per run and never reused. Both briefs
+  come from one template in `shape_only.py` and differ only in the arm section. The stand-in is not
+  told what is measured.
+- **The card.** Each task's `intent.md`, whole, pasted into the brief by the script, as `standin.py`
+  does.
+
+### Metrics, all computed afterwards by a script or a judge
+
+| metric | from | notes |
+|---|---|---|
+| person-seconds, MODELLED | `attention.py` | K = 0.28 s per typed character, M = 1.35 s per act, reading at 250 words a minute, split into typing + acts + reading, up to the moment the person would press R. A model, never a clock. |
+| keys | `attention.py` | typed characters + acts |
+| typed characters | `attention.py` | by `attention.py`'s rules, unchanged |
+| words read | `attention.py` | every word logged as `read` |
+| acts | `attention.py` | every person entry except `read`; each board command is one act |
+| faithful to the card | a judge | A separate judge per run, with no part in it, reads the shaped plan (`graphene plan --text` and `graphene board` in the run's repo) against the card. It rules: does the plan do what the card asks and nothing it forbids: **yes / partly / no**. And it counts how many of the card's constraints a leaf, a check or a board answer carries, out of the card's total. The ruling is saved in the run directory. |
+
+### Hypotheses, each with its direction
+
+| | comparison | registered direction | measure |
+|---|---|---|---|
+| H1 | board against outline | board **lower** | modelled person-seconds |
+| H3 | board against outline | board **lower**, on each separately | words read; typed characters |
+| H6 | board against outline | board **at least as faithful** | the judge's ruling (yes > partly > no), then constraints carried |
+
+H1 and H3 keep study 1's names so they read side by side. H2, H4 and H5 need a run and are not tested.
+
+### The table that will be reported
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | | | | | | | | | |
+| feeds | board | | | | | | | | | |
+| inventory | outline | | | | | | | | | |
+| inventory | board | | | | | | | | | |
+| logs | outline | | | | | | | | | |
+| logs | board | | | | | | | | | |
+| report | outline | | | | | | | | | |
+| report | board | | | | | | | | | |
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | | of 4 | |
+| H3: words read | | of 4 | |
+| H3: typed | | of 4 | |
+| H6: faithful to the card | | of 4 | |
+
+Under the tables goes one sentence on what they show, whatever it is.
+
+### Analysis rules
+
+1. **n = 1 per cell, so there are no significance claims.** No p-value, interval or test. A
+   hypothesis's result is how many of the four tasks go the registered way, with each task's signed
+   difference beside it, in study 1's words ("lower" only if all four do; "on three of four tasks,
+   one run each" if three do; "no difference shown" if two or fewer do, or if any task is void or not
+   run; a task that goes the other way is reported as going the other way).
+2. **Every cell is reported,** void and not-run cells included, each with its reason. No mean or
+   median stands in for the rows.
+3. **Null results are reported,** in the tables and in the sentence.
+4. **A run is void** if the `graphene` on `PATH` is not the recorded build, if its copy did not start
+   from the task's one proposal, or if the stand-in ran anything (a `graphene run` or an executor).
+   A rerun is allowed only when the harness failed; it is named so, and the failed run is kept.
+5. **Nothing is tuned once the first run starts:** not the brief, the card, the paragraph, the
+   proposal or the build.
+6. **Anything decided after the data is labelled "after the fact",** including a re-cut, an
+   exclusion or a new column.
+7. **What this is evidence about.** Shaping one proposal from the Claude planner, by Claude
+   sub-agents standing in for the person, measured with the keystroke-level model. Not about
+   whether the shaped plan runs or passes, and not about Nemotron, Token Factory or Sandboxes.
