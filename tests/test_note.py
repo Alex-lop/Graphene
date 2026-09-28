@@ -1,0 +1,141 @@
+# ruff: noqa: F811  (pytest fixtures imported from test_plan_cli and test_planner are named again as arguments)
+"""`graphene plan note`: a sentence the person types finds its leaf through one Nano call to the
+recorded fake, and comes back as a `node set` (or `node add`) that Graphene checked before showing.
+Nothing changes until the person runs it."""
+
+import json
+import shlex
+
+from test_plan_cli import agent, person, repo, runner  # noqa: F401  (fixtures)
+from test_planner import fake  # noqa: F401  (fixture)
+
+from graphene_map import note
+from graphene_map import plan as P
+from graphene_map.cli import build
+from graphene_map.store import Store
+
+NANO = "nvidia/Nemotron-3-Nano-fake"
+ALEX = P.Caller("alex", True)
+LEAVES = [
+    {"id": "ids", "title": "users returns ids", "scope": ["api.py"], "check": "grep -q ids api.py"},
+    {"id": "tables", "title": "the schema", "scope": ["schema.py"], "check": "grep -q T schema.py"},
+    {"id": "docs", "title": "document it", "scope": ["README.md"], "check": "test -f README.md"},
+]
+
+
+def answer(target, scope_add=(), scope_remove=(), check=None, goal_add=False, why="it says so"):
+    said = {"target": target, "scope_add": list(scope_add), "scope_remove": list(scope_remove),
+            "check": check, "goal_add": goal_add, "why": why}  # fmt: skip
+    return {"content": json.dumps(said)}
+
+
+def planned(repo):
+    with Store.open(repo) as store:
+        P.propose(store, LEAVES, ALEX)
+
+
+def routed(repo):
+    said = []
+    with Store.open(repo) as store:
+        offer = note.route(store, repo, "  ids come back   sorted ", say=said.append)
+        return offer, said, store.node_log("*", ("usage",)), {n.id: n for n in P.nodes(store)}
+
+
+def test_a_note_finds_the_right_leaf_of_three_and_its_command_is_the_edit(repo, fake):
+    planned(repo)
+    check = "python3 -c 'import api'"
+    f = fake([answer("ids", check=check, goal_add=True, why="it is about the ids")])
+    offer, said, [bill], nodes = routed(repo)
+    goal = "users returns ids; ids come back sorted"  # the person's words, not the model's
+    assert offer.command == shlex.join(["graphene", "node", "set", "ids", "--check", check, "--goal", goal])
+    assert offer.target == "ids" and offer.endpoint == "a stand-in" and said == []
+    assert bill["detail"]["endpoint"] == "a stand-in" and bill["detail"]["model"] == NANO
+    assert nodes["ids"].rev == 1 and nodes["ids"].check == "grep -q ids api.py"  # the dry run left no trace
+    [request] = f.requests
+    assert request["model"] == NANO and request["response_format"]["type"] == "json_schema"
+    assert all(f"{n['id']} (revision 1)" in request["messages"][1]["content"] for n in LEAVES)
+    with Store.open(repo) as store:
+        [row] = store.node_log("ids", ("suggested",))
+    assert row["detail"]["command"] == offer.command and row["detail"]["note"] == "ids come back sorted"
+    took = person(*shlex.split(offer.command)[1:])  # the person takes it: an ordinary edit
+    assert took.exit_code == 0, took.output
+    with Store.open(repo) as store:
+        assert P.get(store, "ids").check == check and P.get(store, "ids").goal == goal
+    assert person("plan", "undo").exit_code == 0
+    with Store.open(repo) as store:
+        assert P.get(store, "ids").check == "grep -q ids api.py"
+
+
+def test_an_invented_leaf_is_refused(repo, fake):
+    planned(repo)
+    fake([answer("sorting", check="true")])
+    offer, said, [bill], _ = routed(repo)
+    assert offer is None and "'sorting', which is not an open or proposed leaf" in said[0]
+    with Store.open(repo) as store:
+        assert store.node_log(kinds=("suggested",)) == []
+
+
+def test_a_scope_glob_that_matches_nothing_is_refused(repo, fake):
+    planned(repo)
+    fake([answer("docs", scope_add=["lib/nothing/**"])])
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == [
+        "lib/nothing/** matches no file git tracks and is not under docs's scope; nothing is offered"
+    ]
+
+
+def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scope(repo, fake):
+    planned(repo)
+    fake([answer("ids", scope_add=["schema.py"]), answer("ids", scope_remove=["web.py"])])
+    offer, said, _, _ = routed(repo)
+    assert offer.command == "graphene node set ids --scope api.py --scope schema.py"
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == ["web.py is not in ids's scope; nothing is offered"]
+
+
+def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, fake):
+    planned(repo)
+    fake([answer("new", scope_add=["api.py"], check="python3 -c 'import api'"), answer("new"),
+          answer("ids", scope_add=["api.py/{a,b}"])])  # fmt: skip
+    offer, _, _, _ = routed(repo)
+    add = ["graphene", "node", "add", "ids come back sorted", "--scope", "api.py", "--check"]
+    add.append("python3 -c 'import api'")
+    assert offer.command == shlex.join(add)
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said[0].startswith("a new leaf needs a scope and a check")
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said[0].startswith("the plan would refuse it (ids: braces are not read")
+
+
+def test_an_answer_that_is_not_json_offers_nothing_and_its_bill_is_kept(repo, fake):
+    planned(repo)
+    fake([{"content": "I think it is the ids leaf."}, answer("none", why="it is about style")])
+    offer, said, [bill], _ = routed(repo)
+    assert offer is None and said == [
+        "the model's answer is not the JSON it was asked for; nothing is offered"
+    ]
+    assert bill["detail"]["calls"] == 1 and bill["actor"] == "note:nemotron"
+    offer, said, _, _ = routed(repo)
+    assert offer is None and said == ["it constrains no leaf: it is about style"]
+
+
+def test_a_check_naming_a_path_nothing_creates_is_refused(repo, fake):
+    planned(repo)
+    fake([answer("ids", check="python3 -m pytest tests/test_sorted.py")])
+    offer, said, _, _ = routed(repo)
+    assert offer is None and "names tests/test_sorted.py, which is not in the repo" in said[0]
+
+
+def test_the_command_says_a_stand_in_answered_and_an_agent_is_refused_before_any_call(repo, fake):
+    planned(repo)
+    f = fake([answer("ids", check="grep -q sorted api.py")])
+    said = agent("plan", "note", "ids come back sorted")
+    assert said.exit_code == 1 and "the person's to do" in said.output and f.requests == []
+    said = person("plan", "note", "ids come back sorted")
+    assert said.exit_code == 0, said.output
+    assert said.stdout.splitlines() == [
+        "a stand-in, not Token Factory, places it on ids: it says so",
+        "take it:  graphene node set ids --check 'grep -q sorted api.py'",
+    ]
+    assert "Nemotron" not in said.stdout
+    assert runner.invoke(build(), ["plan", "note", "x"], env={"GRAPHENE_AS": "person:alex"}).exit_code == 1

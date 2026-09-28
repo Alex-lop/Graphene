@@ -15,6 +15,7 @@ from pathlib import Path
 import typer
 
 from . import gate as G
+from . import note as N
 from . import plan as P
 from . import plan_text as T
 
@@ -803,6 +804,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         """Ask a planner for a proposal: it reads the repo with read-only tools and prints the tree in
         the plan's text, which is added as proposals for you to prune. Nothing runs."""
         planner(sentence, executor, about, False)
+
+    N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
 
     # -- graphene node ----------------------------------------------------------------------------
 
