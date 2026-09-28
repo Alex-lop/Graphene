@@ -1282,7 +1282,7 @@ class Watch(App):
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
-            return [*on, *offers, "? ask the planner", "Enter record", "q quit"]
+            return [*on, *offers, "? ask the planner", "r run it again", "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             return [*on, *shut, *KEYS[word], *tail]
@@ -1361,9 +1361,7 @@ class Watch(App):
     def action_help_or_ask(self) -> None:
         node_id = self.selected()
         if node_id is not None and node_id in self.back:  # there ? asks the planner, which spends
-            self.background(
-                ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
-            )
+            self.background(asked_about(node_id))
         elif node_id is not None:
             self.talk_to()
         else:
@@ -1575,9 +1573,8 @@ class Watch(App):
 
             self.push_screen(Ask(f"reopen {node_id}: what is wrong (its next executor is told)"), reopened)
         elif state is not None:
-            self.message = (
-                f"{node_id} is {self.word(node_id)}: x releases a running leaf, or reopens a finished one"
-            )
+            again = "; r runs it again" if node_id in self.back else ""
+            self.message = f"x releases a running leaf or reopens a finished one; {node_id} is neither{again}"
             self.say_status()
 
     def action_tail(self) -> None:
@@ -2015,12 +2012,17 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     return pane.render()
 
 
+def asked_about(node_id: str) -> list[str]:
+    """What ? on a leaf that came back runs, and its pane shows as the command it is."""
+    return ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
+
+
 def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     """Why it came back, then the fixes it offers as rows of one shape (key, what it does, the
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
-    offers = [*P.offers(store, node), ("?", "ask the planner", ["ask", "…", "--about", node.id])]
-    rows = [(key, _its(does, node.id), f"graphene {' '.join(argv)}") for key, does, argv in offers]
+    offers = [*P.offers(store, node), ("?", "ask the planner", asked_about(node.id))]
+    rows = [(key, _its(does, node.id), f"graphene {shlex.join(argv)}") for key, does, argv in offers]
     # one line each when every one fits whole; else two each, all alike: what the key does, then the
     # command under it (at 120 columns the pane is narrow, and the commands had gone)
     one = all(5 + len(does) + 2 + len(command) <= pane.wide for _, does, command in rows)

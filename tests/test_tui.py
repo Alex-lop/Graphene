@@ -843,7 +843,8 @@ def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
     gone): on its row, at the pane's edge, when every one fits whole; else under it, for all alike."""
     every_state(repo)
     commands = ["graphene node widen docs", "graphene node sibling docs",
-                "graphene node set docs --needs ids", "graphene ask … --about docs"]  # fmt: skip
+                "graphene node set docs --needs ids",
+                "graphene ask 'docs came back: propose what would let it be done' --about docs"]  # fmt: skip
     for size in [*SIZES, (220, 40)]:
         seen, _ = at(repo, "docs", size)
         lines = [ln.rstrip() for ln in seen["detail"].splitlines()]
@@ -1706,3 +1707,16 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         record = " ".join(seen["detail"].split())
         said = "fork 1 of 2 stopped: its executor was stopped before this fork ended · Nemotron-3-Nano-fake"
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
+
+
+def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
+    """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
+    "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
+    every_state(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "docs", size)
+        assert "r run it again" in seen["status"], (size, seen["status"])
+        flat = " ".join(seen["detail"].split())
+        assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
+    seen, _ = at(repo, "docs", (120, 36), keys=["x"])
+    assert "docs is came back" not in seen["status"] and "r runs it again" in seen["status"]
