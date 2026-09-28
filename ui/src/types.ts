@@ -265,6 +265,7 @@ export interface Plan {
   tree_height: number;
   tree_goal: number[]; // the goal's box, at the top of the tree
   tree_links: PlanEdge[]; // parent to child; the goal is ""
+  view: string; // the repository's view setting, the one graphene watch opens in: auto, outline, tree or dag
 }
 
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.

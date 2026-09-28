@@ -8,38 +8,18 @@ import { Inspector } from "./Inspector";
 import { MapView } from "./Map";
 import { LayoutBar, PlanHeader, PlanInspector, PlanStrip, PlanTopDown, PlanTree, PlanView } from "./Plan";
 import { exported, load, send } from "./data";
-import { chain, layoutFor, matching } from "./model";
-import type { Counter, Layout, Selection, View } from "./model";
+import { chain, matching, shownLayout } from "./model";
+import type { Counter, Mode, Selection, View } from "./model";
 import type { Payload } from "./types";
 
 const EVERY = 2000; // milliseconds between reads of the plan while the tab is in front
-const KEPT = "graphene.layout"; // the one thing this page keeps in the browser: how this viewer draws the plan
 const INSPECTOR = 380; // the plan's right column, beside the drawing on a wide window (app.css)
-
-/** How this viewer last chose to draw the plan, or null: the page then chooses from the plan's shape.
- * Only the viewer's own browser keeps it, and a browser that keeps nothing still draws the plan. */
-const kept = (): Layout | null => {
-  try {
-    const was = window.localStorage.getItem(KEPT);
-    return was === "outline" || was === "tree" || was === "graph" ? was : null;
-  } catch {
-    return null;
-  }
-};
 
 /** How wide the drawing's pane is, near enough to choose a layout by. */
 const room = (): number => (typeof window === "undefined" ? Infinity : window.innerWidth - (window.innerWidth > 800 ? INSPECTOR : 0));
 
 export function App(): ReactElement {
-  const [layout, setLayout] = useState<Layout | null>(kept);
-  const pick = useCallback((next: Layout) => {
-    setLayout(next);
-    try {
-      window.localStorage.setItem(KEPT, next);
-    } catch {
-      // private window or blocked storage: the choice holds until the page is closed
-    }
-  }, []);
+  const [mode, setMode] = useState<Mode>(null); // what the viewer clicked on this page; kept nowhere
   const [payload, setPayload] = useState<Payload | null>(null);
   const [failed, setFailed] = useState(false);
   const [session, setSession] = useState<string | null>(null);
@@ -120,14 +100,13 @@ export function App(): ReactElement {
   const current = graph.run.sessions.map((s) => s.id);
 
   if (shown === "plan") {
-    const [chosen, because] = layoutFor(plan, room());
-    const drawn = layout ?? chosen;
+    const { layout: drawn, mode: pressed, why: because } = shownLayout(plan, mode, room());
     return (
       <div className="app plan">
         <PlanHeader plan={plan} view={shown} onView={setView} recorded={runs.length} />
         <main className="centre">
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
-          <LayoutBar plan={plan} layout={drawn} why={layout !== null ? "your choice, kept in this browser" : `chosen: ${because}`} onLayout={pick} />
+          <LayoutBar plan={plan} layout={drawn} mode={pressed} why={because} onLayout={setMode} />
           {drawn === "outline" && <PlanTree plan={plan} picked={picked} onPick={setPicked} />}
           {drawn === "tree" && <PlanTopDown plan={plan} picked={picked} onPick={setPicked} />}
           {drawn === "graph" && <PlanView plan={plan} picked={picked} onPick={setPicked} />}

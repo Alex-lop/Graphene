@@ -6,7 +6,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-import { layoutFor } from "./model";
+import { layoutFor, shownLayout, type Mode } from "./model";
 import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, startScale } from "./Plan";
 import type { Plan, PlanEdge, PlanNode } from "./types";
 
@@ -77,6 +77,7 @@ const plan: Plan = {
   tree_height: 200,
   tree_goal: [0, 0],
   tree_links: [],
+  view: "auto",
 };
 
 // feeds, as plan_view.py lays it out: two chains into one leaf, the longer one critical
@@ -184,18 +185,25 @@ test("the tree's boxes are as wide as Python sized them", () => {
   expect(html).toMatch(/data-node="a"[^>]*><rect class="box" width="140"/);
 });
 
-test("the switch has the three layouts, says why this one was chosen, and says the critical path and what can start at once in words, as the terminal names it", () => {
-  const bar = (picked: boolean) =>
-    renderToStaticMarkup(<LayoutBar plan={feeds} layout="graph" why={picked ? "your choice, kept in this browser" : "chosen: some nodes wait on others"} onLayout={() => undefined} />);
-  const html = bar(false);
+test("the switch has auto and the three layouts, says what is drawn and why, and says the critical path and what can start at once in words, as the terminal names it", () => {
+  const bar = (mode: Mode) => renderToStaticMarkup(<LayoutBar plan={feeds} {...shownLayout(feeds, mode, 2000)} onLayout={() => undefined} />);
+  const html = bar(null);
   expect(html).toMatch(/data-layout="graph"/);
-  expect(html.match(/<button/g)).toHaveLength(3);
-  expect(html).toMatch(/aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*class="on" aria-pressed="true"[^>]*>graph<\/button>/);
-  expect(html).toContain("chosen: some nodes wait on others");
+  expect(html.match(/<button/g)).toHaveLength(4);
+  expect(html).toMatch(/class="on" aria-pressed="true"[^>]*>auto<\/button>.*aria-pressed="false"[^>]*>outline<\/button>.*aria-pressed="false"[^>]*>tree<\/button>.*aria-pressed="false"[^>]*>graph<\/button>/);
+  expect(html).toContain("auto chose the graph: some nodes wait on others, and the graph fits");
   expect(html).toContain("critical path: xml-reader → xml-wire → xml-e2e");
   expect(html).toContain("2 at once: xml-reader, zero-rule");
-  expect(bar(true)).toContain("your choice, kept in this browser");
-  expect(renderToStaticMarkup(<LayoutBar plan={plan} layout="tree" why="" onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+  expect(bar("tree")).toMatch(/data-layout="tree".*class="on" aria-pressed="true"[^>]*>tree<\/button>.*your choice, on this page only/);
+  expect(renderToStaticMarkup(<LayoutBar plan={plan} {...shownLayout(plan, null, 2000)} onLayout={() => undefined} />)).toContain("no critical path: nothing waits on anything");
+});
+
+test("the page opens in the repository's view setting, the one the terminal reads, and a click changes this page only", () => {
+  expect(shownLayout({ ...feeds, view: "auto" }, null, 2000).layout).toBe("graph");
+  expect(shownLayout({ ...feeds, view: "outline" }, null, 2000)).toMatchObject({ layout: "outline", mode: "outline", why: "this repo's view setting: outline" });
+  expect(shownLayout({ ...feeds, view: "dag" }, null, 2000)).toMatchObject({ layout: "graph", mode: "graph" }); // the terminal's name for it
+  expect(shownLayout({ ...feeds, view: "tree" }, "auto", 2000)).toMatchObject({ layout: "graph", mode: "auto" }); // a click on auto brings the choice back
+  expect(shownLayout({ ...feeds, view: "something else" }, null, 2000).mode).toBe("auto");
 });
 
 test("in the graph the critical path is drawn heavier, its edges and its boxes, and a leaf that can start now is marked", () => {

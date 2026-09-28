@@ -7,7 +7,7 @@ import { select } from "d3-selection";
 import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 
-import { PAD_X, PAD_Y, STATE, STATE_COLOUR, clip, clock, graphWidth, stamp, treeWidth, why, type Layout, type View } from "./model";
+import { PAD_X, PAD_Y, STATE, STATE_COLOUR, clip, clock, graphWidth, stamp, treeWidth, why, type Layout, type Mode, type View } from "./model";
 import type { Fork, Plan, PlanEdge, PlanNode, Shown } from "./types";
 
 const CHAR = 6.4;
@@ -220,17 +220,18 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
   );
 }
 
-const BUTTONS: Layout[] = ["outline", "tree", "graph"];
+const BUTTONS = ["auto", "outline", "tree", "graph"] as const;
 
-/** Which way the plan is drawn, the record's toggle again. Under it, the plan's own two facts in
- * words, whichever layout is shown: the critical path and what can start at once, as the terminal says them. */
-export function LayoutBar({ plan, layout, why, onLayout }: { plan: Plan; layout: Layout; why: string; onLayout: (l: Layout) => void }): ReactElement {
+/** Which way the plan is drawn, the record's toggle again, with auto to give the choice back to the
+ * plan's shape. Under it, the plan's own two facts in words, whichever layout is shown: the critical
+ * path and what can start at once, as the terminal says them. */
+export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; layout: Layout; mode: "auto" | Layout; why: string; onLayout: (m: Mode) => void }): ReactElement {
   return (
     <div className="layout-bar" data-testid="layout" data-layout={layout}>
       <div className="toggle" role="group" aria-label="how the plan is drawn">
-        {BUTTONS.map((l) => (
-          <button key={l} type="button" className={l === layout ? "on" : ""} aria-pressed={l === layout} onClick={() => onLayout(l)}>
-            {l}
+        {BUTTONS.map((m) => (
+          <button key={m} type="button" className={m === mode ? "on" : ""} aria-pressed={m === mode} onClick={() => onLayout(m)}>
+            {m}
           </button>
         ))}
       </div>

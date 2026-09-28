@@ -161,6 +161,7 @@ class PlanView:
     tree_height: float = 0.0
     tree_goal: list[float] = field(default_factory=lambda: [0.0, 0.0])  # the goal's box, at the top
     tree_links: list[ViewEdge] = field(default_factory=list)  # parent to child; "" is the goal
+    view: str = "auto"  # the repository's `view` setting, the one `graphene watch` opens in; unset: auto
 
 
 def depths(nodes: list[P.Node]) -> dict[str, int]:
@@ -457,7 +458,11 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     # the store lives at <repo>/.graphene/graphene.db, and the page names the repo even when no
     # session has been recorded in it yet, which is exactly when the graph cannot name it
     view = PlanView(
-        repo=store.path.parent.parent.name, goal=P.goal(store), person=person, paused=P.paused(store)
+        repo=store.path.parent.parent.name,
+        goal=P.goal(store),
+        person=person,
+        paused=P.paused(store),
+        view=store.meta("view") or "auto",
     )
     view.counts = {state: sum(1 for n in live if n.state == state) for state in STATES}
     back = {n.id for n in live if P.came_back(store, n)}  # the next move is the person's, as in the terminal

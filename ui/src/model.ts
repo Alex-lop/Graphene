@@ -300,6 +300,23 @@ export const layoutFor = (plan: Plan, room: number): [Layout, string] => {
   return ["outline", waits ? "the graph and the tree are too wide for the window" : "nothing waits on anything, and the tree is too wide for the window"];
 };
 
+/** What the viewer clicked on this page: auto, a layout, or nothing yet (the repository's setting). */
+export type Mode = "auto" | Layout | null;
+
+// the repository's `view` setting, in the terminal's names (graphene watch --view), as the page draws it
+const SETTING: Record<string, Layout> = { outline: "outline", tree: "tree", dag: "graph", graph: "graph" };
+
+/** The layout drawn, the button pressed and why. The page opens in the repository's view setting,
+ * the one the terminal reads (unset, or a view the page has not: auto); a click changes this page
+ * only, and nothing keeps it, so the store stays the one place the preference lives. */
+export const shownLayout = (plan: Plan, mode: Mode, room: number): { layout: Layout; mode: "auto" | Layout; why: string } => {
+  const [auto, because] = layoutFor(plan, room);
+  const set = SETTING[plan.view];
+  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${plan.view}` };
+  if (mode === null || mode === "auto") return { layout: auto, mode: "auto", why: `auto chose the ${auto}: ${because}` };
+  return { layout: mode, mode, why: "your choice, on this page only" };
+};
+
 /** What a state is called on screen. It is printed as words beside the shape, never as colour alone. */
 export const STATE: Record<Shown, string> = {
   proposed: "proposed",
