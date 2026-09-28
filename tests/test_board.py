@@ -460,3 +460,27 @@ def test_wide_characters_keep_the_boards_columns_and_a_note_with_no_ascii_is_cal
     ]
     assert len(at) == 2 and at[0] == at[1]
     assert cell_len(T.elide("日本語のメモ " * 10, 12)) <= 12
+
+
+LONG = """\
+question: which XML parser: the standard library's ElementTree or lxml, faster but not installed?  [parser]
+    default: the standard library's ElementTree, because lxml is not installed and nothing else needs it here
+    option: lxml, added to pyproject.toml
+    then: scope users + pyproject.toml, requirements.txt, requirements-dev.txt, setup.cfg, tox.ini
+"""
+
+
+def test_the_board_shows_an_items_whole_text_wrapped_under_its_row(repo):
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, LONG, PLANNER, None)
+        shown = rows(store)
+    row = next(k for k, line in enumerate(shown) if line.endswith("parser  open"))
+    words = " ".join(line.split("  parser  ")[0].strip(" ◇") for line in shown[row : row + 3])
+    assert words.startswith("which XML parser: the standard library's ElementTree or lxml, faster")
+    assert "but not installed?" in words  # the whole question, not cut at 44 characters
+    assert shown[row + 1].startswith("    ") and "parser" not in shown[row + 1]  # under its row
+    default = " ".join(line.strip() for line in shown if line.startswith("      ") and "then:" not in line)
+    assert "because lxml is not installed and nothing else needs it here" in default
