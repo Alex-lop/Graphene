@@ -24,6 +24,7 @@ from . import board as B
 from . import cover
 from . import plan as P
 from . import plan_text as T
+from . import precheck
 from .run import _splits, command_for
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
@@ -253,6 +254,7 @@ def ask(
                         say(f"  {line[:300]}")
                 if about is None:  # GRAPHENE_SHAPE: what reads the proposal once it has landed
                     cover.after_ask(store, sentence, say)
+                said += precheck.after_proposal(store, root, said.ids)  # GRAPHENE_SHAPE=precheck, after it
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")

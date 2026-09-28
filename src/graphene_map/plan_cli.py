@@ -22,6 +22,7 @@ from . import note as N
 from . import plan as P
 from . import plan_text as T
 from . import views as V
+from . import precheck
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
 NO_PLAN = (
@@ -373,6 +374,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     )
     cli.add_typer(plan_cli, name="plan")
     cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
+    precheck.register(plan_cli, root, open_store, fail)  # `graphene plan precheck`: red first
 
     @plan_cli.callback()
     def show_plan(
