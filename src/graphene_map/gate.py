@@ -470,6 +470,37 @@ def _first_write(event: dict, root: Path) -> str | None:
     return None
 
 
+READ_TOOLS = {"Read", "Grep", "Glob"}
+
+
+def _protected_read(store, event: dict, root: Path) -> str | None:
+    """The protected path a Read, Grep or Glob would reach, or None. A Read names its file; a Grep or a
+    Glob reaches every file under its path (a Glob, those its pattern matches), so one that would pass
+    over a protected file is refused whole: what a planner reads is sent to its model."""
+    from . import settings  # here, not at the top: it imports plan, as this module does
+
+    tool = event.get("tool_name")
+    hidden = settings.protected(store) if tool in READ_TOOLS else []
+    if not hidden:
+        return None
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+    path = tool_input.get("file_path" if tool == "Read" else "path") or cwd or str(root)
+    rel = _rel(path, root, cwd) if isinstance(path, str) else None
+    if rel is None:
+        return None
+    if P.in_scope(rel, hidden):
+        return rel
+    if tool == "Read":
+        return None
+    base = "" if rel in ("", ".") else rel.rstrip("/") + "/"
+    under = [f for f in P.in_tree(root) if f.startswith(base)]
+    pattern = tool_input.get("pattern") if tool == "Glob" else None
+    if isinstance(pattern, str) and pattern:
+        under = [f for f in under if P.in_scope(f[len(base) :], [pattern])]
+    return next((f for f in under if P.in_scope(f, hidden)), None)
+
+
 def decide(store, event: dict, root: Path) -> dict | None:
     """The hook's answer for this event, or None to say nothing."""
     name = event.get("hook_event_name")
@@ -498,6 +529,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
             store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
             return _deny("you are the planner: your only output is the proposal you print. Write no file"
                          if planner else _first_refused(store))  # fmt: skip
+    hidden = _protected_read(store, event, root) if name == "PreToolUse" and planner else None
+    if hidden is not None:
+        store.log_node("*", P._now(), "denied", None, sid, None, {"path": hidden, "how": "planner read"})
+        return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so never "
+                     "sends it to a model. Search a narrower path that leaves it out")  # fmt: skip
     if not P.in_force(store):
         return None
     tool = event.get("tool_name")

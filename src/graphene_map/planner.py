@@ -53,11 +53,13 @@ HITS = 200
 
 
 class Repo:
-    """What the planner may look at: the files git tracks (and untracked ones it does not ignore)."""
+    """What the planner may look at: the files git tracks (and untracked ones it does not ignore), less
+    the protected paths the person named in `graphene config` (``hidden``)."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, hidden: list[str] = ()):
         self.root = root
-        self.files = P.in_tree(root)  # what git shows: never what it ignores (a .env), never .graphene/
+        files = P.in_tree(root)  # what git shows: never what it ignores (a .env), never .graphene/
+        self.files = [f for f in files if not P.in_scope(f, list(hidden))]
         self.shown = set(self.files)
 
     def _inside(self, path: str) -> Path | None:
@@ -101,7 +103,7 @@ class Repo:
         if full is None or not full.is_file():
             return f"{path} is not a file of this repository"
         if str(full.relative_to(self.root.resolve())) not in self.shown:
-            return f"{path} is not read: git ignores it, and what is read is sent to the model"
+            return f"{path} is not read: git ignores it or it is protected; what is read goes to the model"
         lines = full.read_text(encoding="utf-8", errors="replace").split("\n")
         first = max(1, start or 1)
         last = min(len(lines), end or first + READ_LINES - 1)
@@ -119,9 +121,20 @@ class Repo:
             return f"{name} could not take those arguments ({no})"
 
 
+def _protected(here: Path) -> list[str]:
+    """The protected globs the person set (`graphene config`): never read, so never sent to the model."""
+    from . import settings
+
+    try:
+        with Store.open(repo_root(here)) as store:
+            return settings.protected(store)
+    except Exception:  # no store to read: nothing was ever protected in it
+        return []
+
+
 def plan(args: argparse.Namespace, prompt: str) -> int:
     here = Path.cwd()
-    repo = Repo(here)
+    repo = Repo(here, _protected(here))
     say = sys.stderr
     try:  # the id the live list has: the largest Nemotron by default, a retired one's nearest
         chosen, instead = tf.resolve([args.model] if args.model else [], "planner")
