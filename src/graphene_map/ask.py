@@ -77,7 +77,18 @@ goal: their aim, in one sentence (only when the plan above has none)
 - Write no file and start no work: what you print is all of your answer."""
 
 
-def prompt_for(store, sentence: str, about: str | None = None, split: bool = False) -> str:
+def prompt_for(
+    store,
+    sentence: str,
+    about: str | None = None,
+    split: bool = False,
+    root: Path | None = None,
+    files: list[str] | None = None,
+    size: str | None = None,
+) -> str:
+    """What the planner is told. `size` is this ask's (--finer/--coarser), else the saved one."""
+    from . import settings, sizing
+
     text, _ = T.render(store)
     lines = [
         "You are the planner for a plan that a person and their coding agents share (Graphene). The "
@@ -103,7 +114,16 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
                 f"Split {about} into smaller leaves: write its line with its [{about}], and the new leaves "
                 "under it; together they do all of it, and its check still says it is done."
             )
-    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", "", RULES]
+    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", ""]
+    conditions = settings.conditions_for_planner(store)
+    if size and size != settings.size(store):  # this ask's size stands; the saved one's line would contradict it
+        conditions = "\n".join(c for c in conditions.splitlines() if not c.startswith("The person wants a "))
+    if conditions:
+        lines += ["The person's standing conditions:", conditions, ""]
+    if root is not None:
+        files = P.tracked(root) if files is None else files
+        lines += [sizing.measure(root, sentence, files, size or settings.size(store)), ""]
+    lines.append(RULES)
     return "\n".join(lines)
 
 
@@ -129,6 +149,7 @@ def ask(
     about: str | None = None,
     split: bool = False,
     say: Callable[[str], None] = print,
+    size: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
@@ -140,10 +161,10 @@ def ask(
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, {"note": sentence, "about": about})
-    asked = prompt = prompt_for(store, sentence, about, split)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
+    asked = prompt = prompt_for(store, sentence, about, split, root, files, size)
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}

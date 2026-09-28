@@ -768,7 +768,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 raise typer.Exit(130) from None
             out(summary(store, since))
 
-    def planner(sentence: str, executor: str | None, about: str | None, split: bool) -> None:
+    def planner(sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None) -> None:
         from .ask import ask, named
 
         who = P.caller()
@@ -778,7 +778,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             template = named(executor or store.meta("planner"))  # --with, else the repo's (`graphene init`)
-            said = ask(store, checkout(), sentence, template, about, split, out)
+            said = ask(store, checkout(), sentence, template, about, split, out, size)
             for line in said:
                 out(line)
             if said:
@@ -799,10 +799,14 @@ def register(cli: typer.Typer, root, open_store, fail):
             "last. Default: the one `graphene init` chose, else claude with read-only tools.",
         ),
         about: str = typer.Option(None, "--about", help="A node the question is about (one that came back)."),
+        finer: bool = typer.Option(False, "--finer", help="A finer plan than the saved size, for this ask only."),
+        coarser: bool = typer.Option(False, "--coarser", help="A coarser plan than the saved size, for this ask only."),
     ) -> None:
         """Ask a planner for a proposal: it reads the repo with read-only tools and prints the tree in
         the plan's text, which is added as proposals for you to prune. Nothing runs."""
-        planner(sentence, executor, about, False)
+        if finer and coarser:
+            fail("--finer or --coarser, not both", 2)
+        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
 
     # -- graphene node ----------------------------------------------------------------------------
 
