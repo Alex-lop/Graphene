@@ -247,4 +247,69 @@ Checked against the build under test, `668c7fd` (wheel sha256 `5408b89f…`, in 
 
 ## Results
 
-*Empty until the runs exist.*
+*Filled on 2026-09-28 from `summarize.py` (written to `docs/test/runs-2026-09-28-shaping.json`) and
+`attention.py`, by the steps in `shaping-study.md`, "Filling the table". The people were Claude
+sub-agents standing in for a person, not people. The planner and the executor were Claude Code
+(sonnet). This is evidence about shaping, and none at all about Nemotron, Token Factory or
+Sandboxes, none of which ran.*
+
+**What happened to the twelve runs.**
+- **Paragraph arm, all four tasks: not run.** No `<task>-sealed-prompt-1` directory exists under
+  `~/graphene-shaping-runs`, so each stand-in found no brief and did nothing. `summarize.py` has no
+  row for them.
+- **Seven runs are void** (outline on all four tasks, board on inventory, logs and report). Each
+  one's `opening_is_sealed` is false because its `runlog.jsonl` is empty: nothing was ever sent. In
+  each, the stand-in's first launch of the `claude -p` executor was refused by Claude Code's
+  auto-mode permission classifier ("Create Unsafe Agents"), and the stand-in stopped without a
+  workaround. The reason is in each run's `void.txt`. This is a harness failure, so an
+  infrastructure rerun is allowed (rule 5), and none was made tonight.
+- **One run is valid: feeds, board.** It sent the sealed paragraph, took all three board items
+  and accepted the proposed tree without an edit. Then the same classifier refused
+  `graphene run --with "claude -p ..."` before any leaf started, so nothing was built and the change
+  of mind was never sent. None of the three registered void cases applies, so it stays valid.
+  **After the fact:** its accept and quality are those of the untouched base repo, which the void
+  feeds outline repo also scores 10/20 and 0/12. Its to run is cut at the opening message, because
+  it logged no `run` (`attention.py`'s note).
+
+Every outline cell carries the deviation written before the first run: the build teaches the board
+to the outline arm's session, `plan --text` prints the board, and a tree runs whatever its board
+holds, so this outline arm is not the 23 September arm. The outline cells are void as well.
+
+| task | arm | run | valid | accept | quality | person-s, MODELLED = typing + acts + reading | to run, MODELLED | typed | acts | keys | words read | caught (judged / candidates) | restarts / unmandated | outside intent | cost $ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | paragraph | not run: no run directory | | | | | | | | | | n/a | | | |
+| feeds | outline † | feeds-sealed-tree-1 | void: nothing sent, the executor launch was refused | | | | | | | | | | | | |
+| feeds | board | feeds-sealed-board-1 | yes; stopped before `graphene run` | 10/20, the base repo | 0/12, the base repo | 733.6 = 512.96 + 9.45 + 211.20 | 514.3, cut at the opening | 1832 | 7 | 1839 | 880 | 0 / 0 | 0 / 0 | 0 | 0.234 |
+| inventory | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| inventory | outline † | inventory-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| inventory | board | inventory-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| logs | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| logs | outline † | logs-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| logs | board | logs-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| report | paragraph | not run: no run directory | | | n/a | | | | | | | n/a | | | |
+| report | outline † | report-sealed-tree-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+| report | board | report-sealed-board-1 | void: nothing sent, the executor launch was refused | | n/a | | | | | | | | | | |
+
+† The outline deviation above, written at 03:30 before the first run.
+
+The feeds board run in detail:
+- typing is 0.28 × 1832, acts 1.35 × 7, reading 0.24 × 880;
+- the 1832 typed characters are the sealed opening, the same in every arm;
+- the seven acts include three board `take`s;
+- the candidates are 0 from `caught_before_code_n`, plus 0 pick, answer or drop in `board_acts`,
+  and the judge's `judge.md` has no ruling to make.
+
+| hypothesis | board minus the other arm, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H2: person-s, board against paragraph | paragraph not run / board void, paragraph not run / same / same | 0 of 4 | no difference shown: every task void or not run |
+| H3: words read, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H3: typed, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H4: accept and quality, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+| H4: accept and quality, board against paragraph | paragraph not run / board void, paragraph not run / same / same | 0 of 4 | no difference shown: every task void or not run |
+| H5: caught, board against outline | outline void / both void / both void / both void | 0 of 4 | no difference shown: every task void |
+
+The tables show nothing about whether the board and the graph cost less attention: no task has two
+comparable runs, because the harness's permission classifier stopped every stand-in that reached
+an executor launch and the paragraph arm's runs were never created, so every hypothesis reads "no
+difference shown", and that null is a harness failure rather than a result about shaping.
