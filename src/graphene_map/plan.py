@@ -744,6 +744,13 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
 
 
 @ctrl_c_on_hangup()
+def check_env() -> dict[str, str]:
+    """A check's environment, wherever it runs here (`done`, `plan precheck`): no key, and Graphene's own
+    keychain lookup off, for it runs code an executor wrote."""
+    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
+    return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
+
+
 def run_check(
     command: str, checkout: str | Path, leave_out: list[str] | tuple = ()
 ) -> tuple[bool, str, list[str]]:
@@ -758,8 +765,7 @@ def run_check(
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     # It runs code an executor wrote, so it never gets the Token Factory key.
-    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
-    env |= {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
+    env = check_env()
     try:
         with _clean_tree(checkout, leave_out, began) as tree:
             code, out, err = _ended(command, tree, env, began)

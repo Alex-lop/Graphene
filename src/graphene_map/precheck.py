@@ -113,10 +113,8 @@ def _prepare(exe: str) -> str | None:
 
 def _here(command: str, root: Path) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
-    from . import tokenfactory as tf  # here: every graphene command imports this module, few read
-
     began = time.monotonic()
-    env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_AS": "agent:check"}
+    env = P.check_env()
     try:
         with P._clean_tree(root, (), began) as tree:
             code, out, err = P._ended(command, tree, env, began)
