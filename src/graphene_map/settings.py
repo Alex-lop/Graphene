@@ -52,8 +52,6 @@ def conditions_for_planner(store) -> str:
     if readonly(store):
         lines.append(f"No leaf may write these paths: {', '.join(readonly(store))}.")
     lines += [f"Never propose this: {n}" for n in never(store)]
-    if size(store) != "auto":
-        lines.append(f"The person wants a {size(store)} plan than you would size it by default.")
     return "\n".join(lines)
 
 

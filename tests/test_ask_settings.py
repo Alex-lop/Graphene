@@ -72,3 +72,11 @@ def test_asking_again_finer_replaces_the_planners_last_proposal(repo, tmp_path, 
         pending = sorted(n.id for n in A.P.nodes(store) if n.state == "proposed")
     assert pending == ["ids2", "users-api2"]  # one tree to prune, not two side by side
     assert "replaces the tree you proposed last" in said(tmp_path)
+
+
+def test_a_saved_size_and_the_flag_tell_the_planner_the_same_thing_once(repo):
+    with Store.open(repo) as store:
+        flagged = A.prompt_for(store, "add ids", root=repo, size="finer")
+        settings.apply(store, "size: finer\n", ME)
+        saved = A.prompt_for(store, "add ids", root=repo)
+    assert saved == flagged and "wants a finer plan" not in saved  # the numbers carry the size, once

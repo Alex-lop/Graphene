@@ -115,9 +115,7 @@ def prompt_for(
                 "under it; together they do all of it, and its check still says it is done."
             )
     lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", ""]
-    conditions = settings.conditions_for_planner(store)
-    if size and size != settings.size(store):  # this ask's size stands; the saved one's would contradict it
-        conditions = "\n".join(c for c in conditions.splitlines() if not c.startswith("The person wants a "))
+    conditions = settings.conditions_for_planner(store)  # the size is said once, by sizing.measure
     if conditions:
         lines += ["The person's standing conditions:", conditions, ""]
     if root is not None:

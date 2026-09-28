@@ -32,7 +32,8 @@ def test_a_person_writes_them_and_they_read_back(store):
     assert S.never(store) == ["add a dependency", "rewrite the # of retries"]
     assert S.size(store) == "finer"
     said = S.conditions_for_planner(store)
-    assert "vendor/**" in said and "docs/**" in said and "add a dependency" in said and "finer" in said
+    assert "vendor/**" in said and "docs/**" in said and "add a dependency" in said
+    assert "finer" not in said  # the size is told once, by the sizing sentence (ask.prompt_for)
     again = S.render(store)
     S.apply(store, again, ALEX)
     assert S.render(store) == again
