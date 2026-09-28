@@ -27,6 +27,7 @@ from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
+from . import plan_view
 from .plan_view import depths, outline
 from .views import Drawn, elide
 
@@ -87,34 +88,16 @@ def _graph(nodes: list[P.Node]) -> _Graph:
     return _Graph(leaves, level, needs, {n.id: k for k, n in enumerate(P.order(waits))})
 
 
-def _critical(g: _Graph) -> list[str]:
-    todo = {n.id: int(n.state != P.DONE) for n in g.leaves}
-    best: dict[str, int] = {}
-    for i in sorted(g.level, key=lambda i: (g.level[i], g.rank[i])):
-        best[i] = todo[i] + max((best[x] for x in g.needs[i]), default=0)
-    if not any(best.values()):
-        return []
-    path = [min(best, key=lambda i: (-best[i], g.rank[i]))]
-    while best[path[-1]] > todo[path[-1]]:
-        path.append(min(g.needs[path[-1]], key=lambda i: (-best[i], g.rank[i])))
-    return [i for i in reversed(path) if todo[i]]
-
-
 def critical_path(nodes: list[P.Node]) -> list[str]:
     """The longest chain of leaves not done yet, first to last, through what each needs: what
-    decides how long the plan takes however many run at once. Ties go to `plan.order`'s first."""
-    return _critical(_graph(nodes))
+    decides how long the plan takes however many run at once. The page's own (`plan_view`)."""
+    return plan_view.critical_path(nodes)
 
 
 def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
-    """The leaves that could start now: ready ones, and proposed ones whose needs are all done
-    (they start once accepted), in the outline's order."""
-    g = _graph(nodes)
-    return [
-        n.id
-        for n in g.leaves
-        if words.get(n.id) in ("ready", "proposed") and all(words.get(x) == "done" for x in g.needs[n.id])
-    ]
+    """The leaves that could start now, proposed ones too (they start once accepted): the page's own
+    (`plan_view`). ``words`` is kept for the view's callers; the plan alone decides it."""
+    return plan_view.at_once(nodes)
 
 
 def note(nodes: list[P.Node], words: dict[str, str]) -> str:
@@ -262,7 +245,7 @@ def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
 
 def _fit(nodes: list[P.Node], width: int):
     g = _graph(nodes)
-    path = _critical(g)
+    path = critical_path(nodes)
     row = _rows(g, path)
     tracks = _tracks(g, row)
     return g, path, row, tracks, _widths(g, tracks, width)

@@ -143,6 +143,17 @@ def test_the_payload_carries_the_plan_beside_the_graph(served, repo):
     assert shown["holes"]["scope"] and shown["writable"] is True and shown["token"]
 
 
+def test_the_page_opens_in_the_view_the_repository_is_set_to_the_one_the_terminal_reads(served, repo):
+    """One place for the preference: the store's `view` setting, which `graphene watch` opens in too;
+    unset, the page chooses from the plan's shape (auto). A click on the page changes that page only."""
+    with Store.open(repo) as store:
+        P.propose(store, [node(id="n1")], P.Caller("alex", True))
+    assert plan_of(served)["view"] == "auto"
+    with Store.open(repo) as store:
+        store.set_meta("view", "dag")
+    assert plan_of(served)["view"] == "dag"
+
+
 def test_the_page_edits_the_plan_and_the_change_lands_in_the_store(served, repo):
     token = token_of(served)
     assert post(served, "add", node(id="n1", goal="the endpoint"), token)[0] == 200

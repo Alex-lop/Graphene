@@ -361,6 +361,8 @@ svg [hidden] { display: none; }
 /* how the plan is drawn, and its two facts in words */
 .layout-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; }
 
+.pan-hint { display: none; margin: 0; padding: 4px 20px; font-size: 12px; } /* a phone's: see below */
+
 /* a phone: one column, the drawing a pane of its own that pans, the node's detail under it */
 @media (max-width: 800px) {
   .app.plan { display: flex; flex-direction: column; height: auto; }
@@ -370,6 +372,8 @@ svg [hidden] { display: none; }
   .app.plan .plan-canvas { flex: none; height: 60vh; }
   .app.plan .tree { flex: none; }
   .tree .row .state { width: auto; }
+  .app.plan .plan-strip { order: 1; } /* the drawing starts on the first screen; what waits on you is under it */
+  .pan-hint { display: block; }
 }
 
 /* a node's contract, edited in place: the same four sizes, nothing new */

@@ -7,11 +7,9 @@ import { select } from "d3-selection";
 import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 
-import { BECAUSE, STATE, STATE_COLOUR, clip, clock, stamp, why, type Layout, type View } from "./model";
+import { PAD_X, PAD_Y, STATE, STATE_COLOUR, clip, clock, graphWidth, stamp, treeWidth, why, type Layout, type Mode, type View } from "./model";
 import type { Fork, Plan, PlanEdge, PlanNode, Shown } from "./types";
 
-const PAD_X = 132; // the lane-name gutter, which is the page's own margin, not a position
-const PAD_Y = 16;
 const CHAR = 6.4;
 const SMALL = 5.9;
 
@@ -222,28 +220,46 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
   );
 }
 
-const BUTTONS: Layout[] = ["outline", "tree", "graph"];
+const BUTTONS = ["auto", "outline", "tree", "graph"] as const;
 
-/** Which way the plan is drawn, the record's toggle again. Under it, the plan's own two facts in
- * words, whichever layout is shown: the critical path and what can start now. */
-export function LayoutBar({ plan, layout, picked, onLayout }: { plan: Plan; layout: Layout; picked: boolean; onLayout: (l: Layout) => void }): ReactElement {
+/** Which way the plan is drawn, the record's toggle again, with auto to give the choice back to the
+ * plan's shape. Under it, the plan's own two facts in words, whichever layout is shown: the critical
+ * path and what can start at once, as the terminal says them. */
+export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; layout: Layout; mode: "auto" | Layout; why: string; onLayout: (m: Mode) => void }): ReactElement {
   return (
     <div className="layout-bar" data-testid="layout" data-layout={layout}>
       <div className="toggle" role="group" aria-label="how the plan is drawn">
-        {BUTTONS.map((l) => (
-          <button key={l} type="button" className={l === layout ? "on" : ""} aria-pressed={l === layout} onClick={() => onLayout(l)}>
-            {l}
+        {BUTTONS.map((m) => (
+          <button key={m} type="button" className={m === mode ? "on" : ""} aria-pressed={m === mode} onClick={() => onLayout(m)}>
+            {m}
           </button>
         ))}
       </div>
-      <span className="muted">{picked ? "your choice, kept in this browser" : `chosen: ${BECAUSE[layout]}`}</span>
+      <span className="muted">{why}</span>
       <span data-testid="critical">
         {plan.critical.length > 0 ? `critical path: ${plan.critical.join(" → ")}` : "no critical path: nothing waits on anything"}
       </span>
-      <span data-testid="ready">can start now: {plan.ready.join(", ") || "nothing"}</span>
+      <span data-testid="at-once" title={plan.at_once.join(", ")}>
+        {plan.at_once.length} at once
+        {plan.at_once.length > 0 && `: ${plan.at_once.slice(0, 5).join(", ")}`}
+        {plan.at_once.length > 5 && ` and ${plan.at_once.length - 5} more`}
+      </span>
     </div>
   );
 }
+
+/** Where a drawing starts: its width fitted to the pane, never larger than drawn and never below 0.6,
+ * where it stays readable and is dragged (a layout the viewer picked though it is far too wide). A
+ * drawing only taller than its pane starts at 1 and pans down. */
+export const startScale = (width: number, pane: number): number => Math.max(Math.min(1, pane / width), 0.6);
+
+/** Which events move the drawing: d3-zoom's own rule (no right button, no ctrl but a pinch's wheel),
+ * and on a touch screen only two fingers, so one finger still scrolls the page past the drawing. */
+export const panFilter = (event: Event): boolean => {
+  const e = event as Event & { ctrlKey?: boolean; button?: number; touches?: { length: number } };
+  if (e.type === "touchstart") return (e.touches?.length ?? 0) > 1;
+  return (!e.ctrlKey || e.type === "wheel") && !e.button;
+};
 
 /** A drawing larger than its pane pans and zooms with d3-zoom, as the record's map does; one that
  * fits is drawn as it is. The pane is measured, so a static render draws it whole. */
@@ -268,6 +284,7 @@ function Pan({ width, height, label, onClear, children }: { width: number; heigh
     if (!node || !larger) return setT(zoomIdentity);
     const fit = Math.min(1, pw / width, ph / height);
     const behaviour = zoom<SVGSVGElement, unknown>()
+      .filter(panFilter)
       .extent([
         [0, 0],
         [pw, ph],
@@ -279,23 +296,25 @@ function Pan({ width, height, label, onClear, children }: { width: number; heigh
       ])
       .on("zoom", (event: { transform: ZoomTransform }) => setT(event.transform));
     const picked = select(node);
-    // TODO: a drawing far wider than the pane starts at 0.6, readable, and is dragged; fit shows it whole
-    picked.call(behaviour).call(behaviour.transform, zoomIdentity.scale(Math.max(fit, 0.6)));
+    picked.call(behaviour).call(behaviour.transform, zoomIdentity.scale(startScale(width, pw)));
     return () => {
       picked.on(".zoom", null);
     };
   }, [larger, pw, ph, width, height]);
   return (
-    <div className="plan-canvas" ref={box} data-pans={larger}>
-      <svg ref={svg} width={larger ? pw : width} height={larger ? ph : height} aria-label={label} onClick={onClear}>
-        <defs>
-          <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
-            <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
-          </marker>
-        </defs>
-        <g transform={t.toString()}>{children}</g>
-      </svg>
-    </div>
+    <>
+      {larger && <p className="pan-hint muted">two fingers move and zoom the drawing; one scrolls the page</p>}
+      <div className="plan-canvas" ref={box} data-pans={larger}>
+        <svg ref={svg} width={larger ? pw : width} height={larger ? ph : height} aria-label={label} onClick={onClear}>
+          <defs>
+            <marker id="arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
+              <path d="M0,1L7,4L0,7Z" fill="var(--neutral)" />
+            </marker>
+          </defs>
+          <g transform={t.toString()}>{children}</g>
+        </svg>
+      </div>
+    </>
   );
 }
 
@@ -304,9 +323,9 @@ const points = (edge: PlanEdge, dx: number, dy: number): string => edge.points.m
 /** The graph: what waits on what, left to right in columns by depth, one lane per owner. The critical
  * path is drawn heavier, its edges and its boxes, and a leaf that can start now is tinted. */
 export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
-  const width = PAD_X + plan.width + 24;
+  const width = graphWidth(plan);
   const on = new Set(plan.critical);
-  const now = new Set(plan.ready);
+  const now = new Set(plan.at_once);
   return (
     <Pan width={width} height={plan.height + PAD_Y * 2} label="the plan, as a graph of what waits on what" onClear={() => onPick(null)}>
       {plan.lanes.map((lane) => (
@@ -331,11 +350,11 @@ export function PlanView({ plan, picked, onPick }: { plan: Plan; picked: string 
  * the leaves at the ends of the branches. The same boxes, the same states and colours as the graph. */
 export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: string | null; onPick: (id: string | null) => void }): ReactElement {
   const on = new Set(plan.critical);
-  const now = new Set(plan.ready);
+  const now = new Set(plan.at_once);
   const [gx, gy] = [PAD_Y + (plan.tree_goal[0] ?? 0), PAD_Y + (plan.tree_goal[1] ?? 0)];
   const goal = plan.goal || "no goal yet";
   return (
-    <Pan width={plan.tree_width + PAD_Y * 2} height={plan.tree_height + PAD_Y * 2} label="the plan, as a tree" onClear={() => onPick(null)}>
+    <Pan width={treeWidth(plan)} height={plan.tree_height + PAD_Y * 2} label="the plan, as a tree" onClear={() => onPick(null)}>
       {plan.tree_links.map((link) => (
         <polyline key={link.id} data-link={link.id} className="edge link" points={points(link, PAD_Y, PAD_Y)} />
       ))}
@@ -350,7 +369,7 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
         </text>
       </g>
       {plan.nodes.map((node) => (
-        <Box key={node.id} node={node} x={PAD_Y + node.tree_x} y={PAD_Y + node.tree_y} on={node.id === picked} critical={on.has(node.id)} now={now.has(node.id)} onPick={onPick} />
+        <Box key={node.id} node={{ ...node, width: node.tree_w }} x={PAD_Y + node.tree_x} y={PAD_Y + node.tree_y} on={node.id === picked} critical={on.has(node.id)} now={now.has(node.id)} onPick={onPick} />
       ))}
     </Pan>
   );
@@ -381,6 +400,7 @@ function Box({
       ? `${node.executor} · since ${clock(node.started_at)}`
       : `${node.executor} · finished ${clock(node.finished_at)}`
     : null;
+  const who = `${node.id} · ${node.owner === "agent" ? "any agent" : node.owner} · revision ${node.rev}`;
   const says = node.sub_goal ? rolled(node) : (held ?? node.waits[0] ?? node.scope.join(", "));
   return (
     <g
@@ -410,7 +430,8 @@ function Box({
         <title>{node.title}</title>
       </text>
       <text x={12} y={58} className="who">
-        {node.id} · {node.owner === "agent" ? "any agent" : node.owner} · revision {node.rev}
+        {clip(who, node.width - 24, SMALL)}
+        <title>{who}</title>
       </text>
       <text x={12} y={70} className="says">
         {clip(says, node.width - 24, SMALL)}
