@@ -253,3 +253,30 @@ def test_the_replay_allows_tab_and_still_refuses_writes(tmp_path, monkeypatch, g
     asyncio.run(go())
     assert seen["showing"] == "grid" and "graphene watch --view grid" in seen["said"]
     assert seen["refused"] == [demo.REFUSED] * 3 and seen["same"]
+
+
+def test_plan_view_prints_the_outline_or_the_view_as_text(repo, grid):
+    proposed(repo)
+    outline, plain = person("plan", "--view", "outline"), person("plan")
+    assert outline.exit_code == 0 and outline.stdout == plain.stdout
+    drawn = person("plan", "--view", "grid", "--width", "80", "--height", "24")
+    assert drawn.exit_code == 0, drawn.output
+    lines = drawn.stdout.splitlines()
+    assert lines[0] == "users come back with their ids" and lines[-1] == "4 in a grid"
+    assert all(len(line) <= 80 for line in lines) and "? ids users returns ids" in drawn.stdout
+    narrow = person("plan", "--view", "grid", "--width", "40")
+    assert narrow.stdout == plain.stdout
+    assert "the grid does not fit at 40 columns: the outline" in narrow.stderr
+    auto = person("plan", "--view", "auto", "--width", "80")
+    assert auto.stdout == drawn.stdout
+    unknown = person("plan", "--view", "dag")
+    assert unknown.exit_code == 2 and "no view named dag" in unknown.output
+
+
+def test_watch_takes_the_view_too(repo, grid, monkeypatch):
+    proposed(repo)
+    monkeypatch.setenv("COLUMNS", "80")
+    printed = person("watch", "--view", "grid")  # no terminal: printed, as `plan --view` prints it
+    assert printed.exit_code == 0 and printed.stdout.splitlines()[-1] == "4 in a grid"
+    unknown = person("watch", "--view", "dag")
+    assert unknown.exit_code == 2 and "no view named dag: the views are auto, outline, grid" in unknown.output
