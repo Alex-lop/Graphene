@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 
 from . import board as B
+from . import cover
 from . import gate as G
 from . import plan as P
 from . import plan_text as T
@@ -370,6 +371,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         help="The shared plan: what will be done, by whom, inside which paths.", invoke_without_command=True
     )
     cli.add_typer(plan_cli, name="plan")
+    cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
 
     @plan_cli.callback()
     def show_plan(
@@ -696,8 +698,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             for line in rolled_up(store, root(), P.leaves(P.nodes(store))):
                 out(line.replace("under it", "in the plan"))
-            for line in bill_line(bill(store.node_log("*", ("usage",))), "    "):
-                out(line.replace("bill:", "the planner's bill:"))
+            usage = store.node_log("*", ("usage",))  # the planner's, and each helper's under its own name
+            for actor in dict.fromkeys(e["actor"] for e in usage):
+                whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
+                for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
+                    out(line.replace("bill:", f"{whose} bill:"))
 
         run(go)
 
