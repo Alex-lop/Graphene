@@ -1106,7 +1106,8 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
     item = {
         "id": new_id,
         "title": f"what {node.id} needs in {', '.join(paths[:2])}" + (" and more" if len(paths) > 2 else ""),
-        "goal": f"{node.id} ({node.title}) came back: {why}\nThis leaf makes that change; {node.id}'s check, "
+        "goal": f"{node.id} ({node.title}) came back: {str(why).rstrip(' .')}.\nThis leaf makes that change; "
+        f"{node.id}'s check, "
         "run after it, says whether the two work together.",
         "scope": paths,
         "check": "true",
