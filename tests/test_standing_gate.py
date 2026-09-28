@@ -9,6 +9,7 @@ from test_plan import ALEX, BOT, api_node, repo, store  # noqa: F401  (fixtures)
 from graphene_map import plan
 from graphene_map import settings as S
 from graphene_map.plan import DONE, Refused
+from graphene_map.store import Store
 
 
 @pytest.fixture
@@ -64,3 +65,24 @@ def test_an_asides_everything_leaves_them_out_and_is_not_refused(ruled, repo):
     plan.close_aside(ruled, "t", ALEX)
     (last,) = ruled.node_log("t", ("finished",))
     assert last["detail"]["outside"] == ["src/db/schema.py"]
+
+
+def test_an_aside_is_refused_a_write_to_a_standing_path_by_the_hook(tmp_path):
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    (repo / "README.md").write_text("# toy\n")
+    with Store.open(repo) as store:
+        S.apply(store, "protected: src/db/**\nreadonly: README.md\n", ALEX)
+        plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    G.plan_first(repo, False)
+    G.hook(repo, "UserPromptSubmit", prompt="fix the schema and the readme")
+    assert "protected: src/db/**" in G.reason(G.write(repo, "src/db/schema.py"))
+    assert "readonly: README.md" in G.reason(G.bash(repo, "echo x > README.md"))
+    assert G.write(repo, "src/api/users.py") is None  # the rest of its `**` is still its own
+
+
+def test_an_aside_that_types_a_standing_scope_is_refused_like_any_leaf(ruled, repo):
+    with pytest.raises(Refused, match="protected: src/db/"):
+        item = {"id": "t", "title": "t", "scope": ["src/db/**"]}
+        plan.propose(ruled, [item], ALEX, files=plan.tracked(repo), aside=True)

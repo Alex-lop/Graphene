@@ -226,15 +226,21 @@ def standing(store) -> list[tuple[str, str]]:
 
 
 def as_scoped(node: Node, conditions: list[tuple[str, str]]) -> list[str]:
-    """The scope as it binds: an aside's (typed as `**`) leaves the standing paths out, not refused."""
-    return [*node.scope, *(f"!{g}" for _, g in conditions)] if node.aside else node.scope
+    """The scope as it binds: every scope leaves the standing paths out, an aside's `**` included (it is
+    not refused for them), and one accepted before a condition was set."""
+    return [*node.scope, *(f"!{g}" for _, g in conditions)]
+
+
+def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
+    """The setting that keeps ``path`` out of every scope, as `setting: glob`, or None."""
+    return next((f"{s}: {g}" for s, g in conditions if in_scope(path, [g])), None)
 
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
     """Refuse a scope that covers a path a standing condition keeps out, naming the setting and path.
     ponytail: judged by ``overlap`` (tracked files and literal globs), so a scope that covers the path
     and then takes it out again with a '!' glob is still refused; say the scope without it."""
-    if node.aside or not node.scope:
+    if not node.scope or (node.aside and node.scope == ["**"]):  # an aside's untyped `**` leaves them out
         return
     for setting, glob in conditions:
         hit = overlap(node.scope, [glob], files)

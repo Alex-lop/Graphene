@@ -412,10 +412,15 @@ def scope_refused(
     """Why a write of ``rel`` by whoever holds ``held`` is refused, or None when a scope covers it. The
     refusal is logged on the node, where a hand-back's offers are read from. The Claude Code hook and
     the Nemotron executor's write tools both say it, so an agent of either meets the same words."""
-    if any(P.in_scope(rel, n.scope) for n in held):
+    standing = P.standing(store)
+    if any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held):
         return None
     n = held[0]
     store.log_node(n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
+    kept = P.kept_out_by(rel, standing)
+    if kept:
+        return (f"{rel} is kept out of every scope by the setting `{kept}` (`graphene config`); only the "
+                "person changes that. Leave it as it is")  # fmt: skip
     scopes = "; ".join(f"{h.id}: {', '.join(h.scope)}" for h in held)
     way_out = _how_out(store, session, held, [rel])
     return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
@@ -578,6 +583,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         from .shell import bash_written_paths
 
         held = _held(store, sid)
+        standing = P.standing(store)
         rels = []
         for written, _kind in bash_written_paths(command, Path(cwd or root)):
             if not written.strip():
@@ -588,11 +594,12 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
-            if rel is not None and not (held and any(P.in_scope(rel, n.scope) for n in held)):
+            bound = held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)
+            if rel is not None and not bound:
                 rels.append(rel)
         ignored = _ignored(root, rels)  # a build leftover git ignores is nobody's change
         for rel in rels:
-            if rel in ignored or (held and any(P.in_scope(rel, n.scope) for n in held)):
+            if rel in ignored or (held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)):
                 continue
             answer = _check_write(store, held, rel, event, "shell", root)
             if answer is not None:
@@ -607,7 +614,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
-        stray = [r for r in changed if r and not any(P.in_scope(r, n.scope) for n in held)]
+        bound = [P.as_scoped(n, P.standing(store)) for n in held]
+        stray = [r for r in changed if r and not any(P.in_scope(r, b) for b in bound)]
         ignored = _ignored(root, stray)
         stray = [r for r in stray if r not in ignored]
         if not stray:
