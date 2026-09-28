@@ -145,13 +145,15 @@ def goal(text: str, board: Board) -> str:
 def landing(was: list[str], board: Board, at, fresh: bool):
     """Where the cursor goes when the board changed: onto the first open item when there were none
     and the cursor is on the goal (or the screen just opened); after an item under the cursor is
-    answered, onto the next open one, and after the last, into the tree (``TREE``). None: it stays."""
+    answered, onto the next open one, and after the last, onto the settled fold, where y and a mean
+    what they meant on the board a moment ago (on a proposed node y accepts it, and a adds a node),
+    or into the tree (``TREE``) when nothing folded. None: it stays."""
     now = [it["id"] for it in board.open]
     if now and not was and fresh:
         return Row("item", now[0])
     if isinstance(at, Row) and at.kind == "item" and at.id in was and at.id not in now:
         rest = [i for i in was[was.index(at.id) + 1 :] if i in now] + now
-        return Row("item", rest[0]) if rest else TREE
+        return Row("item", rest[0]) if rest else (FOLD if board.folded else TREE)
     return None
 
 
