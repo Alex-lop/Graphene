@@ -62,6 +62,7 @@ docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git l
 ```
 graphene                     where the work stands in this repository, and what waits on you
 graphene watch               the tree on one screen: j k to move, y accept, d drop, R run, ? for the rest
+graphene board               what the planner asks you before the tree, and what you answered
 graphene run --parallel 4    what is ready, at once, a worktree each, landed here as each passes
 graphene node show <id>      why a leaf failed or came back, and what was really done for it
 graphene plan edit           the whole plan as text, in your editor
@@ -166,6 +167,41 @@ Everything the keys do is a command you can type yourself; the bottom line of th
 command each key just ran. Agents and scripts use the same commands. `graphene watch --once` prints
 the plan instead of taking the screen.
 
+### The board
+
+With the tree, the planner puts up what your words leave open and the repository cannot answer: a
+question with the default it would assume (and options, when there is more than one way), what it
+assumed, a risk, what it would leave out. They are the first rows under the goal, and the screen opens
+on the first. On one, `y` takes the default, `1` to `9` picks an option, `Enter` answers in your own
+words, `p` parks it (again: brings it back), `d` drops it, and `a` puts up a note of yours. Each is
+`graphene board take|pick|answer|park|unpark|drop|note`, and `graphene board` prints the board.
+
+What you decide is told to every executor it is about, as `decided:` lines in its contract. A default
+or an option can also carry `then:` lines that change the tree when you choose it: `scope LEAF +
+GLOB`, `check LEAF: COMMAND`, `goal LEAF + SENTENCE`, `drop LEAF`, `leaf TITLE under NODE`, or
+`condition GLOB` (no leaf may write it). `graphene plan undo` takes an answer back with all it
+changed, and `plan edit` has the board at the top of the plan's text.
+
+A stand-in study on 28 September found that answering the board cost more modelled attention than
+pruning the outline alone, on all four tasks, for a plan at least as faithful to what was asked (one
+run each, model stand-ins, nothing run: [docs/test/results-2026-09-28-shaping.md](docs/test/results-2026-09-28-shaping.md)).
+
+### Other views and talking on the tree
+
+`Tab` goes to the next view that fits the plan at the screen's size, then back to the outline: `tree`
+draws it top-down, the goal at the top; `dag` draws the leaves left to right by what they need, what
+can run at once in one column, the critical path heavy. `h` `l` move sideways in a view.
+`graphene watch --view auto` opens in the one that suits the plan, and `graphene plan --view tree`
+prints it.
+
+`?` on a node asks the planner about it: `w` why it is there (the answer is a note on the board), `s`
+split it, `m` merge it with the rows selected with `V`, `a` another way, or a sentence of your own.
+Each is `graphene talk why|split|merge|another ID`, and your own words are
+`graphene ask "…" --about ID`; a merge or another way puts its choice on the board. A row someone
+else added or changed since you last looked shows `+` or `~` before its id (a folded row, `~` when
+anything inside it did). `graphene plan changes` lists them, and `m` marks them seen
+(`graphene plan seen`).
+
 ### Settings you state once
 
 Each of these is yours: an agent (or a planner, or an executor) that runs them is refused.
@@ -224,7 +260,8 @@ What it is not yet: the Nemotron planner and executor have run only against a sc
 Token Factory and a Docker stand-in for Sandboxes, not against the services themselves (the tests in
 `tests/test_executor.py` and `tests/test_escape.py` are that evidence). The hooks are for Claude Code
 only (the plan, `run` and the worktrees work with any executor that has a shell); the page
-(`graphene ui`) shows the tree and is otherwise as it was.
+(`graphene ui`) draws the plan as an outline, a tree or a graph with its critical path, and does not
+show the board.
 [docs/DIRECTION.md](docs/DIRECTION.md) has what was decided, why, and what comes next.
 
 ## What does not bind
@@ -246,6 +283,9 @@ before a write, and how:
 
 - With plan first on, the agent judges what is a tree and what is one leaf. One leaf it proposes
   after your prompt is accepted at once as yours, and the log says so ("by their prompt").
+- A board answer changes the tree only through its `then:` lines. One with none (your own words, or
+  a default the planner gave none) reaches the executors only as a `decided:` line in their
+  contract: they are told it, and their scope and check are what bind.
 - Tools that write through an MCP server are seen neither by plan first nor by a leaf's scope: the
   hooks read Claude Code's own write tools and the shell. That includes a filesystem MCP server
   writing files in this repository; `done` asks git, so under a held leaf such a write is caught
