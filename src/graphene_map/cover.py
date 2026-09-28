@@ -89,9 +89,10 @@ def last(store) -> list[dict]:
 
 
 def standing(store) -> list[dict]:
-    """What the screen shows: the last cover's uncovered clauses the person has not set aside."""
+    """What the screen shows: the last cover's uncovered clauses the person has not set aside, each with
+    ``n``, the number `--take N` and `--dismiss N` know it by (it does not move when one is set aside)."""
     gone = dismissed(store)
-    return [u for u in last(store) if u["note"] not in gone]
+    return [{**u, "n": n} for n, u in enumerate(last(store), 1) if u["note"] not in gone]
 
 
 def dismissed(store) -> set[str]:
@@ -251,6 +252,8 @@ def command(plan_cli: typer.Typer, run, out) -> None:
             if take_ is not None:
                 return say(take(store, now[n - 1], who))
             clause = now[dismiss - 1]["note"]
+            if clause in dismissed(store):
+                raise P.Refused(f"clause {dismiss} is set aside already: '{clause}'")
             store.log_node("*", P._now(), "dismissed", who.label, None, None, {"note": clause})
             say(f"set aside for good: '{clause}'")
 

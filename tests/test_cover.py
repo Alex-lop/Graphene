@@ -254,3 +254,19 @@ def test_a_key_shaped_string_never_lands_in_the_store_or_the_output_and_a_long_a
     assert shaped[3:] not in rows and shaped[3:] not in "\n".join(said)
     assert "Use the token [removed: shaped like a key] for the feed" in "\n".join(said)
     assert len(rows) < 20_000 and "dropped, not your words: 5001" in said[1]
+
+
+def test_the_screen_and_dismiss_number_the_clauses_alike(repo, fake):
+    three = {"clauses": [{"text": t, "leaf": None, "nearest": "prices"} for t in
+                         ("Load the XML feed into items", "Prices are in cents", EMPTY)]}  # fmt: skip
+    fake([nano(three)])
+    with planned(repo) as store:
+        C.cover(store, say=lambda s: None)
+    assert person("plan", "cover", "--dismiss", "1").exit_code == 0
+    with Store.open(repo) as store:
+        assert [(u["n"], u["note"]) for u in C.standing(store)] == [(2, "Prices are in cents"), (3, SAID)]
+    again = person("plan", "cover", "--dismiss", "1")
+    assert again.exit_code == 1 and "set aside already" in again.output
+    assert person("plan", "cover", "--dismiss", "2").exit_code == 0
+    with Store.open(repo) as store:
+        assert [u["n"] for u in C.standing(store)] == [3]
