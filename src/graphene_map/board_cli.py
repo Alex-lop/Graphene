@@ -32,10 +32,11 @@ def rows(store) -> list[str]:
     head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled") if k in count]
     out = [f"the board: {', '.join(head)}"]
     listed = [it for _, group in shown for it in group]
-    # one row grammar, as `graphene plan` prints a node: glyph and words, id, state word; the words wrap
-    # under the row rather than being cut
-    wid = max(len(it["id"]) for it in listed)
-    wt = min(48, max(cell_len(_words(it)) for it in listed) + 4)
+    # one row grammar, as `graphene plan` prints a node: glyph and words, id, state word. The id and the
+    # state are whole (an id is what a command takes); the words take what is left of 80 columns, and
+    # wrap under the row rather than being cut
+    wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
+    wt = min(48, max(cell_len(_words(it)) for it in listed) + 4, WIDE - 4 - wid - ww)
     for name, group in shown:
         out.append(name)
         for item in group:
@@ -45,7 +46,7 @@ def rows(store) -> list[str]:
             out += [f"    {line}" for line in rest]
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
-                out += [f"      changed: {line}" for line in item["became"]]
+                out += ["      changed: " + T.elide(line, WIDE - 15) for line in item["became"]]
                 continue
             if item["default"] or item["then"]:
                 out += [*_hang("      default: ", item["default"] or ""), *_then(item["then"])]
@@ -81,7 +82,7 @@ def _hang(head: str, text: str) -> list[str]:
 
 
 def _then(effects: list[str]) -> list[str]:
-    return [f"         then: {line}" for line in effects]
+    return ["         then: " + T.elide(line, WIDE - 15) for line in effects]
 
 
 def register(cli: typer.Typer, root, open_store, fail) -> None:

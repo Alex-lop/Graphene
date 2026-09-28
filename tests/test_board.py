@@ -484,3 +484,21 @@ def test_the_board_shows_an_items_whole_text_wrapped_under_its_row(repo):
     assert shown[row + 1].startswith("    ") and "parser" not in shown[row + 1]  # under its row
     default = " ".join(line.strip() for line in shown if line.startswith("      ") and "then:" not in line)
     assert "because lxml is not installed and nothing else needs it here" in default
+
+
+def test_the_board_fits_80_columns_with_the_longest_id_an_agents_note_and_a_long_effect(repo):
+    from rich.cells import cell_len
+
+    from graphene_map.board_cli import rows
+
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        T.apply(store, LONG + "question: a question whose id is long?  [abcdefghijklmnopqrstuvwxyz012345]\n"
+                "    default: yes\n", PLANNER, None)  # fmt: skip
+        B.note(store, "the tests are slow on this machine", P.Caller("planner:script", False, "s1"))
+        shown = rows(store)
+    assert max(cell_len(line) for line in shown) <= 80, "\n".join(shown)
+    assert any(
+        line.rstrip().endswith("  abcdefghijklmnopqrstuvwxyz012345  open") for line in shown
+    )  # whole id
+    assert any(line.startswith("         then: scope users + pyproject.toml") for line in shown)
