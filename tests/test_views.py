@@ -500,7 +500,8 @@ def test_tab_says_once_which_view_it_went_past_because_it_does_not_fit(repo, mon
     monkeypatch.setattr(V, "VIEWS", {"outline": None, "wide": Wide, "grid": Grid})
     proposed(repo)
     first = look(repo, ["tab"], (80, 24))
-    assert first["status"].endswith("graphene watch --view grid: the wide does not fit at 80 columns")
+    note, said = first["status"].splitlines()[-2:]
+    assert note == "4 in a grid" and said == "graphene watch --view grid: the wide does not fit at 80 columns"
     again = look(repo, ["tab", "tab", "tab"], (80, 24))  # grid, the outline, the grid again
     assert again["status"].endswith("graphene watch --view grid: 4 in a grid")
 

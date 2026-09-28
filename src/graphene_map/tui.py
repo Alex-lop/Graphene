@@ -1038,8 +1038,8 @@ class Watch(App):
         note = self.drawn.note if self.drawn is not None else ""
         if name == was == "outline":
             note = f"no other view fits at {self.size.width} columns" if len(names) > 1 else "the only view"
-        # a view Tab went past is said once a width (what the view shows is on the line under the keys
-        # from the next move on): the stand-ins never learned the tree was there at 80 columns
+        # a view Tab went past is said once a width (what the view shows is then on the line above):
+        # the stand-ins never learned the tree was there at 80 columns
         news = [v for v in skipped if (v, self.size.width) not in self.skips]
         self.skips.update((v, self.size.width) for v in news)
         if news:
@@ -1192,11 +1192,11 @@ class Watch(App):
         self.refresh_plan()
 
     def say_status(self) -> None:
-        """Two lines, each fitted at a word, and a third when there is something to say: the plan (what
+        """Two lines, each fitted at a word, and more when there is something to say: the plan (what
         waits on the person, the executors, what R would start, how much is done, plan first), what the
-        keys do on the row under the cursor, then what the last command said (in a view, else what the
-        view shows at a glance). The keys never give way to what a command said: after an answer on the
-        board the cursor is on the next item, and its keys are what the person needs next. The short
+        keys do on the row under the cursor, in a view what it shows at a glance (the graph's critical
+        path), then what the last command said. The keys never give way to what a command said: after
+        an answer on the board the cursor is on the next item, and its keys are what is next. The short
         forms at 80 columns; whole pieces drop off the end. What R starts, when `graphene init` chose
         it, is named only where the long form still fits with it."""
         if not self.is_running:
@@ -1227,7 +1227,10 @@ class Watch(App):
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
         lines = [top, fit([(k, "") for k in self.keys()], room)]
-        said = self.busy or self.message or (self.drawn.note if self.drawn is not None else "")
+        said = self.busy or self.message
+        note = self.drawn.note if self.drawn is not None else ""
+        if note and note not in said:  # a view's glance stays in sight whatever a command said after it
+            lines.append(Text(T.elide(note, room)))
         if said:
             bottom = Text(T.elide(said.splitlines()[0], room))
             if bottom.plain.startswith("✗"):  # red is for a command that failed, and only its mark
