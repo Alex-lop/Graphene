@@ -1,4 +1,4 @@
-"""`graphene talk`: the person talks with the planner about a node of the tree.
+"""`graphene talk`: the person talks with the planner about a node of the tree, and sees what changed.
 
 Each is `graphene ask --about` with its own words for the planner (`ask.talking`), so every planner
 answers it (Claude Code, Codex, Nemotron), and each answer lands in the one store, never only printed:
@@ -14,9 +14,16 @@ answers it (Claude Code, Codex, Nemotron), and each answer lands in the one stor
 The question is put up by Graphene in the planner's name, since it asks about the planner's proposal,
 so its effects are always right whatever the planner wrote. Answering it is one `graphene board` act,
 and one `graphene plan undo`.
+
+What changed since the person last looked: `graphene plan seen` keeps a mark (plan_meta `seen:NAME`,
+the last row of the plan's log they have seen); `graphene plan changes` lists what anyone else changed
+after it, and the screen marks those rows. Only the person moves the mark, and only by asking to: a
+planner's revision cannot slip past. The board's every act is a row of the log, so the mark covers it.
 """
 
 from __future__ import annotations
+
+import json
 
 import typer
 
@@ -24,7 +31,94 @@ from . import ask as A
 from . import board as B
 from . import plan as P
 
+# a row of the plan's log that changed the plan, and what it did, in plain words
+DID = {
+    "added": "added", "proposed": "proposed", "accepted": "accepted", "edited": "edited",
+    "dropped": "dropped", "started": "started", "finished": "done", "overruled": "done, overruled",
+    "released": "came back", "reopened": "reopened", "signed_off": "signed off",
+    "rolled_up": "done, with its leaves", "archived": "archived", "undone": "undone", "landed": "landed",
+    "goal": "the goal said", "goal_proposed": "a goal proposed", "reordered": "reordered",
+    "board": "the board",
+}  # fmt: skip
 TODO = ("running", "review", "done")  # a merge or another way is for work still to do
+
+
+def key(person: str) -> str:
+    return f"seen:{person}"
+
+
+def mine(actor: str | None, person: str) -> bool:
+    """Is it the person's own act (`alex`, or `alex (no terminal)`)? They saw it as they made it."""
+    return (actor or "").split(" (")[0] == person
+
+
+def since(store, person: str) -> list[dict] | None:
+    """What anyone but the person changed in the plan after their mark, oldest first; None: no mark."""
+    mark = store.meta(key(person))
+    if mark is None:
+        return None
+    kinds = ", ".join("?" * len(DID))  # from the mark on, not the whole log: the screen asks each second
+    rows = store.conn.execute(
+        f"SELECT * FROM node_log WHERE id > ? AND kind IN ({kinds}) ORDER BY id", (int(mark), *DID)
+    ).fetchall()
+    found = [{**dict(r), "detail": json.loads(r["detail"]) if r["detail"] else {}} for r in rows]
+    return [e for e in found if not mine(e["actor"], person)]
+
+
+def marks(store, person: str) -> tuple[dict[str, str], int]:
+    """Each node changed since the mark, `+` when it was added since and `~` when it changed, and how
+    many things changed (nodes, board items, the goal) for the bottom line."""
+    out: dict[str, str] = {}
+    things: set[str] = set()
+    for e in since(store, person) or []:
+        node = e["node_id"]
+        if e["kind"] == "board":
+            things.add(f"board:{e['detail'].get('item')}")
+        elif node == "*":
+            things.add(e["kind"])
+        else:
+            things.add(node)
+            out[node] = "+" if e["kind"] in ("added", "proposed") or out.get(node) == "+" else "~"
+    return out, len(things)
+
+
+def seen(store, who: P.Caller) -> int:
+    """Move the person's mark to where the plan's log is now; returns how many things it marks seen."""
+    if not who.person:
+        raise P.Refused(
+            f"the mark is the person's, not {who.name}'s: moved by an agent, it would hide a change from them"
+        )
+    _, count = marks(store, who.name)
+    last = store.conn.execute("SELECT COALESCE(MAX(id), 0) FROM node_log").fetchone()[0]
+    store.set_meta(key(who.name), str(last))
+    return count
+
+
+def changes(store, person: str) -> list[str]:
+    """`graphene plan changes`: every change after the mark, a line each, in plain words, by whom."""
+    found = since(store, person)
+    if found is None:
+        return [
+            "no mark yet: `graphene plan seen` (m on the screen) marks the plan as you have seen it; what "
+            "anyone changes after it is listed here and marked on the screen"
+        ]
+    if not found:
+        return ["nothing changed since you last looked"]
+    _, count = marks(store, person)
+    out = [f"{count} changed since you last looked (graphene plan seen marks them seen):"]
+    for e in found:
+        said = e["detail"]
+        what = DID[e["kind"]]
+        if e["kind"] == "edited":
+            what += f" {', '.join(said.get('changed') or {})}"
+        subject = "the plan" if e["node_id"] == "*" else e["node_id"]
+        note = said.get("note") or (
+            P.get(store, e["node_id"]).title if e["kind"] in ("added", "proposed") else ""
+        )
+        out.append(
+            f"  {e['timestamp'][11:16]}  {subject}: {what} by {e['actor']}" + (f": {note}" if note else "")
+        )
+    return out
 
 
 # -- talking --------------------------------------------------------------------------------------
@@ -176,3 +270,25 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     def another_(node_id: str = typer.Argument(...), executor: str = WITH) -> None:
         """The planner proposes another way to reach what the node is for; the board asks you which."""
         asked(lambda store: question(*another(store, root(), node_id, planner(store, executor), out)))
+
+    plan_cli = next(g.typer_instance for g in cli.registered_groups if g.name == "plan")
+
+    @plan_cli.command("changes")
+    def changes_() -> None:
+        """What anyone else changed in the plan since you last marked it seen: added, dropped, edited,
+        the board, by whom."""
+        with open_store(root()) as store:
+            for line in changes(store, P.caller().name):
+                out(line)
+
+    @plan_cli.command("seen")
+    def seen_() -> None:
+        """Mark the plan as you have seen it: what anyone changes after this is marked on the screen
+        (+ added, ~ changed) and listed by `graphene plan changes`. Only you move the mark."""
+        with open_store(root()) as store:
+            try:
+                count = seen(store, P.caller())
+            except P.Refused as no:
+                fail(str(no), 1)
+        plural = "s" if count != 1 else ""
+        out(f"{count} change{plural} marked as seen; what anyone else changes next is marked")

@@ -6,6 +6,7 @@ is a script that prints what a model would (as in tests/test_ask.py), and Nemotr
 (tests/fake_tokenfactory.py). The screen is driven by keys at 80x24 and 120x36."""
 
 import json
+import re
 import sys
 
 import pytest
@@ -171,3 +172,31 @@ def test_nemotron_answers_why_and_its_note_lands_as_its_own(repo, monkeypatch):
                 "planner:nemotron", "ids", "ids is the leaf the docs wait on"
             )  # fmt: skip
     assert "Say why ids is in the plan" in f.requests[0]["messages"][1]["content"]
+
+
+def test_changes_since_seen_are_others_and_only_after_the_mark(repo, talker):
+    accepted(repo)
+    assert person("plan", "changes").stdout.startswith("no mark yet: `graphene plan seen`")
+    with Store.open(repo) as store:  # no mark: nothing reads as changed, and the screen is as it was
+        assert talk.marks(store, "alex") == ({}, 0)
+    person("talk", "another", "schema", "--with", talker)  # before the mark: never listed
+    assert (
+        person("plan", "seen").stdout == "0 changes marked as seen; what anyone else changes next is marked\n"
+    )
+    assert person("plan", "changes").stdout == "nothing changed since you last looked\n"
+    person("node", "add", "mine", "--scope", "x.py", "--check", "true")  # the person's own act: seen as made
+    assert person("plan", "changes").stdout == "nothing changed since you last looked\n"
+    person("talk", "merge", "ids", "docs", "--with", talker)  # the planner revises
+    said = person("plan", "changes").stdout.splitlines()
+    assert said[0] == "2 changed since you last looked (graphene plan seen marks them seen):"
+    assert re.fullmatch(
+        r"  \d\d:\d\d  both: proposed by planner:python: users return ids, documented", said[1]
+    )
+    assert said[2].endswith("both: the board by planner:python: put up merge-ids-docs: merge ids and docs "
+                            "into both?")  # fmt: skip
+    with Store.open(repo) as store:
+        assert talk.marks(store, "alex") == ({"both": "+"}, 2)
+    refused = agent("plan", "seen")  # an agent moving the mark would hide a change from the person
+    assert refused.exit_code == 1 and "the mark is the person's" in refused.stderr
+    assert person("plan", "seen").stdout.startswith("2 changes marked as seen")
+    assert person("plan", "changes").stdout == "nothing changed since you last looked\n"
