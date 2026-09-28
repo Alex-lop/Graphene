@@ -348,3 +348,32 @@ def test_an_id_named_twice_is_run_and_logged_once(repo):
         leaves(store, "true")
         rows = C.run(store, repo, ["l0", "l0"], fork=scripted({"true": (0, "")}))
         assert len(rows) == 1 and len(store.node_log("l0", ("precheck",))) == 1
+
+
+def test_on_board_puts_up_one_risk_per_check_that_cannot_tell_the_work_is_done(repo, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)  # the red is left unread: nothing is asked
+
+    up = []
+
+    def add(store, kind, text, who, default=None, then=None, options=None, about=None):
+        if about == "l3":
+            raise P.Refused("about: l3, which is not a node in the plan")
+        up.append({"kind": kind, "text": text, "by": who.label, "agent": not who.person, "about": about,
+                   "default": default, "then": then, "state": "open"})  # fmt: skip
+        return {**up[-1], "id": f"r{len(up)}"}
+
+    board = SimpleNamespace(add=add, items=lambda _store: up)
+    fork = scripted({"true": (0, ""), "exit 127": (127, "sh: nope: command not found"), "false": (1, ""),
+                     "true && :": (0, "")})  # fmt: skip
+    with Store.open(repo) as store:
+        leaves(store, "true", "exit 127", "false", "true && :")
+        rows = C.run(store, repo, fork=fork)
+        said = C.on_board(store, rows, board)
+        again = C.on_board(store, C.run(store, repo, fork=fork), board)  # kept rows: nothing twice
+    assert [(it["kind"], it["about"]) for it in up] == [("risk", "l0"), ("risk", "l1")]
+    assert up[0]["text"] == "l0's check passes already: it exits 0 before any work is done"
+    assert all(it["agent"] and it["by"] == "graphene:precheck" and not it["then"] for it in up)
+    assert said[:2] == ["put up r1: " + up[0]["text"], "put up r2: " + up[1]["text"]]
+    assert said[2].startswith("! l3: not put up: ") and again == [said[2]]

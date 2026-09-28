@@ -306,6 +306,33 @@ def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
     return lines
 
 
+def on_board(store, rows: list[tuple[P.Node, dict]], board=None) -> list[str]:
+    """Put each check that cannot tell its leaf is done (it passes already, cannot run, or is red for
+    another reason) on the board, as a risk about that leaf by graphene:precheck, waiting on the person;
+    one a board holds already, not dropped, is not put up again. ``board`` is the board module (its
+    ``add`` and ``items``). Returns one line an item: what was put up, or why it was not."""
+    if board is None:
+        from . import board  # on the branch that has the board
+    who = P.Caller("graphene:precheck", False)
+    up = {(it.get("about"), it["text"]) for it in board.items(store) if it.get("state") != "dropped"}
+    lines = []
+    for node, d in rows:
+        if d["verdict"] in (*QUIET, "not-run"):
+            continue
+        by = f" (read by {_plain(d['by'])})" if d.get("by") else ""
+        text = f"{node.id}'s check {SAID[d['verdict']]}: {_plain(d['why'])}{by}"
+        if (node.id, text) in up:
+            continue
+        try:
+            item = board.add(store, "risk", text, who, about=node.id)
+        except Exception as no:  # a leaf dropped since, a board that refuses: this item, one line
+            lines.append(f"! {node.id}: not put up: {' '.join(str(no).split())[:200]}")
+            continue
+        up.add((node.id, text))
+        lines.append(f"put up {item['id']}: {item['text']}")
+    return lines
+
+
 def shaped() -> bool:
     return FLAG in os.environ.get("GRAPHENE_SHAPE", "").replace(" ", "").split(",")
 
