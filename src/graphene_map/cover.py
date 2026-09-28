@@ -198,9 +198,9 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
         + (f"; dropped, a piece of a clause: {pieces}" if pieces else ""))  # fmt: skip
     for k, u in enumerate(uncovered, 1):
         near = u["nearest"]
-        take = f"Take it: `graphene plan cover --take {k}` puts it at the end of {near}'s goal" if near else (
+        then = f"Take it: `graphene plan cover --take {k}` puts it at the end of {near}'s goal" if near else (
             "No open leaf is near it: add it in `graphene plan edit`")  # fmt: skip
-        say(f"{k}. You said '{u['note']}'; no leaf carries it. {take}")
+        say(f"{k}. You said '{u['note']}'; no leaf carries it. {then}")
     if uncovered:
         say("not wanted? `graphene plan cover --dismiss N` sets clause N aside for good")
     if odd:
