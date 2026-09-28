@@ -25,7 +25,6 @@ import typer
 
 from . import plan as P
 from . import plan_text as T
-from . import tokenfactory as tf
 
 ACTOR = "cover:nemotron"
 BRIEF = 30  # seconds Nano is given, asked once: it runs after the proposal has landed, and nobody waits on it
@@ -71,6 +70,7 @@ def whole(flat: str, words: str, taken: list[range]) -> re.Match | None:
 
 def plain(say: Callable[[str], None]) -> Callable[[str], None]:
     """``say``, with nothing in a line that a terminal would act on, and nothing shaped like a key."""
+    from . import tokenfactory as tf  # here, not above: the CLI starts without the client
     return lambda line: say(tf.unkeyed(CONTROL.sub("", line)))
 
 
@@ -101,6 +101,7 @@ def dismissed(store) -> set[str]:
 
 
 def _nano() -> str:
+    from . import tokenfactory as tf  # here, not above: the CLI starts without the client
     try:
         found = tf.roles(tf.models(tries=1))
     except tf.Unreachable as no:
@@ -126,6 +127,7 @@ def take(store, u: dict, who: P.Caller) -> str:
 
 def cover(store, paragraph: str | None = None, say: Callable[[str], None] = print) -> list[dict]:
     """Ask Nano, keep what is the person's, record it, say it. Returns the uncovered rows' details."""
+    from . import tokenfactory as tf  # here, not above: the CLI starts without the client
     paragraph, say = tf.unkeyed(paragraph or paragraph_of(store) or ""), plain(say)
     if not (paragraph or "").strip():
         raise P.Refused("no paragraph to account for: `graphene ask` keeps one, or give --paragraph FILE")

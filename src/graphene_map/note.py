@@ -25,7 +25,6 @@ from pathlib import Path
 import typer
 
 from . import plan as P
-from . import tokenfactory as tf
 
 MAX_TOKENS = 2048  # Nano reasons before it answers: a cut-off answer is said to be one
 TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
@@ -91,6 +90,7 @@ def _strs(v) -> list[str]:
 def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> Offer | None:
     """Place a note: the checked offer, or None (``say`` hears why). Call it outside a claim: the
     model is asked with no lock held, and the dry run rolls back only its own transaction."""
+    from . import tokenfactory as tf  # here, not above: the CLI starts without the client
     assert not store.conn.in_transaction, "note.route is called outside the plan's write lock"
     if _shown(sentence) != " ".join(_CONTROL.sub(" ", sentence).split()):
         raise P.Refused("the note holds something shaped like a key; it is not sent to a model")

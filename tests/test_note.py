@@ -285,6 +285,9 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
 
     board.add = add
     monkeypatch.setitem(sys.modules, "graphene_map.board", board)  # lane A's board, as its add() is called
+    import graphene_map
+
+    monkeypatch.setattr(graphene_map, "board", board, raising=False)  # the CLI has loaded the real one
     planned(repo)
     fake([answer("ids", scope_add=["schema.py"], check="grep -q sorted api.py"),
           answer("ids", goal_add=True), answer("sorting")])  # fmt: skip

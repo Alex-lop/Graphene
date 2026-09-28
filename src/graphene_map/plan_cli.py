@@ -16,7 +16,7 @@ from pathlib import Path
 import typer
 
 from . import board as B
-from . import cover
+from . import cover, precheck
 from . import gate as G
 from . import note as N
 from . import plan as P
@@ -373,6 +373,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     )
     cli.add_typer(plan_cli, name="plan")
     cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
+    precheck.register(plan_cli, root, open_store, fail)  # `graphene plan precheck`: red first
 
     @plan_cli.callback()
     def show_plan(
