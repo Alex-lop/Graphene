@@ -158,10 +158,10 @@ def test_a_verdict_is_kept_until_the_leaf_is_edited(repo):
         again = C.run(store, repo, fork=fork)  # current: nothing runs
         assert fork.asked == ["true"] and len(store.node_log("p", ("precheck",))) == 1
         assert again[1][1]["kept"]
-        assert C.current(store, P.get(store, "p"), P.head(repo))["verdict"] == "passes"
+        assert C.current(store, P.get(store, "p"), *C.state(repo))["verdict"] == "passes"
         assert "2 kept from the last run" in C.said(again)[0]
         P.edit(store, "l0", {"check": "true && true"}, ME)
-        assert C.current(store, P.get(store, "l0"), P.head(repo)) is None
+        assert C.current(store, P.get(store, "l0"), *C.state(repo)) is None
 
 
 def test_graphene_plan_precheck_is_the_persons_and_says_each_leaf(repo):
@@ -307,3 +307,16 @@ def test_a_red_left_unread_is_read_on_the_next_run_once_nano_can_be_asked(repo, 
         f = nano([said("red-right-reason", "the work is not done")])
         [(_, second)] = C.run(store, repo, fork=fork)
     assert not second.get("kept") and second["verdict"] == "red-right-reason" and len(f.requests) == 1
+
+
+def test_an_uncommitted_change_makes_a_kept_verdict_stale(repo, monkeypatch):
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    with Store.open(repo) as store:
+        leaves(store, "test ! -f made.txt", who=ME)
+        [(_, first)] = C.run(store, repo)
+        [(_, kept)] = C.run(store, repo)
+        (repo / "made.txt").write_text("new, untracked, not ignored\n")
+        assert C.current(store, P.get(store, "l0"), *C.state(repo)) is None  # what a screen asks
+        [(_, after)] = C.run(store, repo)
+        assert first["verdict"] == "passes" and kept.get("kept")
+        assert not after.get("kept") and after["verdict"] == "red"

@@ -61,11 +61,37 @@ def verdict(code: int | None, out: str, command: str, scopes: list[str]) -> str 
     return None
 
 
-def current(store, node: P.Node, base: str | None) -> dict | None:
-    """The leaf's last verdict, while it is about this rev, this check and this commit, and finished."""
+def state(root: Path) -> tuple[str | None, str | None]:
+    """(HEAD, the checkout as git sees it now as one tree id): what a check runs on (tracked files as
+    they are on disk, and new files git does not ignore, as `_clean_tree` takes them), so a commit or
+    an uncommitted change makes a verdict stale. The tree is written from a copy of the index, so the
+    checkout's own index is never touched."""
+    import shutil  # here: only a precheck needs them
+    import tempfile
+    from contextlib import suppress
+
+    base = P.head(root)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp, "index")
+            with suppress(OSError):  # a repo where nothing was ever added has no index yet
+                shutil.copyfile(Path(root, P._git(root, "rev-parse", "--git-path", "index").strip()), index)
+            env = {**os.environ, "GIT_INDEX_FILE": str(index), "GIT_OPTIONAL_LOCKS": "0"}
+            for args in (["add", "-A"], ["write-tree"]):
+                done = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-C", str(root), *args],
+                                      env=env, capture_output=True, text=True, timeout=30)  # fmt: skip
+            return base, (done.stdout.strip() if done.returncode == 0 else None)
+    except (P.Refused, OSError, subprocess.TimeoutExpired):
+        return base, None
+
+
+def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | None:
+    """The leaf's last verdict, while it is about this rev, this check, this commit and this state of
+    the checkout (``state``), and finished."""
     rows = [r["detail"] for r in store.node_log(node.id, ("precheck",))]
     last = rows[-1] if rows else None
-    fresh = last and (last["rev"], last["check"], last["base"]) == (node.rev, node.check, base)
+    now = (node.rev, node.check, base, tree)
+    fresh = last and tree and (last["rev"], last["check"], last["base"], last.get("tree")) == now
     unfinished = last and (last["verdict"] == "not-run" or last["why"].startswith("not read"))
     return last if fresh and not unfinished else None  # a check not run, or a red not read: try again
 
@@ -205,11 +231,11 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
     for n in todo:
         if n.state not in (P.PROPOSED, P.OPEN):
             raise P.Refused(f"{n.id} is {n.state}: a check is run first only before its work starts")
-    base, read, out = P.head(root), {}, []
+    (base, tree), read, out = state(root), {}, []
     if prepare is None:  # the sandbox the repo's executor would make
         prepare = _prepare(store.meta("executor") or "")
     todo = [n for n in todo if n.check]
-    kept = {} if again else {n.id: current(store, n, base) for n in todo}
+    kept = {} if again else {n.id: current(store, n, base, tree) for n in todo}
     ran = _runs([n for n in todo if not kept.get(n.id)], root, fork, prepare)
     hide = _hider(root) if ran else str
     scopes, model = [g for n in everything for g in n.scope if g != "**"], None
@@ -236,8 +262,8 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
                 found, why = "red", f"not read: {' '.join(str(no).split())}"
             read[key] = (found, why, by)
         why, by = _plain(hide(why)), by and _plain(hide(by))  # hidden whole, before any cut
-        detail = {"rev": node.rev, "check": node.check, "base": base, "verdict": found, "why": why,
-                  "exit": code, "where": where, "by": by}  # fmt: skip
+        detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree,
+                  "verdict": found, "why": why, "exit": code, "where": where, "by": by}  # fmt: skip
         store.log_node(node.id, P._now(), "precheck", "graphene:precheck", None, None, detail)
         out.append((node, detail))
     return out
