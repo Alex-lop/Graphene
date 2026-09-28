@@ -219,13 +219,25 @@ def reask_argv(store, size: str) -> list[str] | None:
     return ["graphene", "ask", asked[-1]["note"], *(["--with", planner] if planner else []), f"--{size}"]
 
 
-def _replace_last(store, say: Callable[[str], None]) -> list[str] | None:
-    """Drop the planner's proposals still waiting on the person: `ask --finer/--coarser` gives one tree
-    to prune in their place, not a second beside them. What the person answered about a dropped node
+def _last_ask(store) -> str | None:
+    """The session of the last ask of the whole plan that proposed anything (not a split, a follow-up
+    about one node, or an ask whose planner failed)."""
+    proposing = {r["session_id"] for r in store.node_log(None, ("proposed",))}
+    asked = [r["detail"] for r in store.node_log("*", ("asked",)) if not (r["detail"] or {}).get("about")]
+    return next((a["session"] for a in reversed(asked) if a.get("session") in proposing), None)
+
+
+def _replace_last(store, say: Callable[[str], None], session: str | None) -> list[str] | None:
+    """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
+    another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
+    place, not a second beside it. What the person answered about a dropped node
     becomes about the whole plan (``board.rehome``), and a goal sentence an answer added to one is
     named, so neither goes nowhere unsaid. Returns what stands, for the planner (None: nothing was
     dropped)."""
-    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if (n.proposed_by or "").startswith("planner:")]
+    mine = {
+        r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
+    }
+    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
     ids = {n.id for n in pending}
     dropped = []
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
@@ -254,14 +266,14 @@ class _Rehearsed(Exception):
     """Raised to roll back a replacement made only to learn what would stand."""
 
 
-def _what_stands(store) -> list[str] | None:
+def _what_stands(store, session: str | None) -> list[str] | None:
     """What ``_replace_last`` would leave standing, for the planner's prompt, with nothing dropped: the
     drop is made for real only with the new proposal, in its transaction, so a planner that fails or a
     proposal Graphene refuses leaves the tree it would have replaced as it was."""
     kept: list = []
     try:
         with store.claim():
-            kept.append(_replace_last(store, lambda _: None))
+            kept.append(_replace_last(store, lambda _: None, session))
             raise _Rehearsed
     except _Rehearsed:
         return kept[0]
@@ -289,13 +301,14 @@ def ask(
     session = str(uuid.uuid4())
     argv0 = label(template)
     who = P.Caller(f"planner:{argv0}", False, session)
-    row = {"note": sentence, "about": about, "with": planner}
+    last = _last_ask(store)  # the ask a re-ask replaces: the one before this
+    row = {"note": sentence, "about": about, "with": planner, "session": session}
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    stands = _what_stands(store) if size and about is None and not split else None
+    stands = _what_stands(store, last) if size and about is None and not split else None
     if stands is not None:  # asked again, finer or coarser
         stand = "".join(f"\n- {line}" for line in stands)
         stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
@@ -327,7 +340,7 @@ def ask(
             try:
                 with store.claim():
                     if stands is not None:
-                        _replace_last(store, heard.append)
+                        _replace_last(store, heard.append, last)
                     said = T.apply(store, text, who, None, files=files)
             except P.Refused as no:
                 refusal = f"Graphene could not read the proposal: {no}"

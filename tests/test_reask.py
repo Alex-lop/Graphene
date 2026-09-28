@@ -3,6 +3,7 @@
 planner that ask started, and without losing what the person answered about the tree it replaces."""
 
 import json
+import sys
 
 from test_ask import GOOD, planner
 from test_plan_cli import person, repo  # noqa: F401  (fixtures)
@@ -98,3 +99,31 @@ def test_a_reask_whose_proposal_is_refused_keeps_the_tree_and_the_answers(repo, 
     assert states(repo) == {"users-api": "proposed", "ids": "proposed"}
     with Store.open(repo) as store:
         assert B.get(store, "id-type")["about"] == "ids"
+
+
+def test_a_reask_drops_only_the_last_asks_proposals_not_a_split_or_another_way(repo, tmp_path, monkeypatch):
+    from test_talk import TALKER
+
+    assert person("ask", "add ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    assert person("plan", "accept").exit_code == 0
+    other = tmp_path / "talker.py"
+    other.write_text(TALKER)
+    assert person("talk", "another", "ids", "--with", f"{sys.executable} {other}").exit_code == 0
+    assert states(repo)["migration"] == "proposed"
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FINER, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert states(repo)["migration"] == "proposed"  # another way's leaf is not the last ask's tree
+    assert "This replaces the tree you proposed last" not in prompts(tmp_path)[-1]  # its tree was accepted
+
+
+def test_a_reask_after_a_failed_one_still_replaces_the_tree(repo, tmp_path, monkeypatch):
+    assert person("ask", "add ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    assert person("ask", "add ids", "--finer", "--with", planner(tmp_path, FAILS, monkeypatch)).exit_code == 1
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FINER, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert states(repo) == {
+        "users-api": "dropped",
+        "ids": "dropped",
+        "users-api2": "proposed",
+        "ids2": "proposed",
+    }
