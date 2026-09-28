@@ -175,6 +175,23 @@ def test_graphene_plan_precheck_is_the_persons_and_says_each_leaf(repo):
     assert refused.exit_code == 1 and "the person's" in refused.output
 
 
+def test_the_flag_runs_it_as_a_proposal_lands(repo, monkeypatch, tmp_path):
+    import sys
+
+    from graphene_map.ask import ask
+
+    script = tmp_path / "planner.py"
+    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
+    with Store.open(repo) as store:
+        ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
+        assert store.node_log("hello", ("precheck",)) == []
+        monkeypatch.setenv("GRAPHENE_SHAPE", "notes, precheck")
+        seen = []
+        ask(store, repo, "say hello again", f"{sys.executable} {script}", say=seen.append)
+        assert store.node_log("hello", ("precheck",))[0]["detail"]["verdict"] == "not-run"
+    assert any("needs a sandbox" in line for line in seen)
+
+
 def _docker() -> bool:
     try:
         return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0

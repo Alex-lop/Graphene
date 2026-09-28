@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import plan as P
 from . import plan_text as T
+from . import precheck
 from .run import _splits, command_for
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
@@ -176,6 +177,7 @@ def ask(
                     say("the planner says:")
                     for line in said_lines:
                         say(f"  {line[:300]}")
+                precheck.after_proposal(store, root, say)  # GRAPHENE_SHAPE=precheck: its checks run first
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
