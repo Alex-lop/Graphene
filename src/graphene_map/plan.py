@@ -735,13 +735,15 @@ def _end_check(proc: subprocess.Popen) -> None:
 # -- the operations -------------------------------------------------------------------------------
 
 
-def contract(node: Node, why: list[str] | None = None) -> str:
+def contract(node: Node, why: list[str] | None = None, decided: list[str] | tuple = ()) -> str:
     """The node as its executor is told it: the whole of what they are bound to, and why it is being
-    done at all (``trail``: from the plan's goal down to this node, in the person's words)."""
+    done at all (``trail``: from the plan's goal down to this node, in the person's words), and what
+    the person decided on the board that bears on it (``board.decided``)."""
     lines = [
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
+        *(f"  decided: {line}" for line in decided),
         f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
@@ -2200,7 +2202,7 @@ def set_paused(store, value: bool, who: Caller) -> None:
 # -- undo: the person's last act on the plan's shape, put back ----------------------------------------
 
 UNDO_KEPT = 20
-_GOALS = ("goal", "goal:proposed")
+_GOALS = ("goal", "goal:proposed", "board")  # the board (board.py): an answer undoes with what it changed
 
 
 def _shape(store) -> dict:
@@ -2261,6 +2263,8 @@ def undo(store, who: Caller, now: str | None = None) -> str:
                 f"cannot undo {act['what']!r}: {', '.join(hanging)} was put under or made to wait on what it "
                 "added, since; drop that first"
             )
+        if "board" in act["meta"] and current["meta"]["board"] != act["meta"]["board"][1]:
+            raise Refused(f"cannot undo {act['what']!r}: the board changed since, and undoing would lose it")
         if moved:
             states = ", ".join(f"{i} ({(current['rows'].get(i) or {}).get('state', 'gone')})" for i in moved)
             raise Refused(

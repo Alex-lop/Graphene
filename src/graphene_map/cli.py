@@ -206,6 +206,9 @@ def build():
     from .plan_cli import NO_PLAN, register
 
     plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
+    from .board_cli import register as board
+
+    board(cli, root, open_store, fail)
 
     WHO = ("planner", "executor")
     # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs

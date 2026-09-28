@@ -15,6 +15,7 @@ from pathlib import Path
 
 import typer
 
+from . import board as B
 from . import gate as G
 from . import plan as P
 from . import plan_text as T
@@ -994,7 +995,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
-            out(P.contract(n, P.trail(store, n)))
+            out(P.contract(n, P.trail(store, n), B.decided(store, n)))
             for note in P.notes(store, n.id):
                 out(f"  sent back with: {note}")
 
@@ -1104,7 +1105,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.get(store, node_id)
-            out(P.contract(n, P.trail(store, n)))
+            out(P.contract(n, P.trail(store, n), B.decided(store, n)))
             for line in came_back(store, n):
                 out(line)
             everything = P.nodes(store)
