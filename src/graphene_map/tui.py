@@ -598,6 +598,9 @@ class Watch(App):
     #drawn { width: auto; }
     Screen.-narrow #tree, Screen.-narrow #view { height: 3fr; width: 100%; }
     Screen.-narrow #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
+    #main.-stacked { layout: vertical; }
+    #main.-stacked #view { width: 100%; }
+    #main.-stacked #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
     #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
     #status { height: 2; background: $boost; padding: 0 1; }
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
@@ -864,11 +867,10 @@ class Watch(App):
         return name
 
     def view_room(self) -> tuple[int, int]:
-        """The columns and rows a view is drawn in: the outline's place, beside the node pane (which
-        keeps PANE) from 110 columns, above it below that. Less the scrollbar and the gap after it."""
-        if self.size.width >= WIDE:
-            return self.size.width - PANE - 5, self.size.height - 3
-        return self.size.width - 2, self.tree_room()
+        """The columns and rows a view is drawn in: the whole width, less the scrollbar and the gap
+        after it, and up to half the rows, the node pane under it at every size. Beside the pane a view
+        had 71 of 120 columns: a tree lost its titles there and the thirty-leaf plan did not draw."""
+        return self.size.width - 2, max(3, (self.size.height - 3) // 2)
 
     def draw_view(self, name: str) -> V.Drawn | None:
         """A registered view drawn at the room it has, its cursor on the node under the cursor, or on
@@ -996,19 +998,18 @@ class Watch(App):
     def size_panes(self, nodes: list[P.Node], ids: int, words: int) -> None:
         """At 110 columns and more the tree is as wide as its rows need, and the node pane has the
         rest (never less than PANE); below that the tree is as tall as its rows, up to half the
-        screen, and the node pane has what is left under it. A view is sized as the tree is."""
+        screen, and the node pane has what is left under it. A view is as tall as its lines, up to
+        its room, over the whole width, and the node pane under it at every width."""
         tree, width = self.tree, self.size.width
         if not width:
             return
+        self.query_one("#main").set_class(self.drawn is not None, "-stacked")
         if self.drawn is not None:
             lines, box = self.drawn.lines, self.query_one("#view", PlanView)
-            widest = max((line.cell_len for line in lines), default=0) + 2
-            wide = ("wide", max(30, min(widest, width - PANE - 3)), "view")
-            sized = wide if width >= WIDE else ("narrow", max(3, min(len(lines), self.tree_room())), "view")
+            sized = ("narrow", max(3, min(len(lines), self.view_room()[1])), "view")
             if sized != self.sized:
                 self.sized = sized
-                box.styles.width = sized[1] if sized[0] == "wide" else None
-                box.styles.height = sized[1] if sized[0] == "narrow" else None
+                box.styles.height = sized[1]
             return
         by_id = {n.id: n for n in nodes}
         if not tree.display:

@@ -172,6 +172,24 @@ def test_tab_on_a_sub_goal_the_graph_shows_its_first_leaf_and_tab_back_the_sub_g
 
 
 @pytest.mark.parametrize("size", SIZES)
+def test_a_view_takes_the_whole_width_and_the_node_pane_goes_under_it(repo, grid, size):
+    """Beside the node pane a view had 71 of 120 columns, and a tree lost its titles there."""
+    proposed(repo)
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=size) as pilot:
+            await pilot.press("tab")
+            await pilot.pause()
+            view, side = app.query_one("#view").region, app.query_one("#side").region
+            return app.view_room(), view, side, max(line.cell_len for line in app.drawn.lines)
+
+    room, view, side, widest = asyncio.run(go())
+    assert room == (size[0] - 2, (size[1] - 3) // 2) and widest > size[0] // 2 + 10
+    assert view.width == side.width == size[0] and side.y >= view.bottom
+
+
+@pytest.mark.parametrize("size", SIZES)
 def test_y_d_and_e_act_on_the_node_under_the_views_cursor(repo, grid, size, monkeypatch):
     proposed(repo)
     nodes = order(repo)
