@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import shlex
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,6 +52,14 @@ class Offer:
     endpoint: str  # who answered, as the usage row says it: "token factory" or "a stand-in"
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # ESC, CR, BEL...: what could redraw a terminal line
+
+
+def _shown(text) -> str:
+    """Text as it may reach a terminal or the store: one line, no control character."""
+    return " ".join(_CONTROL.sub(" ", str(text)).split())
+
+
 class _Tried(Exception):
     """Raised inside the dry run, so its claim rolls back."""
 
@@ -65,7 +74,8 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
     """Place a note: the checked offer, or None (``say`` hears why). Call it outside a claim: the
     model is asked with no lock held, and the dry run rolls back only its own transaction."""
     assert not store.conn.in_transaction, "note.route is called outside the plan's write lock"
-    sentence = " ".join(sentence.split())
+    sentence, hear = _shown(sentence), say
+    say = lambda line: hear(_shown(line))  # noqa: E731  (every line said is shown text, model words or not)
     if not sentence:
         raise P.Refused("a note is a sentence: graphene plan note '<what you want kept in mind>'")
     files, everything = P.tracked(root), P.nodes(store)  # git first, never under the lock
@@ -89,7 +99,7 @@ def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda 
         "endpoint": endpoint})  # fmt: skip
     try:
         a = json.loads(said["message"].get("content") or "")
-        target, why = str(a["target"]).strip(), " ".join(str(a.get("why") or "").split())
+        target, why = str(a["target"]).strip(), _shown(a.get("why") or "")
     except (ValueError, KeyError, TypeError, AttributeError):
         say("the model's answer is not the JSON it was asked for; nothing is offered")
         return None
@@ -109,6 +119,10 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
         say(f"the model named {target!r}, which is not an open or proposed leaf; nothing is offered")
         return None
     scope, add, remove = node.scope if node else [], _strs(a.get("scope_add")), _strs(a.get("scope_remove"))
+    check = a["check"].strip() if isinstance(a.get("check"), str) else ""
+    if any(_CONTROL.search(w) for w in (*add, *remove, check)):  # a command must be what it looks like
+        say("the model's answer holds control characters; nothing is offered")
+        return None
     for g in add:
         bare = g.lstrip("!")
         if not any(P.in_scope(f, [bare]) for f in files) and not P.in_scope(bare.rstrip("/*") or bare, scope):
@@ -119,7 +133,6 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
             say(f"{g} is not in {target}'s scope; nothing is offered")
             return None
     fresh = [g for g in scope if g not in remove] + [g for g in add if g not in scope]
-    check = a["check"].strip() if isinstance(a.get("check"), str) else ""
     if node is None:
         if not (fresh and check):  # else `node add` makes a heading with no work under it
             say("a new leaf needs a scope and a check, and the model did not give both; nothing is offered")
