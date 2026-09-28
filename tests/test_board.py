@@ -552,7 +552,7 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
         assert S.for_screen(store)["readonly"] == ["vendor/**"]
         assert "No leaf may write these paths: vendor/**." in S.conditions_for_planner(store)
     config = person("config").stdout
-    assert "# readonly, chosen on the board: vendor/** (graphene board; plan undo takes it back)" in config
+    assert "# board: readonly vendor/** (plan undo takes it back)" in config
     refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
     assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
     assert person("plan", "undo").exit_code == 0
