@@ -234,8 +234,16 @@ def test_undo_does_not_lose_what_the_planner_put_up_since(repo):
     person("board", "take", "one")
     with Store.open(repo) as store:
         T.apply(store, "assume: two  [two]\n", PLANNER, None)
-    undone = person("plan", "undo")
-    assert undone.exit_code == 1 and "the board changed since" in undone.stderr
+    person("board", "park", "two")
+    with Store.open(repo) as store:
+        T.apply(store, "risk: three  [three]\n", PLANNER, None)
+    for act in ("board park two", "board take one"):  # the person's own acts, last first
+        undone = person("plan", "undo")
+        assert undone.exit_code == 0 and undone.stdout == f"undid: {act}\n", undone.output
+    with Store.open(repo) as store:
+        assert [(it["id"], it["state"]) for it in B.items(store)] == [
+            ("one", "open"), ("two", "open"), ("three", "open")
+        ]  # fmt: skip
 
 
 def test_an_effect_or_about_that_names_no_node_is_refused_by_its_line(repo):
