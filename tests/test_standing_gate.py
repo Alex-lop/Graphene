@@ -94,3 +94,41 @@ def test_a_leaf_that_a_later_setting_covers_is_refused_at_start_naming_it(store,
     with pytest.raises(Refused, match="protected: src/db/"):
         plan.start(store, "a", BOT, repo)
     assert plan.get(store, "a").state == "open"
+
+
+def _ignored_env(tmp_path):
+    """The README's own example: `.env` is protected and git ignores it."""
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    (repo / ".gitignore").write_text("build/\n.env\n")
+    (repo / ".env").write_text("SECRET=real\n")
+    with Store.open(repo) as store:
+        S.apply(store, "protected: .env\n", ALEX)
+    G.holding(repo)
+    return G, repo
+
+
+def test_a_shell_write_to_a_protected_path_git_ignores_is_refused(tmp_path):
+    """A build leftover git ignores is nobody's change, but a standing path is never a leftover."""
+    G, repo = _ignored_env(tmp_path)
+    assert G.write(repo, ".env") is not None
+    for command in ("echo pwned > .env", "cp /dev/null .env"):
+        assert "protected: .env" in G.reason(G.bash(repo, command))
+    assert G.bash(repo, "echo x > build/out.txt") is None  # a leftover is still nobody's
+    changed = {"changedFiles": [str(repo / ".env")]}
+    after = G.hook(repo, "PostToolUse", tool_name="Bash", tool_response={"bashEditDiff": changed})
+    assert after is not None and after["decision"] == "block" and ".env" in after["reason"]
+
+
+def test_done_refuses_a_changed_protected_path_git_ignores(tmp_path):
+    """git never reports it, so `done` compares it with what it was when the leaf was started."""
+    G, repo = _ignored_env(tmp_path)
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    (repo / ".env").write_text("SECRET=pwned\n")
+    with Store.open(repo) as store:
+        with pytest.raises(Refused, match=r"it changed \.env, which the setting `protected: \.env`"):
+            plan.finish(store, "n1", G.BOT)
+    (repo / ".env").write_text("SECRET=real\n")
+    with Store.open(repo) as store:
+        assert plan.finish(store, "n1", G.BOT).state == DONE

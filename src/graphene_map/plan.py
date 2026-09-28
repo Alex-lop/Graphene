@@ -539,6 +539,28 @@ def dirty(checkout: str | Path) -> dict[str, str | None]:
     return {p: _hash(checkout, p) for p in paths}
 
 
+def ignored_kept_out(checkout: str | Path, conditions: list[tuple[str, str]]) -> dict[str, str | None]:
+    """The files git ignores that a standing condition keeps out, with their content hashes: git never
+    reports a change to one (an ignored `.env`), so `start` keeps these and `done` compares them."""
+    if not conditions:
+        return {}
+    specs = [f":(glob){g}{tail}" for _, g in conditions for tail in ("", "/**")]
+    out = _git(checkout, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", *specs)
+    return {p: _hash(checkout, p) for p in out.split("\0") if p and kept_out_by(p, conditions)}
+
+
+def _ignored_changed(checkout: str | Path, at_start: dict[str, str]) -> list[tuple[str, str, str]]:
+    """(setting, glob, path) for each ignored standing file changed, made or deleted since the start,
+    judged by the conditions that stood then (a later one is held by the hook, not here)."""
+    if "ignored" not in at_start:
+        return []
+    was = json.loads(at_start["ignored"])
+    conditions = [(s, g) for s, g in was["conditions"]]
+    now = ignored_kept_out(checkout, conditions)
+    moved = sorted(p for p in was["files"].keys() | now.keys() if was["files"].get(p) != now.get(p))
+    return [(s, g, p) for p in moved for s, g in conditions if in_scope(p, [g])]
+
+
 def tracked(checkout: str | Path) -> list[str]:
     try:
         return [p for p in _git(checkout, "ls-files", "-z").split("\0") if p]
@@ -1560,6 +1582,10 @@ def start(
     # that only `finish` reads, which on a repo with thirty worktrees cost the hook over a second; and
     # a leaf in a run's own worktree never answers for the other trees (``elsewhere``)
     hidden = {} if first.aside else unseen(checkout)
+    conditions = [] if first.aside else standing(store)
+    if conditions:
+        files_kept = ignored_kept_out(checkout, conditions)
+        hidden["ignored"] = json.dumps({"conditions": conditions, "files": files_kept})
     others = {} if first.aside or RUN_TREE in checkout else snapshot_others(checkout)
     with store.claim():
         node = get(store, node_id)
@@ -1885,7 +1911,7 @@ def finish(
     checkout = node.checkout or "."
     if override is None and node.unseen_at_start:
         now_unseen = unseen(checkout)
-        if now_unseen != node.unseen_at_start:
+        if now_unseen != {k: v for k, v in node.unseen_at_start.items() if k != "ignored"}:
             hidden = sorted(
                 set(now_unseen["flagged"].splitlines()) - set(node.unseen_at_start["flagged"].splitlines())
             )
@@ -1904,6 +1930,7 @@ def finish(
             )
     changed = changed_since(checkout, node.base_sha, node.dirty_at_start)
     kept_out = [(s, g, p) for p in changed for s, g in standing(store) if in_scope(p, [g])]
+    kept_out += _ignored_changed(checkout, node.unseen_at_start)
     if kept_out and override is None:
         setting, glob, path = kept_out[0]
         store.log_node(node.id, now, "refused", who.label, who.session_id, None,

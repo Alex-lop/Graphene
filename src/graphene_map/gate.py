@@ -620,7 +620,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
             bound = held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)
             if rel is not None and not bound:
                 rels.append(rel)
-        ignored = _ignored(root, rels)  # a build leftover git ignores is nobody's change
+        # a build leftover git ignores is nobody's change; a standing path (an ignored .env) is never one
+        ignored = {r for r in _ignored(root, rels) if not P.kept_out_by(r, standing)}
         for rel in rels:
             if rel in ignored or (held and any(P.in_scope(rel, P.as_scoped(n, standing)) for n in held)):
                 continue
@@ -637,9 +638,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
-        bound = [P.as_scoped(n, P.standing(store)) for n in held]
+        standing = P.standing(store)
+        bound = [P.as_scoped(n, standing) for n in held]
         stray = [r for r in changed if r and not any(P.in_scope(r, b) for b in bound)]
-        ignored = _ignored(root, stray)
+        ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:
             return None
