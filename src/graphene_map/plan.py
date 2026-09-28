@@ -717,7 +717,8 @@ def run_check(
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     # It runs code an executor wrote, so it never gets the Token Factory key.
-    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"} | {"GRAPHENE_AS": "agent:check"}
+    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
+    env |= {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
     try:
         with _clean_tree(checkout, leave_out, began) as tree:
             code, out, err = _ended(command, tree, env, began)

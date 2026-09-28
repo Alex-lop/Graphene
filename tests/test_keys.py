@@ -139,3 +139,30 @@ def test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_
     monkeypatch.setenv("PATH", f"{broken.parent}:{keychain}")
     assert keys.find() is None
     assert not (keychain / "argv.log").exists()  # the next one on the PATH was never started
+
+
+def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    from graphene_map import executor
+    from graphene_map import plan as P
+
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    for tool in ("security", "secret-tool"):  # the child asks the machine's own, whatever PLATFORM says here
+        (bin_ / tool).write_text(FAKE.format(python=sys.executable, tool=tool))
+        (bin_ / tool).chmod(0o755)
+    (bin_ / "store.json").write_text(json.dumps({"key": "sk-FAKEKEY-abc123xyz"}))
+    monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "on")
+    assert keys.find() == "sk-FAKEKEY-abc123xyz"  # this process, Graphene's own, finds it
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for argv in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "a"]):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *argv], cwd=repo, check=True)
+    peek = f"{sys.executable} -c 'from graphene_map import keys; print(keys.find())'"
+    code, out = executor.Local(repo).run(peek)
+    assert (code, out.strip()) == (0, "None")
+    passed, said, _ = P.run_check(peek, repo)
+    assert passed and "sk-FAKEKEY" not in said and "None" in said

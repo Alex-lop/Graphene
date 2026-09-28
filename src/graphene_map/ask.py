@@ -168,6 +168,8 @@ def ask(
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
+        if argv0 != "nemotron":  # only Graphene's own planner calls Token Factory
+            env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
         env.pop("GRAPHENE_NODE", None)
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")
