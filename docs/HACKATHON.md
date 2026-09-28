@@ -9,10 +9,9 @@ key, so the Nemotron path has run only against a scripted stand-in for Token Fac
 (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The fields that need the evidence
 run say so and are left empty until it exists.*
 
-<!-- For the coordinator: the board, the views, talking on the tree, the settings and the three
-Nemotron prototypes are on `integ` tonight (at 50f12e7), not yet on `shaping` or `main`. Every
-command that exists only there is marked "integ only" in a comment where it first appears. Check
-each one after the merge, and send this text only once it is on main. -->
+<!-- For Alex: the board, the views, talking on the tree, the settings and the three Nemotron
+prototypes are merged into `shaping` (checked at 2111115: every command named here answers --help),
+not yet into `main`. Send this text only once it is on main. -->
 
 ## Inspiration
 
@@ -48,7 +47,6 @@ its options, and risks, each with what it would do about it. You answer each wit
 are the first rows under the goal, answered with a key each (`y` take, `1`-`9` pick, `d` drop, `p`
 park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
 the board`).
-<!-- integ only: graphene board and every subcommand above (board_cli.py). -->
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
 plan as your own act, which `graphene plan undo` takes back. Every answer reaches the executors'
 contracts as a `decided:` line, so the leaf's executor is told what you chose. Only the person
@@ -62,8 +60,6 @@ leaves' needs, with the critical path drawn heavy and a note under it:
 `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
 scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
 `graphene ui` draws the same three.
-<!-- integ only: Tab between views in graphene watch, graphene plan --view, graphene watch --view,
-and the page's three layouts. -->
 
 **You prune.** Drop a leaf you did not mean, take a path out of a scope, accept the rest, each with a
 key (`d`, `e`, `y`).
@@ -74,8 +70,6 @@ board. A merge or another way comes back as proposed leaves and a question on th
 drops the way not taken, all one act you can undo. A row someone else changed since you last looked
 reads `+` or `~` before its id, `graphene plan changes` lists what changed and by whom, and `m`
 marks it seen.
-<!-- integ only: ? on a node in graphene watch, graphene talk why|split|merge|another, graphene plan
-changes, graphene plan seen, the m key. -->
 
 **Settings you state once.** `graphene key set` keeps the Token Factory key in the system keychain,
 read from a hidden prompt, and `graphene key check` says whether Token Factory answered and never
@@ -83,13 +77,10 @@ prints the key. `graphene config edit` holds the paths no scope may cover, the g
 write, the lines the planner must never propose, and the plan's size (`auto`, `finer` or `coarser`).
 A scope that covers a protected or read-only path is refused when it is proposed, edited or started,
 a change to a read-only path is refused at `done`, and `graphene ask "…" --finer` sizes one ask.
-<!-- integ only: graphene key set|check|remove, graphene config, graphene config edit, graphene ask
---finer/--coarser. -->
 
 **Nemotron works for you while you shape.** Three prototypes, each a command and each run after a
 proposal lands when `GRAPHENE_SHAPE` names it. Each makes one Nano call with a JSON schema. They are
 built and tested against the scripted stand-in, and **none has run live yet**:
-<!-- integ only: graphene plan cover, graphene plan note, graphene plan precheck, GRAPHENE_SHAPE. -->
 
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
@@ -288,8 +279,7 @@ commit is 10 August 2026.
   replay, and the front door. 27 to 28 September: shaping: the board, the tree and graph views,
   talking on the tree, settings you state once, and three Nemotron prototypes for the moment before
   anything runs.
-  <!-- integ only: everything in the 27 to 28 September line; the line counts above are still those
-  at 0334168 and were not measured again. -->
+  <!-- The line counts above are still those at 0334168 and were not measured again. -->
 - 181 commits predate the period, and 421 were made after it opened, at `0334168`.
 
 Commands: `git rev-list --count --until='2026-08-26T16:00:00Z' HEAD`, `git rev-list --count
@@ -358,7 +348,7 @@ uv run pytest tests/test_board.py tests/test_cover.py tests/test_note.py tests/t
 
 In the replay, Tab shows the same plan as a tree and then as a graph. The recorded plan has two
 leaves and neither waits on the other, so its graph is two rows.
-<!-- integ only: Tab in the replay, and the four test files. Checked at integ 50f12e7: Tab in the
+<!-- Checked at integ 50f12e7, since merged into shaping: Tab in the
 replay at 80x24 showed "graphene watch --view tree: 1 sub-goal · 2 leaves", then "graphene watch
 --view dag: every leaf done", and the four files with test_view_dag, test_view_tree and test_talk
 gave 233 passed. test_precheck.py runs one test in Docker where Docker runs and skips it
@@ -372,7 +362,6 @@ graphene ask "…what you want…"    # the planner proposes a tree and puts up 
 graphene board                    # what it asks you; answer with take, pick, drop, park or answer
 graphene watch                    # Tab for the tree and the graph
 ```
-<!-- integ only: graphene board, Tab in graphene watch. -->
 
 With a key for Token Factory (it spends at list price, and prints the bill at the end):
 

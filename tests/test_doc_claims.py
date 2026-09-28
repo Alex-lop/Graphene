@@ -94,3 +94,18 @@ def test_watch_help_names_no_view_setting_that_no_command_can_set():
 
     said = " ".join(CliRunner().invoke(build(), ["watch", "--help"], env={"COLUMNS": "200"}).stdout.split())
     assert "Left out: the outline." in said and "view` setting" not in said
+
+
+def test_the_drafts_carry_no_integ_only_marker_now_that_every_command_they_named_is_here():
+    from typer.testing import CliRunner
+
+    from graphene_map.cli import build
+
+    named = (["board"], ["talk"], ["plan", "changes"], ["plan", "seen"], ["key"], ["config", "edit"],
+             ["plan", "cover"], ["plan", "note"], ["plan", "precheck"])  # fmt: skip
+    for words in named:
+        assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
+    for path in ("docs/HACKATHON.md", "docs/demo/STORYBOARD.md"):
+        said = doc(path)
+        assert "integ only" not in said and "For the coordinator" not in said, path
+        assert "not yet on `shaping`" not in said, path

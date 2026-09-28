@@ -11,8 +11,8 @@ That is where Graphene differs from the rest of the field (`docs/process/field.m
 differs", item 1). The run, the forks and the bill come after it and are shorter, because forking
 from one checkpoint is the field's most common pattern (item 3 there).
 
-<!-- For the coordinator: the board, the tree and graph views, `?` talk, `graphene config` and the
-Nemotron shaping commands are on `integ` tonight (at 50f12e7), not yet on `shaping` or `main`.
+<!-- For Alex: the board, the tree and graph views, `?` talk, `graphene config` and the Nemotron
+shaping commands are merged into `shaping` (at 2111115), not yet into `main`.
 docs/proof/nemotron.sh and nemotron.tape do not yet show the board or press Tab; the tape needs the
 new keys before this can be recorded. -->
 
@@ -32,14 +32,14 @@ new keys before this can be recorded. -->
 
 ## The board and the graph, frame by frame
 
-What the viewer sees at 80x24 in each pane, and the keys pressed. These frames were rendered at
-`integ` 50f12e7 from a scratch repository, with a scripted planner standing in for Nemotron
+What the viewer sees at 80x24 in each pane, and the keys pressed. B1 to B3 were rendered at `integ`
+50f12e7 (since merged into `shaping`), and G1 and G2 at `shaping` 2111115, from a scratch repository, with a scripted planner standing in for Nemotron
 (`graphene ask --with`), a person set by `GRAPHENE_AS=person:alex`, and no model called. The
 recording's words will be whatever Ultra puts up that night; the layout, the commands and the keys
 are these. The path on each screen's first line is shortened, and in G1 and G2 the empty rows of
 the lower pane are shown as `…`.
 
-<!-- For the coordinator: these frames were rendered before the rows board merged (decision 84), so
+<!-- For Alex: these frames were rendered before the rows board merged (decision 84), so
 they answer the board in the left pane. `graphene watch` now shows each item as a row under the goal
 and counts the open ones on its status line ("+ N on the board"): shoot B1 and B2 in the right pane
 with its keys instead (y takes the default, 1 picks option 1, p parks, d drops, Enter answers). -->
@@ -168,7 +168,7 @@ A third `Tab` goes back to the outline. At 80 columns the bottom line keeps only
 `graphene plan --view dag --width 80` prints the whole note, which ends
 `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
 `… · 2 wait` before the board's new leaf.
-<!-- For the coordinator: after the board's new leaf, the note counts zero-price-product among
+<!-- For Alex: after the board's new leaf, the note counts zero-price-product among
 "3 wait", though it waits on nothing; it has no scope or check yet, which may be why. Worth a look
 before it is on camera. -->
 
@@ -179,8 +179,8 @@ before it is on camera. -->
   named for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
 - The board and the questions on it are Nemotron's, from that run: the frames above show the layout,
   not the words.
-- The work on `integ` (the board, the views, `?` talk, `graphene config`) is merged, and
-  `docs/proof/nemotron.sh` and its tape show the board and press `Tab`.
+- The board, the views, `?` talk and `graphene config` are on `main`, and `docs/proof/nemotron.sh`
+  and its tape show the board and press `Tab`.
 - Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `?` talk appear only
   if they ran live in that recording. Until then they are not on camera.
 - Nothing recorded in the Docker stand-in is shown or described as a Token Factory Sandbox.
