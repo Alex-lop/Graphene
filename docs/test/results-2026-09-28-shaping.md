@@ -225,6 +225,26 @@ Under the tables goes one sentence on what they show, whatever it is.
   and this registration were written by a separate agent that read none of the cards.
 - **Every executor loads the user's globally enabled plugins,** as on 23 September.
 
+### Deviations, written before the first run (03:30)
+
+Checked against the build under test, `668c7fd` (wheel sha256 `5408b89f…`, in `~/graphene-shaping-runs/build.txt`):
+
+- **The build teaches the board to in-session agents** (`gate.TEACH`), so the session in the outline
+  arm may put up board items too, and `graphene plan --text` now prints the board's lines after the
+  goal. The outline arm's person therefore sees any board lines when it reads the plan as text,
+  though its brief never mentions the board. **A tree runs whatever its board holds:** nothing
+  refuses `R` while items are open. Both threats above are real, so every outline cell is labelled
+  with this, and the outline arm is not the 23 September arm.
+- **`graphene board` has a seventh command, `unpark`,** beside the six registered. The brief names
+  the six, unchanged; an `unpark` a stand-in types is counted as an act by the rule for commands
+  `BOARD_CHOSEN` does not name (counted whole and noted).
+- **Two tasks at a time.** The tasks run in two pairs (feeds with inventory, then logs with report),
+  not one after another as `shaping-study.md` says, so the study fits the night. Each task's three
+  arms still start together, and no registered measure uses wall time.
+- **The sealed paragraphs' blobs match** the registration (feeds `2d28b53ce4e0`, inventory
+  `799c3f413397`, logs `92b72aeeae02`, report `d0f33c77d317`), and `graphene board --help` and
+  `graphene plan --view auto` answer as the brief expects.
+
 ## Results
 
 *Empty until the runs exist.*
