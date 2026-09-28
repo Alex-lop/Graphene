@@ -555,6 +555,8 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
     assert "# board: readonly vendor/** (plan undo takes it back)" in config
     refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
     assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
+    # walk 2026-09-28: under a header saying '#' lines are not read, the rule read as switched off
+    assert "# In force too, each changed by the command it names" in config
     assert person("plan", "undo").exit_code == 0
     with Store.open(repo) as store:
         assert S.readonly(store) == []

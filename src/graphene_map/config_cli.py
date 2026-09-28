@@ -77,7 +77,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             path.unlink(missing_ok=True)
             was, now = before.splitlines(), after
             for line in [line for line in now if line not in was and not line.startswith("#")]:
-                typer.echo(line)
+                typer.echo(f"added: {line}")
             for line in [line for line in was if line not in now and not line.startswith("#")]:
                 typer.echo(f"removed: {line}")
             if "\n".join(after) + "\n" == before:
