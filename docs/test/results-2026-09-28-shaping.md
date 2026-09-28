@@ -484,3 +484,149 @@ answering the board first cost more modelled attention on every task (H1 and H3 
 in the registered direction; board went the other way on person-seconds and words read on all four,
 and on typed characters on three with report tied) while the shaped plan was at least as faithful to
 the card on all four (H6: more faithful on logs and feeds, tied on inventory and report).
+
+## Study 3: the board carries only what changes the tree (exploratory, registered before its runs)
+
+*Written and committed on 2026-09-28 at about 05:20, before any run of study 3. No study 3 run
+directory exists yet (`~/graphene-shaping3-runs` holds only `build.txt` and `dist/`). Once the first
+of its runs starts, this section is not edited; anything decided later goes below it and is labelled
+**after the fact**. The sections above are not changed.*
+
+### Why, and what changed
+
+Study 2's result: answering the board first cost more modelled attention on all four tasks
+(person-seconds and words read higher on every task, typed characters higher on three with report
+tied), while the shaped plan was at least as faithful to the card on all four. The board runs
+answered four to six items each (feeds 6, inventory 5, logs 6, report 5) and read 1.6 to 2.7 times
+the words of their outline runs. The change tests one guess at why: that the board costs reading
+without changing the tree enough to pay for it.
+
+The change is commit `aa9e3e1`: the planner puts up **at most three board items**, each a question or
+a risk whose default and options carry the `then:` lines that change the tree, and an assumption it is
+confident of goes into its leaf's goal as a sentence instead of onto the board (`ask.RULES`,
+`planner.SYSTEM` at **prompt version 4**, `gate.TEACH`; proven by
+`tests/test_ask.py::test_the_planner_is_told_the_board_carries_only_what_changes_the_tree`). Nothing
+else in the product changed.
+
+### What kind of study this is
+
+**Exploratory, and after the fact.** The change was made because of study 2's result, on these same
+four tasks and cards. So study 3 can show whether the direction moves when the board carries less. It
+cannot confirm that it does: the tasks that suggested the change are the tasks that test it. A
+confirmation needs tasks and cards that played no part in the change.
+
+### What is held as in study 2
+
+Everything in study 2's "Design", "The two arms", "Tasks and runs", "What is held equal", "Metrics"
+and "Analysis rules" holds, word for word, except these:
+
+- **The build.** `~/graphene-shaping3-venv`, installed from the wheel recorded in
+  `~/graphene-shaping3-runs/build.txt`: `graphene_map-0.5.0-py3-none-any.whl`, commit
+  `aa9e3e1636817e3cab314e67561ad7fb8b79e538`, sha256
+  `6da5076992446fac61e1601f34ca8dd50cc8bf8bd93b9d1a9c628939b456ba96`. Rule 4 voids a run whose
+  `graphene` is not this build.
+- **The runs directory.** `~/graphene-shaping3-runs/`, made by the same `docs/test/shape_only.py`
+  with `SHAPE_RUNS` and `SHAPE_BIN` set to it and to the venv's `bin`. Run names are study 2's:
+  `TASK-shape-planned`, `TASK-shape-outline-1`, `TASK-shape-board-1`.
+- **The proposals.** Fresh: the coordinator runs `graphene ask` once per task with the new planner,
+  and both arms of a task fork that one proposal, byte for byte. Study 2's proposals are not reused.
+
+The same two arms (outline, board), the same briefs from `docs/test/shape_only.py`, the same four
+tasks (`feeds`, `inventory`, `logs`, `report`), one run per arm per task (**8 runs, n = 1 per
+cell**), the same metrics from `attention.py` with the same constants, and the same judge, one per
+run, with no part in it.
+
+### Hypotheses
+
+The same three, with the same registered directions:
+
+| | comparison | registered direction | measure |
+|---|---|---|---|
+| H1 | board against outline | board **lower** | modelled person-seconds |
+| H3 | board against outline | board **lower**, on each separately | words read; typed characters |
+| H6 | board against outline | board **at least as faithful** | the judge's ruling (yes > partly > no), then constraints carried |
+
+### The table that will be reported
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | | | | | | | | | |
+| feeds | board | | | | | | | | | |
+| inventory | outline | | | | | | | | | |
+| inventory | board | | | | | | | | | |
+| logs | outline | | | | | | | | | |
+| logs | board | | | | | | | | | |
+| report | outline | | | | | | | | | |
+| report | board | | | | | | | | | |
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | | of 4 | |
+| H3: words read | | of 4 | |
+| H3: typed | | of 4 | |
+| H6: faithful to the card | | of 4 | |
+
+Beside it, per task, the number of board items the new planner put up and study 2's board-minus-
+outline difference, so the reader sees whether the direction moved. Under the tables goes one
+sentence on what they show, whatever it is.
+
+**Study 3 is reported whatever it shows:** if the board still costs more, if it now costs less, or if
+the tasks split, and if any run is void or not run, with its reason.
+
+### Study 3 results
+
+*Written after all eight runs, below study 3's registered section, which is not changed. As in study
+2, the people were Claude model stand-ins (claude-opus-5-5, the session's model; the judges the same
+model), the planner was Claude Code at prompt version 4, and nothing ran: no `graphene run`, no
+executor, no session. Every number comes from `python3 docs/test/attention.py <run> --arm tree`
+(outline runs) or `--arm board` (board runs) and from `<run>/judge.md`; runs live in
+`~/graphene-shaping3-runs/`. No run logs a `run`, so the whole log is the part up to R, and
+`attention.py`'s `to_run` equals its totals in all eight.*
+
+**Valid.** All eight are valid under rule 4: `env.sh` puts `~/graphene-shaping3-venv/bin` first on
+`PATH`, that venv was installed from `~/graphene-shaping3-runs/dist/graphene_map-0.5.0-py3-none-any.whl`,
+whose sha256 matches `build.txt` (`6da50769…`); both arms of each task share one `base.sha`; no run
+log has a `run` entry, no `node_log` row records a start, and `git status` in every run's repo shows
+no change. No rerun was made.
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | ruling | constraints carried |
+|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | feeds-shape-outline-1 | yes | 446.6 = 0.0 + 1.4 + 445.2 | 0 | 1 | 1 | 1855 | yes | 20 of 20 |
+| feeds | board | feeds-shape-board-1 | yes | 795.3 = 0.0 + 4.1 + 791.3 | 0 | 3 | 3 | 3297 | yes | 20 of 20 |
+| inventory | outline | inventory-shape-outline-1 | yes | 542.9 = 133.3 + 4.1 + 405.6 | 476 | 3 | 479 | 1690 | yes | 13 of 13 |
+| inventory | board | inventory-shape-board-1 | yes | 865.5 = 116.8 + 8.1 + 740.6 | 417 | 6 | 423 | 3086 | yes | 13 of 13 |
+| logs | outline | logs-shape-outline-1 | yes | 282.1 = 0.0 + 2.7 + 279.4 | 0 | 2 | 2 | 1164 | partly | 13 of 16 |
+| logs | board | logs-shape-board-1 | yes | 680.7 = 1.4 + 5.4 + 673.9 | 5 | 4 | 9 | 2808 | partly | 14 of 16 |
+| report | outline | report-shape-outline-1 | yes | 406.8 = 105.3 + 2.7 + 298.8 | 376 | 2 | 378 | 1245 | yes | 12 of 12 |
+| report | board | report-shape-board-1 | yes | 679.6 = 107.5 + 5.4 + 566.6 | 384 | 4 | 388 | 2361 | yes | 12 of 12 |
+
+The three parts are K × typed, M × acts and words × 60 / 250, each rounded to 0.1 s, so feeds
+board's parts sum to 795.4 and report board's to 679.5 against `attention.py`'s 795.3 and 679.6.
+Board commands per board run: feeds take 2; inventory take 2; logs take 1; report take 2.
+
+| hypothesis | board minus outline, per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: person-s | +348.7 / +322.6 / +398.6 / +272.8 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: words read | +1442 / +1396 / +1644 / +1116 | 0 of 4 | no difference shown; all four tasks go the other way (board higher), one run each |
+| H3: typed | 0 / −59 / +5 / +8 | 1 of 4 | no difference shown; board lower on inventory only, feeds ties at 0, logs and report go the other way (board higher) |
+| H6: faithful to the card | feeds same (yes, 20 of 20) / inventory same (yes, 13 of 13) / logs same ruling (partly), carried 14 of 16 against 13 of 16 / report same (yes, 12 of 12) | 4 of 4 | board at least as faithful on all four tasks, one run each: more constraints carried on logs, tied on feeds, inventory and report |
+
+Board items the planner put up (the count of `put up` lines in each study's `<task>-shape-ask.txt`),
+beside each study's board-minus-outline person-seconds:
+
+| task | items put up, study 2 | items put up, study 3 | board minus outline person-s, study 2 | board minus outline person-s, study 3 |
+|---|---|---|---|---|
+| feeds | 6 | 2 | +608.4 | +348.7 |
+| inventory | 5 | 2 | +637.3 | +322.6 |
+| logs | 6 | 1 | +498.4 | +398.6 |
+| report | 5 | 2 | +356.7 | +272.8 |
+
+**After the fact.** (1) Both feeds judges counted 20 constraints and both note that merging the two
+parts of one constraint gives 19 of 19; neither count changes a direction. (2) No run's notes report
+reading outside the log; the `--help` screens the runs read are in their logs as `read`.
+
+*Exploratory and after the fact, and an observation only since the two studies shaped different
+proposals:* with the board cut from five or six items to one or two, answering it first still cost
+more modelled attention on all four tasks (H1 and H3 show no difference in the registered direction)
+at the same or better faithfulness (H6, 4 of 4), though each task's board-minus-outline gap in
+person-seconds was smaller than in study 2.

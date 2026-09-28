@@ -388,9 +388,10 @@ def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
                 ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
             ]  # fmt: skip
             [bill] = store.node_log("*", ("usage",))
-            assert bill["detail"]["prompt"] == 3
-    system = f.requests[0]["messages"][0]["content"]
-    assert "put a question on the board with the default" in system
+            assert bill["detail"]["prompt"] == 4
+    system = " ".join(f.requests[0]["messages"][0]["content"].split())
+    assert "put a question on the board with the default" in system and "at most three" in system
+    assert "An assumption you are confident of is not an item but a sentence in the goal" in system
     prompt = f.requests[0]["messages"][1]["content"]
     assert "question: what the words leave open and the repository cannot settle" in prompt
     assert "Never ask what it answers: name the file that answers" in prompt
