@@ -303,7 +303,10 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
         )
         said = []
         assert note.to_board(store, repo, "ids come back sorted", say=said.append) is None and len(said) == 1
-    assert len(put) == 2
+    fake([answer("ids", goal_add=True)])
+    with Store.open(repo) as store:
+        item = note.to_board(store, repo, "ids come back\x1b[2K sorted")
+    assert item["text"].startswith("you said 'ids come back [2K sorted';") and len(put) == 3
 
 
 def test_to_board_says_an_unreachable_model_in_one_line_instead_of_raising(repo, fake):

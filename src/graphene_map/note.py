@@ -236,8 +236,9 @@ def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lamb
     from . import board as B  # lane A's board: here once the coordinator merges it
 
     default = f"take it: {'; '.join(offer.then)}" if offer.then else f"run it yourself: {offer.command}"
-    return B.add(store, "note", f"you said '{sentence}'; {offer.said()}", P.Caller(WHO, False), default,
-                 list(offer.then), about=None if offer.target == NEW else offer.target)  # fmt: skip
+    text = f"you said '{_shown(sentence)}'; {offer.said()}"
+    return B.add(store, "note", text, P.Caller(WHO, False), default, list(offer.then),
+                 about=None if offer.target == NEW else offer.target)  # fmt: skip
 
 
 def register(plan_cli: typer.Typer, root, open_store, fail) -> None:
