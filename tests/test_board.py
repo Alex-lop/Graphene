@@ -388,7 +388,7 @@ def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
                 ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
             ]  # fmt: skip
             [bill] = store.node_log("*", ("usage",))
-            assert bill["detail"]["prompt"] == 2
+            assert bill["detail"]["prompt"] == 3
     system = f.requests[0]["messages"][0]["content"]
     assert "put a question on the board with the default" in system
     prompt = f.requests[0]["messages"][1]["content"]
@@ -599,3 +599,55 @@ def test_a_goal_effect_ends_the_leafs_goal_with_the_sentence_once_and_is_refused
         with pytest.raises(P.Refused, match=r"^line 3: then: goal ghost \+ x names ghost, which is not a"):
             T.apply(store, "question: q  [q]\n    default: d\n    then: goal ghost + x\n", PLANNER, None)
     assert B.effect("goal wire + said twice") == ("goal", "wire", "said twice")
+
+
+PICKED = """```plan
+question: who enables the xml source?  [enable]
+    default: we do, in config/defaults.py
+    option: Ops enables it; we only add the reader
+    then: goal users + "Do not enable the source: Ops does."
+    then: check users: grep -q ids api.py
+? users returns ids  [users]
+    Return ids and enable the source.
+    scope: api.py, schema.py
+    check: grep -q ids api.py && grep -q ids schema.py
+```"""
+RULE = "carries the then: lines that make that change"
+
+
+def _picked_reaches_the_leaf(store):
+    B.pick(store, "enable", 1, ALEX)
+    users = P.get(store, "users")
+    assert users.goal == "Return ids and enable the source. Do not enable the source: Ops does."
+    assert users.check == "grep -q ids api.py"
+
+
+def test_a_script_planner_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf(
+    repo, tmp_path
+):
+    """The evaluation's biggest stall (11 of 55): a pick that contradicted a leaf's goal left the leaf as
+    it was. The planner is now told to write the then: lines, and when it does, the pick changes the leaf."""
+    script = tmp_path / "planner.py"
+    script.write_text(f"import sys\nopen({str(tmp_path / 'prompt.txt')!r}, 'w').write(sys.argv[-1])\n"
+                      f"print({PICKED!r})\n")  # fmt: skip
+    said = person("ask", "users come back with ids", "--with", f"{sys.executable} {script}")
+    assert said.exit_code == 0, said.output
+    prompt = " ".join((tmp_path / "prompt.txt").read_text().split())
+    assert RULE in prompt and 'goal NODE + "SENTENCE"' in prompt
+    with Store.open(repo) as store:
+        _picked_reaches_the_leaf(store)
+
+
+def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf(
+    repo, monkeypatch
+):
+    with Fake([{"content": PICKED}]) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        with Store.open(repo) as store:
+            ask(store, repo, "ids", named("nemotron"), say=lambda _: None)
+            _picked_reaches_the_leaf(store)
+    system, prompt = (" ".join(m["content"].split()) for m in f.requests[0]["messages"][:2])
+    assert "carries the then: lines that make that change (goal, scope, check, drop, leaf)" in system
+    assert RULE in prompt

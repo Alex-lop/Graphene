@@ -95,8 +95,13 @@ leave out: what you would not do, and why  [short-id]
   most important first, at the left edge after the goal and before the first node; none when nothing
   is open. What is on the board above is answered or waiting: do not write it again.
 - A then: line under a default: or option: is what choosing it changes in the plan: scope NODE +
-  GLOB, check NODE: COMMAND, drop NODE, leaf "TITLE" under NODE, or condition GLOB; NODE is an [id]
-  in the plan or in your block. Leave it out when choosing changes nothing in the tree.
+  GLOB, check NODE: COMMAND, goal NODE + "SENTENCE", drop NODE, leaf "TITLE" under NODE, or condition
+  GLOB (no leaf may write it); NODE is an [id] in the plan or in your block. Write each leaf as the
+  default has it. Every option, and every default the leaves do not already follow, that changes what
+  a leaf does, which files it may touch or how it is checked carries the then: lines that make that
+  change (goal for what the leaf does instead, scope, check, drop, leaf), so choosing it changes the
+  tree and the person never rewrites a leaf by hand. Leave then: out only when choosing changes
+  nothing in the tree.
 - Write no file and start no work: what you print is all of your answer."""
 
 
