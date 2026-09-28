@@ -4,6 +4,7 @@ ConTree, as tests/test_escape.py uses it. Only the live calls are new when the k
 
 import contextlib
 import importlib.util
+import inspect
 import json
 import os
 import shlex
@@ -300,3 +301,14 @@ def test_a_stopped_live_sandbox_rung_says_what_may_still_run(tmp_path, monkeypat
     assert "left running, maybe: a ConTree operation already sent runs on to its own time limit" in said
     assert ("was killed, so what it made may be left" in said) is killed
     assert ("was ended and cleaned up" in said) is not killed
+
+
+def test_practice_md_says_the_caps_are_token_factory_s_and_which_dry_rungs_need_docker(tmp_path, monkeypatch):
+    """The caps bound only Token Factory's ledger; the dry rungs raising NO_DOCKER are the ones it names."""
+    practice = load_practice(tmp_path, monkeypatch)
+    said = " ".join((ROOT / "docs" / "test" / "PRACTICE.md").read_text().split())
+    assert "anywhere" not in said
+    assert "The caps are Token Factory's only: Sandboxes" in said and "rung 4 calls no model" in said
+    docker = [n for n, rung in practice.RUNGS.items() if "NO_DOCKER" in inspect.getsource(rung[3])]
+    assert f"rungs {', '.join(map(str, docker[:-1]))} and {docker[-1]} need Docker running" in said
+    assert f"${sum(r[1] for r in practice.RUNGS.values()):.2f} of Token Factory" in said
