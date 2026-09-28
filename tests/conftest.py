@@ -21,6 +21,7 @@ def no_token_factory(monkeypatch, tmp_path):
     directory has: a test that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""
     for name in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID", "GRAPHENE_TOKENFACTORY_URL"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")  # a developer's real keychain is never read or written
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
 
 
