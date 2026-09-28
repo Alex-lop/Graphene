@@ -330,3 +330,18 @@ def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, mon
     landed = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {said}"
     for text in (said, landed):
         assert practice.likely(text)[0] == "ConTree has no credentials: NEBIUS_PROJECT_ID is not set"
+
+
+def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
+    """A refused rung ran nothing: `status` does not show it as failed, and a result already on record
+    (the person's PASS) stays."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / ".made-by-the-practice-ladder").touch()
+    passed = {"result": "PASS", "at": "2026-09-28 09:00", "seconds": 60.0, "dollars": 0.1}
+    (state / "progress.json").write_text(json.dumps({"3": passed}))
+    for n in ("1", "2", "3"):
+        assert ladder(tmp_path, n, CLAUDECODE="1").returncode == 1
+    assert json.loads((state / "progress.json").read_text()) == {"3": passed}
+    status = ladder(tmp_path, "status").stdout
+    assert " FAIL " not in status and "3. one leaf in a Sandbox" in status and " PASS " in status

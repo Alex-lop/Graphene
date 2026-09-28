@@ -113,6 +113,10 @@ class Failed(Exception):
     """A rung's FAIL, with what was seen."""
 
 
+class Refused(Failed):
+    """A FAIL before anything ran (an agent's shell): said, and not recorded, so what is on record stays."""
+
+
 def last(out: str, n: int = 1) -> str:
     lines = [ln.strip() for ln in out.strip().splitlines() if ln.strip()]
     return " / ".join(lines[-n:]) if lines else "(no output)"
@@ -250,7 +254,7 @@ def access(r: Rung) -> str:
                  f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
         if not fresh:
-            raise Failed(
+            raise Refused(
                 f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME} 1` again"
             )
         say(f"  reading what you ran today: {out}")
@@ -538,18 +542,18 @@ def climb(n: int) -> str:
     """One rung: PASS, FAIL or STOPPED, what it cost, the bill so far, how long, and the next command."""
     name, cap, _, rung = RUNGS[n]
     cap = float(os.environ.get("PRACTICE_CAP") or cap)
-    r, before, began = Rung(n, cap), spent(), time.monotonic()
+    r, before, began, refused = Rung(n, cap), spent(), time.monotonic(), False
     say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
     signal.signal(signal.SIGINT, interrupted)
     try:
         mark = None if DRY or n == 1 else marked()  # rung 1 has its own way: the person types access.py
         if mark:
-            raise Failed(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your key "
-                         f"and is recorded as you: nothing was run. Type it yourself, in a terminal where "
-                         f"no agent's mark is set:\n    {ME} {n}")  # fmt: skip
+            raise Refused(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your "
+                          f"key and is recorded as you: nothing was run. Type it yourself, in a terminal "
+                          f"where no agent's mark is set:\n    {ME} {n}")  # fmt: skip
         said, result = rung(r), "PASS"
     except Failed as no:
-        said, result = str(no), "FAIL"
+        said, result, refused = str(no), "FAIL", isinstance(no, Refused)
     except Exception as no:  # an SDK's or a sandbox's own error is a result here
         said, result = f"{type(no).__name__}: {no}", "FAIL"
     except KeyboardInterrupt:
@@ -567,7 +571,8 @@ def climb(n: int) -> str:
     rows = progress() | {str(n): {"result": result, "at": time.strftime("%Y-%m-%d %H:%M"),
                                    "seconds": round(took, 1),
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip
-    PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
+    if not refused:  # a rung that ran nothing leaves the record as it was
+        PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
     say(
         f"{result} · rung {n} · {took:.1f} s · this rung ${spent() - before:.4f} · bill so far ${spent():.4f}"
     )
