@@ -49,8 +49,10 @@ from graphene_map.demo import KEY as KEY_SHAPED  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 
 DRY = "--dry" in sys.argv or os.environ.get("PRACTICE_DRY") == "1"
+# resolved: a relative PRACTICE_WORK would name a different place once a rung runs from the task's repo
 STATE = Path(os.environ.get("PRACTICE_STATE") or ROOT / ".graphene" / ("practice-dry" if DRY else "practice"))
 WORK = Path(os.environ.get("PRACTICE_WORK") or Path.home() / f"graphene-practice{'-dry' if DRY else ''}")
+STATE, WORK = STATE.resolve(), WORK.resolve()
 LEDGER = STATE / "ledger.jsonl"
 PROGRESS = STATE / "progress.json"
 PARAGRAPH = HERE / "tasks" / "feeds" / "paragraph.md"  # the sealer's: passed on, never printed or shown
