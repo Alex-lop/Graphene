@@ -6,6 +6,7 @@ import types
 from dataclasses import dataclass
 
 import pytest
+from rich.cells import cell_len
 from rich.text import Text
 
 from graphene_map import plan as P
@@ -132,7 +133,7 @@ def heads(d, nodes):
         if n.id not in d.at:
             continue
         y, x0, x1 = d.at[n.id]
-        cut = d.lines[y].plain[x0 : x1 + 1]
+        cut = "".join(c + "\0" * (cell_len(c) - 1) for c in d.lines[y].plain)[x0 : x1 + 1].replace("\0", "")
         assert n.id in cut.split(), (n.id, cut)
 
 
@@ -248,3 +249,18 @@ def test_an_empty_plan_is_its_goal():
 def test_note_counts_what_waits_on_the_person_and_what_is_proposed():
     nodes = [P.Node("x", "x", state=P.PROPOSED), leaf("y", "x", P.PROPOSED), leaf("z", state=P.REVIEW)]
     assert view_tree.note(nodes, words(nodes)) == "1 sub-goal · 2 leaves · 1 waits on you · 2 proposed"
+
+
+def test_wide_characters_are_counted_in_cells():
+    """Titles and the goal were cut by characters: CJK lines ran to 123 cells at 80, cut with no …"""
+    nodes = [
+        P.Node("r読む", "フィードを読む" * 4),
+        leaf("a読む", "r読む", title="行を解析する" * 5),
+        leaf("b", "r読む", title="価格" * 20),
+        leaf("c", title="報告書を書く"),
+    ]
+    for width in (40, 80, 120):
+        d = view_tree.draw(nodes, words(nodes), "目標を書く" * 30, width, 24, None)
+        assert d is not None and all(line.cell_len <= width for line in d.lines)
+        assert d.lines[0].plain.strip().endswith("…")
+        heads(d, nodes)

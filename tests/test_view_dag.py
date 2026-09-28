@@ -7,6 +7,7 @@ import sys
 import types
 from dataclasses import dataclass
 
+from rich.cells import cell_len
 from rich.text import Text
 
 try:
@@ -52,6 +53,14 @@ def words_of(nodes):
     return {n.id: P.reads(n, nodes) for n in nodes}
 
 
+def cells(text):
+    """A line as one entry a terminal column: a wide character's second column is a NUL."""
+    out = []
+    for c in text:
+        out += [c] + ["\0"] * (cell_len(c) - 1)
+    return out
+
+
 ARMS = {char: dict(zip("udlr", arms, strict=True)) for arms, char in V.BOX.items()}
 
 
@@ -61,7 +70,7 @@ def traced(drawn):
     ┼) back to its cell, and a track crossed (│ between two dashes) or joined by a line that goes on
     past it (┬ ┴) is not the leaf's.
     Every arm has to meet an arm, so a line that ran into a cell would fail here."""
-    lines = [line.plain for line in drawn.lines]
+    lines = [cells(line.plain) for line in drawn.lines]
     ends = {(y, b): i for i, (y, _, b) in drawn.at.items()}
     starts = {(y, a): i for i, (y, a, _) in drawn.at.items()}
 
@@ -122,7 +131,7 @@ def checked(nodes, width, height=24, cursor=None):
     assert drawn is not None
     assert all(line.cell_len <= width for line in drawn.lines)
     for i, (y, a, b) in drawn.at.items():
-        assert drawn.lines[y].plain[a : b + 1].split(" ")[1] == i
+        assert "".join(cells(drawn.lines[y].plain)[a : b + 1]).replace("\0", "").split(" ")[1] == i
     g = V._graph(nodes)
     assert traced(drawn) == {t: set(r) for t, r in g.needs.items() if r}
     return drawn
@@ -225,3 +234,18 @@ def test_it_suits_a_plan_with_needs_that_fits_and_never_a_list():
     assert V.suits([leaf("a"), leaf("b")], 80, 24) == 0
     assert V.suits(diamond_and_chain(), 80, 24) == 100
     assert V.suits(diamond_and_chain(), 80, 3) == 50  # taller than the screen
+
+
+def test_wide_characters_take_two_columns_and_the_lines_still_meet():
+    """Cells and the grid counted characters: CJK titles pushed a line to 126 cells at 80, and the
+    lines of different rows no longer met."""
+    nodes = [
+        leaf("a", "フィードを読む " * 6),
+        leaf("b読む", "行を解析する", ["a"]),
+        leaf("c", "価格を確認する", ["a"]),
+        leaf("d", "報告書を書く", ["b読む", "c"]),
+    ]
+    for width in (40, 60, 80, 120):
+        checked(nodes, width)
+    goal = V.draw(nodes, words_of(nodes), "目標を書く " * 30, 80, 24, None).lines[0]
+    assert goal.cell_len <= 80 and goal.plain.endswith("…")

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
@@ -52,6 +53,25 @@ def choose(nodes: list[P.Node], words: dict[str, str], goal: str, width: int, he
         if drawn is not None and (len(drawn.lines) <= height or getattr(view, "NEEDS", False)):
             best, score = name, mark
     return best
+
+
+def elide(text: str, wide: int) -> str:
+    """`plan_text.elide` counted in terminal cells, as a view lays out its columns: one line of at most
+    ``wide`` cells, cut at a word with "…" (a CJK character or an emoji takes two cells)."""
+    text = " ".join(str(text).split())
+    if cell_len(text) <= wide:
+        return text
+    if wide < 2:
+        return "…"[: max(wide, 0)]
+
+    def upto(cells: int) -> str:  # the longest start of the text in this many cells
+        k = used = 0
+        while k < len(text) and used + cell_len(text[k]) <= cells:
+            used, k = used + cell_len(text[k]), k + 1
+        return text[:k]
+
+    cut = upto(wide).rfind(" ")
+    return (text[:cut] if cut > 0 else upto(wide - 1)).rstrip(" ,;:·") + "…"
 
 
 def beside(drawn: Drawn, here: str | None, way: int) -> str | None:

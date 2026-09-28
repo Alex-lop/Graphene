@@ -23,12 +23,12 @@ import unicodedata
 from dataclasses import dataclass, replace
 from functools import partial
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
-from . import plan_text as T
 from .plan_view import depths, outline
-from .views import Drawn
+from .views import Drawn, elide
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
 NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
@@ -246,8 +246,8 @@ def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
     None when glyph and id do not fit."""
     levels = max(g.level.values(), default=-1) + 1
     cols = [[n for n in g.leaves if g.level[n.id] == k] for k in range(levels)]
-    base = [2 + max(len(n.id) for n in col) for col in cols]
-    want = [1 + max(len(n.title) for n in col) for col in cols]
+    base = [2 + max(cell_len(n.id) for n in col) for col in cols]
+    want = [1 + max(cell_len(n.title) for n in col) for col in cols]
     spare = width - sum(base) - sum(_gap(t) for t in tracks[1:])
     if spare < 0:
         return None
@@ -341,7 +341,7 @@ def draw(
     for (y, x), got in arms.items():
         grid[y][x] = (BOX.get(tuple(got.values()), "▸") if got else "▸", style[(y, x)])
     at: dict[str, tuple[int, int, int]] = {}
-    lines = [Text(T.elide(goal, width), "bold")] if goal else []
+    lines = [Text(elide(goal, width), "bold")] if goal else []
     for n in g.leaves:
         x, y = left[g.level[n.id]], row[n.id]
         for k, (char, how) in enumerate(cell[n.id]):
@@ -363,8 +363,21 @@ def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str,
     glyph, colour = P.look(word)
     done = word == "done"
     ident = "dim" if done else f"{colour} bold".strip() if critical else colour
-    out = [(glyph, colour), (" ", "")] + [(c, ident) for c in node.id]
+    out = [(glyph, colour), (" ", "")] + _columns(node.id, ident)
     room = wide - len(out) - 1
-    if room >= min(len(node.title), LEAST_TITLE):
-        out += [(" ", "")] + [(c, "dim" if done else "") for c in T.elide(node.title, room)]
+    if room >= min(cell_len(node.title), LEAST_TITLE):
+        out += [(" ", "")] + _columns(elide(node.title, room), "dim" if done else "")
+    return out
+
+
+def _columns(text: str, how: str) -> list[tuple[str, str]]:
+    """Text as one entry a terminal column, as the grid is laid out: a wide character's second column
+    is "", and a character that takes none (a combining accent) joins the one before it."""
+    out: list[tuple[str, str]] = []
+    for char in text:
+        wide = cell_len(char)
+        if wide == 0 and out:
+            out[-1] = (out[-1][0] + char, how)
+        else:
+            out += [(char, how)] + [("", how)] * (wide - 1)
     return out

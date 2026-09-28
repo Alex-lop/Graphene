@@ -11,11 +11,11 @@ never reads the store."""
 
 from __future__ import annotations
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
-from . import plan_text as T
-from .views import Drawn
+from .views import Drawn, elide
 
 WIDEST = 30  # a cell never takes more, however few the leaves: a tree, not a table
 TITLE = 8  # the least room a title needs to be worth its own line
@@ -140,8 +140,8 @@ class _Tree:
             cursor = self.by_id[cursor].parent  # inside a folded sub-goal: the fold is where it is
         self.cursor = cursor
         mid = self.place(None, 0)
-        said = T.elide(goal or "no goal yet", width)
-        self.put(0, min(max(mid - len(said) // 2, 0), width - len(said)), Text(said, "bold"))
+        said = elide(goal or "no goal yet", width)
+        self.put(0, min(max(mid - cell_len(said) // 2, 0), width - cell_len(said)), Text(said, "bold"))
         order = [n.id for n in self.walk(None)]
         return Drawn(self.lines(), dict(self.at), order, note(list(self.by_id.values()), self.words))
 
@@ -188,7 +188,7 @@ class _Tree:
         starting there when leaves are listed down (the glyph is the spine, and ``lead`` goes before
         the title on the second line)."""
         head, lead = self.head(n), lead if self.stack else ""
-        lines = [head, Text(lead, "dim") + Text(T.elide(n.title, room - len(lead)))] if self.two else [head]
+        lines = [head, Text(lead, "dim") + Text(elide(n.title, room - len(lead)))] if self.two else [head]
         xs = [at if self.stack else at - line.cell_len // 2 for line in lines]
         for k, (x, line) in enumerate(zip(xs, lines, strict=True)):
             if n.id == self.cursor:
