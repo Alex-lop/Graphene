@@ -194,13 +194,17 @@ def test_the_flag_runs_it_as_a_proposal_lands(repo, monkeypatch, tmp_path):
     script = tmp_path / "planner.py"
     script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
     with Store.open(repo) as store:
+        leaves(store, f"touch {tmp_path}/ran-here", who=ME)  # an accepted leaf: never run by an ask
         ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
         assert store.node_log("hello", ("precheck",)) == []
+        script.write_text(script.read_text().replace("hello", "hi"))
         monkeypatch.setenv("GRAPHENE_SHAPE", "notes, precheck")
-        seen = []
-        ask(store, repo, "say hello again", f"{sys.executable} {script}", say=seen.append)
-        assert store.node_log("hello", ("precheck",))[0]["detail"]["verdict"] == "not-run"
-    assert any("needs a sandbox" in line for line in seen)
+        said = ask(store, repo, "say hi", f"{sys.executable} {script}", say=lambda _: None)
+        assert store.node_log("hi", ("precheck",))[0]["detail"]["verdict"] == "not-run"
+        assert store.node_log("hello", ("precheck",)) == []  # an earlier proposal: not this ask's
+        assert store.node_log("l0", ("precheck",)) == [] and not (tmp_path / "ran-here").exists()
+    shown = [line for line in said if "needs a sandbox" in line]
+    assert shown and said.index(shown[0]) > next(k for k, line in enumerate(said) if "hi" in line)
 
 
 def _docker() -> bool:
@@ -237,12 +241,11 @@ def test_any_executor_spelling_never_crashes_and_ask_keeps_its_proposal(repo, mo
     script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
     monkeypatch.setenv("GRAPHENE_SHAPE", "precheck")
     monkeypatch.setattr(C, "_runs", lambda *_: (_ for _ in ()).throw(RuntimeError("boom")))
-    seen = []
     with Store.open(repo) as store:
         store.set_meta("executor", "nemotron --prepare='pip install -e .'")
-        said = ask(store, repo, "say hello", f"{sys.executable} {script}", say=seen.append)
-        assert [n.id for n in P.nodes(store)] == ["hello"] and said
-    assert [line for line in seen if "boom" in line] == ["! the checks were not run first: boom"]
+        said = ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
+        assert [n.id for n in P.nodes(store)] == ["hello"]
+    assert [line for line in said if "boom" in line] == ["! the checks were not run first: boom"]
 
 
 def test_one_leaf_that_breaks_is_one_line_and_the_others_still_run(repo, nano, monkeypatch):

@@ -177,7 +177,7 @@ def ask(
                     say("the planner says:")
                     for line in said_lines:
                         say(f"  {line[:300]}")
-                precheck.after_proposal(store, root, say)  # GRAPHENE_SHAPE=precheck: its checks run first
+                said += precheck.after_proposal(store, root, said.ids)  # GRAPHENE_SHAPE=precheck, after it
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")

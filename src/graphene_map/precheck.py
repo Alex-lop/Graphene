@@ -302,16 +302,17 @@ def shaped() -> bool:
     return FLAG in os.environ.get("GRAPHENE_SHAPE", "").replace(" ", "").split(",")
 
 
-def after_proposal(store, root: Path, say=print) -> None:
-    """`graphene ask` with GRAPHENE_SHAPE=precheck: the proposal's checks, run first as it lands."""
+def after_proposal(store, root: Path, ids) -> list[str]:
+    """`graphene ask` with GRAPHENE_SHAPE=precheck: the lines saying the checks of the leaves this
+    proposal just proposed (``ids``), each run first in a sandbox fork. An accepted leaf's check is never
+    run by an ask; it runs here only when the person says `graphene plan precheck`."""
     if not shaped():
-        return
+        return []
     try:
-        lines = said(run(store, root))
+        new = [i for i in dict.fromkeys(ids) if (store.node_row(i) or {}).get("state") == P.PROPOSED]
+        return said(run(store, root, new)) if new else []
     except Exception as no:  # the proposal has landed: nothing here may turn that into a failed ask
-        lines = [f"! the checks were not run first: {' '.join(str(no).split())[:200]}"]
-    for line in lines:
-        say(line)
+        return [f"! the checks were not run first: {' '.join(str(no).split())[:200]}"]
 
 
 def register(plan_cli, root, open_store, fail) -> None:
