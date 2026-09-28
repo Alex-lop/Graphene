@@ -201,6 +201,8 @@ question: one  [one]
     then: check users: test -f api.py
     option: none of it
     then: drop users
+    option: tell it
+    then: goal users + Keep the response shape.
 risk: two  [two]
     default: a leaf
     then: leaf "a sample" under users
@@ -214,6 +216,7 @@ risk: two  [two]
         (["take", "one"], lambda s: P.get(s, "users").scope == ["api.py", "schema.py"]),
         (["pick", "one", "1"], lambda s: P.get(s, "users").check == "test -f api.py"),
         (["pick", "one", "2"], lambda s: P.get(s, "users").state == P.DROPPED),
+        (["pick", "one", "3"], lambda s: P.get(s, "users").goal == "Keep the response shape."),
         (["take", "two"], lambda s: [P.get(s, "sample").state, *B.conditions(s)] == ["proposed", "vendor/*"]),
     ],
 )
@@ -578,3 +581,21 @@ def test_unpark_opens_a_parked_item_again_and_is_one_undoable_command(repo):
     assert person("plan", "undo").stdout == "undid: board unpark int-ids\n"
     with Store.open(repo) as store:
         assert B.get(store, "int-ids")["state"] == "parked"
+
+
+def test_a_goal_effect_ends_the_leafs_goal_with_the_sentence_once_and_is_refused_by_its_line(repo):
+    """A pick that contradicted a leaf's goal left the goal as it was, so the person rewrote it by hand
+    (the evaluation's biggest stall, 11 of 55): `then: goal NODE + TEXT` puts the sentence on the leaf."""
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "wire", "title": "wire", "goal": "Enable the source", "scope": ["api.py"],
+                           "check": "true"}], ALEX)  # fmt: skip
+        said = '    then: goal wire + "Do not enable the source; Ops enables it."\n'
+        asked = "question: who enables it?  [enable]\n    default: we do\n    option: Ops does\n"
+        T.apply(store, asked + said, PLANNER, None)
+        assert said in T.render(store)[0]  # as it was written
+        B.pick(store, "enable", 1, ALEX)
+        assert P.get(store, "wire").goal == "Enable the source. Do not enable the source; Ops enables it."
+        assert B.get(store, "enable")["became"] == ["wire: goal + Do not enable the source; Ops enables it."]
+        with pytest.raises(P.Refused, match=r"^line 3: then: goal ghost \+ x names ghost, which is not a"):
+            T.apply(store, "question: q  [q]\n    default: d\n    then: goal ghost + x\n", PLANNER, None)
+    assert B.effect("goal wire + said twice") == ("goal", "wire", "said twice")
