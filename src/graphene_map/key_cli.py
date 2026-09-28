@@ -36,7 +36,13 @@ def register(cli: typer.Typer, fail):
     def check() -> None:
         """Say whether the Token Factory is reached with the key found."""
         person("checking the Token Factory key")
-        typer.echo(keys.reached())
+        line = keys.reached()
+        typer.echo(line)
+        if "not reached" in line:
+            if not keys.where():
+                off = "" if keys._keychain() else "; the keychain was not read (GRAPHENE_KEYCHAIN=off)"
+                typer.echo(f"  no key found: `graphene key set` keeps one in the keychain{off}")
+            raise typer.Exit(1)
 
     @key_cli.command()
     def remove() -> None:

@@ -82,3 +82,13 @@ def test_an_agent_is_refused(keychain, mark, cmd):
     done = key(cmd, env={**PERSON, mark: "key-cli"}, input=SECRET + "\n")
     assert done.exit_code == 1 and "person's to do" in done.output
     assert keychain == {"key": SECRET}
+
+
+def test_check_that_does_not_reach_exits_1_and_names_key_set(keychain, monkeypatch):
+    """Walk 2026-09-28: `key check` with no key exited 0 and never named `graphene key set`."""
+    line = "Token Factory: not reached: NEBIUS_API_KEY is not set: Token Factory needs a key"
+    monkeypatch.setattr(keys, "reached", lambda: line)
+    done = key("check")
+    assert done.exit_code == 1
+    assert line in done.output and "graphene key set" in done.output
+    assert "GRAPHENE_KEYCHAIN=off" in done.output  # the conftest turns it off, and the line says so
