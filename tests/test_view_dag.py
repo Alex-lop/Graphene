@@ -249,3 +249,13 @@ def test_wide_characters_take_two_columns_and_the_lines_still_meet():
         checked(nodes, width)
     goal = V.draw(nodes, words_of(nodes), "目標を書く " * 30, 80, 24, None).lines[0]
     assert goal.cell_len <= 80 and goal.plain.endswith("…")
+
+
+def test_a_fan_out_past_seven_crosses_nothing():
+    """Past six tracks in a gap the order was top to bottom, and one leaf feeding twelve drew a comb
+    of 55 crossings (└││││││││││─▸)."""
+    fan = [leaf("r")] + [leaf(f"k{i}", needs=["r"]) for i in range(12)]
+    fan += [leaf("sink", needs=[f"k{i}" for i in range(12)])]
+    crossing = [c for c, arms in ARMS.items() if arms["r"]]  # a line going right, then a track it crosses
+    drawn = checked(fan, 80)
+    assert not any(c + "│" in line.plain for line in drawn.lines for c in crossing)

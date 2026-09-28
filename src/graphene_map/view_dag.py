@@ -203,8 +203,9 @@ def _tracks(g: _Graph, row: dict[str, int]) -> list[list[str]]:
         for s, t in edges:
             if g.level[s] < k <= g.level[t]:
                 lead.setdefault(row[s], []).append(t)
-        # ponytail: every order up to 6 tracks in a gap (720); past that, top to bottom as they come
-        orders = itertools.permutations(bus) if len(bus) <= 6 else [tuple(bus)]
+        # ponytail: every order up to 6 tracks in a gap (720); past that, top to bottom or bottom to top,
+        # whichever crosses fewer (a fan-out crosses none bottom to top); a mixed gap may still comb
+        orders = itertools.permutations(bus) if len(bus) <= 6 else [tuple(bus), tuple(reversed(bus))]
         out.append(list(min(orders, key=partial(_crossings, lead=lead, joined=joined, row=row), default=())))
     return out
 
