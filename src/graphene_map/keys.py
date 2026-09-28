@@ -9,6 +9,7 @@ command on stdin, and `secret-tool store` reads the secret from stdin.
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -18,6 +19,7 @@ KEY = "NEBIUS_API_KEY"
 SERVICE = "graphene"
 ACCOUNT = "token-factory"
 PLATFORM = sys.platform
+TIMEOUT = 5  # a locked keychain can wait on a prompt; past this it is taken as having no key
 
 
 def _keychain() -> bool:
@@ -29,8 +31,8 @@ def _run(argv: list[str], stdin: str | None = None) -> subprocess.CompletedProce
     if exe is None:
         return None
     try:  # the one found, never the next on the PATH when this one cannot start
-        return subprocess.run([exe, *argv[1:]], input=stdin, capture_output=True, text=True, timeout=30)
-    except OSError:
+        return subprocess.run([exe, *argv[1:]], input=stdin, capture_output=True, text=True, timeout=TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired):
         return None
 
 
@@ -39,6 +41,12 @@ def find() -> str | None:
     key = os.environ.get(KEY)
     if key:
         return key
+    return _from_keychain() if _keychain() else None
+
+
+@functools.cache
+def _from_keychain() -> str | None:
+    """Asked once a process: a leaf of N turns would otherwise start the keychain tool N times."""
     if PLATFORM == "darwin":
         done = _run(["security", "find-generic-password", "-s", SERVICE, "-a", ACCOUNT, "-w"])
     elif PLATFORM.startswith("linux"):
@@ -62,6 +70,7 @@ def set(key: str) -> None:  # noqa: A001 - keys.set reads as what it does
                      "account", ACCOUNT], key)  # fmt: skip
     else:
         raise RuntimeError(f"no keychain on {PLATFORM}: set {KEY} in the environment")
+    _from_keychain.cache_clear()
     _said(done, "kept")
 
 
@@ -73,6 +82,7 @@ def remove() -> None:
         done = _run(["secret-tool", "clear", "service", SERVICE, "account", ACCOUNT])
     else:
         raise RuntimeError(f"no keychain on {PLATFORM}")
+    _from_keychain.cache_clear()
     _said(done, "removed")
 
 
@@ -81,7 +91,7 @@ def _said(done: subprocess.CompletedProcess | None, what: str) -> None:
     if not _keychain():
         raise RuntimeError(f"the key could not be {what}: the keychain is off (GRAPHENE_KEYCHAIN=off)")
     if done is None:
-        raise RuntimeError(f"the key could not be {what}: `{tool}` is not on the PATH")
+        raise RuntimeError(f"the key could not be {what}: `{tool}` is not on the PATH, or did not answer")
     # `security -i` exits 0 whatever its command did, and says so on stderr
     if done.returncode != 0 or "error" in done.stderr.lower():
         said = " ".join(done.stderr.split())[:200]

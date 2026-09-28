@@ -53,7 +53,9 @@ def keychain(request, tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(fake.parent))
     monkeypatch.setenv("GRAPHENE_KEYCHAIN", "on")
     monkeypatch.setattr(keys, "PLATFORM", request.param)
-    return fake.parent
+    keys._from_keychain.cache_clear()
+    yield fake.parent
+    keys._from_keychain.cache_clear()
 
 
 def test_the_suite_never_reaches_the_real_keychain(monkeypatch):
@@ -156,6 +158,7 @@ def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, mo
     (bin_ / "store.json").write_text(json.dumps({"key": "sk-FAKEKEY-abc123xyz"}))
     monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")
     monkeypatch.setenv("GRAPHENE_KEYCHAIN", "on")
+    keys._from_keychain.cache_clear()
     assert keys.find() == "sk-FAKEKEY-abc123xyz"  # this process, Graphene's own, finds it
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -166,3 +169,12 @@ def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, mo
     assert (code, out.strip()) == (0, "None")
     passed, said, _ = P.run_check(peek, repo)
     assert passed and "sk-FAKEKEY" not in said and "None" in said
+    keys._from_keychain.cache_clear()
+
+
+def test_a_keychain_that_hangs_is_given_up_on_and_asked_once_per_process(keychain, monkeypatch):
+    tool = "security" if keys.PLATFORM == "darwin" else "secret-tool"
+    (keychain / tool).write_text(f"#!/bin/sh\necho x >> {keychain}/spawns\nsleep 3\n")
+    monkeypatch.setattr(keys, "TIMEOUT", 0.3)
+    assert [keys.find() for _ in range(3)] == [None] * 3  # no TimeoutExpired, and no wait each time
+    assert (keychain / "spawns").read_text() == "x\n"
