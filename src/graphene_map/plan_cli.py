@@ -642,8 +642,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             for line in rolled_up(store, root(), P.leaves(P.nodes(store))):
                 out(line.replace("under it", "in the plan"))
-            for line in bill_line(bill(store.node_log("*", ("usage",))), "    "):
-                out(line.replace("bill:", "the planner's bill:"))
+            usage = store.node_log("*", ("usage",))  # the planner's, and each helper's under its own name
+            for actor in dict.fromkeys(e["actor"] for e in usage):
+                whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
+                for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
+                    out(line.replace("bill:", f"{whose} bill:"))
 
         run(go)
 

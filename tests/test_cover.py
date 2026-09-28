@@ -284,3 +284,12 @@ def test_a_failing_nano_is_asked_once_and_waits_for_nothing(repo, fake, monkeypa
     assert len(f.requests) == 1 and waited == []
     [line] = said
     assert line.startswith("cover: Nano could not be asked: Token Factory answered 500")
+
+
+def test_the_plans_record_bills_the_cover_apart_from_the_planner(repo, fake):
+    fake([nano(ANSWER)])
+    with planned(repo) as store:
+        C.cover(store, say=lambda s: None)
+    record = person("plan", "record")
+    assert record.exit_code == 0, record.output
+    assert "the planner's bill" not in record.stdout and "cover:nemotron's bill: $" in record.stdout
