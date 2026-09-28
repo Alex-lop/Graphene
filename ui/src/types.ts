@@ -195,6 +195,8 @@ export interface PlanNode {
   row: number;
   x: number;
   y: number;
+  tree_x: number; // where it sits in the top-down tree
+  tree_y: number;
   width: number;
   height: number;
 }
@@ -226,6 +228,7 @@ export interface PlanEdge {
   source: string; // the node that must finish
   target: string; // the node that waits on it
   points: number[][];
+  critical: boolean; // on the longest chain of leaves not yet done: drawn heavier
 }
 
 export interface Waiting {
@@ -255,6 +258,12 @@ export interface Plan {
   holes: Record<Hole, string>; // where the mechanism behind a control stops, printed beside it
   writable: boolean; // false for an exported file, and for a page opened from an agent's shell
   token: string | null; // this launch's, and never in an export
+  critical: string[]; // the longest chain of leaves not yet done, first first; empty when nothing waits
+  ready: string[]; // the leaves that can start now
+  tree_width: number;
+  tree_height: number;
+  tree_goal: number[]; // the goal's box, at the top of the tree
+  tree_links: PlanEdge[]; // parent to child; the goal is ""
 }
 
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.
