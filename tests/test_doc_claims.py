@@ -51,3 +51,24 @@ def test_the_docs_say_graphene_watch_shows_and_counts_the_board_as_it_does():
     assert "the screen does not yet show it" not in hackathon
     assert "does not show the board" not in storyboard
     assert "In `graphene watch` the items are the first rows under the goal" in hackathon
+
+
+def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratch_plan():
+    from graphene_map import plan as P
+    from graphene_map import view_dag as V
+
+    def leaf(i, needs=(), scoped=True):
+        n = P.Node(
+            i, i, scope=[f"{i}.py"] if scoped else [], check="true" if scoped else None, needs=list(needs)
+        )
+        n.state = P.PROPOSED
+        return n
+
+    four = [leaf("xml-reader"), leaf("xml-wire", ["xml-reader"]), leaf("zero-rule"),
+            leaf("xml-e2e", ["xml-wire", "zero-rule"])]  # fmt: skip
+    five = [*four, leaf("zero-price-product", scoped=False)]  # the board's new leaf: no scope or check yet
+    before, after = (V.note(ns, {n.id: P.reads(n, ns) for n in ns}) for ns in (four, five))
+    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("docs/demo/STORYBOARD.md")
+    assert f"`{before}` on a scratch plan of four proposed leaves" in hackathon
+    assert f"`{after}` here" in storyboard and f"`… · {before.split(' · ')[-1]}` before" in storyboard
+    assert "2 at once" not in hackathon + storyboard and "Two leaves can start at once" not in storyboard

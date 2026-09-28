@@ -59,8 +59,8 @@ Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to th
 **The graph: what runs at once and what waits.** You read the plan in `graphene watch`, a terminal
 screen with vim keys. Tab cycles the outline, a top-down tree, and a left-to-right graph of the
 leaves' needs, with the critical path drawn heavy and a note under it:
-`2 at once · 2 wait · critical path: xml-reader > xml-wire > xml-e2e (3)` on a scratch plan of four
-leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
+`critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
+scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
 `graphene ui` draws the same three.
 <!-- integ only: Tab between views in graphene watch, graphene plan --view, graphene watch --view,
 and the page's three layouts. -->
@@ -336,7 +336,7 @@ service itself.)
 | 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
 | about 250 words in five paragraphs; five items instead; each a decision made silently | `docs/process/shaping/as-the-person.md`, items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
 | 32 ideas, 20 after merging, three judges, the top three built | `docs/process/ideas.md` |
-| `2 at once · 2 wait · critical path … (3)` | `graphene plan --view dag --width 80` on a scratch plan of four leaves from a scripted planner, at `integ` 50f12e7 |
+| `critical ━ … (3) · none ready · 2 once accepted · 2 wait` | `graphene plan --view dag --width 80` on a scratch plan of four proposed leaves from a scripted planner, at `shaping` 2111115; `tests/test_doc_claims.py` |
 | 150 random plans; 22 widths from 20 to 167 | `tests/test_view_dag.py`, `tests/test_view_tree.py` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
 | the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `docs/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |

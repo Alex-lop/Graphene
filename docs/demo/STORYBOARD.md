@@ -21,7 +21,7 @@ new keys before this can be recorded. -->
 | 0:00–0:10 | Two panes, each 80x24: a terminal on the left, `graphene watch` on the right, empty. The left pane shows `graphene config`: the protected paths, the plan's size, the planner and the executor, and where the key was found (never the key). | "This is Graphene, on a small Python repository. I said once what no agent may touch. Now I'll ask for a feature in a paragraph, and NVIDIA Nemotron models will plan it and build it on Nebius Token Factory." |
 | 0:10–0:30 | The paragraph typed into `graphene ask`. The right pane fills with a tree, every row `?`. The left pane lists `proposed …` lines, then `put up …` lines. | "The planner is Nemotron 3 Ultra, called through Token Factory's OpenAI-compatible API. It reads the repository with read-only tools (list, grep, read) and answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done. What the code can't tell it, it asks." |
 | 0:30–0:55 | **The board** (frames B1 to B3 below). `graphene board`; then `graphene board pick parser 1`, `take cents`, `take no-zero`, `park json-variant`. The right pane gains a leaf; the left pane shows `node show` with its `decided:` lines. | "Before anything runs, the planner asks instead of guessing: at most three questions or risks, each with a default, and only what changes the tree. I answer each with one command. Picking lxml widens the reader's scope, as my edit. Taking the risk's default adds a leaf. Each answer goes to that leaf's executor, as a decided line." |
-| 0:55–1:15 | **The graph** (frames G1 and G2 below). `Tab` in the right pane: the tree. `Tab` again: the graph, the critical path heavy, and its note on the bottom line. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. Two leaves can start at once, two wait, and the heavy line is the critical path." |
+| 0:55–1:15 | **The graph** (frames G1 and G2 below). `Tab` in the right pane: the tree. `Tab` again: the graph, the critical path heavy, and its note on the bottom line. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path: the chain the rest waits on." |
 | 1:15–1:30 | `j` to a leaf, `?`, then `w`: the planner's why lands on the board. *Only if this ran live on the recording night; if not, cut it and give the time to the run.* | "I can talk to the plan: question mark on a leaf asks the planner why it's there, and the answer lands on the board for me to keep or drop." |
 | 1:30–1:40 | `Enter` on a leaf shows its scope and check; `E` opens the plan in the editor and a path leaves a scope; `y` on the goal accepts. | "Then I prune. I take one path out of this leaf's scope, and accept the rest." |
 | 1:40–2:10 | `R`. Leaves turn yellow at once; the node pane shows the executor, its sandbox, its last step and seconds since. | "R runs every ready leaf. Each gets a Nemotron Nano executor on Token Factory, and every tool call it makes runs in a Token Factory Sandbox forked from one checkpoint of the repository. Its write tools refuse a path outside the scope, the sandbox refuses it too, and the leaf is done only when Graphene's own check passes." |
@@ -116,7 +116,8 @@ xml-reader (revision 2): an XML reader that returns rows
 (The line for the risk is wider than 80 columns and wraps in the pane.)
 
 **G1, 0:55. Right pane, key: `Tab`.** The tree, top-down; `←1` and `←2` count what each leaf still
-waits on. The bottom line names the command and the note:
+waits on. The bottom line names the command and the note (G1 and G2 rendered again at `shaping`
+2111115, with the same scratch plan and board answers):
 
 ```
  the plan of …
@@ -131,7 +132,12 @@ waits on. The bottom line names the command and the note:
  the Northwind XML feed loads the way csv and json already do
  the goal · proposed with the tree: accepting any of it accepts it
  …
- you: 1 · 0 running · none ready · 0/0 done · plan first: off
+ ? Northwind XML loads like csv and json                         xml  proposed
+ …
+ waiting  xml is proposed, for you to accept or prune
+ …
+ you: 1 · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
  graphene watch --view tree: 1 sub-goal · 5 leaves · 6 proposed
 ```
 
@@ -149,12 +155,19 @@ the Northwind XML feed loads the way csv and json already do
  the Northwind XML feed loads the way csv and json already do
  the goal · proposed with the tree: accepting any of it accepts it
  …
- you: 1 · 0 running · none ready · 0/0 done · plan first: off
- graphene watch --view dag: 2 at once · 3 wait · critical path: xml-reader >…
+ ? Northwind XML loads like csv and json                         xml  proposed
+ …
+ waiting  xml is proposed, for you to accept or prune
+ …
+ you: 1 · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
+ graphene watch --view dag: critical ━ xml-reader > xml-wire > xml-e2e (3)…
 ```
 
-A third `Tab` goes back to the outline. Before the board's new leaf, the same graph's note reads
-`2 at once · 2 wait · critical path: xml-reader > xml-wire > xml-e2e (3)`.
+A third `Tab` goes back to the outline. At 80 columns the bottom line keeps only the critical path;
+`graphene plan --view dag --width 80` prints the whole note, which ends
+`critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
+`… · 2 wait` before the board's new leaf.
 <!-- For the coordinator: after the board's new leaf, the note counts zero-price-product among
 "3 wait", though it waits on nothing; it has no scope or check yet, which may be why. Worth a look
 before it is on camera. -->
