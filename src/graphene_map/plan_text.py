@@ -627,10 +627,10 @@ def apply(
             said += _accepts(store, kept, opened, who, now)
             said += _drops(store, lines, opened, who, now, alone)
             said += _reorder(store, lines, who, now)
-        if board or (opened or {}).get("*board"):
-            said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
             if store.meta("goal:proposed") and not P.nodes(store, (P.PROPOSED,)):
                 store.set_meta("goal:proposed", None)  # its tree is gone, so is the planner's sentence
+        if board or (opened or {}).get("*board"):
+            said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
         try:
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:

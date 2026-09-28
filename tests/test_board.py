@@ -533,3 +533,12 @@ def test_under_inside_a_quoted_leaf_title_is_the_titles():
     assert B.effect('leaf "profile under load"') == ("leaf", None, "profile under load")
     assert B.effect("leaf 'profile under load' under users") == ("leaf", "users", "profile under load")
     assert B.effect("leaf a sample under users") == ("leaf", "users", "a sample")
+
+
+def test_an_edit_with_no_board_still_forgets_a_planners_sentence_whose_tree_is_gone(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        store.set_meta("goal:proposed", "a sentence whose tree is gone")
+        text, opened = T.render(store)
+        T.apply(store, text, ALEX, opened)
+        assert store.meta("goal:proposed") is None
