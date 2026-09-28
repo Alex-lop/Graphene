@@ -408,3 +408,28 @@ def test_watch_once_in_a_view_that_is_the_outline_says_what_just_happened(repo, 
     proposed(repo)
     once = person("watch", "--once").stdout
     assert "just now" in once and person("watch", "--once", "--view", "auto").stdout == once
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_help_lists_tab_and_h_l_only_when_there_is_a_view_and_on_one_line(repo, size, monkeypatch):
+    """The help advertised Tab and h l with only the outline registered, and Tab's row wrapped at 80."""
+    proposed(repo)
+
+    def help_says():
+        app = Watch(repo, lambda: Store.open(repo), every=60)
+
+        async def go():
+            async with app.run_test(size=size) as pilot:
+                await pilot.press("question_mark")
+                await pilot.pause()
+                return "\n".join(str(s.render()) for s in app.screen.query("Static"))
+
+        return asyncio.run(go())
+
+    monkeypatch.setattr(V, "VIEWS", {"outline": None})
+    alone = help_says()
+    assert "graphene watch --view" not in alone and "in a view" not in alone
+    monkeypatch.setattr(V, "VIEWS", {"outline": None, "grid": Grid})
+    said = help_says()
+    assert "Tab" in said and "in a view: the node to the left" in said
+    assert any("Tab" in line and "(graphene watch --view)" in line for line in said.splitlines())

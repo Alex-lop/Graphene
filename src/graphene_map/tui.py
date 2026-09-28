@@ -57,7 +57,7 @@ HELP = (
     ("move", (
         ("j k", "down, up"), ("gg G", "the goal, the last row"), ("/", "search; n the next match"),
         ("Esc", "ends a search, a selection, a pane"),
-        ("Tab", "the next view of the plan that fits, then the outline again (graphene watch --view)"),
+        ("Tab", "the next view that fits (graphene watch --view)"),
         ("h l", "in a view: the node to the left, to the right"),
     )),
     ("fold", (("za", "fold or unfold here (on the goal: all)"),
@@ -345,6 +345,13 @@ def help_text(groups, wide: int) -> Text:
     return out.render()
 
 
+def help_groups() -> tuple:
+    """HELP, less the keys of the views when the outline is the only one."""
+    if len(V.VIEWS) > 1:
+        return HELP
+    return tuple((name, tuple(r for r in rows if r[0] not in ("Tab", "h l"))) for name, rows in HELP)
+
+
 class Help(ModalScreen[None]):
     """The keys, grouped as the README groups them: two columns from 110 columns, one below."""
 
@@ -372,11 +379,12 @@ class Help(ModalScreen[None]):
         column = min(56, (width - 10) // 2) if two else max(width - 8, 30)
         with VerticalScroll():
             with Horizontal(id="help"):
+                groups = help_groups()
                 if two:
-                    yield Static(help_text(HELP[:3], column))
-                    yield Static(help_text(HELP[3:], column))
+                    yield Static(help_text(groups[:3], column))
+                    yield Static(help_text(groups[3:], column))
                 else:
-                    yield Static(help_text(HELP, column))
+                    yield Static(help_text(groups, column))
             yield Static(Text("\n".join(textwrap.wrap(HELP_END, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
