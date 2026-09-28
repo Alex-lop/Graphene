@@ -50,6 +50,8 @@ def named(spec: str | None) -> str:
 def label(template: str) -> str:
     argv = shlex.split(template)
     return "nemotron" if "graphene_map.planner" in argv else Path(argv[0]).name
+
+
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 _START = re.compile(r"^(?:goal:|question:|assume:|risk:|leave out:|note:|[-*+?][ \t])", re.MULTILINE)
 
@@ -124,7 +126,12 @@ def prompt_for(store, sentence: str, about: str | None = None, split: bool = Fal
                 f"Split {about} into smaller leaves: write its line with its [{about}], and the new leaves "
                 "under it; together they do all of it, and its check still says it is done."
             )
-    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)", "", RULES]
+    lines += ["", "The plan as it stands:", text.rstrip() or "(empty: nothing is planned yet)"]
+    gone = B.dropped(store)
+    if gone:
+        lines += ["", "The person dropped these from the board; do not put them up again:"]
+        lines += [f"- {words}" for words in gone]
+    lines += ["", RULES]
     return "\n".join(lines)
 
 

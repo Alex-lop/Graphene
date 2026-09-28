@@ -134,6 +134,11 @@ def decided(store, node: P.Node | None = None) -> list[str]:
     return [said(it) for it in items(store) if told(it) and it.get("about") in on]
 
 
+def dropped(store) -> list[str]:
+    """The words of what the person dropped, for a planner that is asked again not to bring it back."""
+    return [it["text"] for it in items(store) if it["state"] == "dropped"]
+
+
 def conditions(store) -> list[str]:
     """The conditions the person chose on the board (``then: condition GLOB``), in the order chosen."""
     return [c for it in items(store) if it["state"] in DECIDED for c in it.get("conditions", [])]
@@ -507,9 +512,15 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
         _orphans(found, opened)
     said: list[str] = []
     board = {it["id"]: it for it in items(store)}
+    gone = {_one(it["text"]).lower(): it["id"] for it in board.values() if it["state"] == "dropped"}
     seen: dict[str, int] = {}
     for f in found:
         at = f["at"]
+        if opened is None and not who.person and _one(f["text"]).lower() in gone:
+            said.append(
+                f"not put up again: {f['text']} (the person dropped it as {gone[_one(f['text']).lower()]})"
+            )
+            continue
         if f["id"] in seen:
             raise P.Refused(
                 f"line {f['no']}: [{f['id']}] is on line {seen[f['id']]} too; give each its own id"

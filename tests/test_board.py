@@ -502,3 +502,17 @@ def test_the_board_fits_80_columns_with_the_longest_id_an_agents_note_and_a_long
         line.rstrip().endswith("  abcdefghijklmnopqrstuvwxyz012345  open") for line in shown
     )  # whole id
     assert any(line.startswith("         then: scope users + pyproject.toml") for line in shown)
+
+
+def test_what_the_person_dropped_is_told_to_the_planner_and_not_put_up_again(repo):
+    from graphene_map.ask import prompt_for
+
+    with Store.open(repo) as store:
+        T.apply(store, "risk: a planner item added later  [later]\n", PLANNER, None)
+    assert person("board", "drop", "later").exit_code == 0
+    with Store.open(repo) as store:
+        prompt = prompt_for(store, "again")
+        assert "do not put them up again:\n- a planner item added later\n" in prompt
+        said = T.apply(store, "risk: A planner item  added later  [later]\n", PLANNER, None)
+        assert said == ["not put up again: A planner item added later (the person dropped it as later)"]
+        assert [it["state"] for it in B.items(store)] == ["dropped"]
