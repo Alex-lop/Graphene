@@ -154,3 +154,17 @@ def test_a_dismissed_clause_is_not_flagged_again(repo, fake):
     with Store.open(repo) as store:
         assert len(store.node_log("*", ("uncovered",))) == 1 and C.standing(store) == []
     assert person("plan", "cover", "--dismiss", "1").exit_code == 1  # the last cover found none
+
+
+@pytest.mark.parametrize("flag", ["", "notes,cover"])
+def test_the_flag_runs_it_once_the_proposal_has_landed(repo, fake, monkeypatch, flag):
+    from graphene_map.ask import ask, named
+
+    monkeypatch.setenv("GRAPHENE_SHAPE", flag)
+    f = fake([{"content": f"```plan\n{PLAN}```"}, nano(ANSWER)])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, PARAGRAPH, named("nemotron"), say=said.append)
+        assert P.get(store, "xml-wiring").state == P.PROPOSED  # the proposal stands either way
+    assert len(f.requests) == (2 if flag else 1)
+    assert any(f"You said '{SAID}'" in line for line in said) == bool(flag)

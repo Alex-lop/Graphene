@@ -20,6 +20,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from . import cover
 from . import plan as P
 from . import plan_text as T
 from .run import _splits, command_for
@@ -176,6 +177,8 @@ def ask(
                     say("the planner says:")
                     for line in said_lines:
                         say(f"  {line[:300]}")
+                if about is None:  # GRAPHENE_SHAPE: what reads the proposal once it has landed
+                    cover.after_ask(store, sentence, say)
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
