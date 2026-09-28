@@ -68,8 +68,8 @@ def _from_keychain() -> str | None:
 def set(key: str) -> None:  # noqa: A001 - keys.set reads as what it does
     """Keep ``key`` in the keychain, replacing any there. Raises RuntimeError, without the key, on failure."""
     key = key.strip()
-    if not key or any(c.isspace() or c in "\"'\\" for c in key):
-        raise RuntimeError("a Token Factory key is one word: no spaces or quotes")
+    if not key or any(c.isspace() or c in "\"'\\" for c in key) or not (key.isascii() and key.isprintable()):
+        raise RuntimeError("a Token Factory key is one word of plain ASCII: no space, quote or pasted dash")
     if PLATFORM == "darwin":
         done = _run(["security", "-i"], f'add-generic-password -U -s {SERVICE} -a {ACCOUNT} -w "{key}"\n')
     elif PLATFORM.startswith("linux"):

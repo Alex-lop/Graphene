@@ -94,3 +94,74 @@ def test_a_leaf_that_a_later_setting_covers_is_refused_at_start_naming_it(store,
     with pytest.raises(Refused, match="protected: src/db/"):
         plan.start(store, "a", BOT, repo)
     assert plan.get(store, "a").state == "open"
+
+
+def _ignored_env(tmp_path):
+    """The README's own example: `.env` is protected and git ignores it."""
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    (repo / ".gitignore").write_text("build/\n.env\n")
+    (repo / ".env").write_text("SECRET=real\n")
+    with Store.open(repo) as store:
+        S.apply(store, "protected: .env\n", ALEX)
+    G.holding(repo)
+    return G, repo
+
+
+def test_a_shell_write_to_a_protected_path_git_ignores_is_refused(tmp_path):
+    """A build leftover git ignores is nobody's change, but a standing path is never a leftover."""
+    G, repo = _ignored_env(tmp_path)
+    assert G.write(repo, ".env") is not None
+    for command in ("echo pwned > .env", "cp /dev/null .env"):
+        assert "protected: .env" in G.reason(G.bash(repo, command))
+    assert G.bash(repo, "echo x > build/out.txt") is None  # a leftover is still nobody's
+    changed = {"changedFiles": [str(repo / ".env")]}
+    after = G.hook(repo, "PostToolUse", tool_name="Bash", tool_response={"bashEditDiff": changed})
+    assert after is not None and after["decision"] == "block" and ".env" in after["reason"]
+
+
+def test_done_refuses_a_changed_protected_path_git_ignores(tmp_path):
+    """git never reports it, so `done` compares it with what it was when the leaf was started."""
+    G, repo = _ignored_env(tmp_path)
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    (repo / ".env").write_text("SECRET=pwned\n")
+    with Store.open(repo) as store:
+        with pytest.raises(Refused, match=r"it changed \.env, which the setting `protected: \.env`"):
+            plan.finish(store, "n1", G.BOT)
+    (repo / ".env").write_text("SECRET=real\n")
+    with Store.open(repo) as store:
+        assert plan.finish(store, "n1", G.BOT).state == DONE
+
+
+def test_an_asides_record_never_calls_a_standing_path_in_scope(ruled, repo):
+    """An aside is a record, not a fence, so it closes; its record judges the scope as it binds, as the
+    store's own `outside` does, and never calls a protected path in scope."""
+    from graphene_map import node_record as NR
+
+    plan.propose(ruled, [{"id": "t", "title": "typo", "scope": ["**"]}], ALEX, aside=True)
+    plan.start(ruled, "t", ALEX, repo)
+    (repo / "src/db/schema.py").write_text("TABLES = [1]\n")
+    (repo / "src/api/users.py").write_text("x = 1\n")
+    plan.close_aside(ruled, "t", ALEX)
+    lines = NR.render(NR.node_record(ruled, repo, plan.get(ruled, "t")))
+    assert "    outside the scope: src/db/schema.py  (git, when it ended)" in lines
+    assert "    in scope: src/api/users.py  (git, when it ended)" in lines
+    assert any("had changed under this node, 1 inside its scope" in line for line in lines)
+    rolled = NR.rolled_up(ruled, repo, [plan.get(ruled, "t")])
+    assert any("2 paths git said had changed under them, 1 inside the scope" in line for line in rolled)
+
+
+def test_an_aside_is_refused_a_case_variant_of_a_standing_path(tmp_path):
+    """On a Mac's disk SECRETS/a.txt is secrets/a.txt: the hook judges what the write reaches."""
+    import test_gate as G
+
+    repo = G.repo.__wrapped__(tmp_path)
+    with Store.open(repo) as store:
+        S.apply(store, "protected: src/db/**\n", ALEX)
+        plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
+    G.plan_first(repo, False)
+    G.hook(repo, "UserPromptSubmit", prompt="fix the schema")
+    assert "protected: src/db/**" in G.reason(G.write(repo, "SRC/DB/schema.py"))
+    assert "protected: src/db/**" in G.reason(G.bash(repo, "echo pwned > src/DB/schema.py"))
+    assert G.write(repo, "src/api/users.py") is None

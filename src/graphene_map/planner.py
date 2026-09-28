@@ -68,7 +68,7 @@ class Repo:
     def __init__(self, root: Path, hidden: list[str] = ()):
         self.root = root
         files = P.in_tree(root)  # what git shows: never what it ignores (a .env), never .graphene/
-        self.files = [f for f in files if not P.in_scope(f, list(hidden))]
+        self.files = [f for f in files if not P.covers(list(hidden), f)]
         self.shown = set(self.files)
 
     def _inside(self, path: str) -> Path | None:

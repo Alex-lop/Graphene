@@ -501,7 +501,7 @@ def _shown(root: Path, source: Path) -> list[str]:
 def unprotected(store: Store, files: list[str]) -> list[str]:
     """``files`` less the protected paths the person set (`graphene config`): what the model may see."""
     hidden = settings.protected(store)
-    return [f for f in files if not P.in_scope(f, hidden)]
+    return [f for f in files if not P.covers(hidden, f)]
 
 
 def _in_scope_state(root: Path, scope: list[str], source: Path) -> dict[str, bytes]:
