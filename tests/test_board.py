@@ -527,3 +527,9 @@ def test_a_condition_is_said_to_be_recorded_for_the_settings_never_changed(repo)
     assert "      recorded: condition vendor/**, for the settings" in person("board").stdout
     with Store.open(repo) as store:
         assert B.conditions(store) == ["vendor/**"]  # the seam the settings read
+
+
+def test_under_inside_a_quoted_leaf_title_is_the_titles():
+    assert B.effect('leaf "profile under load"') == ("leaf", None, "profile under load")
+    assert B.effect("leaf 'profile under load' under users") == ("leaf", "users", "profile under load")
+    assert B.effect("leaf a sample under users") == ("leaf", "users", "a sample")

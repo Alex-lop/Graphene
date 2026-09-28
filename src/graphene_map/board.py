@@ -41,7 +41,8 @@ _EFFECTS = (
     ("scope", re.compile(r"scope\s+(?P<node>[^\s+]+)\s*\+\s*(?P<arg>.+)")),
     ("check", re.compile(r"check\s+(?P<node>[^\s:]+)\s*:\s*(?P<arg>.+)")),
     ("drop", re.compile(r"drop\s+(?P<node>\S+)")),
-    ("leaf", re.compile(r"leaf\s+(?P<arg>.+?)(?:\s+under\s+(?P<node>\S+))?")),
+    # a quoted title is whole ("profile under load"); unquoted, the last "under NODE" names the node
+    ("leaf", re.compile(r"leaf\s+(?P<arg>\"[^\"]*\"|'[^']*'|.+?)(?:\s+under\s+(?P<node>\S+))?")),
     ("condition", re.compile(r"condition\s+(?P<arg>.+)")),
 )
 ORPHAN = "delete them with the item's line to drop it, or put its line back"
