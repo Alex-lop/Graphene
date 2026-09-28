@@ -4,7 +4,8 @@ Graphene keeps a plan that a person and their coding agents share, holds executo
 keeps a record of what was done for each node. No model decides anything here: the plan, the boundary
 and the record are computed from the plan's own rows, from git, and from what the executors record. A
 model is called only by the planner and the executor you name, Graphene's Nemotron ones included
-(P4b).
+(P4b), and by the prototypes of P4d when you run them, whose answers are offered and applied only
+when you take them.
 
 Part one is the plan and what makes it bind. Part two is the record underneath it.
 
@@ -590,6 +591,35 @@ an agent is never asked, at a terminal or not. An agent's plain `graphene init` 
 that is not set, with the one thing found here when exactly one is. The screen's status line names what `R` starts (`R runs 3 ready
 with nemotron`) only where the long form still fits with it.
 
+## P4d. Nano while the person shapes: three prototypes
+
+These three are ranked in `docs/process/ideas.md`, and have run only against a scripted stand-in for
+Token Factory (`tests/fake_tokenfactory.py`). Each is a command, and each is the person's, since it
+spends. `GRAPHENE_SHAPE` (comma-separated: `cover`, `note`, `precheck`) also runs them on their own.
+They read the plan after it has landed, so they work whichever planner proposed it. Whatever they put
+on the board is put up by `shaper:nemotron` and waits on the person.
+
+| Prototype | Command | What it does | With `GRAPHENE_SHAPE` |
+| --- | --- | --- | --- |
+| Your words, accounted for (`cover.py`) | `graphene plan cover [--paragraph FILE] [--take N] [--dismiss N]` | One Nano call, in a JSON schema, says which node carries each clause of the paragraph (the last one `graphene ask` was given). A clause is kept only when its words are in the paragraph, so an invented one is dropped; a clause no node carries is offered, verbatim, for the end of the nearest leaf's goal (`--take N`), or set aside for good (`--dismiss N`) | after each `graphene ask`, each clause no leaf carries is a note on the board whose default, taken, adds it |
+| Notes find their leaf (`note.py`) | `graphene plan note "SENTENCE"` | One Nano call picks the open or proposed leaf the sentence constrains, and what to add to its scope, check or goal. Graphene checks the answer: the leaf is there, an added glob matches a tracked file or falls under the scope, a check names nothing no leaf may create, and the change, made and rolled back, is one the plan takes. Only then is it printed as the `graphene node set` (or `node add`) that makes it. Nothing changes until the person runs it | `graphene board note` routes the note too, and puts the offer up as a note whose default, taken, makes the change |
+| Red first (`precheck.py`) | `graphene plan precheck [IDS] [--prepare CMD] [--again]` | Each check runs once at the commit the work starts from. A proposed leaf's check was written by a planner, so it runs only in a sandbox fork (ConTree, or Docker with `GRAPHENE_SANDBOX=docker`) and is `not run` with no sandbox. An accepted leaf's runs here, as `done` runs it. Exit 0 is `passes already`; 126, 127, pytest's 4 and 5, `command not found` and `No module named` are `cannot run`. Nano is asked only about a red whose reason those do not say. Each verdict is a `precheck` row at the leaf's revision and commit, and goes stale when either moves | after a proposal lands, its leaves' checks are run and each that cannot tell its leaf is done is a risk on the board |
+
+**The practice ladder** (`docs/test/practice.sh`, `docs/test/PRACTICE.md`) is the first hour with a key,
+one rung at a time:
+1. access;
+2. one leaf local;
+3. one leaf in a Sandbox;
+4. the escape test there;
+5. a recorded leaf;
+6. arms A and B on feeds;
+7. the demo run.
+
+Each rung has its own spend cap (`GRAPHENE_SPEND_CAP_USD` on top of what the ladder has spent), and
+prints one PASS or FAIL line, the bill so far, and the next command; a failure says what it most likely
+means. `--dry` climbs all seven against the scripted fake and Docker. Live, rungs 2 to 7 run nothing
+from a shell with an agent's mark.
+
 ## P5. Where each mechanism ends
 
 - A shell command can write a file in a way no parser reads (a script that opens files itself).
@@ -830,9 +860,10 @@ written.
 
 ## 5. What Graphene never does
 
-It calls a model only when you name its Nemotron planner or executor (P4b). Then it sends Token Factory
-the prompts about your repository and the files the model reads, and Sandboxes the leaf's checkout, and
-nothing else, anywhere. The key is read from your environment at each call and written nowhere. It
+It calls a model only when you name its Nemotron planner or executor (P4b), or run a prototype of P4d
+(which asks Nano). Then it sends Token Factory the prompts about your repository and the files the
+model reads, and Sandboxes the leaf's checkout, and nothing else, anywhere. The key is read from your
+environment, else the keychain, and written nowhere but the keychain, by `graphene key set`. It
 never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
 permissions you give them; nothing else in Graphene starts an agent. It reads nothing Claude Code keeps under `~/.claude/`
