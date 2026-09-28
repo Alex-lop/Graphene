@@ -153,6 +153,8 @@ class Local:
 class Leaf:
     """One leaf's tools, as the model calls them."""
 
+    tools, nudge = TOOLS, NUDGE  # what the model is offered, and told when it calls none (arm A: its own)
+
     def __init__(self, store: Store, node: P.Node, place, repo: Path, session: str):
         self.store, self.node, self.place, self.repo, self.session = store, node, place, repo, session
         self.source = place.root  # the git checkout its files come from (a fork's copy has no .git)
@@ -422,7 +424,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         if stopped():
             return None
         _compact(messages)
-        said = tf.chat(model, messages, TOOLS if args.protocol == "native" else None, tag=leaf.node.id,
+        said = tf.chat(model, messages, leaf.tools if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
         with _SHARED:
             bill["calls"] += 1
@@ -453,7 +455,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if cut and params.get("max_tokens"):
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
                 print(f"{tag}{step:>3} cut off at the token limit; now {params['max_tokens']}", flush=True)
-            messages.append({"role": "user", "content": CUT if cut else NUDGE})
+            messages.append({"role": "user", "content": CUT if cut else leaf.nudge})
             continue
         for c in calls:
             if stopped():
