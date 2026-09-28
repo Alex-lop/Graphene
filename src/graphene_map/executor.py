@@ -39,7 +39,7 @@ from pathlib import Path
 from . import gate, settings
 from . import plan as P
 from . import tokenfactory as tf
-from .run import GRACE, REFUSED
+from .run import GRACE, REFUSED, _alive
 from .store import Store, repo_root
 
 PROMPT_VERSION = 1
@@ -131,12 +131,11 @@ class Local:
         try:
             out, _ = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
+            _kill(proc)
             out, _ = proc.communicate()
             return 124, out.decode("utf-8", "replace") + f"\n(stopped after {timeout} s)"
         except BaseException:  # a stopped run: nothing the model started outlives it
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait()
+            _kill(proc)
             raise
         return proc.returncode, out.decode("utf-8", "replace")
 
@@ -148,6 +147,18 @@ class Local:
 
     def close(self) -> None:
         pass
+
+
+def _kill(proc: subprocess.Popen) -> None:
+    """KILL to a command's session, and back only once none of it is left: a process the command
+    started is there a moment after the KILL (until it runs to die, and until its new parent reaps
+    it), and a stop said before then left it behind (CI caught one)."""
+    with contextlib.suppress(ProcessLookupError):  # it ended just now
+        os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+    until = time.monotonic() + 5
+    while _alive(-proc.pid) and time.monotonic() < until:  # a negative pid names its process group
+        time.sleep(0.01)
 
 
 class Leaf:
