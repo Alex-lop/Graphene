@@ -1755,3 +1755,24 @@ def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
     for argv in words:
         assert shlex.split(typed(argv)) == argv
     assert typed(["ask", "Don't touch it"]) == "ask \"Don't touch it\""
+
+
+def test_an_ask_that_adds_nothing_says_so(repo):
+    """Walk 2026-09-28: `+` whose planner added nothing said `the planner: the planner says:; what it
+    said is in the pane`, so the person could not tell whether it had done anything."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (python3)…\nthe planner says:\n  nothing to add\n")
+
+    class Ended:
+        def wait(self):
+            return 0
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "--finer", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("the planner proposed nothing and put nothing on the board"), said

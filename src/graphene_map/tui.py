@@ -1766,8 +1766,14 @@ class Watch(App):
             f"{mark}graphene {as_typed(named)} ended: {gist}"
         )  # fmt: skip
         made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
+        put = [line.removeprefix("put up ").split(":")[0] for line in news if line.startswith("put up ")]
         if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
-            told = mark + (f"the planner proposed {', '.join(made)}" if made else f"the planner: {gist}")
+            did = [*([f"proposed {', '.join(made)}"] if made else []),
+                   *([f"put {', '.join(put)} on the board"] if put else [])]  # fmt: skip
+            if did or code:
+                told = mark + (f"the planner {' and '.join(did)}" if did else f"the planner: {gist}")
+            else:  # its prose alone said nothing was added, and the person could not tell
+                told = "the planner proposed nothing and put nothing on the board"
             told += "; what it said is in the pane"
         with contextlib.suppress(Exception):  # the screen may be gone by now
             self.call_from_thread(self.finished, told, "\n".join(whole))
