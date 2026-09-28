@@ -543,7 +543,7 @@ def test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up(repo):
         T.apply(store, example, plan.Caller("claude:x", False, "s"), None)
         assert [(it["kind"], it["id"]) for it in board.items(store)] == [
             ("question", "q-id"),
-            ("assume", "a-id"),
+            ("risk", "r-id"),
         ]
         board.pick(store, "q-id", 1, plan.Caller("alex", True))  # the option's then: line reaches the leaf
         assert plan.get(store, "leaf-id").goal.endswith(". what the leaf does instead, in a sentence")

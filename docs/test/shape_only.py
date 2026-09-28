@@ -6,7 +6,7 @@
     docs/test/shape_only.py brief TASK ARM      the stand-in's brief for that copy
 
 ARM is `outline` or `board` (results-2026-09-28-shaping.md, "Study 2"). `setup` makes
-~/graphene-shaping-runs/TASK-shape-planned in newrun.sh's run-dir layout (repo/, base.sha,
+$SHAPE_RUNS/TASK-shape-planned (default ~/graphene-shaping-runs) in newrun.sh's layout (repo/, base.sha,
 runlog.jsonl, tmp/, env.sh) and prints that path; the coordinator then runs `graphene ask` in its
 repo/, once. `fork` copies the whole directory to TASK-shape-ARM-1, so both arms start from the same
 proposal byte for byte, and gives the copy an empty run log and its own env.sh. `brief` pastes the
@@ -30,8 +30,9 @@ sys.path.insert(0, str(HERE))
 from make_task import build  # noqa: E402
 from standin import card  # noqa: E402
 
-RUNS = Path.home() / "graphene-shaping-runs"
-BIN = Path.home() / "graphene-shaping-venv" / "bin"
+# Study 3 sets SHAPE_RUNS and SHAPE_BIN to its own runs directory and venv; unset, they are study 2's.
+RUNS = Path(os.environ.get("SHAPE_RUNS", Path.home() / "graphene-shaping-runs"))
+BIN = Path(os.environ.get("SHAPE_BIN", Path.home() / "graphene-shaping-venv" / "bin"))
 NEWRUN = (HERE / "newrun.sh").read_text(encoding="utf-8")
 UNMARK = re.search(r"^UNMARK=.*$", NEWRUN, re.M).group(0)
 ENV_SH = re.search(r'^cat > "\$DIR/env\.sh" <<EOF\n.*?^EOF$', NEWRUN, re.M | re.S).group(0)

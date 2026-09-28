@@ -245,3 +245,45 @@ def test_the_planner_is_refused_a_write_before_anything_is_accepted(repo, monkey
     proposal = "- ids  [ids]\n    scope: api.py\n    check: true\n"
     assert runner.invoke(build(), ["plan", "propose", "-"], env=AGENT_ENV, input=proposal).exit_code == 0
     assert "you are the planner" in told("echo x > api.py")  # a proposal only: nothing in force
+
+
+ONLY_WHAT_CHANGES = """
+import json, os, sys
+open(os.environ["SEEN"], "a").write(json.dumps({"prompt": sys.argv[-1]}) + "\\n")
+print("```plan")
+print("question: are the ids the row ids?  [which-id]")
+print("    default: the row id")
+print("    option: a public uuid")
+print("    then: scope ids + schema.py")
+print("? users returns ids  [ids]")
+print("    Return the row ids. The ids are integers, as schema.py has them.")
+print("    scope: api.py")
+print("    check: grep -q ids api.py")
+print("```")
+"""
+
+
+def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):
+    """Study 2: answering the board cost about twice the outline's attention, mostly in reading. The
+    planner is told: at most three items, each a question or a risk whose answers carry then: lines,
+    and an assumption it is confident of goes in the goal of its leaf, not on the board."""
+    said = person(
+        "ask", "users come back with ids", "--with", planner(tmp_path, ONLY_WHAT_CHANGES, monkeypatch)
+    )
+    assert said.exit_code == 0, said.output
+    prompt = " ".join(json.loads((tmp_path / "seen.jsonl").read_text())["prompt"].split())
+    for rule in (
+        "The board carries only what changes the tree: put up at most three items",
+        "An assumption you are confident of is not an item: write it as a sentence in the goal of the leaf",
+        "Never put up an item whose answer would change nothing in the tree.",
+        "An item none of whose answers carries a then: line changes nothing: do not put it up.",
+    ):
+        assert rule in prompt, rule
+    assert "assume:" not in prompt and "leave out:" not in prompt
+    from graphene_map import board as B
+
+    with Store.open(repo) as store:
+        assert [(it["kind"], it["id"]) for it in B.items(store)] == [("question", "which-id")]
+        assert "The ids are integers" in plan.get(store, "ids").goal
+        B.pick(store, "which-id", 1, Caller("alex", True))
+        assert "schema.py" in plan.get(store, "ids").scope
