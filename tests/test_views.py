@@ -145,6 +145,17 @@ def test_the_views_first_line_is_the_goal_and_its_keys_are_the_goal_rows(repo, g
 
 
 @pytest.mark.parametrize("size", SIZES)
+def test_a_drop_in_a_view_keeps_the_place_the_next_node_as_the_outline_does(repo, grid, size):
+    """A drop sent the cursor to the view's first node, and a long plan scrolled to its top."""
+    proposed(repo)
+    nodes = order(repo)
+    seen = look(repo, ["tab", "j", "j", "j", "d"], size)  # nodes[2] dropped: the cursor on the next
+    assert states(repo)[nodes[2]] == "dropped" and seen["cursor"] == nodes[3]
+    seen = look(repo, ["tab", "G", "d"], size)  # the last dropped: the one before it
+    assert states(repo)[nodes[3]] == "dropped" and seen["cursor"] == nodes[1]
+
+
+@pytest.mark.parametrize("size", SIZES)
 def test_y_d_and_e_act_on_the_node_under_the_views_cursor(repo, grid, size, monkeypatch):
     proposed(repo)
     nodes = order(repo)

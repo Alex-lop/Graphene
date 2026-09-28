@@ -871,16 +871,27 @@ class Watch(App):
 
     def draw_view(self, name: str) -> V.Drawn | None:
         """A registered view drawn at the room it has, its cursor on the node under the cursor, or on
-        its first node when that one is not in it; None when it does not fit."""
+        the one standing in for it when the view has no cell for it; None when it does not fit."""
         view = V.VIEWS.get(name)
         if view is None:
             return None
         width, height = self.view_room()
         drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
-            self.here = drawn.order[0] if drawn.order else None
+            self.here = self.stand_in(drawn)
             drawn = view.draw(self.nodes, self.words, self.goal_text, width, height, self.here)
         return drawn
+
+    def stand_in(self, drawn: V.Drawn) -> str | None:
+        """The cell for a node a view has none for: its first node. A node gone from the plan (dropped):
+        the next in the order it was in, else the one before, as the outline moves. Else the goal."""
+        if self.here in self.by_id:
+            return drawn.order[0] if drawn.order else None
+        was = self.drawn.order if self.drawn is not None else []
+        if self.here not in was:
+            return None
+        k = was.index(self.here)
+        return next((i for i in [*was[k + 1 :], *reversed(was[:k])] if i in drawn.at), None)
 
     def paint(self, show: bool) -> None:
         """The view where the outline goes, when it is not the outline: its lines, with its cursor and
