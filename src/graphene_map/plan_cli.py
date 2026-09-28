@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ import typer
 from . import gate as G
 from . import plan as P
 from . import plan_text as T
+from . import views as V
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
 NO_PLAN = (
@@ -374,6 +376,11 @@ def register(cli: typer.Typer, root, open_store, fail):
             False, "--text", help="The plan as text: the form `plan edit` opens and `propose` reads."
         ),
         everything: bool = typer.Option(False, "--all", help="Unfold the tree: finished work included."),
+        view: str = typer.Option(
+            None, "--view", help=f"Print it as this view: {', '.join(['auto', *V.VIEWS])} (the screen's Tab)."
+        ),
+        width: int = typer.Option(None, "--width", help="With --view: the columns ($COLUMNS if left out)."),
+        height: int = typer.Option(None, "--height", help="With --view: the rows ($LINES if left out)."),
     ) -> None:
         """Print the plan as a tree: what waits on you, then what is moving. Finished work is folded."""
         if ctx.invoked_subcommand is not None:
@@ -382,6 +389,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if as_text:
             run(lambda s: out(T.render(s)[0].rstrip("\n")))
             return
+        if view:
+            return print_view(view, width, height)
         run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who, everything))
 
     @plan_cli.command("goal")
@@ -409,6 +418,34 @@ def register(cli: typer.Typer, root, open_store, fail):
             for e in recent:
                 out(log_line(e, with_node=8))
 
+    def known_view(name: str) -> None:
+        if name != "auto" and name not in V.VIEWS:
+            fail(f"no view named {name}: the views are {', '.join(['auto', *V.VIEWS])}", 2)
+
+    def print_view(name: str, width: int | None, height: int | None) -> None:
+        """`graphene plan --view NAME`: the plan as that view draws it, in plain text, at $COLUMNS (or
+        --width) by $LINES (or --height), for a script, a test or a stand-in; what the screen shows
+        when Tab reaches it. `auto` is the view that suits the plan at that size. A view that does not
+        fit prints the outline, and says so, as the screen does."""
+        known_view(name)
+        size = shutil.get_terminal_size()
+        width, height = width or size.columns, height or size.lines
+
+        def show(store) -> None:
+            nodes, words, goal = V.inputs(store)
+            chosen = V.choose(nodes, width, height) if name == "auto" else name
+            drawn = V.VIEWS[chosen].draw(nodes, words, goal, width, height, None) if V.VIEWS[chosen] else None
+            if drawn is None or not nodes:
+                if chosen != "outline" and nodes:
+                    typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)
+                return print_plan(store, P.caller())
+            for line in drawn.lines:
+                out(line.plain.rstrip())
+            if drawn.note:
+                out(drawn.note)
+
+        run(show)
+
     @cli.command()
     def watch(
         everything: bool = typer.Option(
@@ -418,12 +455,22 @@ def register(cli: typer.Typer, root, open_store, fail):
         once: bool = typer.Option(
             False, "--once", help="Print the plan once, with what just happened, and leave."
         ),
+        view: str = typer.Option(
+            None,
+            "--view",
+            help=f"Open in this view: {', '.join(['auto', *V.VIEWS])}. Tab goes to the next that fits. "
+            "Left out: the repository's `view` setting, else the outline.",
+        ),
     ) -> None:
         """The plan on one screen, live, with vim keys: the tree, the node under the cursor, the
         executors as they work. Every key is a command you could type (the bottom line says which);
         `?` lists them, `q` leaves. `--once` prints the plan instead, for a script or a terminal you
         do not want to give up."""
         who = P.caller()
+        if view:
+            known_view(view)
+        if (once or not sys.stdout.isatty()) and view not in (None, "outline"):
+            return print_view(view, None, None)
         if once or not sys.stdout.isatty():
             return print_once(who, everything)
         try:
@@ -437,7 +484,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
 
         r = root()
-        watch_tui(r, lambda: open_store(r), every)
+        watch_tui(r, lambda: open_store(r), every, view)
 
     @cli.command()
     def demo(
