@@ -1438,8 +1438,11 @@ class Watch(App):
         words = text[1:].strip().removeprefix("graphene ").strip()
         if not words:
             return
+        read = words  # `:ask don't … isn't`: apostrophes, not a quote, unless the sentence is in "…"
+        if re.match(r"ask\s", words) and '"' not in words:
+            read = re.sub(r"(?<=\w)'(?=\w)", r"\\'", words)
         try:
-            argv = shlex.split(words)
+            argv = shlex.split(read)
         except ValueError as no:
             if re.match(r"ask\s", words):  # `:ask don't …`: not the shell's, so the sentence as typed
                 return self.background(["ask", words[3:].strip()])
