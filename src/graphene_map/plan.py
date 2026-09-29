@@ -1919,8 +1919,9 @@ def finish(
     checkout: str | Path | None = None,
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
-    (or waiting for its sign-off). A person may overrule either with a reason, and the log says so."""
-    now = now or _now()
+    (or waiting for its sign-off). A person may overrule either with a reason, and the log says so.
+    Unless ``now`` is given, what the check decides is stamped when the check has run."""
+    stamped, now = now is not None, now or _now()
     node = get(store, node_id)
     began = node.started_at  # the hold this `done` answers for: it may be let go, and taken again, meanwhile
     if kids(nodes(store)).get(node.id):
@@ -1993,6 +1994,7 @@ def finish(
             None,
             {"command": node.check, "output": output},
         )
+        now = now if stamped else _now()  # it finishes once its check has passed, not when `done` was said
     if len(theirs) < len(aside):
         raise _stray(store, node, who, now, [p for p in stray if p not in theirs])
     changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names

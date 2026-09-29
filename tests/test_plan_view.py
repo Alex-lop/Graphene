@@ -407,3 +407,17 @@ def test_every_hole_a_control_has_is_printed_with_it(store, repo):
     assert set(view["holes"]) == {"scope", "check", "stop", "person"}
     assert all(sentence and sentence[-1] == "." for sentence in view["holes"].values())
     assert view["holes"] == HOLES and view["nodes"] == [] and view["lanes"] == []
+
+
+def test_a_nodes_log_is_stamped_in_the_order_it_happened_its_check_before_it_finished(store, repo):
+    """walks.md alex 12: the page listed `finished … 05:17:34` after `check_passed … 05:17:35`. The node
+    finishes when its check has passed, so `finished` is stamped then, not when `done` was called."""
+    plan.propose(store, [node("a", scope=["README.md"], check="sleep 0.05")], ALEX)
+    plan.start(store, "a", BOT, repo)
+    (repo / "README.md").write_text("# done\n")
+    plan.finish(store, "a", BOT)
+    [shown] = build_plan_view(store)["nodes"]
+    kinds = [e["kind"] for e in shown["log"]]
+    assert kinds.index("check_passed") < kinds.index("finished")
+    stamps = [e["at"] for e in shown["log"]]
+    assert stamps == sorted(stamps) and shown["finished_at"] == shown["log"][-1]["at"]
