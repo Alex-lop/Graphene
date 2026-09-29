@@ -194,3 +194,22 @@ def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_
     elsewhere = set(re.findall(r"\b([0-9a-f]{7}) on its branch", said))
     for sha in set(re.findall(r"\b[0-9a-f]{7}\b", said)) - elsewhere:
         assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, sha
+
+
+def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows():
+    import importlib.util
+
+    said = doc("docs/test/LIVE_SESSION.md")
+    spans = re.findall(r"`([^`]+)`", said)
+    scripts = {s for span in spans for s in re.findall(r"[\w./-]+\.(?:py|sh)\b", span)}
+    assert {"docs/test/practice.sh", "docs/test/arm_bprime.py", "docs/demo/build.sh"} <= scripts
+    for script in scripts:  # a bare name is one of the harnesses beside it
+        where = [ROOT / script] if "/" in script else [ROOT / "docs" / d / script for d in ("test", "demo")]
+        assert any(p.is_file() for p in where), script
+    spec = importlib.util.spec_from_file_location("practice_named", ROOT / "docs/test/practice.py")
+    practice = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(practice)
+    usage = set(re.findall(r"practice\.sh (\w+)", practice.__doc__)) - {"N"}  # status, night, prototypes
+    knows = {str(n) for n in practice.RUNGS} | set(practice.STEPS) | usage
+    named = {m for span in spans for m in re.findall(r"practice\.sh (\w+)", span)}
+    assert named and named <= knows, named - knows
