@@ -1,0 +1,24 @@
+ the plan of …0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-feeds
+├   ◌ conditions: protected secrets/**, .env · read-only legacy/**            ▁
+├   ◇ how should an XML row with a missing price…    missing-price  asks
+├   ◇ the XML has one <item> per price row           one-item       assumes
+├   ◇ the contract test may only cover csv and json  contract       risk
+├   ◇ the legacy price import; nobody asked for it   legacy         leaves out
+├   ◇ keep the stdout JSONL shape                    shape          note
+└ ▼ ? the xml source                                 xml            proposed
+  ├   ? read the xml feed                            xml-reader     proposed
+  ├   ? register xml in READERS                      xml-register   proposed
+  └   ? say xml in the README                        xml-readme     proposed
+────────────────────────────────────────────────────────────────────────────────
+ say xml in the README
+ xml-readme · proposed by a Claude Code session (0feb67e8)
+
+ why    the xml source  xml
+ scope  README.md
+ check  grep -q xml README.md
+
+
+▊▔ xml-readme ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎
+▊  w why · s split · m merge · a another way · ? help · or your words          ▎
+▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎
+ y accept · d drop · e edit · E edit with what is under it · Tab view · ? talk

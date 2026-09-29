@@ -1435,6 +1435,60 @@ def test_help_lists_the_fold_keys(repo):
     assert "unfold, fold" in fold["za zo zc"] and "as it opened" in fold["zR zM zx"]
 
 
+def test_help_at_80x24_shows_the_board_keys_and_how_to_close_it_first_and_G_and_gg_go_to_its_ends(repo):
+    """Walks 2026-09-28: at 80x24 the board's keys, `:` and `q` sat below help's fold, no line said
+    Esc closes it, G did nothing there, and the planner's setting read `planner python3…`."""
+    proposed(repo)
+    with Store.open(repo) as store:
+        store.set_meta("planner", "python3 /private/tmp/somewhere/quite/deep/walk/bin/planner.py")
+
+    async def before(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        first = "\n".join(shown(app, app.screen.region))
+        for key in ("y 1..9", "d p", "Enter a", ":<command>", " q ", "Esc closes this"):
+            assert key in first, (key, first)
+        assert "graphene config edit changes them" not in first
+        await pilot.press("G")
+        await pilot.pause()
+        end = "\n".join(shown(app, app.screen.region))
+        assert "graphene config edit changes them" in end and "python3 planner.py" in end, end
+        assert "━ critical" not in end
+        for key in ("g", "g"):
+            await pilot.press(key)
+        await pilot.pause()
+        assert "━ critical" in "\n".join(shown(app, app.screen.region))
+
+    watch(repo, [], before=before)
+    from graphene_map.tui import HELP
+
+    assert dict(dict(HELP)["shape"])["m"] == "mark all seen: then + and ~ show what changed"
+
+
+def test_at_80_columns_a_board_items_keys_keep_help_and_what_a_command_said_wraps_under_them(repo):
+    """Walk 2026-09-28 (first 16): at 80x24 a long default pushed `Tab view` and `? help` off the key
+    line (`y take: add the xml sample to… · d drop · p park · Enter answer · a note`), and an error was
+    cut (`✗ graphene board pick one-item 1: one-item has no options to pick from; take…`)."""
+    from test_board_rows import planned
+
+    risk = "risk: the contract test may only cover csv and json  [contract]\n"
+    risk += "    default: add the xml sample to the contract test\nassume: one item a row  [one-item]\n"
+    planned(repo, board=risk)
+    from graphene_map import settings as S
+
+    with Store.open(repo) as store:  # no question is open, so under `board: auto` no item would show
+        S.apply(store, "board: on\n", plan.Caller("alex", True))
+    seen, _ = watch(repo, ["j"])  # the screen opens on the first item, the assumption; then the risk
+    keys = seen["status"].splitlines()[1]
+    assert "? help" in keys and "Tab view" in keys and "y take" in keys and "Enter answer" in keys, keys
+    seen, _ = watch(repo, ["1"])
+    lines = seen["status"].splitlines()
+    said = "✗ graphene board pick one-item 1: one-item has no options to pick from; take its default or "
+    said += "answer it"
+    assert lines[1].startswith("y confirm"), lines  # the keys keep their line
+    assert " ".join(line.strip() for line in lines[2:]) == said and len(lines) == 4, lines
+
+
 def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
     """What the Nemotron executors cost, from Token Factory's usage at list price: the plan's in the
     status line, the leaf's in its pane. Nothing is said about a bill where no model was called."""

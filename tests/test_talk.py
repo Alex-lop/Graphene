@@ -286,6 +286,21 @@ def test_the_chooser_says_its_choices_at_80_columns(repo):
     watch(repo, [], (80, 24), before=before)
 
 
+def test_the_chooser_on_a_selection_names_it_and_every_choice_whole_at_80_columns(repo):
+    """Walks 2026-09-28 (alex 7, first 6, judge 9): with a longer id, or several, the line was cut at
+    80 columns (`… a another way · ? help · or your`). What it is about goes on its border then."""
+    accepted(repo)
+
+    async def before(app, pilot):
+        await pilot.press("j", "j", "V", "j", "question_mark")
+        await pilot.pause()
+        line = "\n".join(shown(app, app.screen.query_one("#ask").region))
+        assert "w why · s split · m merge · a another way · ? help · or your words" in line, line
+        assert "ids, docs" in line, line
+
+    watch(repo, [], (80, 24), before=before)
+
+
 def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker, tmp_path, monkeypatch):
     accepted(repo)
     with Store.open(repo) as store:
