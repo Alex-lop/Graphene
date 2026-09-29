@@ -19,3 +19,8 @@ local/
 
 # Playwright MCP session output (the HTML export was checked in a browser)
 .playwright-mcp/
+
+# The rough cut's takes and videos: build.sh is committed, never what it films
+docs/demo/takes/
+docs/demo/*.mp4
+docs/demo/*.srt
