@@ -41,6 +41,10 @@ csv and json already do: same load command, same JSONL out. Prices in that feed 
 summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch \
 vendored or legacy files that aren't ours this week.}"
 
+# The board, scripted: each line of BOARD is the `graphene board` command a person's one key runs on an
+# item in `graphene watch` (y takes its default, 1-9 picks an option). Unset, the board stays as asked.
+while read -r answer; do [ -z "$answer" ] || step graphene board $answer; done <<< "${BOARD:-}"
+
 # The prune, scripted: cli/main.py leaves every scope (a person would type it), so a leaf that needs it
 # comes back with its fix. Then everything proposed is accepted.
 EDITOR="${PRUNE:-sed -i.bak -e 's#, cli/main.py##' -e 's#cli/main.py, ##'}" step graphene plan edit

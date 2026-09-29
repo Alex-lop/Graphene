@@ -78,9 +78,10 @@ A replay does not have the repository's git history. A leaf's record there count
 changed when each hold ended, which the log keeps, and says its commits cannot be read; the live
 record counts the commits too.
 
-The recording Graphene ships, `src/graphene_map/demo.jsonl`, was made on 25 September 2026 with the
-scripted stand-in, because no key existed that night: `docs/proof/nemotron.sh` on a tiny repository,
-as `tests/test_demo_script.py` runs it. To record the live demo run in its place, from this
+The recording Graphene ships, `src/graphene_map/demo.jsonl`, was made on 29 September 2026 with the
+scripted stand-in: `docs/proof/nemotron.sh` on a tiny repository, as `tests/test_demo_script.py` runs
+it. Its planner puts up a question, an assumption and a leave-out; the script takes each with the one
+key a person presses (`BOARD`), and the question's default adds a sentence to its leaf's goal. To record the live demo run in its place, from this
 repository's root with `NEBIUS_API_KEY` set:
 
     RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh

@@ -273,8 +273,8 @@ def test_the_replay_refuses_every_board_key(tmp_path, monkeypatch):
         return said
 
     assert asyncio.run(go()) == [(demo.REFUSED, "Screen")] * 6  # no line opened for words either
-    with Store.open(repo) as store:
-        assert [it["state"] for it in B.items(store)] == ["open"]
+    with Store.open(repo) as store:  # the recording's own items as it left them, and the one added still open
+        assert [it["state"] for it in B.items(store)] == ["taken"] * 3 + ["open"]
     assert BR.argv({"id": "x", "state": "parked"}, "p") == ["board", "unpark", "x"]
 
 
