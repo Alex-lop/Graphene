@@ -174,9 +174,22 @@ def register(cli: typer.Typer, root, open_store, fail):
         who = P.caller()
         if not who.person:
             fail("editing the direction is the person's: propose instead (`graphene direction propose -`)", 1)
-        d = load(required=False) or D.Direction([], [])
+        def on_disk() -> str:  # the file as it is, even one that does not read (a merge, a hand edit)
+            try:
+                return D.path(root()).read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return ""
+            except UnicodeDecodeError:
+                fail(f"{D.FILE} is not UTF-8: open it in an editor that can save it as UTF-8", 1)
+                raise AssertionError from None  # unreachable: fail() exits
+
+        was = on_disk()
         path = T.edit_path(root(), "direction")
-        path.write_text(d.text(), encoding="utf-8")
+        try:
+            D.parse(was)
+            path.write_text(was, encoding="utf-8")
+        except P.Refused as no:  # it goes to the editor with the reason under its line, to be mended
+            path.write_text(T._annotated(was, str(no).split("\n", 1)[1].strip()), encoding="utf-8")
         while True:
             if T.run_editor(path) != 0:
                 fail(f"the editor exited with an error; nothing was written (your text is in {path})", 1)
@@ -191,8 +204,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 continue
             break
         with open_store(root()) as store, store.claim():
-            now = load(required=False)
-            if (now.text() if now else "") != d.text():
+            if on_disk() != was:
                 fail(f"{D.FILE} changed while you edited it; nothing was written (your text is in {path})", 1)
             D.write(root(), new)
             store.log_node(

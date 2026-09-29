@@ -1,7 +1,7 @@
- the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-vdmt2q20
- ? Graphene is the shared plan between a person and…       graphene     proposed  · you 11 · 8 running · next: lane-a
-   ? Graphene runs live on Nemotron and Token Factory      live         proposed  · you 4 · 2 running · next: lane-a
-     ? first contact: the ladder's rungs pass live, and…   first-light  proposed  · you 1 · 2 running · next: lane-a
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-74h3gbvt
+ ? Graphene is the shared plan between a person and…       graphene     proposed  · you 11 · 5 running · next: lane-a
+   ? Graphene runs live on Nemotron and Token Factory      live         proposed  · you 4 · 1 running · next: lane-a
+     ? first contact: the ladder's rungs pass live, and…   first-light  proposed  · you 1 · 1 running · next: lane-a
 ▼ ○ first light: Graphene meets a real model for the first…    0/10 done │ first light: Graphene meets a real model
 ├   ○ A. first light: rungs 2 to 5 live, and the…    lane-a    ready     │ for the first time, as practice, under $10
 ├   ○ B. the rough cut, in real time                 lane-b    ready     │ the goal · 0/10 done

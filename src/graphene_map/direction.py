@@ -31,6 +31,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -81,16 +82,26 @@ class Direction:
         return out
 
     def below(self, node: Node) -> list[Node]:
-        return [n for n in self.nodes if node in self.above(n)]
+        return [n for n in self.nodes if node.at < n.at < node.end]  # a subtree is its lines, in a row
 
     def proposed(self, node: Node) -> bool:
         """A proposal, or under one: nothing under a guess is the person's until they accept it."""
         return node.proposed or any(a.proposed for a in self.above(node))
 
 
+def _unsafe(c: str) -> bool:
+    """A character a terminal obeys or that reorders what it shows: a control (C0, C1, DEL) other
+    than a tab, or a bidirectional override."""
+    return (
+        (unicodedata.category(c) == "Cc" and c != "\t")
+        or "\u202a" <= c <= "\u202e"
+        or "\u2066" <= c <= "\u2069"
+    )
+
+
 def parse(text: str) -> Direction:
     """The direction a text says, or a refusal naming every line it cannot read (none of it is used)."""
-    lines = text.splitlines(keepends=True)
+    lines = [line for line in re.split(r"(?<=\n)", text) if line]  # "\n" only: numbered as an editor does
     nodes: list[Node] = []
     stack: list[Node] = []
     seen: dict[str, int] = {}
@@ -100,13 +111,15 @@ def parse(text: str) -> Direction:
         line = raw.rstrip("\r\n").removeprefix("﻿" if k == 0 else "")
         body = line.lstrip(" ")
         indent = len(line) - len(body)
+        if any(_unsafe(c) for c in line):  # comments too: `graphene direction --text` prints them
+            refused.append(f"line {k + 1}: a control character, which a terminal would obey: take it out")
+            continue
         if not body.strip() or body.startswith("#"):
             continue
-        if body[0] == "\t":
-            refused.append(f"line {k + 1}: indent with spaces, not tabs")
-            continue
-        if any(ord(c) < 32 and c != "\t" or ord(c) == 127 for c in line):
-            refused.append(f"line {k + 1}: a control character, which a terminal would obey: take it out")
+        if body[0].isspace() or body[0] == "﻿":
+            refused.append(
+                f"line {k + 1}: indent with spaces only (a tab or another blank is not read as one)"
+            )
             continue
         found = _NODE.fullmatch(line)
         if found is None and _MEANT.match(line):
@@ -193,7 +206,8 @@ def propose(d: Direction, text: str, who: P.Caller, under: str | None = None) ->
         raise P.refusal("already in the direction: " + ", ".join(f"[{i}]" for i in taken))
     parent = d.get(under) if under else None
     base = min(n.indent for n in new.nodes if n.parent is None)
-    to = parent.indent + 2 if parent else 0
+    first = next((n for n in d.nodes if parent and n.parent == parent.id), None)
+    to = first.indent if first else parent.indent + 2 if parent else 0  # beside its children, as they are
     add = []
     for n in new.nodes:
         if not who.person and not n.proposed:
@@ -224,6 +238,10 @@ def read(root: Path) -> Direction | None:
         return parse(p.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except UnicodeDecodeError as no:
+        raise P.Refused(
+            f"{FILE} cannot be read, so none of it is used:\n  it is not UTF-8 (byte {no.start})"
+        ) from None
 
 
 def write(root: Path, d: Direction) -> None:
@@ -240,6 +258,7 @@ def write(root: Path, d: Direction) -> None:
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".direction-", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
         f.write(text)
+    os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)  # a committed file, not a secret
     os.replace(tmp, p)
 
 
@@ -342,9 +361,10 @@ def _age(stamp: str | None, now: datetime) -> float:
     if not stamp:
         return float("inf")
     try:
-        return (now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))).total_seconds()
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return float("inf")
+    return (now - (at if at.tzinfo else at.replace(tzinfo=UTC))).total_seconds()
 
 
 def did(tool: str, raw: str | None, file_path: str | None, success: int | None) -> str:
@@ -414,7 +434,8 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             r[0]: (r[1], r[2])
             for r in store.conn.execute(
                 "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description'), agent_id "
-                "FROM tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task')",
+                "FROM tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task') "
+                "AND json_valid(response) AND json_valid(input)",
                 (sid,),
             )
         }
@@ -467,7 +488,8 @@ def place(store, ws: list[Worker]) -> None:
     held, finished or handed back one of the plan's nodes, or proposed one; else with the subagent that
     started it, or with its session; else nowhere."""
     said = links(store)
-    alive = [n for n in P.nodes(store) if n.state not in P.GONE]
+    # a leaf made from a prompt (decision 18) is that session's own ask, not the plan's work
+    alive = [n for n in P.nodes(store) if n.state not in P.GONE and not n.aside]
     if alive:
         marks = ", ".join("?" for _ in alive)
         rows = store.conn.execute(
@@ -524,11 +546,18 @@ def plan_status(store) -> dict | None:
         "leaves": len(leaves),
         "done": sum(n.state == P.DONE for n in leaves),
         "you": sum(w in ("came back", "review", "yours") for w in words.values()) + len(tops) + asked,
-        "running": sum(n.state == P.RUNNING for n in alive),
-        "holders": sorted({n.session_id for n in alive if n.state == P.RUNNING and n.session_id}),
+        "running": sum(n.state == P.RUNNING and not n.aside for n in alive),
         "next": ready[0] if ready else None,
         "bill": bill(usage),
     }
+
+
+def _running(ws: list[Worker], plan: dict | None) -> int:
+    """What runs: the sessions and subagents, and the plan's running leaves. Those that work through
+    the plan and its running leaves are one piece of work seen from two sides (which subagent holds
+    which leaf is not recorded), so the larger of the two counts, never their sum."""
+    through = sum(w.node == "plan" for w in ws)
+    return len(ws) - through + (max(through, plan["running"]) if plan else through)
 
 
 def status(store, d: Direction | None, now: datetime | None = None) -> dict:
@@ -556,16 +585,12 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         has_plan = plan is not None and plan["node"] in mine
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
         you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
-        held = set(plan["holders"]) if has_plan else set()  # a session on a running leaf is that leaf's work
-        running = sum(w.word == "running" and w.key not in held for w in under)
-        running += plan["running"] if has_plan else 0
+        running = _running([w for w in under if w.word == "running"], plan if has_plan else None)
         # next is the work that starts next (what `graphene run` takes); a proposal waits on you
         nxt = plan["next"] if has_plan else None
         word = "proposed" if d.proposed(n) else "yours" if you else "running" if running else "quiet"
         nodes.append(asdict(n) | {"word": word, "you": you, "running": running, "next": nxt,
                                   "earlier": earlier.get(n.id, [])})  # fmt: skip
-    if plan is not None:
-        plan.pop("holders")  # a session's id: only the sessions list names one, and it stays on this machine
     return {
         "file": FILE,
         "nodes": nodes,
@@ -676,10 +701,12 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     unhung = st["plan"] is not None and st["plan"]["node"] is None
     loose = [w for w in st["sessions"] if w["node"] is None or (unhung and w["node"] == "plan")]
     you = sum(n["you"] for n in tops) + sum(w["word"] == "your turn" for w in loose)
-    running = sum(n["running"] for n in tops) + sum(w["word"] == "running" for w in loose)
+    running = sum(n["running"] for n in tops)
+    running += _running(
+        [Worker(**w) for w in loose if w["word"] == "running"], st["plan"] if unhung else None
+    )
     if unhung:
         you += st["plan"]["you"]
-        running += st["plan"]["running"]
     nxt = next((n["next"] for n in tops if n["next"]), None) or (st["plan"]["next"] if unhung else None)
     lead = " · ".join([f"you: {you}", f"{running} running", *([f"next: {nxt}"] if nxt else [])])
     lead += " · the direction of "

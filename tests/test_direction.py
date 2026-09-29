@@ -361,3 +361,91 @@ def test_edit_writes_a_text_that_reads_whole_and_nothing_of_one_that_does_not(re
     refused = person("direction", "edit")
     assert refused.exit_code == 1 and "line 6: a node's line ends with its id" in refused.stderr
     assert (repo / D.FILE).read_text() == before + "- the docs  [docs]\n"  # nothing written
+
+
+def test_a_direction_written_while_a_leaf_runs_is_never_the_leafs_change(repo):  # noqa: F811
+    """Review, 29 September: the file is the one path under .graphene/ that git sees, so a proposal
+    written while a leaf ran made its `done` refused ("changed outside its scope") and every other
+    start refused ("an uncommitted change no node made"). Graphene's own directory is no leaf's
+    change, uncommitted or committed."""
+    one = "- one  [one]\n    scope: api.py\n    check: true\n"
+    two = "- two  [two]\n    scope: schema.py\n    check: true\n"
+    agent("plan", "propose", "-", input="goal: g\n" + one + two)
+    person("plan", "accept")
+    assert agent("node", "start", "one").exit_code == 0
+    (repo / "api.py").write_text("def users():\n    return ['ids']\n")
+    assert agent("direction", "propose", "-", input=TREE).exit_code == 0
+    started = agent("node", "start", "two")
+    assert started.exit_code == 0, started.output
+    subprocess.run(["git", "add", "-f", D.FILE], cwd=repo, check=True)
+    commit = ["git", "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-qm", "the direction"]
+    subprocess.run(commit, cwd=repo, check=True)
+    person("direction", "accept", "live")  # the committed file changes again, while both leaves run
+    done = agent("node", "done", "one")
+    assert done.exit_code == 0, done.output
+
+
+def test_what_the_review_found_in_the_file_each_refused_or_kept_as_it_should_be(repo, monkeypatch):  # noqa: F811
+    """Review, 29 September: a file saved as Latin-1 crashed `graphene plan`; a control character in a
+    comment, a C1 control or a bidi override passed; a line led by a no-break space vanished into its
+    node's words; U+2028 moved every refusal's line number; a node proposed under one whose children
+    are indented by one space went under its last child; a write left the file private (0600); and
+    `edit` would not open a file that does not read, the one time it is needed."""
+    for bad, why in (
+        ("- a  [a]\n# \x1b]0;owned\x07\n", "line 2: a control character"),
+        ("- a  \u009b31m [a]\n", "line 1: a control character"),
+        ("- a ‮ [a]\n", "line 1: a control character"),
+        ("- a  [a]\n  - b  [b]\n", "line 2: indent with spaces only"),
+        ("- a  [a]\n  what a is for\n- no id\n", "line 3: a node's line ends"),
+    ):
+        with pytest.raises(P.Refused, match=why):
+            D.parse(bad)
+    d = D.parse("- a  [a]\n - b  [b]\n")
+    D.propose(d, "? c  [c]\n", BOT, "a")
+    assert [(n.id, n.parent) for n in D.parse(d.text()).nodes] == [("a", None), ("b", "a"), ("c", "a")]
+
+    agent("direction", "propose", "-", input=TREE)
+    assert (repo / D.FILE).stat().st_mode & 0o777 == 0o644
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    (repo / D.FILE).write_bytes(b"- caf\xe9  [cafe]\n")
+    plan = person("plan")
+    assert plan.exit_code == 0 and plan.stdout.startswith(f"the direction: {D.FILE} cannot be read")
+    assert "it is not UTF-8" in person("direction").stderr
+    (repo / D.FILE).write_text("- fine  [fine]\n- no id here\n")
+    editor = repo / "editor.sh"
+    editor.write_text('#!/bin/sh\ngrep -q "refused: .*its id" "$1" && printf -- "- fine  [fine]\\n" > "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    mended = person("direction", "edit")
+    assert mended.exit_code == 0, mended.output
+    assert (repo / D.FILE).read_text() == "- fine  [fine]\n"
+
+
+def test_running_work_is_counted_once_and_a_leaf_made_from_a_prompt_leaves_its_session_where_it_was(repo):  # noqa: F811
+    """Review, 29 September: a session holding a leaf and its two lanes counted the leaf twice, and a
+    one-line ask typed into an unrelated session (a leaf made from a prompt) pulled that session into
+    the plan's node."""
+    agent("direction", "propose", "-", input=TREE)
+    person("direction", "accept", "product")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    person("direction", "plan", "live")
+    assert agent("node", "start", "ids").exit_code == 0
+    other, now = "a51de000-0000-4000-8000-000000000003", datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 10), tool_name="Read")
+        for n, lane in enumerate(("d1d1d1d1d1d1d1d1", "d2d2d2d2d2d2d2d2")):
+            called = {"tool_input": {"description": f"lane {n}"}, "tool_response": {"agentId": lane}}
+            _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 60), tool_name="Agent", **called)
+            _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 59), agent_id=lane)
+            _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 5), tool_name="Read", agent_id=lane)
+        aside = P.Node("n9", "fix the readme typo", scope=[], aside=True, state=P.RUNNING, session_id=other)
+        store.put_node(P.to_dict(aside))
+        store.log_node("n9", _stamp(now, 30), "started", "claude:a51de000", other, None, {})
+        _event(store, repo, "PostToolUse", other, _stamp(now, 20), tool_name="Edit")
+        st = D.status(store, D.read(repo), now)
+    live = next(n for n in st["nodes"] if n["id"] == "live")
+    assert (live["running"], st["plan"]["running"]) == (3, 1)  # the session and its two lanes; one leaf
+    assert next(w for w in st["sessions"] if w["short"] == "a51de000")["node"] is None
+    assert D.head(st, "repo").startswith("you: 1 · 4 running")  # submission; the three, and the loose one
