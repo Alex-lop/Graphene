@@ -64,9 +64,10 @@ fake's. One Nano call, at 01:05:30, took 11.9 s. Every other call took 0.9 to 1.
 
 ## The ForbiddenError
 
-contree-sdk 0.3.6 raises `ForbiddenError` (status 403, text "You do not have permission to perform
-this action") at the image pull, which is its first call. Nebius's API reference gives a 403 as "Token
-does not have sufficient permissions"
+contree-sdk 0.3.6 raises `ForbiddenError` for a 403, with the text "You do not have permission to
+perform this action". Rung 1's log does not say which call met it. The first call `sandbox.Contree`
+makes is the image pull, which looks `python:3.12` up by tag and imports it when it is missing.
+Nebius's API reference gives a 403 as "Token does not have sufficient permissions"
 (docs.tokenfactory.nebius.com/api-reference/sandboxes/instances/spawn-a-new-container-instance.md).
 Its CLI page says a key without the `list` permission "means sandboxes are disabled on this project"
 (docs.tokenfactory.nebius.com/sandboxes/cli/commands/auth.md). contree.dev says: "Request access at
@@ -82,6 +83,10 @@ or NEBIUS_PROJECT_ID is not its project; request access at tokenfactory.nebius.c
 ConTree's whoami lists the key's grants, the message names the grants it lacks. It is tested against a
 stub raising the SDK's own class.
 
+Rung 2's `graphene init` placed the leaves in Sandboxes a minute after rung 1's 403, because it asked
+only whether a key and a project id were set. `init` now asks whoami first. whoami is a read, not an
+operation. When whoami refuses, `init` places the leaves on this machine and says why in one line.
+
 ## Sandboxes: free in the beta, by Nebius's page
 
 Nebius's Sandboxes page, as the search index quoted tokenfactory.nebius.com/sandboxes on 2026-09-29,
@@ -91,6 +96,15 @@ browser, and a direct read returned its title alone. No Nebius page states a pri
 - contree.dev says "Pay per execution, not idle", with no rate.
 
 No bill has shown a Sandbox line yet.
+
+## What the ladder now checks live
+
+- **Every rung** counts the key's and the project id's values in each file it wrote. A count above 0
+  fails the rung. The values are never shown.
+- **Rung 4** gives a `sleep 600` five seconds in the Sandbox. It needs exit 124 and the next command
+  to run.
+- **Rung 5** counts its recording for the key, the project, a home path and key-shaped words, then
+  prints the `cp` that puts the recording in `tests/recordings/`. CI replays every recording there.
 
 ## Not yet run live
 
