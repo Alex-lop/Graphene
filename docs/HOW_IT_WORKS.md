@@ -4,8 +4,9 @@ Graphene keeps a plan that a person and their coding agents share, holds executo
 keeps a record of what was done for each node. No model decides anything here: the plan, the boundary
 and the record are computed from the plan's own rows, from git, and from what the executors record. A
 model is called only by the planner and the executor you name, Graphene's Nemotron ones included
-(P4b), and by the prototypes of P4d when you run them, whose answers are offered and applied only
-when you take them.
+(P4b), by the prototypes of P4d when you run them, whose answers are offered and applied only when
+you take them, and by `graphene board lookup` when you run it, which settles only a question whose
+answer it finds quoted in a file, and which you open again with one key (P1d).
 
 Part one is the plan and what makes it bind. Part two is the record underneath it.
 
@@ -174,6 +175,7 @@ Only the person answers (`board.settle`, refused to an agent):
 | Command | Key on its row | The item becomes |
 | --- | --- | --- |
 | `graphene board take ID` | `y` | `taken`: the default, a confirmed assumption, an agreed leave-out |
+| `graphene board take` (no id) | | every open item that has a default takes it, in one act |
 | `graphene board pick ID N` | `1`..`9` | `picked`: option N |
 | `graphene board answer ID WORDS` | `Enter` | `answered`, in the person's words |
 | `graphene board park ID` / `unpark ID` | `p` | `parked` (told to nobody), or open again |
@@ -205,18 +207,42 @@ person's answer, a changed item as a rewording and a deleted item as dropped. Fr
 items count; an agent's text that answers one, or rewords one already there, is refused by its line.
 
 **Asked for.** The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 4)
-tells it to read the repository first. It asks only what the code cannot settle and what changes the
-tree, at most three items, each a question or a risk, most important first; an assumption it is sure
-of is a sentence in the goal of the leaf it bears on, not an item. It writes each leaf as the default has it, and gives every option that
-changes a leaf the `then:` lines that make the change. Plan first's instruction to a Claude Code
-session says the same (`gate.TEACH`).
+tells it to read the repository first, to ask only what the code cannot settle and what changes the
+tree, and to put up at most three items, each a question or a risk, most important first; an
+assumption it is sure of is a sentence in the goal of the leaf it bears on, not an item. It is told
+to write each leaf as the default has it, and to give every option that changes a leaf the `then:`
+lines that make the change. Plan first's instruction to a Claude Code session says the same
+(`gate.TEACH`). Nothing counts the items: a proposal with five is put up with five.
+
+**When it shows** (`board.asks`, and the setting `board`, P1f). Unset, `board: auto`: the board is
+shown, on the screen, on the page and in `graphene plan`'s line, only while a question is open. A risk,
+an assumption or a leave-out left open does not bring it up. `board: on` shows it while any item is
+open. Either way, what is left open takes its default once the whole plan is accepted (`graphene plan
+accept` with no proposal left, `y` on the goal), when the person starts a run (`graphene run`, `R`),
+or at `graphene board take` with no id (`board.defaults`), as the person's take, and one line names
+what took its default; `plan undo` takes it back. A question with no default, and an agent's note,
+stay open. So a person who agrees with every default answers nothing. The default is `auto` by study 4
+(`docs/test/results-2026-09-29-board.md`: on stand-ins, one run each, the board cost more modelled
+attention than the outline on 3 of 4 tasks). `graphene board` prints only what answering needs (what
+is open, its default and options, and the commands); `--all` lists what is settled and dropped, and
+every option's `then:` lines.
+
+**What the repository answers** (`lookup.py`, `graphene board lookup`; after each `graphene ask` when
+`GRAPHENE_SHAPE` names `lookup`). One Nano call reads each open question beside the repository's files
+(those the board names first) and says which of the question's choices a file already makes, with
+the file and one line of it copied. The answer is kept only when that line is in that file as copied,
+the file is one Graphene sent, and the choice is the question's own default or option; a question with
+no default takes none. A kept answer settles the item, marked `from the repo: FILE:LINE`, and is told
+to executors as any answer is; `graphene board unpark ID` (`p`) opens it again. A protected file is never
+sent, by its path or where a tracked link reaches. It has run only against the scripted stand-in.
 
 **On the screen** (`board_rows.py`), each open item is a row directly under the goal, before the first
 sub-goal, in the row grammar: glyph and colour from `plan.LOOK`, its words, its id, and its kind as a
 verb (asks, assumes, risk, leaves out, note). What is settled, parked or dropped folds into one row
 (`✓ 3 settled · 1 parked`). The screen opens on the first open item, and the bottom line says what
-each key does there. `graphene plan` says `the board: 2 questions, 1 risk open (graphene board)` while
-anything waits.
+each key does there. While the board asks nothing (`board.asks`) it has no rows, only the standing
+conditions' row. `graphene plan` says `the board: 2 questions, 1 risk open (graphene board)` while
+the board asks.
 
 ## P1e. Views of the plan, and talking on it
 
@@ -265,7 +291,7 @@ line counts them. Only the person moves the mark, so a planner's revision cannot
 ## P1f. Settings the person states once
 
 `settings.py`. They live in the store's meta (`settings:protected`, `settings:readonly`,
-`settings:never`, `settings:size`). `graphene config` prints them as text, with the planner, the
+`settings:never`, `settings:size`, `settings:board`). `graphene config` prints them as text, with the planner, the
 executor, plan first, the board's conditions and where the key was found as `#` lines.
 `graphene config edit` edits them as `plan edit` edits the plan:
 - the person only;
@@ -283,6 +309,7 @@ narrow it (`settings.broken`).
 | `readonly: GLOB, …` | No leaf may write it. With the board's `condition` globs, it is a standing condition like `protected` |
 | `never: SENTENCE` | Told to the planner, a line each. Nothing enforces it (P5) |
 | `size: auto\|finer\|coarser` | How many leaves the planner is asked for (below) |
+| `board: auto\|on` | When the board is shown: unset (`auto`), only while a question is open; `on`, while any item is (P1d) |
 
 **Standing conditions bind every scope.** A scope that covers a protected or read-only path, judged
 over tracked files and the globs as written, is refused when it is proposed, edited or started
@@ -309,9 +336,58 @@ and never in a file.
   the key cut out of any message.
 - `graphene key remove` takes it out.
 
-All three are the person's. `GRAPHENE_KEYCHAIN=off` leaves the keychain out entirely, and set and remove
-then say so. Graphene sets it for a leaf's check, for every command the Nemotron executor's model runs,
-and for a planner or executor that is not its own Nemotron.
+All three are the person's: an agent's call, Claude Code's or Codex's, is refused before the keychain
+is touched. `GRAPHENE_KEYCHAIN=off` leaves the keychain out entirely, and set and remove then say so.
+Graphene sets it for a leaf's check, for every command the Nemotron executor's model runs, and for a
+planner or executor that is not its own Nemotron.
+
+The tests never reach the keychain (`tests/keyguard.py`, a pytest plugin in `tests/` and `docs/test`,
+here and in CI). Stand-ins for `security` and `secret-tool` go first on the PATH; an audit hook in the
+test process refuses the real ones, by name or by absolute path, and `import keyring`; a stand-in's
+call fails the test that made it. `GRAPHENE_KEYCHAIN=off` stays on as well.
+
+## P1g. The direction
+
+`direction.py`, `graphene direction`. The direction is a small tree of goals above the plans, one line
+a node: `- title  [id]` is accepted, `? title  [id]` is a proposal. Indentation is the tree, and any
+other line indented under a node says what it is for. It is one file, `.graphene/direction.txt` in the
+main checkout, beside the store. Unlike the store, git tracks it: the first write adds `!direction.txt`
+to the store's own `.gitignore` (`*`), so another machine's Graphene reads the same direction once it
+is committed, and a repository whose own `.gitignore` keeps `.graphene/` out is told `git add -f`. A
+file with a line Graphene cannot read (a control character among them) is not used at all, and the
+refusal names each line. Graphene rewrites only the lines an act changes, so what the person wrote
+comes back byte for byte.
+
+| Command | Whose | Does |
+| --- | --- | --- |
+| `graphene direction [--width N] [--text] [--json]` | anyone | the tree, with the plan and the sessions hanging from it; `--text` is the file, `--json` what the page reads |
+| `graphene direction propose - [--under NODE]` | anyone | adds nodes in the file's own text; from an agent every node is `?` whatever it wrote |
+| `graphene direction accept ID…` | the person | accepts nodes, with the proposals they sit under and those under them |
+| `graphene direction drop ID` | the person | the node and what is under it leave the file |
+| `graphene direction plan NODE` | the person | the plan in force hangs from NODE; an earlier plan keeps its node |
+| `graphene direction attach SESSION NODE` | the person | a session (or one subagent) hangs from NODE; `none` gives it back |
+| `graphene direction edit` | the person | the file in `$EDITOR`, read back whole: nothing is written until every line reads |
+
+**What hangs from it** is this machine's, in the store's meta (`direction`), and never in the file. A
+plan hangs from a node by its goal's words. A session or a subagent the hooks recorded hangs:
+where the person attached it; else through the plan's node, when it held, finished or handed back one
+of the plan's nodes, or proposed one; else with the subagent or the session that started it; else
+nowhere, shown as not in the direction. Nothing is inferred into the direction itself.
+
+**Status is read, not kept.** A session's word (running, idle, your turn, finished) and the last thing
+it did, in one line, are read at read time from the rows the hooks already write (`sessions`,
+`prompts`, `tool_events`, `agents`), walked back along the session index; the hook does no work for it,
+and no transcript is read. A session quiet for a day is left out, and so is an idle one after an hour.
+Each node rolls up what waits on the person (a leaf in review, a board question, a proposal, a session
+whose turn it is, each named by the id they act on), what runs (each running leaf once, with the
+session or subagent holding it) and what is next (the leaf `graphene run` starts next, never a
+proposal to accept). `graphene plan`, its views, `graphene watch` and the page show the path from the
+direction's top to the plan's node above the plan; `D` in `graphene watch` shows the whole direction in
+the pane and opens `:direction attach `. An export's direction names no session.
+
+The hook refuses an agent's `Edit`, `Write`, `MultiEdit` and `NotebookEdit` under `.graphene/`, plan or
+no plan (`hooks.into_ours`), so an agent cannot accept its own proposal by editing the file; it
+proposes through `graphene direction propose`, which from a leaf's shell is not that leaf's stray.
 
 ## P2. The boundary: what makes a node done
 
@@ -389,12 +465,23 @@ the vendor's documented JSON:
 | `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
 | `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on and no leaf held, the instruction to propose first |
 
+Whatever the plan's state, a plan in force or none, an `Edit`, `Write`, `MultiEdit` or
+`NotebookEdit` whose path lies under the repository's `.graphene/` (a worktree's copy included, and a
+path spelled through a link) is denied and logged (`hooks.into_ours`): the store and the direction
+(P1g) are written by `graphene` commands only. A shell command that reaches into `.graphene/` is denied
+only where the gate answers the shell (below).
+
 The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
 checked with Graphene's own gate on a real session). The hook reads the node's row on every call,
-so tightening a scope binds the very next write. It adds about 40 ms to each event it runs on
-(`tests/test_hook_budget.py` holds the median under 60 ms for recording and for refusing); in a
-repo with no plan the gate is imported only when a session starts, when a prompt is typed, and while
-plan first is on.
+so tightening a scope binds the very next write. It takes about 20 to 25 ms of CPU to record an event
+and 30 to 35 ms to answer one (medians of twenty runs or more, measured with other work on the machine);
+`tests/test_hook_budget.py` holds the median of twenty runs under 60 ms of CPU, the hook's and the git
+it starts, for recording, for refusing and for plan first, and prints the wall clock beside it. The
+gate is imported only for the events it can answer (`hooks.gated`): a session's start; every event of
+a planner Graphene started; a prompt, a
+write or a shell command while plan first is on or a plan is in force; a shell command's result and a
+stop while a plan is in force. A read or a search never loads it. The same test names every module,
+SQL statement and process each event may use.
 
 A finished plan stays in force. The first real agent run against an earlier build did both nodes
 inside their scopes, waited until no node was open, then made the edit no node allowed, and said so:
@@ -424,9 +511,14 @@ is never handed to an executor. The run ends by saying what is waiting and for w
 output streams to `.graphene/runs/<leaf>-<time>-<n>.txt`, and an `attempt` entry in the log names it
 with the executor's pid and the run's; `graphene watch` reads its tail, and a Claude Code executor's
 last tool call from the hooks' record. Executors and checks run in sessions of their own: Ctrl-C
-reaches the run (and so do a closed terminal and a `kill`), which ends the checks it started, hands
-back every leaf it started that had not passed, and stops the executors (exit 130); a leaf that had
-passed and not yet landed waits in `review`, and says so. A leaf the person releases or drops stops
+reaches the run (and so do a closed terminal, whether or not it sends the hangup, and a `kill`), which
+ends the checks it started, including one an executor's `graphene node done` is running, hands back
+every leaf it started that had not passed, and stops the executors (exit 130); a leaf that had passed
+and not yet landed waits in `review`, and says so. `graphene watch` and `graphene demo` look at their
+terminal twice a second and leave as `q` does once it is gone (`tests/test_teardown.py`: everything
+under a closed terminal gone within 5 s, on macOS and Linux). A run started from `watch` has its own
+session and goes on, as after `q` (`tui.background`). A run the person starts first takes the default of every item still open on the board, in one
+act and one line (P1d). A leaf the person releases or drops stops
 its executor within half a second. A leaf still held by a run that is gone (its pid ended, or names
 a process that began at another time) is handed back by the next run, after its executor is stopped,
 TERM then KILL. A leaf whose need is done but whose work is not in the checkout it would start in
@@ -484,6 +576,21 @@ the next call is refused before it is sent. A 429 or a 5xx is waited out (`Retry
 When the tries run out, or a completion has had no answer in time twice, the refusal says how many
 tries and what to do next (wait, run fewer leaves at once, try again later).
 
+**The person's opening, and the night's bill** (`night.py`). Without the opening, a process that
+carries a vendor's agent mark (`CLAUDECODE`, `CODEX_SESSION_ID` and the others in `night.MARKS`) is
+refused a Token Factory call to the real host, and any ConTree sandbox, before anything is sent
+(`night.person_only`, at `tokenfactory.chat` and `sandbox.Contree`); the scripted fake and Docker stay
+open to anyone. The opening is `GRAPHENE_AGENT_LIVE_USD`, set by the person in the shell that started
+the session. While it is set, every call also goes on the night's bill: one ledger for every process,
+`~/.graphene/night/<date>.jsonl` (`GRAPHENE_NIGHT_LEDGER` moves it), locked with `flock` for each read
+and write. A call reserves its worst case before it is sent (its request's bytes / 3 as prompt tokens
+and its `max_tokens`, or 32,768, as completion tokens, at list price) and settles to its usage after;
+one that would take the night past its cap (the lower of that figure and $10) is refused, unsent.
+Nothing new starts (a rung, a `graphene run` with Nemotron, a process's first live call) once what is
+spent and what is in flight reach 80% of the cap. ConTree operations are counted with their seconds,
+at $0 and `price: unknown`. Every row, and every usage row written while the opening is set, says
+`practice`, and `docs/test/evidence.py` refuses practice.
+
 **The executor** is started by `graphene run` like any other: in the leaf's checkout, with
 `GRAPHENE_NODE` and the contract as its last argument. Its loop runs here. It asks a model for one
 tool call at a time (view, edit, write, run, done, release) and runs the call in the leaf's
@@ -497,15 +604,22 @@ whose native calls misfire; Nemotron's own `<TOOLCALL>` text is read in either p
 called by another common name (`read_file`, `str_replace`, `bash`) is the tool it means. A reply cut
 off at the token limit is asked again with more room. `view` reads only what git shows. A command the
 model runs, and every check, get an environment without the key. An executor that cannot work at all
-(no key, a refused key, no sandbox, the spend cap, Token Factory's refusals after their tries) hands the
-leaf back itself, with the cause. So does a model that gives up (it stopped calling tools three times,
+(no key, a refused key, no sandbox, a project Sandboxes refuse, the spend cap, Token Factory's refusals
+after their tries) hands the leaf back itself, with the cause. So does a model that gives up (it stopped calling tools three times,
 or used all its steps) on the ladder's last rung with nothing changed inside the scope, with why in
 words; otherwise the run's boundary decides, and the next rung tries. A fault in one fork is that
 fork's reason; when no fork passes, each fork's reason is said.
 
 **The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
 SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). Without
-them it refuses in words before anything is sent.
+them it refuses in words before anything is sent. A project Sandboxes refuse (ConTree's 403, as rung 1
+met it on 29 September) is one refusal, in the same words in `access.py`, on the ladder, for a leaf in a
+sandbox and in `plan precheck`: "Sandboxes refused this project (403): its key may not use them there,
+or NEBIUS_PROJECT_ID is not its project; request access at tokenfactory.nebius.com/sandboxes/about".
+When ConTree's whoami lists the key's grants, it names the ones the key lacks instead. A made-up key
+and project also get a 403, not a 401, so the project id is the other suspect. A ConTree operation
+that runs past its time comes back as the command's exit 124, as Docker's does, so the leaf is told
+and goes on.
 
 **The checkpoint.** For a checkout that is exactly a commit, the repository is uploaded and set up once:
 - git tracks it, or does not ignore it;
@@ -580,7 +694,9 @@ Factory's model list gave: the largest of Ultra and Super plans (`nemotron --mod
 planner picks when it runs, and the two smallest listed do the leaves, the second on a second attempt
 (`nemotron --model <nano> --model <super> --placement local`). The menu names the sizes it found.
 The placement is `sandbox` when ConTree is set up here (`sandbox.configured`: the SDK imports, and
-`NEBIUS_API_KEY` with `NEBIUS_PROJECT_ID`, or a `contree auth` profile), `local` otherwise. When the
+`NEBIUS_API_KEY` with `NEBIUS_PROJECT_ID`, or a `contree auth` profile) and ConTree's whoami, a read
+and no operation, does not refuse the project (`sandbox.refused`), `local` otherwise. A refused project
+gets `local` and one line saying why and how to move the leaves once access comes. When the
 list could not be read it is plain `nemotron`, which finds its models when it runs. Token Factory is
 asked once, with no retry, and a try waits 10 seconds at most (`tokenfactory.LISTED`). What could not
 be reached (no key, a refused key, no answer, no Nemotron listed) is one line.
@@ -618,8 +734,17 @@ one rung at a time:
 
 Each rung has its own spend cap (`GRAPHENE_SPEND_CAP_USD` on top of what the ladder has spent), and
 prints one PASS or FAIL line, the bill so far, and the next command; a failure says what it most likely
-means. `--dry` climbs all seven against the scripted fake and Docker. Live, rungs 2 to 7 run nothing
-from a shell with an agent's mark.
+means. Every rung counts the key's and the project id's values in each file it wrote and fails on any,
+never showing them; rung 4 gives a `sleep 600` five seconds in the sandbox and needs exit 124 and
+the next command to run; rung 5 counts its recording for the key, the project, a home path and key-shaped words
+before it passes, and prints the `cp` that puts it in `tests/recordings/`, where CI replays and counts
+every recording (`tests/test_recordings.py`). `--dry` climbs all seven against the scripted fake and
+Docker. Live, rungs 2 to 7 run nothing from a shell with an agent's mark, unless the person started
+that session with `GRAPHENE_AGENT_LIVE_USD` set (P4b); a rung does not start past 80% of the night's
+cap. `practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
+and precheck, a few Nano calls each, on a fixed plan, under a $0.05 cap. Rungs 1 and 2 passed live on
+29 September, as practice, climbed by the person (`docs/test/first-light.md`); rungs 3 to 7 have not
+run live.
 
 ## P5. Where each mechanism ends
 
@@ -639,9 +764,29 @@ from a shell with an agent's mark.
   (`env -u CLAUDECODE …`) and then sets it passes for a person. The log shows such an act as made
   with no terminal, which a person's own acts at a terminal never are, unless it also set
   `GRAPHENE_WATCH=1` in a way the hook cannot read.
-- The plan's store is a file in the repo that git ignores. The hook refuses the commands that
-  name it; a script that opens it directly is neither stopped nor noticed. Nothing here defends
-  the store against an executor that sets out to rewrite it.
+- The plan's store is a file in the repo that git ignores. The hook refuses an agent's write tools
+  under `.graphene/`, plan or no plan, and the shell commands that name it while the gate answers the
+  shell (a plan in force, or plan first on); a script that opens it directly is neither stopped nor
+  noticed. Nothing here defends the store against an executor that sets out to rewrite it.
+- The direction (P1g) is a file anyone who commits to the repository can change. With no plan in
+  force and plan first off, a shell command can write `.graphene/direction.txt` and accept its own
+  node; only the write tools are refused then. An agent in a worktree that proposes writes into the
+  main checkout's file. A plan hangs from a node by its goal's words: rewording the goal unhangs it
+  until `graphene direction plan NODE` is run again.
+- The opening rests on the environment, as `GRAPHENE_AS` does. An agent that exports
+  `GRAPHENE_AGENT_LIVE_USD` itself passes for the person who opened the session, and no command line
+  tells who set it. Without it, spending on the real service is refused to a process that carries a
+  vendor's agent mark; an agent that strips its own marks first passes for the person. Graphene's own
+  harnesses that strip the marks for their children (`bench.py`, `arm_bprime.py`, `nemotron.sh`) ask
+  the rule first. The model list, which costs nothing, is still asked from an agent's shell. A person
+  working in Claude Code carries its marks too: a `!` line spends only in a session started with the
+  opening.
+- The night's ledger is a file of the person's user: any process of that user, a leaf's command among
+  them, can edit it, and the cap binds only Graphene's own calls. It estimates at list price, and a
+  call to a model the list prices at $0 reserves nothing.
+- The test guard (`tests/keyguard.py`) cannot reach a child process that runs the real keychain tool
+  by absolute path or builds its own PATH, nor Docker's own credential helper when a test pulls an
+  image.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
 - A check runs on the node's state as git sees it (P2 step 3), and nothing git ignores is there: a
   check that calls `.venv/bin/pytest` or reads a `.env` finds nothing, and one that needs an
@@ -734,9 +879,11 @@ Claude Code runs the command with the event JSON on stdin. The command writes on
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, and stdout carries nothing except the plan's answer when a plan is in
 force (P3), so a broken Graphene can never block the agent. It takes
-about 40 ms (a median of twenty runs on the author's machine, measured by `tests/test_hook_budget.py`
-and held under 60 ms there) because it imports only the standard library on that path, and if another process
-holds the database lock (a command, a second session) it gives up after 250 ms and logs the
+about 20 to 25 ms of CPU to record an event (a median of twenty runs, measured by `tests/test_hook_budget.py`,
+which holds it under 60 ms of CPU) because it imports only what the event needs on that path, starts
+no process unless a shell command's write is on its way to a refusal (`git check-ignore`), reads
+`SessionStart`'s HEAD from git's own files, and skips the interpreter's teardown; and if another
+process holds the database lock (a command, a second session) it gives up after 250 ms and logs the
 missed event rather than stalling the agent.
 
 What each event contributes:
@@ -835,7 +982,8 @@ grading is simply absent rather than being guessed at from something else (P6).
 to start one. `graphene watch` is the plan on one screen (P1a); `graphene plan --text` the plan as
 text (P1c). `graphene node show <id>` is a node's record (P6). `graphene board` is the board (P1d),
 `graphene plan --view NAME` a view of the plan and `graphene plan changes` what changed since you last
-looked (P1e), and `graphene config` the settings (P1f). `graphene ui` is the plan and, behind
+looked (P1e), `graphene config` the settings (P1f), and `graphene direction` the goals above the plans
+(P1g). `graphene ui` is the plan and, behind
 it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
 
 `graphene ui` draws what the store holds, the plan and the sessions the hooks recorded, and asks git
@@ -862,8 +1010,9 @@ written.
 ## 5. What Graphene never does
 
 It calls a model only when you name its Nemotron planner or executor (P4b), or run a prototype of P4d
-(which asks Nano). Then it sends Token Factory the prompts about your repository and the files the
-model reads, and Sandboxes the leaf's checkout, and nothing else, anywhere. The key is read from your
+or `graphene board lookup` (which ask Nano). Then it sends Token Factory the prompts about your
+repository and the files the model reads, and Sandboxes the leaf's checkout, and nothing else,
+anywhere. The key is read from your
 environment, else the keychain, and written nowhere but the keychain, by `graphene key set`. It
 never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
@@ -872,6 +1021,8 @@ but the one setting `graphene init` looks for (and never writes). What the hooks
 secrets; the store stays in `.graphene/` inside
 the repo, a directory that is made private to your user (`0700`, the database `0600`) and that
 ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
+The one file it leaves to git is `direction.txt`, which holds no session and nothing the hooks
+recorded (P1g).
 
 ## 6. The page
 
@@ -881,7 +1032,10 @@ first screen is the plan: columns are how deep a node sits in what it waits on, 
 (`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The same nodes are
 also laid out as the tree a person draws, the goal at the top; buttons choose the outline, the tree or
 the graph, and `auto` chooses from the plan's shape. Under each, the critical path and what can start
-at once are said in words. The page does not show the board. The second
+at once are said in words. Above the plan it shows the direction's path to the plan's node (P1g). It
+shows the board, while it asks (P1d), and the standing conditions as the terminal reads them
+(`board_rows`), and each leaf's `decided:` lines; it answers nothing on the board and says where it is
+answered. The second
 screen is the record of a run: lanes of agents over rows of files (`graph.py`).
 
 The page can change the plan only when a person started `graphene ui` (started from an agent's
