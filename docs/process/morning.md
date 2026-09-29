@@ -100,6 +100,13 @@ and 109 (the teardown) first.
 - At 03:04 my integration worktree was deleted, all but part of `src/` and `tests/`, during a test run;
   the same files rerun one by one deleted nothing, and the cause is not known. The branch was intact.
   The closing review had an adversary on it.
+- At 04:45:51 your main repository's `core.bare` became `true`. I had run `git bisect run` over a test
+  in one of my worktrees; git exports GIT_DIR there, and before the guard (`499a6da`, both conftests
+  now drop git's location variables) a test's `git -C tmp init` re-initialised the shared repository.
+  Only `core.bare` changed (every other local key is as it was; no identity was written). The fix,
+  `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`, was refused to me by the
+  classifier, so it is yours. The closing review's destructive-operations adversary found the same
+  hazard independently (finding 34) and reproduced it in a throwaway clone.
 - This session's classifier refused one stand-in's commands in study 4 (rerun under its rule, the
   failed run kept) and my own look at a process's environment (I did not pursue it).
 
