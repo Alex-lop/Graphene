@@ -33,6 +33,15 @@ MAKE = textwrap.dedent('''\
 ''')
 PLAN = """```plan
 goal: a friendlier app
+question: what does bye say?  [bye-word]
+    default: goodbye, as the paragraph's friendlier app would
+    then: goal farewell + It says goodbye, in full.
+    option: see you
+    then: goal farewell + It says see you.
+    then: check farewell: python3 -c 'import bye; assert bye.bye() == "see you"'
+    about: farewell
+assume: greet reads its word from words.py, where HELLO is  [hello-home]
+leave out: a --name flag; nobody asked for one  [name-flag]
 - say hello  [friendly]
   ? greet says hello  [greet]
       greet returns the word hello, from words.py
@@ -87,7 +96,8 @@ def script(tmp_path, answer, prune: str, **more: str):
 def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     print_it, ship = os.environ.get("SHOW_DEMO"), os.environ.get("RECORD_DEMO")
     prune = "sed -i.bak -e 's#app.py, words.py#app.py#'"
-    done, said, f = script(tmp_path, reply, prune, RECORD=str(tmp_path / "demo.jsonl"))
+    board = "take bye-word\ntake hello-home\ntake name-flag"  # y on each item: its default
+    done, said, f = script(tmp_path, reply, prune, RECORD=str(tmp_path / "demo.jsonl"), BOARD=board)
     if print_it:
         print(said)
     assert done.returncode == 0, said

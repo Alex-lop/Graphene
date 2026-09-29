@@ -12,9 +12,10 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 25 September 2026, when no
-Token Factory key existed, by docs/proof/nemotron.sh on a tiny repository against the scripted fake
-(tests/fake_tokenfactory.py), and its first line says it is a scripted stand-in, which the screen shows.
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
+docs/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
+planner that puts up a board and a key taking each item, and its first line says it is a scripted
+stand-in, which the screen shows.
 It is made again from the fake with
 
     RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
@@ -273,6 +274,20 @@ def banner(head: dict, state: str = "") -> list[tuple[str, str]]:
     return [(first, "bold"), *([(state, "")] if state else []), (whose, "dim")]
 
 
+def what(line: dict) -> str:
+    """One recorded change in words, for the bottom line: the rows the plan's log gained, else the nodes
+    that changed and their state, else an executor's output; so a step never looks like nothing."""
+
+    def row(r: dict) -> str:
+        detail = json.loads(r.get("detail") or "{}") if r["kind"] == "board" else {}
+        said = f"{r['node_id']} {r['kind']}".removeprefix("* ")
+        return f"{said}: {detail.get('act', '')} {detail.get('item', '')}".strip() if detail else said
+
+    said = [row(r) for r in line.get("node_log") or []]
+    said = said or [f"{i} {row['state'] if row else 'gone'}" for i, row in (line.get("nodes") or {}).items()]
+    return " · ".join(said) or ("an executor's output" if line.get("runs") else "the plan's settings")
+
+
 def last_frame(repo: Path, lines: list[dict]) -> None:
     """Every change at once: the replay's store as the run left it."""
     with Store.open(repo) as store:
@@ -294,6 +309,7 @@ class Replay(Watch):
         Binding("r", "again", show=False),
     ]
     HELP_END = "A key that would change the plan or start anything says so here, and does nothing."
+    RUNS_HERE = False  # the status line offers neither R nor P, and keeps one form
 
     def __init__(self, repo: Path, head: dict, lines: list[dict]) -> None:
         super().__init__(repo, lambda: Store.open(repo), every=1.0)
@@ -317,11 +333,14 @@ class Replay(Watch):
         due = (self.paused or time.monotonic()) - self.began
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return
+        said = []
         with Store.open(self.root_path) as store:
             while self.next < len(self.lines) and self.lines[self.next]["at"] <= due:
                 apply(store, self.lines[self.next], self.root_path)
+                said.append(what(self.lines[self.next]))
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
+        self.message = " · ".join(filter(None, said))  # what changed, in place of a key refused before it
         self.refresh_plan()
         if self.next == len(self.lines):  # the end: every fold open (zR), so the last frame shows every leaf
             self.tree.action_open_all()

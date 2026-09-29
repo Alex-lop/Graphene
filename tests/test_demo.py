@@ -549,3 +549,33 @@ def test_the_replays_help_names_its_own_keys_and_none_it_refuses(tmp_path):
     assert "space pause; play on from there" in said and "r again, from the start" in said
     assert "accept, sign off" not in said and "run every ready leaf" not in said
     assert "says so here, and does nothing" in said and "the record; the executor's output" in said
+
+
+def test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it(tmp_path):
+    """walk finding 34 (judge): neither no-key path showed the board, because the shipped recording
+    predated it. It is made again on the scripted fake with a planner that puts up a question, an
+    assumption and a leave-out: the screen's board rows (board_rows.read) show all three open with the
+    proposal, the person takes each (y), and the question's default changes its leaf, which is told to
+    that leaf's executor. A stand-in's, saying so."""
+    from graphene_map import board as B
+    from graphene_map import board_rows as BR
+
+    head, lines = demo.load(demo.SHIPPED)
+    assert head["stand_in"] is True and head["shown"] == demo.STAND_IN
+    repo, rows = demo.repository(tmp_path, head), []
+    with Store.open(repo) as store:
+        for line in lines:
+            demo.apply(store, line, repo)
+            shown = BR.read(store, shown=bool(rows and any(rows[-1])))  # as the screen keeps rows it showed
+            folded = BR.counts(shown) if shown.folded else ""
+            rows.append(([(BR.word(it), it["id"]) for it in shown.open], folded))
+        [question] = [it for it in B.items(store) if it["kind"] == "question"]
+        farewell = plan.get(store, "farewell")
+        decided = B.decided(store, farewell)
+    asked = [open_ for open_, _ in rows if open_]
+    assert asked[0] == [("asks", "bye-word"), ("assumes", "hello-home"), ("leaves out", "name-flag")]
+    assert rows[-1] == ([], "3 settled")  # each answered with its one key, folded into one row
+    assert question["state"] == "taken"
+    assert question["became"] == ["farewell: goal + It says goodbye, in full."]
+    assert farewell.goal.endswith("It says goodbye, in full.")
+    assert "what does bye say? → goodbye, as the paragraph's friendlier app would" in decided

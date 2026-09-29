@@ -214,9 +214,22 @@ const MINUTE = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-di
 const DAY = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
 
 /** A recorded moment in this machine's local time; `zone` says which time that is. */
-export const stamp = (t: string | null): string => (t ? `${DAY.format(new Date(t))} ${CLOCK.format(new Date(t))}` : "?");
+/** A recorded moment, or null when there is none or it is not a time: one bad value is a "?", where
+ * Intl's RangeError blanked the whole page. */
+const moment = (t: string | null): Date | null => {
+  const at = t ? new Date(t) : null;
+  return at && !Number.isNaN(at.getTime()) ? at : null;
+};
 
-export const clock = (t: string | null): string => (t ? MINUTE.format(new Date(t)) : "?");
+export const stamp = (t: string | null): string => {
+  const at = moment(t);
+  return at ? `${DAY.format(at)} ${CLOCK.format(at)}` : "?";
+};
+
+export const clock = (t: string | null): string => {
+  const at = moment(t);
+  return at ? MINUTE.format(at) : "?";
+};
 
 /** Two moments, with the second one's date dropped when it is the same day. */
 export const between = (t0: string | null, t1: string | null): string =>

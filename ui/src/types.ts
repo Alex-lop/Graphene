@@ -267,6 +267,7 @@ export interface Plan {
   version: number;
   repo: string; // the checkout, by name: a plan exists before any run has been recorded in it
   goal: string; // the root of the tree: why any of this is being done, in the person's words
+  goal_proposed: string; // while there is no goal: the planner's sentence, which accepting the tree accepts
   person: string;
   paused: boolean;
   width: number;
