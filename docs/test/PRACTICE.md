@@ -20,3 +20,6 @@ $10: a call that would pass it is refused unsent, nothing new starts past 80% of
 not reset it. Sandboxes are counted in operations and minutes, at $0 until their price is read.
 `practice.sh night` prints the bill. Everything made under it is practice: `evidence.py` refuses it, so
 unset it before a registered run.
+Prototypes (not a rung): `docs/test/practice.sh prototypes` runs cover, note and precheck on a fixed
+plan in a fresh feeds, 4-5 Nano calls and one sandbox fork (skipped, and said, with no Sandboxes),
+capped at $0.05; like rungs 2-7 it needs the opening in Claude Code. `--dry prototypes` on stand-ins.

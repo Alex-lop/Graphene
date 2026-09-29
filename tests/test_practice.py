@@ -203,6 +203,48 @@ def test_night_prints_the_bill_ultra_first_with_the_sandboxes(tmp_path):
                          "  Sandboxes: 2 operations, 1.5 min, counted at $0 (price: unknown)"]  # fmt: skip
 
 
+@pytest.mark.parametrize("boxed", [True, False])
+def test_the_prototypes_practise_a_few_calls_each_against_the_stand_ins(tmp_path, boxed):
+    """`practice.sh --dry prototypes`: cover, note and precheck on a fixed plan in a throwaway feeds, one
+    PASS line each. From an agent's shell under the opening, every call is on the night's bill, as practice.
+    With no sandbox (a docker that does not answer), precheck skips the proposed leaf's fork and says so."""
+    if boxed and not docker_runs():
+        pytest.skip("needs a running Docker (the sandbox stand-in)")
+    more = {} if boxed else {"PATH": stub_docker(tmp_path)}
+    done = ladder(tmp_path, "--dry", "prototypes", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10", **more)
+    said = done.stdout
+    assert done.returncode == 0 and "· PASS · prototypes · " in said, said + done.stderr
+    for name in ("cover", "note", "precheck"):
+        assert f"·   {name}: PASS · " in said
+    assert "your paragraph, in clauses: 3; the plan carries 2, no leaf carries 1" in said
+    assert "places it on xmlfeed" in said
+    assert "xmlfeed red, for the right reason; cents passes already" in said
+    skipped = "rejects's check was not run: it runs only in a sandbox fork, and there is no Sandboxes"
+    assert (skipped in said) is not boxed and ("rejects red" in said) is boxed
+    calls = (tmp_path / "state" / "ledger.jsonl").read_text().splitlines()
+    rows = [json.loads(r) for r in (tmp_path / "state" / "night.jsonl").read_text().splitlines()]
+    assert len(calls) == sum(r["kind"] == "settle" for r in rows) == (5 if boxed else 4)
+    assert all(r["practice"] for r in rows) and "next: `docs/test/practice.sh --dry night`" in said
+
+
+def test_in_an_agents_shell_the_prototypes_need_the_opening(tmp_path):
+    dead = {"HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""}
+    done = ladder(tmp_path, "prototypes", CLAUDECODE="1", **dead)
+    assert done.returncode == 1 and "FAIL · prototypes · " in done.stdout, done.stdout + done.stderr
+    assert "an agent's mark (CLAUDECODE)" in done.stdout
+    assert "    docs/test/practice.sh prototypes\n" in done.stdout
+    assert not (tmp_path / "work").exists()
+
+
+def stub_docker(tmp_path: Path) -> str:
+    """A PATH whose docker's daemon does not answer."""
+    stub = tmp_path / "bin"
+    stub.mkdir(exist_ok=True)
+    (stub / "docker").write_text("#!/bin/sh\nexit 1\n")
+    (stub / "docker").chmod(0o755)
+    return f"{stub}{os.pathsep}{os.environ['PATH']}"
+
+
 def test_the_dry_run_removes_only_a_state_it_made(tmp_path):
     state = tmp_path / "state"
     state.mkdir()

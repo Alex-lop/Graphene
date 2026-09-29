@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--parallel 1 works in place and merges nothing, so no leaf could land: use 2 or more")
         return 2
     if "nemotron" in (args.executor.split()[:1] + args.planner.split()[:1]):
-        unreached = tf.reach()
+        unreached = bench.unopened(args.executor, args.planner) or tf.reach()
         if unreached:
             print(f"no run: {unreached}")
             return 2

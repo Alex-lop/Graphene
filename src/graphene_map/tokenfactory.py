@@ -65,7 +65,8 @@ class Unreachable(Exception):
 
 
 class Spent(Unreachable):
-    """The ledger's total has reached the cap, or the night's would pass its own: no call is made."""
+    """The ledger's total has reached the cap, the night's would pass its own, or an agent's shell has not
+    been opened to spend (``night.person_only``): no call is made."""
 
 
 class Late(Unreachable):
@@ -304,8 +305,10 @@ def chat(
     if limit is not None and _ledger() is not None and spent() >= limit:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
-    most = worst(body, model) if night.cap() is not None else 0.0
     try:
+        if endpoint() == "token factory":  # the real host; the fake and a proxy are anyone's
+            night.person_only(f"a call to {model}")
+        most = worst(body, model) if night.cap() is not None else 0.0
         held = night.reserve(model, most, tag, endpoint())
     except night.Refused as no:
         raise Spent(str(no)) from None

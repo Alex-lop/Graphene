@@ -6,6 +6,7 @@ docs/test/practice.sh (docs/test/PRACTICE.md says what to type):
     practice.sh N          rung N
     practice.sh status     every rung, pass or fail, and the bill so far
     practice.sh night      the night's bill: every live call and Sandbox operation under the opening
+    practice.sh prototypes cover, note and precheck, a few Nano calls each, on a fixed plan (not a rung)
     practice.sh --dry      the whole ladder against the stand-ins: the scripted fake Token Factory
                            (tests/fake_tokenfactory.py) and Docker in place of ConTree (PRACTICE_DRY=1 too)
 
@@ -263,10 +264,12 @@ def access(r: Rung) -> str:
         typed = (f"! GRAPHENE_LEDGER={rel(LEDGER)} GRAPHENE_SPEND_CAP_USD={r.env['GRAPHENE_SPEND_CAP_USD']} "
                  f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
-        if not fresh:
-            raise Refused(
-                f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME} 1` again"
-            )
+        if not fresh:  # a `!` line carries the session's marks: it spends only if the session was opened
+            opened = "" if night.cap() is not None else (
+                f"\n(it spends only in a session started with {night.OPENING} set; else run `{ME} 1` "
+                "in a terminal of your own)")  # fmt: skip
+            raise Refused(f"yours to type: in this Claude Code session, type\n    {typed}\n"
+                          f"then `! {ME} 1` again{opened}")  # fmt: skip
         say(f"  reading what you ran today: {out}")
     else:
         code, said = r.sh(args, ROOT, 900)
@@ -453,6 +456,67 @@ def demo_run(r: Rung) -> str:
     return f"{ran}; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
 
 
+# The prototypes' practice: two leaves accepted and one left proposed on feeds, so precheck reads a red
+# (xmlfeed's check fails with a bare AssertionError, which only Nano can explain), finds one that passes
+# already (cents), and forks a sandbox for the proposed one; cover finds a clause no leaf carries; note
+# routes two sentences. The words and the checks are fixed: nothing of any task's card is in them.
+PROTO_PLAN = [
+    {"id": "xmlfeed", "title": "an XML reader for the price feed",
+     "goal": "Add ingest/xmlfeed.py, reading samples/prices.xml, and register it in ingest.READERS as 'xml'",
+     "scope": ["ingest/xmlfeed.py", "ingest/__init__.py"],
+     "check": "python3 -c \"import ingest; assert 'xml' in ingest.READERS\""},
+    {"id": "cents", "title": "prices kept in integer cents", "goal": "Keep every price as integer cents",
+     "scope": ["normalize/money.py"], "check": "python3 -m unittest -q tests.test_contract"},
+]
+PROTO_PROPOSED = [{"id": "rejects", "title": "rejected rows written aside",
+                   "goal": "Write each row validation rejects to sink/rejects.py's file",
+                   "scope": ["sink/rejects.py"], "check": "python3 -c 'import sink.rejects'"}]
+PROTO_PARAGRAPH = ("Add an XML reader for the supplier feed and register it. Keep every price in integer "
+                   "cents. Email the ops team when a feed is rejected.")
+PROTO_NOTES = ["the XML reader must skip a row that has no price",
+               "prices in the XML feed are already in cents"]  # fmt: skip
+
+
+def calls() -> int:
+    return len(LEDGER.read_text(encoding="utf-8").splitlines()) if LEDGER.exists() else 0
+
+
+def prototypes(r: Rung) -> str:
+    """Not a rung: the three prototypes, a few Nano calls each, on a fixed plan in a throwaway feeds. One
+    PASS or FAIL line each; precheck's sandbox fork is skipped, and said so, with no Sandboxes access."""
+    repo, _ = r.feeds("prototypes")
+    r.propose(repo, PROTO_PLAN)
+    tree, paragraph = repo / ".graphene" / "practice-proposed.json", repo / ".graphene" / "paragraph.txt"
+    tree.write_text(json.dumps({"nodes": PROTO_PROPOSED}), encoding="utf-8")
+    code, out = r.sh(["graphene", "plan", "propose", str(tree)], repo, 120, GRAPHENE_AS="agent:practice")
+    if code:  # an agent's proposal stays proposed: a person's is open at once
+        raise Failed(f"`graphene plan propose` failed: {last(out)}")
+    paragraph.write_text(PROTO_PARAGRAPH, encoding="utf-8")
+    boxed = docker_runs() if DRY else S.configured()
+    ids = [] if boxed else [n["id"] for n in PROTO_PLAN]  # a proposed leaf's check runs only in a fork
+    leaf = re.compile(rf"^[ !] ({'|'.join(n['id'] for n in PROTO_PLAN + PROTO_PROPOSED)})\s+(.+?)\s{{2,}}")
+    steps = [("cover", [["plan", "cover", "--paragraph", str(paragraph)]], "your paragraph, in clauses"),
+             ("note", [["plan", "note", n] for n in PROTO_NOTES], "take it:"),
+             ("precheck", [["plan", "precheck", *ids]], "each check before any work")]  # fmt: skip
+    lines, failed = [], []
+    for name, commands, sign in steps:
+        began, dollars = calls(), spent()
+        done = [r.graphene(repo, *c, timeout=600) for c in commands]
+        ok = all(code == 0 and sign in out for code, out in done)
+        failed += [] if ok else [name]
+        said = [ln.strip() for _, out in done for ln in out.splitlines() if "places it on" in ln
+                or ln.startswith(sign) and name == "cover"]  # fmt: skip
+        said += [f"{m[1]} {m[2]}" for _, out in done for m in map(leaf.match, out.splitlines()) if m]
+        lines.append(f"{name}: {'PASS' if ok else 'FAIL'} · {calls() - began} Nano call(s), "
+                     f"${spent() - dollars:.4f} · {'; '.join(said) or last(done[-1][1])}")  # fmt: skip
+    if not boxed:
+        lines.append(f"precheck: {PROTO_PROPOSED[0]['id']}'s check was not run: it runs only in a sandbox "
+                     "fork, and there is no Sandboxes access here")  # fmt: skip
+    if failed:
+        raise Failed("\n".join([f"{', '.join(failed)} did not do what it says, in {repo}", *lines]))
+    return "\n".join(lines)
+
+
 # number: (name, what it may spend in dollars at list price, how long it takes live, the rung)
 RUNGS = {
     1: ("access to Token Factory", 0.25, "1 min", access),
@@ -463,6 +527,7 @@ RUNGS = {
     6: ("arm A as one leaf, and B′, on feeds", 3.00, "15-40 min", arms),
     7: ("the demo run, recorded", 3.00, "10-30 min", demo_run),
 }
+STEPS = {"prototypes": ("the prototypes, a few Nano calls each", 0.05, "2-5 min", prototypes)}  # not rungs
 MEANS = [  # (what the log or the failure says, what it most likely means, what to try); the first match wins
     (r"ESCAPED",
      "a way out of the leaf's scope worked in the sandbox: containment does not hold there",
@@ -565,10 +630,11 @@ def interrupted(signum, frame) -> None:
 
 def climb(n: int) -> str:
     """One rung: PASS, FAIL or STOPPED, what it cost, the bill so far, how long, and the next command."""
-    name, cap, _, rung = RUNGS[n]
+    name, cap, _, rung = RUNGS[n] if n in RUNGS else STEPS[n]
     cap = float(os.environ.get("PRACTICE_CAP") or cap)
     r, before, began, refused = Rung(n, cap), spent(), time.monotonic(), False
-    say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
+    called = f"rung {n}" if n in RUNGS else str(n)
+    say(f"{called}{'/7' if n in RUNGS else ''} · {name} · cap ${cap:.2f} · log {rel(r.log)}")
     signal.signal(signal.SIGINT, interrupted)
     try:
         # rung 1 has its own way (the person types access.py); the opening is the person's word, given
@@ -598,7 +664,7 @@ def climb(n: int) -> str:
                     "made may be left (a Docker sandbox's are named graphene-*)")  # fmt: skip
         said += (f"\nleft behind: this rung's repos\nto clean: {shlex.join(['rm', '-rf', *left])}" if left
                  else "\nleft behind: nothing")  # fmt: skip
-        if not DRY and n in (1, 3, 4, 6, 7):  # rung 1's smoke too: a ConTree operation sent is not cancelled
+        if not DRY and n in (1, 3, 4, 6, 7, "prototypes"):  # a ConTree operation sent is not cancelled
             said += "\nleft running, maybe: a ConTree operation already sent runs on to its own time limit"
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
@@ -607,9 +673,8 @@ def climb(n: int) -> str:
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip
     if not refused:  # a rung that ran nothing leaves the record as it was
         PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
-    say(
-        f"{result} · rung {n} · {took:.1f} s · this rung ${spent() - before:.4f} · bill so far ${spent():.4f}"
-    )
+    say(f"{result} · {called} · {took:.1f} s · this {'rung' if n in RUNGS else 'step'} "
+        f"${spent() - before:.4f} · bill so far ${spent():.4f}")  # fmt: skip
     for line in said.splitlines():
         say(f"  {line}")
     if result == "FAIL":
@@ -621,6 +686,8 @@ def climb(n: int) -> str:
                 say(f"  | {line[:160]}")
     if result != "PASS":
         say(f"next: {ME} {n}")
+    elif n not in RUNGS:
+        say(f"next: `{ME} night` shows the night's bill")
     else:
         say(f"next: {ME} {n + 1}" if n < 7 else "next: the ladder is climbed; `" + ME + " status` shows it")
     if result != "STOPPED":  # stopped, the ladder is on its way out: one more Ctrl-C is ignored there too
@@ -644,10 +711,23 @@ def status() -> None:
 
 
 def scripted(body: dict) -> dict:
-    """The dry run's Token Factory: the access check's tool call, a two-leaf plan from any paragraph, and
-    for any leaf `practice_<id>.py` written and `done`. Nothing about any task's card is in it."""
+    """The dry run's Token Factory: the access check's tool call, a two-leaf plan from any paragraph, for
+    any leaf `practice_<id>.py` written and `done`, and the prototypes' readings of the fixed plan above
+    (by the schema each asks for). Nothing about any task's card is in it."""
     from fake_tokenfactory import call
 
+    schema = ((body.get("response_format") or {}).get("json_schema") or {}).get("name")
+    if schema:
+        clauses = [{"text": t, "leaf": leaf, "nearest": near} for t, leaf, near in (
+            ("Add an XML reader for the supplier feed and register it", "xmlfeed", None),
+            ("Keep every price in integer cents", "cents", None),
+            ("Email the ops team when a feed is rejected", None, "rejects"))]  # fmt: skip
+        return {"content": json.dumps({
+            "clauses": {"clauses": clauses},
+            "note": {"target": "xmlfeed", "scope_add": [], "scope_remove": [], "check": None,
+                     "goal_add": True, "why": "it constrains the XML reader"},
+            "precheck": {"verdict": "red-right-reason", "why": "the work is not done yet"},
+        }[schema])}  # fmt: skip
     if any((t.get("function") or {}).get("name") == "get_current_weather" for t in body.get("tools") or []):
         return call("get_current_weather", city="Dallas", unit="fahrenheit")
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
@@ -688,7 +768,8 @@ def main(argv: list[str]) -> int:
         for line in night.bill():
             say(line)
         return 0
-    if args and not (args[0].isdigit() and int(args[0]) in RUNGS):
+    step = args[0] if len(args) == 1 and args[0] in STEPS else None
+    if args and not step and not (args[0].isdigit() and int(args[0]) in RUNGS):
         for line in __doc__.split("\n\n")[1].splitlines():
             say(line)
         return 2
@@ -714,6 +795,8 @@ def main(argv: list[str]) -> int:
             result = next((got for got in map(climb, RUNGS) if got != "PASS"), "PASS")  # the first not passed
             status()
             return EXIT[result]
+        if step:
+            return EXIT[climb(step)]
         rows = progress()
         n = (
             int(args[0])

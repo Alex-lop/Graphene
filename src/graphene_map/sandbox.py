@@ -191,6 +191,7 @@ class Contree:
                                "NEBIUS_PROJECT_ID, or a profile saved by `contree auth`")
         from . import keys
 
+        night.person_only("a ConTree sandbox")  # ConTree is always the real service
         night.first("a ConTree sandbox")  # past 80% of the night's cap, no sandbox is made
         token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
         self.sdk = ContreeSync(token=token) if token else ContreeSync()

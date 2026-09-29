@@ -59,6 +59,7 @@ sys.path.insert(0, str(HERE))
 import make_task  # noqa: E402
 import tally  # noqa: E402  (it puts src/ on the path)
 
+from graphene_map import night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
 from graphene_map.executor import PROMPT_VERSION  # noqa: E402
@@ -379,6 +380,17 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     return ap.parse_args(argv)  # fmt: skip
 
 
+def unopened(*specs: str) -> str | None:
+    """Why a run on Nemotron may not start from here: the marks are stripped from what it starts, so the
+    person-only rule the client holds (``night.person_only``) is asked here, before they are."""
+    if any(s.split()[:1] == ["nemotron"] for s in specs) and tf.endpoint() == "token factory":
+        try:
+            night.person_only("a run on Nemotron")
+        except night.Refused as no:
+            return str(no)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
     card = (args.tasks / args.task).resolve()
@@ -398,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{leaf:32} {'PASSES at the base commit: not a check' if passes else 'fails at base'}")
         return 1 if any(at_base.values()) else 0
 
-    unreached = tf.reach() if args.executor.split()[:1] == ["nemotron"] else None
+    unreached = unopened(args.executor) or (tf.reach() if args.executor.split()[:1] == ["nemotron"] else None)
     if unreached:  # else every leaf would fail, and the rows would count a run that never was
         print(f"no run: {unreached}")
         return 2

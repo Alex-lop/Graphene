@@ -12,7 +12,7 @@ from contree_sdk import ContreeSync  # noqa: E402
 from contree_sdk.sdk.managers.images import ImagesManagerSync  # noqa: E402
 from contree_sdk.sdk.objects.image import ContreeImageSync  # noqa: E402
 
-from graphene_map import sandbox  # noqa: E402
+from graphene_map import night, sandbox  # noqa: E402
 
 
 def test_every_call_binds_to_the_pinned_sdk():
@@ -60,6 +60,8 @@ def test_its_answers_are_read_as_the_sdk_gives_them(monkeypatch):
         images = Images()
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    for mark in night.MARKS:  # ConTree is the real service, stub or not: this is the person's shell
+        monkeypatch.delenv(mark, raising=False)
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
     box = sandbox.Contree()
