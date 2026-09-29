@@ -1414,9 +1414,10 @@ any of them.
      back or yours; a proposal; an open board item) with the command that acts on it, and each running
      leaf with the session holding it; "you N" counts exactly the named rows, and nothing after a state
      word is cut. The exploratory pass on that build (registered after the fact, before its runs):
-     median 104.1 against 107.4, both arms right on all eight, four of six direction stand-ins answering
-     from one command. It can show the direction of the change, not confirm it. What still stops a
-     stand-in: `next: email` names a leaf with no row of its own. *Evidence:*
+     median 104.1 against 107.4, both arms right on all eight; two of six direction stand-ins answered
+     from one command, and four also ran `graphene plan`. It can show the direction of the change, not confirm it. What still stopped a
+     stand-in (`next: email` named a leaf with no row of its own; which id "running" meant) is fixed
+     since: `next:` is a row, and a running leaf says who holds it (124). *Evidence:*
      `docs/test/test_direction_study.py::test_the_direction_print_alone_names_every_waiting_and_running_item_inside_80_columns`.
 116. **An agent's write tool into `.graphene/` is refused by the hook, plan or no plan.** With no plan in
      force, an agent could otherwise accept its own direction node by editing the file. `hooks.into_ours`

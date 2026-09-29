@@ -22,9 +22,9 @@
 - A run started from `watch` goes on after the watch's terminal closes, as after `q`. Default: keep.
 
 **Broken or risky**
+- Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
 - Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
-- Harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); a rehearsal and the walkers' tmux seats could read your `~/.zshenv` key (it reached only the local stand-in); Playwright left three files in your git-ignored `.playwright-mcp/`, removed.
-- My integration worktree was deleted during a test run at 03:04; the same test files, rerun one by one, deleted nothing. Cause unknown.
+- Other harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); shells that read `~/.zshenv` gave stand-ins your key (only the local stand-in saw it); Playwright files in your git-ignored `.playwright-mcp/`, removed; my integration worktree deleted at 03:04, cause unknown.
 
 ---
 
