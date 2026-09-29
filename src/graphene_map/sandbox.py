@@ -85,6 +85,18 @@ def _client():
     return ContreeSync(token=token) if token else ContreeSync()
 
 
+def _sdk_error(name: str) -> type[Exception]:
+    """contree-sdk's own exception class ``name``, asked for only once something was raised (an except
+    clause is evaluated then), or a class nothing raises when the SDK in this process has none by that
+    name (a stand-in module with ContreeSync alone)."""
+    try:
+        from contree_sdk.sdk import exceptions
+
+        return getattr(exceptions, name)
+    except (ImportError, AttributeError):
+        return type(name, (Exception,), {})
+
+
 def refused() -> str | None:
     """The refusal a leaf would meet, asked before any is placed (`graphene init`): ConTree's whoami, a
     read and no operation, answering 403, or saying the key lacks one of the grants a leaf uses. None when
@@ -250,11 +262,9 @@ class Contree:
     def _asked(self, call):
         """One call to the SDK, its 403 said as ``Refused``, with what the key lacks when ConTree's whoami
         says."""
-        from contree_sdk.sdk.exceptions import ForbiddenError
-
         try:
             return call()
-        except ForbiddenError:
+        except _sdk_error("ForbiddenError"):
             try:  # a read of the key's grants, no operation: which of them this project does not give
                 lacks = sorted(k for k, v in self.sdk.get_token_info().permissions.items() if not v)
             except Exception:  # noqa: BLE001 (the refusal is said either way)
@@ -269,14 +279,12 @@ class Contree:
         return self._run(self._asked(lambda: self.sdk.images.use(image)), script, files, timeout, image)
 
     def _run(self, image, script: str, files: dict, timeout: float, ref: str) -> tuple[str, int, str]:
-        from contree_sdk.sdk.exceptions import OperationTimedOutError
-
         self.ops += 1
         with self._counted("run"):
             try:
                 done = self._asked(lambda: image.run(shell=script, files=files or None, timeout=timeout,
                                                      disposable=False, truncate_output_at=OUTPUT).wait())
-            except OperationTimedOutError:
+            except _sdk_error("OperationTimedOutError"):
                 return ref, 124, TIMED_OUT
         return str(done.uuid), int(done.exit_code), (done.stdout or "") + (done.stderr or "")
 
