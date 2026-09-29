@@ -727,7 +727,8 @@ def status() -> None:
         seen = f"{row['result']} {row['at']}, {row['seconds']} s, ${row['dollars']:.4f}" if row else "not run"
         say(f"{n}. {name:40} {seen}  (cap ${cap:.2f}, live {takes})")
     say(
-        f"bill so far ${spent():.4f} at list price, Token Factory only (Sandboxes are billed apart); "
+        f"bill so far ${spent():.4f} at list price, Token Factory only (Sandboxes: free in the beta, by "
+        f"Nebius's page; each sandbox rung counts its operations); "
         f"{rel(LEDGER)}"
     )
 
