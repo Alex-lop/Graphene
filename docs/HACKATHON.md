@@ -1,17 +1,21 @@
 # Graphene for the Nebius × NVIDIA Global AI Hackathon: the Devpost fields (a draft)
 
-*A draft for Alex, first written 2026-09-26 by the agent that ran the winning directive, and turned
+*A draft for Alex, first written 2026-09-26 by the agent that ran the winning directive, turned
 around shaping on 2026-09-28 as `docs/process/field.md` asks ("Where Graphene differs" and "Claims the
-submission must not make"). Put it in your own words before it goes anywhere. Track: Coding and
-Agentic Engineering. Every sentence is meant to be true and traceable, and every number names its
-source. **No number here comes from a live run.** No session that wrote this had a Token Factory
-key, so the Nemotron path has run only against a scripted stand-in for Token Factory
-(`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The fields that need the evidence
-run say so and are left empty until it exists.*
+submission must not make"), and brought up to first light on 2026-09-29. Put it in your own words
+before it goes anywhere. Track: Coding and Agentic Engineering. Every sentence is meant to be true and
+traceable, and every number names its source. **No number here comes from a live run.** Until 29
+September no session that wrote this had a Token Factory key. Since then Graphene has made a runtime
+call to Token Factory, as practice (`docs/test/first-light.md`). Otherwise the Nemotron path has run
+only against a scripted stand-in for Token Factory (`tests/fake_tokenfactory.py`) and a Docker
+stand-in for Sandboxes: the Nemotron planner has not run live, and no leaf has run in a Sandbox. The
+fields that need the evidence run say so and are left empty until it exists.*
 
-<!-- For Alex: the board, the views, talking on the tree, the settings and the three Nemotron
-prototypes are merged into `shaping` (checked at 2111115: every command named here answers --help),
-not yet into `main`. Send this text only once it is on main. -->
+<!-- For Alex: the shaping night's work (the board, the views, talking on the tree, the settings and
+the three prototypes) is on `main` through PR #31. What this draft says of 29 September (`board:
+auto`, `graphene board lookup`, the direction, the night's ledger, the page's board, whoami at init)
+is on `first-light`, not yet on `main` (checked at 73f11e2: every command named here answers --help).
+Send this text only once it is on main. -->
 
 ## Inspiration
 
@@ -39,14 +43,19 @@ You tell Graphene what you want in a paragraph. Nemotron 3 Ultra, through Token 
 repository and proposes a tree: the goal at the top, sub-goals under it, and leaves, each with the
 files it may change (its scope) and the command that proves it done (its check). Then you shape it.
 
-**The board: the planner asks instead of guessing.** Beside the tree, the planner puts up what the
-code cannot answer and what changes the tree, at most three items: questions, each with a default and
-its options, and risks, each with what it would do about it. You answer each with one command:
+**The board: the planner asks instead of guessing.** Beside the tree, the planner is told to put up
+only what the code cannot answer and what changes the tree, at most three items: questions, each with
+a default and its options, and risks, each with what it would do about it. The count is the planner's
+instruction, and Graphene takes what it puts up. You answer each with one command:
 `graphene board take ID` for the default, `pick ID N` for an option, `drop`, `park` or `unpark`,
 `answer ID …` in your own words, and `note …` for something of yours. In `graphene watch` the items
 are the first rows under the goal, answered with a key each (`y` take, `1`-`9` pick, `d` drop, `p`
 park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
 the board`).
+The board is shown only while a question on it is open (`board: auto`, the setting unset; `board: on`
+in `graphene config edit` shows every open item). Accepting the whole plan, or `R`, takes the default
+of everything still open as the person's, said in one line that `graphene plan undo` takes back, so a
+person who agrees with every default answers nothing.
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
 plan as your own act, which `graphene plan undo` takes back. What you take, pick or answer in your
 own words, and every note of yours, reaches the executors' contracts as a `decided:` line, so the
@@ -96,7 +105,26 @@ built and tested against the scripted stand-in, and **none has run live yet**:
   and a Docker container, not yet a Token Factory Sandbox (`tests/test_precheck.py`).
 
 They are the top three of 32 ideas, 20 after merging, scored by three judges
-(`docs/process/ideas.md`).
+(`docs/process/ideas.md`). A fourth came on 29 September, for the board: `graphene board lookup` asks
+Nano which open questions the repository already answers. An answer is kept only when the line it
+quotes is in the file it names and its choice is one the question offers, and the item is settled
+"from the repo: FILE:LINE", which `graphene board unpark` gives back to the person. A protected file
+is never sent. Like the three, it has run only against the scripted stand-in (`tests/test_lookup.py`).
+
+**The direction: the goals above the plans.** `graphene direction` is a small tree of goals, one
+line a node, in `.graphene/direction.txt`. Git tracks that file, and the store beside it stays on the
+machine, so another clone reads the same direction. An agent proposes nodes (`graphene direction
+propose`), and only the person accepts them. The hook refuses an agent's write tools anywhere under
+`.graphene/`, plan or no plan, so an agent's edit cannot accept its own proposal; its shell writes
+there are refused while a plan is in force or plan first is on. Every plan hangs from
+one node (`graphene direction plan NODE`), and so does every Claude Code session the hooks recorded:
+through the plan when it held or proposed one of the plan's nodes, where the person attached it
+(`graphene direction attach`, or `D` in `graphene watch`), or else it is shown as not in the direction.
+Each row says what waits on you, what runs and what is next, read from the rows the hooks already
+write; no transcript is read. It is shown above the plan in `graphene plan`, `graphene watch` and the
+page. Graphene's own direction is in its repository, every node proposed until Alex accepts it. It is
+built and tested against stand-ins (`tests/test_direction.py`, `ui/src/Direction.test.tsx`); one study
+of it is under What we learned.
 
 **Then you press `R`.** Each ready leaf gets a Nemotron Nano executor, in a Token Factory Sandbox
 forked from one checkpoint of your repository. A leaf that needs a file outside its scope comes back
@@ -122,8 +150,16 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   /v1/models?verbose=true` names the Nemotron Ultra, Super and Nano, and its `pricing` prices every
   call's `usage`. When a model is retired, a stale id falls back to the nearest listed Nemotron, and
   one line says which was used instead of which. A 429, a 5xx and a timeout are retried, then
-  reported with what to do. A ledger can cap the night's spend, refusing the next call before it is
-  sent.
+  reported with what to do.
+- **Spending is the person's act.** A process that carries a vendor's agent mark (`CLAUDECODE`,
+  Codex's) is refused a call to the real host, and any ConTree sandbox, before anything is sent,
+  unless the person started its session with `GRAPHENE_AGENT_LIVE_USD` set. While that opening is set,
+  every call goes on one ledger for the night, which every process locks (`flock`) to read or write.
+  A call reserves its worst case at list price before it is sent and settles to its usage after; one
+  that would take the night past its cap (the lower of that figure and $10) is refused unsent; nothing
+  new starts once what is spent and in flight reach 80% of the cap; and a ConTree operation is counted
+  with its seconds, at $0 until its price is read. Every row is marked practice, and
+  `docs/test/evidence.py` refuses practice (`night.py`, `tests/test_night.py`).
 - **Nemotron's roles.** Ultra is the planner (`planner.py`). It has read-only tools (list, glob, grep,
   read) that run on the person's machine and read only what git shows, and it answers in Graphene's
   plan text. Nano, then Super, is the executor (`executor.py`). Graphene's own loop asks for one tool
@@ -146,6 +182,12 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   as a user who can write only the files the leaf's scope covers, through `setpriv`. What a command
   changes outside the scope is never brought back. The leaf's check runs in a fresh fork, on only
   what came back. At most fifty sandbox operations run at once from one machine, the beta's cap.
+  Before `graphene init` places Nemotron's leaves in Sandboxes it asks ConTree's whoami, a read: a
+  project Sandboxes refuse gets its leaves on this machine, with one line saying why and where access
+  is asked for. A 403 at any later operation brings the leaf back in the same words, naming the grants
+  the key lacks when whoami lists them. An operation past its time comes back as the command's exit
+  124, as Docker's does, so the leaf goes on. These are tested against stubs of the SDK that raise its
+  own error classes (`tests/test_sandbox_contract.py`, `tests/test_init.py`, `tests/test_faults.py`).
 - **The boundary, three layers deep.** Layer one: the executor's write tools refuse a path outside
   the scope before touching it, in the same words the Claude Code hooks use. Layer two: in a
   sandbox, the operating system refuses it too. Layer three: a leaf is done only when Graphene runs
@@ -163,7 +205,9 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
 - **The rest of the product.** `graphene watch` is built with Textual, and the plan is a SQLite
   store in the repository, ignored by git. The plan has a text form that round-trips through
   `$EDITOR`. Leaves run in parallel, each in a git worktree of its own, and are merged `--no-ff`.
-  The exported page (`graphene ui --export`) is React, and draws the outline, the tree or the graph.
+  The exported page (`graphene ui --export`) is React, and draws the outline, the tree or the graph,
+  with the board and the standing conditions (read-only: they are answered in the terminal) and the
+  direction above the plan.
   The test suite runs in CI on Linux and macOS, on Python 3.12, 3.13 and 3.14.
 
 ## Challenges we ran into
@@ -205,8 +249,9 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   on, the plan as an outline, a tree and a graph, a text form that round-trips, parallel leaves
   in worktrees, hand-backs that offer their own fix, a record for each leaf, a read-only web page,
   and docs that list what does not bind.
-- Containment that is tested, not asserted. The escape test above holds in the Docker stand-in, and
-  running it in ConTree is the first thing a key is for.
+- Containment that is tested, not asserted. The escape test above holds in the Docker stand-in.
+  Running it in ConTree waits on Sandboxes access for the project: rung 1 of the practice ladder met a
+  403 there (`docs/test/first-light.md`).
 - Failure that reads as a sentence. A 429 storm, a 5xx, a timeout, a model that stops calling tools,
   a sandbox killed mid-leaf and a check that hangs each bring the leaf back with its cause and what
   to do. The run goes on, and nothing is left running (`tests/test_faults.py`, against the
@@ -240,9 +285,31 @@ one Claude Code proposal per task, and nothing run, answering the board first co
 attention than pruning the outline alone on all four tasks: +356.7 to +637.3 person-seconds (study
 2), and still +272.8 to +398.6 once the planner put up one or two items instead of five or six
 (study 3, exploratory), mostly in reading. The shaped plan was at least as faithful to the task's
-card on all four, one run each (`docs/test/results-2026-09-28-shaping.md`). The board against the
-paragraph, and the live Nemotron panel, have not run. The chart goes in the README, the video, the
-demo page and here, whatever it says.
+card on all four, one run each (`docs/test/results-2026-09-28-shaping.md`).
+
+Study 4, registered before its runs, measured the board after the changes of 29 September (`graphene
+board` prints only what answering needs, accepting the plan takes the defaults, an answer's echo is
+one line) against the outline, on study 3's four proposals, again with Claude model stand-ins, nothing
+run, one run per task and arm. The board read fewer words than study 3's on all four tasks and gave a
+plan as faithful to the card or more on all four, but it still cost more modelled person-seconds than
+the outline on three of four: +50.4 on feeds, +409.0 on inventory, +284.7 on logs, and −30.5 on report
+(2,427.9 against 1,714.3 over the four). No stand-in pressed a key on the board; each took every
+default by accepting the plan. By the rule registered before the runs, the board is not shown by
+default: `board: auto` shows it only while a question the repository cannot answer is open
+(`docs/test/results-2026-09-29-board.md`).
+
+The direction study asked whether a person answers "what is waiting on me, what is running, what is
+next" faster from `graphene direction` than from `morning.md`, a brief of the same state written as
+prose. It is a pilot: Claude model stand-ins in three seats, six runs per arm, on one fixture.
+Registered before its runs, it showed no advantage for the direction: every run in both arms got all
+eight items right, and the direction took a median 143.9 modelled person-seconds against 105.4 (after
+the fact: its print named only two of the four items waiting on the person, so each stand-in ran two
+more commands). An exploratory pass, after the fact,
+on a build that names every one, gave a median 104.1 against 107.4, every run right again; it can show
+which way the change moved and cannot confirm it (`docs/test/results-2026-09-29-direction.md`).
+
+The board against the paragraph, and the live Nemotron panel, have not run. The chart goes in the
+README, the video, the demo page and here, whatever it says.
 
 ## What's next for Graphene
 
@@ -279,7 +346,10 @@ commit is 10 August 2026.
   Token Factory and the sandbox placement. 25 to 26 September: failure paths, forks on screen, the
   replay, and the front door. 27 to 28 September: shaping: the board, the tree and graph views,
   talking on the tree, settings you state once, and three Nemotron prototypes for the moment before
-  anything runs.
+  anything runs. 29 September: first light. Graphene made a runtime call to Token Factory, as
+  practice; an agent spends only under the person's opening, on one night's ledger; the board's
+  default was set by study 4; `graphene board lookup`; the direction; a closed terminal ends what
+  Graphene started; no test can reach the real keychain; and Sandboxes' 403 is said with what to do.
   <!-- The line counts above are still those at 0334168 and were not measured again. -->
 - 181 commits predate the period, and 421 were made after it opened, at `0334168`.
 
@@ -289,9 +359,9 @@ counting `author-time` before 1787760000 (2026-08-26 16:00 UTC).
 
 ## Feedback on Token Factory, Sandboxes and Nemotron
 
-Written from what we actually hit. Where a thing is only unverified, it says so. (Checked
-2026-09-25, before any live call: this session had no key, so nothing below was observed on the
-service itself.)
+Written from what we actually hit. Where a thing is only unverified, it says so. (Items 1 to 8 were
+checked 2026-09-25, before any live call, from the docs and PyPI. Items 9 to 11, and what item 6 says
+was observed, come from the practice rungs of 2026-09-29, in `docs/test/first-light.md`.)
 
 1. **The Sandboxes SDK's Getting Started describes an API no release has.** It says `Contree` and
    `ContreeSync` "just take an already-constructed `contree_client` client". On PyPI, both
@@ -308,14 +378,27 @@ service itself.)
    commands are not root. We drop privileges with `setpriv` inside the image. A `user=` on `run`
    would make the safe thing the easy thing.
 6. **Pricing in the model list, as documented, is exactly what an agent needs**, because every
-   call's usage can be priced per leaf. *Not yet observed:* the field's presence and its units, and
-   whether those are the prices billed.
+   call's usage can be priced per leaf. *Observed on 29 September (practice):* the live list carries
+   each model's price, and rung 2's three usage rows, priced at it, add up to what the ladder recorded.
+   *Not yet observed:* whether those are the prices billed.
 7. **The SDK has no way to delete a checkpoint.** An agent that keeps each command's image
    (`disposable=False`) leaves one image per command, and the overview says untagged images are kept
    180 days.
 8. **Model retirement needs a machine-readable signal.** An agent that writes model ids into a
    repository's config can fall back when an id disappears from `/v1/models`, which is what we built.
    A `deprecated_at` or `replaced_by` field in the list would let it warn *before* the id goes.
+9. **Sandboxes' 403 names neither the missing grant nor the way in.** For rung 1's call, contree-sdk
+   0.3.6 raised `ForbiddenError` with "You do not have permission to perform this action". It does not
+   say which permission the key lacks, nor that the beta is by request (contree.dev says to request
+   access at tokenfactory.nebius.com/sandboxes/about). Graphene now says both itself, and asks ConTree's
+   whoami before it places a leaf there.
+10. **A made-up key and a made-up project get a 403, not a 401.** In a test run in this repository,
+   ConTree answered both with a 403, so a 403 alone cannot tell a key without the grant from a
+   `NEBIUS_PROJECT_ID` that is not the key's project.
+11. **The three Nemotron 3 ids are cased three ways:** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`,
+   `nvidia/Nemotron-3-Ultra-550b-a55b` and `nvidia/nemotron-3-super-120b-a12b`. An agent that matches
+   ids as spelled misses two of them; Graphene reads them case-blind. The fourth NVIDIA model listed,
+   `nvidia/Nemotron-3_5-Lightning`, names no size, so no rule by size can place it.
 
 ## Every number, and where it comes from
 
@@ -332,6 +415,8 @@ service itself.)
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
 | the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `docs/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
 | the board against the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
+| the board against the outline after 29 September: +50.4 / +409.0 / +284.7 / −30.5 modelled person-seconds, board higher on 3 of 4 tasks, 2,427.9 against 1,714.3 over the four; as faithful or more on 4 of 4 | `docs/test/results-2026-09-29-board.md`, study 4 (Claude model stand-ins, study 3's four proposals, nothing run, one run per task and arm) |
+| the direction against `morning.md`: median 143.9 against 105.4 modelled person-seconds, 8 of 8 right in every run; exploratory, after the fact: 104.1 against 107.4 | `docs/test/results-2026-09-29-direction.md` (a pilot: Claude model stand-ins, six runs per arm on one fixture) |
 
 ## Testing instructions
 
@@ -339,7 +424,7 @@ No key, no Docker, and no model is called:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
-graphene demo              # a recorded run, replayed in graphene watch
+graphene demo              # a recorded run, replayed in graphene watch: space pauses, . steps, r again
 graphene demo --once       # its last state, printed
 git clone https://github.com/Alex-lop/Graphene && cd Graphene
 SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
