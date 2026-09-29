@@ -590,7 +590,9 @@ listed Nemotron of its size, else the nearest size (the larger of two as near), 
 which was used instead of which. Every call's usage is priced at the list price that same list gives. It
 goes into the leaf's record as a `usage` row (calls, tokens in and out, dollars, writes refused) and,
 when `GRAPHENE_LEDGER` names a file, into that ledger, which `GRAPHENE_SPEND_CAP_USD` caps: at the cap
-the next call is refused before it is sent. A 429 or a 5xx is waited out (`Retry-After`, else doubling).
+the next call is refused before it is sent. A cap that is not a number (`$10`) refuses every call;
+unset, there is no cap. The registered harnesses (`bench.py`, `arm_bprime.py`, `arm_a.py`) start
+nothing without one, and no new run from 80% of it. A 429 or a 5xx is waited out (`Retry-After`, else doubling).
 When the tries run out, or a completion has had no answer in time twice, the refusal says how many
 tries and what to do next (wait, run fewer leaves at once, try again later).
 
