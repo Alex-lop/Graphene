@@ -153,3 +153,18 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
         assert "Graphene has made a runtime call to Token Factory, as practice" in said, path
     for path in ("README.md", "docs/HOW_IT_WORKS.md"):
         assert "does not show the board" not in doc(path), path
+
+
+def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
+    """Review 2026-09-29 (26, 27, 28): the docs said accept, R and `board take` take every open default
+    and leave an agent's note open, and that D attaches a session or opens `:direction attach`."""
+    from graphene_map import board as B
+
+    item = {"state": "open", "kind": "question", "default": "no", "then": ["drop legacy"], "agent": True}
+    assert not B.has_default(item) and B.has_default({**item, "kind": "note", "default": None, "then": []})
+    # what D does is test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key's
+    for path in ("README.md", "docs/HOW_IT_WORKS.md", "docs/HACKATHON.md", "CHANGELOG.md"):
+        said = doc(path)
+        assert "drops a node" in said, path
+        assert "or `D` in `graphene watch`" not in said and "opens `:direction attach" not in said, path
+        assert "and an agent's note, stay open" not in said, path

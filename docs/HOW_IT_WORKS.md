@@ -175,7 +175,7 @@ Only the person answers (`board.settle`, refused to an agent):
 | Command | Key on its row | The item becomes |
 | --- | --- | --- |
 | `graphene board take ID` | `y` | `taken`: the default, a confirmed assumption, an agreed leave-out |
-| `graphene board take` (no id) | | every open item that has a default takes it, in one act |
+| `graphene board take` (no id) | | every open item that has a default takes it, in one act, except a default that drops a node, which it names |
 | `graphene board pick ID N` | `1`..`9` | `picked`: option N |
 | `graphene board answer ID WORDS` | `Enter` | `answered`, in the person's words |
 | `graphene board park ID` / `unpark ID` | `p` | `parked` (told to nobody), or open again |
@@ -218,10 +218,13 @@ lines that make the change. Plan first's instruction to a Claude Code session sa
 shown, on the screen, on the page and in `graphene plan`'s line, only while a question is open. A risk,
 an assumption or a leave-out left open does not bring it up. `board: on` shows it while any item is
 open. Either way, what is left open takes its default once the whole plan is accepted (`graphene plan
-accept` with no proposal left, `y` on the goal), when the person starts a run (`graphene run`, `R`),
-or at `graphene board take` with no id (`board.defaults`), as the person's take, and one line names
-what took its default; `plan undo` takes it back. A question with no default, and an agent's note,
-stay open. So a person who agrees with every default answers nothing. The default is `auto` by study 4
+accept` with no proposal left, `y` on the goal), when the person starts a run that starts something
+(`graphene run`, `R`; one that starts nothing answers nothing), or at `graphene board take` with no id
+(`board.defaults`), as the person's take, and one line names what took its default; `plan undo` takes
+it back. An agent's note is taken as written and told to its executors. A question with no default
+stays open, and so does a default that drops a node (`board.drops`): it waits for the person's own
+key, and the same line names it (`left for you: ID (its default drops NODE)`). So a person who agrees
+with every default answers nothing but a drop. The default is `auto` by study 4
 (`docs/test/results-2026-09-29-board.md`: on stand-ins, one run each, the board cost more modelled
 attention than the outline on 3 of 4 tasks). `graphene board` prints only what answering needs (what
 is open, its default and options, and the commands); `--all` lists what is settled and dropped, and
@@ -385,8 +388,10 @@ Each node rolls up what waits on the person (a leaf in review, a board question,
 whose turn it is, each named by the id they act on), what runs (each running leaf once, with the
 session or subagent holding it) and what is next (the leaf `graphene run` starts next, never a
 proposal to accept). `graphene plan`, its views, `graphene watch` and the page show the path from the
-direction's top to the plan's node above the plan; `D` in `graphene watch` shows the whole direction in
-the pane and opens `:direction attach `. An export's direction names no session.
+direction's top to the plan's node above the plan. `D` in `graphene watch` shows the whole direction
+in the node pane, under the tree at the screen's width, read again every tick, and opens nothing;
+attaching and accepting are typed at `:` (`:direction attach SESSION NODE`), as the bottom line says.
+An export's direction names no session.
 
 The hook refuses an agent's `Edit`, `Write`, `MultiEdit` and `NotebookEdit` under `.graphene/`, plan or
 no plan (`hooks.into_ours`), so an agent cannot accept its own proposal by editing the file; it
@@ -521,8 +526,9 @@ every leaf it started that had not passed, and stops the executors (exit 130); a
 and not yet landed waits in `review`, and says so. `graphene watch` and `graphene demo` look at their
 terminal twice a second and leave as `q` does once it is gone (`tests/test_teardown.py`: everything
 under a closed terminal gone within 5 s, on macOS and Linux). A run started from `watch` has its own
-session and goes on, as after `q` (`tui.background`). A run the person starts first takes the default of every item still open on the board, in one
-act and one line (P1d). A leaf the person releases or drops stops
+session and goes on, as after `q` (`tui.background`). A run the person starts that starts something
+first takes the default of what is still open on the board, in one act and one line, all but a
+default that drops a node (P1d). A leaf the person releases or drops stops
 its executor within half a second. A leaf still held by a run that is gone (its pid ended, or names
 a process that began at another time) is handed back by the next run, after its executor is stopped,
 TERM then KILL. A leaf whose need is done but whose work is not in the checkout it would start in

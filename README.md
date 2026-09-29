@@ -198,8 +198,10 @@ a note of yours. Each is `graphene board take|pick|answer|park|unpark|drop|note`
 prints what answering needs, and `--all` lists what is settled too.
 
 You need not answer at all. What you leave open takes its default when you accept the whole plan or
-press `R`, said in one line; `graphene board take` with no id does it by hand, and `graphene plan
-undo` takes them back.
+press `R` and it starts something, said in one line; `graphene board take` with no id does it by hand,
+and `graphene plan undo` takes them back. An agent's note is then taken as written. A default that
+drops a node is never taken that way: it waits for its own `y`, and the line says so (`left for you:
+ID (its default drops NODE)`).
 
 `graphene board lookup` asks Nano which open questions a file in the repository already answers, and
 settles each one whose quoted line is in the file it names, marked `from the repo: FILE:LINE`; `p` or
@@ -244,11 +246,11 @@ Above the plans is the direction: a small tree of goals, one line a node, in
 Graphene reads the same direction; the store beside it stays on this machine. An agent proposes nodes
 (`graphene direction propose -`), and only you accept or drop them. `graphene direction plan NODE`
 hangs the plan from a node. A Claude Code session hangs from the plan's node when it held or proposed
-one of the plan's nodes, from the node you attach it to (`graphene direction attach SESSION NODE`, or
-`D` in `graphene watch`), or from nothing, and is then shown as not in the direction. `graphene
-direction` prints the tree with what waits on you, what runs and what is next, read from what the
-hooks already record; `graphene plan`, `graphene watch` and the page show the path from its top to the
-plan's node above the plan.
+one of the plan's nodes, from the node you attach it to (`graphene direction attach SESSION NODE`,
+typed at `:` in `graphene watch` too), or from nothing, and is then shown as not in the direction.
+`graphene direction` prints the tree with what waits on you, what runs and what is next, read from
+what the hooks already record; `D` in `graphene watch` shows it under the tree. `graphene plan`,
+`graphene watch` and the page show the path from its top to the plan's node above the plan.
 
 A stand-in study on 29 September asked whether a person finds what waits on them, what runs and what
 is next faster in the direction than in a hand-written brief of the same state. Every run in both
@@ -280,7 +282,7 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
   proposal still waiting on you. `+` and `-` in `graphene watch` do that for the last ask.
 - **When the board shows.** `board: auto` (unset) shows it only while a question on it is open;
   `board: on` shows it while any item is open. Either way, what is open takes its default when you
-  accept the whole plan or press `R`.
+  accept the whole plan or press `R`, except a default that drops a node.
 
 `graphene config` prints them all, with the planner, the executor, plan first and where the key was
 found. `graphene config edit` edits them the way `plan edit` edits the plan: a line it cannot read is
@@ -309,10 +311,8 @@ tests of Graphene's own:
 - **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools and
   none of your MCP servers, and what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
 - **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors
-  and their checks; a leaf that had already passed waits in review, and says so. A closed terminal
-  does the same, whether or not it sends the hangup, and `graphene watch` and `graphene demo` leave
-  with their terminal (`tests/test_teardown.py`); a run started from `watch` goes on, as after `q`.
-  The next run takes those leaves again.
+  and their checks; a leaf that had already passed waits in review, and says so. The next run takes
+  those leaves again.
 - **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
 - **The plan as text round-trips.** `graphene plan edit` applies what you changed and nothing else,
   in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
@@ -326,6 +326,11 @@ Sandboxes, not against the services themselves (the tests in `tests/test_executo
 worktrees work with any executor that has a shell); the page (`graphene ui`) draws the plan as an
 outline, a tree or a graph with its critical path, with the direction, the board and the standing
 conditions, and answers nothing on the board, which is answered in the terminal.
+
+Tested, and not run on the feeds task: a closed terminal ends a run as Ctrl-C does, whether or not
+it sends the hangup, and `graphene watch` and `graphene demo` leave with their terminal
+(`tests/test_teardown.py`, with a script for the executor and `sleep` for the check); a run started
+from `watch` goes on, as after `q`.
 [docs/DIRECTION.md](docs/DIRECTION.md) has what was decided, why, and what comes next.
 
 ## What does not bind

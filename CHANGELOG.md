@@ -10,16 +10,17 @@ First light (29 September).
 - `graphene direction`: a small tree of goals above the plans, one line a node, in `.graphene/direction.txt`,
   which git tracks while the rest of `.graphene/` stays ignored. An agent proposes nodes (`direction propose
   -`); only the person accepts or drops them, hangs the plan from one (`direction plan NODE`), attaches a
-  session to one (`direction attach SESSION NODE`, or `D` in `graphene watch`) or edits the file (`direction
-  edit`). `graphene direction` prints each node with what waits on you, what runs and what is next, read from
+  session to one (`direction attach SESSION NODE`) or edits the file (`direction edit`). `D` in `graphene
+  watch` shows the direction under the tree, read again every tick, and opens no command line. `graphene direction` prints each node with what waits on you, what runs and what is next, read from
   the rows the hooks already write; `graphene plan`, its views, `graphene watch` and the page show the path
   to the plan's node above the plan. A file with a line Graphene cannot read is not used, and the refusal
   names the lines.
 - The hook refuses an agent's Edit, Write, MultiEdit and NotebookEdit under `.graphene/`, plan or no plan.
 - The board shows only while a question on it is open: `board: auto` (unset) in `graphene config`, by study 4
-  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, `R`,
-  or `graphene board take` with no id takes every open default, in one line that `graphene plan undo` takes
-  back. `graphene board` prints what answering needs, and `--all` the rest.
+  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, an
+  `R` that starts something, or `graphene board take` with no id takes every open default and an agent's
+  note, in one line that `graphene plan undo` takes back; a default that drops a node waits for its own key,
+  and the line names it. `graphene board` prints what answering needs, and `--all` the rest.
 - `graphene board lookup` (one Nano call; `GRAPHENE_SHAPE=lookup` runs it after each ask) settles a question
   a file already answers when the line it quotes is in that file, marked `from the repo: FILE:LINE`; `unpark`
   gives it back. It never sends a protected file.

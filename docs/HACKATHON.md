@@ -53,9 +53,10 @@ are the first rows under the goal, answered with a key each (`y` take, `1`-`9` p
 park, `Enter` answer, `a` note), and the status line counts them apart from the plan (`you: 1 + 5 on
 the board`).
 The board is shown only while a question on it is open (`board: auto`, the setting unset; `board: on`
-in `graphene config edit` shows every open item). Accepting the whole plan, or `R`, takes the default
-of everything still open as the person's, said in one line that `graphene plan undo` takes back, so a
-person who agrees with every default answers nothing.
+in `graphene config edit` shows every open item). Accepting the whole plan, or an `R` that starts
+something, takes the default of what is still open as the person's, and an agent's note as written,
+said in one line that `graphene plan undo` takes back, so a person who agrees with every default
+answers nothing. A default that drops a node is the exception: it waits for the person's own key.
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the
 plan as your own act, which `graphene plan undo` takes back. What you take, pick or answer in your
 own words, and every note of yours, reaches the executors' contracts as a `decided:` line, so the
@@ -119,7 +120,8 @@ propose`), and only the person accepts them. The hook refuses an agent's write t
 there are refused while a plan is in force or plan first is on. Every plan hangs from
 one node (`graphene direction plan NODE`), and so does every Claude Code session the hooks recorded:
 through the plan when it held or proposed one of the plan's nodes, where the person attached it
-(`graphene direction attach`, or `D` in `graphene watch`), or else it is shown as not in the direction.
+(`graphene direction attach`, also typed at `:` in `graphene watch`), or else it is shown as not in
+the direction; `D` in `graphene watch` shows the direction under the tree.
 Each row says what waits on you, what runs and what is next, read from the rows the hooks already
 write; no transcript is read. It is shown above the plan in `graphene plan`, `graphene watch` and the
 page. Graphene's own direction is in its repository, every node proposed until Alex accepts it. It is
