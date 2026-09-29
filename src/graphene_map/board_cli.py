@@ -4,6 +4,7 @@ gives it is a command a person could type."""
 from __future__ import annotations
 
 import json
+import shutil
 
 import typer
 from rich.cells import cell_len, chop_cells
@@ -18,7 +19,7 @@ EMPTY = (
     "the board is empty. The planner puts up what it would ask you (`graphene ask '…'`); "
     "you put up notes (`graphene board note '…'`)"
 )
-WIDE = 80  # the print is laid out to 80 columns, as `graphene plan`'s is
+WIDE = 80  # the print is laid out to the terminal's width, 80 columns when it has none
 ACTS = "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
 LEFT = "left open, an item takes its default when you accept the plan"
 FOLDED = ("settled", "dropped")  # what the short print counts and `--all` lists
@@ -50,7 +51,7 @@ def rows(store, everything: bool = False) -> list[str]:
     # state are whole (an id is what a command takes); the words take what is left of 80 columns, and
     # wrap under the row rather than being cut
     wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
-    wt = min(48, max(cell_len(_words(it)) for it in listed) + 4, WIDE - 4 - wid - ww)
+    wt = min(max(cell_len(_words(it)) for it in listed) + 4, _wide() - 4 - wid - ww)
     for name, group in shown:
         out.append(name)
         for item in group:
@@ -77,8 +78,8 @@ def rows(store, everything: bool = False) -> list[str]:
 
 def _words(item: dict) -> str:
     """An item's words as its row shows them: an agent's note says whose it is."""
-    by = "the planner" if item["by"].startswith("planner") else item["by"]  # never `planner:python3's`
-    return item["text"] + (f" · {by}'s" if item["agent"] and item["kind"] == "note" else "")
+    # one word, so a wrap never splits it; the planner is named by its script (run.label), never python3
+    return item["text"] + (f" ({item['by']}'s)" if item["agent"] and item["kind"] == "note" else "")
 
 
 def _wrap(text: str, wide: int) -> list[str]:
@@ -96,9 +97,14 @@ def _wrap(text: str, wide: int) -> list[str]:
 
 
 def _hang(head: str, text: str) -> list[str]:
-    """``head`` and ``text`` wrapped to 80 columns, each line after the first under the text's start."""
-    first, *rest = _wrap(text, WIDE - len(head))
+    """``head`` and ``text`` wrapped to the terminal, each line after the first under the text's start."""
+    first, *rest = _wrap(text, _wide() - len(head))
     return [f"{head}{first}".rstrip(), *(" " * len(head) + line for line in rest)]
+
+
+def _wide() -> int:
+    """The terminal's columns (COLUMNS, else the terminal, else 80), and never fewer than 40."""
+    return max(40, shutil.get_terminal_size((WIDE, 24)).columns)
 
 
 def _became(line: str) -> str:

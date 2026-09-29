@@ -159,7 +159,7 @@ def test_an_agent_cannot_answer_and_its_note_waits_for_the_person(repo, tmp_path
         [mine] = [it for it in B.items(store) if it["text"] == "the tests are slow"]
         assert mine["agent"] and mine["by"].startswith("claude:") and B.reads(mine) == "open"
         assert B.decided(store) == []  # an agent's note is not told until the person takes it
-    assert "· claude:5e55105e's" in person("board").stdout
+    assert "(claude:5e55105e's)" in person("board").stdout
     assert person("board", "take", mine["id"]).exit_code == 0
     with Store.open(repo) as store:
         assert B.decided(store) == ["the tests are slow"]
@@ -567,7 +567,7 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
         assert S.for_screen(store)["readonly"] == ["vendor/**"]
         assert "No leaf may write these paths: vendor/**." in S.conditions_for_planner(store)
     config = person("config").stdout
-    assert "# board: readonly vendor/** (plan undo takes it back)" in config
+    assert "# answered: readonly vendor/** (plan undo takes it back)" in config  # not a second `board:`
     refused = person("node", "add", "lib", "--scope", "vendor/**", "--check", "true")
     assert refused.exit_code == 1 and "`readonly: vendor/**` keeps out of every scope" in refused.output
     # walk 2026-09-28: under a header saying '#' lines are not read, the rule read as switched off
@@ -884,13 +884,14 @@ def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_ope
         assert B.get(store, "which-id")["state"] == "picked"  # the person's own answer stays theirs
 
 
-def test_a_planners_note_on_the_board_says_it_is_the_planners_not_its_command(repo, tmp_path):
+def test_a_planners_note_on_the_board_names_the_planner_by_its_script_not_its_interpreter(repo, tmp_path):
     """Walk 2026-09-28 (judge 17): a planner's note read `keep the JSONL shape · planner:python3's`."""
     from graphene_map.board_cli import _words
 
     planned(repo, tmp_path)
     with Store.open(repo) as store:
-        assert _words(B.get(store, "shape")) == "keep the response shape · the planner's"
+        said = _words(B.get(store, "shape"))  # by its script, as one word a wrap never splits
+        assert said.startswith("keep the response shape (planner:") and "python" not in said, said
 
 
 def test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf_waits(repo, tmp_path):
@@ -922,3 +923,22 @@ def test_undoing_a_board_answer_says_so_in_the_plans_log(repo, tmp_path):
         assert undone["detail"] == {"note": "board answer paging", "item": "paging"}
         assert store.node_log()[-1]["kind"] == "undone"
     assert "undone" in person("plan", "log").stdout.splitlines()[-1]
+
+
+def test_the_print_takes_the_terminals_width_and_keeps_a_notes_byline_whole(repo, tmp_path, monkeypatch):
+    """Walk 2026-09-29 (29, 44): titles wrapped at about 46 columns at any width, and a note's byline
+    split from its words with a dangling `·`."""
+    planned(repo, tmp_path)
+    with Store.open(repo) as store:
+        asked = "legacy/priceimport.py skips the zero-price rule; should the xml path skip it too?"
+        B.add(store, "question", asked, PLANNER, default="yes", item_id="zero")
+        B.note(store, "prices in the XML are already cents", P.Caller("planner:planner.py", False, "s1"))
+    monkeypatch.setenv("COLUMNS", "160")
+    wide = person("board").stdout.splitlines()
+    assert any("skip it too?" in line and line.split()[-2:] == ["zero", "open"] for line in wide), wide
+    assert any("prices in the XML are already cents (planner:planner.py's)" in line for line in wide)
+    monkeypatch.setenv("COLUMNS", "80")
+    narrow = person("board").stdout.splitlines()
+    assert max(len(line) for line in narrow) <= 80
+    assert not any(line.rstrip().endswith("·") for line in narrow)
+    assert any("(planner:planner.py's)" in line for line in narrow)
