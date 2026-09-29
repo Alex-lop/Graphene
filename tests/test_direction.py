@@ -318,12 +318,24 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
     assert export["sessions"] == [] and export["nodes"] == page["nodes"]  # sessions stay on this machine
 
 
-def test_d_in_watch_shows_the_direction_and_attaches_the_session_the_person_names(repo):  # noqa: F811
+def test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key(repo):  # noqa: F811
+    """Walkers, 29 September (three of three): D left `:direction attach ` open and focused, so the
+    next j was typed into it; at 120x36 its pane was 44 columns and cut every title; after
+    `:direction plan NODE` the pane still showed the plan as not in the direction. D now shows the
+    direction under the tree across the whole width, read again every tick, and opens nothing:
+    attaching is typed at `:`, as the bottom line says."""
     import asyncio
 
     from graphene_map.tui import Watch
 
-    agent("direction", "propose", "-", input=TREE)
+    agent(
+        "direction",
+        "propose",
+        "-",
+        input=TREE.replace("the product", "every supplier feed lands in one table"),
+    )
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
     now = datetime.now(UTC)
     with Store.open(repo) as store:
         _event(store, repo, "UserPromptSubmit", "0ther000-0000", _stamp(now, 30), prompt="the readme")
@@ -332,18 +344,54 @@ def test_d_in_watch_shows_the_direction_and_attaches_the_session_the_person_name
     async def go():
         async with app.run_test(size=(120, 36)) as pilot:
             await pilot.pause()
-            await pilot.press("D")
+            await pilot.press("D", "j")
             await pilot.pause()
-            pane = str(app.query_one("#detail").render())
-            await pilot.press(*"0ther000 submission", "enter")
+            line = app.query_one("#line")
+            seen = [
+                str(app.query_one("#detail").render()),
+                app.pane_room()[0],
+                line.has_class("-open"),
+                line.value,
+            ]
+            seen.append(str(app.query_one("#status").render()))
+            for typed in ("direction attach 0ther000 submission", "direction plan live"):
+                await pilot.press("colon", *typed, "enter")
+                await pilot.pause()
+            app.refresh_plan()
             await pilot.pause()
-            return pane, str(app.query_one("#status").render())
+            return [*seen, str(app.query_one("#detail").render())]
 
-    pane, status = asyncio.run(go())
-    assert "submission" in pane and "0ther000" in pane and "not in the direction" in pane
-    assert "graphene direction attach 0ther000 submission" in status
+    pane, wide, opened, value, status, after = asyncio.run(go())
+    assert not opened and "j" not in value  # j moved the cursor; no line took it
+    assert wide >= 100 and "every supplier feed lands in one table" in pane and "not in the direction" in pane
+    assert ":direction attach SESSION NODE" in status
     with Store.open(repo) as store:
         assert D.links(store)["attach"] == {"0ther000-0000": "submission"}
+    assert "hangs the plan" in pane and "hangs the plan" not in after  # the pane followed the command
+    assert "the plan: users come back with their ids" in " ".join(after.split())
+
+
+def test_d_in_a_replay_shows_its_direction_and_refuses_nothing(tmp_path):
+    """Walkers: in `graphene demo` D said "a replay: nothing runs here" and left `:direction attach`
+    on the bottom line, though the help lists D under "see"."""
+    import asyncio
+
+    from graphene_map import demo
+
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            await pilot.press("D")
+            await pilot.pause()
+            said = str(app.query_one("#status").render()), str(app.query_one("#detail").render())
+            return (*said, app.query_one("#line").has_class("-open"))
+
+    status, pane, opened = asyncio.run(go())
+    assert demo.REFUSED not in status and not opened
+    assert "no direction yet" in pane
 
 
 def test_edit_writes_a_text_that_reads_whole_and_nothing_of_one_that_does_not(repo, monkeypatch):  # noqa: F811
@@ -498,3 +546,22 @@ def test_a_direction_proposal_from_a_leafs_shell_is_not_that_leafs_stray(repo): 
         tool_response=changed,
     )
     assert said == ""
+
+
+def test_the_empty_direction_teaches_the_persons_form_and_a_write_says_how_to_commit_an_ignored_file(repo):  # noqa: F811
+    """Walkers: the empty state taught only an agent's `? title  [id]` (the `-` form was in the error
+    alone); the hint that hangs the plan was cut at 80 columns; and a propose said "git ignores
+    .graphene/direction.txt here" while the module said the file is tracked by git."""
+    empty = person("direction")
+    assert empty.exit_code == 1 and "Write it yourself, one line a node: `- title  [id]`" in empty.stderr
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text("- every supplier feed lands in one table  [feeds]\n")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    shown = " ".join(person("direction", "--width", "80").stdout.split())
+    assert "`graphene direction plan NODE` hangs the plan" in shown
+    quiet = agent("direction", "propose", "-", input="? more  [more]\n")
+    assert quiet.exit_code == 0 and "git ignores" not in quiet.stderr
+    (repo / ".gitignore").write_text(".graphene/\n")
+    said = agent("direction", "propose", "-", input="? again  [again]\n")
+    assert f"`git add -f {D.FILE}`" in said.stderr and "`.graphene/*`" in said.stderr

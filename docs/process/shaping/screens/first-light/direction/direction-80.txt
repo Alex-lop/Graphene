@@ -1,5 +1,5 @@
-you: 14 · 2 running · next: lane-a · the direction of …T/direction-demo-zmogl89z
-? Graphene is the…        graphene     proposed   · you 11 · 2 running · next:
+you: 14 · 3 running · next: lane-a · the direction of …T/direction-demo-19bqpor0
+? Graphene is the…        graphene     proposed   · you 11 · 3 running · next:
                                                     lane-a
   ? Graphene runs live…   live         proposed   · you 4 · 2 running · next:
                                                     lane-a
@@ -10,23 +10,25 @@ you: 14 · 2 running · next: lane-a · the direction of …T/direction-demo-zmo
                                                     live, and the fixes first
                                                     contact forces · `graphene
                                                     run` starts it
-        ● session…        0feb67e8     running    · 1 of its subagents running ·
-                                                    1m ago
-        ● a subagent…     a8455e05     running    · Stop the seat and wait for
-                                                    the slow run to end · now
-        ✓ 10 finished                  finished   · a116b8e2, acb24c7a, a2a3cbb6
-                                                    and 7 more
+        ● session…        0feb67e8     running    · 2 of its subagents running ·
+                                                    now
+        ● Docs: README…   aac976c0     running    · Read hooks.gated and gate's
+                                                    .graphene handling · now
+        ✓ 12 finished                  finished   · a116b8e2, acb24c7a, af0ab3d9
+                                                    and 9 more
     ? Sandboxes: a leaf…  sandboxes    proposed   · you 1
       ✓ 1 finished                     finished   · adf0d971
     ? the registered…     with-alex    proposed   · you 1
   ? the board earns its…  board        proposed   · you 1
-    ✓ 2 finished                       finished   · a339830e, ab0a3dd7
+    ✓ 1 finished                       finished   · a339830e
   ? the direction: my…    direction    proposed   · you 1
     ✓ 1 finished                       finished   · a640f5b2
   ? nothing Graphene…     teardown     proposed   · you 1
     ✓ 1 finished                       finished   · a01fb98a
-  ? the submission by…    submission   proposed   · you 3
-    ✓ 3 finished                       finished   · a942024c, af0ab3d9, a576dfe8
+  ? the submission by…    submission   proposed   · you 3 · 1 running
+    ● Re-record the…      a6625279     running    · Find where the board setting
+                                                    gates the rows · now
+    ✓ 2 finished                       finished   · a576dfe8, a942024c
     ? the rough cut…      rough-cut    proposed   · you 1
       ✓ 1 finished                     finished   · acf08603
     ? the video, the…     video        proposed   · you 1
@@ -35,7 +37,7 @@ you: 14 · 2 running · next: lane-a · the direction of …T/direction-demo-zmo
   ◇ session: Ok looking…  1c0ec47e     your turn  · Check memory pressure and
                                                     top memory users · 18h ago
   ◇ session: Ok nice…     d3d5effe     your turn  · Push the branch and open the
-                                                    PR into main · 2h ago
+                                                    PR into main · 3h ago
   ◇ session: Wait I'm…    403e4cef     your turn  · Open the PR on graphene-site
                                                     · 2h ago
   1 older session left out: quiet for a day

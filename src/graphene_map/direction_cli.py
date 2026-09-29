@@ -16,10 +16,7 @@ from . import direction as D
 from . import plan as P
 from . import plan_text as T
 
-EMPTY = (
-    f"no direction yet ({D.FILE}). An agent proposes one (`graphene direction propose -`, one line a "
-    "node: `? title  [id]`, indented for the tree), or write the file yourself"
-)
+EMPTY = D.EMPTY
 ACTS = "graphene direction accept ID · drop ID · plan NODE · attach SESSION NODE|none · edit · propose -"
 
 
@@ -55,7 +52,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             store.log_node("*", P._now(), "direction", P.caller().label, None, None, {"note": said})
         out(said)
         if D.ignored_by_git(root()):
-            typer.echo(f"  git ignores {D.FILE} here: `git add -f {D.FILE}` commits it", err=True)
+            typer.echo(f"  {D.IGNORED}", err=True)
         typer.echo(f"  (the direction of {P.where(root())})", err=True)
 
     @app.callback()
