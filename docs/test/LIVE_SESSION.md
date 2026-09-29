@@ -13,10 +13,11 @@ refusal (ask at tokenfactory.nebius.com/sandboxes/about); rungs 3, 4, 6, 7 and e
 wait on it. Offline it prints the second line too: rung 3 passing is the proof. (2) The key:
 `NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID` in `~/.zshenv`, where rungs 1-2 read them. Every zsh reads
 it, a stand-in's too. (3) The opening: `docs/test/practice.sh night` says whether
-`GRAPHENE_AGENT_LIVE_USD` is set, and nothing else from the environment. Set for practice; `unset
-GRAPHENE_AGENT_LIVE_USD` before registered runs (`evidence.py` refuses practice rows), and export
-instead, where stand-ins inherit it, `GRAPHENE_LEDGER=~/graphene-bench/ledger.jsonl
-GRAPHENE_SPEND_CAP_USD=50`.
+`GRAPHENE_AGENT_LIVE_USD` is set, and nothing else from the environment. Set for practice. Before
+registered runs, in the terminal the stand-ins inherit: `unset GRAPHENE_AGENT_LIVE_USD` (`evidence.py`
+refuses practice rows), then `export GRAPHENE_LEDGER=~/graphene-bench/ledger.jsonl
+GRAPHENE_SPEND_CAP_USD=10`: $10 of Token Factory for every arm, on that one ledger (rule 6). With no
+cap set a harness starts nothing; from $8 spent, no new run. C is Claude Code's bill, outside it.
 
 **Rungs 3 to 7, rung 6 among them.** `docs/test/practice.sh` climbs the next rung not passed. Caps and
 minutes (practice.py): 3 $0.50 3-8, 4 $0.05 2-5, 5 $0.50 2-5, 6 $3 15-40, 7 $3 10-30. Rung 6
@@ -42,7 +43,7 @@ brief on Nemotron (`standin.py`'s tree and board arms still run Claude Code). RU
   (`runs-2026-09-23.json`), 4-10 min.
 - After each: `uv run --frozen python docs/test/evidence.py add RUN --task feeds --arm A|B|B′|C`.
   Done: `evidence.py report --ledger "$GRAPHENE_LEDGER" --out docs/test/results-DATE-live.md` fills
-  the table and draws `docs/assets/evidence.svg`. 14 A and 28 B or B′ runs: $0.60-30 in all.
+  the table and draws `docs/assets/evidence.svg`. 14 A and 28 B or B′ runs: $0.60-30 (cap: $10).
 
 **The shaping study with executors** (study 1 of `results-2026-09-28-shaping.md`): 4 tasks, arms
 prompt, tree and board, n = 1. `newrun.sh ~/graphene-shaping-runs TASK sealed ARM 1`, then a
