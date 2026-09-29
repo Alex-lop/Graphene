@@ -181,6 +181,7 @@ def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
 # Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29)
 FORBIDDEN = ("Sandboxes refused this project (403: its key has no Sandboxes permission{lacks}); request "
              "access at tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
 
 
 class Refused(tf.Unreachable):
@@ -234,16 +235,21 @@ class Contree:
             raise Refused(FORBIDDEN.format(lacks=f": it lacks {', '.join(lacks)}" if lacks else "")) from None
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
-        return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout)
+        return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout, "")
 
     def run(self, image: str, script: str, files: dict[str, bytes], timeout: float) -> tuple[str, int, str]:
-        return self._run(self._asked(lambda: self.sdk.images.use(image)), script, files, timeout)
+        return self._run(self._asked(lambda: self.sdk.images.use(image)), script, files, timeout, image)
 
-    def _run(self, image, script: str, files: dict, timeout: float) -> tuple[str, int, str]:
+    def _run(self, image, script: str, files: dict, timeout: float, ref: str) -> tuple[str, int, str]:
+        from contree_sdk.sdk.exceptions import OperationTimedOutError
+
         self.ops += 1
         with self._counted("run"):
-            done = self._asked(lambda: image.run(shell=script, files=files or None, timeout=timeout,
-                                                 disposable=False, truncate_output_at=OUTPUT).wait())
+            try:
+                done = self._asked(lambda: image.run(shell=script, files=files or None, timeout=timeout,
+                                                     disposable=False, truncate_output_at=OUTPUT).wait())
+            except OperationTimedOutError:
+                return ref, 124, TIMED_OUT
         return str(done.uuid), int(done.exit_code), (done.stdout or "") + (done.stderr or "")
 
     def read(self, image: str, path: str) -> bytes:
@@ -313,7 +319,7 @@ class Docker:
                 code = int(self._docker("inspect", "-f", "{{.State.ExitCode}}", box).stdout.decode().strip())
             except subprocess.TimeoutExpired:
                 self._docker("kill", box)
-                return image, 124, "(the sandbox command ran out of time)"
+                return image, 124, TIMED_OUT
             new = self._docker("commit", box).stdout.decode().strip()
             self.made.append(new)
             return new, code, (ran.stdout + ran.stderr).decode("utf-8", "replace")
