@@ -4,6 +4,7 @@ line. One command for each act, so a key a screen gives it is a command a person
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import textwrap
@@ -174,7 +175,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             fail("editing the direction is the person's: propose instead (`graphene direction propose -`)", 1)
         def on_disk() -> str:  # the file as it is, even one that does not read (a merge, a hand edit)
             try:
-                return D.path(root()).read_text(encoding="utf-8")
+                return D.path(root()).read_bytes().decode("utf-8")  # as it is: CRLF stays CRLF
             except FileNotFoundError:
                 return ""
             except UnicodeDecodeError:
@@ -185,13 +186,13 @@ def register(cli: typer.Typer, root, open_store, fail):
         path = T.edit_path(root(), "direction")
         try:
             D.parse(was)
-            path.write_text(was, encoding="utf-8")
+            path.write_bytes(was.encode("utf-8"))
         except P.Refused as no:  # it goes to the editor with the reason under its line, to be mended
             path.write_text(T._annotated(was, str(no).split("\n", 1)[1].strip()), encoding="utf-8")
         while True:
             if T.run_editor(path) != 0:
                 fail(f"the editor exited with an error; nothing was written (your text is in {path})", 1)
-            said = path.read_text(encoding="utf-8").splitlines(keepends=True)
+            said = [line for line in re.split(r"(?<=\n)", path.read_bytes().decode("utf-8")) if line]
             text = "".join(line for line in said if not line.lstrip().startswith(T._REFUSED))
             try:
                 new = D.parse(text)

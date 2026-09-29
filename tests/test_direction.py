@@ -565,3 +565,150 @@ def test_the_empty_direction_teaches_the_persons_form_and_a_write_says_how_to_co
     (repo / ".gitignore").write_text(".graphene/\n")
     said = agent("direction", "propose", "-", input="? again  [again]\n")
     assert f"`git add -f {D.FILE}`" in said.stderr and "`.graphene/*`" in said.stderr
+
+
+def test_the_hook_refuses_a_write_into_graphenes_own_directory_however_it_is_spelled(repo):  # noqa: F811
+    """Closing review, 29 September: the refusal went by the path's spelling, so `.GRAPHENE/` on a
+    disk that ignores case, the /System/Volumes/Data firmlink, or a link to .graphene/ let an agent's
+    Edit accept its own node. It is decided by what the directory is."""
+    import os
+
+    agent("direction", "propose", "-", input=TREE)
+    os.symlink(".graphene", repo / "lnk")
+    spellings = [str(repo / "lnk" / "direction.txt"), str(repo / "src" / ".." / D.FILE)]
+    if (repo / ".GRAPHENE").exists():  # a disk that ignores case (a Mac's)
+        spellings.append(str(repo / ".GRAPHENE" / "direction.txt"))
+    firm = "/System/Volumes/Data" + str(repo.resolve())
+    if os.path.exists(firm):
+        spellings.append(firm + "/.graphene/direction.txt")
+    for path in spellings:
+        said = _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": path})
+        assert '"permissionDecision": "deny"' in said, path
+    assert (
+        _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": "graphene.txt"})
+        == ""
+    )
+
+
+def test_an_agents_recorded_words_reach_the_terminal_without_an_escape(repo):  # noqa: F811
+    """Closing review finding 19: a Bash call's description carrying OSC 52 (a clipboard write) and
+    OSC 0 (the window's title) was printed raw by `graphene direction`."""
+    agent("direction", "propose", "-", input=TREE)
+    now = datetime.now(UTC)
+    evil = "List files\x1b]52;c;cm0gLXJmIH4K\x07\x1b]0;owned\x07\u009b31m‮"
+    with Store.open(repo) as store:
+        _event(store, repo, "UserPromptSubmit", "e5c00000-0000", _stamp(now, 30), prompt="tidy\x1b[2J")
+        _event(store, repo, "PostToolUse", "e5c00000-0000", _stamp(now, 20), tool_name="Bash",
+               tool_input={"command": "ls", "description": evil})  # fmt: skip
+    for width in ("80", "120"):
+        said = person("direction", "--width", width).stdout
+        assert "List files" in " ".join(said.split()) and "owned" in said  # the words stay; the escapes go
+        assert not any(D._unsafe(c) for c in said.replace("\n", "")), width
+
+
+def test_an_act_on_a_crlf_direction_file_changes_only_its_own_marks(repo, monkeypatch):  # noqa: F811
+    """Closing review finding 15: the file was read with newline translation, so one accept rewrote
+    every CRLF line ending as LF, and `edit` saved unchanged did the same."""
+    (repo / ".graphene").mkdir(exist_ok=True)
+    before = b"# ours\r\n- the product  [product]\r\n  ? live on the real service  [live]\r\n"
+    before += b"  - the board  [board]\r\n"
+    (repo / D.FILE).write_bytes(before)
+    assert person("direction", "accept", "live").exit_code == 0
+    assert (repo / D.FILE).read_bytes() == before.replace(b"? live", b"- live")
+    editor = repo / "touch.sh"
+    editor.write_text('#!/bin/sh\nprintf -- "  ? more  [more]\\r\\n" >> "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    assert person("direction", "edit").exit_code == 0
+    assert (repo / D.FILE).read_bytes() == before.replace(b"? live", b"- live") + b"  ? more  [more]\r\n"
+
+
+def test_a_stop_the_gate_refused_is_not_counted_as_waiting_on_you_with_no_row_to_name_it(repo):  # noqa: F811
+    """Closing review finding 16: the hook records a Stop before the gate refuses it, so a session
+    holding a leaf read "your turn": `you: 1` and the node `yours`, with no row naming anything."""
+    agent("direction", "propose", "-", input=TREE)
+    person("direction", "accept", "product")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    person("direction", "plan", "live")
+    assert agent("node", "start", "ids").exit_code == 0
+    now = datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(
+            store,
+            repo,
+            "PostToolUse",
+            AGENT_SID,
+            _stamp(now, 20),
+            tool_name="Bash",
+            tool_input={"command": "ls"},
+        )
+        _event(store, repo, "Stop", AGENT_SID, _stamp(now, 10))
+        st = D.status(store, D.read(repo), now)
+    live = next(n for n in st["nodes"] if n["id"] == "live")
+    assert live["you"] == 0 and live["word"] == "running"
+    shown = " ".join(person("direction", "--width", "100").stdout.split())
+    assert "you: 1 ·" in shown  # the submission, proposed, and nothing else
+    assert "held by session 5e55105e · its turn ended" in shown
+
+
+def test_a_wide_title_never_pushes_a_row_past_the_width_nor_cuts_a_command(repo):  # noqa: F811
+    """Closing review finding 17: widths were counted in characters, so at 80 columns a Japanese
+    title made the next row 90 cells wide, and a terminal's crop cut its command to "`gra"."""
+    from rich.cells import cell_len
+
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text("- 請求書を一つの表に  [feeds]\n")
+    plan = "goal: 請求書を一つの表に取り込む\n- 日付の形式をそろえる取り込み  [dates]\n"
+    plan += "    scope: api.py\n    check: true\n"
+    agent("plan", "propose", "-", input=plan)
+    person("plan", "accept")
+    person("direction", "plan", "feeds")
+    said = person("direction", "--width", "80").stdout
+    assert max(cell_len(line) for line in said.splitlines()) <= 80
+    assert "`graphene run` starts it" in " ".join(said.split())
+
+
+def test_the_watch_strip_keeps_the_node_the_plan_hangs_from_at_any_depth(repo):  # noqa: F811
+    """Closing review finding 18: at 80x24 each path row wrapped to two lines, so a strip of four
+    showed the top two ancestors and hid the node the plan hangs from."""
+    import asyncio
+
+    from graphene_map.tui import Watch
+
+    deep = "".join(f"{'  ' * k}- level {k} of the direction, a long title  [n{k}]\n" for k in range(6))
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text(deep)
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    for node in ("n2", "n5"):
+        person("direction", "plan", node)
+        app = Watch(repo, lambda: Store.open(repo), every=60)
+
+        async def go(app=app):
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                return str(app.query_one("#direction").render()).splitlines()
+
+        strip = asyncio.run(go())
+        rows = [line.split() for line in strip if line.lstrip()[:1] in "◌○?◇●"]
+        assert len(strip) <= 4 and node in rows[-1], (node, strip)  # the plan's node is the last row
+
+
+def test_a_direction_nested_past_its_depth_is_refused_by_line_and_never_crashes(repo):  # noqa: F811
+    """Closing review finding 20: a committed file nested 1,100 levels deep crashed `graphene
+    direction` and `graphene plan` with RecursionError, after 4 s of CPU."""
+    deep = "".join(f"{'  ' * k}- level {k}  [n{k}]\n" for k in range(1100))
+    with pytest.raises(P.Refused, match=f"line {D.DEEPEST + 1}: a node {D.DEEPEST + 1} levels deep"):
+        D.parse(deep)
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text(deep)
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    shown = person("direction")
+    assert shown.exit_code == 1 and "levels deep" in shown.stderr and "RecursionError" not in shown.output
+    plan = person("plan")
+    assert plan.exit_code == 0 and plan.stdout.startswith(f"the direction: {D.FILE} cannot be read")
+    fits = "".join(f"{'  ' * k}- level {k}  [n{k}]\n" for k in range(D.DEEPEST))
+    (repo / D.FILE).write_text(fits)
+    assert person("direction").exit_code == 0

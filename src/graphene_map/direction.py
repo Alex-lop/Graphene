@@ -53,6 +53,7 @@ IGNORED = (
 )
 ALIVE = 300  # seconds since a session's last recorded call that it still counts as running
 DAY = 86400  # a session quiet for longer than this is not shown: it helps nobody decide anything
+DEEPEST = 16  # levels of the direction's tree: a line deeper is refused by its number
 IDLE = 3600  # a session or subagent idle (no call, and no end of its turn) for longer is not shown
 _NODE = re.compile(
     r"(?P<indent> *)(?P<mark>[-?])\s+(?P<title>\S.*?)\s+\[(?P<id>[A-Za-z0-9][\w.-]{0,31})\]\s*"
@@ -111,6 +112,11 @@ def _unsafe(c: str) -> bool:
     )
 
 
+def _clean(text: str) -> str:
+    """``text`` without the characters `_unsafe` names."""
+    return "".join(c for c in text if not _unsafe(c))
+
+
 def parse(text: str) -> Direction:
     """The direction a text says, or a refusal naming every line it cannot read (none of it is used)."""
     lines = [line for line in re.split(r"(?<=\n)", text) if line]  # "\n" only: numbered as an editor does
@@ -145,6 +151,10 @@ def parse(text: str) -> Direction:
         if found is not None:
             if found["id"] in seen:
                 refused.append(f"line {k + 1}: [{found['id']}] is already the id on line {seen[found['id']]}")
+                continue
+            if len(stack) >= DEEPEST:
+                refused.append(f"line {k + 1}: a node {len(stack) + 1} levels deep: the direction is a small "
+                               f"tree, {DEEPEST} levels at most")  # fmt: skip
                 continue
             parent = stack[-1] if stack else None
             node = Node(
@@ -247,7 +257,8 @@ def read(root: Path) -> Direction | None:
     """The direction in the main checkout, or None when there is no file."""
     p = path(root)
     try:
-        return parse(p.read_text(encoding="utf-8"))
+        with open(p, encoding="utf-8", newline="") as f:  # no newline translation: CRLF stays CRLF
+            return parse(f.read())
     except FileNotFoundError:
         return None
     except UnicodeDecodeError as no:
@@ -622,7 +633,9 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
             if w is not None:
                 w.holds, w.node = leaf["id"], "plan"
                 leaf["by"] = f"{'subagent' if '/' in w.key else 'session'} {w.short}"
-                leaf["last"] = w.last
+                # its turn ended while it holds the leaf (a stop the gate refused records the end
+                # first): said on the leaf's row, which is the only row the holder has
+                leaf["last"] = f"its turn ended · {w.last}" if w.word == "your turn" else w.last
     earlier: dict[str, list[str]] = {}
     for g, n in said["plans"].items():
         if g != goal and n in ids:
@@ -633,7 +646,8 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         under = [w for w in ws if w.node in mine or (w.node == "plan" and plan and plan["node"] in mine)]
         has_plan = plan is not None and plan["node"] in mine
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
-        you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
+        turns = sum(w.word == "your turn" and not w.holds for w in under)  # the rows that say so
+        you = len(proposals) + turns + (plan["you"] if has_plan else 0)
         running = _running([w for w in under if w.word == "running"], plan if has_plan else None)
         # next is the work that starts next (what `graphene run` takes); a proposal waits on you
         nxt = plan["next"] if has_plan else None
@@ -694,8 +708,12 @@ def rows(
     out: list[tuple[int, str, str, str, str]] = []
     by_id = {n["id"]: n for n in nodes}
 
+    deep: dict[str, int] = {}  # in file order a parent comes first: one pass, no recursion
+    for n in nodes:
+        deep[n["id"]] = 0 if n["parent"] is None else deep[n["parent"]] + 1
+
     def depth(n: dict) -> int:
-        return 0 if n["parent"] is None else 1 + depth(by_id[n["parent"]])
+        return deep[n["id"]]
 
     def plan_row(d: int) -> None:
         said = [f"you {plan['you']}"] if plan["you"] else []
@@ -781,7 +799,8 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     tops = [n for n in st["nodes"] if n["parent"] is None]
     unhung = st["plan"] is not None and st["plan"]["node"] is None
     loose = [w for w in st["sessions"] if w["node"] is None or (unhung and w["node"] == "plan")]
-    you = sum(n["you"] for n in tops) + sum(w["word"] == "your turn" for w in loose)
+    turns = sum(w["word"] == "your turn" and not w.get("holds") for w in loose)
+    you = sum(n["you"] for n in tops) + turns
     running = sum(n["running"] for n in tops)
     running += _running(
         [Worker(**w) for w in loose if w["word"] == "running"], st["plan"] if unhung else None
@@ -793,7 +812,7 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     lead += " · the direction of "
     if width and len(lead) + len(where) > width:  # the repository's own name, and what is above it
         where = "…" + where[len(where) - max(width - len(lead), 2) + 1 :]
-    return lead + where
+    return _clean(lead + where)
 
 
 def lines(
@@ -802,35 +821,67 @@ def lines(
     """The rows laid out in fixed columns at ``width`` cells: (the line, the style of its glyph and
     word). The title is cut at a word, the id and the word never; what a row says after its word
     wraps under itself rather than being cut, so an id or a command in it is always whole."""
-    import textwrap
-
     from rich.cells import cell_len
 
     from . import plan_text as T
 
-    got = rows(st, now, only)
+    # what an agent's recorded calls say (a description, a command, a path) and every title is shown
+    # without a character a terminal would obey: an escape in a description must not drive it
+    got = [(d, _clean(t), _clean(i), w, _clean(x)) for d, t, i, w, x in rows(st, now, only)]
     if not got:
         return []
-    wid = max([len(r[2]) for r in got] + [4])
+    # every width is in terminal cells: a Chinese or Japanese character takes two
+    wid = max([cell_len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
-    said = min(max(len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
+    said = min(max(cell_len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
     floor = max(24, max(2 * r[0] for r in got) + 16)  # a title keeps some words at the deepest row
     wt = max(floor, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"
         lead = f"{'  ' * d}{glyph} "
-        cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {rid.ljust(wid)}  {word.ljust(ww)}"
-        at = len(cells) + 4 if width - len(cells) - 4 >= 16 else len(lead) + 2  # else under the title
-        said = textwrap.wrap(what, max(width - at, 16), break_long_words=False, break_on_hyphens=False)
+        cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {T.pad(rid, wid)}  {word.ljust(ww)}"
+        wide = cell_len(cells)
+        at = wide + 4 if width - wide - 4 >= 16 else len(lead) + 2  # else under the title
+        said = _wrap(what, max(width - at, 16))
         style = look(word)[1] if word else "dim"
-        if said and at > len(cells):
+        if said and at > wide:
             out.append((f"{cells}  · {said.pop(0)}", style))
         else:
             out.append((cells.rstrip(), style))
         out += [(" " * at + part, "dim") for part in said]
     return out
+
+
+def row_starts(said: list[tuple[str, str]]) -> list[int]:
+    """Which of ``lines``' lines begin a row (the others carry on the one above): a glyph at an even
+    indent, then a space."""
+    glyphs = {g for g, _ in P.LOOK.values()} | {"◌", "·"}
+    out = []
+    for k, (line, _) in enumerate(said):
+        body = line.lstrip(" ")
+        if (len(line) - len(body)) % 2 == 0 and body[:1] in glyphs and body[1:2] == " ":
+            out.append(k)
+    return out
+
+
+def _wrap(text: str, room: int) -> list[str]:
+    """``text`` in lines of at most ``room`` terminal cells, broken between words. A word too long
+    for a line is kept whole (an id, a path, a command), unless it is wide text with no spaces (a
+    Chinese or Japanese sentence), which is cut where it must be."""
+    from rich.cells import cell_len, chop_cells
+
+    out, line = [], ""
+    for word in text.split():
+        long = cell_len(word) > room and cell_len(word) != len(word)
+        for piece in chop_cells(word, room) if long else [word]:
+            if line and cell_len(line) + 1 + cell_len(piece) > room:
+                out.append(line)
+                line = piece
+            else:
+                line = f"{line} {piece}" if line else piece
+    return [*out, line] if line else out
 
 
 def above_plan(store, root: Path, width: int) -> list[tuple[str, str]]:
