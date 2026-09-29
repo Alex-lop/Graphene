@@ -166,7 +166,17 @@ def register(cli: typer.Typer, root, open_store, fail):
                 f"next: {first.id} ({first.title}) {is_(first)}{also}: `graphene node start {first.id}` "
                 "takes it, with its contract as it stands now"
             ]
+        proposed = len(P.leaves([n for n in everything if n.state == P.PROPOSED]))
+        board = B.waiting(store)[0]
+        if proposed or board:  # the next move is the person's: said, so an agent does not tell them to stop
+            what = [f"the proposal ({_leaves(proposed)})"] * bool(proposed)
+            what += [f"the board ({board})"] * bool(board)
+            verb = "waits" if len(what) == 1 else "wait"
+            return [f"next: nothing is ready for you: {' and '.join(what)} {verb} on the person"]
         return [f"next: nothing is ready for you, so you can stop{rest}"]
+
+    def _leaves(n: int) -> str:
+        return f"{n} leaf" if n == 1 else f"{n} leaves"
 
     def brief(text: str, node_id: str) -> str:
         """A reason as one table cell: the whole of it is in `node show`."""
@@ -930,7 +940,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         r = root()
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
-                fail("nothing to run: the plan has no open leaf", 1)
+                waiting = len(P.leaves(P.nodes(store, (P.PROPOSED,))))
+                fail(f"nothing to run: the tree is a proposal ({_leaves(waiting)}) nobody has accepted: "
+                     "`graphene plan accept`, or y on the goal in `graphene watch`, accepts it"
+                     if waiting else "nothing to run: the plan has no open leaf", 1)  # fmt: skip
             try:  # --with, else the repo's (`graphene init`); neither, and nothing starts
                 template = named(executor or store.meta("executor"))
             except P.Refused as no:

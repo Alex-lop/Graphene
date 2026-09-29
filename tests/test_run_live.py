@@ -115,7 +115,7 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     assert set(states(repo).values()) == {OPEN}  # nothing left running, nothing said done
     with Store.open(repo) as store:
         whys = [e["detail"]["why"] for e in store.node_log(kinds=("released",))]
-    assert whys and all("stopped (Ctrl-C)" in w for w in whys)
+    assert whys and all("the run was stopped before" in w for w in whys)
     with Store.open(repo) as store:  # ready again, as the run said, and taken by the next plain run
         assert not any(plan.came_back(store, n) for n in plan.nodes(store))
     assert wait_for(lambda: not any(R._alive(p) for p in pids), 15)  # the executors are gone too

@@ -395,7 +395,7 @@ def run_node(
         raise
 
 
-STOPPED = "the run was stopped (Ctrl-C) before this leaf was finished"
+STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
 
 
 def summary(store, since: int, stopped: bool = False) -> str:

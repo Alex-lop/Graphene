@@ -139,10 +139,13 @@ def test_search_moves_to_the_match_and_n_to_the_next(repo):
 def test_a_adds_a_sibling_with_the_title_typed(repo):
     proposed(repo)
     person("plan", "accept")
-    watch(repo, ["j", "j", "a", *"the orders endpoint", "enter"])
+    seen, _ = watch(repo, ["j", "j", "a", *"the orders endpoint", "enter"])
     with Store.open(repo) as store:
         [new] = [n for n in plan.nodes(store) if n.title == "the orders endpoint"]
         assert new.parent == "api" and new.state == "open"  # the planner can fill it in: s
+    # walk 2026-09-29 (alex 21): the cursor stayed on the old row, where the prompt's own next step,
+    # e, would open the wrong contract
+    assert seen["cursor"] == new.id and new.title in seen["detail"], (seen["cursor"], new.id)
 
 
 def test_e_opens_the_contract_in_the_editor(repo, monkeypatch, tmp_path):
@@ -2001,3 +2004,94 @@ def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
     seen, _ = watch(repo, [])
     keys = seen["status"].splitlines()[1]
     assert "1 on you" in seen["status"] and not keys.startswith("y accept"), keys
+
+
+def test_rows_put_up_above_the_cursor_never_push_it_off_the_pane(repo):
+    """Walk 2026-09-29 (alex 24): at 80x24, with the cursor on the last leaf, an agent put up a question;
+    the tree kept its top, the new rows pushed the selected row below the pane, and the next key acted
+    on a row nobody could see."""
+    proposed(repo)
+    person("plan", "accept")
+    questions = "".join(f"question: q{k}?  [q{k}]\n    default: no\n" for k in range(6))
+
+    async def before(app, pilot):
+        await pilot.press("G")
+        await pilot.pause()
+        chosen = app.selected()
+        assert agent("plan", "propose", "-", input=questions).exit_code == 0
+        app.refresh_plan()
+        await pilot.pause()
+        tree = app.tree
+        rows = tree.scrollable_content_region.height
+        assert app.selected() == chosen
+        where = (tree.scroll_y, tree.cursor_line, rows)
+        assert tree.scroll_y <= tree.cursor_line < tree.scroll_y + rows, where
+
+    watch(repo, [], (80, 24), before=before)
+
+
+def test_a_scroll_in_what_a_command_printed_does_not_carry_into_the_node_pane(repo):
+    """Walk 2026-09-29 (alex 23): at 80x24, C-d in a run's output and then Esc opened the came-back
+    leaf's pane scrolled down, its reason and its w line above the fold."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, LONG * 3, wants=["migrations/001.sql"])
+    scrolled = []
+
+    async def before(app, pilot):
+        side = app.query_one("#side")
+        await pilot.press("slash", *"schema", "enter", "escape", "colon", *"plan --help", "enter")
+        await pilot.pause(0.5)
+        app.refresh_plan()
+        await pilot.pause()
+        await pilot.press("ctrl+d", "ctrl+d")
+        await pilot.pause()
+        scrolled.append(side.scroll_y)
+        await pilot.press("escape")
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        scrolled.append((side.scroll_y, app.selected()))
+
+    watch(repo, [], (80, 24), before=before)
+    assert scrolled[0] > 0 and scrolled[1] == (0, "schema"), scrolled
+
+
+def test_a_new_runs_first_attempt_is_not_read_as_the_last_ones_and_a_stop_is_not_called_ctrl_c(repo):
+    """Walk 2026-09-29 (alex 28, first 10): the pane counted every hold the leaf ever had, so a new run's
+    first attempt read `running · attempt 3`, and a came-back leaf read `attempt 2` over `3 attempts`; a
+    closed terminal was reported as `the run was stopped (Ctrl-C)`."""
+    from graphene_map.run import STOPPED
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("run:executor.py", False, "s-1")
+        plan.start(store, "schema", bot, repo)
+        for k in (1, 2, 3):  # one hold, three attempts of one run
+            store.log_node("schema", plan._now(), "attempt", bot.label, "s-1", None, {"attempt": k})
+        plan.release(store, "schema", bot, "3 attempts, the last one refused: schema.py only")
+    seen, _ = at(repo, "schema", (120, 36))
+    assert "schema · came back · attempt 3" in seen["detail"], seen["detail"]
+    with Store.open(repo) as store:
+        plan.start(store, "schema", bot, repo)  # the next run, its first attempt
+        store.log_node("schema", plan._now(), "attempt", bot.label, "s-1", None, {"attempt": 1})
+    seen, _ = at(repo, "schema", (120, 36))
+    assert "schema · running" in seen["detail"] and "attempt" not in seen["detail"].splitlines()[1]
+    assert "Ctrl-C" not in STOPPED and "stopped" in STOPPED
+
+
+def test_the_goal_offers_r_only_when_something_is_ready(repo):
+    """Walk 2026-09-29 (first 8): with only leaves that came back, the status said `none ready` while
+    the goal's keys still offered `R run all ready`."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    with Store.open(repo) as store:
+        bot = plan.Caller("run:executor.py", False, "s-1")
+        plan.start(store, "ids", bot, repo)
+        plan.release(store, "ids", bot, "it needs schema.py", wants=["schema.py"])
+    seen, _ = watch(repo, ["g", "g"])
+    keys = seen["status"].splitlines()[1]
+    assert "none ready" in seen["status"] and "R run" not in keys, seen["status"]

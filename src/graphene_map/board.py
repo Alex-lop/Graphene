@@ -745,6 +745,8 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 # person's, the rest of the proposal still lands, and the person is told
                 said.append(f"kept {f['id']} on the board as it stands (a planner's text changed it; "
                             "`graphene plan edit` is how the person changes it)")
+            else:  # the same words again: said, so an ask that added nothing new says why
+                said.append(f"{f['id']} is on the board already ({reads(known)}): not put up again")
             continue
         if known is None or (known["state"] == "dropped" and opened is None):
             if f["answer"] and not who.person:
