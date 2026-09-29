@@ -604,3 +604,20 @@ def test_an_agents_recorded_words_reach_the_terminal_without_an_escape(repo):  #
         said = person("direction", "--width", width).stdout
         assert "List files" in " ".join(said.split()) and "owned" in said  # the words stay; the escapes go
         assert not any(D._unsafe(c) for c in said.replace("\n", "")), width
+
+
+def test_an_act_on_a_crlf_direction_file_changes_only_its_own_marks(repo, monkeypatch):  # noqa: F811
+    """Closing review finding 15: the file was read with newline translation, so one accept rewrote
+    every CRLF line ending as LF, and `edit` saved unchanged did the same."""
+    (repo / ".graphene").mkdir(exist_ok=True)
+    before = b"# ours\r\n- the product  [product]\r\n  ? live on the real service  [live]\r\n"
+    before += b"  - the board  [board]\r\n"
+    (repo / D.FILE).write_bytes(before)
+    assert person("direction", "accept", "live").exit_code == 0
+    assert (repo / D.FILE).read_bytes() == before.replace(b"? live", b"- live")
+    editor = repo / "touch.sh"
+    editor.write_text('#!/bin/sh\nprintf -- "  ? more  [more]\\r\\n" >> "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    assert person("direction", "edit").exit_code == 0
+    assert (repo / D.FILE).read_bytes() == before.replace(b"? live", b"- live") + b"  ? more  [more]\r\n"

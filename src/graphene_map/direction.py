@@ -252,7 +252,8 @@ def read(root: Path) -> Direction | None:
     """The direction in the main checkout, or None when there is no file."""
     p = path(root)
     try:
-        return parse(p.read_text(encoding="utf-8"))
+        with open(p, encoding="utf-8", newline="") as f:  # no newline translation: CRLF stays CRLF
+            return parse(f.read())
     except FileNotFoundError:
         return None
     except UnicodeDecodeError as no:
