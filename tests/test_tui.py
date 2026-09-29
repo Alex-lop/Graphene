@@ -176,6 +176,22 @@ def test_a_leaf_that_came_back_shows_its_fixes_and_w_takes_one(repo):
         assert plan.get(store, "schema").scope == ["schema.py", "migrations/001.sql"]
 
 
+def test_b_then_u_on_a_leaf_that_came_back_puts_it_back_as_it_came_back_with_its_offers(repo):
+    """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and its w
+    and b offers were gone: undo did not put back the state the person saw."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
+    seen, _ = watch(repo, ["G", "b", "u"], size=(120, 36))
+    assert "undid: node sibling schema" in seen["status"] and seen["cursor"] == "schema"
+    assert "schema · came back" in seen["detail"]
+    assert "w  widen its scope to migrations/001.sql" in seen["detail"]
+    assert "b  a sibling leaf for migrations/001.sql" in seen["detail"]
+
+
 def test_the_colon_line_takes_any_command_verbatim(repo):
     proposed(repo)
     seen, _ = watch(repo, ["colon", *"plan accept schema", "enter"])
@@ -190,6 +206,16 @@ def test_question_mark_is_help_and_l_is_the_executors_output(repo):
     assert seen["screen"] == "Help"
     seen, _ = watch(repo, ["j", "j", "l"])
     assert "ids · output of attempt 1" in seen["detail"] and "nothing yet" in seen["detail"]
+
+
+def test_l_on_a_sub_goal_says_it_has_no_output_and_its_leaves_do(repo):
+    """Walk 2026-09-28 (judge 25): `l` on a sub-goal said `output of attempt 1 · nothing yet`, as if
+    an executor might yet print something for it; nobody runs a sub-goal, its leaves are run."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "l"])
+    flat = " ".join(seen["detail"].split())
+    assert seen["cursor"] == "api" and "output of attempt" not in flat, flat
+    assert flat.startswith("api · a sub-goal: no executor runs it, so it has no output of its own"), flat
 
 
 def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):

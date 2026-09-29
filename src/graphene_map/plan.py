@@ -2476,6 +2476,7 @@ def _shape(store) -> dict:
     return {
         "rows": {row["id"]: {**row, "_seq": seqs.get(row["id"])} for row in store.node_rows()},
         "meta": {k: store.meta(k) for k in _GOALS},
+        "log": store.conn.execute("SELECT COALESCE(MAX(id), 0) FROM node_log").fetchone()[0],
     }
 
 
@@ -2506,7 +2507,8 @@ def _keep(store, what: str, before: dict, after: dict) -> None:
     board = _items_moved(before["meta"]["board"], after["meta"]["board"])
     if rows or meta or board:
         stack = json.loads(store.meta("undo") or "[]")[-(UNDO_KEPT - 1) :]
-        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board})
+        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board,
+                      "log": before["log"]})  # fmt: skip
         store.set_meta("undo", json.dumps(stack))
 
 
@@ -2567,7 +2569,9 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.put_node(row)
             if seq is not None:
                 store.set_seq(node_id, seq)
-            store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
+            # ``since``: the log as it stood before the act, which `came_back` reads the node's state from
+            said = {"note": act["what"], "since": act.get("log")}
+            store.log_node(node_id, now, "undone", who.label, None, None, said)
         for key, (before, _) in act["meta"].items():
             store.set_meta(key, before)
         if items:  # each item the act changed, as it was; one it put up goes; the rest stay as they are
@@ -2620,10 +2624,15 @@ def goal_plus(goal: str, sentence: str) -> str | None:
 
 def came_back(store, node: Node) -> bool:
     """Open, and its last hold ended with its executor handing it back, and the person has not
-    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again)."""
+    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again). An act
+    undone since reads as never made: what it logged is passed over."""
     if node.state != OPEN:
         return False
-    last = (store.node_log(node.id, ("started", "released", "reopened", "edited")) or [{"kind": ""}])[-1]
+    log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+    while log and log[-1]["kind"] == "undone":
+        since = log.pop()["detail"].get("since")
+        log = log if since is None else [e for e in log if e["id"] <= since]
+    last = (log or [{"kind": ""}])[-1]
     return last["kind"] == "released" and not last["detail"].get("person")
 
 

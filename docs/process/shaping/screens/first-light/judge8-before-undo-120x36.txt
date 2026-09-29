@@ -1,0 +1,36 @@
+ the plan of …ez-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/backundo
+▼ ○ the feed loader reads the XML supplier too                0/3 done   │ read the xml feed
+├   ◌ conditions: protected secrets/**, .env · read-only…                │ xml-reader · ready
+├   ◇ how should an XML row with a missing…    missing-price  asks       │
+├   ◇ the XML has one <item> per price row     one-item       assumes    │ why          the feed loader reads the XML…
+├   ◇ the contract test may only cover csv…    contract       risk       │                the xml source  xml
+├   ◇ the legacy price import; nobody asked…   legacy         leaves out │ scope        ingest/xmlfeed.py
+├   ◇ keep the stdout JSONL shape              shape          note       │ check        test -f ingest/xmlfeed.py
+└ ▼ ○ the xml source                           xml            0/3 done   │ handed back  a row with no price needs
+  ├   ○ read the xml feed                      xml-reader     ready      │              validate/rules.py
+  ├   ○ register xml in READERS                xml-register   ready      │
+  └   ○ say xml in the README                  xml-readme     ready      │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 0 + 5 on the board · executors: none · R runs 3 ready with python3 · 0/3 done · plan first: on (P)
+ R run all ready · r run this · e edit · Tab view · ? talk · q quit
+ /reader: 1 of 2 (n next · Esc ends the search)

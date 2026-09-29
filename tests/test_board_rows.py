@@ -291,6 +291,29 @@ def test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said(re
     assert said.startswith("graphene board take which-id")
 
 
+def test_after_the_last_item_with_the_settled_fold_open_the_cursor_is_on_a_row_in_sight(repo):
+    """Walk 2026-09-28 (judge 25): at 80x24 with the settled group unfolded, after the board emptied
+    the cursor went to the first node of the tree, below the settled rows and out of sight."""
+    planned(repo)
+    for verb, *words in [("take", "int-ids"), ("park", "empty-check"), ("drop", "paging"), ("drop", "shape"),
+                         *(("note", f"a note of mine, {k}") for k in range(5))]:  # fmt: skip
+        assert person("board", verb, *words).exit_code == 0
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            for key in ["j", "z", "o", "k", "y"]:  # the fold opened, then the one open item taken
+                await pilot.press(key)
+                await pilot.pause()
+            tree = app.tree
+            line = tree.cursor_line - tree.scroll_offset.y  # the cursor's row in the pane, from its top
+            return app.board_row(), line, tree.scrollable_content_region.height
+
+    at, line, high = asyncio.run(go())
+    assert items(repo)["which-id"]["state"] == "taken"
+    assert at == BR.FOLD and 0 <= line < high, (at, line, high)
+
+
 def test_board_items_are_counted_apart_from_the_plan(repo):
     """rows counted the board's open items into `you: N` with nothing saying so (`you: 6` against the
     view candidate's `you: 1`); they do wait on the person, so they stay counted, but apart."""

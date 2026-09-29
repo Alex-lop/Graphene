@@ -2206,9 +2206,14 @@ def _attempt(pane: Pane, store, node: P.Node, running: bool = False) -> None:
 
 def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
     """`l`: what the executor printed; while it has printed nothing (claude -p prints only when it
-    ends), the tool calls the hooks recorded for its session, newest last, said as such."""
-    seen = R.live(store, node)
+    ends), the tool calls the hooks recorded for its session, newest last, said as such. A sub-goal
+    is run by its leaves, so it has none of its own."""
     pane = Pane(wide)
+    if P.kids(P.nodes(store)).get(node.id):
+        pane.text(f"{node.id} · a sub-goal: no executor runs it, so it has no output of its own", "bold")
+        pane.text("each of its leaves has its own output: l on a leaf shows it", "dim")
+        return pane.render()
+    seen = R.live(store, node)
     pane.text(f"{node.id} · output of attempt {seen.get('attempt') or 1}", "bold")
     log = seen.get("log")
     if log:

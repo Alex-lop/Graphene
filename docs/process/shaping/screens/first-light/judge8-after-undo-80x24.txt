@@ -1,0 +1,24 @@
+ the plan of …b67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/backundo
+├   ◌ conditions: protected secrets/**, .env · read-only legacy/**
+├   ◇ how should an XML row with a missing price…    missing-price  asks
+├   ◇ the XML has one <item> per price row           one-item       assumes
+├   ◇ the contract test may only cover csv and json  contract       risk
+├   ◇ the legacy price import; nobody asked for it   legacy         leaves out
+├   ◇ keep the stdout JSONL shape                    shape          note
+└ ▼ ○ the xml source                                 xml            0/3 done
+  ├   ↩ read the xml feed                            xml-reader     came back
+  ├   ○ register xml in READERS                      xml-register   ready
+  └   ○ say xml in the README                        xml-readme     ready     ▇
+────────────────────────────────────────────────────────────────────────────────
+ read the xml feed
+ xml-reader · came back
+ a row with no price needs validate/rules.py
+   w  widen its scope to validate/rules.py
+      graphene node widen xml-reader
+   b  a sibling leaf for validate/rules.py, which it waits on                 ▁
+      graphene node sibling xml-reader
+   ?  ask the planner
+      graphene ask 'xml-reader came back: propose what would let it be done'…
+ you: 1 + 5 on the board · 0 running · R: 2 ready · 0/3 done · plan first: on
+ w widen · b sibling · ? ask the planner · r run it again · Enter record
+ /reader: 1 of 2 (n next · Esc ends the search)

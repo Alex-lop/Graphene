@@ -891,6 +891,22 @@ def test_a_sibling_once_taken_is_offered_no_more(repo):
         assert plan.offers(store, plan.get(store, "a")) == []
 
 
+def test_undoing_a_sibling_or_a_widen_puts_back_the_leaf_that_came_back_with_its_offers(repo):
+    """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and w and b
+    were no longer offered. The undo put back its row, but its log still ended with the edit."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        for act in (plan.sibling, plan.widen):  # the second is undone after the first was
+            with plan.undoable(store, ALEX, act.__name__):
+                act(store, "a", [], ALEX)
+            assert not plan.came_back(store, plan.get(store, "a"))
+            plan.undo(store, ALEX)
+            a = plan.get(store, "a")
+            assert plan.came_back(store, a) and [k for k, _, _ in plan.offers(store, a)] == ["w", "b"]
+
+
 # Recheck 59 (fixed)
 def test_a_check_naming_a_file_git_does_not_track_is_warned_about(repo):
     """A worktree cut for --parallel has no untracked file, so that check could never pass there."""
