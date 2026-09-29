@@ -32,7 +32,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import plan as P
@@ -332,6 +332,11 @@ class Worker:
     how: str = ""  # why it attaches there
 
 
+def _stamp(at: datetime) -> str:
+    """A time as the hook stamps its rows (``hooks.now_iso``), so the two compare as text."""
+    return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
 def _age(stamp: str | None, now: datetime) -> float:
     if not stamp:
         return float("inf")
@@ -371,6 +376,16 @@ def did(tool: str, raw: str | None, file_path: str | None, success: int | None) 
     return line + (" (failed)" if success == 0 else "")
 
 
+def _last_call(store, sid: str, aid: str | None, since: datetime):
+    """One agent's newest call since ``since``, walked back along the session index. Never a scan of
+    the session: a row's agent_id sits after its response, which can be 256 KB."""
+    return store.conn.execute(
+        "SELECT timestamp, tool, input, file_path, success FROM tool_events WHERE session_id = ? "
+        "AND timestamp >= ? AND agent_id IS ? ORDER BY timestamp DESC LIMIT 1",
+        (sid, _stamp(since), aid),
+    ).fetchone()
+
+
 def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
     """Every session and subagent with something recorded in the last day, and how many older ones
     are left out. Each query goes by the session index the hook already keeps."""
@@ -391,14 +406,7 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
         if _age(latest, now) > DAY:
             older += 1  # asked of the index alone: an old session's calls are never read
             continue
-        last = {
-            r[0]: r
-            for r in store.conn.execute(
-                "SELECT agent_id, MAX(timestamp), tool, input, file_path, success FROM tool_events "
-                "WHERE session_id = ? GROUP BY agent_id",
-                (sid,),
-            )
-        }
+
         tasks = dict(
             store.conn.execute(
                 "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description') FROM "
@@ -410,25 +418,22 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
         for aid, _start, a_end in store.conn.execute(
             "SELECT id, started_at, ended_at FROM agents WHERE session_id = ? ORDER BY started_at", (sid,)
         ):
-            row = last.get(aid)
+            if a_end:  # finished: counted when a call started it (the vendor's own helpers are not)
+                if aid in tasks:
+                    agents.append(
+                        Worker(f"{sid}/{aid}", aid[:8], tasks[aid] or "a subagent", "finished", "", a_end)
+                    )
+                continue
+            row = _last_call(store, sid, aid, now - timedelta(seconds=IDLE))
             if row is None:
-                continue  # the vendor's own helpers: an end and nothing done
-            word = "finished" if a_end else "running" if _age(row[1], now) <= ALIVE else "idle"
-            if word == "idle" and _age(row[1], now) > IDLE:
-                continue  # an hour with nothing: gone without its end recorded, most likely
+                continue  # an hour with nothing and no end: gone without its end recorded, most likely
+            word = "running" if _age(row[0], now) <= ALIVE else "idle"
             agents.append(
-                Worker(
-                    f"{sid}/{aid}",
-                    aid[:8],
-                    tasks.get(aid) or "a subagent",
-                    word,
-                    did(*row[2:]),
-                    a_end or row[1],
-                )  # fmt: skip
+                Worker(f"{sid}/{aid}", aid[:8], tasks.get(aid) or "a subagent", word, did(*row[1:]), row[0])
             )
-        mine = last.get(None)
+        mine = _last_call(store, sid, None, now - timedelta(seconds=DAY))
         said = next((t for _, t in prompts if not _vendor_made(t.strip())), "")
-        heard = max([s for s in (mine and mine[1], prompts[0][0] if prompts else None) if s], default=started)
+        heard = max([s for s in (mine and mine[0], prompts[0][0] if prompts else None) if s], default=started)
         running = sum(a.word == "running" for a in agents)
         turn_over = bool(stopped and stopped >= (heard or ""))
         if running:
@@ -443,7 +448,7 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             continue
         first = said.strip().splitlines()[0] if said.strip() else ""
         label = f"session: {first}" if first else "a session"
-        last_line = did(*mine[2:]) if mine else "nothing yet"
+        last_line = did(*mine[1:]) if mine else "nothing yet"
         if running and (turn_over or _age(heard, now) > ALIVE):
             last_line = f"{running} of its subagents running"
         out.append(Worker(sid, sid[:8], label, word, last_line, max(stopped or "", heard or "")))
@@ -713,12 +718,12 @@ def above_plan(store, root: Path, width: int) -> list[tuple[str, str]]:
         d = read(root)
     except P.Refused:
         return [(f"the direction: {FILE} cannot be read (`graphene direction` names the lines)", "")]
-    if d is None:
+    alive = [n for n in P.nodes(store) if n.state not in P.GONE]
+    if d is None or not (P.goal(store) or store.meta("goal:proposed") or alive):
         return []
-    st = status(store, d)
-    if st["plan"] is None:
-        return []
-    if st["plan"]["node"] is None:
+    goal = P.goal(store)
+    if links(store)["plans"].get(goal) not in {n.id for n in d.nodes} or not goal:
         said = "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
-        return [(said, "dim")]
+        return [(said, "dim")]  # said before any session is read: this is on every `graphene plan`
+    st = status(store, d)
     return lines(st, width, only=st["plan"]["node"])

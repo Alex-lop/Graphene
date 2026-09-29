@@ -274,7 +274,8 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
         "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
     )
     person("direction", "plan", "live")
-    for said in (person("plan"), person("plan", "--view", "tree", "--width", "120", "--height", "36")):
+    views = (person("plan", "--view", "tree", "--width", "120", "--height", "36"), person("watch", "--once"))
+    for said in (person("plan"), *views):
         shown = said.stdout.splitlines()
         assert shown[0].split()[1:4] == ["the", "product", "product"] and "next: ids" in shown[0]
         assert shown[1].split()[1:3] == ["live", "live"] and shown[2:3] != []
