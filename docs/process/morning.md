@@ -11,6 +11,7 @@
 - Rungs 3-7: not run. `GRAPHENE_AGENT_LIVE_USD` was not in the environment this session started with, so every live path refused, as the directive says; the commands are below the brief.
 
 **New tonight** (in progress)
+- An agent practises live only when you start its session with `GRAPHENE_AGENT_LIVE_USD` set, on one locked night's bill: `docs/test/practice.sh night`
 
 **Decide** (in progress)
 
