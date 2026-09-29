@@ -345,3 +345,82 @@ def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
         and "(CLAUDECODE) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" in done.stderr
     )
     assert not (tmp_path / "demo").exists()
+
+
+# -- a call that may have been received keeps its worst case ------------------------------------------------
+
+STOPPED = """
+import signal, sys
+from graphene_map import tokenfactory as tf
+from graphene_map.executor import _stopped
+signal.signal(signal.SIGTERM, _stopped if sys.argv[1] == "executor" else lambda *_: sys.exit(143))
+tf.chat("nvidia/Nemotron-3-Ultra-fake", [{"role": "user", "content": "held"}], max_tokens=8192)
+"""
+
+
+@pytest.mark.parametrize("who", ["executor", "planner"])
+def test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case(fake, opened, who):
+    """Graphene stops an executor or a planner with TERM, which each turns into SystemExit: the call it
+    had sent may still be done and billed, so it stays at its worst case, as it does after a Ctrl-C."""
+    gate = threading.Event()
+    f = fake([lambda body: gate.wait(60) and {"content": "too late"}])
+    env = os.environ | {"PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+    child = subprocess.Popen([sys.executable, "-c", STOPPED, who], env=env)
+    deadline = time.monotonic() + 60
+    while not f.requests and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert f.requests, "the call never reached the fake"
+    child.terminate()
+    assert child.wait(60) == 143
+    gate.set()
+    held, settled = (
+        [r for r in rows(opened) if r["kind"] == "reserve"],
+        [r for r in rows(opened) if r["kind"] == "settle"],
+    )
+    assert len(held) == len(settled) == 1 and settled[0]["dollars"] == held[0]["dollars"] > 0
+
+
+def _answers(monkeypatch, *said):
+    """urlopen stubbed: each try raises the next of ``said`` (never an answer)."""
+    import urllib.error
+    import urllib.request
+
+    left = list(said)
+
+    def urlopen(req, timeout):
+        no = left.pop(0)
+        if isinstance(no, int):
+            raise urllib.error.HTTPError(req.full_url, no, "said", {}, None)
+        if no == "refused":  # nothing listens: the call never left this machine
+            raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+        raise no
+
+    tf.models()  # the list and its prices, asked before the stub: only the completion meets it
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+
+
+@pytest.mark.parametrize(
+    "said, kept",
+    [
+        (
+            (TimeoutError("timed out"), 503),
+            True,
+        ),  # the first try may have been done: its retry's 503 says nothing
+        ((TimeoutError("timed out"), "refused"), True),
+        ((503,) * 6, True),  # the fault is on Token Factory's side, after the call reached it
+        ((401,), False),  # refused as it arrived: nothing was done
+        ((429,) * 6, False),
+        (("refused",) * 6, False),  # never reached
+    ],
+    ids=["timeout-then-503", "timeout-then-refused", "503s", "401", "429s", "refused"],
+)
+def test_a_failed_call_is_freed_only_when_nothing_can_have_been_done(fake, opened, monkeypatch, said, kept):
+    fake([])
+    _answers(monkeypatch, *said)
+    with pytest.raises(tf.Unreachable) as no:
+        tf.chat(NANO, ASK, max_tokens=64)
+    assert isinstance(no.value, tf.Late) is kept
+    [held] = [r for r in rows(opened) if r["kind"] == "reserve"]
+    [settled] = [r for r in rows(opened) if r["kind"] == "settle"]
+    assert settled["dollars"] == (held["dollars"] if kept else 0.0) and held["dollars"] > 0
