@@ -2082,3 +2082,16 @@ def test_a_new_runs_first_attempt_is_not_read_as_the_last_ones_and_a_stop_is_not
     seen, _ = at(repo, "schema", (120, 36))
     assert "schema · running" in seen["detail"] and "attempt" not in seen["detail"].splitlines()[1]
     assert "Ctrl-C" not in STOPPED and "stopped" in STOPPED
+
+
+def test_the_goal_offers_r_only_when_something_is_ready(repo):
+    """Walk 2026-09-29 (first 8): with only leaves that came back, the status said `none ready` while
+    the goal's keys still offered `R run all ready`."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    with Store.open(repo) as store:
+        bot = plan.Caller("run:executor.py", False, "s-1")
+        plan.start(store, "ids", bot, repo)
+        plan.release(store, "ids", bot, "it needs schema.py", wants=["schema.py"])
+    seen, _ = watch(repo, ["g", "g"])
+    keys = seen["status"].splitlines()[1]
+    assert "none ready" in seen["status"] and "R run" not in keys, seen["status"]

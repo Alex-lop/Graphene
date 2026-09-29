@@ -1391,8 +1391,9 @@ class Watch(App):
         if not self.nodes:
             return [":ask what you want", *tail]
         if self.on_goal():
-            ended = ":plan archive puts it away" if self.counts.get("finished") else "R run all ready"
-            keys = ["y accept it all"] if self.counts.get("proposed") else [ended]
+            ended = [":plan archive puts it away"] if self.counts.get("finished") else []
+            ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
+            keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
             return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
