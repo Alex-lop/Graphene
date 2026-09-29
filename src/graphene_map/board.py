@@ -562,7 +562,8 @@ def carry(store, old: str, new: str, who: P.Caller, files=None, now: str | None 
     """A re-ask dropped ``old``, and ``new`` is the same node in the new tree (``ask._same``): what the
     board says about old is about new, its `then:` lines name new, and what an answer did to old's goal,
     scope or check (or a leaf it put beside old that went with it) is done to new, as the person's
-    edit. Returns what the answers changed on new, a line each."""
+    edit. Returns what the answers changed on new, a line each, and what was refused (`not carried:`,
+    with why): the new tree lands either way."""
     now = now or P._now()
     carried = []
     with store.claim():
@@ -583,8 +584,16 @@ def carry(store, old: str, new: str, who: P.Caller, files=None, now: str | None 
                 made = became[i].split()[1] if verb == "leaf" and became[i].startswith("proposed ") else None
                 gone = made is not None and (store.node_row(made) or {}).get("state") in P.GONE
                 if node_id == new and (verb in ("scope", "check", "goal") or gone):
-                    became[i] = _apply(store, line, who, now, files, [])
-                    carried.append(f"{became[i]} (from {item['id']})")
+                    store.conn.execute("SAVEPOINT carry")  # a refused edit leaves the new tree as it landed
+                    try:
+                        became[i] = _apply(store, line, who, now, files, [])
+                    except P.Refused as no:
+                        store.conn.execute("ROLLBACK TO carry")
+                        carried.append(f"not carried: {line} (from {item['id']}): {_one(str(no))}; "
+                                       f"`graphene node set {new}` puts it on by hand")
+                    else:
+                        carried.append(f"carried: {became[i]} (from {item['id']})")
+                    store.conn.execute("RELEASE carry")
             item["became"] = became if chosen else item.get("became") or []
             if json.dumps(item, sort_keys=True) != before:
                 item.update(rev=item["rev"] + 1, updated_at=now)
@@ -720,6 +729,14 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
     said: list[str] = []
     board = {it["id"]: it for it in items(store)}
     gone = {_one(it["text"]).lower(): it["id"] for it in board.values() if it["state"] == "dropped"}
+    # a planner asked again writes an item it put up before, perhaps without its [id]: the same words
+    # are that item, never a second one beside the person's answer (a proposal only; an edit names ids).
+    # A note is words told as written: a second one is a second note (`talk why` asked twice)
+    standing = {
+        _one(it["text"]).lower(): it["id"]
+        for it in board.values()
+        if it["state"] != "dropped" and it["kind"] != "note"
+    }
     seen: dict[str, int] = {}
     for f in found:
         at = f["at"]
@@ -735,6 +752,9 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
         if f["id"]:
             seen[f["id"]] = f["no"]
         known = board.get(f["id"] or "")
+        if known is None and opened is None and f["kind"] != "note" and _one(f["text"]).lower() in standing:
+            known = board[standing[_one(f["text"]).lower()]]
+            f = {**f, "id": known["id"]}
         if known is not None and opened is not None and f["id"] not in opened:
             raise P.Refused(
                 f"line {f['no']}: [{f['id']}] is on the board already; give this line another id, or none"
