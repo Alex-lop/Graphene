@@ -54,7 +54,7 @@ park, `Enter` answer, `a` note), and the status line counts them apart from the 
 the board`).
 The board is shown only while a question on it is open (`board: auto`, the setting unset; `board: on`
 in `graphene config edit` shows every open item). Accepting the whole plan, or an `R` that starts
-something, takes the default of what is still open as the person's, and an agent's note as written,
+something, takes the default of what is still open as the person's, and a planner's note as written (another agent's note waits for the person),
 said in one line that `graphene plan undo` takes back, so a person who agrees with every default
 answers nothing. A default that drops a node is the exception: it waits for the person's own key.
 An option can carry an effect (`then: scope xml-reader + pyproject.toml`), and picking it edits the

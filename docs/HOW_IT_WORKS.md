@@ -221,7 +221,7 @@ open. Either way, what is left open takes its default once the whole plan is acc
 accept` with no proposal left, `y` on the goal), when the person starts a run that starts something
 (`graphene run`, `R`; one that starts nothing answers nothing), or at `graphene board take` with no id
 (`board.defaults`), as the person's take, and one line names what took its default; `plan undo` takes
-it back. An agent's note is taken as written and told to its executors. A question with no default
+it back. A planner's note is taken as written and told to its executors; another agent's note (an executor's, a session's) waits for the person, and under `board: auto` it shows the board. A question with no default
 stays open, and so does a default that drops a node (`board.drops`): it waits for the person's own
 key, and the same line names it (`left for you: ID (its default drops NODE)`). So a person who agrees
 with every default answers nothing but a drop. The default is `auto` by study 4

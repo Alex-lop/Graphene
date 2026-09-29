@@ -160,7 +160,8 @@ def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing()
     and leave an agent's note open, and that D attaches a session or opens `:direction attach`."""
     from graphene_map import board as B
 
-    item = {"state": "open", "kind": "question", "default": "no", "then": ["drop legacy"], "agent": True}
+    item = {"state": "open", "kind": "question", "default": "no", "then": ["drop legacy"], "agent": True,
+            "by": "planner:script"}
     assert not B.has_default(item) and B.has_default({**item, "kind": "note", "default": None, "then": []})
     # what D does is test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key's
     for path in ("README.md", "docs/HOW_IT_WORKS.md", "docs/HACKATHON.md", "CHANGELOG.md"):

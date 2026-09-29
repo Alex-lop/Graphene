@@ -199,7 +199,7 @@ prints what answering needs, and `--all` lists what is settled too.
 
 You need not answer at all. What you leave open takes its default when you accept the whole plan or
 press `R` and it starts something, said in one line; `graphene board take` with no id does it by hand,
-and `graphene plan undo` takes them back. An agent's note is then taken as written. A default that
+and `graphene plan undo` takes them back. A planner's note is then taken as written; another agent's note waits for you. A default that
 drops a node is never taken that way: it waits for its own `y`, and the line says so (`left for you:
 ID (its default drops NODE)`).
 
