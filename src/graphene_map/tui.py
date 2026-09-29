@@ -1221,13 +1221,14 @@ class Watch(App):
         you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
         first = "on" if c["first"] else "off"
+        spent = money(c["spent"]) if c.get("spent") is not None else ""  # the plan's: planner and leaves
         long = [
             (f"waiting on you: {c['you']}{board}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
-            *([(f"{money(c['spent'])} at list price", "dim")] if c.get("spent") is not None else []),
+            *([(f"the plan: {spent} at list price", "dim")] if spent else []),
         ]
         short = [
             (f"you: {c['you']}{board}", you),
@@ -1235,7 +1236,7 @@ class Watch(App):
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
             (f"plan first: {first}", ""),
-            *([(money(c["spent"]), "dim")] if c.get("spent") is not None else []),
+            *([(f"bill {spent}", "dim")] if spent else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
@@ -2021,7 +2022,8 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     spent = bill(store.node_log(node.id, ("usage",)))
     if spent:
         models = ", ".join(m.rsplit("/", 1)[-1] for m in spent["models"])
-        pane.field("bill", f"${spent['dollars']:.4f} at list price · {spent['calls']} calls · {models}")
+        calls = f"for this leaf's {spent['calls']} calls"
+        pane.field("bill", f"${spent['dollars']:.4f} at list price {calls} · {models}")
     if word in ("done", "review"):
         ended = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
         pane.field("changed", ", ".join(ended.get("changed") or []) or "nothing on record")
