@@ -3,20 +3,28 @@
 ## The brief
 
 **Watch first**
-- No rough cut: its takes are live (rung 7), and live runs refused in this session (below).
+- No rough cut: its takes are live, and nothing live ran (below). The same cut on the stand-ins, REHEARSAL on every frame: `open ~/graphene-first-light/rehearsal.mp4` (2 min 26 s; subtitles: View > Subtitles).
 
-**What ran live** — $0.0012 of $10, all of it yours (`.graphene/practice/progress.json`)
-- Rung 1 access: PASS 01:14 (you). Sandboxes: `ForbiddenError: You do not have permission to perform this action`.
-- Rung 2 local leaf: PASS 01:16 (you). Graphene has made a runtime call to Token Factory.
-- Rungs 3-7: not run. `GRAPHENE_AGENT_LIVE_USD` was not in the environment this session started with, so every live path refused, as the directive says; the commands are below the brief.
+**What ran live** — $0.0029 of $10, all yours (12 ledger rows: three access checks and one leaf)
+- Rung 1 PASS 01:14, rung 2 PASS 01:16: Graphene has made a runtime call to Token Factory. Sandboxes answered 403 (ForbiddenError).
+- Rungs 3-7: not run. `GRAPHENE_AGENT_LIVE_USD` was not in this session's environment, so I ran nothing live; your commands are under "Your commands".
 
-**New tonight** (in progress)
-- An agent practises live only when you start its session with `GRAPHENE_AGENT_LIVE_USD` set, on one locked night's bill: `docs/test/practice.sh night`
+**New tonight**
+- An agent practises live only in a session you start with `GRAPHENE_AGENT_LIVE_USD` set, on one locked night's bill: `docs/test/practice.sh night`
+- The board asks only while a question is open, and accepting takes every default (`board: auto` by study 4): `graphene board`
+- The direction: Graphene's goals above its plans, sessions hung from them: `graphene direction` (`D` in watch)
+- A closed terminal now ends `watch`, `demo` and a run's executors and checks: `tests/test_teardown.py`
+- The video, filmed scene by scene and refused unless the run was live: `docs/demo/build.sh --rehearsal`
 
-**Decide** (in progress)
+**Decide**
+- The branch has about 70 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
+- Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
+- A run started from `watch` goes on after the watch's terminal closes, as after `q`. Default: keep.
 
 **Broken or risky**
-- Sandboxes refuse this project (rung 1): rungs 3, 4 and 7 need that access first.
+- Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
+- Keys in two agents' tests, none of yours left the machine: a fake key went to the real ConTree (403), and a rehearsal sent your ~/.zshenv key to the local stand-in on 127.0.0.1. Both paths are closed.
+- My integration worktree was deleted during a test run at 03:04; the same test files, rerun one by one, deleted nothing. Cause unknown.
 
 ---
 
