@@ -1045,3 +1045,17 @@ def test_r_takes_no_default_that_would_leave_it_nothing_to_start(repo):
         from graphene_map import settings as S
 
         assert B.get(store, "shared")["state"] == "open" and "api.py" not in S.readonly(store)
+
+
+@pytest.mark.parametrize("ident", ["which-id-the-users-endpoint1", "abcdefghijklmnopqrstuvwxyz012345"])
+def test_the_print_keeps_the_words_at_40_columns_whatever_the_id(repo, monkeypatch, ident):
+    """Review 2026-09-29 (11): at 40 columns a 28-character id crashed the print, and a 32-character
+    one left the row with no words."""
+    with Store.open(repo) as store:
+        asked = f"question: which id should the users endpoint return?  [{ident}]\n    default: the row id\n"
+        T.apply(store, asked, PLANNER, None)
+    monkeypatch.setenv("COLUMNS", "40")
+    shown = person("board")
+    assert shown.exit_code == 0, shown.output
+    row = next(line for line in shown.stdout.splitlines() if ident in line)
+    assert "which id" in row
