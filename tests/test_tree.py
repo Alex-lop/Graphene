@@ -88,6 +88,21 @@ def test_done_rolls_up_and_the_sub_goals_own_check_is_where_integration_lives(st
     assert [n.id for n in plan.ready(plan.nodes(store))] == ["docs"]  # what waited on the sub-goal can start
 
 
+def test_what_is_decided_after_a_check_is_stamped_after_it_so_the_log_reads_in_time_order(store, repo):
+    """Alex's record listed `finished … 05:17:34` after `check_passed … 05:17:35`: `done` stamped its
+    end with the moment it was asked, before the check ran. The same held for a sub-goal's roll-up."""
+    plan.propose(store, TREE, ALEX)
+    do(store, repo, "a", "src/api/a.txt")
+    do(store, repo, "b", "src/api/b.txt")
+    for node_id, ends in (("b", "finished"), ("api", "rolled_up")):
+        log = store.node_log(node_id)
+        kinds = [e["kind"] for e in log]
+        assert kinds[-2:] == ["check_passed", ends]
+        stamps = [e["timestamp"] for e in log]
+        assert stamps == sorted(stamps), list(zip(kinds, stamps, strict=True))
+        assert plan.get(store, node_id).finished_at == log[-1]["timestamp"]
+
+
 def test_a_failing_integration_check_keeps_the_sub_goal_open_and_says_what_to_do(store, repo):
     tree = json.loads(json.dumps(TREE))
     tree[0]["check"] = "test -f src/api/never.txt"
