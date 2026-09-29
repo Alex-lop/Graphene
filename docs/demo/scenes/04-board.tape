@@ -21,9 +21,16 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
+# y takes the item's default, and the cursor goes to the next open item. The planner puts up at most three
+# (decision 99); a y past the last lands on the settled fold, where it does nothing
+# (tests/test_board_rows.py::test_each_key_answers_the_item_under_the_cursor_and_says_its_command).
 Sleep 5s
 Type "y"
-Sleep 10s
+Sleep 3s
+Type "y"
+Sleep 3s
+Type "y"
+Sleep 5s
 Hide
 Ctrl+B
 Type "M"

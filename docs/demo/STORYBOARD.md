@@ -23,7 +23,7 @@ key watches the same run afterwards.
 | 01 | the opening | 9 s | live | `graphene config` in feeds: the settings, the planner and the executor (Nemotron) and where the key was found, never the key. | "This is Graphene on a small Python repository. The planner and the executors are NVIDIA Nemotron models on Nebius Token Factory." |
 | 02 | the ask | 14 s | live | `graphene ask "…"`, the paragraph pasted in the shell, wrapping over three lines and held there to be read; Enter; `asking the planner (nemotron)…`. | "I ask for a feature in one paragraph. Nemotron 3 Ultra plans it through Token Factory's OpenAI-compatible API, reading the repository with read-only tools: list, grep and read." |
 | 03 | the plan | 10 s | live, after a cut | What the ask proposed and put up, one line each; then `graphene watch`: the tree, every row `?` proposed, and the board's rows above it. | "It answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done." |
-| 04 | the board | 16 s | live; only if the planner asked | The cursor on the first board row, its default and options in the pane; `y` takes the default, and what it changed is said under it. | "What the code cannot tell it, it asks before anything runs: at most three questions or risks, each a row under the goal with a default. One key answers, and the answer goes to that leaf's executor." |
+| 04 | the board | 16 s | live; only if the planner asked | The cursor on the first board row, its default and options in the pane; `y` takes the default, what it changed is said under it, and the cursor goes to the next item; `y` again for each. | "What the code cannot tell it, it asks before anything runs: at most three questions or risks, each a row under the goal with a default. One key answers each, and the answer goes to that leaf's executor." |
 | 05 | the views | 18 s | live | `Tab`: the tree, top-down. `Tab`: the graph, the critical path heavy, and named on the bottom line. `Tab`: the outline again. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path, and the bottom line names it." |
 | 06 | the prune | 14 s | live | `gg`, `E`: the plan as text in vim; one substitution takes `cli/main.py` out of every scope; `:wq`; `y` on the goal accepts the rest. | "Then I prune. In the plan's text I take one file out of every scope, and accept the rest." |
 | 07 | the run | 16 s | live | `R`: leaves turn yellow; `/running` puts the cursor on one, and its pane shows the executor, where it runs, its last step and the seconds since. | "R runs every ready leaf, each with a Nemotron Nano executor on Token Factory, in a git worktree of its own. Its tools refuse a write outside the scope, and a leaf is done only when its check passes." |
@@ -44,8 +44,9 @@ says which filmed scene is too short for its line.
   `asks`, `risk`, `assumes`, `leaves out`, each with its default; `y` takes the default, `1`-`9` picks an
   option, `p` parks, `d` drops, `Enter` answers in your words. Tonight's changes: a default holds unless
   it is changed, one key answers, and there is no board when there is nothing to ask. Scene 04 presses
-  one `y` only, because the number of items is the planner's: when there is no board, the scene is not
-  filmed and the take goes from the plan to the views.
+  `y` three times: the planner puts up at most three items, and a `y` past the last lands on the settled
+  fold, where it does nothing. When there is no board, the scene is not filmed and the take goes from
+  the plan to the views.
 - **The views (decisions 85 to 87).** `Tab` goes outline, tree, graph, and past a view that does not fit,
   saying so once. The graph's note names the critical path first, so 80 columns never cut it. On the
   scratch plan the shaping run drew (the four feeds leaves, and the board's new zero-price-product leaf,
