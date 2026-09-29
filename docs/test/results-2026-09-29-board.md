@@ -383,3 +383,58 @@ is kept as `inventory-shape-board-1-harness-failed` and reported. No brief, card
 judge's brief changed.
 
 ### Study 4 results
+
+Run 02:52 to 03:10 on 29 September, by the coordinator, from `G` (a checkout of `first-light` at
+`5ab0dca`) on the pinned wheel (`sha256 f79f7102…`, checked again after the runs). Eight stand-ins
+and eight judges, each a fresh sub-agent (claude-opus-5-5), plus one rerun and its judge.
+
+**Void checks (rule 4).** Every run: `env 1`, `runs 0`, `started 0`, `dirty 0`; each task's two runs
+share one base (feeds `c075dca51204`, inventory `b80763d0c1f8`, logs `c327858f4575`, report
+`160d36d5e98e`). No run is void. The inventory board run failed as a harness (this session's
+classifier refused two commands its brief lists) and was rerun once under rule 4; the failed run is
+kept as `inventory-shape-board-1-harness-failed` (129.6 modelled person-seconds, 308 words read, no
+plan accepted; its judge ruled yes, 13 of 13, reading the proposal with every open item at its
+default) and is not in the table. Three stand-ins read a few files outside `seen` (report board: an
+`ls -R`, a `git status` and a `wc -l`; the failed inventory run: a `find`); those words are not
+counted, in either arm's favour as it happened.
+
+| task | arm | run | valid | person-s, MODELLED = typing + acts + reading | typed | acts | keys | words read | board_acts | ruling | constraints met | study 2 person-s | study 2 words read | study 3 person-s | study 3 words read |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| feeds | outline | 1 | yes | 517.4 = 0.0 + 1.4 + 516.0 | 0 | 1 | 1 | 2150 | | yes | 19 of 19 | 668.9 | 1838 | 446.6 | 1855 |
+| feeds | board | 1 | yes | 567.8 = 0.0 + 1.4 + 566.4 | 0 | 1 | 1 | 2360 | none | yes | 19 of 19 | 1277.3 | 3754 | 795.3 | 3297 |
+| inventory | outline | 1 | yes | 392.5 = 0.0 + 2.7 + 389.8 | 0 | 2 | 2 | 1624 | | yes | 13 of 13 | 426.7 | 1502 | 542.9 | 1690 |
+| inventory | board | 1 (rerun) | yes | 801.5 = 133.6 + 4.1 + 663.8 | 477 | 3 | 480 | 2766 | none | yes | 13 of 13 | 1064.0 | 4065 | 865.5 | 3086 |
+| logs | outline | 1 | yes | 272.6 = 0.0 + 1.4 + 271.2 | 0 | 1 | 1 | 1130 | | partly | 12 of 17 | 324.1 | 1339 | 282.1 | 1164 |
+| logs | board | 1 | yes | 557.3 = 0.0 + 2.7 + 554.6 | 0 | 2 | 2 | 2311 | none | partly | 14 of 17 | 822.5 | 2203 | 680.7 | 2808 |
+| report | outline | 1 | yes | 531.8 = 108.4 + 2.7 + 420.7 | 387 | 2 | 389 | 1753 | | yes | 12 of 12 | 293.2 | 1216 | 406.8 | 1245 |
+| report | board | 1 | yes | 501.3 = 0.0 + 1.4 + 499.9 | 0 | 1 | 1 | 2083 | none | yes | 12 of 12 | 649.9 | 2674 | 679.6 | 2361 |
+| all four | outline | | | 1714.3 | | | | | | | | 1712.9 | | 1678.4 | |
+| all four | board | | | 2427.9 | | | | | | | | 3813.7 | | 3021.1 | |
+
+`board_acts` is empty on every board run: no stand-in answered an item. Each took every default by
+accepting the plan (decision a of lane C), and the inventory board stand-in retyped one goal (477
+characters) where the outline stand-in changed nothing; the report outline stand-in retyped one
+(387).
+
+| hypothesis | per task (feeds / inventory / logs / report) | tasks in the registered direction | result |
+|---|---|---|---|
+| H1: board minus outline, person-s | +50.4 / +409.0 / +284.7 / −30.5 | 1 of 4 | no difference shown; three tasks go the other way |
+| H2: board against outline, ruling and constraints met | yes=yes 19=19 / yes=yes 13=13 / partly=partly 14>12 / yes=yes 12=12 | 4 of 4 | on all four tasks, one run each |
+| H3: study 4 board minus study 3 board, words read | −937 / −320 / −497 / −278 | 4 of 4 | on all four tasks, one run each |
+
+| decision | value | holds |
+|---|---|---|
+| (a) total person-s over the four tasks, board against outline | 2427.9 against 1714.3 | no |
+| (a) tasks with board person-s at most outline's | 1 of 4 | no |
+| (b) tasks with board ruling no lower and constraints met at least outline's | 4 of 4 | yes |
+| the default of `board:` | `auto` | (a) fails |
+
+The board after lane C read 10% to 30% fewer words than study 3's board on every task and gave a plan
+at least as faithful to the card on all four, but it still cost more modelled attention than the
+outline on three of four tasks, so by the registered rule the default is `board: auto`: the board
+appears only while a question the repository cannot answer is open.
+
+*After the fact:* on these four proposals the board arm's extra cost is almost all reading
+(`graphene plan --view auto` plus `graphene board`, against `plan --text`), not answering: no stand-in
+pressed a key on the board. A board shown only for a question, as `auto` does, removes most of what
+the board arm read here, which study 4 does not measure.
