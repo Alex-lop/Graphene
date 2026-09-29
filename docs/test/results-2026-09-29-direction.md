@@ -224,4 +224,35 @@ Spawn a fresh sub-agent per run whose whole prompt is "Read $RUNS/$R.brief and d
 
 ### The exploratory table
 
-Filled from `table`; empty until the runs exist.
+Run 03:53 to 03:54 on 29 September by the coordinator, from a checkout of `first-light` at
+`f5250c1` (the naming fix, `4f185aa` in the branch), twelve fresh sub-agents, all at once. No run is
+void. Filled by `table`:
+
+| run | arm | person-s, MODELLED | typed | acts | words read | right (of 8) | false | answered |
+|---|---|---|---|---|---|---|---|---|
+| x-alex-direction-1 | direction | 69.8 | 30 | 1 | 250 | 8 | 0 | 3/3 |
+| x-alex-direction-2 | direction | 61.4 | 18 | 1 | 229 | 8 | 0 | 3/3 |
+| x-first-direction-1 | direction | 99.9 | 31 | 2 | 369 | 8 | 0 | 3/3 |
+| x-first-direction-2 | direction | 116.2 | 45 | 3 | 415 | 8 | 0 | 3/3 |
+| x-judge-direction-1 | direction | 108.3 | 43 | 2 | 390 | 8 | 0 | 3/3 |
+| x-judge-direction-2 | direction | 108.3 | 43 | 2 | 390 | 8 | 0 | 3/3 |
+| x-alex-morning-1 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| x-alex-morning-2 | morning | 130.6 | 122 | 3 | 385 | 8 | 0 | 3/3 |
+| x-first-morning-1 | morning | 107.1 | 43 | 2 | 385 | 8 | 0 | 3/3 |
+| x-first-morning-2 | morning | 103.1 | 44 | 2 | 367 | 8 | 0 | 3/3 |
+| x-judge-morning-1 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| x-judge-morning-2 | morning | 103.7 | 46 | 2 | 367 | 8 | 0 | 3/3 |
+
+| arm | n | median person-s | median words read | mean right (of 8) | mean false |
+|---|---|---|---|---|---|
+| direction | 6 | 104.1 | 379.5 | 8.00 | 0.00 |
+| morning | 6 | 107.4 | 385.0 | 8.00 | 0.00 |
+
+By the registered rule (8 items): the direction answered faster, as correctly.
+
+After the fact, on one fixture its author wrote: with every waiting and running item named, the
+direction's runs took a median 104.1 modelled person-seconds against morning.md's 107.4,
+with every run in both arms right on all eight items. Four of the six direction stand-ins answered from
+one `graphene direction`; what they still stopped on was that `next: email` names a leaf that has no
+row of its own, and whether running work is named by its leaf or its session. This can show which way
+the change moved, and cannot confirm it.
