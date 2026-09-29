@@ -192,10 +192,11 @@ print("\\n" + json.dumps({**work, "modules": sorted(names)}))
 
 # The modules every event loads to record it: the entry point, the hook, the store and its records.
 RECORD = {"cli", "hooks", "model", "store"}
-# ...and what the gate adds, when an event can be answered (hooks.gated): the plan, and the standard
-# modules the plan needs for its nodes and to run a check.
-GATE = RECORD | {"gate", "plan", "dataclasses", "shlex", "subprocess", "threading"}
-# A plan in force: the person's standing paths are read on every write, and a Bash call is parsed.
+# ...and what the gate adds, when an event can be answered (hooks.gated): the plan, whose nodes are
+# dataclasses. Git and a check import subprocess where they run, and a path is parsed with shlex.
+GATE = RECORD | {"gate", "plan", "dataclasses"}
+PATH = {"shell", "shlex"}
+# A plan in force: the person's standing paths are read on every write.
 IN_FORCE = GATE | {"settings", "board"}
 
 # (repo, event): the modules, SQL statements and processes of that event, run in this order on one
@@ -214,7 +215,7 @@ WORK = {
     ("first", "SessionStart"): (GATE, 11, 0),
     ("first", "UserPromptSubmit"): (GATE, 18, 0),
     ("first", "PreToolUse Read"): (RECORD, 5, 0),
-    ("first", "PreToolUse Edit"): (GATE | {"shell"}, 13, 0),
+    ("first", "PreToolUse Edit"): (GATE | PATH, 13, 0),
     ("first", "PostToolUse Read"): (RECORD, 8, 0),
     ("first", "PostToolUse Bash"): (RECORD, 9, 0),
     ("first", "SubagentStart"): (RECORD, 7, 0),
@@ -222,7 +223,7 @@ WORK = {
     ("plan", "SessionStart"): (GATE, 13, 0),
     ("plan", "UserPromptSubmit"): (GATE, 17, 0),
     ("plan", "PreToolUse Read"): (RECORD, 5, 0),
-    ("plan", "PreToolUse Edit"): (IN_FORCE | {"shell"}, 19, 0),
+    ("plan", "PreToolUse Edit"): (IN_FORCE | PATH, 19, 0),
     ("plan", "PostToolUse Read"): (RECORD, 8, 0),
     ("plan", "PostToolUse Bash"): (IN_FORCE, 15, 0),
     ("plan", "SubagentStart"): (RECORD, 7, 0),

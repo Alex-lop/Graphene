@@ -1,6 +1,7 @@
 """The plan: nodes of work, what each may touch, how anyone knows it is done, and what it waits on.
 
-Standard library only, because the hook imports this on every agent event.
+Standard library only, because the hook imports this on every agent event it answers; what only git
+and a check need (subprocess, signal, threading) is imported in the functions that run them.
 
 A node's contract is the same whoever executes it (an agent of any vendor, or a person), and it binds
 at the boundary by a mechanism that needs no vendor: ``finish`` runs the node's check itself and asks
@@ -15,10 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import signal
-import subprocess
 import sys
-import threading
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -517,6 +515,8 @@ def forecast(
 def _git(checkout: str | Path, *args: str) -> str:
     # every call here is a read, and a read must not take the index lock: with leaves in worktrees of
     # their own, one node's look at the other trees (`git status`) met another's commit and broke it
+    import subprocess
+
     env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     out = subprocess.run(
         ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=30, env=env
@@ -527,6 +527,8 @@ def _git(checkout: str | Path, *args: str) -> str:
 
 
 def head(checkout: str | Path) -> str | None:
+    import subprocess
+
     try:
         return _git(checkout, "rev-parse", "HEAD").strip() or None
     except (Refused, OSError, subprocess.TimeoutExpired):
@@ -584,6 +586,8 @@ def _ignored_changed(checkout: str | Path, at_start: dict[str, str]) -> list[tup
 
 
 def tracked(checkout: str | Path) -> list[str]:
+    import subprocess
+
     try:
         return [p for p in _git(checkout, "ls-files", "-z").split("\0") if p]
     except (Refused, OSError, subprocess.TimeoutExpired):
@@ -592,6 +596,8 @@ def tracked(checkout: str | Path) -> list[str]:
 
 def in_tree(checkout: str | Path) -> list[str]:
     """The files of a checkout as git sees them: what it tracks, and what it does not ignore."""
+    import subprocess
+
     try:
         said = _git(checkout, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     except (Refused, OSError, subprocess.TimeoutExpired):
@@ -633,6 +639,9 @@ def ctrl_c_on_hangup():
     ended before the process goes: left to the defaults, it died where it stood, and they worked on
     unattended. Once the terminal is gone, what is said goes nowhere rather than failing the
     cleanup half done. Only the main thread is told of a signal; elsewhere this does nothing."""
+    import signal
+    import threading
+
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -654,7 +663,7 @@ def ctrl_c_on_hangup():
             signal.signal(sig, handler)
 
 
-_checks: set[subprocess.Popen] = set()  # what the checks are running now; a run that is stopped ends it
+_checks: set = set()  # the processes of the checks running now (Popen); a run that is stopped ends it
 _stopped = float("-inf")  # when a run last ended its checks: every check begun before is stopped
 
 
@@ -670,6 +679,8 @@ def _ended(
     alone left the `git reset` it had started writing a worktree after the check was over; a stop
     that came while the worktree was being made was lost, and the check ran to its end; and a
     terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    import subprocess
+
     shell = isinstance(args, str)
     with subprocess.Popen(
         args,
@@ -709,6 +720,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     to change, and `uv run` in the worktree re-installed the project into it, pointing the checkout's
     .venv at a worktree that was then deleted."""
     import shutil  # here: the hook imports this module on every event and never runs a check
+    import subprocess
     import tempfile
 
     def git(*args: str, index: Path | None = None, given: str | None = None) -> str:
@@ -770,6 +782,8 @@ def run_check(
     (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
     executor's tree, to be counted as its change and committed with its leaf. Its time limit and its
     stop (``_ended``) are the whole of it, the making of that worktree included."""
+    import subprocess
+
     began = time.monotonic()
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
@@ -826,7 +840,9 @@ def end_checks() -> None:
         _end_check(_checks.pop())
 
 
-def _end_check(proc: subprocess.Popen) -> None:
+def _end_check(proc) -> None:  # a subprocess.Popen
+    import signal
+
     with suppress(OSError):  # the group outlives bash while anything it started is still running
         os.killpg(proc.pid, signal.SIGKILL)
 
@@ -1396,6 +1412,8 @@ def mark_boundary(store, checkout: str | Path, now: str | None = None) -> None:
 
 def _blobs(checkout: str | Path, paths: list[str]) -> dict[str, str]:
     """Git's name for the content of each path as it is on disk now (deleted paths are left out)."""
+    import subprocess
+
     present = [p for p in paths if os.path.isfile(os.path.join(checkout, p))]
     if not present:
         return {}
@@ -1418,6 +1436,8 @@ def _reaches(
     (``since``) on top of the HEAD it finished on (``base``). A file built on before any commit (by
     a later leaf, the person, a formatter) never reaches history as the leaf left it, and its
     dependant waited for ever."""
+    import subprocess
+
     missing = []
     now = _blobs(checkout, list(blobs)) if worktree_too else {}
     for path, blob in blobs.items():
@@ -1665,6 +1685,8 @@ def not_here(store, node: Node, checkout: str | Path, committed: bool = False) -
     in another checkout and not committed there (a worktree cut from that checkout's HEAD would not
     have it). ``committed``: ask it of a worktree about to be cut from ``checkout``, so work left
     uncommitted in ``checkout`` itself does not count either. One reason each, for the refusal."""
+    import subprocess
+
     checkout = os.path.realpath(checkout)
     everything = nodes(store)
     by_id, under = {n.id: n for n in everything}, kids(everything)
@@ -1725,6 +1747,8 @@ def other_checkouts(checkout: str | Path) -> list[str]:
     """The repo's other working trees that still exist, as git lists them, but for the ones `graphene
     run --parallel` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
     for it (a leaf's leftover there was charged to a node the person held in their own checkout)."""
+    import subprocess
+
     here = os.path.realpath(checkout)
     try:
         listed = _git(checkout, "worktree", "list", "--porcelain")
@@ -1738,6 +1762,8 @@ def snapshot_others(checkout: str | Path) -> dict[str, dict]:
     """HEAD and the dirty paths of each other working tree, as a node starts. A tree git lists and
     can no longer read (its directory emptied, its .git file gone: this repo had one) is left out;
     it answers for nothing, and it must not stop a node from starting."""
+    import subprocess
+
     out = {}
     for tree in other_checkouts(checkout):
         try:
@@ -1753,6 +1779,8 @@ def elsewhere(store, node: Node) -> list[str]:
     closing review wrote one file by absolute path into a second worktree, and `done` said "nothing
     outside its scope": it had only asked about the checkout the node was started in. A worktree
     made after the start is compared with the commit the node started from."""
+    import subprocess
+
     if RUN_TREE in (node.checkout or ""):
         # a leaf `graphene run --parallel` put in a worktree of its own: meanwhile its siblings land
         # in the person's checkout and the person works there, and none of that is this leaf's doing
@@ -1837,6 +1865,8 @@ def links_out(checkout: str | Path, paths: list[str]) -> list[str]:
 def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[str]:
     """What changed since the node was started that its scope does not cover, leaving out what a
     node that ran beside it in the same checkout was entitled to change."""
+    import subprocess
+
     beside = [
         n
         for n in nodes(store)
@@ -2183,6 +2213,8 @@ def release(
     """Hand a running node back, with the reason. The way out for an executor that cannot finish:
     it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
     name the paths it would need (``wants``), which the person is then offered in one key."""
+    import subprocess
+
     now = now or _now()
     if not why.strip():
         raise Refused("say why: --why 'what is in the way'; the person reads it to decide what to change")
@@ -2229,6 +2261,8 @@ def signoff(
     """A person's say-so: a node waiting in review is done. One that did not land was merged by hand,
     as they were told, and where it landed is recorded, or what needs it waits for ever. ``checkout``:
     where they merged it; the page passes none, and the repo the store belongs to is meant."""
+    import subprocess
+
     _person_only(who, "signing a node off")
     now = now or _now()
     checkout = checkout if checkout is not None else store.path.parent.parent
