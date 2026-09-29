@@ -841,7 +841,7 @@ class Watch(App):
         self.back = {n.id for n in nodes if P.came_back(store, n)}
         self.offered = {i: [k for k, _, _ in P.offers(store, by_id[i])] for i in self.back}
         self.words = {n.id: P.reads(n, nodes, self.back) for n in nodes}
-        leaves = [n for n in P.leaves(nodes) if n.state != P.PROPOSED and not n.aside]
+        leaves = P.counted(nodes)  # what `graphene` counts: "3 leaves, 0 done" is "0/3 done" here
         done = sum(n.state == P.DONE for n in leaves)
         tops = [
             n
@@ -852,7 +852,13 @@ class Watch(App):
         logs: dict[str, list[dict]] = {}
         for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
             logs.setdefault(e["node_id"], []).append(e)
-        held = [n for n in nodes if n.state in (P.RUNNING, P.DONE, P.REVIEW) or n.id in self.back]
+        held = [
+            n
+            for n in nodes
+            if n.state in (P.RUNNING, P.DONE, P.REVIEW)
+            or n.id in self.back
+            or (n.id in logs and P.let_go(store, n).get("stopped"))  # its forks read stopped
+        ]
         self.forks = {n.id: mine for n in held if (mine := forks(logs.get(n.id, []), n.state))}
         # a step up the ladder is news: the bottom line says it once, while its leaf runs, and only when
         # nothing else is said there; one that is not said yet waits for the line to be free
@@ -867,9 +873,10 @@ class Watch(App):
         self.counts = {
             "you": len(tops) + len(yours),
             "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
-            "board": len(self.board.open),  # they wait on the person too: `you: 1 + 5 on the board`
+            "board": len(self.board.open),  # they wait on the person too: `1 on you + 5 on the board`
             "running": sum(n.state == P.RUNNING for n in leaves),
             "ready": sum(w == "ready" for w in self.words.values()),
+            "back": sum(w == "came back" for w in self.words.values()),  # R leaves them: they are yours
             "done": f"{done}/{len(leaves)} done",
             "finished": bool(leaves) and done == len(leaves) and not tops and not yours,
             "first": P.plan_first(store),
@@ -939,7 +946,8 @@ class Watch(App):
             n.id: (P.look(w := self.words[n.id])[0], w, n.title, n.id, bool(under.get(n.id)), folded(n.id))
             for n in nodes
         }
-        rows[None] = (P.look(goal_word)[0], goal_word, goal, "", True, folded(None))
+        glyph = P.look("done" if self.counts.get("finished") else goal_word)[0]  # ✓ once every leaf is done
+        rows[None] = (glyph, goal_word, goal, "", True, folded(None))
         for i, mine in self.forks.items():  # a fork's row: its model where a title goes, which fork for an id
             for f in mine:
                 word, model = f["state"], _short(f["model"])
@@ -1269,14 +1277,16 @@ class Watch(App):
             (f"waiting on you: {c['you']}{board}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
+            *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
             *([(f"the plan: {spent} at list price", "dim")] if spent else []),
         ]
         short = [
-            (f"you: {c['you']}{board}", you),
+            (f"{c['you']} on you{board}", you),  # the graph's note says it so too
             (f"{c['running']} running", busy),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
+            *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
             (f"plan first: {first}", ""),
             *([(f"bill {spent}", "dim")] if spent else []),

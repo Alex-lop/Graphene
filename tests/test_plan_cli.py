@@ -455,6 +455,20 @@ def at_terminal(repo, args, answer: str) -> str:
     return said.decode().replace("\r\n", "\n")
 
 
+def test_a_leaf_that_came_back_is_run_again_by_name_as_the_persons_next_line_says(repo):
+    """Walk 2026-09-28 (judge 7): the next line said `graphene run` runs a leaf that came back, which
+    the screen counts out of `R: N ready`. Plain `graphene run` now leaves it to the person."""
+    for k in (1, 2):
+        person("node", "add", f"leaf {k}", "--scope", f"f{k}.txt", "--check", "true")
+    agent("node", "start", "n1")
+    agent("node", "release", "n1", "--why", "cannot")
+    person("node", "start", "n2")
+    (repo / "f2.txt").write_text("x")
+    said = person("node", "done", "n2").stdout.splitlines()[-1]
+    assert said == ("next: n1 (leaf 1) came back (`graphene node show n1`): `graphene run --node n1` runs it "
+                    "again")  # fmt: skip
+
+
 def test_next_is_one_line_in_the_words_of_whoever_reads_it(repo):
     """A release printed a 500-character `next:` naming every leaf and why it was not ready, and a
     person was told, of themselves, that "the person" reads it and that they "can stop"."""

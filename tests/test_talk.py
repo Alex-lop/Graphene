@@ -231,7 +231,7 @@ def test_a_row_changed_since_the_person_looked_is_marked_until_m(repo, size):
     assert paging.rindex("paging") == schema.rindex("schema")  # the id column, where it always is
     assert sum("+" in r or "~" in r for r in rows) == 1
     top = seen["status"].splitlines()[0]
-    assert top.startswith("1 changed since you last looked · graphene plan changes · m seen · you: 1")
+    assert top.startswith("1 changed since you last looked · graphene plan changes · m seen · 1 on you")
     assert len(top) <= size[0] - 2
     folded, _ = watch(repo, ["j", "z", "c"], size)  # api folded: the change inside it is not hidden
     [api] = [r for r in folded["tree"] if " api " in r or "~api" in r]

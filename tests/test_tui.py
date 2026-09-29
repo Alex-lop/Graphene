@@ -84,7 +84,7 @@ def test_the_top_line_says_whose_plan_and_the_goal_is_the_first_row(repo):
     assert seen["where"].endswith(repo.name) and len(seen["where"]) <= 78
     assert seen["tree"][0].startswith("▼ ? users come back with their ids") and "proposed" in seen["tree"][0]
     assert seen["cursor"] is None and "users come back with their ids" in seen["detail"]  # the goal's pane
-    assert "planner:" not in seen["status"] and "you: 2 · 0 running" in seen["status"]  # the tree, once
+    assert "planner:" not in seen["status"] and "2 on you · 0 running" in seen["status"]  # the tree, once
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
     assert wide["classes"] == ["-wide"] and "waiting on you: 2 · executors: none" in wide["status"]
@@ -819,7 +819,7 @@ def test_every_row_reads_in_one_grammar_at_80_and_120(repo):
         seen, app = watch(repo, ["z", "R"], size=size)
         end, _ = watch(repo, ["z", "R", "G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
         rows = [r.rstrip() for r in [*seen["tree"], *end["tree"]] if r.strip()]
-        assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/8 done"), rows
+        assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/9 done"), rows
         mine = {i: next(r for r in rows if f"  {i} " in r + " ") for i in words}
         assert len({r.index(f"  {i} ") for i, r in mine.items()}) == 1, (size, mine)  # one id column
         at_word = {r.index(words[i], r.index(f"  {i} ") + len(i)) for i, r in mine.items()}
@@ -1004,11 +1004,12 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     every_state(repo)
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
-    assert top == "waiting on you: 4 · executors: 1 running · R runs 1 ready · 1/8 done · plan first: on (P)"
+    assert top == ("waiting on you: 4 · executors: 1 running · R runs 1 ready · 1 came back · 1/9 done · "
+                   "plan first: on (P)")  # the proposal counted, as `graphene` counts it
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first: on"
+    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: on"
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1257,7 +1258,7 @@ def test_a_folded_row_says_whose_move_is_inside_first_and_counts_the_rest(repo):
         rows = rows_of(seen)
         api = next(r for r in rows if "the API" in r)
         assert api.endswith("  1 came back, 4 more") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
-        assert rows[0].index("1/8 done") == api.index("1 came back")  # the goal's word, above it
+        assert rows[0].index("1/9 done") == api.index("1 came back")  # the goal's word, above it
         seen, _ = at(repo, "schema", size, keys=["z", "c"])
         schema = next(r for r in rows_of(seen) if "  schema " in r)
         assert schema.endswith("  1 review, 2 more"), schema
@@ -1850,6 +1851,24 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
 
 
+def test_a_leaf_its_run_stopped_reads_ready_and_its_forks_still_read_stopped(repo):
+    """:stop, Ctrl-C or a run that died lets a leaf go ready again, as the run says ("handed back,
+    ready again"): it did not come back to the person, so R takes it (judge 7). Its forks still read
+    stopped on its row."""
+    from graphene_map.run import STOPPED
+
+    forked(repo, ["running", "running"], box={"checkpoint": "forked", "ops": 0, "seconds": 0.0})
+    with Store.open(repo) as store:
+        plan.release(store, "greet", NEMOTRON, STOPPED, stopped=True)
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        rows = rows_of(seen)
+        leaf = next(k for k, r in enumerate(rows) if "  greet " in r)
+        assert rows[leaf].endswith("ready"), rows
+        for k, r in enumerate(rows[leaf + 1 : leaf + 3], 1):
+            assert r.endswith(f"fork {k}  stopped"), rows
+
+
 def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
     """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
     a ? into the line, and help took ?, ?, Enter."""
@@ -1882,6 +1901,34 @@ def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo)
         top, keys = seen["status"].splitlines()[:2]
         assert "3/3 done, finished" in top, (size, top)
         assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_when_every_leaf_is_done_the_goal_row_reads_done_by_its_glyph_too(repo):
+    """Walk 2026-09-28 (first 20, judge 13): with every leaf done the goal row stayed `○ … 3/3 done`,
+    the glyph of a leaf an agent can take, where a sub-goal done reads ✓."""
+    api_done(repo)
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        goal = seen["tree"][0].rstrip()
+        assert goal.startswith("▼ ✓ users come back with their ids") and goal.endswith("done"), goal
+
+
+def test_the_status_line_counts_done_as_graphene_does_and_says_on_you_in_words(repo):
+    """Walk 2026-09-28 (first 17, judge 23, alex 20): with three leaves proposed the status line said
+    `you: 2 · … · 0/0 done` where `graphene` said `3 leaves, 0 done`; `you: 2` was cryptic at 80,
+    and a node to fill in (a stray `a`) was counted by one and not the other."""
+    import re
+
+    proposed(repo)
+    assert person("node", "add", "a price of 0 means skip it").exit_code == 0  # to fill in
+    for size, said in (((80, 24), "2 on you · 0 running · none ready · 0/4 done"),
+                       ((120, 36), "waiting on you: 2 · executors: none · nothing ready to run · 0/4 done")):
+        seen, _ = watch(repo, [], size=size)
+        assert seen["status"].splitlines()[0].startswith(said), (size, seen["status"])
+    [(leaves, done)] = re.findall(r"(\d+) leaves, (\d+) done", person().stdout)
+    assert f"{done}/{leaves} done" == "0/4 done"
 
 
 def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
@@ -1953,4 +2000,4 @@ def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
         plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
     seen, _ = watch(repo, [])
     keys = seen["status"].splitlines()[1]
-    assert "you: 1" in seen["status"] and not keys.startswith("y accept"), keys
+    assert "1 on you" in seen["status"] and not keys.startswith("y accept"), keys

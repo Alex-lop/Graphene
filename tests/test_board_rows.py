@@ -318,7 +318,7 @@ def test_board_items_are_counted_apart_from_the_plan(repo):
     """rows counted the board's open items into `you: N` with nothing saying so (`you: 6` against the
     view candidate's `you: 1`); they do wait on the person, so they stay counted, but apart."""
     planned(repo)
-    for size, said in (((80, 24), "you: 2 + 5 on the board · "), ((120, 36), "waiting on you: 2 + 5 on")):
+    for size, said in (((80, 24), "2 on you + 5 on the board · "), ((120, 36), "waiting on you: 2 + 5 on")):
         [seen] = drive(repo, [[]], size)
         assert seen["lines"][0].startswith(said), seen["lines"]
 

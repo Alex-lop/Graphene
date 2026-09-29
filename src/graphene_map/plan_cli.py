@@ -142,7 +142,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             return [f"next: {n.id} ({n.title}) came back{also}: {', '.join(said)}"]
 
         if who.person:
+            if agents and agents[0].id in back:  # each came back: plain `graphene run` leaves them to you
+                first = agents[0]
+                return [f"next: {first.id} ({first.title}) {is_(first)}: `graphene run --node {first.id}` "
+                        "runs it again"]  # fmt: skip
             if agents:
+                agents = [n for n in agents if n.id not in back]
                 first, more = agents[0], len(agents) - 1
                 if first.id in back:  # the ready ones come first: every one left came back
                     return again(first, more)
@@ -248,7 +253,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             return [board, none] if board else [none]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing
-        leaves = [n for n in P.leaves(alive) if not n.aside]
+        leaves = P.counted(alive)
         asides = [n for n in alive if n.aside]
         count = {s: sum(1 for n in leaves if n.state == s) for s in (P.RUNNING, P.DONE)}
         proposed = store.meta("goal:proposed")
@@ -783,7 +788,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(one_row(store, n, len(P.above(n, by_id))))
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
-            runs, waits = P.forecast(P.nodes(store))
+            now = P.nodes(store)
+            runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
             out("left alone, agents can reach: " + (", ".join(n.id for n in runs) or "nothing"))
             for n, why in waits:
                 out(f"  {n.id} will wait: {'; '.join(why)}")

@@ -314,6 +314,12 @@ def leaves(nodes: list[Node]) -> list[Node]:
     return [n for n in nodes if n.state not in GONE and not under.get(n.id)]
 
 
+def counted(nodes: list[Node]) -> list[Node]:
+    """The leaves a plan's progress is counted in, `graphene`'s "3 leaves, 1 done" and the screen's
+    "1/3 done" alike: every leaf not gone, proposed ones too, and none made from a prompt (an aside)."""
+    return [n for n in leaves(nodes) if not n.aside]
+
+
 def all_needs(node: Node, by_id: dict[str, Node]) -> list[str]:
     """What a node waits on: its own needs, and those of everything above it."""
     out: list[str] = []
@@ -2306,11 +2312,14 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
 
 
 def release(
-    store, node_id: str, who: Caller, why: str, now: str | None = None, wants: list[str] | None = None
+    store, node_id: str, who: Caller, why: str, now: str | None = None, wants: list[str] | None = None,
+    stopped: bool = False,
 ) -> Node:
     """Hand a running node back, with the reason. The way out for an executor that cannot finish:
     it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
-    name the paths it would need (``wants``), which the person is then offered in one key."""
+    name the paths it would need (``wants``), which the person is then offered in one key.
+    ``stopped``: the run let it go (stopped, or it died) before its executor finished: it did not
+    come back, it is ready again."""
     import subprocess
 
     now = now or _now()
@@ -2332,6 +2341,7 @@ def release(
             raise refusal(f"{node.id} changed hands just now", do="graphene plan shows who holds it")
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
+        extra |= {"stopped": True} if stopped else {}
         _save(
             store,
             node,
@@ -2622,18 +2632,25 @@ def goal_plus(goal: str, sentence: str) -> str | None:
     return f"{goal}{'' if goal.endswith(('.', '!', '?', ':', ';')) else '.'} {sentence}" if goal else sentence
 
 
-def came_back(store, node: Node) -> bool:
-    """Open, and its last hold ended with its executor handing it back, and the person has not
-    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again). An act
-    undone since reads as never made: what it logged is passed over."""
+def let_go(store, node: Node) -> dict:
+    """How its last hold ended, while it is open and the person has not changed it since: its
+    `released` entry (``person``: the person let it go; ``stopped``: the run did), else {}. A widen
+    or a sibling is an edit: after it, it is ready or waiting again. An act undone since reads as
+    never made: what it logged is passed over."""
     if node.state != OPEN:
-        return False
+        return {}
     log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
     while log and log[-1]["kind"] == "undone":
         since = log.pop()["detail"].get("since")
         log = log if since is None else [e for e in log if e["id"] <= since]
-    last = (log or [{"kind": ""}])[-1]
-    return last["kind"] == "released" and not last["detail"].get("person")
+    return log[-1]["detail"] if log and log[-1]["kind"] == "released" else {}
+
+
+def came_back(store, node: Node) -> bool:
+    """Its executor handed it back, and the person has not changed it since (`let_go`): it waits on
+    the person. One the run let go (stopped, or it died) is ready again."""
+    ended = let_go(store, node)
+    return bool(ended) and not ended.get("person") and not ended.get("stopped")
 
 
 def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = frozenset()) -> str:
