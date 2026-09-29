@@ -70,15 +70,19 @@ and 109 (the teardown) first.
 
 ## The evidence
 
-- **The suite and CI:** 1,543 passed, 3 skipped, with every extra, at `f68c0a3` (21 min, the machine
-  loaded); CI green on all seven jobs at `f68c0a3`. Later commits are said where they land.
+- **The suite and CI:** 1,588 passed, 5 skipped, with every extra, at `8f450a5` (the last code commit;
+  21 min, the machine loaded); CI green on all seven jobs at `8f450a5`. After it only docs, the
+  morning file and two screens changed.
+- **The ladder, dry, on the final code:** all seven rungs PASS in 1 min 45 s (bill $0.0049, the
+  fake's), each "no file holds the key". The wheel installs and `graphene demo --once` replays with no key.
+- **The closing review:** six adversaries and a skeptic per finding, 35 findings, all reproduced, all
+  fixed with a test that failed before (DIRECTION 131).
 - **Studies on stand-ins** (Claude sub-agents, not people; n = 1 a cell): study 4, the board after
   tonight's changes against the outline, registered and its build pinned before any run
   (`docs/test/results-2026-09-29-board.md`): as faithful or more on 4 of 4 tasks, more modelled
   attention on 3 of 4, so `board: auto`. The direction against `morning.md`
   (`docs/test/results-2026-09-29-direction.md`, 12 runs): no advantage shown (143.9 against 105.4
   modelled person-seconds, all right); after the naming fix, an exploratory pass: 104.1 against 107.4.
-- **The ladder, dry:** all seven rungs PASS in 2 min 16 s against the stand-ins (bill $0.0049, the fake's).
 - **The walks:** the 72 findings of 28 September all fixed or closed with a reason
   (`docs/process/shaping/walks.md`, "First light's verdicts"); 46 new ones from tonight's three
   walkers, 38 about the product, each fixed with a test or closed with a reason (DIRECTION 119-127).
