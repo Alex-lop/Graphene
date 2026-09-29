@@ -34,14 +34,20 @@ def register(cli: typer.Typer, fail):
 
     @key_cli.command()
     def check() -> None:
-        """Say whether the Token Factory is reached with the key found."""
+        """Say whether the Token Factory is reached with the key found, and what state Sandboxes are in
+        (ConTree's whoami, a read that spends nothing). Sandboxes are optional: the exit status is Token
+        Factory's."""
         person("checking the Token Factory key")
         line = keys.reached()
         typer.echo(line)
-        if "not reached" in line:
-            if not keys.where():
-                off = "" if keys._keychain() else "; the keychain was not read (GRAPHENE_KEYCHAIN=off)"
-                typer.echo(f"  no key found: `graphene key set` keeps one in the keychain{off}")
+        unreached = "not reached" in line
+        if unreached and not keys.where():
+            off = "" if keys._keychain() else "; the keychain was not read (GRAPHENE_KEYCHAIN=off)"
+            typer.echo(f"  no key found: `graphene key set` keeps one in the keychain{off}")
+        from . import sandbox  # asked here: no other command pays for its imports
+
+        typer.echo(sandbox.says(*sandbox.whoami()))
+        if unreached:
             raise typer.Exit(1)
 
     @key_cli.command()

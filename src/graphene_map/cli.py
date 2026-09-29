@@ -278,8 +278,8 @@ def build():
         does = " then ".join(s.title() for s in leaves) or "smallest"
         said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
         if refused:
-            refused += ("; until it is granted the leaves run on this machine, and `graphene init --executor "
-                        "nemotron` then places them in Sandboxes")  # fmt: skip
+            refused += ("; the leaves run on this machine until `graphene key check` says Sandboxes work, "
+                        "and `graphene init --executor nemotron` then places them there")  # fmt: skip
         return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached, refused
 
     def asked_once(offer: dict[str, str], said: str, now: dict, found: list, key: bool) -> dict[str, str]:

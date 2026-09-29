@@ -146,9 +146,10 @@ def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkey
 
 def test_whoami_says_before_any_leaf_whether_the_project_is_refused(monkeypatch):
     """sandbox.refused, which `graphene init` asks: whoami's 403 or a grant a leaf uses listed as not
-    given is the refusal a leaf would meet; anything else (grants all given, offline, an SDK that answers
-    otherwise) is None, and the leaf's own refusal says it if it comes. Stubs only; nothing is sent."""
-    from contree_sdk.sdk.exceptions import ForbiddenError
+    given is the refusal a leaf would meet, with ConTree's own reason; a 401 or no answer is not a sandbox
+    that works either, and is said as `graphene key check` says it. None only when whoami grants what a
+    leaf uses. Stubs only; nothing is sent."""
+    from contree_sdk.sdk.exceptions import ApiStatusCodeError, ForbiddenError
     from fake_faults import Forbidding
 
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
@@ -169,8 +170,42 @@ def test_whoami_says_before_any_leaf_whether_the_project_is_refused(monkeypatch)
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", asking(ForbiddenError()))
     assert sandbox.refused() == REFUSED.format(sandbox.NO_GRANT)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(ForbiddenError(error="not\nin  the beta")))
+    assert sandbox.refused() == REFUSED.format(sandbox.NO_GRANT) + "; ConTree said: not in the beta"
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(ApiStatusCodeError(status=401, error="bad")))
+    assert sandbox.refused() == "Sandboxes: the key was not accepted (401)"
     monkeypatch.setattr(contree_sdk, "ContreeSync", asking(OSError("offline")))
-    assert sandbox.refused() is None
+    assert sandbox.refused() == "Sandboxes: could not be reached (OSError: offline)"
+    monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True})  # spawn not named at all
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    assert sandbox.refused() == REFUSED.format("its key lacks spawn there")
+
+
+def test_a_leafs_refusal_carries_contrees_own_reason_without_the_key_or_the_project(monkeypatch):
+    """A 403 on an operation is said with the server's reason (ForbiddenError.error), masked as every
+    ConTree message is (``_unkeyed``), in one line. Stubs only; the key and the project are made up."""
+    from contree_sdk.sdk.exceptions import ForbiddenError
+    from fake_faults import Forbidding, persons_shell
+
+    key, project = "Kq7" + "w" * 30, "proj-planted-0042"
+
+    class Saying(Forbidding):
+        def __init__(self, token=None):
+            super().__init__(token)
+
+            def refuse(*_, **__):
+                raise ForbiddenError(error=f"project {project} is not\nin the beta (token {key})")
+
+            self.images.oci = refuse
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Saying)
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", project)
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == (REFUSED.format("its key lacks import, spawn there")
+                             + "; ConTree said: project … is not in the beta (token …)")  # fmt: skip
 
 
 def test_a_contree_error_whose_body_echoes_the_key_or_the_project_is_said_without_them(monkeypatch):
