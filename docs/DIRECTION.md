@@ -1439,6 +1439,69 @@ any of them.
      machine's ffmpeg cannot draw text. *Evidence:* `tests/test_demo_build.py`; the rehearsal
      (146 s at 120×36, every sampled frame bannered).
 
+119. **Asking again (`+`, `-`, `ask --finer/--coarser`) carries the board's answers to the same node of
+     the new tree when that node is certain, and says what it could not carry. This settles 91's
+     "still open" and revises 100.** A match is the new line that uses the dropped id again, else the
+     same title, else the same scope as proposed; a leaf matches only a leaf, one to one. The answer's
+     `about:`, its `then:` lines and what it did move as your edit, in the transaction that lands the
+     new tree. With no certain match nothing is guessed: one line says why and gives the `graphene node
+     set` that puts the change back. Ids still change on a re-ask; the answers follow them. *Why:* the
+     walkers' worst finding: the leaf ran and came back for exactly what the lost answer was about.
+     *Evidence:* `tests/test_reask.py::test_a_reask_carries_a_board_answer_to_the_leaf_the_planner_proposed_again`,
+     `test_a_reask_says_what_it_could_not_carry_and_why`.
+120. **A path belongs to one live leaf: the first in the plan, not done and not dropped, whose scope has
+     it.** A leaf that came back is offered neither widening into it nor a sibling for it; the pane says
+     whose it is, and a sibling offer says its check is `true`. *Evidence:*
+     `tests/test_run_live.py::test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer`.
+121. **`graphene ask`, `run`, `node split` and `talk` refuse and start nothing until a planner or an
+     executor is chosen (by `init`, the setting or `--with`). This revises 70.** In a repository nobody
+     had set up, `ask` started `claude -p` from the PATH, spending your usage with an agent you never
+     chose. *Evidence:*
+     `test_with_nothing_chosen_ask_run_split_and_talk_refuse_and_start_nothing_until_with_names_one`.
+122. **A leaf that came back waits on you everywhere: `R`, plain `run` and `--parallel` leave it; `r`
+     or `graphene run --node ID` runs it again. This drops 87's last "still open".** The status line
+     counts it apart; the goal reads done only once every sub-goal has rolled up. *Evidence:*
+     `test_a_leaf_that_came_back_waits_on_the_person_and_runs_again_only_when_named`.
+123. **Nothing the planner put up is left waiting unseen, and nothing is dropped behind your back.**
+     Under `auto`, accepting the plan or `R` takes an agent's note as written (told to its executors
+     as a `decided:` line), as it takes a default; a default that drops a node is never taken by accept
+     or `R`, and waits for your key (accept says so on its first line); an `R` that starts nothing
+     answers nothing; a live screen shows what a fresh one does; `plan undo` of a board answer logs
+     `undone`. *Why:* in the walk, `R` at "nothing ready to run" took two defaults and dropped a leaf,
+     and a planner's note restating your own constraint reached no executor. *Evidence:*
+     `tests/test_board.py::test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf_waits`,
+     `test_undoing_a_board_answer_says_so_in_the_plans_log`,
+     `tests/test_board_rows.py::test_under_auto_answering_the_last_question_leaves_what_a_fresh_screen_shows`.
+124. **`D` in `graphene watch` shows the direction in the node pane, under the tree at the screen's
+     width, read again every tick, and opens no command line.** Attaching and accepting are typed at
+     `:`, as the bottom line says. `graphene direction` names under each plan every item waiting on you
+     by the id you act on, a running leaf with who holds it, and `next:` as a row of its own. *Why:*
+     three walkers typed their next vim key into a focused `:direction attach`; the study (115).
+     *Evidence:* `test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key`.
+125. **The replay (`graphene demo`) shows the board, keeps one status form, and says each change.** The
+     shipped recording was made again on the scripted fake with a planner that puts up a question, an
+     assumption and a leave-out, each taken with one `graphene board` command, the question's default
+     adding a sentence to its leaf; it says a scripted stand-in on every row. A replay's status line
+     offers neither `R` nor `P` and keeps its bill; every step says what changed. The page carries a
+     goal the planner proposed as the proposal it is, never as "no goal yet". This extends 77.
+     *Evidence:* `test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it`,
+     `tests/test_demo_replay.py`, `tests/test_plan_view.py::test_a_goal_proposed_with_the_tree_is_on_the_page_as_the_proposal_it_is`.
+126. **The ladder takes the key and the project out by what they are, and shows a path as it is.** The
+     environment's values and the keychain's key are taken out wherever they appear; a key-shaped word
+     only outside a path. *Why:* Claude Code's scratch directory names (the repository's name and a
+     session's uuid) matched the base64 rule, so every path and the replay command the ladder printed
+     came out mangled. *Evidence:*
+     `tests/test_practice.py::test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value`.
+127. **What the walks became.** `docs/process/shaping/walks.md`'s 72 findings of 28 September: the
+     terminal's 35 and the page's and replay's 25 each fixed with a test or closed with a reason, in
+     its two "First light's verdicts" sections. Tonight three new walkers (a first-time user, you, a
+     judge) walked a wheel of `first-light` at `92804c3` and filed 46 more; the product's were fixed
+     by the lanes that owned them, each with a test or closed with a reason (119 to 126), and eight
+     were about the walk's own harness: the seat left your `~/.zshenv` key readable (no walker spent
+     or chose Nemotron), the old stand-in executor pointed at another session's build, the seats
+     shared one tmux server and one port, and Playwright wrote into your checkout's git-ignored
+     `.playwright-mcp/` (the three files were removed).
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
