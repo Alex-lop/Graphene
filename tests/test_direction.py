@@ -565,3 +565,26 @@ def test_the_empty_direction_teaches_the_persons_form_and_a_write_says_how_to_co
     (repo / ".gitignore").write_text(".graphene/\n")
     said = agent("direction", "propose", "-", input="? again  [again]\n")
     assert f"`git add -f {D.FILE}`" in said.stderr and "`.graphene/*`" in said.stderr
+
+
+def test_the_hook_refuses_a_write_into_graphenes_own_directory_however_it_is_spelled(repo):  # noqa: F811
+    """Closing review, 29 September: the refusal went by the path's spelling, so `.GRAPHENE/` on a
+    disk that ignores case, the /System/Volumes/Data firmlink, or a link to .graphene/ let an agent's
+    Edit accept its own node. It is decided by what the directory is."""
+    import os
+
+    agent("direction", "propose", "-", input=TREE)
+    os.symlink(".graphene", repo / "lnk")
+    spellings = [str(repo / "lnk" / "direction.txt"), str(repo / "src" / ".." / D.FILE)]
+    if (repo / ".GRAPHENE").exists():  # a disk that ignores case (a Mac's)
+        spellings.append(str(repo / ".GRAPHENE" / "direction.txt"))
+    firm = "/System/Volumes/Data" + str(repo.resolve())
+    if os.path.exists(firm):
+        spellings.append(firm + "/.graphene/direction.txt")
+    for path in spellings:
+        said = _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": path})
+        assert '"permissionDecision": "deny"' in said, path
+    assert (
+        _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": "graphene.txt"})
+        == ""
+    )

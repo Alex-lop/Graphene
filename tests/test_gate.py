@@ -281,7 +281,9 @@ def test_a_write_through_a_symbolic_link_that_leaves_the_repo_is_refused(repo, t
     assert "symbolic link that leaves the repo" in reason(write(repo, "src/api/cache"))
     assert "symbolic link that leaves the repo" in reason(bash(repo, "echo OWNED > src/api/cache"))
     (repo / "src/api/store").symlink_to(repo / ".graphene")
-    assert "symbolic link that leaves the repo" in reason(write(repo, "src/api/store/graphene.db", "Write"))
+    # a link into the store is the store: the hook refuses it as that, plan or no plan (hooks.ours)
+    said = reason(write(repo, "src/api/store/graphene.db", "Write"))
+    assert "src/api/store/graphene.db is the plan's own store" in said
     assert write(repo, "src/api/users.py") is None  # an ordinary path in scope is untouched by all this
 
 

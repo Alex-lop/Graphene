@@ -405,7 +405,7 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
 def _check_write(
     store, held: list[P.Node], rel: str, event: dict, how: str, root: Path | None = None
 ) -> dict | None:
-    if rel.split("/", 1)[0] in OURS:
+    if rel.split("/", 1)[0].casefold() in OURS:  # a disk that ignores case writes .GRAPHENE/ there too
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
     if not held and root is not None:
@@ -467,7 +467,7 @@ def _guard_command(event: dict) -> dict | None:
             "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
             "not an agent's to run"
         )
-    if ".graphene" in command and not re.match(r"\s*graphene\s", command):
+    if ".graphene" in command.casefold() and not re.match(r"\s*graphene\s", command):
         return _deny(
             "the plan's own store (.graphene/) is not an agent's to read around or write: use "
             "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
@@ -619,8 +619,12 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 continue  # `echo hi > "\n"`: the parser's artefact, not a path anyone can write
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
+            from .hooks import ours
+
+            if ours(written, cwd, root):  # the store or the direction, however it is spelled
+                return _deny(f"{written} is the plan's own store; no node's scope covers it")
             rel = _rel(written, root, cwd)
-            if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
+            if rel is not None and (rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
             bound = held and any(P.binds(rel, n, standing) for n in held)

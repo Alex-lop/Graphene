@@ -330,25 +330,45 @@ def gated(store: Store, event: dict) -> bool:
     return name in ("PostToolUse", "Stop") and bool(store.node_count())
 
 
+def ours(path: str, cwd: str | None, root: Path) -> str | None:
+    """The spelling of ``path`` when it lies in Graphene's own directory (the repository's .graphene/,
+    or a worktree's), else None. Decided by what the path is, not how it is spelled: a directory on
+    the way that is .graphene/ itself (same device and inode: another case on a disk that ignores
+    case, a firmlink, a link to it), or one named .graphene in any case at the top of a checkout of
+    this repository. A few stats of the path's directories; no git, no module."""
+    full = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd or str(root), path))
+    try:
+        mine = os.stat(os.path.join(str(root), ".graphene"))
+    except OSError:
+        mine = None
+    here = os.path.dirname(full)
+    while True:
+        try:
+            st = os.stat(here)
+        except OSError:
+            st = None
+        if st is not None and mine is not None and (st.st_dev, st.st_ino) == (mine.st_dev, mine.st_ino):
+            break
+        if os.path.basename(here).casefold() == ".graphene" and worktree_root(os.path.dirname(here), root):
+            break  # a worktree's own .graphene/ (its copy of the direction)
+        up = os.path.dirname(here)
+        if up == here:
+            return None
+        here = up
+    rel = os.path.relpath(full, str(root))
+    return full if rel.startswith("..") else rel
+
+
 def into_ours(event: dict, root: Path) -> str | None:
-    """The repo path under .graphene/ an agent's write tool would write, whatever the plan's state:
+    """The path under .graphene/ an agent's write tool would write, whatever the plan's state:
     Graphene's own directory (its store, and the direction, which git tracks) is written by
-    `graphene` commands only, so an agent cannot accept its own proposal by editing the file. A
-    string test first: every other event costs one comparison."""
+    `graphene` commands only, so an agent cannot accept its own proposal by editing the file. Every
+    event but a write tool's costs one comparison."""
     if event.get("hook_event_name") != "PreToolUse" or event.get("tool_name") not in FILE_TOOLS:
         return None
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
     path = _text(tool_input.get("file_path") or tool_input.get("notebook_path"))
-    if path is None or ".graphene" not in path:
-        return None
-    full = os.path.normpath(
-        path if os.path.isabs(path) else os.path.join(_text(event.get("cwd")) or str(root), path)
-    )
-    base = worktree_root(os.path.dirname(full), root) or str(root)  # a worktree's copy is the repo's file
-    rel = os.path.relpath(full, base)
-    if rel.startswith(".."):  # spelled through a link (/var for /private/var): asked of the real paths
-        rel = os.path.relpath(_real(full), _real_dir(base))
-    return rel if rel.split(os.sep, 1)[0] == ".graphene" else None
+    return None if path is None else ours(path, _text(event.get("cwd")), root)
 
 
 def _uuid4():
