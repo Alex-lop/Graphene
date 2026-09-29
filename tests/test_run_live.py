@@ -941,3 +941,30 @@ def test_a_siblings_goal_ends_the_reason_with_a_full_stop(repo):
         made = plan.sibling(store, "a", [], ALEX)
     goal = " ".join(made.goal.split())
     assert goal.startswith("a (leaf a) came back: it needs src/util.py. This leaf makes")
+
+
+def test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer(repo):
+    """Walk 2026-09-28 (alex 5): `b` on cli made cli-defaults (config/defaults.py, check true); it wrote
+    cli/main.py, came back, and `b` offered a sibling for cli/main.py, which cli's scope already had: a
+    chain of three leaves, two of them writers of one file. A path belongs to the live leaf whose scope
+    has it, so it is offered to no other: the offer is to wait on its owner, or nothing when the owner
+    already waits on this leaf, and the command that takes it names the owner."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("cli", "cli/main.py"), leaf("other", "c.txt")], ALEX)
+        plan.start(store, "cli", BOT, repo)
+        why = "USAGE is built from config/defaults.py"
+        plan.release(store, "cli", BOT, why, wants=["config/defaults.py"])
+        [_widen, b] = plan.offers(store, plan.get(store, "cli"))
+        assert b[1] == "a sibling leaf for config/defaults.py (its check: true); cli waits on it"
+        # a check that proves nothing is never offered silently: the leaf's own check, after it, decides
+        made = plan.sibling(store, "cli", [], ALEX)
+        plan.start(store, made.id, BOT, repo)
+        plan.release(store, made.id, BOT, "USAGE lives in cli/main.py too", wants=["cli/main.py", "c.txt"])
+        offers = plan.offers(store, plan.get(store, made.id))
+        assert [(k, what) for k, what, _ in offers] == [
+            ("n", f"make {made.id} wait on other, whose scope has c.txt")
+        ]  # cli/main.py is cli's, and cli waits on this leaf: nothing takes it here
+        with pytest.raises(Refused, match=r"cli/main\.py is cli's and c\.txt is other's"):
+            plan.sibling(store, made.id, [], ALEX)
+        said = "not offered: cli/main.py is cli's and c.txt is other's (a path has one leaf that writes it)"
+        assert plan.not_offered(store, plan.get(store, made.id)) == said

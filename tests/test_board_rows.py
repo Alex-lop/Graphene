@@ -359,3 +359,17 @@ def test_on_the_persons_own_note_the_bottom_line_names_every_key_that_acts(repo,
         assert refused.exit_code == 1 and "your note, told as you wrote it" in refused.stderr, refused.output
     assert person("board", "park", note["id"]).exit_code == 0  # p, named: parks it
     assert items(repo)[note["id"]]["state"] == "parked"
+
+
+def test_the_fold_says_who_is_told_in_words_and_a_long_answer_hangs_under_its_own_row(repo):
+    """Walk 2026-09-28 (judge 18): the fold's pane read "told to executors as decided: lines; parked and
+    dropped are told to no one", and an answer too long for its line went on at column 1, under the ✓."""
+    planned(repo)
+    with Store.open(repo) as store:
+        B.answer(store, "which-id", "the row id, which schema.py already has and every caller reads", ALEX)
+        board, by_id = BR.read(store, shown=True), {n.id: n for n in P.nodes(store)}  # the rows on screen
+    said = BR.pane(board, BR.FOLD, by_id, 40).plain.splitlines()
+    told = "settled answers are told to the executor of the leaf they are about, in its contract; parked"
+    assert told in " ".join(" ".join(said).split())
+    row = said.index(next(line for line in said if line.startswith("✓ answered which-id")))
+    assert said[row + 1].startswith("  ") and said[row + 1].strip()  # hangs under its own row

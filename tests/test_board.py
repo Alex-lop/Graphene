@@ -443,6 +443,8 @@ def test_a_leaf_effect_under_a_leaf_puts_the_new_leaf_beside_it_and_keeps_it_a_l
     took = person("board", "take", "r")
     assert took.exit_code == 0, took.output
     assert "  changed: proposed sample beside zero, a leaf, under feed" in took.stdout
+    # walk 2026-09-28 (first 10): the new leaf is to fill in, and the take said nothing of it
+    assert "under feed; it has no scope or check yet (`graphene node set sample`)" in took.stdout
     with Store.open(repo) as store:
         assert P.get(store, "sample").parent == "feed"
         assert {n.id for n in P.leaves(P.nodes(store))} == {"zero", "sample"}
@@ -698,17 +700,21 @@ def test_an_ask_that_puts_up_board_items_names_the_board_as_what_waits(repo, tmp
     assert "at the top, y takes, d drops" in again.stdout and "`graphene watch`" not in again.stdout
 
 
-def test_a_finer_ask_that_drops_a_leaf_a_board_answer_changed_says_the_change_is_not_carried(repo, tmp_path):
+def test_a_finer_ask_carries_a_picks_change_to_the_leaf_the_planner_wrote_again(repo, tmp_path):
     """Walk 2026-09-28 (all three walkers): a pick widened a leaf, `+` asked again finer, the leaf was
-    dropped with the old tree, the new one lacked the change, and nothing said so. It is said now; the
-    change is not carried over (the new tree's ids are the planner's), so the line says where to put it."""
+    dropped with the old tree, the new one lacked the change, and nothing said so. The planner wrote the
+    leaf again under its old [id]; the leaf it became has the pick's scope, and the board says so."""
     planned(repo, tmp_path)
     assert person("board", "pick", "which-id", "1").exit_code == 0
     script = tmp_path / "planner.py"
     sentence, planner = "users should come back with their ids", f"{sys.executable} {script}"
     again = person("ask", sentence, "--finer", "--with", planner)
     assert again.exit_code == 0, again.output
-    assert "users is dropped, and with it its scope + schema.py (from which-id)" in again.stdout, again.stdout
+    assert "users is dropped; users-returns-ids is the same node in the new tree" in again.stdout
+    assert "carried: users-returns-ids: scope + schema.py (from which-id)" in again.stdout
+    with Store.open(repo) as store:
+        assert P.get(store, "users-returns-ids").scope == ["api.py", "schema.py"]
+        assert B.get(store, "which-id")["became"] == ["users-returns-ids: scope + schema.py"]
 
 
 def test_an_answer_in_words_to_an_item_whose_default_changes_the_plan_says_it_changed_nothing(repo, tmp_path):
@@ -875,3 +881,12 @@ def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_ope
     assert "took the defaults of int-ids, empty-check, paging, left open" in ran.stdout
     with Store.open(repo) as store:
         assert B.get(store, "which-id")["state"] == "picked"  # the person's own answer stays theirs
+
+
+def test_a_planners_note_on_the_board_says_it_is_the_planners_not_its_command(repo, tmp_path):
+    """Walk 2026-09-28 (judge 17): a planner's note read `keep the JSONL shape · planner:python3's`."""
+    from graphene_map.board_cli import _words
+
+    planned(repo, tmp_path)
+    with Store.open(repo) as store:
+        assert _words(B.get(store, "shape")) == "keep the response shape · the planner's"

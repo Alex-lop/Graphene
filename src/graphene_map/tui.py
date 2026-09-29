@@ -2113,6 +2113,8 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
         pane.text(line)
     for line in shaped:
         pane.line(line)
+    if P.not_offered(store, node):
+        pane.text(P.not_offered(store, node), "dim")
 
 
 def _unmerged(left: dict) -> str:

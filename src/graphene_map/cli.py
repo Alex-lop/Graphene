@@ -347,7 +347,7 @@ def build():
                 who = " and ".join(f"the {k}" for k in missing)
                 say(f"{who} {'are' if missing[1:] else 'is'} not chosen: {why}; "
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
-                    "then `run` and `ask` start Claude Code")  # fmt: skip
+                    "then `run` and `ask` refuse")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain}
         if unreached and not key:
             if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
@@ -390,7 +390,7 @@ def build():
         r = root()
         with open_store(r) as store:  # the choice first: a question left unanswered installs nothing
             chosen = choose(store, given, asking)
-            specs = [store.meta(k) or "claude" for k in WHO]  # what `run` and `ask` start when none is set
+            specs = [store.meta(k) or "claude" for k in WHO]  # none chosen: the person's own Claude Code
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
                 store.set_meta("plan_first", "on")
             for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it

@@ -243,9 +243,10 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         if node_id and not any(n.parent == node_id and n.state not in P.GONE for n in everything):
             parent = P.get(store, node_id).parent  # a leaf stays a leaf: its work is never left to no one
         P.propose(store, [{"id": leaf, "title": what, "parent": parent}], who, now, files, proposals={leaf})
+        empty = f"; it has no scope or check yet (`graphene node set {leaf}`)"  # to fill in: said, not found
         if parent != node_id:
-            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
-        return f"proposed {leaf} under {node_id or 'the goal'}"
+            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}{empty}"
+        return f"proposed {leaf} under {node_id or 'the goal'}{empty}"
     wrong = P.miscased(what, files or [])
     if wrong:
         raise P.Refused(f"then: {line}: {wrong}; spell it as git does")
@@ -529,6 +530,54 @@ def rehome(store, gone: set[str], who: P.Caller, now: str | None = None) -> list
                 _log(store, item, "moved to the whole plan", who, now, was=moved[-1][1])
         _put(store, board)
     return moved
+
+
+def _renamed(line: str, old: str, new: str) -> str:
+    """A `then:` line naming ``old`` as its node, naming ``new`` instead; any other line as it is."""
+    line = _one(line)
+    for _, form in _EFFECTS:
+        found = form.fullmatch(line)
+        if found:
+            if (found.groupdict().get("node") or "").strip("[]`") != old:
+                return line
+            start, end = found.span("node")
+            return line[:start] + new + line[end:]
+    return line
+
+
+def carry(store, old: str, new: str, who: P.Caller, files=None, now: str | None = None) -> list[str]:
+    """A re-ask dropped ``old``, and ``new`` is the same node in the new tree (``ask._same``): what the
+    board says about old is about new, its `then:` lines name new, and what an answer did to old's goal,
+    scope or check (or a leaf it put beside old that went with it) is done to new, as the person's
+    edit. Returns what the answers changed on new, a line each."""
+    now = now or P._now()
+    carried = []
+    with store.claim():
+        board = items(store)
+        for item in board:
+            if item["state"] == "dropped":
+                continue
+            before = json.dumps(item, sort_keys=True)
+            for said in (item, *item["options"]):
+                said["then"] = [_renamed(line, old, new) for line in said["then"]]
+            item["about"] = new if item.get("about") == old else item.get("about")
+            chosen = item["then"] if item["state"] == "taken" else []
+            if item["state"] == "picked" and item.get("option"):
+                chosen = item["options"][item["option"] - 1]["then"]
+            became = [*(item.get("became") or []), *[""] * len(chosen)][: len(chosen)]
+            for i, line in enumerate(chosen):
+                verb, node_id, _ = effect(line)
+                made = became[i].split()[1] if verb == "leaf" and became[i].startswith("proposed ") else None
+                gone = made is not None and (store.node_row(made) or {}).get("state") in P.GONE
+                if node_id == new and (verb in ("scope", "check", "goal") or gone):
+                    became[i] = _apply(store, line, who, now, files, [])
+                    carried.append(f"{became[i]} (from {item['id']})")
+            item["became"] = became if chosen else item.get("became") or []
+            if json.dumps(item, sort_keys=True) != before:
+                item.update(rev=item["rev"] + 1, updated_at=now)
+                _log(store, item, "carried", who, now, was=old, to=new)
+        _put(store, board)
+    return carried
 
 
 # -- the text form --------------------------------------------------------------------------------

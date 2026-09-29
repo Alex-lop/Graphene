@@ -77,7 +77,8 @@ def rows(store, everything: bool = False) -> list[str]:
 
 def _words(item: dict) -> str:
     """An item's words as its row shows them: an agent's note says whose it is."""
-    return item["text"] + (f" · {item['by']}'s" if item["agent"] and item["kind"] == "note" else "")
+    by = "the planner" if item["by"].startswith("planner") else item["by"]  # never `planner:python3's`
+    return item["text"] + (f" · {by}'s" if item["agent"] and item["kind"] == "note" else "")
 
 
 def _wrap(text: str, wide: int) -> list[str]:
