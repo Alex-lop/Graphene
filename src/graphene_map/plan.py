@@ -670,8 +670,10 @@ def ctrl_c_on_hangup():
         raise KeyboardInterrupt
 
     # SIGINT too: started from a shell that ignores it (a job in the background, a CI step), the
-    # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it
-    was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)}
+    # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it. And Ctrl-\
+    # (SIGQUIT): its default ended the run where it stood, its executor, `done` and check running on
+    stops = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT, signal.SIGQUIT)
+    was = {sig: signal.signal(sig, hung_up) for sig in stops}
     over = threading.Event()
 
     def unsaid() -> None:

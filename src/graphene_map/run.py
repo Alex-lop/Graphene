@@ -432,12 +432,13 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 @contextlib.contextmanager
 def _no_interrupt():
-    """Ctrl-C (and a hangup or a `kill`) held off while a stop is being cleaned up (main thread only;
-    elsewhere it cannot land)."""
+    """Ctrl-C (and Ctrl-\\, a hangup or a `kill`) held off while a stop is being cleaned up (main thread
+    only; elsewhere it cannot land)."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)}
+    held = (signal.SIGINT, signal.SIGHUP, signal.SIGTERM, signal.SIGQUIT)
+    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in held}
     try:
         yield
     finally:

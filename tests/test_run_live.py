@@ -409,10 +409,14 @@ def test_a_run_lock_is_known_by_its_runs_pid_and_start_so_a_reused_pid_holds_not
         bystander.wait()
 
 
-@pytest.mark.parametrize("sig, parallel", [(signal.SIGTERM, "1"), (signal.SIGHUP, "2")])
+STOPS = [(signal.SIGTERM, "1"), (signal.SIGHUP, "2"), (signal.SIGQUIT, "1"), (signal.SIGQUIT, "2")]
+
+
+@pytest.mark.parametrize("sig, parallel", STOPS)
 def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, parallel):
     """Recheck: SIGHUP and SIGTERM had no handler: the run died where it stood, its executor worked
-    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind."""
+    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind. Review 23: so
+    did Ctrl-\\ (SIGQUIT), the key a person reaches for while the run waits out its executor."""
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
     run = graphene_run(repo, "--with", executor(repo, SLOW), "--parallel", parallel)
@@ -430,6 +434,31 @@ def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, par
         if pid and not ended(pid):
             os.killpg(pid, signal.SIGKILL)
 
+
+
+def test_ctrl_backslash_while_the_run_waits_out_its_executor_is_held_off_as_ctrl_c_is(repo):
+    """Review 23: after a Ctrl-C the run gives its executor its grace, holding off more Ctrl-Cs, and
+    that silence is when a person presses Ctrl-\\. It ended the run on the spot: the executor (this one
+    ignores TERM) worked on, and its leaf stayed `running`."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    run = graphene_run(repo, "--with", executor(repo, KEPT))
+    pid = None
+    try:
+        assert wait_for(lambda: len(R_attempts(repo)) == 1)
+        attempt = R_attempts(repo)[0]["detail"]
+        pid, log = attempt["pid"], Path(attempt["log"])
+        assert wait_for(lambda: "up" in log.read_text())  # it ignores TERM from here on
+        run.send_signal(signal.SIGINT)
+        time.sleep(1)  # the run is in its stop, waiting out the executor's grace
+        run.send_signal(signal.SIGQUIT)
+        run.communicate(timeout=30)
+        assert run.returncode == 130 and states(repo) == {"a": OPEN}
+        assert wait_for(lambda: ended(pid), 15)  # killed once its grace was up
+    finally:
+        run.kill()
+        if pid and not ended(pid):
+            os.killpg(pid, signal.SIGKILL)
 
 def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
     """Recheck: a leaf whose last attempt was an earlier, dead run's was swept in the milliseconds
