@@ -111,6 +111,11 @@ and 109 (the teardown) first.
   `src/`), just after a commit; the branch was intact, and I moved to a worktree whose local branch has
   another name (`coord-integ`, pushed as `first-light`). The agents running then each said they
   removed nothing outside their own worktrees; the cause is not known.
+- The direction's screens (`docs/process/shaping/screens/first-light/direction/direction-{80,120}.txt`)
+  showed three of your other sessions from this repository's store as rows: the first words of a
+  prompt and a tool call's description each. They are left out at the head (labelled so); the
+  commits before it on `first-light` still hold them, and a reshape of the history (the first
+  question) would drop them.
 - The stash list is shared by every worktree: two lanes' `git stash push`/`pop` swapped each other's
   uncommitted work at about 05:25. Both put their own work back from patches; every commit was checked
   to hold only its lane's files, and no agent used the stash after.

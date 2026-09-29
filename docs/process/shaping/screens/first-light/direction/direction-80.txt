@@ -34,12 +34,9 @@ you: 14 · 3 running · next: lane-a · the direction of …T/direction-demo-19b
     ? the video, the…     video        proposed   · you 1
 ◌ not in the direction                            · `graphene direction attach
                                                     SESSION NODE`
-  ◇ session: Ok looking…  1c0ec47e     your turn  · Check memory pressure and
-                                                    top memory users · 18h ago
-  ◇ session: Ok nice…     d3d5effe     your turn  · Push the branch and open the
-                                                    PR into main · 3h ago
-  ◇ session: Wait I'm…    403e4cef     your turn  · Open the PR on graphene-site
-                                                    · 2h ago
+  ◇ session: [another session's words, left out]  1c0ec47e  your turn  · [left out]
+  ◇ session: [another session's words, left out]  d3d5effe  your turn  · [left out]
+  ◇ session: [another session's words, left out]  403e4cef  your turn  · [left out]
   1 older session left out: quiet for a day
 graphene direction accept ID · drop ID · plan NODE · attach SESSION NODE|none ·
 edit · propose -
