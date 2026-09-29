@@ -91,3 +91,13 @@ that terminal is pointed at does not decide what the replay says made the run: t
 rows do, so a run against the stand-in replays as the stand-in's wherever it was recorded from.
 Read the file before committing it; `uv run pytest tests/test_demo.py` checks it holds no path and
 nothing shaped like a key, and names the leaves of the recording it expects.
+
+## The video's rough cut: `docs/demo/build.sh`
+
+`docs/demo/build.sh` films the demo run of `docs/proof/nemotron.sh` scene by scene with VHS, in real
+time, as `docs/demo/STORYBOARD.md` lays it out, and assembles `docs/demo/rough.mp4` with the narration
+as a subtitle track and `rough.srt` beside it. Every wait for a model is cut between two scenes and
+labelled on screen with its length. It writes `rough.mp4` only when the take's own recording says the
+run was live (`graphene demo <run.jsonl> --once`: "as it ran, live"); `--rehearsal` films the scripted
+stand-in into `rehearsal.mp4` instead, with "REHEARSAL: scripted stand-in, not live" on every frame.
+The storyboard says how to film a take. Takes and videos are git-ignored.
