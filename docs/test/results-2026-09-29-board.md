@@ -340,4 +340,25 @@ outline arm's. If both hold, the default is `board: on`; otherwise `board: auto`
 
 ### Deviations, written before the first run
 
+**02:25, the build and the pre-run checks, done by lane C before any run.**
+`~/graphene-board4-runs/build.txt`:
+
+```
+commit 4acc6ea4f6567f65ea322bae0c06539702a14bc2
+wheel graphene_map-0.5.0-py3-none-any.whl
+sha256 f79f7102c7c53ee6c31b7386819ba431f786226357442c5cf3d346fab1dbbbef
+stand-ins: claude-opus-5-5, judges the same
+```
+
+The wheel is of `4acc6ea`, the lane's last code commit, made after this registration's commit
+(`f304da0`): lookup no longer sends a protected file to Nano. Lookup does not run in this study, so
+the arms are as registered. The coordinator corrects the stand-ins' line if they run on another
+model, here and in `build.txt`, before the first run. The pre-run checks in `board-study.md` passed:
+`graphene` is the venv's (0.5.0); `graphene board --help` lists take, pick, drop, park, unpark,
+answer, note and lookup; each of the four copies is `diff -r` identical to study 3's planned
+directory; in a throwaway copy of each, `graphene plan`, `plan --text`, `board --all` and `graphene
+config` run on this build and no copy sets `board: auto`; four `paragraph.md` are listed, none
+opened, and the eight task blobs are the ones registered above; `GRAPHENE_SHAPE` is unset. No run
+directory (`TASK-shape-ARM-1`) exists yet.
+
 ### Study 4 results
