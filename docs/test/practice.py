@@ -377,8 +377,12 @@ def escape(r: Rung) -> str:
             f"{'docker' if DRY else 'contree'}: {box.ops} operations")  # fmt: skip
 
 
+KEPT = ROOT / "tests" / "recordings"  # CI replays every recording here (tests/test_recordings.py)
+
+
 def recorded(r: Rung) -> str:
-    """Rung 5: the practice leaf, recorded with `graphene demo --record`, and the recording replayed."""
+    """Rung 5: the practice leaf, recorded with `graphene demo --record`, the recording counted for what it
+    must not hold (the key, the project, a home path, anything shaped like a key), and replayed."""
     rec = STATE / "leaf.jsonl"
     repo, recorder = r.feeds("recorded", recorder=rec)
     try:
@@ -386,12 +390,21 @@ def recorded(r: Rung) -> str:
     finally:
         os.killpg(recorder.pid, signal.SIGTERM)
         r.note(recorder.communicate(timeout=60)[0] or "")
+    from graphene_map import demo
+
+    held = {what: n for what, n in demo.leaks(rec.read_text(encoding="utf-8")).items() if n}
+    if held:  # counts only: the recording stays where it is, and is not to be shared
+        counted = ", ".join(f"{k} ({n})" for k, n in held.items())
+        raise Failed(f"the recording holds what it must not: {counted}; {rel(rec)} is not to be shared")
     code, out = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     shown = "a scripted stand-in" if DRY else "as it ran, live"
     top = out.strip().splitlines()[0] if out.strip() else ""
     if code or shown not in top or not re.search(r"hello\s+done", out):
         raise Failed(f"the replay does not end with the leaf done, shown as {shown!r}: {top or last(out)}")
-    return f"{said}; the replay of {rec.name} ends with it done: {top}"
+    kept = f"\nCI replays it from {rel(KEPT)}: cp {rel(rec)} {rel(KEPT / 'first-light-rung-5.jsonl')}"
+    kept = "" if DRY else kept
+    clean = "it holds no key, project, home path or key-shaped word"
+    return f"{said}; {clean}; its replay ends with it done: {top}{kept}"
 
 
 def arms(r: Rung) -> str:

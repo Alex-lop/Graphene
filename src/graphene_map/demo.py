@@ -98,6 +98,21 @@ def hider(root: Path) -> tuple:
 
 
 unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
+HOMES = re.compile(r"/(?:Users|home)/")  # a path under a home directory, anyone's
+
+
+def leaks(text: str) -> dict[str, int]:
+    """What a recording must not hold, counted, never shown: the key and the project in the environment (and
+    the keychain's key), the home directory, a path under anyone's, and words shaped like a key. The ladder's
+    rung 5 counts its live recording with it, and CI every recording in tests/recordings/."""
+    home = str(Path.home())
+    secrets = {"the key": {os.getenv(tf.KEY, ""), keys.find() or ""},
+               "the project": {os.getenv("NEBIUS_PROJECT_ID", "")}}  # fmt: skip
+    counts = {what: sum(text.count(v) for v in values if len(v) > 7) for what, values in secrets.items()}
+    shaped = sum(1 for w in WORD.findall(text) if KEY.search(w)) + len(BASE64.findall(text))
+    return counts | {"the home directory": text.count(home) if len(home) > 1 else 0,
+                     "a path under a home directory": len(HOMES.findall(text)),
+                     "words shaped like a key": shaped}  # fmt: skip
 
 
 def record(root: Path, out: Path, every: float = EVERY) -> int:
