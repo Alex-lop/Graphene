@@ -8,7 +8,15 @@ no cap, at a price not read; rung 4 calls no model, so its cap bounds nothing.
 Dry: `docs/test/practice.sh --dry`, all seven on stand-ins, same caps, about 3 minutes; rungs 3, 4,
 6 and 7 need Docker running.
 Live (minutes guessed): `export NEBIUS_API_KEY=… NEBIUS_PROJECT_ID=…` in `~/.zshenv`, then, in
-your own terminal, not Claude Code (its `!` lines carry CLAUDECODE, which rungs 2-7 refuse),
-`docs/test/practice.sh` per rung: rung 1 runs the access check itself (in Claude Code, it prints
-a `!` line for it). `… N` reruns N with a fresh cap: $7.80 of Token Factory + calls in flight
-is one pass each, plus the Sandboxes.
+your own terminal, not Claude Code (its `!` lines carry CLAUDECODE, which rungs 2-7 refuse unless
+opened, below), `docs/test/practice.sh` per rung: rung 1 runs the access check itself (in Claude
+Code, it prints a `!` line for it). `… N` reruns N with a fresh cap: $7.80 of Token Factory + calls
+in flight is one pass each, plus the Sandboxes.
+An agent climbs only when you open it: start its session from a shell with the night's cap set
+(`export GRAPHENE_AGENT_LIVE_USD=10`, then `claude`), and rungs 2-7 run there. While it is set, every
+live call and Sandbox operation, the ladder's or any other, goes on one night's bill
+(`~/.graphene/night/<date>.jsonl`, or `GRAPHENE_NIGHT_LEDGER`), capped at the lower of that figure and
+$10: a call that would pass it is refused unsent, nothing new starts past 80% of it, and a rerun does
+not reset it. Sandboxes are counted in operations and minutes, at $0 until their price is read.
+`practice.sh night` prints the bill. Everything made under it is practice: `evidence.py` refuses it, so
+unset it before a registered run.
