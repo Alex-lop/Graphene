@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 TOOL = "security" if sys.platform == "darwin" else "secret-tool"
@@ -85,8 +86,9 @@ def test_a_child_that_outlives_its_test(tmp_path):
 """
 
 
-def session(tmp_path: Path, tests: str, wait: str = "") -> tuple[subprocess.CompletedProcess, Path]:
-    """pytest on ``tests`` under the keyguard, with this test's net on the PATH; the net's log."""
+def session(tmp_path: Path, tests: str, wait: str = "", **more: str):
+    """pytest on ``tests`` under the keyguard, with this test's net on the PATH and ``more`` in its
+    environment; the net's log."""
     net = tmp_path / "net"
     net.mkdir()
     for tool in ("security", "secret-tool"):
@@ -96,7 +98,7 @@ def session(tmp_path: Path, tests: str, wait: str = "") -> tuple[subprocess.Comp
     inner.mkdir()
     (inner / "conftest.py").write_text(CONFTEST + wait)
     (inner / "test_ways.py").write_text(tests)
-    env = os.environ | {"PATH": f"{net}{os.pathsep}{os.environ['PATH']}", "COLUMNS": "400"}
+    env = os.environ | {"PATH": f"{net}{os.pathsep}{os.environ['PATH']}", "COLUMNS": "400"} | more
     done = subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA", str(inner)],
                           cwd=inner, env=env, capture_output=True, text=True, timeout=300)  # fmt: skip
     return done, net / "reached"
@@ -133,3 +135,21 @@ def pytest_sessionfinish():
     assert "1 passed" in done.stdout and done.returncode == 1, said
     assert f"keyguard: a process asked the keychain: {TOOL} help, during test_ways.py::" in said, said
     assert not reached.exists()
+
+
+def test_a_session_clears_the_stand_ins_earlier_sessions_left_once_their_pytest_has_ended(tmp_path):
+    """Review, 29 September: every session left its keyguard-* directory, 277 of them in one day's TMPDIR.
+    One whose pytest has ended goes an hour after its last use; one still in use by a running session, or
+    by a child that outlived its session within the hour, stays."""
+    temp, ended, hours_ago = tmp_path / "temp", 2**31 - 1, time.time() - 7200  # no process has that pid
+    stale = [f"keyguard-{ended}-a1b2c3", "keyguard-0des5bia"]  # the second from before names held a pid
+    kept = [f"keyguard-{ended}-d4e5f6", f"keyguard-{os.getpid()}-g7h8i9"]  # an hour not passed; running
+    for name in stale + kept:
+        (temp / name).mkdir(parents=True)
+    for name in (*stale, kept[1]):
+        os.utime(temp / name, (hours_ago, hours_ago))
+    done, _ = session(tmp_path, "def test_nothing():\n    pass\n", TMPDIR=str(temp))
+    assert "1 passed" in done.stdout, done.stdout + done.stderr
+    left = {p.name for p in temp.glob("keyguard-*")}
+    assert not left & set(stale) and set(kept) <= left
+    assert len(left - set(kept)) == 1  # the inner session's own, left for a child that outlives it

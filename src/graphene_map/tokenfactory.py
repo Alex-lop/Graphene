@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -70,7 +71,8 @@ class Spent(Unreachable):
 
 
 class Late(Unreachable):
-    """A completion got no answer in time: Token Factory may have done the work, and billed it."""
+    """A completion that may have reached the model and got no answer: a try that timed out, a 5xx, or a
+    connection that broke once made. Token Factory may have done the work, and billed it."""
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,7 @@ def _request(
         raise Unreachable(f"the key found holds a character that is not plain ASCII letters, digits and "
                           f"punctuation (a pasted dash?): set {KEY} or `graphene key set` again")  # fmt: skip
     data = json.dumps(body).encode() if body is not None else None
-    wait = 2.0
+    wait, maybe = 2.0, False  # maybe: a try may have reached the model; only a 4xx or no connection says not
     for attempt in range(1, tries + 1):
         req = urllib.request.Request(base() + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {key}")
@@ -115,21 +117,26 @@ def _request(
                 answer, headers = resp.read(), dict(resp.headers)
             try:
                 return json.loads(answer or b"{}"), headers
-            except ValueError:  # a sign-in page, a proxy's: not Token Factory speaking
-                raise Unreachable(f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
-                                  "GRAPHENE_TOKENFACTORY_URL?") from None  # fmt: skip
+            except ValueError:  # a sign-in page, a proxy's: not Token Factory (an earlier try may have been)
+                said = (f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
+                        "GRAPHENE_TOKENFACTORY_URL?")  # fmt: skip
+                raise (Late if maybe and method == "POST" else Unreachable)(said) from None
         except urllib.error.HTTPError as no:
             # a gateway's page may echo the Authorization header: the key goes before the cut can halve it
             said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key, "…"))[:300]
+            maybe = maybe or no.code >= 500
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}"
-                              f"{_then(no.code, attempt)}") from None  # fmt: skip
+            raise (Late if maybe and method == "POST" else Unreachable)(
+                f"Token Factory answered {no.code} to {method} /{path}: {said}{_then(no.code, attempt)}"
+            ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as no:
             slow = isinstance(no, TimeoutError) or "timed out" in str(no)
+            never = (ConnectionRefusedError, socket.gaierror)  # nothing listened, or no such host: never sent
+            maybe = maybe or not isinstance(getattr(no, "reason", no), never)
             if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
                 tries = min(tries, attempt + 1)
             if attempt < tries:
@@ -138,7 +145,7 @@ def _request(
                 continue
             then = _then(0, attempt, timeout) if slow and method == "POST" else ""
             said = f"Token Factory could not be reached at {base()}: {no}{then}"
-            raise (Late if then else Unreachable)(said) from None
+            raise (Late if maybe and method == "POST" else Unreachable)(said) from None
     raise AssertionError("unreachable")  # pragma: no cover
 
 
@@ -315,13 +322,14 @@ def chat(
     began = time.monotonic()
     try:
         said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
-    except (Late, KeyboardInterrupt):  # sent, and maybe done and billed: it stays at its worst case
+    except Unreachable as no:  # a 4xx, no connection, no key: nothing was done; else (Late) maybe it was
+        night.settle(held, model, most if isinstance(no, Late) else 0.0)
+        raise
+    except BaseException:  # stopped while it was out (Ctrl-C, or TERM as SystemExit): maybe done, and billed
         night.settle(held, model, most)
         raise
-    except BaseException:  # Token Factory said no, or was never reached: nothing was done
-        night.settle(held, model, 0.0)
-        raise
-    # ponytail: a completion that timed out once and then answered is settled at the answer's usage alone
+    # ponytail: a try that may have been done (it timed out, a 5xx) and then another that answered is settled
+    # at the answer's usage alone
     took = time.monotonic() - began
     usage = (said.get("usage") if isinstance(said, dict) else None) or {}
     cost = dollars(usage, model)
