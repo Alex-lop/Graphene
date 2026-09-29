@@ -17,7 +17,7 @@
 - The video, filmed scene by scene and refused unless the run was live: `docs/demo/build.sh --rehearsal`
 
 **Decide**
-- The branch has about 70 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
+- The branch has 110 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
 - Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
 - A run started from `watch` goes on after the watch's terminal closes, as after `q`. Default: keep.
 
@@ -70,6 +70,8 @@ and 109 (the teardown) first.
 
 ## The evidence
 
+- **The suite and CI:** 1,543 passed, 3 skipped, with every extra, at `f68c0a3` (21 min, the machine
+  loaded); CI green on all seven jobs at `f68c0a3`. Later commits are said where they land.
 - **Studies on stand-ins** (Claude sub-agents, not people; n = 1 a cell): study 4, the board after
   tonight's changes against the outline, registered and its build pinned before any run
   (`docs/test/results-2026-09-29-board.md`): as faithful or more on 4 of 4 tasks, more modelled
