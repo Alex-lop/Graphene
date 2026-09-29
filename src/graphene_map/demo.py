@@ -266,7 +266,10 @@ class Replay(Watch):
         self.set_interval(0.1, self.play)
 
     def play(self) -> None:
-        """Apply what is due by the replay's clock, and draw the screen again when anything was."""
+        """Apply what is due by the replay's clock, and draw the screen again when anything was. Nothing,
+        once the app has stopped running: the last change opens every fold, and the tree may be gone."""
+        if not self.is_running:
+            return
         due = time.monotonic() - self.began
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return

@@ -233,6 +233,8 @@ def test_the_replay_refuses_every_board_key(tmp_path, monkeypatch):
                 said.append((status, type(app.screen).__name__))
                 if isinstance(app.screen, Ask):
                     await pilot.press("escape")
+            app.exit()  # as `q` or a closed terminal ends a replay, so no tick lands while it is torn down
+            await pilot.pause()
         return said
 
     assert asyncio.run(go()) == [(demo.REFUSED, "Screen")] * 6  # no line opened for words either
