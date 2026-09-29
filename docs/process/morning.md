@@ -16,10 +16,10 @@
 - A closed terminal now ends `watch`, `demo` and a run's executors and checks: `tests/test_teardown.py`
 - What waits on you live, in order, with commands, costs and times, on one screen: `docs/test/LIVE_SESSION.md`
 
-**Decide**
-- The branch has 150 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
-- Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
-- In the registered runs a stand-in's `as_me` drops Claude Code's marks, so `arm_a.py` spends your key under `GRAPHENE_SPEND_CAP_USD` only, not the night's cap. Default: allow it, set that cap by hand, and start `arm_bprime.py` from your own terminal (`docs/test/LIVE_SESSION.md`).
+**Decided (your answers, 29 September)**
+- The history is reshaped: 151 commits became 39; the full one is `first-light-full-history`.
+- Sandboxes access is requested; until it comes, rungs 5 and 7, the prototypes and the rough cut run with leaves on this machine.
+- The registered runs are capped at $10 by `GRAPHENE_SPEND_CAP_USD`, never `GRAPHENE_AGENT_LIVE_USD`.
 
 **Broken or risky**
 - Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
@@ -70,9 +70,9 @@ and 109 (the teardown) first.
 
 ## The evidence
 
-- **The suite and CI:** 1,588 passed, 5 skipped, with every extra, at `8f450a5` (the last code commit;
-  21 min, the machine loaded); CI green on all seven jobs at `8f450a5` and again at `1212ea3`,
-  after which only this line changed.
+- **The suite and CI:** 1,588 passed, 5 skipped, with every extra, at `427d46f` (the last code commit;
+  21 min, the machine loaded); CI green on all seven jobs at `427d46f` (the same tree was `8f450a5`
+  before the reshape).
 - **The ladder, dry, on the final code:** all seven rungs PASS in 1 min 45 s (bill $0.0049, the
   fake's), each "no file holds the key". The wheel installs and `graphene demo --once` replays with no key.
 - **The closing review:** six adversaries and a skeptic per finding, 35 findings, all reproduced, all
@@ -105,7 +105,7 @@ and 109 (the teardown) first.
   the same files rerun one by one deleted nothing, and the cause is not known. The branch was intact.
   The closing review had an adversary on it.
 - At 04:45:51 your main repository's `core.bare` became `true`. I had run `git bisect run` over a test
-  in one of my worktrees; git exports GIT_DIR there, and before the guard (`499a6da`, both conftests
+  in one of my worktrees; git exports GIT_DIR there, and before the guard (`99b93dd`, both conftests
   now drop git's location variables) a test's `git -C tmp init` re-initialised the shared repository.
   Only `core.bare` changed (every other local key is as it was; no identity was written). The fix,
   `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`, was refused to me by the
@@ -128,9 +128,12 @@ and 109 (the teardown) first.
 
 ## State of every branch
 
-- **`first-light`:** this run, pushed; draft PR #34. Its lanes were cherry-picked onto it
-  (`fl-open`, `fl-a`, `fl-b`, `fl-board`, `fl-teardown`, `fl-keyguard`, `fl-hook`, `fl-walks-tui`,
-  `fl-walks-page`, `fl-dir`, `fl-e`, `fl-docs`: local only, `git branch -D` drops them).
+- **`first-light`:** this run, pushed; draft PR #34. Reshaped on 29 September at your word: 151
+  commits became 39, each the tree of a commit the branch really had, the last tree identical to
+  `7703d9c`, which CI passed. The 151 are on `first-light-full-history` (`git push --force origin
+  first-light-full-history:first-light` puts them back). A hash cited as a change points at the
+  reshaped commit that holds it; one cited as the state something ran at (a build, a checkout, a CI
+  run) that is not among the 39 is on `first-light-full-history`.
 - **`main`:** `cbfbe0f`, untouched. Your checkout: on `fix-replay-teardown`, its uncommitted edits
   as you left them.
 - **Outside the repo:** `~/graphene-board4-runs` and `~/graphene-board4-venv` (study 4; they hold the

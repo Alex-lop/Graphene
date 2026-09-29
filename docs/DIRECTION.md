@@ -1496,7 +1496,7 @@ any of them.
 127. **What the walks became.** `docs/process/shaping/walks.md`'s 72 findings of 28 September: the
      terminal's 35 and the page's and replay's 25 each fixed with a test or closed with a reason, in
      its two "First light's verdicts" sections. Tonight three new walkers (a first-time user, you, a
-     judge) walked a wheel of `first-light` at `92804c3` and filed 46 more; the product's were fixed
+     judge) walked a wheel of `first-light` at `4860dec` and filed 46 more; the product's were fixed
      by the lanes that owned them, each with a test or closed with a reason (119 to 126), and eight
      were about the walk's own harness: the seat left your `~/.zshenv` key readable (no walker spent
      or chose Nemotron), the old stand-in executor pointed at another session's build, the seats

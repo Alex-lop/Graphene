@@ -1,4 +1,4 @@
-"""What three walkers found in `graphene demo` at 92804c3, each against the shipped recording, frame by
+"""What three walkers found in `graphene demo` at 4860dec, each against the shipped recording, frame by
 frame: the status line keeps one form and offers neither R nor P, the bill stays on it at 80 columns,
 every step says what changed, the goal reads done only when everything under it is, a refused key's line
 gives way to the next change, and j k still move after `r`."""

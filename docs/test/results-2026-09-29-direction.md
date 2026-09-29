@@ -145,7 +145,7 @@ Spawn a fresh sub-agent per run whose whole prompt is "Read $RUNS/$R.brief and d
 ### The table that will be reported
 
 Run 03:25 to 03:27 on 29 September by the coordinator, from a checkout of `first-light` at
-`92804c3` (this file's registration is in it), twelve fresh sub-agents (claude-opus-5-5), each
+`4860dec` (this file's registration is in it), twelve fresh sub-agents (claude-opus-5-5), each
 fixture built just before the runs started; all twelve at once. No run is void. Filled by `table`:
 
 | run | arm | person-s, MODELLED | typed | acts | words read | right (of 8) | false | answered |
