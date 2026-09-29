@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ SHIMS: Path | None = None  # the stand-ins' directory, made once a session
 TEMP = Path(tempfile.gettempdir()).resolve()  # where every test's fakes live
 refused: list[str] = []
 seen = 0  # lines of the stand-ins' log already said
+STALE = 3600  # ponytail: an hour; a child outliving its session by more finds the real tool next on its PATH
 
 
 def install(config: pytest.Config) -> None:
@@ -41,7 +43,8 @@ def install(config: pytest.Config) -> None:
     global SHIMS
     if SHIMS:
         return
-    shims = Path(tempfile.mkdtemp(prefix="keyguard-")).resolve()  # kept: a child that outlives us meets it
+    _sweep()
+    shims = Path(tempfile.mkdtemp(prefix=f"keyguard-{os.getpid()}-")).resolve()  # left: see _sweep
     for tool in TOOLS:
         (shims / tool).write_text(SHIM.format(log=shims / "calls.log"))
         (shims / tool).chmod(0o755)
@@ -49,6 +52,25 @@ def install(config: pytest.Config) -> None:
     os.environ["PATH"] = f"{shims}{os.pathsep}{os.environ.get('PATH', os.defpath)}"
     sys.addaudithook(_audit)
     config.pluginmanager.register(sys.modules[__name__], "keyguard")
+
+
+def _sweep() -> None:
+    """Earlier sessions' stand-ins go once their pytest has ended and an hour has passed since they were
+    last used, so they do not pile up in the temp directory, and a child that outlived its session still
+    meets them meanwhile. A name without a pid is from before the pid was put in it."""
+    for old in TEMP.glob("keyguard-*"):
+        pid = old.name.split("-")[1]
+        try:
+            if time.time() - old.stat().st_mtime < STALE:
+                continue
+            if pid.isdigit():
+                os.kill(int(pid), 0)  # raises once its pytest has ended
+                continue
+        except ProcessLookupError:
+            pass
+        except OSError:
+            continue  # another session swept it first, or another user's session is still running
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def _refuse_real(program, env) -> None:
