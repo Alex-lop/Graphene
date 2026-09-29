@@ -180,12 +180,12 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         "session: fix the readme",
     )
     live = next(n for n in st["nodes"] if n["id"] == "live")
-    assert (live["word"], live["running"], live["you"]) == ("running", 2, 0)  # the leaf and the session
+    assert (live["word"], live["running"], live["you"]) == ("running", 1, 0)  # the leaf; its session is it
     top = next(n for n in st["nodes"] if n["id"] == "product")
-    assert top["running"] == 2 and top["next"] is None
+    assert top["running"] == 1 and top["next"] is None
     shown = person("direction", "--width", "120").stdout.splitlines()
     narrow = person("direction", "--width", "60").stdout.splitlines()[0]
-    assert narrow.startswith("you: 1 · 2 running · the direction of …") and len(narrow) == 60
+    assert narrow.startswith("you: 1 · 1 running · the direction of …") and len(narrow) == 60
     assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines()[:-1])
     assert any("the plan: users come back with ids" in line and "0/1 done" in line for line in shown)
     assert any("not in the direction" in line for line in shown)

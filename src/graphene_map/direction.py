@@ -510,6 +510,7 @@ def plan_status(store) -> dict | None:
         "done": sum(n.state == P.DONE for n in leaves),
         "you": sum(w in ("came back", "review", "yours") for w in words.values()) + len(tops) + asked,
         "running": sum(n.state == P.RUNNING for n in alive),
+        "holders": sorted({n.session_id for n in alive if n.state == P.RUNNING and n.session_id}),
         "next": ready[0] if ready else None,
         "bill": bill(usage),
     }
@@ -540,10 +541,11 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         has_plan = plan is not None and plan["node"] in mine
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
         you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
-        running = sum(w.word == "running" for w in under) + (plan["running"] if has_plan else 0)
-        inside = [m for m in proposals if m.id != n.id]  # its own "?" is its word already
-        ready = plan["next"] if has_plan else None
-        nxt = f"accept {inside[0].id}" if inside else ready
+        held = set(plan["holders"]) if has_plan else set()  # a session on a running leaf is that leaf's work
+        running = sum(w.word == "running" and w.key not in held for w in under)
+        running += plan["running"] if has_plan else 0
+        # next is the work that starts next (what `graphene run` takes); a proposal waits on you
+        nxt = plan["next"] if has_plan else None
         word = "proposed" if d.proposed(n) else "yours" if you else "running" if running else "quiet"
         nodes.append(asdict(n) | {"word": word, "you": you, "running": running, "next": nxt,
                                   "earlier": earlier.get(n.id, [])})  # fmt: skip
@@ -661,10 +663,7 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     if unhung:
         you += st["plan"]["you"]
         running += st["plan"]["running"]
-    nxt = next((f"accept {n['id']}" if n["word"] == "proposed" else n["next"] for n in tops
-                if n["word"] == "proposed" or n["next"]), None)  # fmt: skip
-    if nxt is None and unhung and st["plan"]["next"]:
-        nxt = st["plan"]["next"]
+    nxt = next((n["next"] for n in tops if n["next"]), None) or (st["plan"]["next"] if unhung else None)
     lead = " · ".join([f"you: {you}", f"{running} running", *([f"next: {nxt}"] if nxt else [])])
     lead += " · the direction of "
     if width and len(lead) + len(where) > width:  # the repository's own name, and what is above it
