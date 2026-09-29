@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { Footer, Header, Rail } from "./Chrome";
+import { DirectionPath } from "./Direction";
 import { Inspector } from "./Inspector";
 import { MapView } from "./Map";
 import { LayoutBar, PlanHeader, PlanInspector, PlanStrip, PlanTopDown, PlanTree, PlanView } from "./Plan";
@@ -105,6 +106,7 @@ export function App(): ReactElement {
       <div className="app plan">
         <PlanHeader plan={plan} view={shown} onView={setView} recorded={runs.length} />
         <main className="centre">
+          <DirectionPath direction={payload.direction} />
           <PlanStrip plan={plan} onPick={setPicked} write={write} />
           <LayoutBar plan={plan} layout={drawn} mode={pressed} why={because} onLayout={setMode} />
           {drawn === "outline" && <PlanTree plan={plan} picked={picked} onPick={setPicked} />}
