@@ -794,7 +794,10 @@ class Watch(App):
     def refresh_plan(self) -> None:
         """Look at the plan and draw it. A store that cannot be opened (busy, or being made by another
         screen that started at the same moment) leaves the last screen up and says so; the next tick
-        tries again."""
+        tries again. A tick that lands once the app has stopped running draws nothing: its widgets may
+        already be gone (a test harness tears an app down without the exit that stops its timers)."""
+        if not self.is_running:
+            return
         try:
             with self.open_store() as store:
                 self.draw(store)
