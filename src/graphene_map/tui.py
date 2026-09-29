@@ -118,6 +118,30 @@ def _short(model: str) -> str:
     return model.rsplit("/", 1)[-1]  # a model's name, as the bill says it
 
 
+def direction_text(said: list[tuple[str, str]]) -> Text:
+    """Rows of the direction (`direction.lines`), each glyph in its row's colour."""
+    text = Text()
+    for k, (line, style) in enumerate(said):
+        row = Text(("\n" if k else "") + line)
+        glyph = len(row.plain) - len(row.plain.lstrip("\n "))
+        row.stylize(style, glyph, glyph + 1)
+        text.append_text(row)
+    return text
+
+
+def direction_pane(store, root: Path, wide: int) -> Text:
+    """What D shows: `graphene direction`'s print at the pane's width, from the store as it is now."""
+    try:
+        d = D.read(root)
+    except P.Refused as no:
+        return Text(str(no))
+    st = D.status(store, d)
+    said = [(D.head(st, P.where(root), wide), "bold"), *D.lines(st, wide)]
+    if d is None:
+        said.insert(1, (D.EMPTY, "dim"))
+    return direction_text(said)
+
+
 def _cli(argv: list[str]) -> tuple[int, str]:
     """A `graphene` command, run here, as the person at this terminal: its exit code and what it said."""
     import typer.main
@@ -921,13 +945,16 @@ class Watch(App):
         said = D.above_plan(store, self.root_path, max(self.size.width - 2, 20))
         pane = self.query_one("#direction", Static)
         pane.display = bool(said)
-        text = Text()
-        for k, (line, style) in enumerate(said):
-            row = Text(("\n" if k else "") + line)
-            glyph = len(row.plain) - len(row.plain.lstrip("\n "))
-            row.stylize(style, glyph, glyph + 1)
-            text.append_text(row)
-        pane.update(text)
+        pane.update(direction_text(said))
+
+    def action_direction(self) -> None:
+        """D: the direction in the node pane, across the screen's width, read again every tick like the
+        plan (so what a `:direction` command changes shows at once); D again, or Esc, closes it. It
+        shows and opens nothing: the keys stay the tree's, and attaching is typed at `:`."""
+        self.view = "contract" if self.view == "direction" else "direction"
+        self.message = ""  # the bottom line says the keys: D back, and what is typed at `:`
+        self.sized = ()  # the layout changes: the pane goes under the tree, across the width
+        self.refresh_plan()
 
     def relabel(self, nodes: list[P.Node], under: dict, goal_word: str, goal: str) -> None:
         """Each row's cells. A folded row's word is what is inside it (`inside`), so a folded
@@ -1123,7 +1150,7 @@ class Watch(App):
         tree, width = self.tree, self.size.width
         if not width:
             return
-        self.query_one("#main").set_class(self.drawn is not None, "-stacked")
+        self.query_one("#main").set_class(self.drawn is not None or self.view == "direction", "-stacked")
         if self.drawn is not None:
             lines, box = self.drawn.lines, self.query_one("#view", PlanView)
             sized = ("narrow", max(3, min(len(lines), self.view_room()[1])), "view")
@@ -1134,7 +1161,7 @@ class Watch(App):
         by_id = {n.id: n for n in nodes}
         if not tree.display:
             return
-        if width >= WIDE:
+        if width >= WIDE and self.view != "direction":  # the direction takes the width, under the tree
             opened = not any(n.data == BR.FOLD and not n.is_expanded for n in tree.root.children)
             need = max(
                 [2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes]
@@ -1156,7 +1183,7 @@ class Watch(App):
         """The rows the tree may take: the screen less its top line and the two at the bottom, and
         below 110 columns half of that, the node pane under it."""
         rows = self.size.height - 3
-        return rows if self.size.width >= WIDE else max(3, rows // 2)
+        return rows if self.size.width >= WIDE and self.view != "direction" else max(3, rows // 2)
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
@@ -1335,6 +1362,8 @@ class Watch(App):
             return ["ctrl-d ctrl-u scroll", "l back", *tail]
         if self.view == "said":
             return ["ctrl-d ctrl-u scroll", "Esc back", *tail]
+        if self.view == "direction":  # D: what attaches and accepts is typed at `:`
+            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll"]
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)
@@ -1370,6 +1399,8 @@ class Watch(App):
         node_id = self.selected()
         pane = self.query_one("#detail", Static)
         wide, high = self.pane_room()
+        if self.view == "direction":  # D: the direction, read again every tick, plan or no plan
+            return pane.update(direction_pane(store, self.root_path, wide))
         if not self.nodes and not self.tree.show_root:
             empty = Pane(wide)
             empty.text(EMPTY)
@@ -1632,12 +1663,6 @@ class Watch(App):
         node_id = self.selected()
         argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if here and node_id else [])]
         self.background(argv)
-
-    def action_direction(self) -> None:
-        """D: `graphene direction` in the pane, every session under what it works on, and the line open
-        on the command that attaches one to a node, which the person finishes (SESSION NODE)."""
-        self.ran(f":direction --width {self.pane_room()[0]}")
-        self.action_line(":direction attach ")
 
     def action_plan_first(self) -> None:
         self.did(["plan", "first", "off" if self.counts.get("first") else "on"])

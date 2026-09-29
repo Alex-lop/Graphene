@@ -395,7 +395,7 @@ class Replay(Watch):
     def show_detail(self, store) -> None:
         """Before the plan has a row: what the person asked for, where watch would say nothing is planned
         and to `:ask` (which a replay refuses)."""
-        if self.nodes or self.tree.show_root:
+        if self.nodes or self.tree.show_root or self.view == "direction":  # D shows the replay's direction
             return super().show_detail(store)
         asked = store.node_log(kinds=("asked",))[-1:]
         pane = Pane(self.pane_room()[0])

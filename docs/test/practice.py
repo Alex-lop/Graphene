@@ -50,7 +50,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from graphene_map import night  # noqa: E402
+from graphene_map import keys, night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
@@ -91,13 +91,21 @@ def say(line: str = "") -> None:
     print(TAG + mask(line), flush=True)
 
 
+# a word a line is cut into to be masked (what whitespace, a quote, a backtick or a bracket ends), and a
+# path among them: at / or ~/, or given to a variable (GRAPHENE_LEDGER=/…, in the line rung 1 prints)
+PIECES = re.compile(r"""([^\s'"`()]+)""")
+PATH = re.compile(r"(\w+=)?~?/")
+
+
 def mask(text: str) -> str:
-    """The key and the project, and anything shaped like a key, never reach a line or a log."""
-    for name in SECRETS:
-        value = os.environ.get(name) or ""
+    """The key and the project never reach a line or a log: taken out by what they are, the environment's
+    values and the keychain's key, wherever they are. A word shaped like a key is taken out whole too, but
+    not a path the ladder names (one that starts at / or ~/): a repository's name beside a session's uuid
+    looks like base64, and the path and the command it is in are printed to be used as they are."""
+    for name, value in (*((n, os.environ.get(n) or "") for n in SECRETS), (SECRETS[0], keys.find() or "")):
         if len(value) >= 6:
             text = text.replace(value, f"[{name}]")
-    return tf.unkeyed(text)  # the whole word, not its first twenty characters
+    return PIECES.sub(lambda w: w[0] if PATH.match(w[0]) else tf.unkeyed(w[0]), text)
 
 
 def counted(r: Rung) -> int:

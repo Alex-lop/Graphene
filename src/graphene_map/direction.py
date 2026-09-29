@@ -9,10 +9,13 @@
 One line a node: "- title  [id]" is accepted, "? title  [id]" is proposed (make it "-" to accept
 it). Indentation is the tree. Any other line indented under a node says what it is for. "#" lines
 and blank lines are kept as they are. The file is ``.graphene/direction.txt`` in the main checkout,
-beside the store, and unlike the store it is tracked by git: another machine's Graphene reads the
-same direction. A file with a line Graphene cannot read is not used at all, and the refusal names
-each line. Graphene rewrites only the lines an act changes (an accept, a drop, a proposal), so what
-the person wrote comes back byte for byte.
+beside the store, and unlike the store it is for git: commit it, and another machine's Graphene reads
+the same direction. Graphene tells the store's own .gitignore to leave it out; where the repository's
+.gitignore names .graphene/ (Graphene's own did), git ignores it until it is added with `git add -f`
+or that line becomes `.graphene/*` and `!.graphene/direction.txt`, and each write says so. A file
+with a line Graphene cannot read is not used at all, and the refusal names each line. Graphene
+rewrites only the lines an act changes (an accept, a drop, a proposal), so what the person wrote
+comes back byte for byte.
 
 Every plan hangs from one node (``graphene direction plan NODE``), and each session the hooks
 recorded attaches to one: through the plan's node when it held or proposed one of the plan's
@@ -39,6 +42,15 @@ from pathlib import Path
 from . import plan as P
 
 FILE = ".graphene/direction.txt"
+EMPTY = (
+    f"no direction yet ({FILE}). Write it yourself, one line a node: `- title  [id]`, a child indented "
+    "two spaces under its parent; or an agent proposes it (`graphene direction propose -`), each of its "
+    "nodes `? title  [id]` until you accept it (make the `?` a `-`, or `graphene direction accept ID`)"
+)
+IGNORED = (
+    f"git ignores {FILE} here (this repository's .gitignore names .graphene/): commit it with "
+    f"`git add -f {FILE}`, or make that line `.graphene/*` and add `!{FILE}` under it"
+)
 ALIVE = 300  # seconds since a session's last recorded call that it still counts as running
 DAY = 86400  # a session quiet for longer than this is not shown: it helps nobody decide anything
 IDLE = 3600  # a session or subagent idle (no call, and no end of its turn) for longer is not shown

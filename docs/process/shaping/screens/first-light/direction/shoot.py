@@ -11,7 +11,7 @@ Graphene's own ``.graphene/direction.txt``, and there:
   ``first-light``, and attaches the lanes whose work serves another node to that node. The
   direction's own nodes stay proposed, as they are in the committed file;
 - writes `graphene direction` at 80 and 120 columns, `graphene plan --view tree` at 120x36, and
-  `graphene watch` at 80x24 and 120x36, as text.
+  `graphene watch` at 80x24 and 120x36, as it opens and after D (the direction in the pane), as text.
 
     cd docs/process/shaping/screens/first-light/direction
     uv run python shoot.py --store ~/Desktop/AllThingsAgenticHackathon/.graphene/graphene.db --out .
@@ -110,11 +110,13 @@ def graphene(repo: Path, *args: str, stdin: str | None = None, env: dict | None 
     return said.stdout
 
 
-def screen(repo: Path, size: tuple[int, int]) -> str:
+def screen(repo: Path, size: tuple[int, int], keys: tuple[str, ...] = ()) -> str:
     app = Watch(repo, lambda: Store.open(repo), every=60)
 
     async def go():
         async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            await pilot.press(*keys)
             await pilot.pause()
             app.refresh_plan()
             await pilot.pause()
@@ -161,6 +163,7 @@ def main() -> None:
     )
     for size in ((80, 24), (120, 36)):
         (args.out / f"watch-{size[0]}x{size[1]}.txt").write_text(screen(repo, size) + "\n")
+        (args.out / f"watch-D-{size[0]}x{size[1]}.txt").write_text(screen(repo, size, ("D",)) + "\n")
     print(repo)
 
 
