@@ -1503,6 +1503,62 @@ any of them.
      shared one tmux server and one port, and Playwright wrote into your checkout's git-ignored
      `.playwright-mcp/` (the three files were removed).
 
+128. **What waits on you live is on one screen, `docs/test/LIVE_SESSION.md`, and three pieces of it are
+     not built.** In order: the preconditions (Sandboxes access, the key, the opening unset for
+     registered runs), rungs 3 to 7, the registered arms as pre-registered, the shaping study with
+     executors, the recording; each with its command (every one checked as far as its usage line,
+     nothing spent), a cost range and a time. The registered runs need first: the fixed trees
+     (`docs/test/trees/` holds only its README), a frozen configuration (arm A's steps and seconds come
+     from it), and arm B's brief on Nemotron (`standin.py`'s tree and board arms still start `claude -p`).
+     The live directive's draft says what first light taught, each change marked "(first light)", and
+     its first command is `docs/test/practice.sh night`, which says whether the opening is set and
+     nothing else from the environment. *Evidence:*
+     `tests/test_doc_claims.py::test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows`.
+129. **A call that may have reached Token Factory keeps its worst case in the night's ledger. This
+     revises 102.** A call refused (a 4xx) or never received (no key, a refused connection, an unknown
+     host) settles at $0; one that timed out, got a 5xx, broke once connected, or was stopped while out
+     (Ctrl-C, or the TERM `graphene run` and the ladder send, which the executor and the planner turn
+     into SystemExit) keeps its worst case. *Why:* the closing review found every stop of a run with
+     Nemotron freed its in-flight calls from the cap. *Evidence:*
+     `tests/test_night.py::test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case`,
+     `test_a_failed_call_is_freed_only_when_nothing_can_have_been_done`.
+130. **No test acts on the repository running it, whatever git exported.** A suite started from `git
+     bisect run`, a hook or `rebase --exec` inherits GIT_DIR (and GIT_INDEX_FILE, GIT_PREFIX,
+     GIT_CONFIG_PARAMETERS); a test's `git -C tmp init/add/commit` then re-initialised the enclosing
+     repository and committed into it. Both conftests drop git's location and `-c` variables before
+     any test (`keyguard.no_git_location`). *How it was found:* at 04:45 a bisect I ran over one test
+     marked your main repository bare (`core.bare true`); the closing review found the same hazard on
+     its own and reproduced it in a throwaway clone. *Evidence:*
+     `tests/test_git_location.py::test_a_suite_started_with_git_location_set_hands_none_of_it_to_its_tests`.
+131. **What the closing review changed.** Six adversaries (the live paths and keys, the board, the
+     direction, the teardown, the claims, and destructive operations) went over `cbfbe0f..e113999` from
+     04:40, and a skeptic reproduced every finding from scratch: 35 findings, all 35 reproduced (24
+     should-fix, 11 minor, no blocker), all collected before any was fixed. Each fix has a test that
+     failed before it, named in its commit.
+     - **Live paths and keys:** a call that may have been received keeps its worst case (129); the
+       ladder counts the keychain's key and a pasted key's stripped form; a ConTree error page that
+       echoes the key is masked as Token Factory's is; rung 5's command makes `tests/recordings/`.
+     - **The board:** a default is taken whole or not at all; only a planner's note is taken for you,
+       and another agent's note waits for your key (this revises 123); `R` takes no default that would
+       leave it nothing to start; `board lookup` never takes an answer that drops a node, numbers lines
+       as grep does, and passes over an answer of the wrong shape; `graphene board` keeps an item's
+       words at 40 columns; a re-ask never puts an answered question up twice, and lands even when a
+       carried change is refused.
+     - **The direction:** the hook's `.graphene/` refusal holds however the path is spelled (case, a
+       firmlink, a symlink, `..`); control characters and escapes from recorded calls never reach your
+       terminal; a CRLF file keeps its line endings; no "you: 1" without a row naming it; a wide title
+       never pushes a row past the width; the 80×24 strip keeps the plan's node; nesting past sixteen
+       levels is refused by its line.
+     - **The teardown:** a sandboxed leaf's check goes with the `done` that started it; Ctrl-\ stops a
+       run as Ctrl-C does; the next run commits and parks in review a leaf a killed parallel run left
+       done; a passed check's background processes, and each Nemotron command's, are ended when it
+       returns.
+     - **The claims:** the docs follow the code (what accept and `R` leave, what `D` does, a planner's
+       note); `walks.md`'s hashes are this branch's; the exploratory pass's count; the made-up key's 403
+       said as the one slip it was.
+     - **Destructive operations:** the git-location guard (130), and the keyguard's stale directories
+       swept once their session has ended.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -1590,6 +1646,14 @@ any of them.
 - The hook's budget is held on its CPU time. What the agent waits for is the wall clock, which under
   heavy load is mostly the scheduler's (decision 111).
 
+- A parallel run killed outright (kill -9, Force Quit) leaves its finished leaves reading done until
+  the next `graphene run` commits them on their branches and parks them in review (decision 131).
+- A check's session, and each command the Nemotron executor runs, is ended when it returns; a process
+  that calls `setsid` itself escapes that, and a Nemotron command can no longer leave a server running
+  for the next one (decision 131).
+- An agent's note (not a planner's) waits for your key; a planner's note is taken at accept as written,
+  so a planner can put words in an executor's contract that you only see on the board (decision 131).
+
 ## What comes next, in the order I would do it
 
 1. You run the test (`docs/test/PROTOCOL.md`, ten minutes) on a task of your own. Everything below
@@ -1657,6 +1721,17 @@ any of them.
 4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
    `docs/process/ideas.md` says, by 20 October.
+
+## What comes next, from 29 September
+
+1. Your repository's `core.bare` back to false (`morning.md`, the brief), then Sandboxes access for
+   the project, then `docs/test/practice.sh 5, 3, 4, 7` and `prototypes` from a session you start with
+   `GRAPHENE_AGENT_LIVE_USD` set, or your own terminal: every live claim waits on these.
+2. The three pieces the registered runs need first (decision 128): the fixed trees, the frozen
+   configuration, and arm B's brief on Nemotron. Then `docs/test/LIVE_SESSION.md`, in order, with you.
+3. The board on the screen: study 4 measured the command line; `auto` is set by it, and a study of the
+   screen (`graphene watch`) would say whether the board earns more there.
+4. The direction on real sessions: tonight's study used one fixture its author wrote.
 
 ## How this file is used
 
