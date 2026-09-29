@@ -862,6 +862,7 @@ def sandboxed(store, node: Node) -> dict | None:
     return last["detail"]
 
 
+@ctrl_c_on_hangup()  # as run_check: a stop or a hangup removes the check's container
 def _check_in_sandbox(place: dict, command: str, checkout, leave_out) -> tuple[bool, str, list[str]]:
     from .sandbox import check_in_fork
 
