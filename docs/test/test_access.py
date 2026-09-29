@@ -45,8 +45,9 @@ def test_a_project_sandboxes_refuse_is_one_line_saying_what_to_do_and_token_fact
     what the key lacks and where access is asked for, the report marks it refused, and the check passes
     on Token Factory's answers."""
     contree_sdk = pytest.importorskip("contree_sdk")
-    from fake_faults import Forbidding
+    from fake_faults import Forbidding, persons_shell
 
+    persons_shell(monkeypatch)
     monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
     monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")
