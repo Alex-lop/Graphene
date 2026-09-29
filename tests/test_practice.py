@@ -572,10 +572,11 @@ def test_the_demo_rung_passes_only_when_a_leaf_landed(tmp_path, monkeypatch, cap
     practice = load_practice(tmp_path, monkeypatch)
     monkeypatch.setattr(practice.Rung, "sh", lambda r, args, cwd, timeout=900, **more: (0, "bill: $0.01"))
     monkeypatch.setattr(practice, "leaves", lambda repo: {"one": "done" if landed else "open", "two": "open"})
+    monkeypatch.setattr(practice, "placed", lambda repo: "on this machine")  # what init wrote, read
     assert practice.climb(7) == ("PASS" if landed else "FAIL")
     said = capsys.readouterr().out
     if landed:
-        assert "1 of 2 leaves landed" in said
+        assert "1 of 2 leaves landed, on this machine" in said
     else:
         assert "nothing landed" in said and "the model did not finish the work" in said
 

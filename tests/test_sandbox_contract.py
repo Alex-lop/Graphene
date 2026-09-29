@@ -138,3 +138,32 @@ def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkey
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
     assert sandbox.Contree().run("img-1", "sleep 999", {}, 5) == ("img-1", 124, sandbox.TIMED_OUT)
+
+
+def test_whoami_says_before_any_leaf_whether_the_project_is_refused(monkeypatch):
+    """sandbox.refused, which `graphene init` asks: whoami's 403 or a grant a leaf uses listed as not
+    given is the refusal a leaf would meet; anything else (grants all given, offline, an SDK that answers
+    otherwise) is None, and the leaf's own refusal says it if it comes. Stubs only; nothing is sent."""
+    from contree_sdk.sdk.exceptions import ForbiddenError
+    from fake_faults import Forbidding
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    assert sandbox.refused() == REFUSED.format("its key lacks import, spawn there")
+    monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True, "spawn": True, "cancel": False})
+    assert sandbox.refused() is None  # a grant no leaf uses
+
+    def asking(error):
+        def sdk(token=None):
+            def whoami(refresh=False):
+                raise error
+
+            return type("Sdk", (), {"get_token_info": staticmethod(whoami)})()
+
+        return sdk
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(ForbiddenError()))
+    assert sandbox.refused() == REFUSED.format(sandbox.NO_GRANT)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(OSError("offline")))
+    assert sandbox.refused() is None

@@ -250,6 +250,13 @@ def leaves(repo: Path) -> dict[str, str]:
         return {n.id: n.state for n in P.leaves(P.nodes(store))}
 
 
+def placed(repo: Path) -> str:
+    """Where the executor `graphene init` wrote puts the leaves, in words."""
+    with Store.open(repo) as store:
+        boxed = (store.meta("executor") or "").endswith("sandbox")
+    return ("in Docker, the stand-in" if DRY else "in Sandboxes") if boxed else "on this machine"
+
+
 def one_leaf(r: Rung, repo: Path, executor: str) -> str:
     """The practice leaf proposed, accepted and run; PASS needs it landed."""
     r.propose(repo, [LEAF])
@@ -487,8 +494,9 @@ def arms(r: Rung) -> str:
 def demo_run(r: Rung) -> str:
     """Rung 7: docs/proof/nemotron.sh, the demo run on feeds, recorded, and the recording replayed."""
     rec = STATE / "demo.jsonl"
-    # live, `graphene init` puts the leaves in Sandboxes when ConTree is configured (rung 3 showed it is);
-    # the dry run's init sees no ConTree SDK, so the Docker sandbox is named, to run the same path
+    # live, `graphene init` puts the leaves in Sandboxes when ConTree is configured and does not refuse the
+    # project, and on this machine when it does (the line says where); the dry run's init sees no ConTree
+    # SDK, so the Docker sandbox is named, to run the same path
     more = {"EXECUTOR": "nemotron --placement sandbox"} if DRY else {}
     if DRY and not docker_runs():
         raise Failed(NO_DOCKER)
@@ -501,11 +509,12 @@ def demo_run(r: Rung) -> str:
     landed = sum(s == P.DONE for s in states.values())
     if not landed:
         raise Failed(f"the demo ran to the bill, and nothing landed: {len(states)} leaves, in {repo}")
+    where = placed(repo)
     back, shown = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     if back:
         raise Failed(f"the recording does not replay: {last(shown)}")
     bills = [ln.strip() for ln in out.splitlines() if "bill: $" in ln]
-    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed"
+    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed, {where}"
     return f"{ran}; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
 
 
