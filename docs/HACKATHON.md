@@ -266,7 +266,9 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   person's seat, with Claude Code as planner: it shows what the board is for, not how often it helps.
 - A replay for judges with no key. `graphene demo` plays a recorded run in the real screen with no
   key, no Docker and no network. It runs no model-written code, and it says on screen what it is
-  replaying.
+  replaying: a run made on the scripted stand-in, whose planner puts up a question, an assumption and
+  a leave-out, each taken with one key, the question's default adding a sentence to its leaf
+  (`tests/test_demo.py::test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it`).
 
 ## What we learned
 

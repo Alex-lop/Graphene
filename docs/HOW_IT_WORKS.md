@@ -166,8 +166,8 @@ and its record says the check failed. A session is never trapped by it.
   not do.
 
 Anyone may put up a `note`. The board is one JSON list in the store's meta (key `board`), in the order
-items were put up, so `graphene plan undo` puts back an answer with everything it changed. Every act is
-a `board` row in the plan's log, on the node the item is `about`, else on `*`, so what changed since the
+items were put up, so `graphene plan undo` puts back an answer with everything it changed, and logs
+`undone` on the node the answer was logged on. Every act is a `board` row in the plan's log, on the node the item is `about`, else on `*`, so what changed since the
 person last looked (P1e) covers it.
 
 Only the person answers (`board.settle`, refused to an agent):
@@ -295,7 +295,8 @@ line counts them. Only the person moves the mark, so a planner's revision cannot
 
 `settings.py`. They live in the store's meta (`settings:protected`, `settings:readonly`,
 `settings:never`, `settings:size`, `settings:board`). `graphene config` prints them as text, with the planner, the
-executor, plan first, the board's conditions and where the key was found as `#` lines.
+executor, plan first, the read-only globs the board's answers made (`# answered: readonly …`) and
+where the key was found as `#` lines.
 `graphene config edit` edits them as `plan edit` edits the plan:
 - the person only;
 - a line it cannot read is refused by its number, and nothing is applied;
