@@ -7,6 +7,7 @@ under $COLUMNS: it fits that width (`room`).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -957,8 +958,23 @@ def register(cli: typer.Typer, root, open_store, fail):
                       and (not node or n.id in node)]  # fmt: skip
             if who.person and starts and any(B.has_default(it) for it in B.items(store)):  # R takes the rest
                 files = P.tracked(r)  # before the write lock, never under it
-                with P.undoable(store, who, "board take"):
-                    took = B.took(B.defaults(store, who, files), B.left(store))
+
+                class NothingStarts(Exception):  # the defaults would leave no leaf to start: none is taken
+                    pass
+
+                def startable(n: P.Node) -> bool:  # a condition a default set binds at start, as `start` asks
+                    try:
+                        P._keeps_standing(P.get(store, n.id), P.standing(store), files)
+                    except P.Refused:
+                        return False
+                    return True
+
+                took = None
+                with contextlib.suppress(NothingStarts), P.undoable(store, who, "board take"):
+                    said = B.took(B.defaults(store, who, files), B.left(store))
+                    if not any(startable(n) for n in starts):
+                        raise NothingStarts  # rolls the takes back: the run then says why nothing starts
+                    took = said
                 if took:
                     out(took)
             logs = r / ".graphene" / "runs"

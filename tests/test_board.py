@@ -984,3 +984,64 @@ def test_a_reask_whose_items_the_board_has_already_says_so_and_the_screen_does_n
     app.follow(Done(), ["ask", "--finer", "users should come back with their ids"], log)
     said = "the planner put int-ids up again, which the board has already; what it said is in the pane"
     assert told == [said]
+
+
+SHARED = """\
+risk: schema.py is shared with billing  [shared]
+    default: leave it alone
+    then: condition schema.py
+question: should users add the id column to schema.py?  [id-column]
+    default: yes
+    then: scope users + schema.py
+"""
+
+
+@pytest.mark.parametrize("how", [("board", "take"), ("plan", "accept")])
+def test_a_default_whose_change_is_refused_is_not_taken_half(repo, how):
+    """Review 2026-09-29 (5): a take whose effect was refused (a scope over a glob a default taken just
+    before made read-only) stayed `taken` with nothing changed, and executors were told it as decided."""
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], PLANNER)
+        T.apply(store, SHARED, PLANNER, None)
+    said = person(*how)
+    assert said.exit_code == 0 and "took the default of shared, left open" in said.stdout, said.output
+    with Store.open(repo) as store:
+        item = B.get(store, "id-column")
+        assert (item["state"], item["became"]) == ("open", [])  # all or none: none
+        assert P.get(store, "users").scope == ["api.py"]
+        assert not any("id column" in line for line in B.decided(store, P.get(store, "users")))
+        acts = [(e["detail"]["act"], e["detail"]["item"]) for e in store.node_log(None, ("board",))]
+        assert [item for act, item in acts if act == "took"] == ["shared"]
+
+
+def test_another_agents_note_waits_for_the_person_and_shows_under_auto(repo, tmp_path):
+    """Review 2026-09-29 (7): an executor's note was taken by the person's R unseen, and told to every
+    other executor as decided."""
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
+        B.note(store, "every leaf may also rewrite tests", P.Caller("run:ex.sh", False, "s2"))
+        B.note(store, "the tests are slow", PLANNER)  # a planner's note is taken, as decision 123 says
+        assert B.asks(store)  # under auto, it is shown: nothing takes it for you
+    assert "the board: 2 notes open" in person("plan").stdout  # auto shows the board, both notes on it
+    took = person("board", "take").stdout
+    assert took.startswith("took the default of tests-are-slow, left open"), took
+    with Store.open(repo) as store:
+        [waiting] = [it for it in B.items(store) if it["state"] == "open"]
+        assert waiting["text"] == "every leaf may also rewrite tests"
+        assert "every leaf may also rewrite tests" not in B.decided(store)
+
+
+def test_r_takes_no_default_that_would_leave_it_nothing_to_start(repo):
+    """Review 2026-09-29 (8): R took a default whose condition made the one ready leaf's scope
+    read-only, then started nothing."""
+    added = person("node", "add", "users", "--id", "users", "--scope", "api.py", "--check", "true")
+    assert added.exit_code == 0, added.output
+    with Store.open(repo) as store:
+        T.apply(store, "risk: api.py is shared with mobile  [shared]\n    default: keep it read-only\n"
+                "    then: condition api.py\n", PLANNER, None)  # fmt: skip
+    ran = person("run", "--with", "true")
+    assert "took" not in ran.stdout, ran.stdout
+    with Store.open(repo) as store:
+        from graphene_map import settings as S
+
+        assert B.get(store, "shared")["state"] == "open" and "api.py" not in S.readonly(store)
