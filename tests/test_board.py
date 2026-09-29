@@ -179,13 +179,14 @@ def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
     person("board", "note", "keep", "it", "short")
     person("board", "park", "empty-check")
     person("board", "drop", "paging")
-    person("plan", "accept")  # nothing it could take is left open: every answer here is the person's
+    person("plan", "accept")  # what is left open takes its default: the planner's note, told as written
     shown = person("node", "show", "users").stdout
     assert (
         "  goal:   users returns ids\n"
         "  decided:\n"
         "          which id: the row id or a new uuid? → a uuid column, added to schema.py\n"
         "          assumed: ids are integers\n"
+        "          keep the response shape\n"
         "          keep it short\n"  # the person's own note is told as written
         "  scope:  api.py, schema.py"
     ) in shown  # each decision starts in the column every other value does
@@ -845,15 +846,15 @@ def test_a_person_who_agrees_with_every_default_answers_nothing_and_accept_takes
     planned(repo, tmp_path)
     accepted = person("plan", "accept").stdout.splitlines()
     assert accepted[0] == (
-        "accepted users; took the defaults of which-id, int-ids, empty-check, paging, left open on the "
-        "board (`graphene plan undo` takes them back)"
-    )  # one line, the first, which the screen's bottom line shows; the agent's note has no default
+        "accepted users; took the defaults of which-id, int-ids, empty-check, paging, shape, left open on "
+        "the board (`graphene plan undo` takes them back)"
+    )  # one line, the first, which the screen's bottom line shows
     with Store.open(repo) as store:
-        states = {it["id"]: it["state"] for it in B.items(store)}
-        assert states == {"which-id": "taken", "int-ids": "taken", "empty-check": "taken", "paging": "taken",
-                          "shape": "open"}  # fmt: skip
+        assert {it["state"] for it in B.items(store)} == {"taken"}  # nothing is left waiting unseen
+        # walk 2026-09-29 (3, 38): the planner's note stayed open, hidden, and reached no executor
+        assert "keep the response shape" in B.decided(store, P.get(store, "users"))
         took = [e for e in store.node_log(None, ("board",)) if e["detail"]["act"] == "took"]
-        assert len(took) == 4 and all(e["detail"].get("unchanged") for e in took)
+        assert len(took) == 5 and all(e["detail"].get("unchanged") for e in took)
         accepted_by = {e["actor"] for e in store.node_log(None, ("accepted",))}
         assert {e["actor"] for e in took} == accepted_by  # as the person
         assert "sample-user-api" in {n.id for n in P.nodes(store)}  # the risk's default, applied
@@ -869,7 +870,7 @@ def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_ope
     refused = agent("board", "take")
     assert refused.exit_code == 1 and "answering the board is the person's" in refused.stderr
     took = person("board", "take")
-    assert took.stdout.startswith("took the defaults of int-ids, empty-check, paging, left open")
+    assert took.stdout.startswith("took the defaults of int-ids, empty-check, paging, shape, left open")
     assert person("board", "take").stdout == "nothing open on the board has a default to take\n"
     assert person("plan", "undo").exit_code == 0
     with Store.open(repo) as store:
@@ -878,7 +879,7 @@ def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_ope
             "int-ids", "empty-check", "paging", "shape"
         ]  # fmt: skip
     ran = person("run", "--with", "true", "--node", "users")
-    assert "took the defaults of int-ids, empty-check, paging, left open" in ran.stdout
+    assert "took the defaults of int-ids, empty-check, paging, shape, left open" in ran.stdout
     with Store.open(repo) as store:
         assert B.get(store, "which-id")["state"] == "picked"  # the person's own answer stays theirs
 
@@ -890,3 +891,21 @@ def test_a_planners_note_on_the_board_says_it_is_the_planners_not_its_command(re
     planned(repo, tmp_path)
     with Store.open(repo) as store:
         assert _words(B.get(store, "shape")) == "keep the response shape · the planner's"
+
+
+def test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf_waits(repo, tmp_path):
+    """Walk 2026-09-29 (16): R with nothing ready took the board's defaults, one of which dropped a leaf."""
+    planned(repo, tmp_path)
+    with Store.open(repo) as store:
+        B.add(store, "question", "is users needed?", PLANNER, default="no", then=["drop users"], item_id="q1")
+    accepted = person("plan", "accept").stdout.splitlines()[0]
+    assert accepted.endswith("; left for you: q1 (its default drops users)")
+    with Store.open(repo) as store:
+        assert B.get(store, "q1")["state"] == "open" and P.get(store, "users").state == P.OPEN
+        B.add(store, "risk", "the list could be long", PLANNER, default="page it", item_id="long")
+        P.edit(store, "users", {"needs": ["sample-user-api"]}, ALEX)  # waits on a proposal: nothing is ready
+    ran = person("run", "--with", "true")
+    assert "took" not in ran.stdout and "left for you" not in ran.stdout, ran.stdout
+    with Store.open(repo) as store:
+        assert B.get(store, "long")["state"] == "open" and B.get(store, "q1")["state"] == "open"
+        assert P.get(store, "users").state == P.OPEN

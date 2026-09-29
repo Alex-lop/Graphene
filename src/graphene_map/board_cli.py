@@ -228,7 +228,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         words: list[str] = typer.Argument(...),
         about: str = typer.Option(None, "--about", help="The node it is about; none is the whole plan."),
     ) -> None:
-        """Put up a note. Yours is told to the executors as written; an agent's waits for you. With
+        """Put up a note. Yours is told to the executors as written; an agent's waits for you, and
+        accepting the whole plan (or R) takes it, told as written. With
         GRAPHENE_SHAPE=note, a model then finds the leaf it constrains, and the change is put up as an
         item whose default, taken, makes it."""
         act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))

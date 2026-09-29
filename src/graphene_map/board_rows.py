@@ -98,12 +98,13 @@ def read(store, shown: bool = False) -> Board:
     `board: auto` no question open) there is no board at all, only the standing conditions, unless its
     rows are ``shown`` already: then what was answered here folds, so a key pressed once too often
     lands on the fold and not on a node."""
-    if not (shown or B.asks(store)):
+    asks = B.asks(store)
+    if not (shown or asks):
         return Board(standing=standing(store))
     groups = B.groups(store)
     folds = ("parked", "settled", "dropped")
-    return Board(
-        [it for name, group in groups if name not in folds for it in group],
+    return Board(  # asking nothing, a screen that showed rows keeps the fold alone, as a fresh one shows none
+        [it for name, group in groups if name not in folds for it in group] if asks else [],
         [it for name, group in groups if name in folds for it in group],
         standing(store),
     )
