@@ -178,3 +178,36 @@ def test_on_the_screen_a_repo_answer_says_where_and_p_asks_you_again(repo, fake)
     assert back["status"].startswith("graphene board unpark units: open units")
     with Store.open(repo) as store:
         assert B.get(store, "units")["state"] == "open"
+
+
+def test_a_protected_file_is_never_sent_and_an_answer_quoting_it_settles_nothing(repo, fake):
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / "prices.txt").write_text("prices are in cents, says the vault\n")
+    (repo / "prices-link.txt").symlink_to("secrets/prices.txt")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    planned(repo)
+    with Store.open(repo) as store:
+        from graphene_map import settings as S
+
+        S.apply(store, "protected: secrets/**\n", P.Caller("alex", True))
+    vault = "prices are in cents, says"
+    quoted = {"id": "units", "choice": "default", "file": "secrets/prices.txt", "line": vault}
+    linked = {**quoted, "id": "empty", "file": "prices-link.txt"}
+    f = fake([nano({"answers": [quoted, linked]})])
+    assert person("board", "lookup").exit_code == 0
+    sent = f.requests[0]["messages"][1]["content"]
+    assert "--- app.py" in sent and "vault" not in sent
+    assert "secrets/" not in sent and "prices-link" not in sent  # nor where a link reaches it
+    with Store.open(repo) as store:
+        assert {it["state"] for it in B.items(store)} == {"open"}
+
+
+def test_a_question_with_no_default_is_not_taken_by_a_default_from_the_repo(repo, fake):
+    planned(repo)
+    with Store.open(repo) as store:
+        B.add(store, "question", "which level?", P.Caller("planner:nemotron", False, "s"), item_id="level")
+    said = {"id": "level", "choice": "default", "file": "app.py", "line": "return int(price * 100)  # cents"}
+    fake([nano({"answers": [said]})])
+    assert person("board", "lookup").exit_code == 0
+    with Store.open(repo) as store:
+        assert B.get(store, "level")["state"] == "open"

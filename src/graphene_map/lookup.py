@@ -4,7 +4,8 @@ Nemotron Nano reads each open question on the board beside the repository's file
 names first) and says, for each, whether a file already answers it: which choice the repository makes
 (the default, or option N), the file, and one line of it, copied. Graphene keeps an answer only when
 that line is in that file as copied (spaces aside), the file is one it sent, and the choice is one the
-question offers; otherwise the question stays open. Nothing else is checked, and nothing the model
+question offers; otherwise the question stays open. A protected file (`graphene config`) is never
+sent. Nothing else is checked, and nothing the model
 wrote reaches the plan: a kept answer is the question's own default or option.
 
 A kept answer settles the item by the person's command, marked "from the repo: FILE:LINE", and is told
@@ -23,6 +24,7 @@ from pathlib import Path
 from . import board as B
 from . import cover
 from . import plan as P
+from . import settings as S
 
 ACTOR = "lookup:nemotron"
 FLAG = "lookup"
@@ -80,6 +82,21 @@ def files(root: Path, asked: list[dict], tracked: list[str]) -> dict[str, str]:
     return out
 
 
+def readable(root: Path, tracked: list[str], hidden: list[str]) -> list[str]:
+    """The tracked files Nano may read: none a protected glob covers (`graphene config`), by its own
+    path or by where a link reaches, and none that reaches outside the repository. Never sent, so
+    never quoted back as an answer."""
+    top, out = root.resolve(), []
+    for f in tracked:
+        try:
+            reached = str((root / f).resolve().relative_to(top))
+        except (OSError, ValueError):
+            continue
+        if not (P.covers(hidden, f) or P.covers(hidden, reached)):
+            out.append(f)
+    return out
+
+
 def _size(path: Path) -> int:
     try:
         return path.stat().st_size
@@ -107,7 +124,7 @@ def kept(item: dict, answer: dict, sent: dict[str, str]) -> tuple[str, int | Non
     path, quoted = answer.get("file"), _flat(str(answer.get("line") or ""))
     if path not in sent or len(quoted) < LEAST:
         return None
-    if choice == "default":
+    if choice == "default" and (item["default"] or item["then"]):  # a question with no default has none
         state, option = "taken", None
     elif choice.removeprefix("option ").isdigit() and 1 <= int(choice[7:]) <= len(item["options"]):
         state, option = "picked", int(choice[7:])
@@ -128,7 +145,7 @@ def lookup(store, root: Path, say: Callable[[str], None] = print) -> list[dict]:
     if not asked:
         raise P.Refused("no question is open on the board: nothing to look up")
     tracked = P.tracked(root)
-    sent = files(root, asked, tracked)
+    sent = files(root, asked, readable(root, tracked, S.protected(store)))
     say = cover.plain(say)
     model = cover._nano()
     ask = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": shown(asked, sent)}]
