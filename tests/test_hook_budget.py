@@ -185,7 +185,7 @@ try:
     app()
 except SystemExit:
     pass
-COSTLY = {"subprocess", "tempfile", "traceback", "uuid", "shlex", "threading", "typer", "rich", "click"}
+COSTLY = {"dataclasses", "subprocess", "tempfile", "traceback", "uuid", "shlex", "threading", "typer", "rich"}
 names = [m.removeprefix("graphene_map.") for m in sys.modules if m.startswith("graphene_map.") or m in COSTLY]
 print("\\n" + json.dumps({**work, "modules": sorted(names)}))
 """
@@ -193,8 +193,8 @@ print("\\n" + json.dumps({**work, "modules": sorted(names)}))
 # The modules every event loads to record it: the entry point, the hook, the store and its records.
 RECORD = {"cli", "hooks", "model", "store"}
 # ...and what the gate adds, when an event can be answered (hooks.gated): the plan, and the standard
-# modules the plan needs to run a check.
-GATE = RECORD | {"gate", "plan", "shlex", "subprocess", "threading"}
+# modules the plan needs for its nodes and to run a check.
+GATE = RECORD | {"gate", "plan", "dataclasses", "shlex", "subprocess", "threading"}
 # A plan in force: the person's standing paths are read on every write, and a Bash call is parsed.
 IN_FORCE = GATE | {"settings", "board"}
 
