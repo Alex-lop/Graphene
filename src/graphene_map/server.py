@@ -20,6 +20,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from . import board as B
+from . import board_rows as R
 from . import plan as P
 from . import settings
 from .commits import refresh_commits
@@ -89,6 +91,21 @@ def runs(store: Store) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def board(store: Store) -> dict:
+    """The board as the terminal reads it (board_rows): each open item with its kind as a verb, its
+    default, options and what it is about; what is settled, parked or dropped, with the fold row's
+    count; and the standing conditions' one line. The page shows it and answers nothing."""
+
+    def item(it: dict) -> dict:
+        return {"id": it["id"], "word": R.word(it), "text": it["text"], "default": it["default"],
+                "options": [o["text"] for o in it["options"]], "about": it.get("about"),
+                "by": P.said_by(it["by"]), "said": B.said(it)}  # fmt: skip
+
+    shown = R.read(store)
+    return {"open": [item(it) for it in shown.open], "folded": [item(it) for it in shown.folded],
+            "counts": R.counts(shown), "standing": shown.standing}  # fmt: skip
+
+
 def payload(
     store: Store,
     session_ids: list[str],
@@ -108,6 +125,7 @@ def payload(
         "writable": writable,
         "token": token,
         "settings": settings.for_screen(store),  # the standing conditions, for the root row
+        "board": board(store),
     }
     return (
         '{"runs": '

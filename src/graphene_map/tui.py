@@ -402,7 +402,7 @@ class Help(ModalScreen[None]):
 
         width = self.app.size.width
         said = self.app.read(lines_for_screen, []) if hasattr(self.app, "read") else []
-        groups = help_groups(said)
+        groups = getattr(self.app, "help_groups", help_groups)(said)  # a replay's: its own keys first
         two = width >= 2 * HELP_WIDE + 10
         column = HELP_WIDE if two else max(width - 8, 30)
         with VerticalScroll():
@@ -413,7 +413,8 @@ class Help(ModalScreen[None]):
                     yield Static(help_text(groups[5:], column))
                 else:
                     yield Static(help_text(groups, column))
-            end = f"{HELP_END} {said[-1]}." if said else HELP_END
+            end = getattr(self.app, "HELP_END", HELP_END)
+            end = f"{end} {said[-1]}." if said else end
             yield Static(Text("\n".join(textwrap.wrap(end, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
@@ -852,8 +853,9 @@ class Watch(App):
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
-        if self.counts["finished"]:  # what `graphene` says: the status line's, not the goal row's
+        if self.counts["finished"]:  # what `graphene` says; the goal row reads done, as a sub-goal does
             self.counts["done"] += ", finished"
+            goal_word = "done"
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
         shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine] + self.board.shape()
         tree = self.tree
@@ -1221,13 +1223,14 @@ class Watch(App):
         you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
         first = "on" if c["first"] else "off"
+        spent = money(c["spent"]) if c.get("spent") is not None else ""  # the plan's: planner and leaves
         long = [
             (f"waiting on you: {c['you']}{board}", you),
             (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             (c["done"], ""),
             (f"plan first: {first} (P)", ""),
-            *([(f"{money(c['spent'])} at list price", "dim")] if c.get("spent") is not None else []),
+            *([(f"the plan: {spent} at list price", "dim")] if spent else []),
         ]
         short = [
             (f"you: {c['you']}{board}", you),
@@ -1235,7 +1238,7 @@ class Watch(App):
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             (c["done"], ""),
             (f"plan first: {first}", ""),
-            *([(money(c["spent"]), "dim")] if c.get("spent") is not None else []),
+            *([(f"bill {spent}", "dim")] if spent else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
@@ -2021,7 +2024,8 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     spent = bill(store.node_log(node.id, ("usage",)))
     if spent:
         models = ", ".join(m.rsplit("/", 1)[-1] for m in spent["models"])
-        pane.field("bill", f"${spent['dollars']:.4f} at list price · {spent['calls']} calls · {models}")
+        calls = f"for this leaf's {spent['calls']} calls"
+        pane.field("bill", f"${spent['dollars']:.4f} at list price {calls} · {models}")
     if word in ("done", "review"):
         ended = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
         pane.field("changed", ", ".join(ended.get("changed") or []) or "nothing on record")

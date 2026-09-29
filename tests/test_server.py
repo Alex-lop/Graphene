@@ -298,3 +298,50 @@ def test_every_operation_the_page_can_post_is_one_function_in_the_plan(served):
     assert set(ui.OPS) == {
         "add", "set", "drop", "accept", "signoff", "reopen", "pause", "resume", "ack", "archive"
     }  # fmt: skip
+
+
+def test_the_page_carries_the_board_and_the_standing_conditions_as_the_terminal_reads_them(repo):
+    """walks.md alex 11, first 5, judge 10: the exported page showed no board, no standing condition and
+    no `decided:` line. The page is read-only on the board: it carries what the store holds, in the
+    terminal's words (board_rows): open items with their kind, default and options, the rest folded
+    into one count, and the conditions' one line."""
+    from graphene_map import board as B
+    from graphene_map import settings as S
+
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    alex, planner = P.Caller("alex", True), P.Caller("planner:planner.py", False, "s1")
+    with Store.open(repo) as store:
+        S.apply(store, "protected: vendor/**\nnever: a new dependency\n", alex)
+        P.propose(store, [node(id="reader")], alex)
+        B.add(store, "question", "are prices in cents?", planner, default="yes, whole numbers",
+              options=[{"text": "no, dollars"}], about="reader", item_id="cents")  # fmt: skip
+        B.add(store, "risk", "legacy skips the zero rule", planner, default="leave legacy alone",
+              then=["condition legacy/**"], item_id="legacy")  # fmt: skip
+        B.add(store, "assume", "the summary row is not a product", planner, item_id="summary")
+        B.add(store, "leave out", "a streaming parser", planner, item_id="stream")
+        B.add(store, "note", "keep the JSONL shape", planner, item_id="shape")
+        B.take(store, "legacy", alex)
+        B.take(store, "summary", alex)
+        B.park(store, "stream", alex)
+        B.drop(store, "shape", alex)
+        page = ui.export_html(store, [SID])
+    start = page.index(ui.DATA_TAG) + len(ui.DATA_TAG)
+    shown = json.loads(page[start : page.index("</script>", start)].replace("<\\/", "</"))["plan"]
+    board = shown["board"]
+    assert [(it["id"], it["word"], it["text"]) for it in board["open"]] == [
+        ("cents", "asks", "are prices in cents?")
+    ]
+    [cents] = board["open"]
+    assert (cents["default"], cents["options"], cents["about"]) == (
+        "yes, whole numbers", ["no, dollars"], "reader"
+    )  # fmt: skip
+    assert cents["by"] == "the planner (graphene ask)"  # in a person's words, never `planner:…'s`
+    assert board["counts"] == "2 settled · 1 parked · 1 dropped"  # the terminal's fold row
+    assert [(it["id"], it["word"]) for it in board["folded"]] == [
+        ("stream", "parked"), ("legacy", "taken"), ("summary", "taken"), ("shape", "dropped")
+    ]  # fmt: skip
+    standing = "conditions: protected vendor/** · read-only legacy/** · never a new dependency"
+    assert board["standing"] == standing
+    [reader] = shown["nodes"]
+    assert reader["decided"] == ["risk: legacy skips the zero rule → leave legacy alone",
+                                 "assumed: the summary row is not a product"]  # fmt: skip

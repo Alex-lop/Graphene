@@ -35,6 +35,7 @@ from dataclasses import asdict, dataclass, field
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
 from .node_record import forks
 
@@ -106,6 +107,7 @@ class ViewNode:
     waits: list[str]
     log: list[dict]
     forks: list[dict]  # its last attempt's forks, as executor.fork_and_pick logged them (FORK_KEYS)
+    decided: list[str]  # what the board decided that its executor is told: board.decided
     lane: str
     column: int
     row: int
@@ -489,7 +491,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
             view.loose = P.unowned(store, checkout)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
             view.loose = []  # not a checkout git can read: nothing to compare
-    runs, waiting = P.forecast(live)
+    runs, waiting = P.forecast(live, back)
     view.forecast = {
         "runs": [n.id for n in runs],
         "waits": [{"id": n.id, "why": why} for n, why in waiting],
@@ -543,6 +545,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
                 waits=came_back(store, n, export) + waits(n, by_id, under, back),
                 log=node_log(store, n.id, export),
                 forks=_forks(store, n, export),
+                decided=B.decided(store, n),
                 lane=owner,
                 column=col,
                 row=row,

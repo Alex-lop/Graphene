@@ -295,6 +295,20 @@ svg [hidden] { display: none; }
 .plan-strip .waits { display: block; }
 .plan-strip .acts { margin: 8px 0 0; }
 
+/* the board, read-only: the conditions' line, the open items one a line, the rest folded into a count */
+.plan-strip .board { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; }
+.plan-strip .board p { margin: 4px 0 0; font-size: 12px; }
+.plan-strip .board ul { display: block; }
+.plan-strip .board li { display: block; padding: 3px 0; }
+.plan-strip .board .kind { font-weight: 600; margin-right: 6px; color: var(--ask); }
+.plan-strip .board-fold .kind { color: var(--pass); font-weight: 500; }
+.plan-strip .board b { color: var(--muted); font-weight: 500; }
+.plan-strip .board .detail { display: block; font-size: 12px; padding-left: 16px; }
+.plan-strip .board-fold { margin-top: 4px; }
+.plan-strip .board-fold summary { cursor: pointer; color: var(--pass); }
+.plan-strip .board-fold li { padding-left: 16px; color: var(--muted); }
+.inspector .decided { margin: 0; padding: 0; list-style: none; }
+
 /* the plan's goal: the root of the tree, in the person's words, beside the repo it belongs to */
 .goal { margin: 0; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

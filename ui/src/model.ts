@@ -312,7 +312,9 @@ const SETTING: Record<string, Layout> = { outline: "outline", tree: "tree", dag:
 export const shownLayout = (plan: Plan, mode: Mode, room: number): { layout: Layout; mode: "auto" | Layout; why: string } => {
   const [auto, because] = layoutFor(plan, room);
   const set = SETTING[plan.view];
-  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${plan.view}` };
+  // the terminal calls the graph `dag` (graphene watch --view dag): said once, beside the page's word
+  const named = set === "graph" && plan.view !== "graph" ? `the graph (${plan.view} in graphene watch)` : plan.view;
+  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${named}` };
   if (mode === null || mode === "auto") return { layout: auto, mode: "auto", why: `auto chose the ${auto}: ${because}` };
   return { layout: mode, mode, why: "your choice, on this page only" };
 };

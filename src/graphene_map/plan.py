@@ -452,9 +452,13 @@ def may_take(node: Node, who: Caller) -> bool:
     return node.owner == AGENT if not who.person else node.owner in (AGENT, who.name)
 
 
-def waits_on_person(node: Node, by_id: dict[str, Node]) -> list[str]:
+def waits_on_person(
+    node: Node, by_id: dict[str, Node], back: set[str] | frozenset[str] = frozenset()
+) -> list[str]:
     """Why an agent cannot get to this node without a person, as readable reasons; empty when it
-    can. A person's node, a sign-off and an unaccepted proposal each stop everything downstream."""
+    can. A person's node, a sign-off, an unaccepted proposal and a leaf that came back (``back``) each
+    stop everything downstream. A proposal waits on its own acceptance alone: accepting it accepts
+    the proposals above it."""
     reasons: list[str] = []
     seen: set[str] = set()
     under = kids(list(by_id.values()))
@@ -465,6 +469,8 @@ def waits_on_person(node: Node, by_id: dict[str, Node]) -> list[str]:
         seen.add(n.id)
         if n.state == PROPOSED:
             reasons.append(f"{n.id} is a proposal nobody has accepted")
+        elif n.id in back:
+            reasons.append(f"{n.id} came back to you")
         elif under.get(n.id):
             for child in under[n.id]:
                 walk(child)
@@ -478,23 +484,26 @@ def waits_on_person(node: Node, by_id: dict[str, Node]) -> list[str]:
             if need in by_id:
                 walk(by_id[need])
 
-    reasons += [
-        f"{a.id} is a proposal nobody has accepted" for a in above(node, by_id) if a.state == PROPOSED
-    ]
+    if node.state != PROPOSED:
+        reasons += [
+            f"{a.id} is a proposal nobody has accepted" for a in above(node, by_id) if a.state == PROPOSED
+        ]
     walk(node)
     return reasons
 
 
-def forecast(nodes: list[Node]) -> tuple[list[Node], list[tuple[Node, list[str]]]]:
+def forecast(
+    nodes: list[Node], back: set[str] | frozenset[str] = frozenset()
+) -> tuple[list[Node], list[tuple[Node, list[str]]]]:
     """What an unattended run will do: the leaves agents can reach by themselves, in order, and the
     ones that will sit waiting, each with who it waits for. Said before the run, so that a plan that
-    stops at a person's node at 01:00 surprises nobody at 08:00."""
+    stops at a person's node at 01:00 surprises nobody at 08:00. ``back``: the leaves that came back."""
     by_id = {n.id: n for n in nodes}
     runs, waits = [], []
     for n in order(leaves(nodes)):
         if n.state in (DONE, *GONE):
             continue
-        why = [f"{n.id} waits for a sign-off"] if n.state == REVIEW else waits_on_person(n, by_id)
+        why = [f"{n.id} waits for a sign-off"] if n.state == REVIEW else waits_on_person(n, by_id, back)
         if why:
             waits.append((n, why))
         else:
@@ -1919,8 +1928,9 @@ def finish(
     checkout: str | Path | None = None,
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
-    (or waiting for its sign-off). A person may overrule either with a reason, and the log says so."""
-    now = now or _now()
+    (or waiting for its sign-off). A person may overrule either with a reason, and the log says so.
+    Unless ``now`` is given, what the check decides is stamped when the check has run."""
+    stamped, now = now is not None, now or _now()
     node = get(store, node_id)
     began = node.started_at  # the hold this `done` answers for: it may be let go, and taken again, meanwhile
     if kids(nodes(store)).get(node.id):
@@ -1993,6 +2003,7 @@ def finish(
             None,
             {"command": node.check, "output": output},
         )
+        now = now if stamped else _now()  # it finishes once its check has passed, not when `done` was said
     if len(theirs) < len(aside):
         raise _stray(store, node, who, now, [p for p in stray if p not in theirs])
     changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names

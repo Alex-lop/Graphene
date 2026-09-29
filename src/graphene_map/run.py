@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -59,11 +60,19 @@ def named(spec: str | None) -> str:
     return {"": DEFAULT_WITH, "claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
 
 
-def label(template: str) -> str:
+INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
+
+
+def label(template: str, own: str = "graphene_map.executor") -> str:
     """Who the run's executor is, in the plan's log: `run:<this>`. The command's name, never where it
-    lives: the label is on the page an export publishes."""
+    lives: the label is on the page an export publishes. A script run by an interpreter is named by the
+    script (`python3 bin/executor.py` is `executor.py`); Graphene's own (``own``) is `nemotron`."""
     argv = shlex.split(template)
-    return "nemotron" if "graphene_map.executor" in argv else Path(argv[0]).name
+    if own in argv:
+        return "nemotron"
+    ran = INTERPRETER.fullmatch(Path(argv[0]).name)
+    script = [a for a in argv[1:] if not a.startswith("-")] if ran else []
+    return Path((script or argv)[0]).name
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
 GRACE = 10  # seconds an executor is given to end after TERM, before KILL

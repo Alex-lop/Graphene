@@ -444,3 +444,39 @@ judge (walker 3)
 - **22:** fixed (7).
 - **23, 24:** left, polish.
 - **25:** the cursor going off screen after the board empties is likely fixed by commit 1 (the cursor now lands on the fold, near the top), but I didn't test that case. The repeated "`done` refused over" line in `node show` is left.
+
+## First light's verdicts: the page and the replay
+
+Lane WALKS-PAGE of the first-light run (branch `fl-walks-page`) took every finding still open whose surface is the page (`graphene ui`, `--export`, `ui/`), the `graphene demo` replay, or a doc wording a walker filed. Each was reproduced first: the page from one fixture repo (`docs/test/make_task.py feeds`, its plan and a board in every state built through the library with a person's caller, a leaf done and one that came back), exported and read in Playwright at 1280 and 390 wide; the replay in a Textual pilot and at 80x24 in tmux. Each fix has a test that failed on the code before it. Nothing live ran. Screens before and after: `screens/first-light/page/`.
+
+25 findings: 11 fixed, 4 fixed with a part closed, 4 fixed on the page with the terminal's part left to lane WALKS-TUI, 2 with nothing to fix on the page (the terminal's part is WALKS-TUI's), 2 not the page's at all (WALKS-TUI's), 2 README wordings proposed to the coordinator, who owns the README.
+
+- **alex 9:** fixed (21e25bc, ad22f52). A stand-in's replay names the stand-in wherever the recording named Nemotron: rows `run:stand-in` and `planner:stand-in`, the record `stand-in, started by graphene run`, the model `stand-in-Nano`. `--once` heads its last rows "the end of the run's log", not "just now". The dates: closed. The top line gives the local day (25 September in New York), and the rows are UTC with a `Z`.
+- **alex 10:** fixed (21e25bc). Each change stays on the screen at least 2 s (the replay takes 22 s, not 3.7). Space pauses and plays on, `.` steps one change, `r` plays it again, and `--speed N` divides the pace. The top line says `paused at 3 of 12`. `graphene demo --once` is unchanged for CI and the wheel smoke test.
+- **alex 11:** fixed (0100c78). The page shows the board (each open item with its kind, default, options, what it is about and who put it up; settled, parked and dropped folded into the terminal's one count, which opens), the standing conditions' one line, and each leaf's `decided:` lines in its detail.
+- **alex 12:** fixed for the order (84611ee): `finished` is stamped once the check has passed, so the record reads `check_passed` then `finished`, in time order. The two `check_failed` rows per attempt are closed: by design, the executor's own `done` runs the check and then the run does, and each row names who ran it.
+- **alex 13:** fixed (0100c78, c131f54). Read-only is said once: a badge, and one sentence on the overview saying where the plan changes. The four disabled rows are gone. The record's reason is in words on the overview, not only in a hover title. A card's second line is its id, so it is not cut. `0 at once` now reads `0 at once: no leaf can start now`.
+- **alex 16:** nothing to fix on the page. The page puts the goal in its own box, and the conditions in the strip above the drawing. The terminal's tree header is WALKS-TUI's.
+- **alex 20:** the page's part fixed (0100c78). The header reads `3 leaves, 1 done, 0 running`, as bare `graphene` does, and the overview counts leaves by state. Watch's `0/0 done` is WALKS-TUI's.
+- **alex 21:** fixed (7d3cb6d). A planner or executor run by an interpreter is named by its script (`planner:planner.py`, `run:executor.py`), on the board, in the log and on the page. The settings line in `?` help, which shows the whole command cut, is first 19 and WALKS-TUI's.
+- **alex 7, the README's part:** proposed to the coordinator. README line 70 still says `? for the rest`. On a node, `?` asks the planner and `? ?` is help (decision 88).
+- **first 5:** fixed (0100c78). The page counts the board apart (`waiting on you (1 + 2 on the board)`) and shows its items. "Left alone, agents can reach" no longer names a leaf that came back, or what waits on it (`plan.forecast` takes the leaves that came back). Read-only is said once.
+- **first 7:** fixed (21e25bc), as alex 9.
+- **first 8:** partly fixed (21e25bc). The pace, the step and `--speed` are fixed. The paragraph that was asked shows before the proposal, and the proposed tree stays on screen. Pruning and the board: closed. The shipped recording (25 September) predates the board, and its scripted planner's tree is accepted whole. A new recording replaces it (`RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh`, lane B's or Alex's to make).
+- **first 11, the README's part:** proposed to the coordinator. The README's first 60 lines name `graphene demo` but not `graphene init`.
+- **first 16, 19:** not the page's (the terminal's key line and `?` help at 80x24): WALKS-TUI's.
+- **first 20:** the demo's goal glyph fixed (21e25bc). The goal word was `2/2 done`, which always maps to ○. A finished plan's goal row now reads `✓ … done`, in watch too. The note on the sibling's `check true` is WALKS-TUI's.
+- **first 21:** fixed (21e25bc). `demo --once` fits `$COLUMNS`: its top line keeps the whole pieces that fit (78 characters at 80), and each log row is cut with `…`.
+- **judge 4:** fixed (21e25bc) as alex 10. The opening "Nothing is planned here yet" is replaced by the paragraph. Pruning and the board are closed as in first 8.
+- **judge 5:** fixed. The labels and the fixture's model ids are as alex 9 (21e25bc). The two dollar figures say what each covers (ad22f52). The status line reads `the plan: $0.0019 at list price`, and a leaf's pane `bill $0.0003 at list price for this leaf's 3 calls`.
+- **judge 10:** fixed for the board, the conditions and the record's reason (0100c78). The archived run: closed. The page draws the plan in force, as `graphene` and `watch` do; `plan archive` puts nodes away, and `graphene plan log` keeps their history.
+- **judge 11:** fixed (0100c78, c131f54).
+  - Views: a repository whose view setting is the terminal's `dag` reads "this repo's view setting: the graph (dag in graphene watch)". The terminal's own word is WALKS-TUI's.
+  - Wait lines: a proposal waits on its own acceptance alone, and each line names its leaf once (`x will wait: it is a proposal nobody has accepted`).
+  - At once: it says `, once accepted` when it counts proposals, so it no longer reads against "can reach: nothing".
+  - Cutting: the cards and the tree's goal box (two lines) are no longer cut at 1200px.
+  - The footer sentence is replaced.
+- **judge 17:** the page's part fixed (7d3cb6d, 0100c78). The page says who put an item up in a person's words ("the planner (graphene ask)"), and a script planner is `planner.py`, never `python3`. The owner suffix on watch's board rows is WALKS-TUI's and lane BOARD's.
+- **judge 18:** nothing to fix on the page. The page's fold lists each item as the executors are told it, without the terminal pane's sentence. The pane is WALKS-TUI's.
+- **judge 23:** the page's part fixed (0100c78). The page reads `waiting on you (1 + 2 on the board)` and counts leaves as the shell does. Watch's `you: 1` and `0/0 done` are WALKS-TUI's.
+- **judge 24:** the page's part fixed (0100c78): it names `dag` as the graph. The terminal's views are WALKS-TUI's.

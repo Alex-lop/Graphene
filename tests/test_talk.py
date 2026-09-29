@@ -83,7 +83,7 @@ def test_why_lands_on_the_board_as_the_planners_note_about_the_node(repo, talker
     with Store.open(repo) as store:
         [note] = B.items(store)
         assert (note["id"], note["kind"], note["about"], note["by"], note["state"]) == (
-            "why-ids", "note", "ids", "planner:python", "open"
+            "why-ids", "note", "ids", "planner:talker.py", "open"
         )  # fmt: skip
         assert B.decided(store, P.get(store, "ids")) == []  # the planner's words bind nobody until taken
     board = person("board").stdout  # in the store, visible later, and whole
@@ -116,7 +116,7 @@ def test_merge_proposes_one_leaf_and_the_board_asks_taking_it_drops_them_as_one_
             "drop ids",
         ]  # docs needs ids: it goes first, or that drop is refused
         assert q["options"] == [{"text": "keep them apart", "then": ["drop both"]}]
-        assert (q["about"], q["by"], P.get(store, "both").state) == ("both", "planner:python", P.PROPOSED)
+        assert (q["about"], q["by"], P.get(store, "both").state) == ("both", "planner:talker.py", P.PROPOSED)
         before = [P.to_dict(n) for n in P.nodes(store)]
     taken = person("board", "take", "merge-ids-docs")
     assert taken.exit_code == 0, taken.output
@@ -196,9 +196,9 @@ def test_changes_since_seen_are_others_and_only_after_the_mark(repo, talker):
     said = person("plan", "changes").stdout.splitlines()
     assert said[0] == "2 changed since you last looked (graphene plan seen marks them seen):"
     assert re.fullmatch(
-        r"  \d\d:\d\d  both: proposed by planner:python: users return ids, documented", said[1]
+        r"  \d\d:\d\d  both: proposed by planner:talker.py: users return ids, documented", said[1]
     )
-    assert said[2].endswith("both: the board by planner:python: put up merge-ids-docs: merge ids and docs "
+    assert said[2].endswith("both: the board by planner:talker.py: put up merge-ids-docs: merge ids and docs "
                             "into both?")  # fmt: skip
     with Store.open(repo) as store:
         assert talk.marks(store, "alex") == ({"both": "+"}, 2)

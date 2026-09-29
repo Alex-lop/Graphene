@@ -426,17 +426,24 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(f"  (it said: {was})")
         said_where()
 
-    def print_once(who: P.Caller, everything: bool, archive: bool = True) -> None:
-        """`graphene watch --once`: the plan, then what just happened."""
+    def print_once(who: P.Caller, everything: bool, archive: bool = True, recent_as: str = "just now",
+                   wide: int | None = None) -> None:  # fmt: skip
+        """`graphene watch --once`: the plan, then what just happened (``recent_as``), each of its rows cut
+        to ``wide`` columns when given."""
+        from rich.text import Text
+
         with open_store(root()) as store:
             lines = plan_lines(store, who, everything, archive)
             recent = store.node_log()[-6:]
         for line in lines:
             out(line)
         if recent:
-            out("\njust now")
+            out(f"\n{recent_as}")
             for e in recent:
-                out(log_line(e, with_node=8))
+                said = Text(log_line(e, with_node=8))
+                if wide:
+                    said.truncate(wide, overflow="ellipsis")
+                out(said.plain)
 
     def known_view(name: str) -> None:
         if name != "auto" and name not in V.VIEWS:
@@ -519,12 +526,17 @@ def register(cli: typer.Typer, root, open_store, fail):
         record: Path = typer.Option(
             None, "--record", help="Record this repository's plan into this file as a run goes, until Ctrl-C."
         ),
+        speed: float = typer.Option(
+            1.0, "--speed", min=0.1, max=20.0, help="How many times faster than the replay's pace: 2, 0.5."
+        ),
     ) -> None:
-        """A recorded run, replayed in `graphene watch` exactly as it happened, the top line saying it is a
-        replay and whether a model or a scripted stand-in made it. It needs no key, no network and no
-        Docker, and nothing in it runs: a key that would change the plan or start anything says so. `--once`
-        prints where it ends. `--record FILE` makes one from the repository it is started in: the plan's
-        store over the run, never a key or a path of yours."""
+        """A recorded run, replayed in `graphene watch` change by change, the top line saying it is a
+        replay and whether a model or a scripted stand-in made it. Each change stays on the screen at least
+        two seconds, and a wait over three is cut to three and said. Space pauses and plays on, `.` shows
+        the next change, `r` plays it again. It needs no key, no network and no Docker, and nothing in it
+        runs: a key that would change the plan or start anything says so. `--once` prints where it ends.
+        `--record FILE` makes one from the repository it is started in: the plan's store over the run,
+        never a key or a path of yours."""
         import contextlib
         import tempfile
 
@@ -538,7 +550,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
         try:
-            head, lines = D.load(recording or D.SHIPPED)
+            head, lines = D.load(recording or D.SHIPPED, speed)
         except (OSError, ValueError, KeyError) as no:
             fail(f"cannot replay {recording or D.SHIPPED}: {no}", 1)
         with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
@@ -550,9 +562,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                 D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
                 return
             D.last_frame(repo, lines)
-            out(" · ".join(text for text, _ in D.banner(head, D.ENDED)))
+            wide = shutil.get_terminal_size().columns
+            out(D.fit(D.banner(head, D.ENDED), wide).plain)  # whole pieces, as the screen's top line
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
-                print_once(P.caller(), everything=False, archive=False)
+                print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
 
     @plan_cli.command()
     def propose(

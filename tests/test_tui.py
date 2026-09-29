@@ -1425,8 +1425,9 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
         store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
                        {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
     seen, _ = watch(repo, ["j"], size=(120, 36))
-    assert seen["status"].splitlines()[0].endswith("$0.03 at list price")  # the planner's and the leaf's
-    assert "bill $0.0123 at list price · 6 calls · Nemotron-3-Nano-fake" in " ".join(seen["detail"].split())
+    assert seen["status"].splitlines()[0].endswith("the plan: $0.03 at list price")  # the planner's too
+    leaf = "bill $0.0123 at list price for this leaf's 6 calls · Nemotron-3-Nano-fake"
+    assert leaf in " ".join(seen["detail"].split())
 
 
 # -- the forks, the step up and the sandbox (what the Nemotron executor writes on the leaf's log) -----
@@ -1656,7 +1657,7 @@ def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bil
         seen, _ = at(repo, "greet", size)
         flat = " ".join(seen["detail"].split())
         assert "sandbox made, image 3f2a1b9c0d4e · 12 operations · 16.2 s in its 2 forks" in flat, size
-        assert "bill $0.0031 at list price · 7 calls · Nemotron-3-Nano-fake" in flat
+        assert "bill $0.0031 at list price for this leaf's 7 calls · Nemotron-3-Nano-fake" in flat
     ended = made | {"ops": 14, "seconds": 23.4}  # a leaf that did not fork: its row at the attempt's end
     rows = [{"kind": "started", "detail": {}}, {"kind": "placement", "detail": made},
             {"kind": "placement", "detail": ended}]  # fmt: skip

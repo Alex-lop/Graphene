@@ -125,7 +125,7 @@ def test_the_export_of_a_parallel_run_carries_the_tree_and_each_leafs_state_and_
     assert [kind for kind, _ in csv][:3] == ["added", "started", "attempt"]
     # held by the executor `run` started, named by its command and not by where it lives on this disk,
     # and by that one name in its own acts (its refused `done`) as in the run's
-    held = f"run:{Path(sys.executable).name}"
+    held = "run:executor.py"  # named by its script, not by the python that runs it
     assert at["csv-reader"]["log"][1]["actor"] == at["csv-reader"]["executor"] == held
     assert {e["actor"] for e in at["csv-reader"]["log"] if e["actor"].startswith("run:")} == {held}
     assert ("refused", "NOTES.md") in csv
