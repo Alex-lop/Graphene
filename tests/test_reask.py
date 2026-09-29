@@ -254,6 +254,4 @@ def test_a_leaf_an_answer_put_beside_a_dropped_leaf_is_put_beside_the_same_leaf_
     now = proposed(repo)
     leaf, sample = now["users returns ids"], now["a sample user"]
     assert sample.parent == leaf.parent == now["the users API"].id  # beside the new leaf, in the new tree
-    assert f"carried: proposed {sample.id} beside {leaf.id}, a leaf, under {leaf.parent} (from id-type)" in (
-        again.output
-    )
+    assert f"carried: proposed {sample.id} beside {leaf.id}, a leaf, under {leaf.parent};" in again.output

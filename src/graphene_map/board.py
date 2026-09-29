@@ -243,9 +243,10 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         if node_id and not any(n.parent == node_id and n.state not in P.GONE for n in everything):
             parent = P.get(store, node_id).parent  # a leaf stays a leaf: its work is never left to no one
         P.propose(store, [{"id": leaf, "title": what, "parent": parent}], who, now, files, proposals={leaf})
+        empty = f"; it has no scope or check yet (`graphene node set {leaf}`)"  # to fill in: said, not found
         if parent != node_id:
-            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
-        return f"proposed {leaf} under {node_id or 'the goal'}"
+            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}{empty}"
+        return f"proposed {leaf} under {node_id or 'the goal'}{empty}"
     wrong = P.miscased(what, files or [])
     if wrong:
         raise P.Refused(f"then: {line}: {wrong}; spell it as git does")

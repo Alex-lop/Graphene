@@ -299,3 +299,17 @@ def test_a_script_planner_or_executor_is_named_by_its_script_not_its_interpreter
     assert A.label("bash ./plan.sh") == "plan.sh"
     assert A.label("claude -p --tools Read") == "claude" and run.label("codex exec") == "codex"
     assert A.label(A.named("nemotron")) == "nemotron" and run.label(run.named("nemotron")) == "nemotron"
+
+
+ALWAYS_BAD = (
+    'print("```plan")\nprint("- ids  [ids]\\n    scope: api.py\\n    signoff: perhaps")\nprint("```")\n'
+)
+
+
+def test_a_refusal_the_planner_repeats_is_said_to_the_person_once(repo, tmp_path, monkeypatch):
+    """Walk 2026-09-28 (first 9): a refusal written back to the planner was shown to the person after
+    each try and again in the last line, the same words three times."""
+    said = person("ask", "ids", "--with", planner(tmp_path, ALWAYS_BAD, monkeypatch))
+    assert said.exit_code == 1
+    assert said.output.count("signoff is yes or no") == 1, said.output
+    assert "no proposal after 2 tries; nothing was added (each was refused as above)" in said.output

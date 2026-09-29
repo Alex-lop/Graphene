@@ -392,6 +392,7 @@ def ask(
         asked = prompt = prompt.replace(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
+    before = None
     for attempt in range(1, ATTEMPTS + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
@@ -439,7 +440,11 @@ def ask(
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
-        say(refusal)
+        if attempt < ATTEMPTS:  # the last try's refusal is said once, in the line that ends the ask
+            say(refusal)
+            before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
+    if refusal == before:
+        raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above)")
     raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added. {refusal}")

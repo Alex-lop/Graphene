@@ -215,7 +215,7 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
     """The item under the cursor, whole: its words, its kind, who put it up, its default and each
     option with its effects, what it is about; settled, what was decided and what it changed. On the
     fold row, what was decided, one line each."""
-    from .tui import Pane
+    from .tui import WRAP, Pane
 
     out = Pane(wide)
     if row == STANDING:
@@ -224,11 +224,14 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
         return out.render()
     if row == FOLD:
         out.text(f"the board: {counts(board)}", "bold")
-        out.text("told to executors as decided: lines; parked and dropped are told to no one", "dim")
+        out.text("settled answers are told to the executor of the leaf they are about, in its contract; "
+                 "parked and dropped are told to no one", "dim")  # fmt: skip
         out.gap()
         for it in board.folded:
             glyph, colour = B.look(it)
-            out.text(Text.assemble((f"{glyph} {B.reads(it)} ", colour), (it["id"], "dim"), f"  {B.said(it)}"))
+            row = Text.assemble((f"{B.reads(it)} ", colour), (it["id"], "dim"), f"  {B.said(it)}")
+            for k, piece in enumerate(row.wrap(WRAP, out.wide - 2)):  # a long answer hangs under its row
+                out.line(Text.assemble((f"{glyph} " if k == 0 else "  ", colour), piece))
         return out.render()
     item = board.get(row)
     if item is None:

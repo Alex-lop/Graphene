@@ -443,6 +443,8 @@ def test_a_leaf_effect_under_a_leaf_puts_the_new_leaf_beside_it_and_keeps_it_a_l
     took = person("board", "take", "r")
     assert took.exit_code == 0, took.output
     assert "  changed: proposed sample beside zero, a leaf, under feed" in took.stdout
+    # walk 2026-09-28 (first 10): the new leaf is to fill in, and the take said nothing of it
+    assert "under feed; it has no scope or check yet (`graphene node set sample`)" in took.stdout
     with Store.open(repo) as store:
         assert P.get(store, "sample").parent == "feed"
         assert {n.id for n in P.leaves(P.nodes(store))} == {"zero", "sample"}
@@ -879,3 +881,12 @@ def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_ope
     assert "took the defaults of int-ids, empty-check, paging, left open" in ran.stdout
     with Store.open(repo) as store:
         assert B.get(store, "which-id")["state"] == "picked"  # the person's own answer stays theirs
+
+
+def test_a_planners_note_on_the_board_says_it_is_the_planners_not_its_command(repo, tmp_path):
+    """Walk 2026-09-28 (judge 17): a planner's note read `keep the JSONL shape · planner:python3's`."""
+    from graphene_map.board_cli import _words
+
+    planned(repo, tmp_path)
+    with Store.open(repo) as store:
+        assert _words(B.get(store, "shape")) == "keep the response shape · the planner's"
