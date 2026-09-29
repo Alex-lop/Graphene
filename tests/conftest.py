@@ -3,7 +3,12 @@
 import os
 import time
 
+import keyguard  # tests/ is on sys.path: pytest puts a conftest's directory there
 import pytest
+
+
+def pytest_configure(config):
+    keyguard.install(config)  # no test reaches the real keychain (decision 96)
 
 
 @pytest.fixture(autouse=True)
