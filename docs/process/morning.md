@@ -23,7 +23,7 @@
 
 **Broken or risky**
 - Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
-- Keys in two agents' tests, none of yours left the machine: a fake key went to the real ConTree (403), and a rehearsal sent your ~/.zshenv key to the local stand-in on 127.0.0.1. Both paths are closed.
+- Harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); a rehearsal and the walkers' tmux seats could read your `~/.zshenv` key (it reached only the local stand-in); Playwright left three files in your git-ignored `.playwright-mcp/`, removed.
 - My integration worktree was deleted during a test run at 03:04; the same test files, rerun one by one, deleted nothing. Cause unknown.
 
 ---
