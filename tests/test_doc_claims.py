@@ -134,3 +134,22 @@ def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
              f"{m['pricing']['completion'] * 1e6:.2f}") for m in live["data"]]  # fmt: skip
     assert rows == want
     assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
+
+
+def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_the_page_hides_the_board():
+    """A walker found the README and CHANGELOG silent on the direction, `board lookup` and the board's
+    setting, and the README saying the page does not show the board (walk findings 9, 30, 39)."""
+    from typer.testing import CliRunner
+
+    from graphene_map import settings as S
+    from graphene_map.cli import build
+
+    for words in (["direction"], ["board", "lookup"]):
+        assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
+    assert S.BOARDS[0] == "auto"  # the first is the value when unset
+    for path in ("README.md", "CHANGELOG.md"):
+        said = doc(path)
+        assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
+        assert "Graphene has made a runtime call to Token Factory, as practice" in said, path
+    for path in ("README.md", "docs/HOW_IT_WORKS.md"):
+        assert "does not show the board" not in doc(path), path

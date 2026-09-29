@@ -311,7 +311,7 @@ tests of Graphene's own:
 - **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors
   and their checks; a leaf that had already passed waits in review, and says so. A closed terminal
   does the same, whether or not it sends the hangup, and `graphene watch` and `graphene demo` leave
-  with their terminal (a run started from `watch` goes on, as after `q`: `tests/test_teardown.py`).
+  with their terminal (`tests/test_teardown.py`); a run started from `watch` goes on, as after `q`.
   The next run takes those leaves again.
 - **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
 - **The plan as text round-trips.** `graphene plan edit` applies what you changed and nothing else,
@@ -416,9 +416,9 @@ worktrees on your machine. `uv tool install graphene-map` installs the last rele
 which is the record only: no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
 Graphene's hook to `.claude/settings.local.json` (yours, not the team's `settings.json`) and keeps
 the file out of `git add` through `.git/info/exclude`. The hook holds agents to the plan and keeps
-the record; the agent waits for it on each tool call, about 25 ms of CPU to record the call and 35 ms
-to answer it on the author's machine (`tests/test_hook_budget.py` holds both under 60). Graphene
-never edits your own `~/.claude/settings.json`.
+the record; the agent waits for it on each tool call, about 20 to 25 ms of CPU to record the call and
+30 to 35 ms to answer it on the author's machine (`tests/test_hook_budget.py` holds both under 60).
+Graphene never edits your own `~/.claude/settings.json`.
 
 ## The record
 

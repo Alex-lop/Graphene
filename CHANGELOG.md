@@ -2,8 +2,63 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
-Graphene on Nemotron. The Nemotron path has run only against a scripted stand-in for Token Factory and a
-Docker stand-in for Sandboxes; nothing in this release has been run live yet.
+Graphene on Nemotron. Graphene has made a runtime call to Token Factory, as practice (rung 2 of the ladder,
+`docs/test/first-light.md`). Past that call, the Nemotron path has run only against a scripted stand-in for
+Token Factory and a Docker stand-in for Sandboxes.
+
+First light (29 September).
+- `graphene direction`: a small tree of goals above the plans, one line a node, in `.graphene/direction.txt`,
+  which git tracks while the rest of `.graphene/` stays ignored. An agent proposes nodes (`direction propose
+  -`); only the person accepts or drops them, hangs the plan from one (`direction plan NODE`), attaches a
+  session to one (`direction attach SESSION NODE`, or `D` in `graphene watch`) or edits the file (`direction
+  edit`). `graphene direction` prints each node with what waits on you, what runs and what is next, read from
+  the rows the hooks already write; `graphene plan`, its views, `graphene watch` and the page show the path
+  to the plan's node above the plan. A file with a line Graphene cannot read is not used, and the refusal
+  names the lines.
+- The hook refuses an agent's Edit, Write, MultiEdit and NotebookEdit under `.graphene/`, plan or no plan.
+- The board shows only while a question on it is open: `board: auto` (unset) in `graphene config`, by study 4
+  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, `R`,
+  or `graphene board take` with no id takes every open default, in one line that `graphene plan undo` takes
+  back. `graphene board` prints what answering needs, and `--all` the rest.
+- `graphene board lookup` (one Nano call; `GRAPHENE_SHAPE=lookup` runs it after each ask) settles a question
+  a file already answers when the line it quotes is in that file, marked `from the repo: FILE:LINE`; `unpark`
+  gives it back. It never sends a protected file.
+- Spending is the person's. Without `GRAPHENE_AGENT_LIVE_USD`, a process that carries an agent's mark is
+  refused a Token Factory call to the real host and any ConTree sandbox before anything is sent. With it,
+  every live call goes on one night's ledger that every process shares, locked with `flock`
+  (`~/.graphene/night/`): a call reserves its worst case first and is refused unsent past the cap, the lower
+  of that figure and $10, and nothing new starts past 80% of it. Its rows say `practice`, and
+  `docs/test/evidence.py` refuses them.
+- Sandboxes: a project ConTree refuses (403) is one refusal saying what the key lacks and where access is
+  asked for, wherever a sandbox is used. `graphene init` asks ConTree's whoami before it places Nemotron's
+  leaves in Sandboxes, and places them on this machine with one line saying why when it is refused. An
+  operation past its time comes back as the command's exit 124, as Docker's does. The live model list's
+  mixed-case Nemotron ids resolve to their roles.
+- A recording dropped into `tests/recordings/` replays in CI and is counted for the key, the project, a home
+  path and key-shaped words.
+- A closed terminal ends `graphene watch`, `graphene demo`, and a run with its executors and their checks,
+  whether or not it sends the hangup.
+- `graphene demo` holds each change on the screen, pauses on space, steps on `.`, plays again on `r`, and
+  names a stand-in on every row it made.
+- The page shows the board, the standing conditions, each leaf's `decided:` lines and the direction, and
+  answers nothing on the board.
+- The hook imports, queries and starts only what its event needs: recording a call went from about 50 to
+  20 to 25 ms of CPU on the author's machine. Its 60 ms budget is held on CPU time, so a loaded machine no
+  longer fails it.
+- `graphene key set`, `check` and `remove` refuse Claude Code and Codex. No test reaches the real keychain
+  (`tests/keyguard.py`, here and in CI).
+- `docs/test/practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
+  and precheck under a $0.05 cap. `docs/demo/build.sh` films the demo run scene by scene and assembles
+  `rough.mp4` only from a run recorded as live.
+- Smaller: `:ask` keeps a paragraph's apostrophes; a planner or executor run by an interpreter is named by its
+  script; a leaf's record reads its check before its finish.
+
+Shaping (28 September): the board (`graphene board`: the planner's questions and risks, answered only by
+the person, with `then:` lines that change the tree), the outline, tree and graph views (`Tab`, `--view`),
+talking on a node (`?`: `graphene talk`), what changed since you looked (`graphene plan changes`, `seen`),
+the settings you state once (`graphene config edit`: `protected`, `readonly`, `never`, `size`), the key in
+the system keychain (`graphene key`), the practice ladder (`docs/test/practice.sh`), and three Nano
+prototypes (`graphene plan cover`, `note`, `precheck`), each run only against the stand-ins.
 
 - `graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no network, and
   runs nothing: every key that would change the plan or start a process says so. `graphene demo --once`
