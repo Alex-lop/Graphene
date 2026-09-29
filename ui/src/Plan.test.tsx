@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
 import { layoutFor, shownLayout, type Mode } from "./model";
-import { LayoutBar, PlanHeader, PlanInspector, PlanTopDown, PlanTree, PlanView, panFilter, startScale } from "./Plan";
+import { LayoutBar, PlanHeader, PlanInspector, PlanStrip, PlanTopDown, PlanTree, PlanView, panFilter, size, startScale, wrap } from "./Plan";
 import type { Plan, PlanEdge, PlanNode } from "./types";
 
 const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
@@ -35,6 +35,7 @@ const node = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({
   waits: [],
   log: [],
   forks: [],
+  decided: [],
   lane: "agent",
   column: 0,
   row: 0,
@@ -78,6 +79,7 @@ const plan: Plan = {
   tree_goal: [0, 0],
   tree_links: [],
   view: "auto",
+  board: { open: [], folded: [], counts: "", standing: null },
 };
 
 // feeds, as plan_view.py lays it out: two chains into one leaf, the longer one critical
@@ -201,7 +203,7 @@ test("the switch has auto and the three layouts, says what is drawn and why, and
 test("the page opens in the repository's view setting, the one the terminal reads, and a click changes this page only", () => {
   expect(shownLayout({ ...feeds, view: "auto" }, null, 2000).layout).toBe("graph");
   expect(shownLayout({ ...feeds, view: "outline" }, null, 2000)).toMatchObject({ layout: "outline", mode: "outline", why: "this repo's view setting: outline" });
-  expect(shownLayout({ ...feeds, view: "dag" }, null, 2000)).toMatchObject({ layout: "graph", mode: "graph" }); // the terminal's name for it
+  expect(shownLayout({ ...feeds, view: "dag" }, null, 2000)).toMatchObject({ layout: "graph", mode: "graph", why: "this repo's view setting: the graph (dag in graphene watch)" }); // the terminal's name for it, said beside the page's (judge 11)
   expect(shownLayout({ ...feeds, view: "tree" }, "auto", 2000)).toMatchObject({ layout: "graph", mode: "auto" }); // a click on auto brings the choice back
   expect(shownLayout({ ...feeds, view: "something else" }, null, 2000).mode).toBe("auto");
 });
@@ -235,7 +237,7 @@ test("the tree is drawn top-down from Python's positions: the goal on top, a lin
 test("a box's id line is cut to the box like its title, so a long id never runs into the next box", () => {
   const long: Plan = { ...plan, nodes: [node("a-thirty-one-character-long-id1")] };
   const html = renderToStaticMarkup(<PlanTopDown plan={long} picked={null} onPick={() => undefined} />);
-  expect(html).toMatch(/class="who">a-thirty-one-character-lon[^<]*…<title>a-thirty-one-character-long-id1 · any agent · revision 1<\/title>/);
+  expect(html).toMatch(/class="who">a-thirty-one-character-lon[^<]*…<title>a-thirty-one-character-long-id1<\/title>/);
 });
 
 test("the at-once line names at most five leaves and then how many more", () => {
@@ -251,4 +253,136 @@ test("on a phone one finger scrolls the page and two pan and zoom the drawing; a
   expect(panFilter(touch(2))).toBe(true);
   expect(panFilter({ type: "mousedown", button: 0 } as unknown as Event)).toBe(true);
   expect(panFilter({ type: "mousedown", button: 2 } as unknown as Event)).toBe(false); // the context menu
+});
+
+// -- walks.md: what three walkers found on the exported page, 2026-09-28 --------------------------------
+
+/** The markup from the tag holding `from` up to the next `to`. */
+const cut = (html: string, from: string, to?: string): string => {
+  const at = html.indexOf(from);
+  return html.slice(html.lastIndexOf("<", at), to ? html.indexOf(to, at) : undefined);
+};
+const text = (html: string): string => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+
+// the board as the store holds it, in the terminal's words (board_rows.py)
+const boarded: Plan = {
+  ...feeds,
+  waiting_on_person: [{ id: "xml-reader", title: "do xml-reader", why: "see why it came back" }],
+  board: {
+    open: [
+      { id: "cents", word: "asks", text: "are XML prices already in cents?", default: "yes, whole numbers", options: ["no, dollars; convert in normalize/money.py"], about: "xml-reader", by: "the planner (graphene ask)", said: "are XML prices already in cents?" },
+      { id: "summary", word: "assumes", text: "the summary line is not a product", default: null, options: [], about: null, by: "the planner (graphene ask)", said: "assumed: the summary line is not a product" },
+    ],
+    folded: [
+      { id: "stream", word: "parked", text: "a streaming parser", default: null, options: [], about: null, by: "the planner (graphene ask)", said: "left out: a streaming parser" },
+      { id: "legacy", word: "taken", text: "legacy skips the zero rule", default: "leave legacy alone", options: [], about: null, by: "the planner (graphene ask)", said: "risk: legacy skips the zero rule → leave legacy alone" },
+      { id: "shape", word: "dropped", text: "keep the JSONL shape", default: null, options: [], about: null, by: "the planner (graphene ask)", said: "keep the JSONL shape" },
+    ],
+    counts: "1 settled · 1 parked · 1 dropped",
+    standing: "conditions: protected vendor/** · read-only legacy/**",
+  },
+};
+
+test("the page shows the board and the standing conditions as the terminal reads them, and answers nothing on it", () => {
+  // alex 11, first 5, judge 10: the exported page had no board and no standing condition
+  const html = renderToStaticMarkup(<PlanStrip plan={boarded} onPick={() => undefined} write={async () => null} />);
+  const board = cut(html, 'data-testid="board"');
+  expect(text(cut(board, 'data-testid="standing"', "</p>"))).toBe("conditions: protected vendor/** · read-only legacy/**");
+  const cents = text(cut(board, 'data-item="cents"', "</li>"));
+  expect(cents).toContain("◇ asks");
+  expect(cents).toContain("are XML prices already in cents? cents");
+  expect(cents).toContain("default: yes, whole numbers · 1: no, dollars; convert in normalize/money.py · about xml-reader · put up by the planner (graphene ask)");
+  expect(text(cut(board, 'data-item="summary"', "</li>"))).toContain("◇ assumes");
+  // settled, parked and dropped fold into the terminal's one count, which opens on what was decided
+  expect(text(cut(board, "<summary>", "</summary>"))).toBe("✓ 1 settled · 1 parked · 1 dropped");
+  expect(text(cut(board, 'data-item="legacy"', "</li>"))).toBe("taken legacy risk: legacy skips the zero rule → leave legacy alone");
+  expect(board).not.toMatch(/<button|<input|<form/); // read-only: the terminal answers it
+  expect(text(board)).toContain("answered in the terminal: graphene board");
+  // the items are counted apart from the plan's own, as the terminal's status line counts them
+  expect(text(cut(html, "<h3>", "</h3>"))).toBe("waiting on you (1 + 2 on the board)");
+});
+
+test("a page with no board and no conditions shows neither", () => {
+  expect(renderToStaticMarkup(<PlanStrip plan={feeds} onPick={() => undefined} write={async () => null} />)).not.toContain('data-testid="board"');
+});
+
+test("a read-only page says so once, and offers no decision it cannot make", () => {
+  // alex 13, first 5, judge 11: four rows said "this page cannot change the plan; it is read-only", the
+  // footer said the plan is changed "from a page they opened", and the badge said it again
+  const header = renderToStaticMarkup(<PlanHeader plan={boarded} view="plan" onView={() => undefined} recorded={1} />);
+  expect(text(cut(header, 'class="badges"'))).toBe("read-only");
+  const node = renderToStaticMarkup(<PlanInspector plan={boarded} picked="xml-reader" write={async () => null} />);
+  expect(node).not.toContain("read-only");
+  expect(node).not.toContain("What a person decides");
+  expect(node).not.toMatch(/data-act=/);
+  const copy = text(renderToStaticMarkup(<PlanInspector plan={boarded} picked={null} write={async () => null} />));
+  expect(copy).toContain("This page is a copy, written by graphene ui --export. The plan changes in its repository");
+  expect(copy).not.toContain("from a page they opened");
+  const agents = text(renderToStaticMarkup(<PlanInspector plan={{ ...boarded, token: "t" }} picked={null} write={async () => null} />));
+  expect(agents).toContain("This page was opened from an agent's shell.");
+  // a page the person can write with still offers every decision
+  expect(renderToStaticMarkup(<PlanInspector plan={{ ...boarded, writable: true, token: "t" }} picked="xml-reader" write={async () => null} />)).toMatch(/data-act="accept"/);
+});
+
+test("the page counts the plan in leaves, as bare graphene does, not in nodes", () => {
+  // alex 20: the page said "3 nodes · 3 done" where the shell said "2 leaves, 2 done"
+  const done = (id: string, extra: Partial<PlanNode> = {}) => node(id, { state: "done", display_state: "done", ...extra });
+  const finished: Plan = { ...plan, nodes: [done("app", { sub_goal: true, display_state: "sub-goal", leaves_done: 2, leaves_total: 2 }), done("greet", { parent: "app" }), done("bye", { parent: "app" })] };
+  expect(size(finished)).toBe("2 leaves, 2 done, 0 running");
+  expect(renderToStaticMarkup(<PlanHeader plan={finished} view="plan" onView={() => undefined} recorded={1} />)).toContain("2 leaves, 2 done, 0 running");
+  const overview = text(cut(renderToStaticMarkup(<PlanInspector plan={finished} picked={null} write={async () => null} />), 'data-testid="leaves"', "</dl>"));
+  expect(overview).toBe("done2 of 2 leaves");
+});
+
+test("with no session recorded, the overview says in words where each executor's work is", () => {
+  // alex 13, judge 10: "the record" was disabled with its reason only in a hover title
+  const html = renderToStaticMarkup(<PlanInspector plan={plan} picked={null} write={async () => null} recorded={0} />);
+  expect(text(cut(html, 'data-testid="unrecorded"', "</p>"))).toBe("no Claude Code session was recorded in this repo; what each executor did is in its node's record, on the plan");
+  expect(renderToStaticMarkup(<PlanInspector plan={plan} picked={null} write={async () => null} recorded={2} />)).not.toContain("unrecorded");
+});
+
+test("a card's second line is its id, and whose it is only when a person's, so a 200px card is not cut", () => {
+  // alex 13, judge 11: "xml-source · any agen…", "xml-feed-2 · any agen…"
+  const mixed: Plan = { ...feeds, nodes: [node("xml-feed-2"), node("sign", { owner: "alex" })] };
+  const html = renderToStaticMarkup(<PlanView plan={mixed} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/class="who">xml-feed-2<title>xml-feed-2<\/title>/);
+  expect(html).toMatch(/class="who">sign · alex&#x27;s<title>/);
+  expect(html).not.toContain("any agent");
+  // alex 13: "run:python3 · finishe…": the executor by its name, and the clock whole
+  const ran: Plan = { ...feeds, nodes: [node("readme", { state: "done", display_state: "done", executor: "run:executor.py", finished_at: "2026-09-28T05:17:34Z" })] };
+  expect(renderToStaticMarkup(<PlanView plan={ran} picked={null} onPick={() => undefined} />)).toMatch(/class="says">executor\.py · finished \d\d:\d\d<title>/);
+});
+
+test("at once says when the leaves it counts start only once accepted", () => {
+  // judge 11: "left alone, agents can reach: nothing" beside "3 at once" while nothing was accepted
+  const proposed: Plan = { ...feeds, nodes: feeds.nodes.map((n) => ({ ...n, state: "proposed", display_state: "proposed" })) };
+  const bar = (p: Plan) => text(renderToStaticMarkup(<LayoutBar plan={p} {...shownLayout(p, null, 2000)} onLayout={() => undefined} />));
+  expect(bar(proposed)).toContain("2 at once, once accepted: xml-reader, zero-rule");
+  const half: Plan = { ...feeds, nodes: feeds.nodes.map((n) => (n.id === "zero-rule" ? { ...n, state: "proposed", display_state: "proposed" } : n)) };
+  expect(bar(half)).toContain("2 at once (1 once accepted): xml-reader, zero-rule");
+  expect(bar(feeds)).toContain("2 at once: xml-reader, zero-rule");
+});
+
+test("a wait line names its leaf once", () => {
+  // judge 11: "x will wait: x is a proposal nobody has accepted"
+  const waits: Plan = { ...plan, forecast: { runs: [], waits: [{ id: "readme", why: ["readme is a proposal nobody has accepted"] }, { id: "test", why: ["reader came back to you"] }] } };
+  const said = text(renderToStaticMarkup(<PlanStrip plan={waits} onPick={() => undefined} write={async () => null} />));
+  expect(said).toContain("readme will wait: it is a proposal nobody has accepted");
+  expect(said).toContain("test will wait: reader came back to you");
+});
+
+test("the tree's goal box holds the goal in two lines before it cuts it", () => {
+  // judge 11: "the Northwind XML feed loa…" at 1200px
+  expect(wrap("the Northwind XML feed loads like csv and json", 176, 6.4)).toEqual(["the Northwind XML feed", "loads like csv and json"]); // 27 characters a line
+  expect(wrap("short", 176, 6.4)).toEqual(["short"]);
+  const html = renderToStaticMarkup(<PlanTopDown plan={{ ...plan, goal: "the Northwind XML feed loads like csv and json" }} picked={null} onPick={() => undefined} />);
+  expect(html).toMatch(/y="44" class="title">the Northwind XML feed<title>/);
+  expect(html).toMatch(/y="60" class="title">loads like csv and json<title>/);
+});
+
+test("a node's detail lists what the board decided for it, as node show does", () => {
+  // alex 11: the contract listed goal, may touch and done when, but not the decided: lines
+  const decided: Plan = { ...plan, nodes: [node("api", { decided: ["are prices in cents? → no, dollars"] })] };
+  const html = renderToStaticMarkup(<PlanInspector plan={decided} picked="api" write={async () => null} />);
+  expect(text(cut(html, 'data-testid="decided"', "</ul>"))).toBe("are prices in cents? → no, dollars");
 });

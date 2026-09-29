@@ -409,6 +409,31 @@ def test_every_hole_a_control_has_is_printed_with_it(store, repo):
     assert view["holes"] == HOLES and view["nodes"] == [] and view["lanes"] == []
 
 
+def test_left_alone_agents_reach_neither_a_leaf_that_came_back_nor_what_waits_on_it(store, repo):
+    """walks.md first 5: the page said `waiting on you (1) xml-readme-main` and, under it, `left alone,
+    agents can reach: xml-readme-main, xml-readme`. A leaf that came back waits on the person, as the
+    at-once line and the status line already say."""
+    plan.propose(store, [node("a"), node("b", needs=["a"]), node("c")], ALEX)
+    plan.start(store, "a", BOT, repo)
+    plan.release(store, "a", BOT, "it needs README.md too")
+    view = build_plan_view(store)
+    assert view["forecast"]["runs"] == ["c"] == view["at_once"]
+    assert {w["id"]: w["why"] for w in view["forecast"]["waits"]} == {
+        "a": ["a came back to you"], "b": ["a came back to you"]
+    }  # fmt: skip
+
+
+def test_a_proposed_leaf_waits_on_its_own_acceptance_once_not_on_the_sub_goal_above_it_too(store):
+    """walks.md judge 11: `x will wait: feed is a proposal nobody has accepted; x is a proposal nobody
+    has accepted`. Accepting x accepts the proposals above it, so the one reason is x's own."""
+    plan.propose(store, [{"id": "feed", "title": "feed"}, node("x", parent="feed")], BOT)
+    assert build_plan_view(store)["forecast"]["waits"] == [
+        {"id": "x", "why": ["x is a proposal nobody has accepted"]}
+    ]
+    plan.accept(store, ["x"], ALEX)
+    assert plan.get(store, "feed").state == plan.OPEN  # accepting the leaf accepted what it hangs from
+
+
 def test_a_nodes_log_is_stamped_in_the_order_it_happened_its_check_before_it_finished(store, repo):
     """walks.md alex 12: the page listed `finished … 05:17:34` after `check_passed … 05:17:35`. The node
     finishes when its check has passed, so `finished` is stamped then, not when `done` was called."""

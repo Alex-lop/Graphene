@@ -190,6 +190,7 @@ export interface PlanNode {
   waits: string[]; // why it is not moving, in sentences
   log: Entry[];
   forks: Fork[]; // its last attempt's forks, from one checkpoint: the one that passed is what landed
+  decided: string[]; // what the board decided that its executor is told, as `node show` prints it
   lane: string;
   column: number;
   row: number;
@@ -238,6 +239,28 @@ export interface Waiting {
   why: string;
 }
 
+// One item on the board, as the terminal's row reads it (board_rows.py): its kind as a verb while it is
+// open (asks, assumes, risk, leaves out, note), else its state (taken, picked, parked, dropped, …).
+export interface BoardItem {
+  id: string;
+  word: string;
+  text: string;
+  default: string | null;
+  options: string[];
+  about: string | null;
+  by: string; // who put it up, in a person's words
+  said: string; // as the executors are told it, with the answer
+}
+
+// The board, which the page shows and never answers: open items, the rest folded into the terminal's
+// one count, and the standing conditions' one line (null when there are none).
+export interface Board {
+  open: BoardItem[];
+  folded: BoardItem[];
+  counts: string;
+  standing: string | null;
+}
+
 export type Hole = "scope" | "check" | "stop" | "person";
 
 export interface Plan {
@@ -266,6 +289,7 @@ export interface Plan {
   tree_goal: number[]; // the goal's box, at the top of the tree
   tree_links: PlanEdge[]; // parent to child; the goal is ""
   view: string; // the repository's view setting, the one graphene watch opens in: auto, outline, tree or dag
+  board: Board;
 }
 
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.

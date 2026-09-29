@@ -111,7 +111,7 @@ export function App(): ReactElement {
           {drawn === "tree" && <PlanTopDown plan={plan} picked={picked} onPick={setPicked} />}
           {drawn === "graph" && <PlanView plan={plan} picked={picked} onPick={setPicked} />}
         </main>
-        <PlanInspector plan={plan} picked={picked} write={write} />
+        <PlanInspector plan={plan} picked={picked} write={write} recorded={runs.length} />
       </div>
     );
   }
