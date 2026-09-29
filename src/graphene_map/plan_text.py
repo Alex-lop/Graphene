@@ -605,6 +605,7 @@ def apply(
     kept = [ln for ln in lines if ln.id in everything]
     _guard_shape(lines, fresh, everything, opened, parent_of, who)
     said = Said()
+    said.renamed = {old: line.id for old, line in renamed.items()}
     with store.claim():
         said += _goal(store, goal, who, now, opened)
         if fresh:
@@ -802,11 +803,13 @@ def _goal(store, goal: str | None, who: P.Caller, now: str, opened: dict | None)
 
 class Said(list):
     """What an apply changed, one line each, for whoever applied it; ``ids``: the nodes it added or
-    changed (their checks are looked at once more afterwards)."""
+    changed (their checks are looked at once more afterwards); ``renamed``: a dropped [id] the text
+    used again, by the new id its line got."""
 
     def __init__(self) -> None:
         super().__init__()
         self.ids: list[str] = []
+        self.renamed: dict[str, str] = {}
 
 
 def _at(line: Line, refusal: P.Refused) -> P.Refused:
