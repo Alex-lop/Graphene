@@ -38,7 +38,8 @@ def environment(tmp_path: Path, **env: str) -> dict[str, str]:
     """This environment without a key, an agent's mark or the ladder's settings, its state in tmp_path."""
     gone = ("GRAPHENE_", "PRACTICE_", "NEBIUS_", "CONTREE_")
     base = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith(gone)}
-    here = {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")}
+    here = {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work"),
+            "GRAPHENE_NIGHT_LEDGER": str(tmp_path / "night.jsonl")}  # never the real night's  # fmt: skip
     return base | here | {"GRAPHENE_KEYCHAIN": "off"} | env  # never the person's real keychain
 
 
@@ -126,12 +127,80 @@ def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
         done = ladder(tmp_path, str(n), **{mark: "1"}, **dead)
         assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, done.stdout + done.stderr
         assert f"an agent's mark ({mark})" in done.stdout
+        assert "runs rungs 2-7 only when the person started the session with GRAPHENE_AGENT_LIVE_USD set" in (
+            " ".join(done.stdout.split()))
         assert f"    docs/test/practice.sh {n}\n" in done.stdout
         assert "most likely: a live rung is yours to run" in done.stdout
         assert not (tmp_path / "work").exists()  # nothing was built, nothing was run
+        assert not (tmp_path / "night.jsonl").exists()  # and nothing was counted
     dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1",  # the dry run spends nothing and records no one
                  PRACTICE_STATE=str(tmp_path / "dry-state"))  # fmt: skip
     assert dry.returncode == 0 and "· PASS · rung 2 · " in dry.stdout, dry.stdout + dry.stderr
+
+
+@pytest.mark.parametrize("n", ["2", "4"])
+def test_under_the_persons_opening_an_agents_shell_climbs_a_live_rung(tmp_path, n):
+    """GRAPHENE_AGENT_LIVE_USD, set here by the test as the person sets it before starting the session,
+    lets an agent's shell climb: the rung runs (a leaf on Nemotron, the escape test in ConTree) and fails
+    for want of a key, not for the mark. Nothing leaves the machine: no key, a proxy that answers nothing."""
+    dead = {"HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""}
+    (tmp_path / "no-contree").mkdir()
+    done = ladder(tmp_path, n, CLAUDECODE="1", CLAUDE_CODE_SESSION_ID="s", GRAPHENE_AGENT_LIVE_USD="10",
+                  CONTREE_HOME=str(tmp_path / "no-contree"), **dead)  # fmt: skip
+    said = done.stdout + done.stderr
+    assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, said
+    assert "an agent's mark" not in said and (tmp_path / "work").exists()  # it ran
+    why = ("ConTree needs a key", "No module named 'contree_sdk'") if n == "4" else ("the leaf did not land",)
+    assert any(w in said for w in why), said  # without the `sandbox` extra, the SDK's absence is said first
+    assert "fake-key" not in said and json.loads((tmp_path / "state" / "progress.json").read_text())[n]
+
+
+def test_under_the_opening_a_dry_rung_counts_every_call_in_a_night_of_its_own(tmp_path):
+    """The dry run under the opening climbs the night's whole path against the fake: every call is reserved
+    and settled, each row says practice, and none of it is on the real night's bill."""
+    done = ladder(tmp_path, "--dry", "2", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10")
+    assert done.returncode == 0 and "· PASS · rung 2 · " in done.stdout, done.stdout + done.stderr
+    calls = (tmp_path / "state" / "ledger.jsonl").read_text().splitlines()
+    rows = [json.loads(r) for r in (tmp_path / "state" / "night.jsonl").read_text().splitlines()]
+    settled = [r for r in rows if r["kind"] == "settle"]
+    assert len(calls) >= 2 and len(settled) == len(calls) == sum(r["kind"] == "reserve" for r in rows)
+    assert sum(r["dollars"] for r in settled) == pytest.approx(sum(json.loads(c)["dollars"] for c in calls))
+    assert all(r["practice"] is True for r in rows) and all(json.loads(c)["practice"] for c in calls)
+    assert not (tmp_path / "night.jsonl").exists()  # the night the ladder was handed: untouched
+    text = (tmp_path / "state" / "night.jsonl").read_text()
+    assert text.count("fake-key") == 0  # counted, never printed
+
+
+def test_no_rung_starts_past_80_percent_of_the_nights_cap(tmp_path):
+    """The night's bill does not reset on a rerun: at $8 of $10 spent or in flight, a rung runs nothing."""
+    made = [{"kind": "reserve", "id": "a", "model": "m", "dollars": 3.0},
+            {"kind": "settle", "id": "a", "model": "m", "dollars": 2.5},
+            {"kind": "reserve", "id": "b", "model": "m", "dollars": 5.5}]  # fmt: skip
+    (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
+    done = ladder(tmp_path, "2", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10")
+    said = " ".join(done.stdout.split())
+    assert done.returncode == 1 and "FAIL · rung 2 · " in said, said
+    assert "the night has $2.5000 spent and $5.5000 in flight, at or past $8.00 (80% of its $10.00" in said
+    assert "most likely: the night's cap" in said and "`docs/test/practice.sh night` shows the bill" in said
+    assert not (tmp_path / "work").exists() and not (tmp_path / "state" / "progress.json").exists()
+
+
+def test_night_prints_the_bill_ultra_first_with_the_sandboxes(tmp_path):
+    tf = {"endpoint": "token factory"}
+    made = [{"kind": "reserve", "id": "n", "model": "nvidia/Nano", "dollars": 0.2, **tf},
+            {"kind": "settle", "id": "n", "model": "nvidia/Nano", "dollars": 0.5},
+            {"kind": "reserve", "id": "u", "model": "nvidia/Ultra", "dollars": 0.3, **tf},
+            {"kind": "settle", "id": "u", "model": "nvidia/Ultra", "dollars": 0.25},
+            {"kind": "reserve", "id": "f", "model": "nvidia/Ultra", "dollars": 0.4, **tf},
+            {"kind": "sandbox", "op": "run", "seconds": 60}, {"kind": "sandbox", "op": "read", "seconds": 30}]
+    (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
+    done = ladder(tmp_path, "night", GRAPHENE_AGENT_LIVE_USD="5")
+    lines = done.stdout.splitlines()
+    head = "the night's bill: $0.7500 spent, $0.4000 in flight, of a $5.00 cap; nothing new starts at $4.00"
+    assert done.returncode == 0 and lines[0].startswith(head), lines
+    assert lines[1:] == ["  nvidia/Ultra: 1 call, $0.2500", "  nvidia/Nano: 1 call, $0.5000",
+                         "  in flight: 1 call, $0.4000 held at the worst case",
+                         "  Sandboxes: 2 operations, 1.5 min, counted at $0 (price: unknown)"]  # fmt: skip
 
 
 def test_the_dry_run_removes_only_a_state_it_made(tmp_path):

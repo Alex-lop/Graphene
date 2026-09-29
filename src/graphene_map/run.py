@@ -33,6 +33,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from . import board as B
+from . import night
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -431,6 +432,16 @@ def _splits(template: str) -> None:
         raise P.Refused(f"--with {template!r} cannot be read as a command: {no}") from None
 
 
+def _begins(template: str) -> None:
+    """A run of Graphene's own executor is one new live thing under the night's cap (``night.begin``): its
+    leaves go on under the cap once it has started, and it does not start past 80% of the cap."""
+    if label(template) == "nemotron":
+        try:
+            night.begin("the run")
+        except night.Refused as no:
+            raise P.Refused(str(no)) from None
+
+
 def leaves_of(store, ids: list[str] | None) -> list[str] | None:
     """A sub-goal named to `run --node` means the leaves under it."""
     if not ids:
@@ -518,6 +529,7 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
+    _begins(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     only = leaves_of(store, only)
     finished: list[P.Node] = []
@@ -713,6 +725,7 @@ def run_parallel(
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
     _splits(template)
+    _begins(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "

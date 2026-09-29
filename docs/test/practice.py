@@ -5,6 +5,7 @@ docs/test/practice.sh (docs/test/PRACTICE.md says what to type):
     practice.sh            the next rung not yet passed
     practice.sh N          rung N
     practice.sh status     every rung, pass or fail, and the bill so far
+    practice.sh night      the night's bill: every live call and Sandbox operation under the opening
     practice.sh --dry      the whole ladder against the stand-ins: the scripted fake Token Factory
                            (tests/fake_tokenfactory.py) and Docker in place of ConTree (PRACTICE_DRY=1 too)
 
@@ -22,7 +23,11 @@ and no log holds it (<the sealed paragraph of feeds> stands in its place), no co
 that rung, and it stops at arm A's failure. The dry run never reads it: it passes a placeholder.
 
 Live, only the person climbs: from a shell with an agent's mark, rungs 2-7 run nothing and say so (rung 1
-prints the line to type with `!`). Ctrl-C stops a rung, cleans up, and says what is left and how to clean it.
+prints the line to type with `!`), unless the person started the agent's session with GRAPHENE_AGENT_LIVE_USD
+set. That is the opening: the ladder, and every live call and Sandbox operation made while it is set, go
+under the night's cap in one ledger (graphene_map/night.py), on top of each rung's own cap. A rung does
+not start past 80% of it; the dry run keeps a night's ledger of its own in its state directory. Ctrl-C
+stops a rung, cleans up, and says what is left and how to clean it.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
+from graphene_map import night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import sandbox as S  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
@@ -132,7 +138,9 @@ class Rung:
         self.killed = False  # a command that did not end when told to, and was killed where it stood
         self.log = STATE / f"rung-{n}.log"
         self.log.write_text("", encoding="utf-8")
-        keep = ("GRAPHENE_KEYCHAIN",)  # a shell that turned the keychain off keeps it off (every test does)
+        # a shell that turned the keychain off keeps it off (every test does); the person's opening, and the
+        # night's ledger, reach every command the rung starts
+        keep = ("GRAPHENE_KEYCHAIN", night.OPENING, night.LEDGER)
         ours = {k for k in os.environ if k.startswith("GRAPHENE_") and k not in keep}
         env = {k: v for k, v in os.environ.items() if k not in MARKS and k not in ours}
         env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"  # this graphene
@@ -459,9 +467,14 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
     (r"ESCAPED",
      "a way out of the leaf's scope worked in the sandbox: containment does not hold there",
      "stop: run no leaf in a Sandbox until it is understood; rung-4.log has each command's exit"),
+    (r"the night has \$",
+     "the night's cap (the lower of GRAPHENE_AGENT_LIVE_USD and $10), or its 80%, is reached: a rerun does "
+     "not reset it",
+     f"`{ME} night` shows the bill; nothing more is spent tonight"),
     (r"an agent's mark",
      "a live rung is yours to run: an agent's shell may not spend your key or be recorded as you",
-     "type the line above in a terminal where no agent's mark is set"),
+     "type the line above in a terminal where no agent's mark is set, or start the agent's session from a "
+     "shell with GRAPHENE_AGENT_LIVE_USD set"),
     (r"yours to type",
      "the access check is yours to run: the session's classifier refuses it to an agent",
      "type the line above, with the '!'"),
@@ -558,11 +571,20 @@ def climb(n: int) -> str:
     say(f"rung {n}/7 · {name} · cap ${cap:.2f} · log {rel(r.log)}")
     signal.signal(signal.SIGINT, interrupted)
     try:
-        mark = None if DRY or n == 1 else marked()  # rung 1 has its own way: the person types access.py
+        # rung 1 has its own way (the person types access.py); the opening is the person's word, given
+        # before the session started, that an agent may climb the rest under the night's cap
+        mark = None if DRY or n == 1 or night.cap() is not None else marked()
         if mark:
             raise Refused(f"an agent's mark ({mark}) is set in this shell, and a live rung spends on your "
-                          f"key and is recorded as you: nothing was run. Type it yourself, in a terminal "
-                          f"where no agent's mark is set:\n    {ME} {n}")  # fmt: skip
+                          f"key and is recorded as you: nothing was run. An agent's shell runs rungs 2-7 "
+                          f"only when the person started the session with {night.OPENING} set; or type it "
+                          f"yourself, in a terminal where no agent's mark is set:\n    {ME} {n}")  # fmt: skip
+        try:
+            night.begin(f"rung {n}")
+        except night.Refused as no:
+            raise Refused(str(no)) from None
+        if night.STARTED in os.environ:  # what the rung starts goes on under the cap
+            r.env[night.STARTED] = os.environ[night.STARTED]
         said, result = rung(r), "PASS"
     except Failed as no:
         said, result, refused = str(no), "FAIL", isinstance(no, Refused)
@@ -657,8 +679,14 @@ def main(argv: list[str]) -> int:
             say(f"{STATE} is {'the dry run' if made == 'dry' else 'the live ladder'}'s: nothing was read, "
                 "removed or written; point PRACTICE_STATE at another directory")  # fmt: skip
             return 2
+    if DRY and night.cap() is not None:  # the dry run's calls are a stand-in's: never on the night's bill
+        os.environ[night.LEDGER] = str(STATE / "night.jsonl")
     if args == ["status"]:
         status()
+        return 0
+    if args == ["night"]:
+        for line in night.bill():
+            say(line)
         return 0
     if args and not (args[0].isdigit() and int(args[0]) in RUNGS):
         for line in __doc__.split("\n\n")[1].splitlines():
