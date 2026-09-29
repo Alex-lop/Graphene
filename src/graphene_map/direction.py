@@ -379,6 +379,15 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
     for sid, started, stopped in store.conn.execute(
         "SELECT id, started_at, ended_at FROM sessions ORDER BY started_at"
     ):
+        called = store.conn.execute("SELECT MAX(timestamp) FROM tool_events WHERE session_id = ?", (sid,))
+        prompts = store.conn.execute(
+            "SELECT timestamp, text FROM prompts WHERE session_id = ? ORDER BY ordinal DESC LIMIT 30", (sid,)
+        ).fetchall()
+        stamps = (started, stopped, called.fetchone()[0], *(p[0] for p in prompts))
+        latest = max([s for s in stamps if s], default=None)
+        if _age(latest, now) > DAY:
+            older += 1  # asked of the index alone: an old session's calls are never read
+            continue
         last = {
             r[0]: r
             for r in store.conn.execute(
@@ -387,16 +396,6 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
                 (sid,),
             )
         }
-        prompts = store.conn.execute(
-            "SELECT timestamp, text FROM prompts WHERE session_id = ? ORDER BY ordinal DESC LIMIT 30", (sid,)
-        ).fetchall()
-        latest = max(
-            [s for s in (started, stopped, *(r[1] for r in last.values()), *(p[0] for p in prompts)) if s],
-            default=None,
-        )
-        if _age(latest, now) > DAY:
-            older += 1
-            continue
         tasks = dict(
             store.conn.execute(
                 "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description') FROM "
