@@ -442,6 +442,12 @@ def escape(r: Rung) -> str:
 KEPT = ROOT / "tests" / "recordings"  # CI replays every recording here (tests/test_recordings.py)
 
 
+def keep(rec: Path) -> str:
+    """The command that puts ``rec`` where CI replays it, from the repository's root: the directory is not
+    in the repository until a recording is, so the command makes it."""
+    return f"mkdir -p {rel(KEPT)} && cp {rel(rec)} {rel(KEPT / 'first-light-rung-5.jsonl')}"
+
+
 def recorded(r: Rung) -> str:
     """Rung 5: the practice leaf, recorded with `graphene demo --record`, the recording counted for what it
     must not hold (the key, the project, a home path, anything shaped like a key), and replayed."""
@@ -463,8 +469,7 @@ def recorded(r: Rung) -> str:
     top = out.strip().splitlines()[0] if out.strip() else ""
     if code or shown not in top or not re.search(r"hello\s+done", out):
         raise Failed(f"the replay does not end with the leaf done, shown as {shown!r}: {top or last(out)}")
-    kept = f"\nCI replays it from {rel(KEPT)}: cp {rel(rec)} {rel(KEPT / 'first-light-rung-5.jsonl')}"
-    kept = "" if DRY else kept
+    kept = "" if DRY else f"\nCI replays it from {rel(KEPT)}: {keep(rec)}"
     clean = "it holds no key, project, home path or key-shaped word"
     return f"{said}; {clean}; its replay ends with it done: {top}{kept}"
 

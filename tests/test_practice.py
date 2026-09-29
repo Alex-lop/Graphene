@@ -554,6 +554,29 @@ def test_a_key_the_environment_does_not_hold_as_sent_is_counted_too(tmp_path, mo
     assert "holds the key or the project (counted: 1)" in said and key not in said
 
 
+def test_the_command_rung_5_prints_puts_the_recording_where_ci_replays_it_in_a_fresh_checkout(
+    tmp_path, monkeypatch
+):
+    """tests/recordings/ is not in the repository until a recording is: the line rung 5 prints makes it, and
+    run as printed, from the repository's root, it puts the recording where tests/test_recordings.py finds
+    it. The checkout here is a stand-in with no tests/recordings/."""
+    practice = load_practice(tmp_path, monkeypatch)
+    root = tmp_path / "checkout"
+    (root / "tests").mkdir(parents=True)
+    state = root / ".graphene" / "practice"
+    state.mkdir(parents=True)
+    rec = state / "leaf.jsonl"
+    rec.write_text('{"graphene demo": 1}\n')
+    monkeypatch.setattr(practice, "ROOT", root)
+    monkeypatch.setattr(practice, "KEPT", root / "tests" / "recordings")
+    command = practice.keep(rec)
+    assert command == ("mkdir -p tests/recordings && cp .graphene/practice/leaf.jsonl "
+                       "tests/recordings/first-light-rung-5.jsonl")  # fmt: skip
+    done = subprocess.run(["bash", "-c", command], cwd=root, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert (root / "tests" / "recordings" / "first-light-rung-5.jsonl").read_text() == rec.read_text()
+
+
 def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path, monkeypatch):
     """ConTree's own time limit, live on rung 4: exit 124 soon after the limit and the next command runs;
     anything else fails, read as ConTree's limit acting unlike Docker's. Boxes stand in here; the dry climb

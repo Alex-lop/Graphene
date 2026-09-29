@@ -104,7 +104,8 @@ No bill has shown a Sandbox line yet.
 - **Rung 4** gives a `sleep 600` five seconds in the Sandbox. It needs exit 124 and the next command
   to run.
 - **Rung 5** counts its recording for the key, the project, a home path and key-shaped words, then
-  prints the `cp` that puts the recording in `tests/recordings/`. CI replays every recording there.
+  prints the command that makes `tests/recordings/` and copies the recording there. CI replays every
+  recording in it.
 
 ## Not yet run live
 
