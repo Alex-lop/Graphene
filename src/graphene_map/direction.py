@@ -111,6 +111,11 @@ def _unsafe(c: str) -> bool:
     )
 
 
+def _clean(text: str) -> str:
+    """``text`` without the characters `_unsafe` names."""
+    return "".join(c for c in text if not _unsafe(c))
+
+
 def parse(text: str) -> Direction:
     """The direction a text says, or a refusal naming every line it cannot read (none of it is used)."""
     lines = [line for line in re.split(r"(?<=\n)", text) if line]  # "\n" only: numbered as an editor does
@@ -793,7 +798,7 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     lead += " · the direction of "
     if width and len(lead) + len(where) > width:  # the repository's own name, and what is above it
         where = "…" + where[len(where) - max(width - len(lead), 2) + 1 :]
-    return lead + where
+    return _clean(lead + where)
 
 
 def lines(
@@ -808,7 +813,9 @@ def lines(
 
     from . import plan_text as T
 
-    got = rows(st, now, only)
+    # what an agent's recorded calls say (a description, a command, a path) and every title is shown
+    # without a character a terminal would obey: an escape in a description must not drive it
+    got = [(d, _clean(t), _clean(i), w, _clean(x)) for d, t, i, w, x in rows(st, now, only)]
     if not got:
         return []
     wid = max([len(r[2]) for r in got] + [4])

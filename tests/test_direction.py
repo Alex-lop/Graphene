@@ -588,3 +588,19 @@ def test_the_hook_refuses_a_write_into_graphenes_own_directory_however_it_is_spe
         _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": "graphene.txt"})
         == ""
     )
+
+
+def test_an_agents_recorded_words_reach_the_terminal_without_an_escape(repo):  # noqa: F811
+    """Closing review finding 19: a Bash call's description carrying OSC 52 (a clipboard write) and
+    OSC 0 (the window's title) was printed raw by `graphene direction`."""
+    agent("direction", "propose", "-", input=TREE)
+    now = datetime.now(UTC)
+    evil = "List files\x1b]52;c;cm0gLXJmIH4K\x07\x1b]0;owned\x07\u009b31m‮"
+    with Store.open(repo) as store:
+        _event(store, repo, "UserPromptSubmit", "e5c00000-0000", _stamp(now, 30), prompt="tidy\x1b[2J")
+        _event(store, repo, "PostToolUse", "e5c00000-0000", _stamp(now, 20), tool_name="Bash",
+               tool_input={"command": "ls", "description": evil})  # fmt: skip
+    for width in ("80", "120"):
+        said = person("direction", "--width", width).stdout
+        assert "List files" in " ".join(said.split()) and "owned" in said  # the words stay; the escapes go
+        assert not any(D._unsafe(c) for c in said.replace("\n", "")), width
