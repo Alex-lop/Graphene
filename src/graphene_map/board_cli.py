@@ -142,7 +142,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
             out(line)
         for line in B.lifted(item):
             out(f"  {line}")
-        typer.echo(f"  (the plan of {P.where(root())})", err=True)
+        if line := P.where_said(root()):
+            typer.echo(line, err=True)
 
     @board_cli.callback()
     def show(

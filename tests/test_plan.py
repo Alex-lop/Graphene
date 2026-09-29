@@ -328,6 +328,27 @@ def test_archive_puts_finished_work_away_but_keeps_what_open_work_waits_on(store
         plan.propose(store, [api_node(id="d", needs=["a"], scope=["y"])], ALEX)
 
 
+def test_archiving_the_last_of_the_plan_puts_its_goal_and_board_away_with_it(store, repo, finish):
+    """The judge's `:plan archive` left the goal ("○ … 0/0 done") and the board's settled items on the
+    screen, and the next ask was put under them. Archived with the last node, they are kept in the log."""
+    from graphene_map import board as B
+
+    plan.set_goal(store, "invoices by email", ALEX)
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
+    B.note(store, "prices are cents", ALEX)
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    assert [n.id for n in plan.archive(store, ALEX)] == ["a"]  # b is open: the goal and the board stay
+    assert plan.goal(store) == "invoices by email" and len(B.items(store)) == 1
+    plan.start(store, "b", BOT, repo)
+    finish(store, repo, "b", BOT)
+    assert [n.id for n in plan.archive(store, ALEX)] == ["b"]
+    assert (plan.goal(store), store.meta("goal:proposed"), B.items(store)) == ("", None, [])
+    [kept] = store.node_log("*", ("archived",))
+    assert kept["detail"]["goal"] == "invoices by email"
+    assert [it["text"] for it in kept["detail"]["board"]] == ["prices are cents"]
+
+
 def test_a_paused_plan_binds_nobody_and_starts_nothing(store, repo):
     plan.propose(store, [api_node()], ALEX)
     assert plan.in_force(store)

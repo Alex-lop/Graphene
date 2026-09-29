@@ -564,6 +564,25 @@ def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, mon
     assert len(list((repo / ".graphene" / "runs").iterdir())) == 2
 
 
+def test_a_command_watch_runs_leaves_out_the_plan_of_line_its_top_line_says(repo):
+    """Three walkers: in watch's pane every command began or ended with `(the plan of /very/long/path)`,
+    three rows at 80 columns, and a run's pane opened with it. The shell keeps it; the pane does not."""
+    proposed(repo)
+
+    async def before(app, pilot):
+        app.background(["plan", "goal", "ship invoices"])
+        app.background(["board", "note", "prices are cents"])
+        for proc in app.runs:
+            proc.wait()
+
+    watch(repo, [], before=before)
+    said = "".join(log.read_text() for log in (repo / ".graphene" / "runs").iterdir())
+    assert "the plan: ship invoices" in said and "noted prices-are-cents" in said
+    assert "(the plan of" not in said, said
+    shell = person("plan", "goal", "ship invoices by email")
+    assert shell.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
+
+
 # Recheck 37 (partly)
 def test_u_after_a_visual_y_puts_the_whole_selection_back(repo):
     proposed(repo)

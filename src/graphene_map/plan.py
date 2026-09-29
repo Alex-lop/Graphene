@@ -1563,6 +1563,23 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
     return [p for p in changed if p not in left and not any(in_scope(p, n.scope) for n in since)]
 
 
+def uncommitted(store, checkout: str | Path) -> list[str]:
+    """The done leaves of this checkout whose work git still calls uncommitted: plain `graphene run`
+    (and a session's own `done`) leaves it in the tree for the person; `run --parallel`, as watch's R
+    runs it, commits and merges each leaf in a worktree of its own, so its leaves are never here."""
+    checkout = str(Path(checkout).resolve())
+    done = [n for n in nodes(store, (DONE, REVIEW)) if n.checkout == checkout]
+    changed = dirty(checkout) if done else {}
+    ended = {n.id: (store.node_log(n.id, ("finished", "overruled")) or [{"detail": {}}])[-1] for n in done}
+    return [n.id for n in done if set(ended[n.id]["detail"].get("changed") or []) & set(changed)]
+
+
+UNCOMMITTED = (
+    "not committed (`git status`): plain `graphene run` commits nothing, `graphene run --parallel N` and "
+    "watch's R commit and merge each leaf"
+)
+
+
 def accept_path(store, checkout: str | Path, path: str | Path) -> None:
     """A file the person just had Graphene write inside the checkout (an exported page) is theirs as
     it stands: it goes into the boundary, so the next start is not refused over Graphene's own output."""
@@ -2404,7 +2421,9 @@ def notes(store, node_id: str) -> list[str]:
 
 
 def archive(store, who: Caller, now: str | None = None) -> list[Node]:
-    """Put finished work away. With nothing left but archived nodes the plan is no longer in force."""
+    """Put finished work away. With nothing left but archived nodes the plan is no longer in force,
+    and its goal and its board go with it, kept in the log's `archived` entry: the next ask starts
+    from a clean slate, not under the old goal's "0/0 done" beside the old board's settled items."""
     _person_only(who, "archiving the plan")
     now = now or _now()
     with store.claim():
@@ -2430,6 +2449,14 @@ def archive(store, who: Caller, now: str | None = None) -> list[Node]:
         for node in put_away:
             was, node.state = node.state, ARCHIVED
             _save(store, node, "archived", who, now, was=was)
+        if put_away and not nodes(store, (PROPOSED, *LIVE)):
+            kept = {k: store.meta(k) for k in _GOALS}
+            kept["board"] = json.loads(kept["board"] or "[]")
+            goal_was = kept["goal"] or kept["goal:proposed"] or "none"
+            said = f"the goal ({goal_was}) and {len(kept['board'])} item(s) of the board, with the plan"
+            store.log_node("*", now, "archived", who.label, None, None, {"note": said, **kept})
+            for k in _GOALS:
+                store.set_meta(k, None)
     return put_away
 
 
@@ -2646,6 +2673,13 @@ def where(root: str | Path) -> str:
     """The repository as the screen's top line and every write's last line name it."""
     path, home = str(root), str(Path.home())
     return "~" + path[len(home) :] if path.startswith(home + os.sep) else path
+
+
+def where_said(root: str | Path) -> str | None:
+    """The last line of every command that changes the plan: which repository's plan it changed, so a
+    stray `cd` cannot fool anyone. None in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands
+    it runs), whose top line names the plan already: at 80 columns the line took three rows there."""
+    return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
 
 
 def plan_first(store) -> bool:

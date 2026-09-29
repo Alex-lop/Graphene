@@ -1,12 +1,15 @@
 """`graphene plan` and `graphene node`: the plan in a terminal, for a person and for an agent alike.
 
 Plain text, never wrapped or cut: an agent reads these lines as its contract, and a person greps them.
+The one exception is the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or
+under $COLUMNS: it fits that width (`room`).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -71,8 +74,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def said_where() -> None:
         """The last line of every command that changes the plan, the words the screen's top line
-        uses: which repository's plan it changed, so a stray `cd` cannot fool anyone."""
-        typer.echo(where(), err=True)
+        uses (`plan.where_said`)."""
+        if line := P.where_said(root()):
+            typer.echo(line, err=True)
 
     def asked(command: str, option: str, what: str) -> str:
         """An option a person at a terminal may leave out: asked for, in one line. With no terminal
@@ -127,9 +131,21 @@ def register(cli: typer.Typer, root, open_store, fail):
         def is_(n: P.Node) -> str:
             return f"came back (`graphene node show {n.id}`)" if n.id in back else "is ready"
 
+        def again(n: P.Node, more: int) -> list[str]:
+            """A leaf that came back: what `graphene watch` offers on it, as the commands its keys run,
+            not a `start` (the screen offered w, b and r while this line said `node start`)."""
+            offers = P.offers(store, n)
+            said = [f"`graphene {' '.join(argv)}` ({what})" for _, what, argv in offers]
+            said.append(f"{'or ' if said else ''}`graphene run --node {n.id}` (run it again)")
+            said[-1] += f"; {', '.join([*(k for k, _, _ in offers), 'r'])} in `graphene watch`"
+            also = f", and {more} more did" if more else ""
+            return [f"next: {n.id} ({n.title}) came back{also}: {', '.join(said)}"]
+
         if who.person:
             if agents:
                 first, more = agents[0], len(agents) - 1
+                if first.id in back:  # the ready ones come first: every one left came back
+                    return again(first, more)
                 also = f", and {more} more" if more else ""
                 return [f"next: {first.id} ({first.title}) {is_(first)}{also}: `graphene run` runs "
                         f"{'them' if more else 'it'}"]  # fmt: skip
@@ -138,6 +154,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             return [f"next: nothing is ready to run{rest}"]
         if mine:
             first, more = mine[0], len(mine) - 1
+            if first.id in back:  # its next move is the person's
+                return again(first, more)
             also = f", and {more} more" if more else ""
             return [
                 f"next: {first.id} ({first.title}) {is_(first)}{also}: `graphene node start {first.id}` "
@@ -162,9 +180,12 @@ def register(cli: typer.Typer, root, open_store, fail):
     def holds(n: P.Node, who: P.Caller) -> bool:
         return n.session_id == who.session_id if who.session_id else n.executor == who.name
 
-    def describe(store, n: P.Node, word: str, by_id: dict[str, P.Node], words: dict, who: P.Caller) -> str:
+    def describe(
+        store, n: P.Node, word: str, by_id: dict[str, P.Node], words: dict, who: P.Caller, room: int | None
+    ) -> list[str]:
         """What a leaf's row adds after its state: where it may write, what it waits on, and the
-        command for the move that is the person's (accept, sign off)."""
+        command for the move that is the person's (accept, sign off). ``room``: the columns a line of
+        its own has; a reason longer is cut there, and where the rest is goes on the next."""
         said = [scope_cell(n)] if n.scope else []
         if word == "running":
             said.append(f"{P.said_by(n.executor)}, since {T.clock(n.started_at)}")
@@ -182,18 +203,44 @@ def register(cli: typer.Typer, root, open_store, fail):
                 f"no scope and no leaves yet: `graphene node split {n.id}`, or `graphene node edit {n.id}`"
             )
         last = (store.node_log(n.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-        if n.state == P.OPEN and last["kind"] == "released":
-            said.append(f"handed back: {brief(last['detail'].get('why', ''), n.id)}")
-        elif n.state == P.OPEN and last["kind"] == "reopened":
-            said.append(f"sent back: {brief(last['detail'].get('note', ''), n.id)}")
-        return " · ".join(said)
+        how = {"released": ("handed back", "why"), "reopened": ("sent back", "note")}.get(last["kind"])
+        if n.state == P.OPEN and how:
+            reason = " ".join(str(last["detail"].get(how[1], "")).split())
+            if room and len(f"{how[0]}: {reason}") > room:
+                said += [T.elide(f"{how[0]}: {reason}", room), f"(`graphene node show {n.id}` has all of it)"]
+            else:
+                said.append(f"{how[0]}: {brief(reason, n.id)}")
+        return said
 
     FOLD = 12  # lines of tree the plain print shows before finished leaves fold into their sub-goal
 
-    def plan_lines(store, who: P.Caller, everything: bool = False, archive: bool = True) -> list[str]:
+    def room() -> int | None:
+        """The columns the plan's print fits: the terminal's, or $COLUMNS; None in a pipe or an agent's
+        shell with neither, where every line stays whole for grep."""
+        at_terminal = os.environ.get("COLUMNS") or sys.stdout.isatty()
+        return shutil.get_terminal_size().columns if at_terminal else None
+
+    def wrapped(line: str, width: int) -> list[str]:
+        """A line of words at ``width``: broken between words, never inside a `command`, the rest
+        indented under it."""
+        import textwrap
+
+        if len(line) <= width:
+            return [line]
+        indent = " " * (len(line) - len(line.lstrip()) + 2)
+        kept = re.sub(r"`[^`]*`", lambda m: m.group().replace(" ", "\u00a0"), line)  # one word each
+        lines = textwrap.wrap(kept, width, subsequent_indent=indent, break_long_words=False,
+                              break_on_hyphens=False, drop_whitespace=True)  # fmt: skip
+        return [part.replace("\u00a0", " ") for part in lines]
+
+    def plan_lines(
+        store, who: P.Caller, everything: bool = False, archive: bool = True, width: int | None = None
+    ) -> list[str]:
         """The plan as a tree, for a person and an agent alike: what waits on the person first, then
         the goal, then the tree folded to what is still moving. ``everything`` unfolds it; without
-        ``archive`` a finished plan is not told how to put it away (a replay's repository is gone)."""
+        ``archive`` a finished plan is not told how to put it away (a replay's repository is gone).
+        ``width``: every line fits it (80 columns at least): a row keeps its title (cut), id and state
+        word on its line, and what it adds goes on lines of its own under it; the rest wrap at words."""
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         asked, board = B.waiting(store)  # what the board waits on the person for
         if not alive:
@@ -226,7 +273,14 @@ def register(cli: typer.Typer, root, open_store, fail):
             if n.state == P.OPEN and under.get(n.id) and all(c.state == P.DONE for c in under[n.id])
         ]
         if not P.paused(store) and leaves and count[P.DONE] == len(leaves) and not stuck:
-            head += " · finished" + ("; `graphene plan archive` puts it away" if archive else "")
+            try:
+                left = P.uncommitted(store, checkout()) if archive else []
+            except P.Refused:
+                left = []  # not a checkout git can read: nothing to compare
+            if left:  # "finished" had read as landed while `git status` held their work
+                head += f" · finished; the work of {len(left)} lea{'f' if len(left) == 1 else 'ves'} is "
+                head += P.UNCOMMITTED
+            head += " · finished" * (not left) + ("; `graphene plan archive` puts it away" if archive else "")
         lines += [head, *([board] if board else [])]
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
@@ -260,26 +314,38 @@ def register(cli: typer.Typer, root, open_store, fail):
         heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
         wt = max(min(48, max(heads[n.id] + len(n.title) for n in alive)), max(heads.values()) + 12)
         wid, ww = max(len(n.id) for n in alive), max(len(w) for w in words.values())
+        if width:  # the title gives way, never the id or the word: commands take them
+            wt = max(min(wt, width - 6 - wid - ww), max(heads.values()) + 6)
         shown = [n for n in alive if not n.aside or n.state != P.DONE]
         fold = not everything and len(shown) > FOLD
 
-        def row(n: P.Node, depth: int) -> str:
+        def row(n: P.Node, depth: int) -> list[str]:
             word = words[n.id]
+            indent = f"  {'  ' * depth}    "  # a line of its own, under the title
             if under.get(n.id):
                 of = sum(1 for c in P.below(n.id, alive) if not under.get(c.id))
-                what = f"then `{n.check}`" if n.check and n.state != P.DONE else ""
-                what += f" · `graphene plan accept {n.id}`" if n.state == P.PROPOSED else ""
+                what = [f"then `{n.check}`"] if n.check and n.state != P.DONE else []
+                what += [f"`graphene plan accept {n.id}`"] if n.state == P.PROPOSED else []
                 if n.id in closed:
                     inside = [c for c in P.below(n.id, alive) if c.id in ready_ids]
-                    what += f" · {len(inside)} ready" if inside else ""
-                    what += f" · {of} leaves folded (`graphene plan --all` unfolds)"
-                what = what.removeprefix(" · ")
+                    what += [f"{len(inside)} ready"] if inside else []
+                    what += [f"{of} leaves folded (`graphene plan --all` unfolds)"]
             else:
-                what = describe(store, n, word, by_id, words, who)
+                what = describe(store, n, word, by_id, words, who, width and width - len(indent))
             head = f"{'  ' * depth}{P.look(word)[0]} "
             title = f"{head}{T.elide(n.title, wt - len(head))}"
             cells = f"  {title.ljust(wt)}  {n.id.ljust(wid)}  {word.ljust(ww)}"
-            return f"{cells}  · {what}" if what else cells.rstrip()
+            one = f"{cells}  · {' · '.join(what)}" if what else cells.rstrip()
+            if not width or len(one) <= width:
+                return [one]
+            said, sep = [cells], "  · "  # what fits beside the cells, then lines of its own, each cut
+            for piece in what:
+                if len(said[-1]) + len(sep) + len(piece) <= width:
+                    said[-1] += sep + piece
+                else:
+                    said.append(indent + T.elide(piece, width - len(indent)))
+                sep = " · " if said[1:] else "  · "
+            return [line.rstrip() for line in said]
 
         # Folded, a sub-goal with nothing moving under it (nothing running, in review or proposed) is one
         # line: a plan of sixty leaves just accepted is a dozen lines, not seventy-eight.
@@ -301,7 +367,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 if fold and n.state == P.DONE:
                     folded.append(n)
                     continue
-                lines.append(row(n, depth))
+                lines.extend(row(n, depth))
                 walk(n.id, depth + 1)
             if folded:
                 inside = sum(len(P.below(n.id, alive)) for n in folded)
@@ -330,7 +396,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
         if not who.person:
             lines += next_lines(store, who, shown=True)
-        return lines
+        return [part for line in lines for part in wrapped(line, width)] if width else lines
 
     def above(store) -> None:
         """The direction above the plan: the path to the node it hangs from (`direction.above_plan`)."""
@@ -339,7 +405,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def print_plan(store, who: P.Caller, everything: bool = False) -> None:
         above(store)
-        for line in plan_lines(store, who, everything):
+        for line in plan_lines(store, who, everything, width=room()):
             out(line)
 
     def value(v) -> str:
@@ -438,22 +504,26 @@ def register(cli: typer.Typer, root, open_store, fail):
     def print_once(who: P.Caller, everything: bool, archive: bool = True, recent_as: str = "just now",
                    wide: int | None = None) -> None:  # fmt: skip
         """`graphene watch --once`: the plan, then what just happened (``recent_as``), each of its rows cut
-        to ``wide`` columns when given."""
+        to ``wide`` columns when given, else fitted to the terminal's width (none in a pipe)."""
         from rich.text import Text
 
+        width = wide or room()
         with open_store(root()) as store:
             above(store)
-            lines = plan_lines(store, who, everything, archive)
+            lines = plan_lines(store, who, everything, archive, width=width)
             recent = store.node_log()[-6:]
         for line in lines:
             out(line)
         if recent:
             out(f"\n{recent_as}")
             for e in recent:
-                said = Text(log_line(e, with_node=8))
                 if wide:
+                    said = Text(log_line(e, with_node=8))
                     said.truncate(wide, overflow="ellipsis")
-                out(said.plain)
+                    out(said.plain)
+                    continue
+                for part in wrapped(log_line(e, with_node=8), width) if width else [log_line(e, with_node=8)]:
+                    out(part)
 
     def known_view(name: str) -> None:
         if name != "auto" and name not in V.VIEWS:
@@ -882,7 +952,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             except KeyboardInterrupt:
                 out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
-            out(summary(store, since))
+            left = P.uncommitted(store, checkout()) if parallel == 1 else []  # --parallel committed its own
+            out(summary(store, since) + (f"; the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None

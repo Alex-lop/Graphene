@@ -317,7 +317,8 @@ def test_a_new_trees_goal_is_proposed_once_the_old_goal_has_nothing_left_to_do(s
     plan.archive(store, ALEX)
     assert plan.propose_goal(store, "the export writes CSV as well as JSON", BOT)
     assert (plan.goal(store), store.meta("goal:proposed")) == ("", "the export writes CSV as well as JSON")
-    assert store.node_log("*", ("goal_proposed",))[-1]["detail"]["was"] == "users come back with their ids"
+    # archived with its tree, the old goal is kept in the archive's own log entry, word for word
+    assert store.node_log("*", ("archived",))[-1]["detail"]["goal"] == "users come back with their ids"
     plan.propose(store, [{"id": "csv", "title": "csv", "scope": ["README.md"], "check": "true"}], BOT)
     plan.accept(store, [], ALEX)
     assert plan.trail(store, plan.get(store, "csv")) == ["the export writes CSV as well as JSON"]
