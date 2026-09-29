@@ -163,9 +163,8 @@ def test_a_project_sandboxes_refuse_leaves_a_proposed_check_not_run_saying_what_
         leaves(store, RED)
         [(_, d)] = C.run(store, repo)
     assert d["verdict"] == "not-run"
-    assert d["why"] == ("Sandboxes refused this project (403: its key has no Sandboxes permission: it lacks "
-                        "import, spawn); request access at tokenfactory.nebius.com/sandboxes/about, or "
-                        "GRAPHENE_SANDBOX=docker")  # fmt: skip
+    assert d["why"] == ("Sandboxes refused this project (403): its key lacks import, spawn there; request "
+                        "access at tokenfactory.nebius.com/sandboxes/about, or GRAPHENE_SANDBOX=docker")
 
 
 def test_an_accepted_check_runs_here_without_the_key_and_no_key_leaves_a_red_unread(repo, monkeypatch):

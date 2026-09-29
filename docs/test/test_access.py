@@ -57,8 +57,8 @@ def test_a_project_sandboxes_refuse_is_one_line_saying_what_to_do_and_token_fact
         code = access.main(["--sandbox", "contree", "--out", str(tmp_path / "a.json")])
     said = capsys.readouterr().out
     assert code == 0
-    assert ("\n- Sandboxes refused this project (403: its key has no Sandboxes permission: it lacks import, "
-            "spawn); request access at tokenfactory.nebius.com/sandboxes/about\n") in said  # fmt: skip
+    assert ("\n- Sandboxes refused this project (403): its key lacks import, spawn there; request access at "
+            "tokenfactory.nebius.com/sandboxes/about\n") in said  # fmt: skip
     assert "ForbiddenError" not in said and "FAILED" not in said
     box = json.loads((tmp_path / "a.json").read_text())["sandbox"]
     assert box["ok"] is False and box["refused"] is True

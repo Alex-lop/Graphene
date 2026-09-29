@@ -314,9 +314,8 @@ def test_a_project_sandboxes_refuse_brings_each_leaf_back_saying_what_it_means_a
     everywhere(monkeypatch, tmp_path, FAULTS_SDK="forbidden", NEBIUS_PROJECT_ID="project-fake")
     monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
     f, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
-    cause = ("the executor stopped: Sandboxes refused this project (403: its key has no Sandboxes "
-             "permission: it lacks import, spawn); request access at "
-             "tokenfactory.nebius.com/sandboxes/about; or run the leaves on this machine: "
+    cause = ("the executor stopped: Sandboxes refused this project (403): its key lacks import, spawn there; "
+             "request access at tokenfactory.nebius.com/sandboxes/about; or run the leaves on this machine: "
              "`graphene run --with nemotron`")  # fmt: skip
     with Store.open(repo) as store:
         whys = {n: store.node_log(n, ("released",))[-1]["detail"]["why"] for n in ("greet", "farewell")}

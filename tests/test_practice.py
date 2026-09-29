@@ -459,7 +459,7 @@ def test_rung_1_passes_on_token_factory_and_says_plainly_what_waits_for_sandboxe
 
     practice = load_practice(tmp_path, monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")  # rung 1 reads what the person ran today, and runs nothing
-    refused = str(sandbox.Refused(sandbox.FORBIDDEN.format(lacks="")))
+    refused = sandbox.FORBIDDEN.format(why=sandbox.NO_GRANT)
     calls = [{"model": m, "ok": True} for m in ("u", "s", "n")]
     report = {"key": True, "nvidia": [{}] * 4, "tool_calls": calls,
               "sandbox": {"ok": False, "refused": True, "said": refused}}  # fmt: skip

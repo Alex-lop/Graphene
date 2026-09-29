@@ -83,14 +83,15 @@ def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_
         sandbox.Contree()
 
 
-REFUSED = ("Sandboxes refused this project (403: its key has no Sandboxes permission{}); request access at "
+REFUSED = ("Sandboxes refused this project (403): {}; request access at "
            "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
 
 
 def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_do(monkeypatch):
     """Rung 1 met it live (2026-09-29): ConTree answered 403 to the project. The SDK's own ForbiddenError,
     from a stub (nothing is sent), becomes one refusal naming what the key lacks (whoami), and it is
-    Token Factory's kind of refusal, which every caller says as it is. Without whoami, the rest stands."""
+    Token Factory's kind of refusal, which every caller says as it is. Without whoami's grants, the project
+    id is the other suspect: ConTree answers a made-up key and project with a 403 too."""
     from fake_faults import Forbidding
 
     from graphene_map import tokenfactory as tf
@@ -100,7 +101,7 @@ def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
     with pytest.raises(sandbox.Refused) as no:
         sandbox.Contree()
-    assert str(no.value) == REFUSED.format(": it lacks import, spawn")
+    assert str(no.value) == REFUSED.format("its key lacks import, spawn there")
     assert isinstance(no.value, tf.Unreachable)
 
     class Blind(Forbidding):
@@ -109,9 +110,10 @@ def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_
             self.get_token_info = lambda refresh=False: 1 / 0
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", Blind)
-    with pytest.raises(sandbox.Refused, match=r"^Sandboxes refused this project \(403: its key has no "
-                                              r"Sandboxes permission\); request access"):  # fmt: skip
+    with pytest.raises(sandbox.Refused) as no:
         sandbox.Contree()
+    assert str(no.value) == REFUSED.format(sandbox.NO_GRANT)
+    assert "or NEBIUS_PROJECT_ID is not its project" in str(no.value)
 
 
 def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkeypatch):

@@ -178,9 +178,11 @@ def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
 
 
 # ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
-# Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29)
-FORBIDDEN = ("Sandboxes refused this project (403: its key has no Sandboxes permission{lacks}); request "
-             "access at tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+# Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
+# and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
+FORBIDDEN = ("Sandboxes refused this project (403): {why}; request access at "
+             "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+NO_GRANT = "its key may not use them there, or NEBIUS_PROJECT_ID is not its project"
 TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
 
 
@@ -232,7 +234,8 @@ class Contree:
                 lacks = sorted(k for k, v in self.sdk.get_token_info().permissions.items() if not v)
             except Exception:  # noqa: BLE001 (the refusal is said either way)
                 lacks = []
-            raise Refused(FORBIDDEN.format(lacks=f": it lacks {', '.join(lacks)}" if lacks else "")) from None
+            why = f"its key lacks {', '.join(lacks)} there" if lacks else NO_GRANT
+            raise Refused(FORBIDDEN.format(why=why)) from None
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
         return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout, "")
