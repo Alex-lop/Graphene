@@ -942,3 +942,32 @@ def test_the_print_takes_the_terminals_width_and_keeps_a_notes_byline_whole(repo
     assert max(len(line) for line in narrow) <= 80
     assert not any(line.rstrip().endswith("·") for line in narrow)
     assert any("(planner:planner.py's)" in line for line in narrow)
+
+
+def test_a_reask_whose_items_the_board_has_already_says_so_and_the_screen_does_not_say_nothing(
+    repo, tmp_path
+):
+    """Walk 2026-09-29 (alex 27): after `+`, a planner that put up the same items it had before, all
+    settled by then, was reported as "the planner proposed nothing and put nothing on the board", and
+    nothing anywhere said its items were kept as the board had them."""
+    from graphene_map.tui import Watch
+
+    planned(repo, tmp_path)
+    assert person("board", "take", "int-ids").exit_code == 0
+    script = tmp_path / "planner.py"
+    again = person("ask", "users should come back with their ids", "--with", f"{sys.executable} {script}")
+    assert "int-ids is on the board already (taken): not put up again" in again.stdout, again.stdout
+    log = repo / ".graphene" / "runs" / "ask-again.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    line = next(ln for ln in again.stdout.splitlines() if "int-ids is on the board already" in ln)
+    log.write_text(f"asking the planner (planner.py)…\n{line}\n")
+    app, told = Watch(repo, lambda: Store.open(repo), every=60), []
+    app.call_from_thread = lambda fn, message, whole: told.append(message)
+
+    class Done:
+        def wait(self):
+            return 0
+
+    app.follow(Done(), ["ask", "--finer", "users should come back with their ids"], log)
+    said = "the planner put int-ids up again, which the board has already; what it said is in the pane"
+    assert told == [said]

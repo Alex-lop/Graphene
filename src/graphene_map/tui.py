@@ -1254,6 +1254,9 @@ class Watch(App):
         elif tree.cursor_line < 0:
             tree.cursor_line = 0  # a screen opens on the first row: the goal
         tree.scroll_to(y=y, animate=False)
+        rows, line = tree.scrollable_content_region.height, tree.cursor_line
+        if rows and not y <= line < y + rows:  # rows put up above it pushed the cursor off the pane
+            tree.call_after_refresh(tree.scroll_to_line, line, animate=False)
 
     def outline(self, among: list) -> None:
         """A tree taller than its pane folds the sub-goals ``among`` to one row each, which counts what
@@ -1406,9 +1409,14 @@ class Watch(App):
     def offer_keys(self) -> list[str]:
         return self.offered.get(self.selected() or "", [])
 
+    shown_as: tuple = (None, None)  # the pane's view and node last drawn: another opens at its top
+
     def show_detail(self, store) -> None:
         node_id = self.selected()
         pane = self.query_one("#detail", Static)
+        if (self.view, node_id) != self.shown_as:  # a scroll made in one pane never hides another's top
+            self.shown_as = (self.view, node_id)
+            self.query_one("#side", VerticalScroll).scroll_home(animate=False)
         wide, high = self.pane_room()
         if self.view == "direction":  # D: the direction, read again every tick, plan or no plan
             return pane.update(direction_pane(store, self.root_path, wide))
@@ -1588,8 +1596,17 @@ class Watch(App):
         parent = node_id if child else self.read(lambda s: P.get(s, node_id).parent if node_id else None)
 
         def added(title: str | None) -> None:
-            if title:
-                self.did(["node", "add", *(["--parent", parent] if parent else []), "--", title])
+            if not title:
+                return
+            before = set(self.read(lambda s: [n.id for n in P.nodes(s)], []))
+            self.did(["node", "add", *(["--parent", parent] if parent else []), "--", title])
+            new = [i for i in self.read(lambda s: [n.id for n in P.nodes(s)], []) if i not in before]
+            if new:  # the cursor on the new node, where the prompt's next step (e, or s) acts
+                if self.drawn is not None:
+                    self.here = new[0]
+                else:
+                    self.tree_to(new[0])
+                self.refresh_plan()
 
         where = f"under {parent}" if parent else "at the top"
         kind = "child" if child else "sibling"
@@ -1880,9 +1897,12 @@ class Watch(App):
         made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
         put = [line.removeprefix("put up ").split(":")[0] for line in news if line.startswith("put up ")]
         repo = [line.split()[1] for line in news if line.startswith("settled ") and " from the repo " in line]
+        kept = [line.split()[0 if " is on the board already " in line else 1] for line in news
+                if " is on the board already " in line or line.startswith("kept ")]  # fmt: skip
         if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
             did = [*([f"proposed {', '.join(made)}"] if made else []),
                    *([f"put {', '.join(put)} on the board"] if put else []),
+                   *([f"put {', '.join(kept)} up again, which the board has already"] if kept else []),
                    *([f"found {', '.join(repo)} answered in the repo"] if repo else [])]  # fmt: skip
             if did or code:
                 told = mark + (f"the planner {' and '.join(did)}" if did else f"the planner: {gist}")
@@ -2088,8 +2108,10 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     pane = Pane(wide)
     word = s.words.get(node.id) or P.reads(node, s.nodes)
     kids = s.under.get(node.id, [])
-    held = len(store.node_log(node.id, ("started",)))
-    attempt = f" · attempt {held}" if held > 1 and word in ("running", "came back") else ""
+    # the run's own count (its `attempt` rows), never every hold the leaf ever had: a new run's first
+    # attempt read `attempt 3`, and a leaf that came back `attempt 2` over its `3 attempts`
+    tries = (store.node_log(node.id, ("attempt",)) or [{"detail": {}}])[-1]["detail"].get("attempt") or 0
+    attempt = f" · attempt {tries}" if tries > 1 and word in ("running", "came back") else ""
     if word == "proposed" and node.state == P.PROPOSED:
         _header(pane, node, "proposed", f" by {P.said_by(node.proposed_by)}")
     elif word == "done":
