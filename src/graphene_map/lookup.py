@@ -77,7 +77,7 @@ def files(root: Path, asked: list[dict], tracked: list[str]) -> dict[str, str]:
             continue
         if len(text) > room:
             continue
-        clean = "\n".join(cover.CONTROL.sub("", line) for line in text.splitlines())  # lines kept whole
+        clean = "\n".join(cover.CONTROL.sub("", line) for line in text.split("\n"))  # numbered as grep does
         out[f], room = tf.unkeyed(clean), room - len(text)
     return out
 
@@ -125,12 +125,15 @@ def kept(item: dict, answer: dict, sent: dict[str, str]) -> tuple[str, int | Non
     if path not in sent or len(quoted) < LEAST:
         return None
     if choice == "default" and (item["default"] or item["then"]):  # a question with no default has none
-        state, option = "taken", None
+        state, option, effects = "taken", None, item["then"]
     elif choice.removeprefix("option ").isdigit() and 1 <= int(choice[7:]) <= len(item["options"]):
         state, option = "picked", int(choice[7:])
+        effects = item["options"][option - 1]["then"]
     else:
         return None
-    found = [no for no, line in enumerate(sent[path].splitlines(), 1) if quoted in _flat(line)]
+    if any(B.effect(line)[0] == "drop" for line in effects):  # a drop is the person's key (B.drops)
+        return None
+    found = [no for no, line in enumerate(sent[path].split("\n"), 1) if quoted in _flat(line)]
     return (state, option, f"{path}:{found[0]}") if found else None
 
 
@@ -170,7 +173,10 @@ def lookup(store, root: Path, say: Callable[[str], None] = print) -> list[dict]:
         return []
     by_id, settled = {it["id"]: it for it in asked}, []
     for answer in answers:
-        item = by_id.pop(answer.get("id"), None) if isinstance(answer, dict) else None
+        shaped = isinstance(answer, dict) and all(
+            isinstance(answer.get(k), str | None) for k in ("id", "choice", "file", "line")
+        )  # an answer not of the shape asked for is passed over, as a line that does not hold is
+        item = by_id.pop(answer.get("id"), None) if shaped else None
         holds = kept(item, answer, sent) if item else None
         if holds is None:
             continue
