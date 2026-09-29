@@ -736,6 +736,13 @@ class Watch(App):
         self.refresh_plan()
         self.call_after_refresh(self.refresh_plan)  # the panes have their sizes now
         self.set_interval(self.every, self.refresh_plan)
+        self.set_interval(0.5, self.terminal_gone)
+
+    def terminal_gone(self) -> None:
+        """A terminal that closed without the hangup ends the screen as `q` does (``P.terminal_closed``):
+        Textual would read its end of file as no key, again and again, at full speed, forever."""
+        if not self.is_headless and P.terminal_closed():
+            self.exit()
 
     def on_resize(self) -> None:
         if self.shape is not None:
