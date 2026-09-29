@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from graphene_map import sandbox
+from graphene_map import night, sandbox
 
 SITE = "try:\n    import fake_faults\nexcept ImportError:  # a python that is not the test's\n    pass\n" \
        "else:\n    fake_faults.install(setattr)\n"  # fmt: skip
@@ -56,6 +56,14 @@ def install(put) -> None:
         import contree_sdk
 
         put(contree_sdk, "ContreeSync", Forbidding)
+
+
+def persons_shell(monkeypatch) -> None:
+    """The person's shell, as CI's is: no vendor's agent mark. A stub SDK stands in for ConTree, and
+    sandbox.Contree still treats it as the real service (night.person_only), so a test that drives it
+    runs as the person, whatever shell the suite was started from."""
+    for mark in night.MARKS:
+        monkeypatch.delenv(mark, raising=False)
 
 
 class Forbidding:

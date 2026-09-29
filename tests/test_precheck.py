@@ -153,8 +153,9 @@ def test_a_project_sandboxes_refuse_leaves_a_proposed_check_not_run_saying_what_
     """ConTree's 403 (rung 1 met it live, 2026-09-29), from a stub SDK raising its own ForbiddenError:
     nothing runs here, and the leaf's line says the refusal whole, with the other sandbox there is."""
     contree_sdk = pytest.importorskip("contree_sdk")
-    from fake_faults import Forbidding
+    from fake_faults import Forbidding, persons_shell
 
+    persons_shell(monkeypatch)
     monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
     monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")

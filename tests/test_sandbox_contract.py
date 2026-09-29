@@ -92,10 +92,11 @@ def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_
     from a stub (nothing is sent), becomes one refusal naming what the key lacks (whoami), and it is
     Token Factory's kind of refusal, which every caller says as it is. Without whoami's grants, the project
     id is the other suspect: ConTree answers a made-up key and project with a 403 too."""
-    from fake_faults import Forbidding
+    from fake_faults import Forbidding, persons_shell
 
     from graphene_map import tokenfactory as tf
 
+    persons_shell(monkeypatch)
     monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
@@ -134,6 +135,9 @@ def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkey
     class Sdk:
         images = type("Images", (), {"oci": lambda self, ref: Image(), "use": lambda self, ref: Image()})()
 
+    from fake_faults import persons_shell
+
+    persons_shell(monkeypatch)
     monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")

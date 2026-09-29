@@ -11,7 +11,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from fake_faults import Box, everywhere
+from fake_faults import Box, everywhere, persons_shell
 from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
 from test_sandbox_state import needs_docker
@@ -311,6 +311,7 @@ def test_a_project_sandboxes_refuse_brings_each_leaf_back_saying_what_it_means_a
     refusal, what the key lacks, where access is asked for and how to run here instead; no model call is
     made, no executor is left, and no log holds a traceback."""
     pytest.importorskip("contree_sdk")
+    persons_shell(monkeypatch)  # the executors inherit it: ConTree, stub or not, is the person's to spend
     everywhere(monkeypatch, tmp_path, FAULTS_SDK="forbidden", NEBIUS_PROJECT_ID="project-fake")
     monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
     f, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
