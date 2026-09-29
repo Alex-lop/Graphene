@@ -267,7 +267,9 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
 - **The key.** `graphene key set` keeps the Token Factory key in the system keychain (`security` on
   macOS, `secret-tool` on Linux), read from a hidden prompt and never from the command line.
   `graphene key check` says `Token Factory: reached, N NVIDIA models` or what stood in the way,
-  never the key; `graphene key remove` takes it out. Graphene looks in `NEBIUS_API_KEY` first, then
+  then `Sandboxes: work (import, list and spawn granted)` or what stands in their way (a grant the
+  project lacks, a 403, a 401, no answer, no project, no SDK), from ConTree's whoami, which spends
+  nothing; never the key or the project id. `graphene key remove` takes it out. Graphene looks in `NEBIUS_API_KEY` first, then
   the keychain, and never in a file. `GRAPHENE_KEYCHAIN=off` keeps it out of the keychain.
 - **Protected paths.** `protected: secrets/**, .env` in `graphene config edit`: no scope may cover
   them, the planner is told never to read them, its tools and the hook refuse to, and they are not

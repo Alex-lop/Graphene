@@ -340,7 +340,12 @@ and never in a file.
 - `graphene key set` reads it from a hidden prompt; a key on the command line is refused. The key goes
   to the keychain tool on its stdin, never in its argv.
 - `graphene key check` prints `Token Factory: reached, N NVIDIA models` or what stood in the way, with
-  the key cut out of any message.
+  the key cut out of any message, then one line for Sandboxes from ConTree's whoami, a read that spends
+  nothing (`sandbox.whoami`): `Sandboxes: work (import, list and spawn granted)`, `this project lacks
+  <grants>`, `refused the key and project together (403)` with ConTree's own reason, `the key was not
+  accepted (401)`, `could not be reached (<cause>)`, `not configured` or `the SDK is not installed`,
+  with the key and the project id taken out. Sandboxes are optional: the exit status is Token
+  Factory's.
 - `graphene key remove` takes it out.
 
 All three are the person's: an agent's call, Claude Code's or Codex's, is refused before the keychain
@@ -636,7 +641,8 @@ them it refuses in words before anything is sent. A project Sandboxes refuse (Co
 met it on 29 September) is one refusal, in the same words in `access.py`, on the ladder, for a leaf in a
 sandbox and in `plan precheck`: "Sandboxes refused this project (403): its key may not use them there,
 or NEBIUS_PROJECT_ID is not its project; request access at tokenfactory.nebius.com/sandboxes/about".
-When ConTree's whoami lists the key's grants, it names the ones the key lacks instead. A made-up key
+When ConTree's whoami lists the key's grants, it names the ones the key lacks instead, and ConTree's
+own reason, when its 403 gives one, follows as `ConTree said: …`, without the key or the project id. A made-up key
 and project got a 403, not a 401, the one time a test reached ConTree by mistake, so the project id is
 the other suspect. A ConTree operation
 that runs past its time comes back as the command's exit 124, as Docker's does, so the leaf is told
@@ -717,8 +723,9 @@ planner picks when it runs, and the two smallest listed do the leaves, the secon
 (`nemotron --model <nano> --model <super> --placement local`). The menu names the sizes it found.
 The placement is `sandbox` when ConTree is set up here (`sandbox.configured`: the SDK imports, and
 `NEBIUS_API_KEY` with `NEBIUS_PROJECT_ID`, or a `contree auth` profile) and ConTree's whoami, a read
-and no operation, does not refuse the project (`sandbox.refused`), `local` otherwise. A refused project
-gets `local` and one line saying why and how to move the leaves once access comes. When the
+and no operation, grants import, list and spawn (`sandbox.refused`), `local` otherwise: a 403, a grant
+it lacks, a 401 or no answer gets `local` and one line saying why, and that `graphene init --executor
+nemotron` places the leaves in Sandboxes once `graphene key check` says they work. When the
 list could not be read it is plain `nemotron`, which finds its models when it runs. Token Factory is
 asked once, with no retry, and a try waits 10 seconds at most (`tokenfactory.LISTED`). What could not
 be reached (no key, a refused key, no answer, no Nemotron listed) is one line.
