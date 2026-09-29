@@ -371,3 +371,37 @@ def test_init_keeps_the_personal_settings_file_out_of_git_add_without_touching_g
         ["git", "-C", str(tmp_path), "status", "--porcelain"], capture_output=True, text=True
     )
     assert "settings.local.json" not in status.stdout and ".claude" not in status.stdout
+
+
+def test_the_start_head_is_read_from_git_files_as_rev_parse_says_it(tmp_path, monkeypatch):
+    """SessionStart records HEAD without starting git (the agent waits for the hook): a branch in a
+    loose file, the same branch packed, a newer loose one over it, a detached HEAD, a branch with no
+    commit yet. A repo whose refs are kept otherwise (reftable) asks git itself."""
+    import subprocess
+
+    from graphene_map.hooks import git_head
+
+    real = subprocess.run
+    git = ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t"]
+
+    def check(spawned: int = 0) -> None:
+        said = real([*git, "rev-parse", "HEAD"], capture_output=True, text=True)
+        calls = []
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a) or real(*a, **k))
+        head = git_head(tmp_path)
+        monkeypatch.setattr(subprocess, "run", real)
+        assert (head, len(calls)) == ((said.stdout.strip() if said.returncode == 0 else None), spawned)
+
+    real(["git", "init", "-q", str(tmp_path)], check=True)
+    check()  # no commit yet
+    real([*git, "commit", "-q", "--allow-empty", "-m", "one"], check=True)
+    check()  # refs/heads/<branch>, a loose file
+    real([*git, "pack-refs", "--all"], check=True)
+    check()  # packed-refs only
+    real([*git, "commit", "-q", "--allow-empty", "-m", "two"], check=True)
+    check()  # a loose file newer than the packed line
+    real([*git, "checkout", "-q", "--detach", "HEAD~1"], check=True)
+    check()  # detached: HEAD is the commit itself
+    real([*git, "checkout", "-q", "-"], check=True)
+    (tmp_path / ".git" / "reftable").mkdir()
+    check(spawned=1)

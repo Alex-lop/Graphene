@@ -4,6 +4,7 @@
 the standard library and the store; Typer and Rich are imported for every other command.
 """
 
+import os
 import sys
 
 
@@ -11,7 +12,14 @@ def app() -> None:
     if sys.argv[1:3] == ["ingest", "hook"]:
         from .hooks import hook_main
 
-        raise SystemExit(hook_main())
+        code = hook_main()
+        # The store is closed and the answer is flushed here, so the hook skips the interpreter's
+        # teardown of every module it loaded: about 4 ms of each call the agent waits for.
+        try:
+            sys.stdout.flush()
+        except OSError:
+            pass  # Claude Code stopped reading: the hook still never fails the agent
+        os._exit(code)
     build()()
 
 
