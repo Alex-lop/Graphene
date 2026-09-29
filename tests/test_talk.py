@@ -90,7 +90,7 @@ def test_why_lands_on_the_board_as_the_planners_note_about_the_node(repo, talker
     assert (
         "why-ids" in board
         and "ids is there so the API returns ids before" in board
-        and "\n    the docs describe them" in board  # wrapped whole under its row
+        and "\n    them" in board  # wrapped whole under its row, at the terminal's 80 columns
     )
     again = person("talk", "why", "ids", "--with", talker)  # a second answer is a second note, not refused
     assert again.exit_code == 0 and "why-ids-2" in again.stdout

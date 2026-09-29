@@ -781,7 +781,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             accepted = P.accept(store, ids or [], P.caller())
             took = None
             if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
-                took = B.took(B.defaults(store, P.caller(), files))  # open on the board takes its default
+                took = B.took(B.defaults(store, P.caller(), files), B.left(store))  # open takes its default
             if accepted:  # first, in a line: what the screen's bottom line gives of it, the defaults too
                 out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
@@ -937,10 +937,13 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(str(no), 1)
             said_where()  # first: a run changes the plan for as long as it goes
             who = P.caller()
-            if who.person and any(B.has_default(it) for it in B.items(store)):  # R takes what was left open
+            # a run that starts nothing answers nothing on the board
+            starts = [n for n in P.ready(P.nodes(store), who) if not P.came_back(store, n)
+                      and (not node or n.id in node)]  # fmt: skip
+            if who.person and starts and any(B.has_default(it) for it in B.items(store)):  # R takes the rest
                 files = P.tracked(r)  # before the write lock, never under it
                 with P.undoable(store, who, "board take"):
-                    took = B.took(B.defaults(store, who, files))
+                    took = B.took(B.defaults(store, who, files), B.left(store))
                 if took:
                     out(took)
             logs = r / ".graphene" / "runs"

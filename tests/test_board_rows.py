@@ -109,6 +109,8 @@ def test_the_open_items_are_rows_under_the_goal_and_the_screen_opens_on_the_firs
 @pytest.mark.parametrize("size", SIZES)
 def test_each_key_answers_the_item_under_the_cursor_and_says_its_command(repo, size):
     planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "board: on\n", ALEX)  # every item a row, so every key has one to answer
     steps = [
         ["1"],  # which-id: option 1, whose effect widens ids' scope
         ["y"],  # int-ids: confirmed
@@ -143,6 +145,8 @@ def test_each_key_answers_the_item_under_the_cursor_and_says_its_command(repo, s
 @pytest.mark.parametrize("size", SIZES)
 def test_p_again_unparks_a_note_is_about_the_items_node_and_keys_on_a_node_keep_their_meaning(repo, size):
     planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "board: on\n", ALEX)  # parking the one question leaves the other items rows
     steps = [
         ["p"],  # which-id parked; the cursor goes on to int-ids
         ["G", "k", "k", "k", "k"],  # up from the last row (goal, 4 items, the fold, api, ids, docs, schema)
@@ -231,14 +235,26 @@ def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
     assert seen["at"] is None and not any(" int-ids " in r for r in seen["tree"])
     assert "the board" not in person("plan").stdout
     accepted = person("plan", "accept").stdout  # what was not shown takes its default, in one line
-    assert "took the defaults of which-id, int-ids, empty-check, paging, left open" in accepted
+    assert "took the defaults of which-id, int-ids, empty-check, paging, shape, left open" in accepted
     agent("board", "note", "is the id a string?")  # a note is no question: auto still shows nothing
     with Store.open(repo) as store:
         assert not B.asks(store)
         B.add(store, "question", "strings or ints?", P.Caller("planner:script", False, "s1"), default="ints")
-        assert B.asks(store) and B.waiting(store)[0] == 3  # a question: the board shows all that is open
+        assert B.asks(store) and B.waiting(store)[0] == 2  # a question: the board shows all that is open
     [seen] = drive(repo, [[]], (80, 24))
     assert seen["at"] == "strings-or-ints"
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_under_auto_answering_the_last_question_leaves_what_a_fresh_screen_shows(repo, size):
+    """Walk 2026-09-29 (4): after the last question the live screen kept the other items and `+ 4 on
+    the board`, which a fresh screen did not show."""
+    planned(repo)
+    live, fresh = drive(repo, [[], ["y"]], size)[1], drive(repo, [[]], size)[0]
+    rows = lambda seen: [r for r in seen["tree"] if any(f" {i} " in r for i in OPEN)]  # noqa: E731
+    assert rows(live) == [] and rows(fresh) == []
+    for seen in (live, fresh):
+        assert "on the board" not in " ".join(seen["lines"]), seen["lines"]
 
 
 def test_the_replay_refuses_every_board_key(tmp_path, monkeypatch):
@@ -284,6 +300,8 @@ def test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said(re
     line still held the command, so the next item's keys were nowhere. Now the keys have a line of
     their own and the command's words take a third."""
     planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "board: on\n", ALEX)  # the next item after the one question is a row to land on
     [seen] = drive(repo, [["y"]], size)
     _, keys, said = seen["lines"]
     assert seen["at"] == "int-ids"

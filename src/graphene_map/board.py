@@ -449,17 +449,24 @@ def settle(
 
 def has_default(item: dict) -> bool:
     """Can the item be taken without a word from the person? A default (or its `then:` lines), or a
-    kind whose take is a yes: an assumption confirmed, a risk noted, a leave-out agreed. A question
-    with no default, and an agent's note, wait for the person."""
-    return reads(item) == "open" and bool(
-        item["default"] or item["then"] or item["kind"] in ("assume", "risk", "leave out")
+    kind whose take is a yes: an assumption confirmed, a risk noted, a leave-out agreed, an agent's
+    note taken (then told to its executors as written). A question with no default waits for the
+    person, and so does a default that drops a node (``drops``)."""
+    return reads(item) == "open" and not drops(item) and bool(
+        item["default"] or item["then"] or item["kind"] in ("assume", "risk", "leave out", "note")
     )
+
+
+def drops(item: dict) -> list[str]:
+    """The nodes the item's default drops (`then: drop NODE`): never taken without the person's key."""
+    return [node for line in item["then"] for verb, node, _ in [effect(line)] if verb == "drop" and node]
 
 
 def defaults(store, who: P.Caller, files: list[str] | None = None) -> list[dict]:
     """Every open item that has a default takes it, as the person's take (``unchanged`` on the log
     row: nobody changed it), so a person who agrees with every default answers nothing. An item that
-    cannot be taken (about a node that left the plan) stays open. Returns what was taken."""
+    cannot be taken (about a node that left the plan) stays open, and so does one whose default drops
+    a node (``left``). Returns what was taken."""
     taken = []
     for item in [it for it in items(store) if has_default(it)]:
         try:
@@ -469,12 +476,18 @@ def defaults(store, who: P.Caller, files: list[str] | None = None) -> list[dict]
     return taken
 
 
-def took(taken: list[dict]) -> str | None:
-    """The one line saying what took its default: `took the defaults of q-a, r-b (plan undo …)`."""
-    if not taken:
-        return None
-    return (f"took the default{'s' if len(taken) > 1 else ''} of {', '.join(it['id'] for it in taken)}, "
-            "left open on the board (`graphene plan undo` takes them back)")  # fmt: skip
+def left(store) -> list[dict]:
+    """The open items whose default drops a node: taking them is the person's key, never a default's."""
+    return [it for it in items(store) if reads(it) == "open" and drops(it)]
+
+
+def took(taken: list[dict], kept: list[dict] | None = None) -> str | None:
+    """The one line saying what took its default: `took the defaults of q-a, r-b (plan undo …)`, and
+    what was left for the person because its default drops a node (``kept``)."""
+    said = [f"took the default{'s' if len(taken) > 1 else ''} of {', '.join(it['id'] for it in taken)}, "
+            "left open on the board (`graphene plan undo` takes them back)"] if taken else []  # fmt: skip
+    said += [f"left for you: {it['id']} (its default drops {', '.join(drops(it))})" for it in kept or []]
+    return "; ".join(said) or None
 
 
 def lifted(item: dict) -> list[str]:
