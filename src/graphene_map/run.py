@@ -353,6 +353,8 @@ def run_node(
                 say(f"{node.id} handed back by {who_said}: {last['detail'].get('why', current.state)}")
                 for _key, what, command in P.offers(store, current):
                     say(f"  {what}: `graphene {shlex.join(command)}`")
+                if P.not_offered(store, current):
+                    say(f"  {P.not_offered(store, current)}")
                 return None
             try:
                 return P.finish(store, node.id, who)

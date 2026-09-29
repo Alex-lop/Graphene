@@ -1130,10 +1130,42 @@ def offerable(store, node: Node, everything: list[Node] | None = None) -> list[s
     everything = nodes(store) if everything is None else everything
     by_id = {n.id: n for n in everything}
     waited = [g for i in all_needs(node, by_id) if i in by_id for g in by_id[i].scope]
+    paths = wanted(store, node)
+    held = owners(node, everything, paths)
     return [
-        p for p in wanted(store, node)
-        if not in_scope(p, waited) and not any(c in p for c in "{}~") and not p.startswith("/")
+        p for p in paths
+        if not in_scope(p, waited) and p not in held
+        and not any(c in p for c in "{}~") and not p.startswith("/")
     ]  # fmt: skip
+
+
+def owners(node: Node, everything: list[Node], paths: list[str]) -> dict[str, str]:
+    """Whose each of ``paths`` is, if not ``node``'s: a path belongs to the first leaf in
+    the plan, not done and not dropped, whose scope has it. A path another leaf owns is offered to no
+    second writer, since two leaves writing one file is what the scopes are there to prevent."""
+    parents = {n.parent for n in everything if n.state not in GONE}
+    live = [n for n in everything if n.id != node.id and n.id not in parents and n.state not in (DONE, *GONE)]
+    return {
+        p: next(n.id for n in live if in_scope(p, n.scope))
+        for p in paths
+        if any(in_scope(p, n.scope) for n in live)
+    }
+
+
+def held(store, node: Node) -> str:
+    """What the node wanted that other leaves own, said (`a.txt is a's and b.txt is b's`), or ""."""
+    return " and ".join(f"{p} is {i}'s" for p, i in owners(node, nodes(store), wanted(store, node)).items())
+
+
+def not_offered(store, node: Node) -> str:
+    """The line under a came-back leaf's offers that says which paths it wanted are not offered, and
+    why; "" when there are none."""
+    said = held(store, node)
+    return f"not offered: {said} (a path has one leaf that writes it)" if said else ""
+
+
+def _held(store, node: Node) -> str:
+    return f"; {held(store, node)}" if held(store, node) else ""
 
 
 def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
@@ -1150,9 +1182,13 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     if paths:
         listed = ", ".join(paths[:3]) + (f" and {len(paths) - 3} more" if len(paths) > 3 else "")
         out.append(("w", f"widen {node.id}'s scope to {listed}", ["node", "widen", node.id]))
-        out.append(("b", f"a sibling leaf for {listed}; {node.id} waits on it", ["node", "sibling", node.id]))
+        out.append((
+            "b", f"a sibling leaf for {listed} (its check: true); {node.id} waits on it",
+            ["node", "sibling", node.id],
+        ))  # fmt: skip
     family = {a.id for a in above(node, by_id)} | {c.id for c in below(node.id, everything)}
     why = str(last["detail"].get("why", ""))
+    held = owners(node, everything, wanted(store, node))  # its paths are the owner's: wait on the owner
     candidates = [
         n.id
         for n in everything
@@ -1160,7 +1196,7 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
         and n.id not in family
         and n.state not in (DONE, *GONE)
         and n.id not in all_needs(node, by_id)
-        and re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", why)
+        and (n.id in held.values() or re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", why))
     ]
 
     def acyclic(ids: list[str]) -> bool:  # waiting on them must not make a cycle
@@ -1178,7 +1214,11 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     named = candidates if not candidates or acyclic(candidates) else [i for i in candidates if acyclic([i])]
     if named:
         argv = ["node", "set", node.id, *(x for i in [*node.needs, *named] for x in ("--needs", i))]
-        out.append(("n", f"make {node.id} wait on {', '.join(named)}", argv))
+        def whose(i: str) -> str:
+            has = [p for p, o in held.items() if o == i]
+            return f"{i}, whose scope has {', '.join(has)}" if has else i
+
+        out.append(("n", f"make {node.id} wait on {', '.join(map(whose, named))}", argv))
     return out
 
 
@@ -1187,7 +1227,9 @@ def widen(store, node_id: str, paths: list[str], who: Caller, files: list[str] |
     node = get(store, node_id)
     paths = paths or offerable(store, node)
     if not paths:
-        raise Refused(f"nothing {node_id} wanted outside its scope is on record; name the paths")
+        raise Refused(
+            f"nothing {node_id} wanted outside its scope is on record{_held(store, node)}; name the paths"
+        )
     return edit(store, node_id, {"scope": [*node.scope, *(p for p in paths if p not in node.scope)]}, who,
                 files=files)  # fmt: skip
 
@@ -1201,7 +1243,8 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
     paths = paths or offerable(store, node)
     if not paths:  # asked twice: the first sibling's scope already has what it wanted
         raise Refused(
-            f"nothing {node_id} wanted is outside its scope and the scopes it waits on; name the paths"
+            f"nothing {node_id} wanted is outside its scope and the scopes it waits on{_held(store, node)}; "
+            "name the paths"
         )
     taken = {n.id for n in nodes(store)}
     stem = re.sub(r"[^A-Za-z0-9]+", "-", Path(paths[0]).stem).strip("-") or "more"

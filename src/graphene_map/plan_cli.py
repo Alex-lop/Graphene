@@ -1218,6 +1218,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             lines.append(f"  came back: {' '.join(str(why).split())}")
             for _key, what, command in offers:
                 lines.append(f"    {what}: `graphene {' '.join(command)}`")
+        if n.state == P.OPEN and P.not_offered(store, n):
+            lines.append(f"    {P.not_offered(store, n)}")
         if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():
             lines.append(f"  its last attempt is kept in {n.checkout} (branch graphene/{n.id})")
         return lines
