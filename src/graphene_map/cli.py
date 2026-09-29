@@ -477,7 +477,7 @@ def build():
                     fail(f"cannot write {export}: {exc.strerror or exc}", 1)
                 if caller().person:  # theirs as it stands, or the next node would not start over it
                     accept_path(store, r, export)
-                errors.print(f"wrote {export}")
+                errors.print(f"wrote {export}", soft_wrap=True)  # a path the terminal wraps copies whole
                 return
         # The plan is the person's to change, so the page may write only when a person opened it.
         person = caller().person
