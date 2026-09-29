@@ -105,6 +105,9 @@ def parse(text: str) -> Direction:
         if body[0] == "\t":
             refused.append(f"line {k + 1}: indent with spaces, not tabs")
             continue
+        if any(ord(c) < 32 and c != "\t" or ord(c) == 127 for c in line):
+            refused.append(f"line {k + 1}: a control character, which a terminal would obey: take it out")
+            continue
         found = _NODE.fullmatch(line)
         if found is None and _MEANT.match(line):
             refused.append(
@@ -549,6 +552,8 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         word = "proposed" if d.proposed(n) else "yours" if you else "running" if running else "quiet"
         nodes.append(asdict(n) | {"word": word, "you": you, "running": running, "next": nxt,
                                   "earlier": earlier.get(n.id, [])})  # fmt: skip
+    if plan is not None:
+        plan.pop("holders")  # a session's id: only the sessions list names one, and it stays on this machine
     return {
         "file": FILE,
         "nodes": nodes,
@@ -686,7 +691,8 @@ def lines(
     wid = max([len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
-    wt = max(20, min(need, 56, width - wid - ww - 6 - 28))
+    said = min(max(len(r[4]) for r in got), width // 4)  # what a row says after its word: a quarter
+    wt = max(20, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"

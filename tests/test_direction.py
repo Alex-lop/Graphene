@@ -72,6 +72,8 @@ def test_a_text_with_lines_it_cannot_read_is_refused_by_line_number_and_none_of_
     ]
     with pytest.raises(P.Refused, match="line 1: a line under no node"):
         D.parse("not a node\n")
+    with pytest.raises(P.Refused, match="line 2: a control character"):
+        D.parse("- a  [a]\n- \x1b]0;owned\x07 b  [b]\n")  # a committed file must not drive the terminal
 
 
 def test_an_agent_proposes_only_the_person_accepts_or_drops_and_git_sees_the_file(repo):  # noqa: F811
@@ -197,6 +199,11 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
     assert agent("direction", "attach", other[:8], "live").exit_code == 1
     with Store.open(repo) as store:
         st = D.status(store, D.read(repo), now)
+    from graphene_map import server
+
+    with Store.open(repo) as store:
+        export = server.payload(store, [], only=True)
+    assert AGENT_SID[:8] not in json.dumps(json.loads(export)["direction"])  # no session leaves the machine
     sub = next(n for n in st["nodes"] if n["id"] == "submission")
     assert (sub["word"], sub["you"]) == ("yours", 1)
     assert next(w for w in st["sessions"] if w["short"] == other[:8])["how"] == "attached by you"
@@ -290,3 +297,48 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
     assert page["plan"]["node"] == "live" and page["plan"]["next"] == "ids"
     assert [n["id"] for n in page["nodes"]] == ["product", "live", "board", "submission"]
     assert export["sessions"] == [] and export["nodes"] == page["nodes"]  # sessions stay on this machine
+
+
+def test_d_in_watch_shows_the_direction_and_attaches_the_session_the_person_names(repo):  # noqa: F811
+    import asyncio
+
+    from graphene_map.tui import Watch
+
+    agent("direction", "propose", "-", input=TREE)
+    now = datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(store, repo, "UserPromptSubmit", "0ther000-0000", _stamp(now, 30), prompt="the readme")
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            await pilot.press("D")
+            await pilot.pause()
+            pane = str(app.query_one("#detail").render())
+            await pilot.press(*"0ther000 submission", "enter")
+            await pilot.pause()
+            return pane, str(app.query_one("#status").render())
+
+    pane, status = asyncio.run(go())
+    assert "submission" in pane and "0ther000" in pane and "not in the direction" in pane
+    assert "graphene direction attach 0ther000 submission" in status
+    with Store.open(repo) as store:
+        assert D.links(store)["attach"] == {"0ther000-0000": "submission"}
+
+
+def test_edit_writes_a_text_that_reads_whole_and_nothing_of_one_that_does_not(repo, monkeypatch):  # noqa: F811
+    agent("direction", "propose", "-", input=TREE)
+    before = (repo / D.FILE).read_text()
+    editor = repo / "editor.sh"
+    editor.write_text('#!/bin/sh\nprintf -- "- the docs  [docs]\\n" >> "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    assert agent("direction", "edit").exit_code == 1  # an agent proposes; the person edits
+    said = person("direction", "edit")
+    assert said.exit_code == 0 and said.stdout == "the direction: 5 nodes, 4 proposed\n"
+    assert (repo / D.FILE).read_text() == before + "- the docs  [docs]\n"
+    editor.write_text('#!/bin/sh\nprintf -- "- no id here\\n" >> "$1"\n')
+    refused = person("direction", "edit")
+    assert refused.exit_code == 1 and "line 6: a node's line ends with its id" in refused.stderr
+    assert (repo / D.FILE).read_text() == before + "- the docs  [docs]\n"  # nothing written
