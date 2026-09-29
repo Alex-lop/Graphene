@@ -479,6 +479,33 @@ def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
         assert plan.get(store, "a").state == RUNNING and len(said) == 1
 
 
+
+def test_a_leaf_a_dead_parallel_run_left_done_in_its_worktree_is_committed_and_waits_in_review(repo):
+    """Review 22: a parallel run killed outright (kill -9, Force Quit, Ctrl-\\ before it was held) never
+    stops its executors, which run in sessions of their own. They finished in their worktrees and ran
+    `done`, so the leaves read done and the plan finished, while the work was only uncommitted in
+    .graphene/worktrees and nothing in the checkout; the next run said "nothing to run". The next run
+    now commits it on the leaf's branch and leaves it in review, as a stopped run's `park` does."""
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    run = Caller("run:claude", False, "s1")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, tree)
+        attempt = {"attempt": 1, "run_pid": dead.pid}  # written by a run that is gone
+        store.log_node("a", plan._now(), "attempt", run.label, "s1", None, attempt)
+        (tree / "a.txt").write_text("a, by its executor\n")
+        plan.finish(store, "a", run)  # its executor's `done`, after the run was killed
+        assert plan.get(store, "a").state == DONE
+    said = graphene_run(repo, "--parallel", "2", "--with", "true").communicate(timeout=60)[0]
+    assert "a passed; the run was stopped before it landed" in said, said
+    with Store.open(repo) as store:
+        assert plan.get(store, "a").state == REVIEW
+    assert git(repo, "show", "graphene/a:a.txt") == "a, by its executor\n"
+    assert (repo / "a.txt").read_text() == "a\n"  # the checkout is the person's until they merge
+
 def test_a_run_started_in_a_linked_worktree_sees_the_parallel_runs_lock(repo, tmp_path):
     """Recheck: `graphene run` in a second worktree swept with that worktree as the root, found no
     run.lock there, and handed back a leaf a live parallel run had just started."""

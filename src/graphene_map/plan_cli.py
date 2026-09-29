@@ -935,10 +935,12 @@ def register(cli: typer.Typer, root, open_store, fail):
         The last line says what the run did; `graphene watch` shows it when the run ends."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
-        from .run import named, run_parallel, run_plan, summary
+        from .run import named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
+            if not P.nodes(store, (P.OPEN, P.RUNNING)):
+                sweep(store, out, r)  # a dead parallel run's finished leaves are parked, and said, first
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 waiting = len(P.leaves(P.nodes(store, (P.PROPOSED,))))
                 fail(f"nothing to run: the tree is a proposal ({_leaves(waiting)}) nobody has accepted: "
