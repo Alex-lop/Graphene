@@ -318,7 +318,7 @@ def _carry(store, gone: set[str], said, say: Callable[[str], None], files) -> No
             ids_ = ", ".join(ids)
             say(f"{old} is dropped; {new} is the same node in the new tree, so {ids_} is carried to it")
         for line in B.carry(store, old, new, who, files):
-            say(f"carried: {line}")
+            say(line)
     rest = gone - set(same)
     for item, was in B.rehome(store, rest, who):
         say(f"{item['id']} was about {was}, which is dropped: it is about the whole plan now")

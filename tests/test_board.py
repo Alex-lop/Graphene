@@ -912,6 +912,19 @@ def test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf
         assert P.get(store, "users").state == P.OPEN
 
 
+def test_take_with_no_id_says_which_default_it_left_because_it_drops_a_node(repo, tmp_path):
+    """Review 2026-09-29 (26): with only a default that drops a node open, `graphene board take` said
+    "nothing open on the board has a default to take", which the board's own row contradicts."""
+    planned(repo, tmp_path)
+    assert person("board", "take").exit_code == 0  # every other open default is taken
+    with Store.open(repo) as store:
+        B.add(store, "question", "is users needed?", PLANNER, default="no", then=["drop users"], item_id="q1")
+    said = person("board", "take").stdout
+    assert said == "left for you: q1 (its default drops users)\n", said
+    with Store.open(repo) as store:
+        assert B.get(store, "q1")["state"] == "open" and P.get(store, "users").state != P.DROPPED
+
+
 def test_undoing_a_board_answer_says_so_in_the_plans_log(repo, tmp_path):
     """Walk 2026-09-29 (5): the answer stayed the log's last line, with no undo after it."""
     planned(repo, tmp_path)

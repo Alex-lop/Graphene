@@ -255,3 +255,70 @@ def test_a_leaf_an_answer_put_beside_a_dropped_leaf_is_put_beside_the_same_leaf_
     leaf, sample = now["users returns ids"], now["a sample user"]
     assert sample.parent == leaf.parent == now["the users API"].id  # beside the new leaf, in the new tree
     assert f"carried: proposed {sample.id} beside {leaf.id}, a leaf, under {leaf.parent};" in again.output
+
+
+def two_asks(first: str, again: str) -> str:
+    """A planner that writes ``first``, and ``again`` once it is told it replaces its last tree."""
+    return (
+        "import sys\n"
+        f"again = 'This replaces the tree you proposed last' in sys.argv[-1]\n"
+        f"print('```plan')\nprint({again!r} if again else {first!r})\nprint('```')\n"
+    )
+
+
+WHICH = "question: which id: the row id or a new uuid?"
+FIRST = (
+    f"goal: users come back with their ids\n{WHICH}  [which-id]\n    default: the row id\n"
+    "    option: a uuid column, added to schema.py\n    then: scope ids + schema.py\n    about: ids\n"
+    "? users returns ids  [ids]\n    scope: api.py\n    check: true\n"
+)
+
+
+def test_a_reask_that_writes_an_answered_question_again_without_its_id_does_not_put_it_up_twice(
+    repo, tmp_path, monkeypatch
+):
+    """Closing review 9: the planner wrote the question the person had picked again, without its [id];
+    it went up as a second open item, `plan accept` took its default against the person's pick, and
+    the leaf's executor was told both."""
+    again = (
+        f"goal: users come back with their ids\n{WHICH}\n    default: the row id\n"
+        "    option: a uuid column, added to schema.py\n    then: scope ids2 + schema.py\n    about: ids2\n"
+        "? users returns ids  [ids2]\n    scope: api.py\n    check: true\n"
+        "? users are paged  [paged]\n    scope: pages.py\n    check: true\n"
+    )
+    script = planner(tmp_path, two_asks(FIRST, again), monkeypatch)
+    assert person("ask", "add ids", "--with", script).exit_code == 0
+    assert person("board", "pick", "which-id", "1").exit_code == 0
+    said = person("ask", "add ids", "--finer", "--with", script)
+    assert said.exit_code == 0, said.output
+    assert "put up " not in said.output, said.output
+    assert person("plan", "accept").exit_code == 0
+    with Store.open(repo) as store:
+        assert [it["id"] for it in B.items(store) if it["text"].startswith("which id")] == ["which-id"]
+        told = B.decided(store, A.P.get(store, "ids2"))
+    assert told == ["which id: the row id or a new uuid? → a uuid column, added to schema.py"]
+
+
+def test_an_answer_whose_change_the_new_leaf_refuses_is_said_and_the_reask_still_lands(
+    repo, tmp_path, monkeypatch
+):
+    """Closing review 10: a pick widened the leaf to schema.py, then a taken risk made schema.py
+    read-only; carrying the pick to the re-asked leaf was refused, the refusal was reported as
+    "Graphene could not read the proposal", the planner was asked again for a fault it cannot fix,
+    and nothing was added."""
+    first = FIRST + (
+        "risk: schema.py is shared  [shared]\n    default: keep it read-only\n    then: condition schema.py\n"
+    )
+    again = "goal: users come back with their ids\n? users returns ids\n    scope: api.py\n    check: true\n"
+    script = planner(tmp_path, two_asks(first, again), monkeypatch)
+    assert person("ask", "add ids", "--with", script).exit_code == 0
+    assert person("board", "pick", "which-id", "1").exit_code == 0
+    assert person("board", "take", "shared").exit_code == 0
+    said = person("ask", "add ids", "--finer", "--with", script)
+    assert said.exit_code == 0, said.output
+    assert "could not read the proposal" not in said.output and "again…" not in said.output, said.output
+    assert "not carried: scope" in said.output and "`graphene node set" in said.output, said.output
+    with Store.open(repo) as store:
+        [leaf] = [n for n in A.P.nodes(store, (A.P.PROPOSED,)) if n.title == "users returns ids"]
+        assert leaf.scope == ["api.py"]
+        assert B.get(store, "which-id")["about"] == leaf.id  # the answer is still told to it

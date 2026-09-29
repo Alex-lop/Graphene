@@ -10,16 +10,17 @@ First light (29 September).
 - `graphene direction`: a small tree of goals above the plans, one line a node, in `.graphene/direction.txt`,
   which git tracks while the rest of `.graphene/` stays ignored. An agent proposes nodes (`direction propose
   -`); only the person accepts or drops them, hangs the plan from one (`direction plan NODE`), attaches a
-  session to one (`direction attach SESSION NODE`, or `D` in `graphene watch`) or edits the file (`direction
-  edit`). `graphene direction` prints each node with what waits on you, what runs and what is next, read from
+  session to one (`direction attach SESSION NODE`) or edits the file (`direction edit`). `D` in `graphene
+  watch` shows the direction under the tree, read again every tick, and opens no command line. `graphene direction` prints each node with what waits on you, what runs and what is next, read from
   the rows the hooks already write; `graphene plan`, its views, `graphene watch` and the page show the path
   to the plan's node above the plan. A file with a line Graphene cannot read is not used, and the refusal
   names the lines.
 - The hook refuses an agent's Edit, Write, MultiEdit and NotebookEdit under `.graphene/`, plan or no plan.
 - The board shows only while a question on it is open: `board: auto` (unset) in `graphene config`, by study 4
-  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, `R`,
-  or `graphene board take` with no id takes every open default, in one line that `graphene plan undo` takes
-  back. `graphene board` prints what answering needs, and `--all` the rest.
+  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, an
+  `R` that starts something, or `graphene board take` with no id takes every open default and an agent's
+  note, in one line that `graphene plan undo` takes back; a default that drops a node waits for its own key,
+  and the line names it. `graphene board` prints what answering needs, and `--all` the rest.
 - `graphene board lookup` (one Nano call; `GRAPHENE_SHAPE=lookup` runs it after each ask) settles a question
   a file already answers when the line it quotes is in that file, marked `from the repo: FILE:LINE`; `unpark`
   gives it back. It never sends a protected file.
@@ -39,7 +40,9 @@ First light (29 September).
 - A closed terminal ends `graphene watch`, `graphene demo`, and a run with its executors and their checks,
   whether or not it sends the hangup.
 - `graphene demo` holds each change on the screen, pauses on space, steps on `.`, plays again on `r`, and
-  names a stand-in on every row it made.
+  names a stand-in on every row it made. The shipped recording was made again on the scripted fake with a
+  board: a question, an assumption and a leave-out, each taken with one key. Its status line keeps one form
+  and its bill, and offers neither `R` nor `P`.
 - The page shows the board, the standing conditions, each leaf's `decided:` lines and the direction, and
   answers nothing on the board.
 - The hook imports, queries and starts only what its event needs: recording a call takes about half the
@@ -58,8 +61,18 @@ First light (29 September).
   leaf instead, and the pane says which paths were not offered and why.
 - Asking again finer or coarser (`+`, `-`) carries a board answer to the leaf the planner wrote again, and
   says, with the command, any answer it cannot place.
-- Smaller: `:ask` keeps a paragraph's apostrophes; a planner or executor run by an interpreter is named by its
-  script; a leaf's record reads its check before its finish.
+- `graphene plan undo` of a board answer logs `undone`. `graphene config` names a board answer's read-only
+  globs `# answered: readonly …`, not a second `board:` key, and `graphene board` wraps to the terminal.
+- Bare `graphene` names a proposal and an open board as what waits on the person, and `graphene run` on a tree
+  nobody accepted says to accept it.
+- No test gets the repository git was pointed at: a suite started from `git bisect run`, a hook or `rebase
+  --exec` hands no `GIT_DIR` or its kin to its tests.
+- `docs/test/bench.py` counts a leaf its round's timeout stopped as failed and runs it no more, now that a
+  leaf a run stopped reads ready.
+- Smaller: `:ask` keeps a paragraph's apostrophes; a page with a moment that is not a time prints `?`; a
+  goal the planner proposed is on the page as a proposal; `graphene ui --export` prints its path on one
+  line; a planner or executor run by an interpreter is named by its script; a leaf's record reads its
+  check before its finish.
 
 Shaping (28 September): the board (`graphene board`: the planner's questions and risks, answered only by
 the person, with `then:` lines that change the tree), the outline, tree and graph views (`Tab`, `--view`),

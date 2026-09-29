@@ -153,3 +153,44 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
         assert "Graphene has made a runtime call to Token Factory, as practice" in said, path
     for path in ("README.md", "docs/HOW_IT_WORKS.md"):
         assert "does not show the board" not in doc(path), path
+
+
+def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
+    """Review 2026-09-29 (26, 27, 28): the docs said accept, R and `board take` take every open default
+    and leave an agent's note open, and that D attaches a session or opens `:direction attach`."""
+    from graphene_map import board as B
+
+    item = {"state": "open", "kind": "question", "default": "no", "then": ["drop legacy"], "agent": True}
+    assert not B.has_default(item) and B.has_default({**item, "kind": "note", "default": None, "then": []})
+    # what D does is test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key's
+    for path in ("README.md", "docs/HOW_IT_WORKS.md", "docs/HACKATHON.md", "CHANGELOG.md"):
+        said = doc(path)
+        assert "drops a node" in said, path
+        assert "or `D` in `graphene watch`" not in said and "opens `:direction attach" not in said, path
+        assert "and an agent's note, stay open" not in said, path
+
+
+def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_exist():
+    """Review 2026-09-29 (30): the verdicts cited 18 hashes of branches before their rebase, and a test
+    since renamed. A hash named with its own branch (`on its branch …`) is that branch's, not this one's.
+    In a shallow clone (CI's) only the tests are checked."""
+    import subprocess
+
+    walks = (ROOT / "docs/process/shaping/walks.md").read_text(encoding="utf-8")
+    said = walks[walks.index("## First light's verdicts") :]
+    sources = " ".join(
+        p.read_text(encoding="utf-8")
+        for d in ("tests", "docs/test", "ui/src")
+        for p in (ROOT / d).rglob("*.[pt]*[ysx]")
+    )
+    for test in set(re.findall(r"\btest_[a-z0-9_]+", said)):
+        assert test in sources, test
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+
+    if git("rev-parse", "--is-shallow-repository").stdout.strip() != "false":
+        return
+    elsewhere = set(re.findall(r"\b([0-9a-f]{7}) on its branch", said))
+    for sha in set(re.findall(r"\b[0-9a-f]{7}\b", said)) - elsewhere:
+        assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, sha
