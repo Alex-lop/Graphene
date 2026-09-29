@@ -31,8 +31,9 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import plan as P
@@ -81,16 +82,26 @@ class Direction:
         return out
 
     def below(self, node: Node) -> list[Node]:
-        return [n for n in self.nodes if node in self.above(n)]
+        return [n for n in self.nodes if node.at < n.at < node.end]  # a subtree is its lines, in a row
 
     def proposed(self, node: Node) -> bool:
         """A proposal, or under one: nothing under a guess is the person's until they accept it."""
         return node.proposed or any(a.proposed for a in self.above(node))
 
 
+def _unsafe(c: str) -> bool:
+    """A character a terminal obeys or that reorders what it shows: a control (C0, C1, DEL) other
+    than a tab, or a bidirectional override."""
+    return (
+        (unicodedata.category(c) == "Cc" and c != "\t")
+        or "\u202a" <= c <= "\u202e"
+        or "\u2066" <= c <= "\u2069"
+    )
+
+
 def parse(text: str) -> Direction:
     """The direction a text says, or a refusal naming every line it cannot read (none of it is used)."""
-    lines = text.splitlines(keepends=True)
+    lines = [line for line in re.split(r"(?<=\n)", text) if line]  # "\n" only: numbered as an editor does
     nodes: list[Node] = []
     stack: list[Node] = []
     seen: dict[str, int] = {}
@@ -100,10 +111,15 @@ def parse(text: str) -> Direction:
         line = raw.rstrip("\r\n").removeprefix("﻿" if k == 0 else "")
         body = line.lstrip(" ")
         indent = len(line) - len(body)
+        if any(_unsafe(c) for c in line):  # comments too: `graphene direction --text` prints them
+            refused.append(f"line {k + 1}: a control character, which a terminal would obey: take it out")
+            continue
         if not body.strip() or body.startswith("#"):
             continue
-        if body[0] == "\t":
-            refused.append(f"line {k + 1}: indent with spaces, not tabs")
+        if body[0].isspace() or body[0] == "﻿":
+            refused.append(
+                f"line {k + 1}: indent with spaces only (a tab or another blank is not read as one)"
+            )
             continue
         found = _NODE.fullmatch(line)
         if found is None and _MEANT.match(line):
@@ -190,7 +206,8 @@ def propose(d: Direction, text: str, who: P.Caller, under: str | None = None) ->
         raise P.refusal("already in the direction: " + ", ".join(f"[{i}]" for i in taken))
     parent = d.get(under) if under else None
     base = min(n.indent for n in new.nodes if n.parent is None)
-    to = parent.indent + 2 if parent else 0
+    first = next((n for n in d.nodes if parent and n.parent == parent.id), None)
+    to = first.indent if first else parent.indent + 2 if parent else 0  # beside its children, as they are
     add = []
     for n in new.nodes:
         if not who.person and not n.proposed:
@@ -221,6 +238,10 @@ def read(root: Path) -> Direction | None:
         return parse(p.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except UnicodeDecodeError as no:
+        raise P.Refused(
+            f"{FILE} cannot be read, so none of it is used:\n  it is not UTF-8 (byte {no.start})"
+        ) from None
 
 
 def write(root: Path, d: Direction) -> None:
@@ -237,6 +258,7 @@ def write(root: Path, d: Direction) -> None:
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".direction-", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
         f.write(text)
+    os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)  # a committed file, not a secret
     os.replace(tmp, p)
 
 
@@ -327,15 +349,22 @@ class Worker:
     at: str  # when
     node: str | None = None  # the direction node it attaches to; "plan": through the plan, wherever it hangs
     how: str = ""  # why it attaches there
+    parent: str | None = None  # the subagent that started this one, when a subagent did
+
+
+def _stamp(at: datetime) -> str:
+    """A time as the hook stamps its rows (``hooks.now_iso``), so the two compare as text."""
+    return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def _age(stamp: str | None, now: datetime) -> float:
     if not stamp:
         return float("inf")
     try:
-        return (now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))).total_seconds()
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return float("inf")
+    return (now - (at if at.tzinfo else at.replace(tzinfo=UTC))).total_seconds()
 
 
 def did(tool: str, raw: str | None, file_path: str | None, success: int | None) -> str:
@@ -368,6 +397,16 @@ def did(tool: str, raw: str | None, file_path: str | None, success: int | None) 
     return line + (" (failed)" if success == 0 else "")
 
 
+def _last_call(store, sid: str, aid: str | None, since: datetime):
+    """One agent's newest call since ``since``, walked back along the session index. Never a scan of
+    the session: a row's agent_id sits after its response, which can be 256 KB."""
+    return store.conn.execute(
+        "SELECT timestamp, tool, input, file_path, success FROM tool_events WHERE session_id = ? "
+        "AND timestamp >= ? AND agent_id IS ? ORDER BY timestamp DESC LIMIT 1",
+        (sid, _stamp(since), aid),
+    ).fetchone()
+
+
 def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
     """Every session and subagent with something recorded in the last day, and how many older ones
     are left out. Each query goes by the session index the hook already keeps."""
@@ -388,44 +427,40 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
         if _age(latest, now) > DAY:
             older += 1  # asked of the index alone: an old session's calls are never read
             continue
-        last = {
-            r[0]: r
+
+        # the Agent call that started a subagent names it, its task, and who made the call (a call
+        # still running, a foreground subagent's, is recorded only when it ends)
+        started_by = {
+            r[0]: (r[1], r[2])
             for r in store.conn.execute(
-                "SELECT agent_id, MAX(timestamp), tool, input, file_path, success FROM tool_events "
-                "WHERE session_id = ? GROUP BY agent_id",
+                "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description'), agent_id "
+                "FROM tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task') "
+                "AND json_valid(response) AND json_valid(input)",
                 (sid,),
             )
         }
-        tasks = dict(
-            store.conn.execute(
-                "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description') FROM "
-                "tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task')",
-                (sid,),
-            ).fetchall()
-        )
         agents = []
-        for aid, _start, a_end in store.conn.execute(
-            "SELECT id, started_at, ended_at FROM agents WHERE session_id = ? ORDER BY started_at", (sid,)
+        for aid, _start, a_end, kind in store.conn.execute(
+            "SELECT id, started_at, ended_at, type FROM agents WHERE session_id = ? ORDER BY started_at",
+            (sid,),
         ):
-            row = last.get(aid)
+            task, caller = started_by.get(aid, (None, None))
+            label = task or (f"a subagent ({kind})" if kind else "a subagent")
+            parent = f"{sid}/{caller}" if caller else None
+            if a_end:  # finished: counted when a call started it (the vendor's own helpers are not)
+                if aid in started_by:
+                    agents.append(
+                        Worker(f"{sid}/{aid}", aid[:8], label, "finished", "", a_end, parent=parent)
+                    )
+                continue
+            row = _last_call(store, sid, aid, now - timedelta(seconds=IDLE))
             if row is None:
-                continue  # the vendor's own helpers: an end and nothing done
-            word = "finished" if a_end else "running" if _age(row[1], now) <= ALIVE else "idle"
-            if word == "idle" and _age(row[1], now) > IDLE:
-                continue  # an hour with nothing: gone without its end recorded, most likely
-            agents.append(
-                Worker(
-                    f"{sid}/{aid}",
-                    aid[:8],
-                    tasks.get(aid) or "a subagent",
-                    word,
-                    did(*row[2:]),
-                    a_end or row[1],
-                )  # fmt: skip
-            )
-        mine = last.get(None)
+                continue  # an hour with nothing and no end: gone without its end recorded, most likely
+            word = "running" if _age(row[0], now) <= ALIVE else "idle"
+            agents.append(Worker(f"{sid}/{aid}", aid[:8], label, word, did(*row[1:]), row[0], parent=parent))
+        mine = _last_call(store, sid, None, now - timedelta(seconds=DAY))
         said = next((t for _, t in prompts if not _vendor_made(t.strip())), "")
-        heard = max([s for s in (mine and mine[1], prompts[0][0] if prompts else None) if s], default=started)
+        heard = max([s for s in (mine and mine[0], prompts[0][0] if prompts else None) if s], default=started)
         running = sum(a.word == "running" for a in agents)
         turn_over = bool(stopped and stopped >= (heard or ""))
         if running:
@@ -440,7 +475,7 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             continue
         first = said.strip().splitlines()[0] if said.strip() else ""
         label = f"session: {first}" if first else "a session"
-        last_line = did(*mine[2:]) if mine else "nothing yet"
+        last_line = did(*mine[1:]) if mine else "nothing yet"
         if running and (turn_over or _age(heard, now) > ALIVE):
             last_line = f"{running} of its subagents running"
         out.append(Worker(sid, sid[:8], label, word, last_line, max(stopped or "", heard or "")))
@@ -449,11 +484,12 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
 
 
 def place(store, ws: list[Worker]) -> None:
-    """Where each worker attaches: where the person attached it (or its session); else through the
-    plan's node, when it held, finished or handed back one of the plan's nodes, or proposed one (a
-    subagent of a session that did goes with its session); else nowhere."""
+    """Where each worker attaches: where the person attached it; else through the plan's node, when it
+    held, finished or handed back one of the plan's nodes, or proposed one; else with the subagent that
+    started it, or with its session; else nowhere."""
     said = links(store)
-    alive = [n for n in P.nodes(store) if n.state not in P.GONE]
+    # a leaf made from a prompt (decision 18) is that session's own ask, not the plan's work
+    alive = [n for n in P.nodes(store) if n.state not in P.GONE and not n.aside]
     if alive:
         marks = ", ".join("?" for _ in alive)
         rows = store.conn.execute(
@@ -465,21 +501,22 @@ def place(store, ws: list[Worker]) -> None:
         rows = []
     worked = {(s, a) for s, a in rows} | {(n.session_id, n.agent_id) for n in alive if n.session_id}
     proposers = {n.proposed_by.split(":", 1)[1] for n in alive if (n.proposed_by or "").startswith("claude:")}
-    by_session: dict[str, tuple[str | None, str]] = {}
+    placed: dict[str, str | None] = {}  # a session or subagent, as placed so far: a parent comes first
     for w in ws:
         sid, _, aid = w.key.partition("/")
         if w.key in said["attach"]:
             w.node, w.how = said["attach"][w.key], "attached by you"
-        elif aid and sid in said["attach"]:
-            w.node, w.how = said["attach"][sid], "with its session, attached by you"
         elif (sid, aid or None) in worked:
             w.node, w.how = "plan", "worked on the plan"
         elif not aid and sid[:8] in proposers:
             w.node, w.how = "plan", "proposed in the plan"
-        elif aid and by_session.get(sid, (None, ""))[0]:
-            w.node, w.how = by_session[sid][0], "with its session"
-        if not aid:
-            by_session[sid] = (w.node, w.how)
+        elif placed.get(w.parent or ""):
+            w.node, w.how = placed[w.parent or ""], "with the subagent that started it"
+        elif aid and sid in said["attach"]:
+            w.node, w.how = said["attach"][sid], "with its session, attached by you"
+        elif aid and placed.get(sid):
+            w.node, w.how = placed[sid], "with its session"
+        placed[w.key] = w.node
 
 
 def plan_status(store) -> dict | None:
@@ -509,11 +546,18 @@ def plan_status(store) -> dict | None:
         "leaves": len(leaves),
         "done": sum(n.state == P.DONE for n in leaves),
         "you": sum(w in ("came back", "review", "yours") for w in words.values()) + len(tops) + asked,
-        "running": sum(n.state == P.RUNNING for n in alive),
-        "holders": sorted({n.session_id for n in alive if n.state == P.RUNNING and n.session_id}),
+        "running": sum(n.state == P.RUNNING and not n.aside for n in alive),
         "next": ready[0] if ready else None,
         "bill": bill(usage),
     }
+
+
+def _running(ws: list[Worker], plan: dict | None) -> int:
+    """What runs: the sessions and subagents, and the plan's running leaves. Those that work through
+    the plan and its running leaves are one piece of work seen from two sides (which subagent holds
+    which leaf is not recorded), so the larger of the two counts, never their sum."""
+    through = sum(w.node == "plan" for w in ws)
+    return len(ws) - through + (max(through, plan["running"]) if plan else through)
 
 
 def status(store, d: Direction | None, now: datetime | None = None) -> dict:
@@ -541,9 +585,7 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         has_plan = plan is not None and plan["node"] in mine
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
         you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
-        held = set(plan["holders"]) if has_plan else set()  # a session on a running leaf is that leaf's work
-        running = sum(w.word == "running" and w.key not in held for w in under)
-        running += plan["running"] if has_plan else 0
+        running = _running([w for w in under if w.word == "running"], plan if has_plan else None)
         # next is the work that starts next (what `graphene run` takes); a proposal waits on you
         nxt = plan["next"] if has_plan else None
         word = "proposed" if d.proposed(n) else "yours" if you else "running" if running else "quiet"
@@ -659,10 +701,12 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     unhung = st["plan"] is not None and st["plan"]["node"] is None
     loose = [w for w in st["sessions"] if w["node"] is None or (unhung and w["node"] == "plan")]
     you = sum(n["you"] for n in tops) + sum(w["word"] == "your turn" for w in loose)
-    running = sum(n["running"] for n in tops) + sum(w["word"] == "running" for w in loose)
+    running = sum(n["running"] for n in tops)
+    running += _running(
+        [Worker(**w) for w in loose if w["word"] == "running"], st["plan"] if unhung else None
+    )
     if unhung:
         you += st["plan"]["you"]
-        running += st["plan"]["running"]
     nxt = next((n["next"] for n in tops if n["next"]), None) or (st["plan"]["next"] if unhung else None)
     lead = " · ".join([f"you: {you}", f"{running} running", *([f"next: {nxt}"] if nxt else [])])
     lead += " · the direction of "
@@ -686,7 +730,8 @@ def lines(
     wid = max([len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
-    wt = max(20, min(need, 56, width - wid - ww - 6 - 28))
+    said = min(max(len(r[4]) for r in got), width // 4)  # what a row says after its word: a quarter
+    wt = max(20, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"
@@ -707,12 +752,12 @@ def above_plan(store, root: Path, width: int) -> list[tuple[str, str]]:
         d = read(root)
     except P.Refused:
         return [(f"the direction: {FILE} cannot be read (`graphene direction` names the lines)", "")]
-    if d is None:
+    alive = [n for n in P.nodes(store) if n.state not in P.GONE]
+    if d is None or not (P.goal(store) or store.meta("goal:proposed") or alive):
         return []
-    st = status(store, d)
-    if st["plan"] is None:
-        return []
-    if st["plan"]["node"] is None:
+    goal = P.goal(store)
+    if links(store)["plans"].get(goal) not in {n.id for n in d.nodes} or not goal:
         said = "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
-        return [(said, "dim")]
+        return [(said, "dim")]  # said before any session is read: this is on every `graphene plan`
+    st = status(store, d)
     return lines(st, width, only=st["plan"]["node"])

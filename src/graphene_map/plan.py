@@ -560,7 +560,13 @@ def dirty(checkout: str | Path) -> dict[str, str | None]:
             if i < len(fields) and fields[i]:
                 paths.append(fields[i])
             i += 1
-    return {p: _hash(checkout, p) for p in paths}
+    return {p: _hash(checkout, p) for p in paths if not _ours(p)}
+
+
+def _ours(path: str) -> bool:
+    """Graphene's own directory: its store (git ignores it) and the direction (git tracks it). No
+    leaf's change, and no loose change a node must answer for: only `graphene direction` writes it."""
+    return path.split("/", 1)[0] == ".graphene"
 
 
 def ignored_kept_out(checkout: str | Path, conditions: list[tuple[str, str]]) -> dict[str, str | None]:
@@ -617,7 +623,9 @@ def changed_since(
     committed: set[str] = set()
     if base_sha:
         committed = {
-            p for p in _git(checkout, "diff", "--name-only", "-z", base_sha, "HEAD").split("\0") if p
+            p
+            for p in _git(checkout, "diff", "--name-only", "-z", base_sha, "HEAD").split("\0")
+            if p and not _ours(p)
         }
     changed |= committed
     now = dirty(checkout)

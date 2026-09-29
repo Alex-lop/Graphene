@@ -64,3 +64,23 @@ def test_the_wrapper_refuses_another_arms_command_and_the_table_scores_by_the_ke
     assert log[0]["allowed"] is False and log[0]["words"] == 0 and log[1]["words"] > 50
     assert got["seconds"] == round(S.K * got["typed"] + S.M * 2 + got["words"] / S.WPM * 60, 1)
     assert "| m | morning |" in S.table([run])
+
+
+def test_only_reads_of_the_arms_own_material_pass_the_wrapper(tmp_path):
+    """Review, 29 September: `graphene direction accept` ran in the person's seat and changed the
+    fixture, and `cat <the other arm's file> morning.md` passed because only the last word was read."""
+    (tmp_path / "morning.md").write_text("x")
+    (tmp_path / "repo").mkdir()
+    reads = ("direction", "direction --width 80", "plan --view tree", "board", "watch --once")
+    for said in reads:
+        assert S._allowed(tmp_path, "direction", ["graphene", *said.split()]), said
+    writes = ("direction accept mobile", "direction edit", "watch", "board take q", "plan accept")
+    for said in writes:
+        assert not S._allowed(tmp_path, "direction", ["graphene", *said.split()]), said
+    assert not S._allowed(tmp_path, "direction", ["cat", "morning.md"])
+    assert S._allowed(tmp_path, "morning", ["head", "-n", "20", "morning.md"])
+    assert S._allowed(tmp_path, "morning", ["grep", "-n", "waits", "morning.md"])
+    for argv in (["cat", "repo/.graphene/direction.txt", "morning.md"], ["cat", "repo", "morning.md"],
+                 ["sed", "1,5p", "morning.md"], ["graphene", "direction"]):  # fmt: skip
+        assert not S._allowed(tmp_path, "morning", argv), argv
+    assert '[["render"], ["q-paper"]' not in Path(S.__file__).read_text()  # the key is not in the file named

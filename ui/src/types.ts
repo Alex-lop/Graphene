@@ -295,6 +295,42 @@ export interface Plan {
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.
 export interface Payload {
   runs: Run[];
+  direction?: Direction | null; // null with no .graphene/direction.txt; absent from a page older than it
   plan: Plan;
   graph: Graph;
+}
+
+// -- the direction: a mirror of direction.status in src/graphene_map/direction.py ------------------
+
+export interface DirectionNode {
+  id: string;
+  title: string;
+  proposed: boolean; // its own mark is "?"
+  parent: string | null;
+  about: string[];
+  word: string; // proposed, yours, running or quiet: whose move it is below it
+  you: number; // what waits on the person at or below it
+  running: number;
+  next: string | null; // the leaf `graphene run` starts next below it
+  earlier: string[]; // the goals of earlier plans hung from it
+}
+
+export interface DirectionSession {
+  key: string;
+  short: string;
+  label: string;
+  word: string; // running, idle, your turn, finished
+  last: string;
+  at: string;
+  node: string | null; // "plan": through the plan, wherever it hangs
+  how: string;
+}
+
+export interface Direction {
+  file: string;
+  refused?: string; // the file cannot be read: why, by line
+  nodes: DirectionNode[];
+  plan: { goal: string; node: string | null; done: number; leaves: number; you: number; running: number; next: string | null } | null;
+  sessions: DirectionSession[]; // none in an exported file: sessions stay on the machine
+  older: number;
 }

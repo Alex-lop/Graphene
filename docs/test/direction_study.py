@@ -34,12 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from attention import WPM, K, M  # noqa: E402
+from direction_key import KEY  # noqa: E402  (not in the file the brief names)
 
-KEY = {  # written in the registration before any run; each item is the ids that name it
-    "waiting": [["render"], ["q-paper"], ["mobile"], ["b7c24d1e"]],
-    "running": [["template", "5a1e0c3b"], ["c3d4e5f6"], ["a1b2c3d4"]],
-    "next": [["email"]],
-}
 SEATS = {
     "first": "a first-time user. You installed Graphene yesterday; you know from its README what a plan, "
     "a leaf, a session and the direction are, and nothing more",
@@ -321,7 +317,8 @@ subagent's 8-character id, as the text you read names them.
 {where} The commands you may run: {ALLOWED[arm]}.
 Every command goes through this, which prints what the command printed (all you may read) and logs it:
   {me} run {run_dir} -- <command>
-Read nothing in {run_dir} any other way. When you know an answer, log it:
+Open no file yourself, this command's own script included, and read nothing in {run_dir} any
+other way. When you know an answer, log it:
   {me} answer {run_dir} waiting "id, id, ..."
   {me} answer {run_dir} running "id, ..."
   {me} answer {run_dir} next "id"
@@ -329,16 +326,41 @@ Then stop. Say in one line what, if anything, was hard to find.
 """
 
 
+# the read forms of the direction arm: each command, and the only flags it may carry (with how many
+# values each takes). Nothing that writes: no subcommand, so no accept, drop, edit or attach
+READS = {
+    ("graphene", "direction"): {"--width": 1, "--text": 0, "--json": 0},
+    ("graphene", "plan"): {"--view": 1, "--width": 1, "--height": 1, "--all": 0, "--text": 0, "--json": 0},
+    ("graphene", "board"): {},
+    ("graphene", "watch"): {"--once": 0, "--all": 0},
+}
+
+
+def _allowed(run_dir: Path, arm: str, argv: list[str]) -> bool:
+    """Only a read of the arm's own material: the direction arm's graphene reads (watch only with
+    --once), the morning arm's cat, head, sed -n and grep of morning.md and of no other file."""
+    if arm == "morning":
+        rest = argv[1:-1]
+        other_file = any("/" in a or a.endswith(".md") or (run_dir / a).exists() for a in rest)
+        verb = argv[:1] in (["cat"], ["head"], ["sed"], ["grep"]) and (argv[0] != "sed" or "-n" in rest)
+        return verb and argv[-1] == "morning.md" and not other_file
+    flags = READS.get(tuple(argv[:2]))
+    if flags is None or (argv[1] == "watch" and "--once" not in argv):
+        return False
+    k = 2
+    while k < len(argv):
+        if argv[k] not in flags:
+            return False
+        k += 1 + flags[argv[k]]
+    return k == len(argv)
+
+
 def run(run_dir: Path, argv: list[str]) -> int:
     arm = json.loads((run_dir / "arm.json").read_text())["arm"]
-    ok = bool(argv)
+    ok = _allowed(run_dir, arm, argv)
     if arm == "direction":
-        ok = ok and argv[0] == "graphene" and argv[1:2] in (["direction"], ["plan"], ["board"], ["watch"])
-        ok = ok and (argv[1] != "watch" or "--once" in argv)
         cwd, argv = run_dir / "repo", [*_graphene(), *argv[1:]] if ok else argv
     else:
-        ok = ok and argv[0] in ("cat", "head", "sed", "grep") and argv[-1].endswith("morning.md")
-        ok = ok and (argv[0] != "sed" or "-n" in argv)
         cwd = run_dir
     typed = len(shlex.join(["graphene", *argv[1:]] if arm == "direction" and ok else argv))
     if ok:  # in the person's seat, as newrun.sh's as_me runs a stand-in's commands

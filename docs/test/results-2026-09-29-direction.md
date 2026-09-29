@@ -4,8 +4,11 @@
 
 *Written and committed on 2026-09-29, before any run of this study, by lane D of
 `docs/process/directives/FIRST_LIGHT_DIRECTIVE.md`. The harness (`docs/test/direction_study.py`)
-and its test (`docs/test/test_direction_study.py`) are committed with this file. Once the first run
-starts, this section is not edited. Anything decided later goes below it and is labelled **after
+and its test (`docs/test/test_direction_study.py`) are committed with this file; the answer key is
+in `docs/test/direction_key.py`, outside the file each brief names. A review of the harness, before
+any run, closed two holes in its wrapper (a write passed as a read; the morning arm could read
+another file) and moved the key out; nothing else changed. Once the first run starts, this section
+is not edited. Anything decided later goes below it and is labelled **after
 the fact**. The runs are the coordinator's, as a workflow; this lane runs none of them.*
 
 ### The question
@@ -33,8 +36,12 @@ H1 with H2 is the question. H3 says where a saving would come from.
 | **direction** | a repository whose store and `.graphene/direction.txt` hold the state | `graphene direction` (with `--width N`), `graphene plan`, `graphene board`, `graphene watch --once` |
 | **morning** | `morning.md`, the brief of the same state, to the brief's contract | `cat`, `head`, `sed -n`, `grep`, each on `morning.md` |
 
-Every command goes through `direction_study.py run`, which refuses what the arm does not allow (a
-refused command still counts as an act, with nothing read) and prints what the command printed. In
+Every command goes through `direction_study.py run`, which lets through only reads of the arm's own
+material and refuses the rest (a refused command still counts as an act, with nothing read), and
+prints what the command printed. The direction arm's reads are `graphene direction`, `plan`, `board`
+and `watch --once` with their read flags only (`--width`, `--text`, `--json`, `--view`, `--height`,
+`--all`): no subcommand, so nothing that writes. The morning arm's are `cat`, `head`, `sed -n` and
+`grep` of `morning.md` and of no other file. In
 the direction arm it runs the command in the person's seat, without the agent's marks, as
 `newrun.sh`'s `as_me` does, with `COLUMNS=100 LINES=40` unless the stand-in names a width.
 
@@ -78,7 +85,8 @@ that is in no item of its question is a false item. Ids are compared by their fi
 - **Seats:** a first-time user, Alex, and a judge (`SEATS` in the harness), as in the shaping runs.
 - **Runs:** 3 seats × 2 arms × 2 repetitions = **12 runs, n = 6 per arm.** Each run is a fresh
   Claude Code sub-agent, never reused, whose whole instruction is the brief the harness prints for
-  its run. It is not told the hypotheses, the key or the other arm.
+  its run, which tells it to open no file itself. It is not told the hypotheses, the key or the
+  other arm.
 - **Order:** a seat's two arms of one repetition start together, each with its own fixture built
   just before it; the six pairs run in any order.
 - **The build:** one commit of `first-light` with this file in it; its sha goes into the results.

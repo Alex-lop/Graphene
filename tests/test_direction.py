@@ -72,6 +72,8 @@ def test_a_text_with_lines_it_cannot_read_is_refused_by_line_number_and_none_of_
     ]
     with pytest.raises(P.Refused, match="line 1: a line under no node"):
         D.parse("not a node\n")
+    with pytest.raises(P.Refused, match="line 2: a control character"):
+        D.parse("- a  [a]\n- \x1b]0;owned\x07 b  [b]\n")  # a committed file must not drive the terminal
 
 
 def test_an_agent_proposes_only_the_person_accepts_or_drops_and_git_sees_the_file(repo):  # noqa: F811
@@ -146,6 +148,11 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 799), agent_id=lane)
         _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 700), tool_name="Edit", agent_id=lane,
                tool_input={"file_path": str(repo / "api.py")}, tool_response={})  # fmt: skip
+        nested = "c0c0c0c0c0c0c0c0"  # started by the lane, not by its session: it goes with the lane
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 650), tool_name="Agent", agent_id=lane,
+               tool_input={"description": "a nested helper"}, tool_response={"agentId": nested})  # fmt: skip
+        _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 649), agent_id=nested)
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 20), tool_name="Read", agent_id=nested)
         other = "0ther000-0000-4000-8000-000000000002"
         _event(store, repo, "UserPromptSubmit", other, _stamp(now, 600), prompt="fix the readme\nplease")
         _event(store, repo, "PostToolUse", other, _stamp(now, 590), tool_name="Write",
@@ -158,7 +165,12 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         _event(store, repo, "UserPromptSubmit", "1d1e0000-0000", _stamp(now, D.IDLE + 60), prompt="quiet")
         st = D.status(store, D.read(repo), now)
     by = {w["short"]: w for w in st["sessions"]}
-    assert set(by) == {AGENT_SID[:8], "a640f5b2", other[:8]}
+    assert set(by) == {AGENT_SID[:8], "a640f5b2", "c0c0c0c0", other[:8]}
+    assert (by["c0c0c0c0"]["node"], by["c0c0c0c0"]["how"], by["c0c0c0c0"]["label"]) == (
+        "plan",
+        "with the subagent that started it",
+        "a nested helper",
+    )
     assert st["older"] == 2  # a day's quiet, and an hour idle
     me, lane, loose = by[AGENT_SID[:8]], by["a640f5b2"], by[other[:8]]
     assert (me["node"], me["how"], me["word"], me["last"]) == (
@@ -173,19 +185,23 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         "idle",
         "Lane D: the direction",
     )
-    assert lane["last"] == "edited api.py"
+    assert lane["last"] == "started a nested helper"  # its own last call: the Agent call
     assert (loose["node"], loose["word"], loose["label"]) == (
         None,
         "your turn",
         "session: fix the readme",
     )
     live = next(n for n in st["nodes"] if n["id"] == "live")
-    assert (live["word"], live["running"], live["you"]) == ("running", 1, 0)  # the leaf; its session is it
+    assert (live["word"], live["running"], live["you"]) == (
+        "running",
+        2,
+        0,
+    )  # the leaf (its session is it), nested
     top = next(n for n in st["nodes"] if n["id"] == "product")
-    assert top["running"] == 1 and top["next"] is None
+    assert top["running"] == 2 and top["next"] is None
     shown = person("direction", "--width", "120").stdout.splitlines()
     narrow = person("direction", "--width", "60").stdout.splitlines()[0]
-    assert narrow.startswith("you: 1 · 1 running · the direction of …") and len(narrow) == 60
+    assert narrow.startswith("you: 1 · 2 running · the direction of …") and len(narrow) == 60
     assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines()[:-1])
     assert any("the plan: users come back with ids" in line and "0/1 done" in line for line in shown)
     assert any("not in the direction" in line for line in shown)
@@ -195,8 +211,17 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         == f"{other[:8]} attached to submission\n"
     )
     assert agent("direction", "attach", other[:8], "live").exit_code == 1
+    assert person("direction", "attach", "a640f5b2", "board").exit_code == 0
+    with Store.open(repo) as store:
+        placed = {w["short"]: w["node"] for w in D.status(store, D.read(repo), now)["sessions"]}
+    assert (placed["a640f5b2"], placed["c0c0c0c0"]) == ("board", "board")  # what it started goes with it
     with Store.open(repo) as store:
         st = D.status(store, D.read(repo), now)
+    from graphene_map import server
+
+    with Store.open(repo) as store:
+        export = server.payload(store, [], only=True)
+    assert AGENT_SID[:8] not in json.dumps(json.loads(export)["direction"])  # no session leaves the machine
     sub = next(n for n in st["nodes"] if n["id"] == "submission")
     assert (sub["word"], sub["you"]) == ("yours", 1)
     assert next(w for w in st["sessions"] if w["short"] == other[:8])["how"] == "attached by you"
@@ -267,7 +292,8 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
         "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
     )
     person("direction", "plan", "live")
-    for said in (person("plan"), person("plan", "--view", "tree", "--width", "120", "--height", "36")):
+    views = (person("plan", "--view", "tree", "--width", "120", "--height", "36"), person("watch", "--once"))
+    for said in (person("plan"), *views):
         shown = said.stdout.splitlines()
         assert shown[0].split()[1:4] == ["the", "product", "product"] and "next: ids" in shown[0]
         assert shown[1].split()[1:3] == ["live", "live"] and shown[2:3] != []
@@ -290,3 +316,136 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
     assert page["plan"]["node"] == "live" and page["plan"]["next"] == "ids"
     assert [n["id"] for n in page["nodes"]] == ["product", "live", "board", "submission"]
     assert export["sessions"] == [] and export["nodes"] == page["nodes"]  # sessions stay on this machine
+
+
+def test_d_in_watch_shows_the_direction_and_attaches_the_session_the_person_names(repo):  # noqa: F811
+    import asyncio
+
+    from graphene_map.tui import Watch
+
+    agent("direction", "propose", "-", input=TREE)
+    now = datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(store, repo, "UserPromptSubmit", "0ther000-0000", _stamp(now, 30), prompt="the readme")
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            await pilot.press("D")
+            await pilot.pause()
+            pane = str(app.query_one("#detail").render())
+            await pilot.press(*"0ther000 submission", "enter")
+            await pilot.pause()
+            return pane, str(app.query_one("#status").render())
+
+    pane, status = asyncio.run(go())
+    assert "submission" in pane and "0ther000" in pane and "not in the direction" in pane
+    assert "graphene direction attach 0ther000 submission" in status
+    with Store.open(repo) as store:
+        assert D.links(store)["attach"] == {"0ther000-0000": "submission"}
+
+
+def test_edit_writes_a_text_that_reads_whole_and_nothing_of_one_that_does_not(repo, monkeypatch):  # noqa: F811
+    agent("direction", "propose", "-", input=TREE)
+    before = (repo / D.FILE).read_text()
+    editor = repo / "editor.sh"
+    editor.write_text('#!/bin/sh\nprintf -- "- the docs  [docs]\\n" >> "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    assert agent("direction", "edit").exit_code == 1  # an agent proposes; the person edits
+    said = person("direction", "edit")
+    assert said.exit_code == 0 and said.stdout == "the direction: 5 nodes, 4 proposed\n"
+    assert (repo / D.FILE).read_text() == before + "- the docs  [docs]\n"
+    editor.write_text('#!/bin/sh\nprintf -- "- no id here\\n" >> "$1"\n')
+    refused = person("direction", "edit")
+    assert refused.exit_code == 1 and "line 6: a node's line ends with its id" in refused.stderr
+    assert (repo / D.FILE).read_text() == before + "- the docs  [docs]\n"  # nothing written
+
+
+def test_a_direction_written_while_a_leaf_runs_is_never_the_leafs_change(repo):  # noqa: F811
+    """Review, 29 September: the file is the one path under .graphene/ that git sees, so a proposal
+    written while a leaf ran made its `done` refused ("changed outside its scope") and every other
+    start refused ("an uncommitted change no node made"). Graphene's own directory is no leaf's
+    change, uncommitted or committed."""
+    one = "- one  [one]\n    scope: api.py\n    check: true\n"
+    two = "- two  [two]\n    scope: schema.py\n    check: true\n"
+    agent("plan", "propose", "-", input="goal: g\n" + one + two)
+    person("plan", "accept")
+    assert agent("node", "start", "one").exit_code == 0
+    (repo / "api.py").write_text("def users():\n    return ['ids']\n")
+    assert agent("direction", "propose", "-", input=TREE).exit_code == 0
+    started = agent("node", "start", "two")
+    assert started.exit_code == 0, started.output
+    subprocess.run(["git", "add", "-f", D.FILE], cwd=repo, check=True)
+    commit = ["git", "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-qm", "the direction"]
+    subprocess.run(commit, cwd=repo, check=True)
+    person("direction", "accept", "live")  # the committed file changes again, while both leaves run
+    done = agent("node", "done", "one")
+    assert done.exit_code == 0, done.output
+
+
+def test_what_the_review_found_in_the_file_each_refused_or_kept_as_it_should_be(repo, monkeypatch):  # noqa: F811
+    """Review, 29 September: a file saved as Latin-1 crashed `graphene plan`; a control character in a
+    comment, a C1 control or a bidi override passed; a line led by a no-break space vanished into its
+    node's words; U+2028 moved every refusal's line number; a node proposed under one whose children
+    are indented by one space went under its last child; a write left the file private (0600); and
+    `edit` would not open a file that does not read, the one time it is needed."""
+    for bad, why in (
+        ("- a  [a]\n# \x1b]0;owned\x07\n", "line 2: a control character"),
+        ("- a  \u009b31m [a]\n", "line 1: a control character"),
+        ("- a ‮ [a]\n", "line 1: a control character"),
+        ("- a  [a]\n  - b  [b]\n", "line 2: indent with spaces only"),
+        ("- a  [a]\n  what a is for\n- no id\n", "line 3: a node's line ends"),
+    ):
+        with pytest.raises(P.Refused, match=why):
+            D.parse(bad)
+    d = D.parse("- a  [a]\n - b  [b]\n")
+    D.propose(d, "? c  [c]\n", BOT, "a")
+    assert [(n.id, n.parent) for n in D.parse(d.text()).nodes] == [("a", None), ("b", "a"), ("c", "a")]
+
+    agent("direction", "propose", "-", input=TREE)
+    assert (repo / D.FILE).stat().st_mode & 0o777 == 0o644
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    (repo / D.FILE).write_bytes(b"- caf\xe9  [cafe]\n")
+    plan = person("plan")
+    assert plan.exit_code == 0 and plan.stdout.startswith(f"the direction: {D.FILE} cannot be read")
+    assert "it is not UTF-8" in person("direction").stderr
+    (repo / D.FILE).write_text("- fine  [fine]\n- no id here\n")
+    editor = repo / "editor.sh"
+    editor.write_text('#!/bin/sh\ngrep -q "refused: .*its id" "$1" && printf -- "- fine  [fine]\\n" > "$1"\n')
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    mended = person("direction", "edit")
+    assert mended.exit_code == 0, mended.output
+    assert (repo / D.FILE).read_text() == "- fine  [fine]\n"
+
+
+def test_running_work_is_counted_once_and_a_leaf_made_from_a_prompt_leaves_its_session_where_it_was(repo):  # noqa: F811
+    """Review, 29 September: a session holding a leaf and its two lanes counted the leaf twice, and a
+    one-line ask typed into an unrelated session (a leaf made from a prompt) pulled that session into
+    the plan's node."""
+    agent("direction", "propose", "-", input=TREE)
+    person("direction", "accept", "product")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    person("direction", "plan", "live")
+    assert agent("node", "start", "ids").exit_code == 0
+    other, now = "a51de000-0000-4000-8000-000000000003", datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 10), tool_name="Read")
+        for n, lane in enumerate(("d1d1d1d1d1d1d1d1", "d2d2d2d2d2d2d2d2")):
+            called = {"tool_input": {"description": f"lane {n}"}, "tool_response": {"agentId": lane}}
+            _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 60), tool_name="Agent", **called)
+            _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 59), agent_id=lane)
+            _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 5), tool_name="Read", agent_id=lane)
+        aside = P.Node("n9", "fix the readme typo", scope=[], aside=True, state=P.RUNNING, session_id=other)
+        store.put_node(P.to_dict(aside))
+        store.log_node("n9", _stamp(now, 30), "started", "claude:a51de000", other, None, {})
+        _event(store, repo, "PostToolUse", other, _stamp(now, 20), tool_name="Edit")
+        st = D.status(store, D.read(repo), now)
+    live = next(n for n in st["nodes"] if n["id"] == "live")
+    assert (live["running"], st["plan"]["running"]) == (3, 1)  # the session and its two lanes; one leaf
+    assert next(w for w in st["sessions"] if w["short"] == "a51de000")["node"] is None
+    assert D.head(st, "repo").startswith("you: 1 · 4 running")  # submission; the three, and the loose one

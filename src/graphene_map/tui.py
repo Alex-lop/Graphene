@@ -74,7 +74,8 @@ HELP = (
     )),
     ("run", (("R r", "run every ready leaf; the ready ones under this"),
              ("x", "release it; send it back; reopen it"), ("P", "plan first on or off"))),
-    ("see", (("Enter l", "the record; the executor's output"), ("ctrl-d -u", "scroll the pane"))),
+    ("see", (("Enter l D", "the record; the executor's output; the direction"),
+             ("ctrl-d -u", "scroll the pane"))),
     ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
     ("board", (("y 1..9", "take the default, confirm, agree; pick one"),
@@ -673,6 +674,7 @@ class Watch(App):
         Binding("w", "offer('w')", show=False),
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
+        Binding("D", "direction", show=False),  # direction: the tree above the plans, in the pane
         Binding("m", "seen", show=False),
         Binding("plus", "reask('finer')", show=False),
         Binding("minus", "reask('coarser')", show=False),
@@ -1597,6 +1599,12 @@ class Watch(App):
         node_id = self.selected()
         argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if here and node_id else [])]
         self.background(argv)
+
+    def action_direction(self) -> None:
+        """D: `graphene direction` in the pane, every session under what it works on, and the line open
+        on the command that attaches one to a node, which the person finishes (SESSION NODE)."""
+        self.ran(f":direction --width {self.pane_room()[0]}")
+        self.action_line(":direction attach ")
 
     def action_plan_first(self) -> None:
         self.did(["plan", "first", "off" if self.counts.get("first") else "on"])
