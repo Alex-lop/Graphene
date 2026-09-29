@@ -137,6 +137,8 @@ class Local:
         except BaseException:  # a stopped run: nothing the model started outlives it
             _kill(proc)
             raise
+        with contextlib.suppress(OSError):  # nor what it left in the background: each command ends whole
+            os.killpg(proc.pid, signal.SIGKILL)
         return proc.returncode, out.decode("utf-8", "replace")
 
     def halt(self) -> None:

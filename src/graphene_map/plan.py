@@ -670,8 +670,10 @@ def ctrl_c_on_hangup():
         raise KeyboardInterrupt
 
     # SIGINT too: started from a shell that ignores it (a job in the background, a CI step), the
-    # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it
-    was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)}
+    # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it. And Ctrl-\
+    # (SIGQUIT): its default ended the run where it stood, its executor, `done` and check running on
+    stops = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT, signal.SIGQUIT)
+    was = {sig: signal.signal(sig, hung_up) for sig in stops}
     over = threading.Event()
 
     def unsaid() -> None:
@@ -744,6 +746,10 @@ def _ended(
             raise
         finally:
             _checks.discard(proc)
+        # and once it has ended by itself: what it left in the background (a test server holding its
+        # port, in a worktree about to go) would outlive it, and fail the next leaf's same check. The
+        # group keeps bash's pid as its id while any of it runs; empty, the kill finds nothing.
+        _end_check(proc)
     if began <= _stopped:
         raise KeyboardInterrupt
     return proc.returncode, out, err
@@ -858,6 +864,7 @@ def sandboxed(store, node: Node) -> dict | None:
     return last["detail"]
 
 
+@ctrl_c_on_hangup()  # as run_check: a stop or a hangup removes the check's container
 def _check_in_sandbox(place: dict, command: str, checkout, leave_out) -> tuple[bool, str, list[str]]:
     from .sandbox import check_in_fork
 

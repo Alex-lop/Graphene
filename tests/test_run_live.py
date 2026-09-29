@@ -409,10 +409,14 @@ def test_a_run_lock_is_known_by_its_runs_pid_and_start_so_a_reused_pid_holds_not
         bystander.wait()
 
 
-@pytest.mark.parametrize("sig, parallel", [(signal.SIGTERM, "1"), (signal.SIGHUP, "2")])
+STOPS = [(signal.SIGTERM, "1"), (signal.SIGHUP, "2"), (signal.SIGQUIT, "1"), (signal.SIGQUIT, "2")]
+
+
+@pytest.mark.parametrize("sig, parallel", STOPS)
 def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, parallel):
     """Recheck: SIGHUP and SIGTERM had no handler: the run died where it stood, its executor worked
-    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind."""
+    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind. Review 23: so
+    did Ctrl-\\ (SIGQUIT), the key a person reaches for while the run waits out its executor."""
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
     run = graphene_run(repo, "--with", executor(repo, SLOW), "--parallel", parallel)
@@ -430,6 +434,31 @@ def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, par
         if pid and not ended(pid):
             os.killpg(pid, signal.SIGKILL)
 
+
+
+def test_ctrl_backslash_while_the_run_waits_out_its_executor_is_held_off_as_ctrl_c_is(repo):
+    """Review 23: after a Ctrl-C the run gives its executor its grace, holding off more Ctrl-Cs, and
+    that silence is when a person presses Ctrl-\\. It ended the run on the spot: the executor (this one
+    ignores TERM) worked on, and its leaf stayed `running`."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    run = graphene_run(repo, "--with", executor(repo, KEPT))
+    pid = None
+    try:
+        assert wait_for(lambda: len(R_attempts(repo)) == 1)
+        attempt = R_attempts(repo)[0]["detail"]
+        pid, log = attempt["pid"], Path(attempt["log"])
+        assert wait_for(lambda: "up" in log.read_text())  # it ignores TERM from here on
+        run.send_signal(signal.SIGINT)
+        time.sleep(1)  # the run is in its stop, waiting out the executor's grace
+        run.send_signal(signal.SIGQUIT)
+        run.communicate(timeout=30)
+        assert run.returncode == 130 and states(repo) == {"a": OPEN}
+        assert wait_for(lambda: ended(pid), 15)  # killed once its grace was up
+    finally:
+        run.kill()
+        if pid and not ended(pid):
+            os.killpg(pid, signal.SIGKILL)
 
 def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
     """Recheck: a leaf whose last attempt was an earlier, dead run's was swept in the milliseconds
@@ -449,6 +478,33 @@ def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
         R.sweep(store, said.append, repo)
         assert plan.get(store, "a").state == RUNNING and len(said) == 1
 
+
+
+def test_a_leaf_a_dead_parallel_run_left_done_in_its_worktree_is_committed_and_waits_in_review(repo):
+    """Review 22: a parallel run killed outright (kill -9, Force Quit, Ctrl-\\ before it was held) never
+    stops its executors, which run in sessions of their own. They finished in their worktrees and ran
+    `done`, so the leaves read done and the plan finished, while the work was only uncommitted in
+    .graphene/worktrees and nothing in the checkout; the next run said "nothing to run". The next run
+    now commits it on the leaf's branch and leaves it in review, as a stopped run's `park` does."""
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    run = Caller("run:claude", False, "s1")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, tree)
+        attempt = {"attempt": 1, "run_pid": dead.pid}  # written by a run that is gone
+        store.log_node("a", plan._now(), "attempt", run.label, "s1", None, attempt)
+        (tree / "a.txt").write_text("a, by its executor\n")
+        plan.finish(store, "a", run)  # its executor's `done`, after the run was killed
+        assert plan.get(store, "a").state == DONE
+    said = graphene_run(repo, "--parallel", "2", "--with", "true").communicate(timeout=60)[0]
+    assert "a passed; the run was stopped before it landed" in said, said
+    with Store.open(repo) as store:
+        assert plan.get(store, "a").state == REVIEW
+    assert git(repo, "show", "graphene/a:a.txt") == "a, by its executor\n"
+    assert (repo / "a.txt").read_text() == "a\n"  # the checkout is the person's until they merge
 
 def test_a_run_started_in_a_linked_worktree_sees_the_parallel_runs_lock(repo, tmp_path):
     """Recheck: `graphene run` in a second worktree swept with that worktree as the root, found no

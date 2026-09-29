@@ -179,7 +179,9 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     has just taken the leaf again has not written one yet. The dead run's executor, if it still
     works, is stopped first (TERM, then KILL, and waited for), and only while its pid still names
     the process that was started. The hand-back is not a person's: a live run's executor is not
-    stopped for it."""
+    stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
+    working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
+    parked as a stopped run parks it (``park``), committed on its branch and waiting in review."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -200,6 +202,17 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
         except P.Refused:
             continue  # handed back or finished meanwhile
         say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
+    for n in P.nodes(store, (P.DONE, P.REVIEW)):  # finished in a dead parallel run's worktree, never landed
+        tree = Path(n.checkout or "")
+        if P.RUN_TREE not in str(tree) + os.sep or not tree.is_dir():
+            continue
+        log = store.node_log(n.id, ("started", "attempt", "landed", "unlanded"))
+        since = log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=0) :]
+        if any(e["kind"] in ("landed", "unlanded") for e in since):
+            continue
+        run = next((e["detail"] for e in reversed(since) if e["kind"] == "attempt"), {})
+        if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
+            park(store, tree, n, say)
 
 
 def run_holding(root: Path) -> int | None:
@@ -432,12 +445,13 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 @contextlib.contextmanager
 def _no_interrupt():
-    """Ctrl-C (and a hangup or a `kill`) held off while a stop is being cleaned up (main thread only;
-    elsewhere it cannot land)."""
+    """Ctrl-C (and Ctrl-\\, a hangup or a `kill`) held off while a stop is being cleaned up (main thread
+    only; elsewhere it cannot land)."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)}
+    held = (signal.SIGINT, signal.SIGHUP, signal.SIGTERM, signal.SIGQUIT)
+    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in held}
     try:
         yield
     finally:

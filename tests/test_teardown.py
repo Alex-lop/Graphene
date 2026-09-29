@@ -8,6 +8,7 @@ import fcntl
 import os
 import pty
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -17,7 +18,7 @@ import time
 
 import pytest
 
-from graphene_map import plan
+from graphene_map import plan, sandbox
 from graphene_map.plan import Caller
 from graphene_map.store import Store
 
@@ -144,3 +145,85 @@ def test_nothing_graphene_starts_outlives_its_terminal(tmp_path, window):
         for gone in left():
             with contextlib.suppress(OSError):
                 os.kill(int(gone.split(":")[0]), signal.SIGKILL)
+
+
+def ended(pid: int, seconds: float = 5) -> bool:
+    """Gone (or a zombie nobody has reaped) within ``seconds``."""
+    return until(lambda: pid not in table(), seconds=seconds)
+
+
+def test_a_check_that_passes_leaves_nothing_it_started_running(tmp_path):
+    """Review 24: a check that passed left what it put in the background running (a test server kept its
+    port, with its worktree deleted under it, and failed the next leaf's identical check), and so did a
+    command of the Nemotron executor's. Both now end their session once they return."""
+    from graphene_map.executor import Local
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    left = tmp_path / "left"
+    passed, _, _ = plan.run_check(f"sleep 313 >/dev/null 2>&1 & echo $! > {left}", repo)
+    assert passed and ended(int(left.read_text()))
+    code, said = Local(repo).run("sleep 317 >/dev/null 2>&1 & echo $!")
+    assert code == 0 and ended(int(said))
+
+
+def docker(*args: str) -> str:
+    return subprocess.run(["docker", *args], capture_output=True, text=True).stdout
+
+
+DOCKER = shutil.which("docker") and subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+
+
+@pytest.mark.skipif(not DOCKER, reason="needs a running Docker (the sandbox stand-in)")
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP], ids=["the run's stop", "a closed terminal"])
+def test_a_sandboxed_leafs_check_goes_with_the_done_that_started_it(tmp_path, sig):
+    """Review 21: a leaf placed in a sandbox has its check run in a fork of the sandbox's image, and that
+    path had no guard. `graphene node done` died at the run's TERM (or a hangup) and left the check's
+    container running, and its `docker start -a` client with it; the container was never removed."""
+    image = f"graphene-teardown-leaf:{os.getpid()}"
+    made = f"graphene-teardown-make-{os.getpid()}"
+    user = f"useradd -m {sandbox.USER} && mkdir -p {sandbox.WORK}"  # the leaf's user, as a sandbox has it
+    subprocess.run(["docker", "run", "--name", made, "python:3.12-slim", "bash", "-c", user], check=True)
+    docker("commit", made, image)
+    docker("rm", "-f", made)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    env = os.environ | {"GRAPHENE_AS": "person:alex"}
+    with Store.open(repo) as store:
+        leaf = {"id": "a", "title": "leaf a", "scope": ["a.txt"], "check": "sleep 600"}
+        plan.propose(store, [leaf], Caller("alex", True))
+        plan.start(store, "a", plan.caller(env), repo)  # by whoever runs its `done` below
+        store.log_node("a", plan._now(), "placement", "run:nemotron", None, None,
+                       {"placement": "sandbox", "box": "docker", "image": image})  # fmt: skip
+    (repo / "a.txt").write_text("a, done\n")
+    said = open(tmp_path / "done.txt", "w")  # noqa: SIM115
+    done = subprocess.Popen([*CLI, "node", "done", "a"], cwd=repo, env=env, stdout=said,
+                            stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
+    box = f"name=graphene-{done.pid}-"
+    try:
+        running = ("ps", "-q", "--filter", box, "--filter", "status=running")
+        assert until(lambda: docker(*running).strip() or done.poll() is not None, seconds=120)
+        assert done.poll() is None, (tmp_path / "done.txt").read_text()  # the check runs in its container
+        done.send_signal(sig)
+        done.wait(timeout=30)
+        assert until(lambda: not docker("ps", "-aq", "--filter", box).strip(), seconds=20), docker("ps", "-a")
+        client = f"docker start -a graphene-{done.pid}-"
+        assert not [c for _, _, c in table().values() if c.startswith(client)]
+    finally:
+        done.kill()
+        said.close()
+        for left in docker("ps", "-aq", "--filter", box).split():
+            docker("rm", "-f", left)
+        docker("rmi", "-f", image)
