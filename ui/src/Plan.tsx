@@ -89,6 +89,9 @@ export const size = (plan: Plan): string => {
   return `${leaves.length} lea${leaves.length === 1 ? "f" : "ves"}, ${n("done")} done, ${n("running")} running`;
 };
 
+/** A goal the planner proposed with the tree, as watch says it: accepting any of the tree accepts it. */
+const PROPOSED_GOAL = "proposed with the tree: accepting any of it accepts it";
+
 /** Why this page cannot change the plan, and where it is changed instead: said once, on the overview. An
  * export carries no token; a page served to an agent's shell has one and cannot write with it. */
 const READ_ONLY = {
@@ -105,8 +108,15 @@ export function PlanHeader({ plan, view, onView, recorded }: { plan: Plan; view:
         <span data-testid="size">{size(plan)}</span>
       </div>
       {/* the root of the tree, in the person's words: why any of the rest is being done */}
-      <p className="goal" data-testid="goal" title={plan.goal}>
-        {plan.goal || <span className="muted">no goal yet — `graphene plan goal &lsquo;why any of this is being done&rsquo;`</span>}
+      <p className="goal" data-testid="goal" title={plan.goal || plan.goal_proposed}>
+        {plan.goal ||
+          (plan.goal_proposed ? (
+            <>
+              {plan.goal_proposed} <span className="muted">· {PROPOSED_GOAL}</span>
+            </>
+          ) : (
+            <span className="muted">no goal yet — `graphene plan goal &lsquo;why any of this is being done&rsquo;`</span>
+          ))}
       </p>
       <div className="badges">
         {plan.paused && <span className="badge warn">paused: nothing starts and no write is refused</span>}
@@ -429,7 +439,7 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
   const on = new Set(plan.critical);
   const now = new Set(plan.at_once);
   const [gx, gy] = [PAD_Y + (plan.tree_goal[0] ?? 0), PAD_Y + (plan.tree_goal[1] ?? 0)];
-  const goal = plan.goal || "no goal yet";
+  const goal = plan.goal || plan.goal_proposed || "no goal yet";
   return (
     <Pan width={treeWidth(plan)} height={plan.tree_height + PAD_Y * 2} label="the plan, as a tree" onClear={() => onPick(null)}>
       {plan.tree_links.map((link) => (
@@ -438,7 +448,7 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
       <g className="node goal-box" data-goal="" transform={`translate(${gx},${gy})`}>
         <rect className="box" width={200} height={76} rx={8} />
         <text x={12} y={24} className="state">
-          the goal
+          {plan.goal || !plan.goal_proposed ? "the goal" : "the goal · proposed"}
         </text>
         {wrap(goal, 176, CHAR).map((line, i) => (
           <text key={i} x={12} y={44 + i * 16} className="title">

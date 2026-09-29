@@ -79,6 +79,7 @@ const plan: Plan = {
   tree_goal: [0, 0],
   tree_links: [],
   view: "auto",
+  goal_proposed: "",
   board: { open: [], folded: [], counts: "", standing: null },
 };
 
@@ -386,4 +387,18 @@ test("a node's detail lists what the board decided for it, as node show does", (
   const decided: Plan = { ...plan, nodes: [node("api", { decided: ["are prices in cents? → no, dollars"] })] };
   const html = renderToStaticMarkup(<PlanInspector plan={decided} picked="api" write={async () => null} />);
   expect(text(cut(html, 'data-testid="decided"', "</ul>"))).toBe("are prices in cents? → no, dollars");
+});
+
+test("a goal the planner proposed with the tree is shown as the proposal it is, never as no goal", () => {
+  // walk finding 2: "no goal yet — `graphene plan goal …`" before the tree was accepted, a command that
+  // would replace the planner's sentence
+  const proposed: Plan = { ...plan, goal: "", goal_proposed: "the feed loads like csv" };
+  const header = text(renderToStaticMarkup(<PlanHeader plan={proposed} view="plan" onView={() => undefined} recorded={1} />));
+  expect(header).toContain("the feed loads like csv · proposed with the tree: accepting any of it accepts it");
+  expect(header).not.toContain("no goal yet");
+  expect(header).not.toContain("graphene plan goal");
+  const tree = renderToStaticMarkup(<PlanTopDown plan={proposed} picked={null} onPick={() => undefined} />);
+  expect(tree).toContain("the goal · proposed");
+  expect(tree).toContain("the feed loads like csv");
+  expect(text(renderToStaticMarkup(<PlanHeader plan={{ ...plan, goal: "" }} view="plan" onView={() => undefined} recorded={1} />))).toContain("no goal yet");
 });

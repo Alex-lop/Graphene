@@ -446,3 +446,15 @@ def test_a_nodes_log_is_stamped_in_the_order_it_happened_its_check_before_it_fin
     assert kinds.index("check_passed") < kinds.index("finished")
     stamps = [e["at"] for e in shown["log"]]
     assert stamps == sorted(stamps) and shown["finished_at"] == shown["log"][-1]["at"]
+
+
+def test_a_goal_proposed_with_the_tree_is_on_the_page_as_the_proposal_it_is(store):
+    """walk finding 2: before the person accepted anything, the page said "no goal yet" and offered
+    `graphene plan goal`, which would replace the planner's sentence; `graphene` and watch showed it."""
+    plan.propose(store, [node("a")], BOT)
+    plan.propose_goal(store, "the feed loads like csv", BOT)
+    view = build_plan_view(store)
+    assert (view["goal"], view["goal_proposed"]) == ("", "the feed loads like csv")
+    plan.accept(store, ["a"], ALEX)
+    view = build_plan_view(store)
+    assert (view["goal"], view["goal_proposed"]) == ("the feed loads like csv", "")

@@ -144,6 +144,7 @@ class PlanView:
     version: int = 1
     repo: str = ""  # the checkout this plan belongs to, by name: a plan exists before any run does
     goal: str = ""  # the root of the tree: why any of this is being done, in the person's words
+    goal_proposed: str = ""  # while there is no goal: the planner's sentence, accepted with the tree
     person: str = ""
     paused: bool = False
     width: float = 0.0
@@ -478,6 +479,7 @@ def build_plan_view(store, export: bool = False, checkout: Path | None = None) -
     view = PlanView(
         repo=store.path.parent.parent.name,
         goal=P.goal(store),
+        goal_proposed="" if P.goal(store) else store.meta("goal:proposed") or "",
         person=person,
         paused=P.paused(store),
         view=store.meta("view") or "auto",
