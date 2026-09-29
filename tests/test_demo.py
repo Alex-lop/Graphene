@@ -426,13 +426,14 @@ def test_a_recording_carries_the_board(tmp_path):
         assert demo._snapshot(store.conn, 0)[2]["board"] == '[{"id": "q"}]'
 
 
-def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, monkeypatch):
+def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path):
     """CI, 28 September (Ubuntu, now and then): the replay's once-a-second refresh ticked while the test
     harness tore the app down. The harness removes the screen's widgets without calling exit, which is
     the only thing that stops a timer's tick, so the draw looked for #where and found nothing. A tick
     that lands once the app has stopped running now does nothing, the replay's own tick too."""
-    monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
+    for line in lines[1:]:  # an hour on: the screen is torn down mid-replay, however slow the machine is
+        line["at"] += 3600
     app = demo.Replay(demo.repository(tmp_path, head), head, lines)
 
     async def go():
@@ -441,7 +442,7 @@ def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, 
             assert app.next < len(app.lines)  # changes are left to play when the app is torn down
 
     asyncio.run(go())
-    app.began -= 3600  # every change is due, so the replay's tick has something to apply
+    app.began -= 7200  # every change is due, so the replay's tick has something to apply
     app.refresh_plan()  # the screen's tick, after its widgets are gone
     app.play()  # and the replay's
 
