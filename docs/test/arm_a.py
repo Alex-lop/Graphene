@@ -34,6 +34,7 @@ from types import SimpleNamespace
 import tally  # noqa: F401  (it puts src/ on the path)
 
 from graphene_map import executor as E
+from graphene_map import night
 from graphene_map import plan as P
 from graphene_map import tokenfactory as tf
 
@@ -127,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
         if state["endpoint"].split(" then ")[-1] != now:
             state["endpoint"] += f" then {now}"
 
+    if night.cap() is not None:  # the person's opening is set: practice, which evidence.py refuses
+        state["practice"] = True
     steps = args.steps - state["calls"]
     seconds = args.seconds - state["seconds_used"] if args.seconds else None
     if steps <= 0 or (seconds is not None and seconds <= 0):
