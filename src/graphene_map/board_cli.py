@@ -36,6 +36,9 @@ def rows(store, everything: bool = False) -> list[str]:
     count = {name: len(group) for name, group in shown}
     opened = sum(n for name, n in count.items() if name not in ("parked", *FOLDED))
     said = {k: f"{count[k]} {k}" for k in ("parked", *FOLDED) if k in count}
+    repo = sum(1 for it in B.items(store) if it.get("from") and B.told(it))
+    if repo and "settled" in said:
+        said["settled"] += f" ({repo} from the repo)"
     head = ([f"{opened} open"] if opened else []) + list(said.values())  # never "0 open"
     out = [f"the board: {', '.join(head)}"]
     if not everything:
@@ -59,6 +62,7 @@ def rows(store, everything: bool = False) -> list[str]:
                 continue
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
+                out += [f"      from the repo: {item['from']}"] if item.get("from") else []
                 out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
                 continue
             effects = _then if everything else lambda _: []
@@ -195,13 +199,27 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     @board_cli.command()
     def unpark(item_id: str = typer.Argument(...)) -> None:
-        """Unpark it: it is open again, waiting on you."""
+        """Unpark it: it is open again, waiting on you. An item the repository answered (`graphene board
+        lookup`) opens again the same way; what its answer changed in the tree stays."""
         act(f"board unpark {item_id}", lambda s, who, files: B.unpark(s, item_id, who))
 
     @board_cli.command()
     def answer(item_id: str = typer.Argument(...), words: list[str] = typer.Argument(...)) -> None:
         """Answer it in your own words."""
         act(f"board answer {item_id}", lambda s, who, files: B.answer(s, item_id, " ".join(words), who))
+
+    @board_cli.command()
+    def lookup() -> None:
+        """Ask Nano which open questions the repository already answers, and settle each whose answer
+        is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
+        GRAPHENE_SHAPE=lookup runs it after each `graphene ask`."""
+        from . import lookup as L  # here, not above: it loads the model's client only when asked
+
+        with open_store(root()) as store:
+            try:  # not one undoable act: the model is never asked under the plan's write lock
+                L.lookup(store, root(), out)
+            except P.Refused as no:
+                fail(str(no), 1)
 
     @board_cli.command()
     def note(

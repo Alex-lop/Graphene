@@ -149,7 +149,8 @@ def shown(store) -> list[dict]:
 def said(item: dict) -> str:
     """An item as the executors are told it: the kind's word, its words, and the answer."""
     answer = _one(item.get("answer"))
-    return f"{_TOLD[item['kind']]}{item['text']}" + (f" → {answer}" if answer else "")
+    where = f" (from the repo: {item['from']})" if item.get("from") else ""
+    return f"{_TOLD[item['kind']]}{item['text']}" + (f" → {answer}{where}" if answer else "")
 
 
 def decided(store, node: P.Node | None = None) -> list[str]:
@@ -371,9 +372,10 @@ def settle(
     **detail,
 ) -> dict:
     """The person answers an item: ``state`` is taken (the default, or yes), picked (``option``, from
-    1), answered (``words``), parked, dropped, or open again (only from parked). What the chosen
-    default or option says `then:` is applied in the same transaction, as the person's edit.
-    ``detail`` goes on the act's log row (``unchanged``: a default nobody changed)."""
+    1), answered (``words``), parked, dropped, or open again (from parked, or from an answer the
+    repository gave: ``from``). What the chosen default or option says `then:` is applied in the same
+    transaction, as the person's edit. ``detail`` goes on the act's log row (``from``, ``unchanged``);
+    ``from`` is kept on the item too, the file that answered it."""
     if not who.person:
         raise P.Refused(f"answering the board is the person's, not {who.name}'s")
     now = now or P._now()
@@ -382,6 +384,12 @@ def settle(
         item = next((it for it in board if it["id"] == item_id), None) or get(store, item_id)
         if item["state"] == "dropped":
             raise P.Refused(f"{item_id} was dropped; `graphene plan undo` brings it back")
+        if item.get("from") and state == "open":  # the repository answered it: it is the person's again
+            item.update(state="open", answer=None, option=None, conditions=[], rev=item["rev"] + 1,
+                        updated_at=now, **{"from": None})  # fmt: skip  (`became` stays: `lifted` says it)
+            _put(store, board)
+            _log(store, item, "reopened", who, now)
+            return item
         if item["state"] in DECIDED and state != "dropped":
             raise P.Refused(
                 f"{item_id} is {item['state']} already ({_one(item['answer']) or 'yes'}); "
@@ -426,6 +434,8 @@ def settle(
             state=state, answer=answer, option=option if state == "picked" else None, rev=item["rev"] + 1,
             updated_at=now, conditions=conditions or item["conditions"],
         )  # fmt: skip
+        if detail.get("from"):
+            item["from"] = detail["from"]
         _put(store, board)  # the answer's own conditions bind its other effects, as a later answer's would
         for i in (i for i in range(len(effects)) if i not in first):
             became[i] = _apply(store, effects[i], who, now, files, conditions)
@@ -467,8 +477,11 @@ def took(taken: list[dict]) -> str | None:
 
 
 def lifted(item: dict) -> list[str]:
-    """What dropping an answered item leaves, in lines: its read-only globs no longer bind, and what
-    its answer changed in the tree stays (`graphene plan undo` takes both back, as one act)."""
+    """What dropping an answered item, or opening again one the repository answered, leaves, in
+    lines: its read-only globs no longer bind, and what its answer changed in the tree stays (`graphene
+    plan undo` takes both back, as one act)."""
+    if item["state"] == "open" and item.get("became"):  # opened again after the repository's answer
+        return [f"what it changed stays: {line}" for line in item["became"] if line]
     if item["state"] != "dropped":
         return []
     out = [f"no longer read-only: {', '.join(item['conditions'])}"] if item.get("conditions") else []
