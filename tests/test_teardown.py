@@ -144,3 +144,30 @@ def test_nothing_graphene_starts_outlives_its_terminal(tmp_path, window):
         for gone in left():
             with contextlib.suppress(OSError):
                 os.kill(int(gone.split(":")[0]), signal.SIGKILL)
+
+
+def ended(pid: int, seconds: float = 5) -> bool:
+    """Gone (or a zombie nobody has reaped) within ``seconds``."""
+    return until(lambda: pid not in table(), seconds=seconds)
+
+
+def test_a_check_that_passes_leaves_nothing_it_started_running(tmp_path):
+    """Review 24: a check that passed left what it put in the background running (a test server kept its
+    port, with its worktree deleted under it, and failed the next leaf's identical check), and so did a
+    command of the Nemotron executor's. Both now end their session once they return."""
+    from graphene_map.executor import Local
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    left = tmp_path / "left"
+    passed, _, _ = plan.run_check(f"sleep 313 >/dev/null 2>&1 & echo $! > {left}", repo)
+    assert passed and ended(int(left.read_text()))
+    code, said = Local(repo).run("sleep 317 >/dev/null 2>&1 & echo $!")
+    assert code == 0 and ended(int(said))
+

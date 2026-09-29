@@ -744,6 +744,10 @@ def _ended(
             raise
         finally:
             _checks.discard(proc)
+        # and once it has ended by itself: what it left in the background (a test server holding its
+        # port, in a worktree about to go) would outlive it, and fail the next leaf's same check. The
+        # group keeps bash's pid as its id while any of it runs; empty, the kill finds nothing.
+        _end_check(proc)
     if began <= _stopped:
         raise KeyboardInterrupt
     return proc.returncode, out, err
