@@ -97,14 +97,21 @@ PIECES = re.compile(r"""([^\s'"`()]+)""")
 PATH = re.compile(r"(\w+=)?~?/")
 
 
+def secrets() -> list[tuple[str, str]]:
+    """The key and the project by what they are, longest first: the environment's values as set and with a
+    paste's whitespace stripped (as keys.find sends the key), and the keychain's key."""
+    found = {(n, v) for n in SECRETS for v in (os.environ.get(n) or "", (os.environ.get(n) or "").strip())}
+    found.add((SECRETS[0], keys.find() or ""))
+    return sorted(((n, v) for n, v in found if len(v) >= 6), key=lambda nv: len(nv[1]), reverse=True)
+
+
 def mask(text: str) -> str:
-    """The key and the project never reach a line or a log: taken out by what they are, the environment's
-    values and the keychain's key, wherever they are. A word shaped like a key is taken out whole too, but
-    not a path the ladder names (one that starts at / or ~/): a repository's name beside a session's uuid
-    looks like base64, and the path and the command it is in are printed to be used as they are."""
-    for name, value in (*((n, os.environ.get(n) or "") for n in SECRETS), (SECRETS[0], keys.find() or "")):
-        if len(value) >= 6:
-            text = text.replace(value, f"[{name}]")
+    """The key and the project never reach a line or a log: taken out by what they are (``secrets``),
+    wherever they are. A word shaped like a key is taken out whole too, but not a path the ladder names
+    (one that starts at / or ~/): a repository's name beside a session's uuid looks like base64, and the
+    path and the command it is in are printed to be used as they are."""
+    for name, value in secrets():
+        text = text.replace(value, f"[{name}]")
     return PIECES.sub(lambda w: w[0] if PATH.match(w[0]) else tf.unkeyed(w[0]), text)
 
 
@@ -112,10 +119,13 @@ def counted(r: Rung) -> int:
     """How many times the key or the project is in a file this rung wrote or added to (its log, the ledger,
     the access report, the recordings): counted, never shown. Every line is masked on its way out; this is
     the check, live, that none got through."""
-    values = [v for name in SECRETS if len(v := os.environ.get(name) or "") >= 6]
+    values = {v for _, v in secrets()}  # what mask() takes out: the keychain's key, and the stripped one
+    if not values:
+        return 0
+    found = re.compile("|".join(map(re.escape, sorted(values, key=len, reverse=True))))  # each once
     files = [r.log, LEDGER, PROGRESS, STATE / "access.json", STATE / "leaf.jsonl", STATE / "demo.jsonl"]
     texts = [p.read_text(encoding="utf-8", errors="replace") for p in files if p.exists()]
-    return sum(text.count(v) for text in texts for v in values)
+    return sum(len(found.findall(text)) for text in texts)
 
 
 def spent() -> float:

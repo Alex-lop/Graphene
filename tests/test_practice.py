@@ -529,6 +529,31 @@ def test_a_rung_whose_files_hold_the_key_fails_by_count_and_never_shows_it(tmp_p
     assert "· no file holds the key\n" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("where", ["the keychain", "NEBIUS_API_KEY, pasted with a line break"])
+def test_a_key_the_environment_does_not_hold_as_sent_is_counted_too(tmp_path, monkeypatch, capsys, where):
+    """The count looks for the key mask() takes out and Token Factory is sent: the keychain's (keys.find),
+    and the environment's with the whitespace a paste leaves stripped. A rung whose file holds it fails.
+    The key is made up; the keychain is a stub."""
+    from graphene_map import keys
+
+    practice = load_practice(tmp_path, monkeypatch)
+    key = "Kq7" + "w" * 30
+    if where == "the keychain":
+        monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+        monkeypatch.setattr(keys, "find", lambda: key)
+    else:
+        monkeypatch.setenv("NEBIUS_API_KEY", f"{key}\n")
+
+    def leaky(r):
+        (practice.STATE / "access.json").write_text(json.dumps({"said": f"Bearer {key}"}))
+        return "done"
+
+    monkeypatch.setitem(practice.RUNGS, 1, ("a leaky rung", 0.25, "1 min", leaky))
+    assert practice.climb(1) == "FAIL"
+    said = capsys.readouterr().out
+    assert "holds the key or the project (counted: 1)" in said and key not in said
+
+
 def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path, monkeypatch):
     """ConTree's own time limit, live on rung 4: exit 124 soon after the limit and the next command runs;
     anything else fails, read as ConTree's limit acting unlike Docker's. Boxes stand in here; the dry climb
