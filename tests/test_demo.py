@@ -376,21 +376,26 @@ def test_the_replays_repository_goes_when_its_terminal_closes_or_it_is_killed(tm
     env = os.environ | {"TMPDIR": str(tmp_path / "tmp"), "TERM": "xterm-256color"}
     proc = subprocess.Popen([*CLI, "demo"], cwd=tmp_path, stdin=tty, stdout=tty, stderr=tty, env=env)
     os.close(tty)
-    said, end = b"", time.monotonic() + 60
-    while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start, not the end
-        if select.select([main], [], [], 1)[0]:
-            said += os.read(main, 65536)
-    assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # the screen is up, over its repo
-    if sig == signal.SIGHUP:
-        os.close(main)  # the terminal is gone, as when its window closes
-    proc.send_signal(sig)
-    while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
-        with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
-            if not os.read(main, 65536):
-                break
-    proc.wait(timeout=30)
-    if sig != signal.SIGHUP:
-        os.close(main)
+    try:  # a replay this test fails to end is ended here: left, it outlived the test
+        said, end = b"", time.monotonic() + 60
+        while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start
+            if select.select([main], [], [], 1)[0]:
+                said += os.read(main, 65536)
+        assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # up, over its repository
+        if sig == signal.SIGHUP:
+            os.close(main)  # the terminal is gone, as when its window closes
+            main = None
+        proc.send_signal(sig)
+        while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
+            with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
+                if not os.read(main, 65536):
+                    break
+        proc.wait(timeout=30)
+    finally:
+        proc.kill()
+        proc.wait()
+        if main is not None:
+            os.close(main)
     assert list((tmp_path / "tmp").iterdir()) == []
 
 
