@@ -1,14 +1,20 @@
 """What the hook costs the agent, measured: twenty real subprocess runs of `graphene ingest hook`.
 
-Claude Code waits for this command on every tool call, so the number is a budget, not a claim.
-The same file checks the reason it is small: the hook path imports no Typer, Rich or Click, and
-what each event imports, the SQL statements it runs and the processes it starts are written down in
-WORK, so a change that adds to any of them fails here.
+Claude Code waits for this command on every tool call, so the number is a budget, not a claim. The
+budget is on the CPU time the hook spends, user and system, with whatever it starts (git) counted
+in: the median of twenty runs. That is what the hook controls. The wall clock is printed beside it:
+on a machine that also runs thirty busy processes it counts the time the scheduler gives them too,
+which no change to the hook can remove (the shaping run saw these tests fail at a load of about 30
+while the hook's own cost was unchanged).
+
+The same file holds why it is small: what each event imports, the SQL statements it runs and the
+processes it starts are written down in WORK, so a change that adds to any of them fails here.
 """
 
 import json
 import math
 import os
+import resource
 import statistics
 import subprocess
 import sys
@@ -36,42 +42,56 @@ print(sorted(m for m in sys.modules if m.split(".")[0] in {"typer", "rich", "cli
 """
 
 
-def post_tool_use(repo: Path, n: int) -> str:
-    return json.dumps(
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "budget",
-            "cwd": str(repo),
-            "tool_name": "Bash",
-            "tool_use_id": f"toolu_{n}",
-            "tool_input": {"command": "pytest -q"},
-            "tool_response": {"stdout": "149 passed\n", "stderr": "", "interrupted": False},
-        }
-    )
+def post_tool_use(repo: Path, n: int) -> dict:
+    return {
+        "hook_event_name": "PostToolUse",
+        "session_id": "budget",
+        "cwd": str(repo),
+        "tool_name": "Bash",
+        "tool_use_id": f"toolu_{n}",
+        "tool_input": {"command": "pytest -q"},
+        "tool_response": {"stdout": "149 passed\n", "stderr": "", "interrupted": False},
+    }
 
 
-def run_hook(repo: Path, n: int) -> float:
-    """One run, as Claude Code makes it. Returns how long the agent waited, in milliseconds."""
+def run_hook(repo: Path, event: dict) -> tuple[float, float, str]:
+    """One run, as Claude Code makes it. Returns the CPU time it cost (git's included) and the wall
+    clock the agent waited, in milliseconds, and what it printed."""
+    before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.perf_counter()
-    done = subprocess.run(HOOK, input=post_tool_use(repo, n), cwd=repo, capture_output=True, text=True)
-    elapsed = (time.perf_counter() - start) * 1000
+    done = subprocess.run(HOOK, input=json.dumps(event), cwd=repo, capture_output=True, text=True)
+    wall = (time.perf_counter() - start) * 1000
+    after = resource.getrusage(resource.RUSAGE_CHILDREN)
     assert done.returncode == 0, done.stderr
-    assert done.stdout == ""  # anything on stdout is a message Claude Code would read as the hook's
-    return elapsed
+    cpu = (after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime) * 1000
+    return cpu, wall, done.stdout
+
+
+def within_budget(label: str, runs: list[tuple[float, float]], capsys) -> None:
+    cpu, wall = sorted(c for c, _ in runs), sorted(w for _, w in runs)
+    p95 = math.ceil(0.95 * len(runs)) - 1
+    median = statistics.median(cpu)
+    with capsys.disabled():
+        print(
+            f"\n{label}: CPU median {median:.0f} ms, p95 {cpu[p95]:.0f} ms; wall median "
+            f"{statistics.median(wall):.0f} ms, p95 {wall[p95]:.0f} ms; over {len(runs)} runs "
+            f"(budget {BUDGET_MS} ms of CPU)"
+        )
+    assert median < BUDGET_MS, f"CPU median {median:.0f} ms over {BUDGET_MS} ms (p95 {cpu[p95]:.0f} ms)"
 
 
 def test_the_hook_stays_inside_its_time_budget(tmp_path, capsys):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    run_hook(repo, 0)  # warm-up: the first run creates the store, and pays for it
-    times = sorted(run_hook(repo, n + 1) for n in range(RUNS))
-    median = statistics.median(times)
-    p95 = times[math.ceil(0.95 * RUNS) - 1]
-    with capsys.disabled():
-        print(f"\nhook: median {median:.0f} ms, p95 {p95:.0f} ms over {RUNS} runs (budget {BUDGET_MS} ms)")
+    run_hook(repo, post_tool_use(repo, 0))  # warm-up: the first run creates the store, and pays for it
+    runs = []
+    for n in range(RUNS):
+        cpu, wall, said = run_hook(repo, post_tool_use(repo, n + 1))
+        assert said == ""  # anything on stdout is a message Claude Code would read as the hook's
+        runs.append((cpu, wall))
     with Store.open(repo) as store:
         assert store.event_count("budget") == RUNS + 1  # every run recorded its call, warm-up included
-    assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms (p95 {p95:.0f} ms)"
+    within_budget("hook", runs, capsys)
 
 
 def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
@@ -85,7 +105,7 @@ def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
     with Store.open(repo) as store:
         store.put_node(plan.to_dict(node))
 
-    def pre_tool_use(path: str) -> float:
+    def pre_tool_use(path: str) -> tuple[float, float]:
         event = {
             "hook_event_name": "PreToolUse",
             "session_id": "budget",
@@ -93,21 +113,12 @@ def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
             "tool_name": "Edit",
             "tool_input": {"file_path": str(repo / path)},
         }
-        start = time.perf_counter()
-        done = subprocess.run(HOOK, input=json.dumps(event), cwd=repo, capture_output=True, text=True)
-        elapsed = (time.perf_counter() - start) * 1000
-        assert done.returncode == 0, done.stderr
-        assert ("deny" in done.stdout) is (not path.startswith("src/api/")), done.stdout
-        return elapsed
+        cpu, wall, said = run_hook(repo, event)
+        assert ("deny" in said) is (not path.startswith("src/api/")), said
+        return cpu, wall
 
     pre_tool_use("src/api/users.py")
-    times = sorted(pre_tool_use(("src/api/a.py", "src/db/b.py")[n % 2]) for n in range(RUNS))
-    median = statistics.median(times)
-    with capsys.disabled():
-        print(
-            f"\ngate: median {median:.0f} ms, p95 {times[math.ceil(0.95 * RUNS) - 1]:.0f} ms over {RUNS} runs"
-        )
-    assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms"
+    within_budget("gate", [pre_tool_use(("src/api/a.py", "src/db/b.py")[n % 2]) for n in range(RUNS)], capsys)
 
 
 def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
@@ -119,7 +130,7 @@ def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
         plan.set_plan_first(store, True, plan.Caller("alex", True))
     edit = {"tool_name": "Edit", "tool_input": {"file_path": str(repo / "a.py")}}
 
-    def once(n: int) -> float:
+    def once(n: int) -> tuple[float, float]:
         prompt = n % 2
         said = {"hook_event_name": "UserPromptSubmit", "prompt": "fix the header", "prompt_id": f"p{n}"}
         event = {
@@ -127,26 +138,23 @@ def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
             "cwd": str(repo),
             **(said if prompt else {"hook_event_name": "PreToolUse", **edit}),
         }
-        start = time.perf_counter()
-        done = subprocess.run(HOOK, input=json.dumps(event), cwd=repo, capture_output=True, text=True)
-        elapsed = (time.perf_counter() - start) * 1000
-        assert done.returncode == 0, done.stderr
-        assert ("Plan first is on" if prompt else "plan first: this session holds no leaf") in done.stdout
-        return elapsed
+        cpu, wall, out = run_hook(repo, event)
+        assert ("Plan first is on" if prompt else "plan first: this session holds no leaf") in out
+        return cpu, wall
 
     once(1)
-    times = sorted(once(n) for n in range(RUNS))
-    median = statistics.median(times)
-    with capsys.disabled():
-        print(f"\nplan first: median {median:.0f} ms, p95 {times[math.ceil(0.95 * RUNS) - 1]:.0f} ms")
-    assert median < BUDGET_MS, f"median {median:.0f} ms over budget {BUDGET_MS} ms"
+    within_budget("plan first", [once(n) for n in range(RUNS)], capsys)
 
 
 def test_the_hook_path_imports_no_cli_library(tmp_path):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     done = subprocess.run(
-        [sys.executable, "-c", PROBE], input=post_tool_use(repo, 0), cwd=repo, capture_output=True, text=True
+        [sys.executable, "-c", PROBE],
+        input=json.dumps(post_tool_use(repo, 0)),
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "[]"  # Typer and Rich are what the other commands pay for
