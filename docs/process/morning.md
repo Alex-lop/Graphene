@@ -17,7 +17,7 @@
 - What waits on you live, in order, with commands, costs and times, on one screen: `docs/test/LIVE_SESSION.md`
 
 **Decide**
-- The branch has 110 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
+- The branch has 150 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
 - Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
 - In the registered runs a stand-in's `as_me` drops Claude Code's marks, so `arm_a.py` spends your key under `GRAPHENE_SPEND_CAP_USD` only, not the night's cap. Default: allow it, set that cap by hand, and start `arm_bprime.py` from your own terminal (`docs/test/LIVE_SESSION.md`).
 
