@@ -17,7 +17,10 @@ arm-a.json beside the repo, never inside it) holds the messages and the bill, in
 running total, as `claude -p --resume` prints it, `num_turns` is this message's model calls, and
 `endpoint` is who answered ("token factory", or "a stand-in"), which evidence.py reads before it draws;
 a follow-up answered by another endpoint than the one before it adds " then <that one>".
-Each call is in the night's ledger (GRAPHENE_LEDGER) under the tag `arm-a:<session>`.
+Each call is in the ledger every arm shares (GRAPHENE_LEDGER, else bench.py's) under the tag
+`arm-a:<session>`. The spend is bench.py's (`bench.budget`): nothing starts with GRAPHENE_SPEND_CAP_USD
+unset or not a number, no new session starts at 80% of it, and the client refuses a call at 100%. A
+follow-up is the session going on, so 80% does not stop it.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
+import bench
 import tally  # noqa: F401  (it puts src/ on the path)
 
 from graphene_map import executor as E
@@ -103,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no {saved}: a follow-up continues a session the paragraph started")
         return 2
 
+    cap, why = bench.budget(None)
+    if why and (cap is None or args.paragraph_file):  # 80% stops a new session, not one going on
+        print(f"no new run: {why}")
+        return 2 if cap is None else 3
     text = (args.paragraph_file or args.follow_up_file).read_text(encoding="utf-8")
     if args.paragraph_file:
         try:  # the ids the live list has: Nano by default, as the executor resolves it

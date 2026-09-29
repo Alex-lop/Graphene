@@ -73,6 +73,18 @@ def test_a_call_is_priced_at_list_price_kept_in_the_ledger_and_the_cap_stops_the
     assert len(f.requests) == 1  # refused before it was sent
 
 
+@pytest.mark.parametrize("said", ["$10", "ten", "nan", "inf"])
+def test_a_cap_that_is_not_a_number_of_dollars_refuses_every_call_rather_than_none(fake, monkeypatch, said):
+    f = fake([{"content": "hi"}])
+    monkeypatch.delenv("GRAPHENE_LEDGER", raising=False)  # no ledger either: still refused
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", said)
+    with pytest.raises(tf.Spent) as no:
+        tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "hello"}])
+    assert str(no.value) == f"GRAPHENE_SPEND_CAP_USD is {said!r}, not a number of dollars: set it as " \
+        "GRAPHENE_SPEND_CAP_USD=10, or unset it for no cap"  # fmt: skip
+    assert f.requests == []
+
+
 def test_a_429_is_waited_out_and_tools_reach_the_model(fake, monkeypatch):
     monkeypatch.setattr(tf.time, "sleep", lambda s: None)
     f = fake([429, 500, call("view", path="a.py")])

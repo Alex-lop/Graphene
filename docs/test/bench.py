@@ -24,14 +24,15 @@ In order:
 `w` and not `b`: both offers add the same paths, and `b`'s sibling leaf, with its check `true`, would
 land and be counted as a leaf of the tree. A widened leaf is the tree's own leaf, held to its own check.
 
-The spend: every Token Factory call goes to one ledger for the night (GRAPHENE_LEDGER, set here). At
-80% of GRAPHENE_SPEND_CAP_USD (30 if unset) no new run starts; at 100% a run stops between rounds
-(the client already refuses a call at the cap), and a leaf whose executor was refused a call is
-counted as stopped, not failed. SIGTERM (or Ctrl-C) stops the round as its --timeout does, and the run
-is counted as far as it got. Each of these exits 3. An attempt with no usage row of its own (a shell
-executor, or a Nemotron one killed first) is unpriced, and a run with one has no cost per landed
-leaf: it is unknown, never $0. A Nemotron configuration that cannot reach Token Factory starts
-nothing (exit 2), rather than count a run whose every leaf failed for want of a key.
+The spend: every Token Factory call goes to one ledger (--ledger, else GRAPHENE_LEDGER, set here).
+With GRAPHENE_SPEND_CAP_USD unset, or not a number, no run starts (exit 2): no cap is assumed. At 80%
+of it no new run starts; at 100% a run stops between rounds (the client already refuses a call at the
+cap), and a leaf whose executor was refused a call is counted as stopped, not failed. SIGTERM (or
+Ctrl-C) stops the round as its --timeout does, and the run is counted as far as it got. Each of these
+exits 3. An attempt with no usage row of its own (a shell executor, or a Nemotron one killed first)
+is unpriced, and a run with one has no cost per landed leaf: it is unknown, never $0. A Nemotron
+configuration that cannot reach Token Factory starts nothing (exit 2), rather than count a run whose
+every leaf failed for want of a key.
 
 This is the measuring instrument, and the only code here that reads docs/test/tasks/:
 intent_globs.txt at run time, and accept.py and quality.py only by running them. Nothing it reads
@@ -68,7 +69,6 @@ from graphene_map.store import Store  # noqa: E402
 
 ROWS = HERE / "runs-2026-09-25.jsonl"
 LEDGER = HERE / "ledger-2026-09-25.jsonl"
-CAP = 30.0
 PERSON = P.Caller("bench", True, stand_in=True)  # GRAPHENE_AS=person:bench; the log says "(no terminal)"
 # what an agent's shell carries (plan.caller reads them); the person carries none, even when the
 # bench is started from inside an agent's session
@@ -385,7 +385,7 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--trees", type=Path, default=HERE / "trees", help="where <task>.plan is")
     ap.add_argument("--out", type=Path, default=Path.home() / "graphene-bench" / time.strftime("%Y-%m-%d"))
     ap.add_argument("--rows", type=Path, default=ROWS)
-    ap.add_argument("--ledger", type=Path, default=LEDGER, help="the night's Token Factory ledger")
+    ap.add_argument("--ledger", type=Path, help="default: GRAPHENE_LEDGER, or LEDGER")
     return ap.parse_args(argv)  # fmt: skip
 
 
@@ -398,6 +398,25 @@ def unopened(*specs: str) -> str | None:
         except night.Refused as no:
             return str(no)
     return None
+
+
+def budget(ledger: Path | None) -> tuple[float | None, str | None]:
+    """The spend cap a run starts under, and why it may not start: no cap set or one that is not a number
+    (the cap is None), or the ledger at 80% of it. The ledger is ``ledger``, else GRAPHENE_LEDGER, else
+    LEDGER, and is put in GRAPHENE_LEDGER: every arm's calls go on it, and the client refuses one at the
+    cap."""
+    ledger = (ledger or Path(os.environ.get("GRAPHENE_LEDGER") or LEDGER)).resolve()
+    os.environ["GRAPHENE_LEDGER"] = str(ledger)
+    try:
+        cap = tf.cap()
+    except tf.Spent as no:
+        return None, str(no)
+    if cap is None:  # a default is how 30 and 50 came to disagree: none is assumed
+        return None, ("no spend cap is set: export GRAPHENE_SPEND_CAP_USD=10, the registered runs' cap "
+                      "(results-2026-09-28-live-prereg.md, rule 6)")  # fmt: skip
+    if tf.spent() >= 0.8 * cap:
+        return cap, f"the ledger ({ledger}) is at ${tf.spent():.2f} of ${cap:.2f}, 80% or more"
+    return cap, None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -423,12 +442,10 @@ def main(argv: list[str] | None = None) -> int:
     if unreached:  # else every leaf would fail, and the rows would count a run that never was
         print(f"no run: {unreached}")
         return 2
-    cap = float(os.environ.get("GRAPHENE_SPEND_CAP_USD") or CAP)
-    os.environ["GRAPHENE_LEDGER"] = str(args.ledger.resolve())
-    os.environ["GRAPHENE_SPEND_CAP_USD"] = str(cap)  # set, so the client refuses a call at the cap
-    if tf.spent() >= 0.8 * cap:
-        print(f"no new run: the ledger ({args.ledger}) is at ${tf.spent():.2f} of ${cap:.2f}, 80% or more")
-        return 3
+    cap, why = budget(args.ledger)
+    if why:
+        print(f"no new run: {why}")
+        return 2 if cap is None else 3
     run_dir = (args.out / f"{args.task}-{args.config}-{args.run}").resolve()
     if run_dir.is_relative_to(ROOT):
         print(f"{run_dir} is inside this repository; a task repo is built outside it (--out)")

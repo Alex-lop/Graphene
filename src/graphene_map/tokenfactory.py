@@ -21,6 +21,7 @@ night past its cap is refused, and nothing is sent.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import socket
@@ -273,11 +274,18 @@ def _ledger() -> Path | None:
 
 
 def cap() -> float | None:
+    """GRAPHENE_SPEND_CAP_USD in dollars, or None when it is not set: no cap. A figure that is not a
+    number (``$10``, ``nan``) raises Spent, so every call is refused rather than none (as ``night.cap``)."""
     said = os.environ.get("GRAPHENE_SPEND_CAP_USD")
-    try:
-        return float(said) if said else None
-    except ValueError:
+    if not said:
         return None
+    try:
+        if math.isfinite(dollars := float(said)):
+            return dollars
+    except ValueError:
+        pass
+    raise Spent(f"GRAPHENE_SPEND_CAP_USD is {said!r}, not a number of dollars: set it as "
+                "GRAPHENE_SPEND_CAP_USD=10, or unset it for no cap")  # fmt: skip
 
 
 def spent() -> float:
