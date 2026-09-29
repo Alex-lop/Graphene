@@ -664,6 +664,8 @@ class PlanTree(Tree[str]):
 class Watch(App):
     """The plan, live, on one screen."""
 
+    RUNS_HERE = True  # R runs and P switches plan first; a replay says neither
+
     CSS = """
     Screen { layout: vertical; }
     #where { height: 1; background: $boost; color: $text; padding: 0 1; }
@@ -902,7 +904,9 @@ class Watch(App):
             "ready": sum(w == "ready" for w in self.words.values()),
             "back": sum(w == "came back" for w in self.words.values()),  # R leaves them: they are yours
             "done": f"{done}/{len(leaves)} done",
-            "finished": bool(leaves) and done == len(leaves) and not tops and not yours,
+            # every leaf done, and every sub-goal rolled up: the goal never reads done above one still open
+            "finished": bool(leaves) and done == len(leaves) and not tops and not yours
+            and all(n.state == P.DONE for n in nodes if under.get(n.id)),
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
@@ -918,7 +922,10 @@ class Watch(App):
             show = bool(nodes or goal or proposed or self.board)
             if tree.show_root != show:
                 tree.show_root = show
+            hidden = not tree.display
             tree.display = show and self.drawn is None  # no plan yet: the pane says so, across the screen
+            if hidden and tree.display and not self.query_one("#line").has_class("-open"):
+                tree.focus()  # hidden, it lost the focus, and j k with it (a replay played again)
             self.query_one("#side").set_class(not show, "-alone")
             if shape != self.shape:
                 self.rebuild(nodes, under)
@@ -1319,6 +1326,9 @@ class Watch(App):
             *([(f"bill {spent}", "dim")] if spent else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
+        if not self.RUNS_HERE:  # a replay: R and P start nothing, and one form holds from frame to frame
+            ready = (f"{c['ready']} ready" if c["ready"] else "none ready", "")
+            named = long = short = [short[0], short[1], ready, short[3], *short[5:]]
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
         lines = [top, fit([(k, "") for k in self.keys()], room)]
