@@ -621,3 +621,32 @@ def test_an_act_on_a_crlf_direction_file_changes_only_its_own_marks(repo, monkey
     monkeypatch.setenv("EDITOR", str(editor))
     assert person("direction", "edit").exit_code == 0
     assert (repo / D.FILE).read_bytes() == before.replace(b"? live", b"- live") + b"  ? more  [more]\r\n"
+
+
+def test_a_stop_the_gate_refused_is_not_counted_as_waiting_on_you_with_no_row_to_name_it(repo):  # noqa: F811
+    """Closing review finding 16: the hook records a Stop before the gate refuses it, so a session
+    holding a leaf read "your turn": `you: 1` and the node `yours`, with no row naming anything."""
+    agent("direction", "propose", "-", input=TREE)
+    person("direction", "accept", "product")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    person("direction", "plan", "live")
+    assert agent("node", "start", "ids").exit_code == 0
+    now = datetime.now(UTC)
+    with Store.open(repo) as store:
+        _event(
+            store,
+            repo,
+            "PostToolUse",
+            AGENT_SID,
+            _stamp(now, 20),
+            tool_name="Bash",
+            tool_input={"command": "ls"},
+        )
+        _event(store, repo, "Stop", AGENT_SID, _stamp(now, 10))
+        st = D.status(store, D.read(repo), now)
+    live = next(n for n in st["nodes"] if n["id"] == "live")
+    assert live["you"] == 0 and live["word"] == "running"
+    shown = " ".join(person("direction", "--width", "100").stdout.split())
+    assert "you: 1 ·" in shown  # the submission, proposed, and nothing else
+    assert "held by session 5e55105e · its turn ended" in shown

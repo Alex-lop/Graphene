@@ -628,7 +628,9 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
             if w is not None:
                 w.holds, w.node = leaf["id"], "plan"
                 leaf["by"] = f"{'subagent' if '/' in w.key else 'session'} {w.short}"
-                leaf["last"] = w.last
+                # its turn ended while it holds the leaf (a stop the gate refused records the end
+                # first): said on the leaf's row, which is the only row the holder has
+                leaf["last"] = f"its turn ended · {w.last}" if w.word == "your turn" else w.last
     earlier: dict[str, list[str]] = {}
     for g, n in said["plans"].items():
         if g != goal and n in ids:
@@ -639,7 +641,8 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         under = [w for w in ws if w.node in mine or (w.node == "plan" and plan and plan["node"] in mine)]
         has_plan = plan is not None and plan["node"] in mine
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
-        you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
+        turns = sum(w.word == "your turn" and not w.holds for w in under)  # the rows that say so
+        you = len(proposals) + turns + (plan["you"] if has_plan else 0)
         running = _running([w for w in under if w.word == "running"], plan if has_plan else None)
         # next is the work that starts next (what `graphene run` takes); a proposal waits on you
         nxt = plan["next"] if has_plan else None
@@ -787,7 +790,8 @@ def head(st: dict, where: str, width: int | None = None) -> str:
     tops = [n for n in st["nodes"] if n["parent"] is None]
     unhung = st["plan"] is not None and st["plan"]["node"] is None
     loose = [w for w in st["sessions"] if w["node"] is None or (unhung and w["node"] == "plan")]
-    you = sum(n["you"] for n in tops) + sum(w["word"] == "your turn" for w in loose)
+    turns = sum(w["word"] == "your turn" and not w.get("holds") for w in loose)
+    you = sum(n["you"] for n in tops) + turns
     running = sum(n["running"] for n in tops)
     running += _running(
         [Worker(**w) for w in loose if w["word"] == "running"], st["plan"] if unhung else None
