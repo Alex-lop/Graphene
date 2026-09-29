@@ -22,7 +22,7 @@ size: finer
 def test_nothing_set_reads_as_empty_and_auto(store):
     assert (S.protected(store), S.readonly(store), S.never(store), S.size(store)) == ([], [], [], "auto")
     assert S.conditions_for_planner(store) == ""
-    assert S.render(store).endswith("size: auto\nboard: on\n") and S.board(store) == "on"
+    assert S.render(store).endswith("size: auto\nboard: auto\n") and S.board(store) == "auto"
 
 
 def test_a_person_writes_them_and_they_read_back(store):
@@ -59,7 +59,7 @@ def test_a_setting_left_out_is_cleared(store):
         ("never:", 2, "never propose"),
         ("protected: .env  # secrets", 2, "a note goes on a line of its own"),
         ("size: auto\nsize: finer", 3, "line 2"),
-        ("board: off", 2, "board is on or auto"),
+        ("board: off", 2, "board is auto or on"),
         ("board: auto\nboard: on", 3, "line 2"),
     ],
 )
@@ -87,9 +87,10 @@ def test_a_failure_inside_the_claim_writes_nothing(store, monkeypatch):
     assert S.render(store) == before
 
 
-def test_the_board_setting_is_on_unset_and_auto_once_said(store):
-    S.apply(store, "board: auto\n", ALEX)
-    assert S.board(store) == "auto" and "board: auto\n" in S.render(store)
-    assert store.node_log("*", ("settings",))[-1]["detail"]["changed"] == {"board": ["on", "auto"]}
-    S.apply(store, "size: auto\n", ALEX)  # left out, it is cleared: on, as before it was said
-    assert S.board(store) == "on"
+def test_the_board_setting_is_auto_unset_and_on_once_said(store):
+    assert S.board(store) == "auto"  # study 4's rule: the board did not cost the outline's or less
+    S.apply(store, "board: on\n", ALEX)
+    assert S.board(store) == "on" and "board: on\n" in S.render(store)
+    assert store.node_log("*", ("settings",))[-1]["detail"]["changed"] == {"board": ["auto", "on"]}
+    S.apply(store, "size: auto\n", ALEX)  # left out, it is cleared: auto, as before it was said
+    assert S.board(store) == "auto"

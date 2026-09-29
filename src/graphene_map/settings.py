@@ -13,7 +13,7 @@ import re
 from graphene_map import plan as P
 
 SIZES = ("auto", "finer", "coarser")
-BOARDS = ("on", "auto")  # on: every open item is shown; auto: the board shows only for a question
+BOARDS = ("auto", "on")  # auto (unset, study 4): the board shows only for a question; on: every open item
 SCALARS = {"size": SIZES, "board": BOARDS}  # a key with one value of a few, the first when unset
 GLOBS = ("protected", "readonly")  # a line of either holds globs, comma-separated; lines add up
 HEAD = """\
@@ -21,7 +21,7 @@ HEAD = """\
 # protected: globs no scope may include      readonly: globs no leaf may write
 # never: one thing the planner must never propose, a line each
 # size: auto, finer or coarser (how big a plan the planner proposes)
-# board: on (every open item waits on you) or auto (only while a question is open)
+# board: auto (only while a question is open) or on (every open item waits on you)
 """
 
 
@@ -50,9 +50,10 @@ def size(store) -> str:
 
 
 def board(store) -> str:
-    """on (unset): the screen and the plan show every open item on the board. auto: they show the
-    board only while a question on it is open; what else is open takes its default at accept."""
-    return store.meta("settings:board") or "on"
+    """auto (unset): the screen and the plan show the board only while a question on it is open; what
+    else is open takes its default at accept. on: they show every open item. Unset is auto by study 4
+    (docs/test/results-2026-09-29-board.md): the board cost more than the outline on 3 of 4 tasks."""
+    return store.meta("settings:board") or "auto"
 
 
 def conditions_for_planner(store) -> str:
