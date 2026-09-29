@@ -650,3 +650,20 @@ def test_a_stop_the_gate_refused_is_not_counted_as_waiting_on_you_with_no_row_to
     shown = " ".join(person("direction", "--width", "100").stdout.split())
     assert "you: 1 ·" in shown  # the submission, proposed, and nothing else
     assert "held by session 5e55105e · its turn ended" in shown
+
+
+def test_a_wide_title_never_pushes_a_row_past_the_width_nor_cuts_a_command(repo):  # noqa: F811
+    """Closing review finding 17: widths were counted in characters, so at 80 columns a Japanese
+    title made the next row 90 cells wide, and a terminal's crop cut its command to "`gra"."""
+    from rich.cells import cell_len
+
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text("- 請求書を一つの表に  [feeds]\n")
+    plan = "goal: 請求書を一つの表に取り込む\n- 日付の形式をそろえる取り込み  [dates]\n"
+    plan += "    scope: api.py\n    check: true\n"
+    agent("plan", "propose", "-", input=plan)
+    person("plan", "accept")
+    person("direction", "plan", "feeds")
+    said = person("direction", "--width", "80").stdout
+    assert max(cell_len(line) for line in said.splitlines()) <= 80
+    assert "`graphene run` starts it" in " ".join(said.split())

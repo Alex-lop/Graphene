@@ -812,8 +812,6 @@ def lines(
     """The rows laid out in fixed columns at ``width`` cells: (the line, the style of its glyph and
     word). The title is cut at a word, the id and the word never; what a row says after its word
     wraps under itself rather than being cut, so an id or a command in it is always whole."""
-    import textwrap
-
     from rich.cells import cell_len
 
     from . import plan_text as T
@@ -823,26 +821,46 @@ def lines(
     got = [(d, _clean(t), _clean(i), w, _clean(x)) for d, t, i, w, x in rows(st, now, only)]
     if not got:
         return []
-    wid = max([len(r[2]) for r in got] + [4])
+    # every width is in terminal cells: a Chinese or Japanese character takes two
+    wid = max([cell_len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
-    said = min(max(len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
+    said = min(max(cell_len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
     floor = max(24, max(2 * r[0] for r in got) + 16)  # a title keeps some words at the deepest row
     wt = max(floor, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"
         lead = f"{'  ' * d}{glyph} "
-        cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {rid.ljust(wid)}  {word.ljust(ww)}"
-        at = len(cells) + 4 if width - len(cells) - 4 >= 16 else len(lead) + 2  # else under the title
-        said = textwrap.wrap(what, max(width - at, 16), break_long_words=False, break_on_hyphens=False)
+        cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {T.pad(rid, wid)}  {word.ljust(ww)}"
+        wide = cell_len(cells)
+        at = wide + 4 if width - wide - 4 >= 16 else len(lead) + 2  # else under the title
+        said = _wrap(what, max(width - at, 16))
         style = look(word)[1] if word else "dim"
-        if said and at > len(cells):
+        if said and at > wide:
             out.append((f"{cells}  · {said.pop(0)}", style))
         else:
             out.append((cells.rstrip(), style))
         out += [(" " * at + part, "dim") for part in said]
     return out
+
+
+def _wrap(text: str, room: int) -> list[str]:
+    """``text`` in lines of at most ``room`` terminal cells, broken between words. A word too long
+    for a line is kept whole (an id, a path, a command), unless it is wide text with no spaces (a
+    Chinese or Japanese sentence), which is cut where it must be."""
+    from rich.cells import cell_len, chop_cells
+
+    out, line = [], ""
+    for word in text.split():
+        long = cell_len(word) > room and cell_len(word) != len(word)
+        for piece in chop_cells(word, room) if long else [word]:
+            if line and cell_len(line) + 1 + cell_len(piece) > room:
+                out.append(line)
+                line = piece
+            else:
+                line = f"{line} {piece}" if line else piece
+    return [*out, line] if line else out
 
 
 def above_plan(store, root: Path, width: int) -> list[tuple[str, str]]:
