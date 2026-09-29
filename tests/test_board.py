@@ -909,3 +909,16 @@ def test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf
     with Store.open(repo) as store:
         assert B.get(store, "long")["state"] == "open" and B.get(store, "q1")["state"] == "open"
         assert P.get(store, "users").state == P.OPEN
+
+
+def test_undoing_a_board_answer_says_so_in_the_plans_log(repo, tmp_path):
+    """Walk 2026-09-29 (5): the answer stayed the log's last line, with no undo after it."""
+    planned(repo, tmp_path)
+    assert person("board", "answer", "paging", "none", "needed").exit_code == 0
+    assert person("plan", "undo").exit_code == 0
+    with Store.open(repo) as store:
+        [undone] = store.node_log(None, ("undone",))
+        assert undone["node_id"] == "*"
+        assert undone["detail"] == {"note": "board answer paging", "item": "paging"}
+        assert store.node_log()[-1]["kind"] == "undone"
+    assert "undone" in person("plan", "log").stdout.splitlines()[-1]

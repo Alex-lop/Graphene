@@ -2587,6 +2587,13 @@ def undo(store, who: Caller, now: str | None = None) -> str:
         if items:  # each item the act changed, as it was; one it put up goes; the rest stay as they are
             back = [items[it["id"]][0] if it["id"] in items else it for it in board]
             store.set_meta("board", json.dumps([it for it in back if it is not None]))
+            logged = set(act["rows"])  # the log says it was undone where the answer was logged, once a node
+            for item_id, (before, after) in items.items():
+                on = (before or after or {}).get("about") or "*"
+                if on not in logged:
+                    said = {"note": act["what"], "item": item_id}
+                    store.log_node(on, now, "undone", who.label, None, None, said)
+                    logged.add(on)
         try:
             # never put back a node whose parent or need is gone since; a state the plan was just in
             # is not asked the rules for a new node
