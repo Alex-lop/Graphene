@@ -7,10 +7,11 @@ to $0.0015 (20,000 in, 1,000 out, late in a session); an Ultra ask $0.01-0.05 (5
 repo root in your own terminal. Tonight each harness here ran only as far as its `--help` or usage
 line; `newrun.sh` and `summarize.py` have none and did not run.
 
-**Once.** (1) Sandboxes: `uv run --frozen --extra sandbox python -c "from graphene_map import
-sandbox; print(sandbox.refused() or 'Sandboxes do not refuse this project')"`. A 403 prints the
-refusal (ask at tokenfactory.nebius.com/sandboxes/about); rungs 3, 4, 6, 7 and every Sandbox leaf
-wait on it. Offline it prints the second line too: rung 3 passing is the proof. (2) The key:
+**Once.** (1) Sandboxes: `uv run --frozen --extra sandbox graphene key check`. Its second line is
+ConTree's whoami, a read that spends nothing: `Sandboxes: work (import, list and spawn granted)`, or
+what stands in the way (a grant the project lacks, a 403 with ConTree's reason, a 401, no answer).
+Until it says `work` (ask at tokenfactory.nebius.com/sandboxes/about), rungs 3, 4, 6, 7 and every
+Sandbox leaf wait. `work` is whoami's word: rung 3 passing is the proof. (2) The key:
 `NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID` in `~/.zshenv`, where rungs 1-2 read them. Every zsh reads
 it, a stand-in's too. (3) The opening: `docs/test/practice.sh night` says whether
 `GRAPHENE_AGENT_LIVE_USD` is set, and nothing else from the environment. Set for practice. Before
