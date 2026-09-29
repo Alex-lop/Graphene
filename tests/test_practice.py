@@ -477,6 +477,55 @@ def test_rung_1_passes_on_token_factory_and_says_plainly_what_waits_for_sandboxe
     assert means.startswith("Token Factory refused the key (401)"), means
 
 
+def test_a_rung_whose_files_hold_the_key_fails_by_count_and_never_shows_it(tmp_path, monkeypatch, capsys):
+    """What only a live run shows, checked on every rung: no file the rung wrote holds the key or the
+    project. A rung that writes the key past mask() (as a bug would) fails with the count, and no line
+    shows the key; a clean rung's line says no file holds it. The key is made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    key = "Kp1" + "z" * 30
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+
+    def leaky(r):
+        (practice.STATE / "access.json").write_text(json.dumps({"said": f"Bearer {key}"}))
+        return "done"
+
+    monkeypatch.setitem(practice.RUNGS, 1, ("a leaky rung", 0.25, "1 min", leaky))
+    assert practice.climb(1) == "FAIL"
+    said = capsys.readouterr().out
+    assert "a file this rung wrote holds the key or the project (counted: 1)" in said and key not in said
+    assert "most likely: a secret got past the masking into a file the ladder wrote" in said
+    (practice.STATE / "access.json").unlink()
+    monkeypatch.setitem(practice.RUNGS, 1, ("a clean rung", 0.25, "1 min", lambda r: "done"))
+    assert practice.climb(1) == "PASS"
+    assert "· no file holds the key\n" in capsys.readouterr().out
+
+
+def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path, monkeypatch):
+    """ConTree's own time limit, live on rung 4: exit 124 soon after the limit and the next command runs;
+    anything else fails, read as ConTree's limit acting unlike Docker's. Boxes stand in here; the dry climb
+    runs it on Docker."""
+    from types import SimpleNamespace
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    r = practice.Rung(4, 0.05)
+
+    def place(run):
+        return SimpleNamespace(image="img-1", box=SimpleNamespace(run=run), run=lambda c: (0, ""))
+
+    ok = practice.past_its_time(r, place(lambda *a: ("img-1", 124, sandbox.TIMED_OUT)))
+    assert ok == "a command past its 5 s came back as exit 124 in 0 s, and the next one ran"
+
+    def failed(*_):
+        raise RuntimeError("Operation 1 has failed: killed")
+
+    with pytest.raises(practice.Failed) as no:
+        practice.past_its_time(r, place(failed))
+    assert "did not come back as exit 124 within a minute: exit None" in str(no.value)
+    assert practice.likely(str(no.value))[0].startswith("ConTree's own time limit ends an operation")
+
+
 def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
     """A refused rung ran nothing: `status` does not show it as failed, and a result already on record
     (the person's PASS) stays."""
