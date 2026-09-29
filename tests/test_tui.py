@@ -1779,6 +1779,29 @@ def test_an_ask_that_adds_nothing_says_so(repo):
     assert said.startswith("the planner proposed nothing and put nothing on the board"), said
 
 
+def test_an_ask_whose_board_the_repo_answered_says_which_on_the_bottom_line(repo):
+    """GRAPHENE_SHAPE=lookup settles what the repository answers once the proposal lands: the person
+    is told which, where they look, since a board that asks nothing is not shown."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (python3)…\nproposed users: users returns ids\nput up units: cents?\n"
+                   "settled units from the repo (app.py:2): cents; `graphene board unpark units` asks you\n")
+
+    class Ended:
+        def wait(self):
+            return 0
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], size=(160, 40), before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("the planner proposed users and put units on the board and found units answered "
+                           "in the repo"), said  # fmt: skip
+
+
 def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
     """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
     line offered `y accept it all`."""

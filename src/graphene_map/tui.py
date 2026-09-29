@@ -809,7 +809,7 @@ class Watch(App):
 
     def draw(self, store) -> None:
         nodes = V.shown(store)
-        self.board = BR.read(store)
+        self.board = BR.read(store, shown=bool(self.board.open or self.board.folded))  # rows stay once seen
         goal, proposed = P.goal(store), store.meta("goal:proposed")
         by_id = {n.id: n for n in nodes}
         under = P.kids(nodes, drawn=True)
@@ -1775,9 +1775,11 @@ class Watch(App):
         )  # fmt: skip
         made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
         put = [line.removeprefix("put up ").split(":")[0] for line in news if line.startswith("put up ")]
+        repo = [line.split()[1] for line in news if line.startswith("settled ") and " from the repo " in line]
         if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # the sentence was on the line when it began
             did = [*([f"proposed {', '.join(made)}"] if made else []),
-                   *([f"put {', '.join(put)} on the board"] if put else [])]  # fmt: skip
+                   *([f"put {', '.join(put)} on the board"] if put else []),
+                   *([f"found {', '.join(repo)} answered in the repo"] if repo else [])]  # fmt: skip
             if did or code:
                 told = mark + (f"the planner {' and '.join(did)}" if did else f"the planner: {gist}")
             else:  # its prose alone said nothing was added, and the person could not tell

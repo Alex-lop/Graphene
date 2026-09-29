@@ -93,7 +93,13 @@ def standing(store) -> str | None:
     return "conditions: " + " · ".join(said) if said else None
 
 
-def read(store) -> Board:
+def read(store, shown: bool = False) -> Board:
+    """The board as the screen shows it. When it asks nothing (``board.asks``: nothing open, or with
+    `board: auto` no question open) there is no board at all, only the standing conditions, unless its
+    rows are ``shown`` already: then what was answered here folds, so a key pressed once too often
+    lands on the fold and not on a node."""
+    if not (shown or B.asks(store)):
+        return Board(standing=standing(store))
     groups = B.groups(store)
     folds = ("parked", "settled", "dropped")
     return Board(
@@ -166,7 +172,7 @@ TREE = Row("tree")  # `landing`'s word for the first row of the tree itself
 def argv(item: dict, key: str) -> list[str]:
     """The `graphene board` command a key runs on an item: y take, 1..9 pick, d drop, p park (on a
     parked item, unpark). A command that cannot apply says why, as the command line would."""
-    parked = item["state"] == "parked"
+    parked = item["state"] == "parked" or bool(item.get("from"))  # p opens either for the person again
     return {
         "y": ["board", "take", item["id"]],
         "d": ["board", "drop", item["id"]],
@@ -183,6 +189,8 @@ def hints(item: dict, room: int) -> list[str]:
     rest = ["d drop", "p unpark" if state == "parked" else "p park", "Enter answer", "a note"]
     if state == "noted":  # the person's own note: told as written, so there is nothing to take or answer
         return ["noted: u undoes your last act", "d drop", "p park", "a note"]
+    if item.get("from"):  # the repository answered it: one key gives it back to the person
+        return [f"{state} from the repo: p asks you", "d drop", "a note"]
     if state not in ("open", "parked"):
         return [f"{state}: u undoes your last act", "d drop", "a note"]
     many = len(item["options"]) > 3
@@ -235,6 +243,8 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
             how = {"taken": "the default", "picked": f"option {item.get('option')}", "answered": "your words"}
             how = f"  ({how.get(state, state)})"
             out.field("decided", Text.assemble(item.get("answer") or "yes", (how, "dim")))
+        if item.get("from"):
+            out.field("from the repo", Text.assemble(item["from"], ("  p asks you instead", "dim")))
         for line in item["became"] if state in B.DECIDED else []:
             out.field("changed", line)
         node = by_id.get(item.get("about") or "")
