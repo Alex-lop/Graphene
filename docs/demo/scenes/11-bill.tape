@@ -21,7 +21,7 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
-Type "clear; graphene plan record | fold -s -w 118"
+Type "clear; graphene plan record | fold -s -w $(tput cols)"
 Enter
 Sleep 10s
 Hide

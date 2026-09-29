@@ -274,10 +274,14 @@ def ran(command: str, cwd: Path, env: dict) -> bool:
     return subprocess.run(command, shell=True, cwd=cwd, env=env, capture_output=True).returncode == 0
 
 
+def label(seconds: float, what: str) -> str:
+    m, s = divmod(round(seconds), 60)
+    return f" cut {m}:{s:02} of {what} "
+
+
 def label_the_cut(seconds: float, what: str) -> threading.Thread:
     """The top line says what was cut, from the moment the scene's terminal attaches, for six seconds."""
-    m, s = divmod(round(seconds), 60)
-    tmux("set", "-g", "status-right", f" cut: {m} min {s:02} s of {what} ")
+    tmux("set", "-g", "status-right", label(seconds, what))
     tmux("set", "-g", "status-right-style", "bg=yellow,fg=black,bold")
 
     def clear() -> None:

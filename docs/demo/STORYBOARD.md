@@ -8,9 +8,9 @@ Every scene is one VHS tape under `docs/demo/scenes/`, filmed in real time by `d
 against one take of the demo run: rung 7's `docs/proof/nemotron.sh` on feeds, played by a person's keys
 in `graphene watch` at 120x36. Nothing is sped up. A wait for the model is waited for, not shortened, and
 cut between two scenes; the top line of the next scene says how long was cut and what it was
-(`cut: 1 min 32 s of the planner reading the repository and planning`). `build.sh` reads this table: the
-narration column becomes the subtitles, spread over each scene's own footage, and the length column is
-what each scene is measured against.
+(`cut 1:32 of the planner at work`, beside the REHEARSAL line in a rehearsal; both fit in 80 columns).
+`build.sh` reads this table: the narration column becomes the subtitles, spread over each scene's own
+footage, and the length column is what each scene is measured against.
 
 **Kinds.** *live*: filmed as it happened, keys and screen in real time. *live, after a cut*: the same,
 following a wait that was cut and is labelled on screen. *only if*: filmed only when the screen shows

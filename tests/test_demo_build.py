@@ -37,6 +37,8 @@ def test_every_tape_attaches_to_the_take_and_sets_what_build_rewrites():
             assert line in text, (tape.name, line)
         for wait in build.WAIT.finditer(text):
             assert int(wait["minutes"]) >= 1 and wait["what"]
+            label = build.label(59 * 60 + 59, wait["what"])  # beside the banner on the top row, at 80x24
+            assert len(f" {build.BANNER} ") + len(label) <= 80, (tape.name, label)
 
 
 def test_the_narration_is_spread_over_each_scenes_own_footage_in_order():

@@ -3,7 +3,7 @@
 # sets Output, Width and Height here. The tape attaches, presses its keys in real time, and leaves.
 # Ctrl+B M marks the time where the footage starts and ends: build.sh plays the clip at that length,
 # since VHS captures fewer frames a second than it plays when the machine is busy.
-# wait: /^prune it:|nothing was added|^no proposal/ up to 20 min; cut: the planner reading the repository and planning
+# wait: /^prune it:|nothing was added|^no proposal/ up to 20 min; cut: the planner at work
 Output scene.mp4
 Set Shell "bash"
 Set FontSize 24
