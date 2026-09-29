@@ -19,7 +19,7 @@
 **Decide**
 - The branch has 110 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
 - Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
-- A run started from `watch` goes on after the watch's terminal closes, as after `q`. Default: keep.
+- In the registered runs a stand-in's `as_me` drops Claude Code's marks, so `arm_a.py` spends your key under `GRAPHENE_SPEND_CAP_USD` only, not the night's cap. Default: allow it, set that cap by hand, and start `arm_bprime.py` from your own terminal (`docs/test/LIVE_SESSION.md`).
 
 **Broken or risky**
 - Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
