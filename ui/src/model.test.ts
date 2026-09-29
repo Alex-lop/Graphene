@@ -3,7 +3,7 @@
 import { expect, test } from "vitest";
 
 import golden from "../../tests/fixtures/run_graph.json";
-import { chain, clip, cull, hues, laneRegion, matching, rowRegion, spaced, span, why, LANE_H, ROW_H } from "./model";
+import { chain, clip, clock, cull, hues, laneRegion, matching, rowRegion, spaced, span, stamp, why, LANE_H, ROW_H } from "./model";
 import type { Graph, Plan, PlanNode } from "./types";
 
 const graph = golden as unknown as Graph;
@@ -201,4 +201,12 @@ test("a label that has to fit is cut with an ellipsis, never mid-layout", () => 
   expect(clip("読み込みの仕組みを作る", 60, 6.4)).toBe("読み込み…");
   expect(clip("🚀🚀🚀🚀🚀🚀", 60, 6.4)).toBe("🚀🚀🚀🚀…");
   expect(clip("読み込み", 60, 6.4)).toBe("読み込み");
+});
+
+test("a moment that is not a time prints as ?, never a RangeError that blanks the page", () => {
+  // a node whose finished_at held a path (a caller passed its checkout as `now`) left the export empty
+  expect(stamp("fresh")).toBe("?");
+  expect(clock("fresh")).toBe("?");
+  expect(stamp(null)).toBe("?");
+  expect(clock("2026-09-28T05:17:34Z")).toMatch(/^\d\d:\d\d$/);
 });
