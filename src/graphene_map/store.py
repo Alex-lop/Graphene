@@ -9,6 +9,7 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
+from . import night
 from .model import Agent, Commit, Prompt, Session, ToolEvent
 
 TIMEOUT = 5.0  # seconds to wait for another process's write lock before giving up
@@ -597,6 +598,8 @@ class Store:
         agent_id: str | None = None,
         detail: dict | None = None,
     ) -> None:
+        if kind == "usage" and detail and night.cap() is not None:  # made under the person's opening
+            detail = {**detail, "practice": True}
         self.conn.execute(
             "INSERT INTO node_log (node_id, timestamp, kind, actor, session_id, agent_id, detail) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",

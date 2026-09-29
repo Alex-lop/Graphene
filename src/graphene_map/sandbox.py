@@ -30,7 +30,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import gate
+from . import gate, night
 from . import plan as P
 
 WORK = "/work"
@@ -179,7 +179,8 @@ def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
 class Contree:
     """ConTree, through contree-sdk 0.3.6: an image per checkpoint, a run from any image, a file read
     from any image. The credentials are the SDK's own (NEBIUS_API_KEY and NEBIUS_PROJECT_ID, or the
-    profile `contree auth` saved); nothing of the environment is passed into a command."""
+    profile `contree auth` saved); nothing of the environment is passed into a command. Under the
+    person's opening, each operation and its seconds go to the night's ledger (``night.sandbox``)."""
 
     def __init__(self, image: str = IMAGE):
         from contree_sdk import ContreeSync
@@ -190,10 +191,20 @@ class Contree:
                                "NEBIUS_PROJECT_ID, or a profile saved by `contree auth`")
         from . import keys
 
+        night.first("a ConTree sandbox")  # past 80% of the night's cap, no sandbox is made
         token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
         self.sdk = ContreeSync(token=token) if token else ContreeSync()
-        self.base = self.sdk.images.oci(image)
+        with self._counted("image"):
+            self.base = self.sdk.images.oci(image)
         self.ops = 1
+
+    @contextmanager
+    def _counted(self, op: str):
+        began = time.monotonic()
+        try:
+            yield
+        finally:  # an operation that failed or was stopped ran all the same
+            night.sandbox(op, time.monotonic() - began)
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
         return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout)
@@ -203,13 +214,15 @@ class Contree:
 
     def _run(self, image, script: str, files: dict, timeout: float) -> tuple[str, int, str]:
         self.ops += 1
-        done = image.run(shell=script, files=files or None, timeout=timeout, disposable=False,
-                         truncate_output_at=OUTPUT).wait()  # fmt: skip
+        with self._counted("run"):
+            done = image.run(shell=script, files=files or None, timeout=timeout, disposable=False,
+                             truncate_output_at=OUTPUT).wait()  # fmt: skip
         return str(done.uuid), int(done.exit_code), (done.stdout or "") + (done.stderr or "")
 
     def read(self, image: str, path: str) -> bytes:
         self.ops += 1
-        return self.sdk.images.use(image).read(path)
+        with self._counted("read"):
+            return self.sdk.images.use(image).read(path)
 
 
 class Docker:

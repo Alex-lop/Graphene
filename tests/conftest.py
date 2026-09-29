@@ -23,6 +23,10 @@ def no_token_factory(monkeypatch, tmp_path):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")  # a developer's real keychain is never read or written
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path / "no-contree-profile"))
+    # the person's opening is never the suite's: a test that wants it sets it, and its night is tmp_path's
+    for name in ("GRAPHENE_AGENT_LIVE_USD", "GRAPHENE_NIGHT_STARTED"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GRAPHENE_NIGHT_LEDGER", str(tmp_path / "night.jsonl"))
 
 
 @pytest.fixture(autouse=True)
