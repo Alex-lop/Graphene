@@ -45,7 +45,7 @@ The shaping run's morning is `morning-2026-09-28.md`.)
 Nothing live ran in this session. These are the commands for what the directive meant to run:
 
 - **Sandboxes first.** Rung 1 met `ForbiddenError` (403). What the key lacks, a read that spends
-  nothing: `uv run --frozen --extra sandbox python -c "from graphene_map import sandbox; print(sandbox.refused() or 'Sandboxes do not refuse this project')"`.
+  nothing: `uv run --frozen --extra sandbox graphene key check` (its second line says Sandboxes' state).
   Access is asked at tokenfactory.nebius.com/sandboxes/about. A made-up key also gets a 403, so check
   `NEBIUS_PROJECT_ID` names the key's project.
 - **An agent practising, as tonight meant to:** in your terminal `export GRAPHENE_AGENT_LIVE_USD=10`,

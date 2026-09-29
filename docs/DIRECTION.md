@@ -1559,6 +1559,24 @@ any of them.
      - **Destructive operations:** the git-location guard (130), and the keyguard's stale directories
        swept once their session has ended.
 
+132. **After first light, on your answers (29 September, afternoon).**
+     - **The history was reshaped**: 151 commits became 39, each the tree of a commit the branch really
+       had, the last identical to what CI passed; the 151 are on `first-light-full-history`.
+     - **`graphene key check` says Sandboxes' state in a second line**, from ConTree's whoami (a read):
+       work, a grant the project lacks, a 403 for the key and project together (with ConTree's own
+       reason), a 401, no answer, no project, or no SDK; never the key or the project id. One
+       classification (`sandbox.whoami`) serves `key check`, `graphene init` and a leaf's refusal, and
+       init now places leaves locally on a 401 or no answer as on a 403 (it read those as "works").
+       Your first check came back 403; access is requested.
+     - **The registered runs are capped at $10 of Token Factory** (`GRAPHENE_SPEND_CAP_USD=10`, one
+       `GRAPHENE_LEDGER` for every arm, the opening unset, arm C outside it): rule 6 of the
+       pre-registration, before any evidence run. A cap that is not a number refuses every call, and
+       `bench.py`, `arm_bprime.py` and `arm_a.py` start nothing without one and no new run from 80%.
+     *Evidence:* `tests/test_key_cli.py::test_check_says_in_one_line_what_state_sandboxes_are_in`,
+     `tests/test_init.py::test_a_key_sandboxes_do_not_accept_or_no_answer_gets_the_leaves_on_this_machine`,
+     `tests/test_tokenfactory.py::test_a_cap_that_is_not_a_number_of_dollars_refuses_every_call_rather_than_none`,
+     `docs/test/test_bench.py::test_with_no_spend_cap_or_one_that_is_not_a_number_no_run_starts_and_none_is_assumed`.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
