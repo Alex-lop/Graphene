@@ -103,3 +103,10 @@ def test_the_direction_print_alone_names_every_waiting_and_running_item_inside_8
             for item in S.KEY[question]:
                 assert any(i in words for i in item), (width, question, item)
         assert "next: email" in said
+        rows = [line.split() for line in lines]
+        # next: the leaf it names has a row of its own, in the row grammar: title, id, state word
+        assert any(r[1:4] == ["next:", "email", "ready"] for r in rows), said
+        assert "attach the PDF to the monthly email" in " ".join(said.split()), said  # whole, if wrapped
+        # a running row says which id is the work and which holds it
+        held = [" ".join(r) for r in rows if "template" in r and "running" in r]
+        assert held and "held by session 5a1e0c3b" in held[0], said
