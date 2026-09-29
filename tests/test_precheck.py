@@ -149,6 +149,25 @@ def test_a_proposed_check_with_no_sandbox_never_runs_here(repo, monkeypatch):
     assert d["verdict"] == "not-run" and "needs a sandbox" in d["why"]
 
 
+def test_a_project_sandboxes_refuse_leaves_a_proposed_check_not_run_saying_what_to_do(repo, monkeypatch):
+    """ConTree's 403 (rung 1 met it live, 2026-09-29), from a stub SDK raising its own ForbiddenError:
+    nothing runs here, and the leaf's line says the refusal whole, with the other sandbox there is."""
+    contree_sdk = pytest.importorskip("contree_sdk")
+    from fake_faults import Forbidding
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
+    monkeypatch.setattr(C, "_here", lambda *_: pytest.fail("a planner's check ran on the person's machine"))
+    with Store.open(repo) as store:
+        leaves(store, RED)
+        [(_, d)] = C.run(store, repo)
+    assert d["verdict"] == "not-run"
+    assert d["why"] == ("Sandboxes refused this project (403: its key has no Sandboxes permission: it lacks "
+                        "import, spawn); request access at tokenfactory.nebius.com/sandboxes/about, or "
+                        "GRAPHENE_SANDBOX=docker")  # fmt: skip
+
+
 def test_an_accepted_check_runs_here_without_the_key_and_no_key_leaves_a_red_unread(repo, monkeypatch):
     monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")  # a key the check must not see, set while it runs
     with Store.open(repo) as store:

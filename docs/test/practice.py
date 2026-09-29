@@ -74,6 +74,7 @@ MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CODE
          "CODEX_SANDBOX", "AI_AGENT", "GRAPHENE_AS", *P.AGENT_MARKS)  # fmt: skip
 SECRETS = ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")
 NO_DOCKER = "Docker is not running here, and the dry run's sandbox is Docker: nothing was run"
+NEED_SANDBOXES = "rungs 3, 4, 6 and 7 wait for access; rungs 2 and 5 do not need it"
 FAKE = None  # the scripted Token Factory, in this process, for the dry run
 
 # The practice leaf: nothing to do with any task's card. A new file, and a check that fails until it is there.
@@ -290,9 +291,11 @@ def access(r: Rung) -> str:
     if bad:
         raise Failed("a tool call misfired: " + "; ".join(bad))
     box = report.get("sandbox") or {}
-    sandboxes = "works" if box.get("ok") else f"not yet ({box.get('said', 'not tried')}); rung 3 needs them"
+    sandboxes = "work" if box.get("ok") else f"not yet ({box.get('said', 'not tried')}); rung 3 needs them"
+    if box.get("refused"):  # rung 1 is Token Factory's: it passes, and says what waits for Sandboxes
+        sandboxes = f"refused for this project, so {NEED_SANDBOXES}"
     models = len(report.get("nvidia", []))
-    return f"{models} NVIDIA models, {len(calls)} tool calls as asked; Sandboxes: {sandboxes}"
+    return f"Token Factory: {models} NVIDIA models, {len(calls)} tool calls as asked. Sandboxes: {sandboxes}"
 
 
 def local(r: Rung) -> str:
@@ -564,6 +567,10 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
     (r"spend cap is reached",
      "this rung's spend cap was reached",
      "read the ledger; if the spend was expected, PRACTICE_CAP=<dollars> raises this rung's cap once"),
+    (r"Sandboxes refused this project",  # after Token Factory's own: rung 1's log holds both
+     "this project may not use Sandboxes yet (ConTree's 403); access is asked for at "
+     "tokenfactory.nebius.com/sandboxes/about",
+     f"{NEED_SANDBOXES}: meanwhile `{ME} 5`, and rung 1 again once access is granted"),
     (r"No module named 'contree_sdk'|ConTree is not configured \(SDK",
      "the ConTree SDK is not installed",
      "`uv sync --extra sandbox`, then the rung again"),
@@ -654,6 +661,8 @@ def climb(n: int) -> str:
         said, result = rung(r), "PASS"
     except Failed as no:
         said, result, refused = str(no), "FAIL", isinstance(no, Refused)
+    except S.Refused as no:  # a refusal says what it means and what to do, whole
+        said, result = str(no), "FAIL"
     except Exception as no:  # an SDK's or a sandbox's own error is a result here
         said, result = f"{type(no).__name__}: {no}", "FAIL"
     except KeyboardInterrupt:

@@ -52,6 +52,27 @@ def install(put) -> None:
     if os.environ.get("FAULTS_BOX"):
         box = Killed if os.environ["FAULTS_BOX"] == "killed" else Box
         put(sandbox, "choose", lambda name=None, image=None: box())
+    if os.environ.get("FAULTS_SDK") == "forbidden":  # ConTree itself, through sandbox.Contree, says 403
+        import contree_sdk
+
+        put(contree_sdk, "ContreeSync", Forbidding)
+
+
+class Forbidding:
+    """contree-sdk's ContreeSync for a project Sandboxes refuse, as rung 1 met it live (2026-09-29): every
+    call raises the SDK's own ForbiddenError, ConTree's 403, and the key's grants (whoami) lack spawn and
+    import. Nothing is sent anywhere."""
+
+    GRANTS = {"list": True, "spawn": False, "import": False}
+
+    def __init__(self, token: str | None = None):
+        from contree_sdk.sdk.exceptions import ForbiddenError
+
+        def refuse(*_, **__):
+            raise ForbiddenError()
+
+        self.images = SimpleNamespace(oci=refuse, use=refuse)
+        self.get_token_info = lambda refresh=False: SimpleNamespace(permissions=dict(self.GRANTS))
 
 
 def _holds(script: str, name: str) -> bool:

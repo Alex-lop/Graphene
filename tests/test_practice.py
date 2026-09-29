@@ -448,6 +448,35 @@ def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, mon
         assert practice.likely(text)[0] == "ConTree has no credentials: NEBIUS_PROJECT_ID is not set"
 
 
+def test_rung_1_passes_on_token_factory_and_says_plainly_what_waits_for_sandboxes(tmp_path, monkeypatch):
+    """Rung 1 as it ran live (2026-09-29): Token Factory answered, Sandboxes refused the project. Rung 1 is
+    Token Factory's and passes; its line says the refusal and which rungs wait for it. A rung that meets
+    the refusal later (3's leaf, 4's sandbox) reads as it, and a 401 next to it in rung 1's log is still
+    read as the 401."""
+    from datetime import date
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")  # rung 1 reads what the person ran today, and runs nothing
+    refused = str(sandbox.Refused(sandbox.FORBIDDEN.format(lacks="")))
+    calls = [{"model": m, "ok": True} for m in ("u", "s", "n")]
+    report = {"key": True, "nvidia": [{}] * 4, "tool_calls": calls,
+              "sandbox": {"ok": False, "refused": True, "said": refused}}  # fmt: skip
+    (practice.STATE / "access.json").write_text(json.dumps(report))
+    assert date.fromtimestamp((practice.STATE / "access.json").stat().st_mtime) == date.today()
+    said = practice.access(practice.Rung(1, 0.25))
+    assert said == ("Token Factory: 4 NVIDIA models, 3 tool calls as asked. Sandboxes: refused for this "
+                    "project, so rungs 3, 4, 6 and 7 wait for access; rungs 2 and 5 do not need it")
+    leaf = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {refused}"
+    for text in (refused, leaf):
+        means, then = practice.likely(text)
+        assert means.startswith("this project may not use Sandboxes yet (ConTree's 403)"), means
+        assert then.endswith("meanwhile `docs/test/practice.sh 5`, and rung 1 again once access is granted")
+    means = practice.likely(f"Token Factory answered 401 to GET /models\n- {refused}")[0]
+    assert means.startswith("Token Factory refused the key (401)"), means
+
+
 def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
     """A refused rung ran nothing: `status` does not show it as failed, and a result already on record
     (the person's PASS) stays."""

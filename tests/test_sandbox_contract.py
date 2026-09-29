@@ -81,3 +81,35 @@ def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path))  # no saved profile
     with pytest.raises(RuntimeError, match="ConTree needs a key .* and NEBIUS_PROJECT_ID"):
         sandbox.Contree()
+
+
+REFUSED = ("Sandboxes refused this project (403: its key has no Sandboxes permission{}); request access at "
+           "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+
+
+def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_do(monkeypatch):
+    """Rung 1 met it live (2026-09-29): ConTree answered 403 to the project. The SDK's own ForbiddenError,
+    from a stub (nothing is sent), becomes one refusal naming what the key lacks (whoami), and it is
+    Token Factory's kind of refusal, which every caller says as it is. Without whoami, the rest stands."""
+    from fake_faults import Forbidding
+
+    from graphene_map import tokenfactory as tf
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == REFUSED.format(": it lacks import, spawn")
+    assert isinstance(no.value, tf.Unreachable)
+
+    class Blind(Forbidding):
+        def __init__(self, token=None):
+            super().__init__(token)
+            self.get_token_info = lambda refresh=False: 1 / 0
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Blind)
+    with pytest.raises(sandbox.Refused, match=r"^Sandboxes refused this project \(403: its key has no "
+                                              r"Sandboxes permission\); request access"):  # fmt: skip
+        sandbox.Contree()
+
