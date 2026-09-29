@@ -2,7 +2,9 @@
 events; each event is recorded in the store and, with a plan in force, answered by the gate
 (``gate.decide``). This is the hook's path: nothing it imports reaches Typer or Rich, it writes
 nothing on stdout but the gate's answer, and it never fails the agent (docs/HOW_IT_WORKS.md, part
-two).
+two). The agent waits for it on every tool call, so what only some events need (git, the gate and
+the plan, a traceback, an id) is imported where it is used, and tests/test_hook_budget.py holds the
+list of what an event imports.
 """
 
 from __future__ import annotations
@@ -11,17 +13,12 @@ import contextlib
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
-import traceback
-import uuid
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
 from .model import Agent, Prompt, Session, ToolEvent
-from .shell import nested_checkout
 from .store import StaleStore, Store, repo_root, worktree_main
 
 # SubagentStart and SubagentStop carry agent_id, agent_type and the common cwd, per the official
@@ -63,7 +60,44 @@ def worktree_root(directory: str, root: Path) -> str | None:
         current = parent
 
 
+_SHA = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+
+
 def git_head(root: Path) -> str | None:
+    """HEAD's commit, as `git rev-parse HEAD` says it, read from git's own files: HEAD names a commit
+    or a branch, and a branch is a file under refs/ or a line of packed-refs. A repo whose refs are
+    kept otherwise (reftable) or whose .git is not a directory asks git itself, a subprocess the
+    hook pays only then."""
+    gitdir = os.path.join(root, ".git")
+    if "GIT_DIR" in os.environ:
+        return _git_head(root)
+    try:
+        with open(os.path.join(gitdir, "HEAD"), encoding="utf-8") as f:
+            head = f.read().strip()
+        if _SHA.fullmatch(head):
+            return head
+        ref = head.removeprefix("ref: ")
+        if ref != head and not os.path.exists(os.path.join(gitdir, "reftable")):
+            try:
+                with open(os.path.join(gitdir, ref), encoding="utf-8") as f:
+                    loose = f.read().strip()
+                return loose if _SHA.fullmatch(loose) else _git_head(root)
+            except FileNotFoundError:
+                pass
+            with open(os.path.join(gitdir, "packed-refs"), encoding="utf-8") as f:
+                lines = [line.split() for line in f if _SHA.match(line)]  # "<sha> <ref>"; ^ and # lines aside
+            return next((sha for sha, name in lines if name == ref), None)
+    except FileNotFoundError:
+        if os.path.isfile(os.path.join(gitdir, "HEAD")):
+            return None  # a branch with no commit yet: git has no HEAD to name either
+    except (OSError, ValueError):
+        pass
+    return _git_head(root)
+
+
+def _git_head(root: Path) -> str | None:
+    import subprocess
+
     try:
         out = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, timeout=5
@@ -103,6 +137,8 @@ def relative_path(path: str, root: Path) -> str:
         rp, rr = _real(p), _real_dir(r)
         if _inside(rp, rr):
             rel = os.path.relpath(rp, rr)
+    from .shell import nested_checkout
+
     return path if rel is None or nested_checkout(root, rel) else rel
 
 
@@ -213,7 +249,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         text = str(event.get("prompt") or "")
         if _SLASH_COMMAND.match(text.strip()):
             return False  # a slash command is not a request
-        prompt_id = event.get("prompt_id") or str(uuid.uuid4())
+        prompt_id = event.get("prompt_id") or str(_uuid4())
         store.add_prompt(
             Prompt(
                 id=str(prompt_id),
@@ -256,7 +292,7 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
         prompt_id = store.latest_prompt_id(sid)
     agent = event.get("agent_id")
     ev = ToolEvent(
-        id=str(event.get("tool_use_id") or uuid.uuid4()),
+        id=str(event.get("tool_use_id") or _uuid4()),
         session_id=sid,
         prompt_id=prompt_id,
         timestamp=ts,
@@ -272,6 +308,32 @@ def ingest_hook_event(store: Store, event: dict, root: Path, timestamp: str | No
     attach_file_content(ev, root)
     store.add_event(ev)
     return True
+
+
+def gated(store: Store, event: dict) -> bool:
+    """Can the gate answer this event, or write for it? Only then does the hook import it, and the
+    plan with it: a read, a search, a subagent's start or end is let through without them. A session
+    is taught the text when it starts (plan or none). A prompt is told plan first, a write or a shell
+    command is refused, while plan first is on (with no node, only the person's setting makes it so)
+    or a plan is in force; a shell command's changes and a stop are judged only while a plan is. The
+    planner is refused a write and a protected read, plan or no plan. tests/test_hook_budget.py runs
+    ``gate.decide`` on every event this says no to, and it answers nothing and writes nothing."""
+    name, tool = event.get("hook_event_name"), event.get("tool_name")
+    if name == "SessionStart" or os.environ.get("GRAPHENE_PLANNER"):
+        return True
+    if name == "PreToolUse" and tool not in FILE_TOOLS and tool != "Bash":
+        return False
+    if name == "PostToolUse" and tool != "Bash":
+        return False
+    if name in ("UserPromptSubmit", "PreToolUse"):
+        return bool(store.node_count()) or store.meta("plan_first") == "on"
+    return name in ("PostToolUse", "Stop") and bool(store.node_count())
+
+
+def _uuid4():
+    from uuid import uuid4
+
+    return uuid4()
 
 
 def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
@@ -294,13 +356,7 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             except Exception:
                 _log_error(root)
             answer = None
-            # no plan, nearly nothing to decide: a repo without one pays one read an event. A session
-            # is taught the text when it starts and told plan first at a prompt, and with plan first
-            # on (with no node, only the person's setting makes it so) it writes nothing yet
-            name = event.get("hook_event_name")
-            first = store.meta("plan_first") == "on"
-            planner = bool(os.environ.get("GRAPHENE_PLANNER"))  # refused a write, plan or no plan
-            if store.node_count() or name in ("SessionStart", "UserPromptSubmit") or first or planner:
+            if gated(store, event):
                 from . import gate
 
                 answer = gate.decide(store, event, root)
@@ -325,6 +381,8 @@ def _log(root: Path, message: str) -> None:
 
 
 def _log_error(root: Path) -> None:
+    import traceback
+
     _log(root, traceback.format_exc())
 
 
@@ -389,6 +447,8 @@ def _exclude_locally(root: Path, rel: str) -> None:
 
 def _write_atomically(path: Path, text: str) -> None:
     """Write via a temp file and os.replace (a crash leaves the old file), through a symlink to its target."""
+    import tempfile
+
     target = path.resolve() if path.exists() else path
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".settings-", suffix=".tmp")
     try:

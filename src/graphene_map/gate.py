@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
-import subprocess
 from pathlib import Path
 
 from . import plan as P
@@ -80,6 +78,8 @@ def _ignored(root: Path, rels: list[str]) -> set[str]:
     asked 250 times and passed the vendor's hook timeout. Asked only on the way to a refusal."""
     if not rels:
         return set()
+    import subprocess  # here: the hook imports this module, and most events never ask git
+
     argv = ["git", "-C", str(root), "check-ignore", "-z", "--stdin"]
     try:
         out = subprocess.run(argv, input="\0".join(rels) + "\0", capture_output=True, text=True, timeout=2)
@@ -96,6 +96,8 @@ def _how_out(store, sid: object, held: list[P.Node], paths: list[str]) -> str:
     """The way out of a scope refusal. Why (do not work around it; only the person widens a scope) is
     said the first time a session meets it in a hold of that node, and a short line after that: the
     same lecture read twice is noise. TODO: one row a hold that met a refusal, never pruned."""
+    import shlex
+
     n = held[0]
     told = f"told:{sid}:{n.id}:{n.started_at}:scope"
     if store.meta(told):
@@ -356,6 +358,8 @@ def _context(event: str, text: str) -> dict:
 
 def _close(store, node: P.Node, sid: str) -> str | None:
     """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails."""
+    import subprocess
+
     try:
         P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
     except P.Refused as no:
@@ -371,6 +375,8 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
     Its scope and check are what they wrote after `--scope` and `--check`, when they wrote any; else it
     may touch anything and is done when the turn ends, and its record says what it did touch. The
     scope is never guessed from the prose."""
+    import subprocess
+
     text = store.meta(f"prompt:{sid}")
     if not text or os.environ.get("GRAPHENE_NODE") or _strict(store):
         return None
