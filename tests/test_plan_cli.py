@@ -611,3 +611,24 @@ def test_a_leaf_that_came_back_reads_came_back_in_every_view_and_in_the_next_lin
     assert said == (
         "next: api (api work) came back: `graphene run --node api` (run it again); r in `graphene watch`"
     )
+
+
+def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_says_to_accept(repo):
+    """Walk 2026-09-29 (first 1, first 8, judge 37): right after an ask, bare `graphene` ended with
+    `next: nothing is ready for you, so you can stop`, and `graphene run` (R) failed with "the plan has
+    no open leaf" while the whole tree waited to be accepted."""
+    text = (
+        "goal: users come back with their ids\nquestion: ids as numbers?  [id-type]\n    default: numbers\n"
+        "- the users API  [users-api]\n  ? users returns ids  [ids]\n      scope: api.py\n      check: true\n"
+    )
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    assert "waiting on you: users-api (proposed, with the 1 under it), 1 on the board" in person().stdout
+    told = agent().stdout.strip().splitlines()[-1]  # an agent's shell, as the walker's seat was
+    assert told == (
+        "next: nothing is ready for you: the proposal (1 leaf) and the board (1) wait on the person"
+    )
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 1
+    assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
+        ran.stderr
+    ), ran.stderr
