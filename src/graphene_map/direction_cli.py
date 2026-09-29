@@ -87,7 +87,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         wide = width or shutil.get_terminal_size().columns
         console = Console(width=wide, highlight=False)
         plain = not (console.is_terminal and not console.no_color)
-        said = [(D.head(st, P.where(root())), "bold")] + [(line, style) for line, style in D.lines(st, wide)]
+        said = [(D.head(st, P.where(root()), wide), "bold"), *D.lines(st, wide)]
         if d is None:
             said.insert(1, (EMPTY, "dim"))
         if st["older"]:

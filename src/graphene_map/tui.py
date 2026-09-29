@@ -42,6 +42,7 @@ from textual.widgets import Input, Static, Tree
 from textual.widgets._tree import TOGGLE_STYLE
 
 from . import board_rows as BR
+from . import direction as D
 from . import plan as P
 from . import plan_text as T
 from . import run as R
@@ -629,6 +630,7 @@ class Watch(App):
     CSS = """
     Screen { layout: vertical; }
     #where { height: 1; background: $boost; color: $text; padding: 0 1; }
+    #direction { height: auto; max-height: 4; padding: 0 1; }  /* direction: the path above the plan */
     #main { height: 1fr; layout: horizontal; }
     #tree { width: 1fr; min-width: 30; overflow-x: hidden; scrollbar-size-vertical: 1; padding-right: 1; }
     #side { width: 1fr; border-left: solid $primary; padding: 0 1; scrollbar-size-vertical: 1; }
@@ -720,6 +722,7 @@ class Watch(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="where")
+        yield Static(id="direction", markup=False)
         with Horizontal(id="main"):
             tree = PlanTree("the plan", id="tree")
             tree.show_root = False  # until there is a plan: then the goal is its first row
@@ -887,8 +890,23 @@ class Watch(App):
         if len(where) > room:  # the repository's own name, and what is above it as far as it fits
             where = "…" + where[len(where) - room + 1 :]
         self.query_one("#where", Static).update(Text(f"the plan of {where}", "bold"))
+        self.draw_direction(store)
         self.look_changed(store)
         self.show_detail(store)
+
+    def draw_direction(self, store) -> None:
+        """The direction above the plan, in every view: the path to the node the plan hangs from, each
+        row with what waits on you below it, what runs and what is next (`direction.above_plan`)."""
+        said = D.above_plan(store, self.root_path, max(self.size.width - 2, 20))
+        pane = self.query_one("#direction", Static)
+        pane.display = bool(said)
+        text = Text()
+        for k, (line, style) in enumerate(said):
+            row = Text(("\n" if k else "") + line)
+            glyph = len(row.plain) - len(row.plain.lstrip("\n "))
+            row.stylize(style, glyph, glyph + 1)
+            text.append_text(row)
+        pane.update(text)
 
     def relabel(self, nodes: list[P.Node], under: dict, goal_word: str, goal: str) -> None:
         """Each row's cells. A folded row's word is what is inside it (`inside`), so a folded

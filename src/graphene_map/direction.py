@@ -40,6 +40,7 @@ from . import plan as P
 FILE = ".graphene/direction.txt"
 ALIVE = 300  # seconds since a session's last recorded call that it still counts as running
 DAY = 86400  # a session quiet for longer than this is not shown: it helps nobody decide anything
+IDLE = 3600  # a session or subagent idle (no call, and no end of its turn) for longer is not shown
 _NODE = re.compile(
     r"(?P<indent> *)(?P<mark>[-?])\s+(?P<title>\S.*?)\s+\[(?P<id>[A-Za-z0-9][\w.-]{0,31})\]\s*"
 )
@@ -411,6 +412,8 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             if row is None:
                 continue  # the vendor's own helpers: an end and nothing done
             word = "finished" if a_end else "running" if _age(row[1], now) <= ALIVE else "idle"
+            if word == "idle" and _age(row[1], now) > IDLE:
+                continue  # an hour with nothing: gone without its end recorded, most likely
             agents.append(
                 Worker(
                     f"{sid}/{aid}",
@@ -424,15 +427,21 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
         mine = last.get(None)
         said = next((t for _, t in prompts if not _vendor_made(t.strip())), "")
         heard = max([s for s in (mine and mine[1], prompts[0][0] if prompts else None) if s], default=started)
-        if stopped and stopped >= (heard or ""):
-            word = "running" if any(a.word == "running" for a in agents) else "your turn"
+        running = sum(a.word == "running" for a in agents)
+        turn_over = bool(stopped and stopped >= (heard or ""))
+        if running:
+            word = "running"  # its turn may be over, or it waits on a subagent: its subagents work
+        elif turn_over:
+            word = "your turn"
         else:
             word = "running" if _age(heard, now) <= ALIVE else "idle"
+        if word == "idle" and _age(heard, now) > IDLE:
+            older += 1
+            continue
         first = said.strip().splitlines()[0] if said.strip() else ""
         label = f"a Claude Code session: {first}" if first else "a Claude Code session"
-        running = sum(a.word == "running" for a in agents)
         last_line = did(*mine[2:]) if mine else "nothing yet"
-        if word == "running" and stopped and stopped >= (heard or ""):
+        if running and (turn_over or _age(heard, now) > ALIVE):
             last_line = f"{running} of its subagents running"
         out.append(Worker(sid, sid[:8], label, word, last_line, max(stopped or "", heard or "")))
         out += agents
@@ -532,13 +541,9 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
         proposals = [m for m in d.nodes if m.id in mine and m.proposed]
         you = len(proposals) + sum(w.word == "your turn" for w in under) + (plan["you"] if has_plan else 0)
         running = sum(w.word == "running" for w in under) + (plan["running"] if has_plan else 0)
-        nxt = (
-            f"accept {proposals[0].id}"
-            if proposals
-            else f"{plan['next']} is ready"
-            if has_plan and plan["next"]
-            else None
-        )
+        inside = [m for m in proposals if m.id != n.id]  # its own "?" is its word already
+        ready = plan["next"] if has_plan else None
+        nxt = f"accept {inside[0].id}" if inside else ready
         word = "proposed" if d.proposed(n) else "yours" if you else "running" if running else "quiet"
         nodes.append(asdict(n) | {"word": word, "you": you, "running": running, "next": nxt,
                                   "earlier": earlier.get(n.id, [])})  # fmt: skip
@@ -602,7 +607,7 @@ def rows(
     def workers_under(node: str | None, d: int) -> None:
         for w in [w for w in ws if w["node"] == node]:
             out.append((d, w["label"], w["short"], w["word"], f"{w['last']} · {_ago(w['at'], now)}"))
-        fin = [w for w in done if w["node"] == node]
+        fin = [w for w in done if w["node"] == node and node is not None]  # unattached: helps no one
         if fin:
             out.append((d, f"{len(fin)} finished", "", "finished", ", ".join(w["short"] for w in fin)))
 
@@ -636,19 +641,18 @@ def rows(
     loose = [w for w in ws if w["node"] is None] + [w for w in done if w["node"] is None]
     unhung = plan is not None and plan["node"] is None
     if unhung or loose:
-        out.append(
-            (0, "not in the direction", "", "", "`graphene direction attach SESSION NODE`" if loose else "")
-        )
+        how = "`graphene direction attach SESSION NODE`"
+        how = "`graphene direction plan NODE` hangs the plan" if unhung else how
+        out.append((0, "not in the direction", "", "", how))
         if unhung:
             plan_row(1)
-            out[-1] = (*out[-1][:4], out[-1][4] + " · `graphene direction plan NODE` hangs it")
             workers_under("plan", 2)
         workers_under(None, 1)
     return out
 
 
-def head(st: dict, where: str) -> str:
-    """The first line: whose direction, then what waits on the person, what runs and what is next."""
+def head(st: dict, where: str, width: int | None = None) -> str:
+    """The first line: what waits on the person, what runs and what is next, then whose direction."""
     tops = [n for n in st["nodes"] if n["parent"] is None]
     unhung = st["plan"] is not None and st["plan"]["node"] is None
     loose = [w for w in st["sessions"] if w["node"] is None or (unhung and w["node"] == "plan")]
@@ -657,10 +661,15 @@ def head(st: dict, where: str) -> str:
     if unhung:
         you += st["plan"]["you"]
         running += st["plan"]["running"]
-    nxt = next((n["next"] for n in tops if n["next"]), None) or (st["plan"] or {}).get("next")
-    said = [f"the direction of {where}", f"you: {you}", f"{running} running"]
-    said += [f"next: {nxt}"] if nxt else []
-    return " · ".join(said)
+    nxt = next((f"accept {n['id']}" if n["word"] == "proposed" else n["next"] for n in tops
+                if n["word"] == "proposed" or n["next"]), None)  # fmt: skip
+    if nxt is None and unhung and st["plan"]["next"]:
+        nxt = st["plan"]["next"]
+    lead = " · ".join([f"you: {you}", f"{running} running", *([f"next: {nxt}"] if nxt else [])])
+    lead += " · the direction of "
+    if width and len(lead) + len(where) > width:  # the repository's own name, and what is above it
+        where = "…" + where[len(where) - max(width - len(lead), 2) + 1 :]
+    return lead + where
 
 
 def lines(
@@ -668,6 +677,8 @@ def lines(
 ) -> list[tuple[str, str]]:
     """The rows laid out in fixed columns at ``width`` cells: (the line, the style of its glyph and
     word). The title is cut at a word, the id and the word never."""
+    from rich.cells import cell_len
+
     from . import plan_text as T
 
     got = rows(st, now, only)
@@ -675,13 +686,34 @@ def lines(
         return []
     wid = max([len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
-    wt = max(20, min(56, width - wid - ww - 6 - 24))
+    need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
+    wt = max(20, min(need, 56, width - wid - ww - 6 - 28))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"
         lead = f"{'  ' * d}{glyph} "
         cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {rid.ljust(wid)}  {word.ljust(ww)}"
-        room = width - len(cells) - 3
+        room = width - len(cells) - 4
         line = f"{cells}  · {T.elide(what, room)}" if what and room > 8 else cells.rstrip()
         out.append((line, look(word)[1] if word else "dim"))
     return out
+
+
+def above_plan(store, root: Path, width: int) -> list[tuple[str, str]]:
+    """What `graphene plan`, its views and the screen show above the plan: the path from the top of
+    the direction to the node the plan hangs from, each with what waits on you below it, what runs and
+    what is next. Nothing when there is no direction or no plan; one line when the plan hangs from no
+    node yet, or when the file cannot be read."""
+    try:
+        d = read(root)
+    except P.Refused:
+        return [(f"the direction: {FILE} cannot be read (`graphene direction` names the lines)", "")]
+    if d is None:
+        return []
+    st = status(store, d)
+    if st["plan"] is None:
+        return []
+    if st["plan"]["node"] is None:
+        said = "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
+        return [(said, "dim")]
+    return lines(st, width, only=st["plan"]["node"])

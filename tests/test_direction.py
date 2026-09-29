@@ -152,9 +152,11 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
                tool_input={"file_path": str(repo / "README.md")}, tool_response={})  # fmt: skip
         _event(store, repo, "Stop", other, _stamp(now, 580))
         _event(store, repo, "UserPromptSubmit", "01d00000-0000", _stamp(now, 2 * D.DAY), prompt="old")
+        _event(store, repo, "UserPromptSubmit", "1d1e0000-0000", _stamp(now, D.IDLE + 60), prompt="quiet")
         st = D.status(store, D.read(repo), now)
     by = {w["short"]: w for w in st["sessions"]}
-    assert set(by) == {AGENT_SID[:8], "a640f5b2", other[:8]} and st["older"] == 1
+    assert set(by) == {AGENT_SID[:8], "a640f5b2", other[:8]}
+    assert st["older"] == 2  # a day's quiet, and an hour idle
     me, lane, loose = by[AGENT_SID[:8]], by["a640f5b2"], by[other[:8]]
     assert (me["node"], me["how"], me["word"], me["last"]) == (
         "plan",
@@ -179,7 +181,9 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
     top = next(n for n in st["nodes"] if n["id"] == "product")
     assert top["running"] == 2 and top["next"] is None
     shown = person("direction", "--width", "120").stdout.splitlines()
-    assert shown[0].startswith("the direction of ") and "you: 1 · 2 running" in shown[0]
+    narrow = person("direction", "--width", "60").stdout.splitlines()[0]
+    assert narrow.startswith("you: 1 · 2 running · the direction of …") and len(narrow) == 60
+    assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines()[:-1])
     assert any("the plan: users come back with ids" in line and "0/1 done" in line for line in shown)
     assert any("not in the direction" in line for line in shown)
     # the person attaches the other session; `none` gives it back
@@ -230,3 +234,56 @@ def test_the_json_is_what_the_page_reads(repo):  # noqa: F811
     assert (
         all(n["word"] == "proposed" for n in said["nodes"]) and said["nodes"][0]["you"] == 3
     )  # itself and the two under it
+
+
+PLAN = """\
+goal: users come back with their ids
+- the API  [api]
+  - users returns ids  [ids]
+      scope: api.py
+      check: grep -q ids api.py
+  - document it  [docs]
+      scope: README.md
+      check: test -f README.md
+      needs: ids
+"""
+
+
+def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_the_page(repo):  # noqa: F811
+    import asyncio
+
+    from graphene_map import server
+    from graphene_map.tui import Watch
+
+    agent("direction", "propose", "-", input=TREE)
+    person("direction", "accept", "product")
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    unhung = person("plan").stdout.splitlines()
+    assert unhung[0] == (
+        "the direction: the plan hangs from none of its nodes yet (`graphene direction plan NODE`)"
+    )
+    person("direction", "plan", "live")
+    for said in (person("plan"), person("plan", "--view", "tree", "--width", "120", "--height", "36")):
+        shown = said.stdout.splitlines()
+        assert shown[0].split()[1:4] == ["the", "product", "product"] and "next: ids" in shown[0]
+        assert shown[1].split()[1:3] == ["live", "live"] and shown[2:3] != []
+        assert not any("board" in line.split() for line in shown[:2])  # the path only, not the siblings
+    assert person("plan").stdout.splitlines()[2].startswith("the plan: users come back with their ids")
+
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            return str(app.query_one("#direction").render()).splitlines()
+
+    rows = asyncio.run(go())
+    assert [r.split()[1] for r in rows] == ["the", "live"] and "next: ids" in rows[1]
+
+    with Store.open(repo) as store:
+        page = json.loads(server.payload(store, []))["direction"]
+        export = json.loads(server.payload(store, [], only=True))["direction"]
+    assert page["plan"]["node"] == "live" and page["plan"]["next"] == "ids"
+    assert [n["id"] for n in page["nodes"]] == ["product", "live", "board", "submission"]
+    assert export["sessions"] == [] and export["nodes"] == page["nodes"]  # sessions stay on this machine

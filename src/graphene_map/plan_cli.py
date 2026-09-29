@@ -17,6 +17,7 @@ import typer
 
 from . import board as B
 from . import cover, precheck
+from . import direction as D
 from . import gate as G
 from . import note as N
 from . import plan as P
@@ -329,7 +330,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             lines += next_lines(store, who, shown=True)
         return lines
 
+    def above(store) -> None:
+        """The direction above the plan: the path to the node it hangs from (`direction.above_plan`)."""
+        for line, _ in D.above_plan(store, root(), shutil.get_terminal_size().columns):
+            out(line)
+
     def print_plan(store, who: P.Caller, everything: bool = False) -> None:
+        above(store)
         for line in plan_lines(store, who, everything):
             out(line)
 
@@ -433,6 +440,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         from rich.text import Text
 
         with open_store(root()) as store:
+            above(store)
             lines = plan_lines(store, who, everything, archive)
             recent = store.node_log()[-6:]
         for line in lines:
@@ -470,6 +478,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)
                 return False
+            for line, _ in D.above_plan(store, root(), width):
+                out(line)
             for line in drawn.lines:
                 out(line.plain.rstrip())
             if drawn.note:
