@@ -26,7 +26,9 @@ from graphene_map.tui import Watch
 
 # one script for every kind: it answers what the prompt asks, as a model would
 TALKER = r"""
-import json, os, re, sys
+import json, os, re, sys, time
+while os.environ.get("GATE") and not os.path.exists(os.environ["GATE"]):  # held until the test has looked
+    time.sleep(0.02)
 prompt = sys.argv[-1]
 open(os.environ["SEEN"], "a").write(json.dumps({"prompt": prompt}) + "\n")
 said = re.search(r"The person said: (.*)", prompt)[1]
@@ -284,15 +286,19 @@ def test_the_chooser_says_its_choices_at_80_columns(repo):
     watch(repo, [], (80, 24), before=before)
 
 
-def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker):
+def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker, tmp_path, monkeypatch):
     accepted(repo)
     with Store.open(repo) as store:
         store.set_meta("planner", talker)
+    gate = tmp_path / "gate"
+    monkeypatch.setenv("GATE", str(gate))  # the planner answers only once "started" has been read: on a fast
+    # runner it used to finish first, and "ended" had replaced "started" before the test looked
 
     async def before(app, pilot):
         await pilot.press("j", "j", "question_mark", "w", "enter")
         await pilot.pause()
         assert "graphene talk why ids: started" in str(app.query_one("#status").render())
+        gate.touch()
         await asyncio.to_thread(app.runs[0].wait, 60)
         await pilot.pause(0.3)
 
