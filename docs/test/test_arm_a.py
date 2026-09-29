@@ -42,7 +42,8 @@ def run(tmp_path, monkeypatch):
     (tmp_path / "paragraph.md").write_text(PARAGRAPH)
     (tmp_path / "follow.md").write_text("also say bye")
     monkeypatch.delenv("GRAPHENE_NODE", raising=False)
-    monkeypatch.delenv("GRAPHENE_LEDGER", raising=False)
+    monkeypatch.setenv("GRAPHENE_LEDGER", str(tmp_path / "ledger.jsonl"))
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", "10")
     fakes = []
 
     def start(replies):
@@ -144,3 +145,28 @@ def test_a_follow_up_answered_by_another_endpoint_names_both(run):
     (tmp / "a.json").write_text(json.dumps(said | {"endpoint": "token factory"}))  # as a live first message
     assert arm_a.main([*base, "--follow-up-file", str(tmp / "follow.md")]) == 0  # the stand-in answers it
     assert json.loads((tmp / "a.json").read_text())["endpoint"] == "token factory then a stand-in"
+
+
+def test_no_session_starts_with_no_spend_cap_or_at_80_percent_of_it_and_a_follow_up_goes_on_to_the_cap(
+    run, monkeypatch, capsys
+):
+    repo, tmp, start = run
+    f = start([call("done"), call("done")])
+    base = [str(repo), "--steps", "5", "--conversation", str(tmp / "a.json")]
+    paragraph = ["--paragraph-file", str(tmp / "paragraph.md")]
+    follow = ["--follow-up-file", str(tmp / "follow.md")]
+    monkeypatch.delenv("GRAPHENE_SPEND_CAP_USD")
+    assert arm_a.main([*base, *paragraph]) == 2  # none is assumed
+    assert "export GRAPHENE_SPEND_CAP_USD=10" in capsys.readouterr().out
+    assert f.requests == [] and not (tmp / "a.json").exists()
+
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", "10")
+    assert arm_a.main([*base, *paragraph]) == 0
+    with (tmp / "ledger.jsonl").open("a") as ledger:  # the other arms' spend, on the one ledger
+        ledger.write(json.dumps({"tag": "bench", "dollars": 8.0}) + "\n")
+    assert arm_a.main([*base, *follow]) == 0  # the session started: the client stops it at 100%
+    assert len(f.requests) == 2
+    assert arm_a.main([*base[:-1], str(tmp / "b.json"), *paragraph]) == 3
+    assert "no new run" in capsys.readouterr().out and len(f.requests) == 2
+    monkeypatch.delenv("GRAPHENE_SPEND_CAP_USD")
+    assert arm_a.main([*base, *follow]) == 2 and len(f.requests) == 2

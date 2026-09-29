@@ -17,10 +17,10 @@ The person here decides nothing. In order:
 4. with --change-file, once that is over: logs the change of mind as a mandated `correction`, asks
    the planner with it as it is, accepts every proposal whole, and runs what is new the same way.
 
-No edit, no drop, no correction of its own and no reopen. The spend is bench.py's: one ledger for
-the night (--ledger), no new run at 80% of GRAPHENE_SPEND_CAP_USD (30 if unset), and a run that hits
-the cap stops between rounds. The run log ends with a line of its own (`who: harness`, no act), so
-its wall time reaches the last round's end. It counts nothing itself: `evidence.py add <run-dir>
+No edit, no drop, no correction of its own and no reopen. The spend is bench.py's: one ledger
+(--ledger, else GRAPHENE_LEDGER), no run with GRAPHENE_SPEND_CAP_USD unset, none at 80% of it, and a
+run that hits the cap stops between rounds. The run log ends with a line of its own (`who: harness`,
+no act), so its wall time reaches the last round's end. It counts nothing itself: `evidence.py add <run-dir>
 --task T --arm B′` counts this run as it counts every arm.
 
 Written before any board existed on this branch: a build whose planner puts up a board leaves every
@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import signal
 import sys
 import time
@@ -65,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=float, default=3600, help="seconds a round may take")
     ap.add_argument("--tasks", type=Path, default=HERE / "tasks", help="where <task>/intent_globs.txt is")
     ap.add_argument("--out", type=Path, default=Path.home() / "graphene-bench" / time.strftime("%Y-%m-%d"))
-    ap.add_argument("--ledger", type=Path, default=bench.LEDGER, help="the night's Token Factory ledger")
+    ap.add_argument("--ledger", type=Path, help="the Token Factory ledger (default: as bench.py's)")
     args = ap.parse_args(argv)
 
     intent_file = (args.tasks / args.task / "intent_globs.txt").resolve()
@@ -81,12 +80,10 @@ def main(argv: list[str] | None = None) -> int:
         if unreached:
             print(f"no run: {unreached}")
             return 2
-    cap = float(os.environ.get("GRAPHENE_SPEND_CAP_USD") or bench.CAP)
-    os.environ["GRAPHENE_LEDGER"] = str(args.ledger.resolve())
-    os.environ["GRAPHENE_SPEND_CAP_USD"] = str(cap)
-    if tf.spent() >= 0.8 * cap:
-        print(f"no new run: the ledger ({args.ledger}) is at ${tf.spent():.2f} of ${cap:.2f}, 80% or more")
-        return 3
+    cap, why = bench.budget(args.ledger)
+    if why:
+        print(f"no new run: {why}")
+        return 2 if cap is None else 3
     run_dir = (args.out / f"{args.task}-bprime-{args.run}").resolve()
     if run_dir.is_relative_to(bench.ROOT):
         print(f"{run_dir} is inside this repository; a task repo is built outside it (--out)")
