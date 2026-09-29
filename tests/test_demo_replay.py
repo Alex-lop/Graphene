@@ -4,6 +4,7 @@ every step says what changed, the goal reads done only when everything under it 
 gives way to the next change, and j k still move after `r`."""
 
 import asyncio
+import re
 
 import pytest
 
@@ -42,7 +43,7 @@ def test_the_replays_status_line_keeps_one_form_offers_neither_r_nor_p_and_keeps
     billed = False
     for top, _, _, _ in seen:
         offered = [word for word in (" R", "(P)", "plan first") if word in top]
-        assert top.startswith("you: ") and not offered, top
+        assert re.match(r"\d+ on you", top) and not offered, top  # the short form, never watch's long one
         billed = billed or "bill $" in top
         assert "bill $" in top or not billed, top  # once there, it stays to the last frame
     assert billed

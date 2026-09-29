@@ -1328,7 +1328,8 @@ class Watch(App):
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
         if not self.RUNS_HERE:  # a replay: R and P start nothing, and one form holds from frame to frame
             ready = (f"{c['ready']} ready" if c["ready"] else "none ready", "")
-            named = long = short = [short[0], short[1], ready, short[3], *short[5:]]
+            named = long = short = [ready if k == 2 else part for k, part in enumerate(short)
+                                    if not part[0].startswith("plan first")]  # came back may sit at 3
         fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
         lines = [top, fit([(k, "") for k in self.keys()], room)]
