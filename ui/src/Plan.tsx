@@ -317,6 +317,7 @@ export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; l
       </span>
       <span data-testid="at-once" title={plan.at_once.join(", ")}>
         {plan.at_once.length} at once{onceAccepted(plan)}
+        {plan.at_once.length === 0 && ": no leaf can start now"}
         {plan.at_once.length > 0 && `: ${plan.at_once.slice(0, 5).join(", ")}`}
         {plan.at_once.length > 5 && ` and ${plan.at_once.length - 5} more`}
       </span>

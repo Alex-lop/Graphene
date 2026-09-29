@@ -361,6 +361,7 @@ test("at once says when the leaves it counts start only once accepted", () => {
   const half: Plan = { ...feeds, nodes: feeds.nodes.map((n) => (n.id === "zero-rule" ? { ...n, state: "proposed", display_state: "proposed" } : n)) };
   expect(bar(half)).toContain("2 at once (1 once accepted): xml-reader, zero-rule");
   expect(bar(feeds)).toContain("2 at once: xml-reader, zero-rule");
+  expect(bar({ ...feeds, at_once: [] })).toContain("0 at once: no leaf can start now"); // alex 13: "0 at once" was unexplained
 });
 
 test("a wait line names its leaf once", () => {
