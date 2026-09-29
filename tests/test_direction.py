@@ -667,3 +667,29 @@ def test_a_wide_title_never_pushes_a_row_past_the_width_nor_cuts_a_command(repo)
     said = person("direction", "--width", "80").stdout
     assert max(cell_len(line) for line in said.splitlines()) <= 80
     assert "`graphene run` starts it" in " ".join(said.split())
+
+
+def test_the_watch_strip_keeps_the_node_the_plan_hangs_from_at_any_depth(repo):  # noqa: F811
+    """Closing review finding 18: at 80x24 each path row wrapped to two lines, so a strip of four
+    showed the top two ancestors and hid the node the plan hangs from."""
+    import asyncio
+
+    from graphene_map.tui import Watch
+
+    deep = "".join(f"{'  ' * k}- level {k} of the direction, a long title  [n{k}]\n" for k in range(6))
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text(deep)
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    for node in ("n2", "n5"):
+        person("direction", "plan", node)
+        app = Watch(repo, lambda: Store.open(repo), every=60)
+
+        async def go(app=app):
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                return str(app.query_one("#direction").render()).splitlines()
+
+        strip = asyncio.run(go())
+        rows = [line.split() for line in strip if line.lstrip()[:1] in "◌○?◇●"]
+        assert len(strip) <= 4 and node in rows[-1], (node, strip)  # the plan's node is the last row

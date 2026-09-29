@@ -845,6 +845,18 @@ def lines(
     return out
 
 
+def row_starts(said: list[tuple[str, str]]) -> list[int]:
+    """Which of ``lines``' lines begin a row (the others carry on the one above): a glyph at an even
+    indent, then a space."""
+    glyphs = {g for g, _ in P.LOOK.values()} | {"◌", "·"}
+    out = []
+    for k, (line, _) in enumerate(said):
+        body = line.lstrip(" ")
+        if (len(line) - len(body)) % 2 == 0 and body[:1] in glyphs and body[1:2] == " ":
+            out.append(k)
+    return out
+
+
 def _wrap(text: str, room: int) -> list[str]:
     """``text`` in lines of at most ``room`` terminal cells, broken between words. A word too long
     for a line is kept whole (an id, a path, a command), unless it is wide text with no spaces (a

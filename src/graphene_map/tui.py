@@ -950,6 +950,10 @@ class Watch(App):
         """The direction above the plan, in every view: the path to the node the plan hangs from, each
         row with what waits on you below it, what runs and what is next (`direction.above_plan`)."""
         said = D.above_plan(store, self.root_path, max(self.size.width - 2, 20))
+        # the strip has four lines: past that, whole ancestors go from the top, and the node the plan
+        # hangs from, the one the strip is for, stays
+        starts = D.row_starts(said)
+        said = said[next((k for k in starts if len(said) - k <= 4), starts[-1] if starts else 0) :]
         pane = self.query_one("#direction", Static)
         pane.display = bool(said)
         pane.update(direction_text(said))
