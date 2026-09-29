@@ -1,4 +1,4 @@
- the plan of …/0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/done
+ the plan of ~/done
 ▼ ○ the feed loader reads the XML supplier too                       3/3 done
 ├   ◌ conditions: protected secrets/**, .env · read-only legacy/**
 ├   ◇ how should an XML row with a missing price be…  missing-price  asks

@@ -1,4 +1,4 @@
- the plan of …0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-feeds
+ the plan of ~/tui1-feeds
 ├   ◌ conditions: protected secrets/**, .env · read-only legacy/**            ▁
 ├   ◇ how should an XML row with a missing price…    missing-price  asks
 ├   ◇ the XML has one <item> per price row           one-item       assumes

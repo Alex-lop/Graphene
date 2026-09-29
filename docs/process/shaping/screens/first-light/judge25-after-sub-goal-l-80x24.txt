@@ -1,4 +1,4 @@
- the plan of …b67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/cameback
+ the plan of ~/cameback
 ▼ ○ the feed loader reads the XML supplier too             0/3 done
 ├   ◌ conditions: protected secrets/**, .env · read-only…
 ├   ◇ how should an XML row with a…         missing-price  asks

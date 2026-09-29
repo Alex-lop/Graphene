@@ -1,4 +1,4 @@
- the plan of …0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-feeds
+ the plan of ~/tui1-feeds
       the feed loader reads the XML supplier too · ◇ 5 open on the board…
                                        │
                                      ? xml

@@ -1,4 +1,4 @@
- the plan of …pez-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-settled
+ the plan of ~/tui1-settled
 ▼ ? the feed loader reads the XML supplier too               proposed │ the feed loader reads the XML supplier too
 ├   ◌ conditions: protected secrets/**, .env · read-only…             │ the goal · proposed with the tree: accepting
 ├ ▶ ✓ 5 settled                                                       │ any of it accepts it

@@ -1,4 +1,4 @@
- the plan of …b67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/backundo
+ the plan of ~/backundo
 ├   ◌ conditions: protected secrets/**, .env · read-only legacy/**
 ├   ◇ how should an XML row with a missing price…    missing-price  asks
 ├   ◇ the XML has one <item> per price row           one-item       assumes

@@ -1,4 +1,4 @@
- the plan of …b67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/proposed
+ the plan of ~/proposed
 ▼ ? the feed loader reads the XML supplier too                       proposed
 ├   ◌ conditions: protected secrets/**, .env · read-only legacy/**
 ├   ◇ how should an XML row with a missing price be…  missing-price  asks

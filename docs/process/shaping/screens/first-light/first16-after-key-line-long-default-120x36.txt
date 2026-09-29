@@ -1,4 +1,4 @@
- the plan of …lopez-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-feeds
+ the plan of ~/tui1-feeds
 ▼ ? the feed loader reads the XML supplier too                proposed   │ the contract test may only cover csv and
 ├   ◌ conditions: protected secrets/**, .env · read-only…                │ json
 ├   ◇ how should an XML row with a missing…    missing-price  asks       │ contract · risk · open · put up by a Claude

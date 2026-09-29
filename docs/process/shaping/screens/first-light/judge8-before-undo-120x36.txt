@@ -1,4 +1,4 @@
- the plan of …ez-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui2/backundo
+ the plan of ~/backundo
 ▼ ○ the feed loader reads the XML supplier too                0/3 done   │ read the xml feed
 ├   ◌ conditions: protected secrets/**, .env · read-only…                │ xml-reader · ready
 ├   ◇ how should an XML row with a missing…    missing-price  asks       │
