@@ -378,7 +378,8 @@ def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
     asked = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
     lines = ('ask "add a login page"', "ask --about ids fix it", "ask don't break it",
-             "ask add a --dry-run flag to load")  # fmt: skip
+             "ask add a --dry-run flag to load", "ask don't touch what isn't ours",
+             "ask 'keep it' and \"don't\" drop it", "ask don't fix the 'thing")  # fmt: skip
     for line in lines:
         watch(repo, ["colon", *line, "enter"])
     assert asked == [
@@ -386,6 +387,10 @@ def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
         ["ask", "fix it", "--about", "ids"],
         ["ask", "don't break it"],
         ["ask", "add a --dry-run flag to load"],  # seen at the screen: the flag was taken for ask's
+        # the rough cut's rehearsal: two apostrophes were read as a quote, and the planner got "dont … isnt"
+        ["ask", "don't touch what isn't ours"],
+        ["ask", "keep it and don't drop it"],
+        ["ask", "don't fix the 'thing"],  # a quote left open: the sentence as typed
     ]
 
 
