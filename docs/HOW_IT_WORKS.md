@@ -635,7 +635,8 @@ met it on 29 September) is one refusal, in the same words in `access.py`, on the
 sandbox and in `plan precheck`: "Sandboxes refused this project (403): its key may not use them there,
 or NEBIUS_PROJECT_ID is not its project; request access at tokenfactory.nebius.com/sandboxes/about".
 When ConTree's whoami lists the key's grants, it names the ones the key lacks instead. A made-up key
-and project also get a 403, not a 401, so the project id is the other suspect. A ConTree operation
+and project got a 403, not a 401, the one time a test reached ConTree by mistake, so the project id is
+the other suspect. A ConTree operation
 that runs past its time comes back as the command's exit 124, as Docker's does, so the leaf is told
 and goes on.
 
@@ -756,7 +757,7 @@ prints one PASS or FAIL line, the bill so far, and the next command; a failure s
 means. Every rung counts the key's and the project id's values in each file it wrote and fails on any,
 never showing them; rung 4 gives a `sleep 600` five seconds in the sandbox and needs exit 124 and
 the next command to run; rung 5 counts its recording for the key, the project, a home path and key-shaped words
-before it passes, and prints the `cp` that puts it in `tests/recordings/`, where CI replays and counts
+before it passes, and prints the command (`mkdir -p` and `cp`) that puts it in `tests/recordings/`, where CI replays and counts
 every recording (`tests/test_recordings.py`). `--dry` climbs all seven against the scripted fake and
 Docker. Live, rungs 2 to 7 run nothing from a shell with an agent's mark, unless the person started
 that session with `GRAPHENE_AGENT_LIVE_USD` set (P4b); a rung does not start past 80% of the night's
