@@ -287,3 +287,15 @@ def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, 
         assert "The ids are integers" in plan.get(store, "ids").goal
         B.pick(store, "which-id", 1, Caller("alex", True))
         assert "schema.py" in plan.get(store, "ids").scope
+
+
+def test_a_script_planner_or_executor_is_named_by_its_script_not_its_interpreter():
+    """Walks 2026-09-28 (alex 21, judge 17, first 19): with script planners the board read
+    `planner:python3's` and the log `run:python3`, the interpreter every script shares."""
+    from graphene_map import run
+
+    assert A.label(f"{sys.executable} /w/bin/planner.py") == "planner.py"
+    assert run.label("python3 -u /w/bin/executor.py --fast") == "executor.py"
+    assert A.label("bash ./plan.sh") == "plan.sh"
+    assert A.label("claude -p --tools Read") == "claude" and run.label("codex exec") == "codex"
+    assert A.label(A.named("nemotron")) == "nemotron" and run.label(run.named("nemotron")) == "nemotron"
