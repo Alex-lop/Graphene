@@ -71,8 +71,8 @@ and 109 (the teardown) first.
 ## The evidence
 
 - **The suite and CI:** 1,588 passed, 5 skipped, with every extra, at `8f450a5` (the last code commit;
-  21 min, the machine loaded); CI green on all seven jobs at `8f450a5`. After it only docs, the
-  morning file and two screens changed.
+  21 min, the machine loaded); CI green on all seven jobs at `8f450a5` and again at `1212ea3`,
+  after which only this line changed.
 - **The ladder, dry, on the final code:** all seven rungs PASS in 1 min 45 s (bill $0.0049, the
   fake's), each "no file holds the key". The wheel installs and `graphene demo --once` replays with no key.
 - **The closing review:** six adversaries and a skeptic per finding, 35 findings, all reproduced, all
