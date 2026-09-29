@@ -427,6 +427,35 @@ def test_a_word_shaped_like_a_key_is_taken_out_whole(tmp_path, monkeypatch):
         assert said == "Authorization: Bearer [removed: shaped like a key]", said
 
 
+# a scratch directory as Claude Code names one: a repository's name, a slash, a session's uuid
+LONG = "-Users-me-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35"
+
+
+def test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value(tmp_path, monkeypatch):
+    """A path is usable as printed, whatever long run of letters and digits it holds; the key and the
+    project (the environment's, and the keychain's key) are taken out wherever they are, a path too, and a
+    word shaped like a key anywhere else. The values are made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    where = f"/private/tmp/claude-501/{LONG}/pstate/demo.jsonl"
+    line = f"{where} replays (`graphene demo {where}`); log ~/x/{LONG}/rung-6.log"
+    typed = f"! GRAPHENE_LEDGER=/tmp/{LONG}/l.jsonl uv run python docs/test/access.py --out /tmp/{LONG}/a"
+    for shown in (line, typed):
+        assert practice.mask(shown) == shown
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-e00made0up")
+    monkeypatch.setattr(practice.keys, "find", lambda: "plain-keychain-key")  # shaped like nothing
+    said = practice.mask(f"/tmp/project-e00made0up/a.log key=plain-keychain-key {where}")
+    assert said == f"/tmp/[NEBIUS_PROJECT_ID]/a.log key=[NEBIUS_API_KEY] {where}", said
+    aws = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # base64 with slashes, not a path
+    assert practice.mask(f"secret {aws}") == "secret [removed: shaped like a key]"
+
+
+def test_the_ledger_path_status_prints_is_the_real_one(tmp_path):
+    state = tmp_path / LONG / "state"
+    done = ladder(tmp_path, "--dry", "status", PRACTICE_STATE=str(state))
+    assert done.returncode == 0 and f"; {state.resolve()}/ledger.jsonl" in done.stdout, done.stdout
+    assert "removed" not in done.stdout
+
+
 def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, monkeypatch):
     """What sandbox.Contree says with a key but no project id (a stub SDK, nothing sent) is read as that,
     both said by the rung (4) and only in the log under a leaf that did not land (3)."""
