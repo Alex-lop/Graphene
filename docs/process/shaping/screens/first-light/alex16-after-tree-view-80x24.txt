@@ -1,0 +1,24 @@
+ the plan of …0feb67e8-2716-49af-9e61-534376d64b35/scratchpad/wt-lab/tui1-feeds
+      the feed loader reads the XML supplier too · ◇ 5 open on the board…
+                                       │
+                                     ? xml
+                                the xml source
+             ┌─────────────────────────┼─────────────────────────┐
+       ? xml-reader             ? xml-register             ? xml-readme
+     read the xml feed      register xml in READERS    say xml in the README
+────────────────────────────────────────────────────────────────────────────────
+ the feed loader reads the XML supplier too
+ the goal · proposed with the tree: accepting any of it accepts it
+
+ ? the xml source                                                xml  proposed
+
+ waiting  xml is proposed, for you to accept or prune
+
+
+
+
+
+
+ you: 1 + 5 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y accept it all · E edit the plan as text · Tab view · ? help · q quit
+ graphene watch --view tree: 1 sub-goal · 3 leaves · 4 proposed

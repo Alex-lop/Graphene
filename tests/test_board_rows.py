@@ -197,7 +197,7 @@ def test_the_views_goal_line_counts_the_open_items(repo, monkeypatch):
     monkeypatch.setitem(V.VIEWS, "tree", view_tree)
     planned(repo)
     [seen] = drive(repo, [["tab"]], (120, 36))
-    assert "◇ 5 open on the board · users come back with their ids" in seen["view"][0]
+    assert "users come back with their ids · ◇ 5 open on the board" in seen["view"][0]
 
 
 def test_no_board_no_board_rows(repo):
@@ -317,10 +317,26 @@ def test_the_standing_conditions_are_a_dim_row_at_the_root_and_on_a_views_goal_l
     assert standing["at"] == "standing" and "graphene config shows them" in standing["status"]
     assert standing["detail"].startswith("conditions: protected secrets/**")
     goal = view["view"][0]
-    assert goal.lstrip().startswith("◇ 5 open on the board · conditions: protected secrets/**"), goal
+    said = "users come back with their ids · ◇ 5 open on the board · conditions: protected secrets/**"
+    assert goal.lstrip().startswith(said), goal
     with Store.open(repo) as store:
         S.apply(store, "size: auto\n", ALEX)
         assert BR.standing(store) is None
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_views_first_line_is_the_goal_whole_then_the_board_and_the_conditions(repo, size, monkeypatch):
+    """Walks 2026-09-28 (alex 16, judge 24): the tree's and the graph's first line read `conditions:
+    protected secrets/**, .env · read-only legacy/** · the Northwind…`, so at 80 columns the goal was
+    cut, and at 120 it read like one more condition. The goal comes first; what follows it is cut."""
+    monkeypatch.setitem(V.VIEWS, "tree", view_tree)
+    planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "protected: secrets/**, .env\nreadonly: legacy/**, vendor/**\n", ALEX)
+    [seen] = drive(repo, [["tab"]], size)
+    goal = seen["view"][0].strip()
+    assert goal.startswith("users come back with their ids · ◇ 5 open on the board · conditions"), goal
+    assert seen["at"] is None and seen["lines"][1].startswith("y accept it all")  # the cursor: the goal
 
 
 @pytest.mark.parametrize("size", SIZES)

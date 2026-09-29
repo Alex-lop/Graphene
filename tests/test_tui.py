@@ -827,6 +827,42 @@ def test_the_tree_takes_what_its_rows_need_from_110_columns_and_sits_above_the_p
     watch(repo, [], size=(120, 36), before=short)
 
 
+def test_the_board_items_folded_shut_do_not_widen_the_tree_beside_the_pane(repo):
+    """Walks 2026-09-28 (judge 24, first 22): at 120x36, with the board answered, the outline's pane
+    was as wide as the settled items' words, folded into one row, and its rows had some 40 empty
+    columns beside a node pane that wrapped everything."""
+    from test_board_rows import OPEN, planned
+
+    from graphene_map import board_rows as BR
+
+    planned(repo)
+    for item in OPEN[:-1]:
+        assert person("board", "take", item).exit_code == 0
+    from graphene_map import settings as S
+
+    with Store.open(repo) as store:  # every open item shows, the last one a note
+        S.apply(store, "board: on\n", plan.Caller("alex", True))
+    widths = []
+
+    async def before(app, pilot):
+        await pilot.press("y")  # the last item, answered on the screen: the board folds into one row
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        widths.append(app.query_one("#tree").region.width)
+        await pilot.press("g", "g", "j", "z", "o")  # the settled fold, opened
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        assert app.board_row() == BR.FOLD and app.tree.cursor_node.is_expanded
+        widths.append(app.query_one("#tree").region.width)
+
+    watch(repo, [], size=(120, 36), before=before)
+    shut, opened = widths
+    assert shut < opened, widths
+    assert shut >= 30  # still what its own rows need
+
+
 def test_the_node_pane_has_a_section_for_each_kind_and_nothing_blank_or_twice(repo):
     every_state(repo)
     said = {

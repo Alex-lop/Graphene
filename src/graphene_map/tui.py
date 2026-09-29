@@ -1127,10 +1127,12 @@ class Watch(App):
         if not tree.display:
             return
         if width >= WIDE:
+            opened = not any(n.data == BR.FOLD and not n.is_expanded for n in tree.root.children)
             need = max(
                 [2 * (len(P.above(n, by_id)) + 1) + 4 + len(n.title) for n in nodes]
                 + [2 * (len(P.above(by_id[i], by_id)) + 2) + 4 + len(_short(f["model"]))
-                   for i, mine in self.forks.items() for f in mine] + BR.widths(self.board), default=30
+                   for i, mine in self.forks.items() for f in mine]
+                + BR.widths(self.board, opened), default=30
             ) + 2 + ids + 2 + words + 2  # fmt: skip
             sized = ("wide", max(30, min(need, width - PANE - 3)))
         else:

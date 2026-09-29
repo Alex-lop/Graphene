@@ -1,0 +1,5 @@
+the feed loader reads the XML supplier too
+? xml-reader    read the xml feed
+? xml-register  register xml in READERS
+? xml-readme    say xml in the README
+none ready · 3 once accepted · 0 wait
