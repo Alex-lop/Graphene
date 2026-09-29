@@ -174,7 +174,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     @board_cli.command()
     def take(item_id: str = typer.Argument(None, help="None: every open item that has a default.")) -> None:
         """Take the default: yes to a question's default, confirm an assumption, agree to a leave-out.
-        With no id, every open item that has a default takes it, in one act."""
+        With no id, every open item that has a default takes it, in one act, except a default that
+        drops a node, which waits for its id."""
         if item_id:
             return act(f"board take {item_id}", lambda s, who, files: B.take(s, item_id, who, files))
         who, files = P.caller(), P.tracked(root())
@@ -184,9 +185,10 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                     raise P.Refused(f"answering the board is the person's, not {who.name}'s")
                 with P.undoable(store, who, "board take"):
                     taken = B.defaults(store, who, files)
+                kept = B.left(store)  # a default that drops a node waits for the person's key
             except P.Refused as no:
                 fail(str(no), 1)
-        out(B.took(taken) or "nothing open on the board has a default to take")
+        out(B.took(taken, kept) or "nothing open on the board has a default to take")
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
