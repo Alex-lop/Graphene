@@ -79,7 +79,7 @@ def test_unpark_opens_a_parked_item_and_refuses_one_that_is_not(repo):
     planned(repo)
     assert person("board", "park", "paging").exit_code == 0
     said = person("board", "unpark", "paging")
-    assert said.exit_code == 0 and said.stdout.startswith("open paging: pagination")
+    assert said.exit_code == 0 and said.stdout == "open paging\n"
     assert items(repo)["paging"]["state"] == "open"
     said = person("board", "unpark", "paging")
     assert said.exit_code == 1 and "paging is open, not parked" in said.output
@@ -204,6 +204,39 @@ def test_no_board_no_board_rows(repo):
     [seen] = drive(repo, [[]], (80, 24))
     assert seen["at"] is None and not any("settled" in r for r in seen["tree"])  # the goal, as before
     assert seen["status"].startswith("y accept it all")
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_board_that_asks_nothing_has_no_rows_no_line_and_no_count(repo, size):
+    planned(repo)
+    assert person("board", "take").exit_code == 0  # every default, in one act
+    assert person("board", "drop", "shape").exit_code == 0  # the agent's note: no default, so dropped
+    [seen] = drive(repo, [[]], size)
+    assert seen["at"] is None  # the goal, as with no board at all
+    assert not any(f" {i} " in r or "settled" in r for r in seen["tree"] for i in OPEN), seen["tree"]
+    assert "on the board" not in " ".join(seen["lines"])
+    shown = person("plan").stdout
+    assert "the board" not in shown and "on the board" not in shown
+
+
+def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
+    planned(repo, BOARD.replace("question: which id", "assume: which id").replace(
+        "    option: a uuid column, added to schema.py\n    then: scope ids + schema.py\n", ""))
+    with Store.open(repo) as store:
+        S.apply(store, "board: auto\n", ALEX)
+        assert not B.asks(store) and B.waiting(store) == (0, None)
+    [seen] = drive(repo, [[]], (80, 24))
+    assert seen["at"] is None and not any(" int-ids " in r for r in seen["tree"])
+    assert "the board" not in person("plan").stdout
+    accepted = person("plan", "accept").stdout  # what was not shown takes its default, in one line
+    assert "took the defaults of which-id, int-ids, empty-check, paging, left open" in accepted
+    agent("board", "note", "is the id a string?")  # a note is no question: auto still shows nothing
+    with Store.open(repo) as store:
+        assert not B.asks(store)
+        B.add(store, "question", "strings or ints?", P.Caller("planner:script", False, "s1"), default="ints")
+        assert B.asks(store) and B.waiting(store)[0] == 3  # a question: the board shows all that is open
+    [seen] = drive(repo, [[]], (80, 24))
+    assert seen["at"] == "strings-or-ints"
 
 
 def test_the_replay_refuses_every_board_key(tmp_path, monkeypatch):

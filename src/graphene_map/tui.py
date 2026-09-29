@@ -809,7 +809,7 @@ class Watch(App):
 
     def draw(self, store) -> None:
         nodes = V.shown(store)
-        self.board = BR.read(store)
+        self.board = BR.read(store, shown=bool(self.board.open or self.board.folded))  # rows stay once seen
         goal, proposed = P.goal(store), store.meta("goal:proposed")
         by_id = {n.id: n for n in nodes}
         under = P.kids(nodes, drawn=True)

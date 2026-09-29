@@ -69,7 +69,8 @@ KEYS = ["space pause", ". next", "r again"]  # the replay's own keys, first on t
 WORK = ("j ", "gg", "Enter", "l ", "za", "Tab", "? ", "q ", "ctrl-d", "Esc", "/")  # watch's that work here
 # the plan_meta keys the screen reads: the board's and the person's standing settings included
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
-        "settings:protected", "settings:readonly", "settings:never", "settings:size")  # read  # fmt: skip
+        "settings:protected", "settings:readonly", "settings:never", "settings:size",
+        "settings:board")  # read  # fmt: skip
 KEY, WORD, BASE64, REMOVED = tf.SHAPED, tf.WORD, tf.BASE64, tf.REMOVED  # shaped like a key: see there
 
 

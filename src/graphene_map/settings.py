@@ -13,12 +13,15 @@ import re
 from graphene_map import plan as P
 
 SIZES = ("auto", "finer", "coarser")
+BOARDS = ("on", "auto")  # on: every open item is shown; auto: the board shows only for a question
+SCALARS = {"size": SIZES, "board": BOARDS}  # a key with one value of a few, the first when unset
 GLOBS = ("protected", "readonly")  # a line of either holds globs, comma-separated; lines add up
 HEAD = """\
 # Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
 # protected: globs no scope may include      readonly: globs no leaf may write
 # never: one thing the planner must never propose, a line each
 # size: auto, finer or coarser (how big a plan the planner proposes)
+# board: on (every open item waits on you) or auto (only while a question is open)
 """
 
 
@@ -44,6 +47,12 @@ def never(store) -> list[str]:
 
 def size(store) -> str:
     return store.meta("settings:size") or "auto"
+
+
+def board(store) -> str:
+    """on (unset): the screen and the plan show every open item on the board. auto: they show the
+    board only while a question on it is open; what else is open takes its default at accept."""
+    return store.meta("settings:board") or "on"
 
 
 def conditions_for_planner(store) -> str:
@@ -99,7 +108,9 @@ def lines_for_screen(store) -> list[str]:
     """What `?` in graphene watch shows under the keys: every setting, a line each, then how to change
     them. The key's whereabouts are left to `graphene config`: a screen never asks the keychain."""
     said = [line.removeprefix("# ") for line in elsewhere(store)]
-    said += [line for line in render(store).splitlines() if line and not line.startswith("#")]
+    lines = [line for line in render(store).splitlines() if line and not line.startswith("#")]
+    one = [line for line in lines if line.partition(":")[0] in SCALARS]  # one line for the one-value keys
+    said += [line for line in lines if line not in one] + [" · ".join(one)]
     return [*said, "graphene config edit changes them"]
 
 
@@ -109,6 +120,7 @@ def render(store) -> str:
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
     out += [f"never: {n}" for n in never(store)]
     out.append(f"size: {size(store)}")
+    out.append(f"board: {board(store)}")
     return "\n".join(out) + "\n"
 
 
@@ -133,23 +145,25 @@ def apply(
     from a path only in case is refused, as a scope is. Returns the text as stored."""
     P._person_only(who, "changing Graphene's settings")
     got: dict[str, list[str]] = {"protected": [], "readonly": [], "never": []}
-    said_size = None
+    said: dict[str, tuple[int, str]] = {}  # a one-value key: (its line, its value)
     for no, line in enumerate(text.splitlines(), 1):
         body = line.strip()
         if not body or body.startswith("#"):
             continue
         key, colon, value = body.partition(":")
         key, value = key.strip(), value.strip()
-        if not colon or key not in (*got, "size"):
+        if not colon or key not in (*got, *SCALARS):
             raise P.Refused(
-                f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size"
+                f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size, "
+                "board"
             )
-        if key == "size":
-            if value not in SIZES:
-                raise P.Refused(f"line {no}: size is auto, finer or coarser, not {value!r}")
-            if said_size:
-                raise P.Refused(f"line {no}: size is said on line {said_size[0]} already")
-            said_size = (no, value)
+        if key in SCALARS:
+            if value not in SCALARS[key]:
+                *rest, last = SCALARS[key]
+                raise P.Refused(f"line {no}: {key} is {', '.join(rest)} or {last}, not {value!r}")
+            if key in said:
+                raise P.Refused(f"line {no}: {key} is said on line {said[key][0]} already")
+            said[key] = (no, value)
         elif key == "never":
             if not value:
                 raise P.Refused(f"line {no}: never: needs what the planner must never propose")
@@ -162,7 +176,7 @@ def apply(
             wrong = P.miscased([_glob(no, g) for g in globs], files or [])
             if wrong:
                 raise P.Refused(f"line {no}: {wrong}; spell it as git does")
-    if not (said_size or any(got.values())):  # an emptied text is a slip (an editor's crash), as in plan edit
+    if not (said or any(got.values())):  # an emptied text is a slip (an editor's crash), as in plan edit
         raise P.Refused("nothing is applied from a text with no setting in it; to clear them all, save "
                         "`size: auto` alone")  # fmt: skip
     with store.claim():
@@ -171,11 +185,13 @@ def apply(
             now = "; ".join(line for line in now_said.splitlines() if not line.startswith("#"))
             raise P.Refused(f"the settings were changed by someone else since this text was opened; they now "
                             f"say: {now}. Keep what you want of theirs and save again")  # fmt: skip
-        was = {k: _list(store, k) for k in got} | {"size": size(store)}
+        was = {k: _list(store, k) for k in got} | {"size": size(store), "board": board(store)}
         for key, values in got.items():
             store.set_meta(f"settings:{key}", json.dumps(values) if values else None)
-        store.set_meta("settings:size", said_size[1] if said_size else None)
-        now = {**got, "size": said_size[1] if said_size else "auto"}
+        for key, values in SCALARS.items():  # unset is the first value; stored only when it is another
+            value = said.get(key, (0, values[0]))[1]
+            store.set_meta(f"settings:{key}", value if value != values[0] else None)
+        now = {**got, **{k: said[k][1] if k in said else v[0] for k, v in SCALARS.items()}}
         changed = {k: [was[k], now[k]] for k in now if was[k] != now[k]}
         if changed:
             store.log_node("*", P._now(), "settings", who.label, None, None, {"changed": changed})

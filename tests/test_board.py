@@ -83,15 +83,22 @@ def test_the_planners_items_land_on_the_board_as_the_planners(repo, tmp_path):
     assert shown.exit_code == 0
     lines = shown.stdout.splitlines()
     assert lines[0] == "the board: 5 open"
-    assert lines[-1] == "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
+    assert lines[-2:] == [
+        "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT",
+        "left open, an item takes its default when you accept the plan",
+    ]
     assert max(len(line) for line in lines) <= 80  # 80 columns
     assert lines[1] == "questions" and lines[2].split()[-2:] == ["which-id", "open"]
     assert "      default: the row id; schema.py already has it" in lines
     option = lines.index("      1: a uuid column, added to schema.py")
-    assert lines[option + 1] == "         then: scope users + schema.py"
-    assert [line for line in lines[:-1] if not line.startswith(" ")] == [
+    assert not any("then:" in line for line in lines)  # what answering needs: the effects are in --all
+    every = person("board", "--all").stdout.splitlines()
+    at = every.index("      1: a uuid column, added to schema.py")
+    assert every[at + 1] == "         then: scope users + schema.py"
+    assert [line for line in lines[:-2] if not line.startswith(" ")] == [
         lines[0], "questions", "assumptions", "risks", "left out", "notes"
     ]  # fmt: skip
+    assert option
     as_json = json.loads(person("board", "--json").stdout)
     assert [it["id"] for it in as_json["items"]] == IDS
     assert as_json["conditions"] == []
@@ -99,19 +106,16 @@ def test_the_planners_items_land_on_the_board_as_the_planners(repo, tmp_path):
 
 def test_the_person_takes_picks_drops_parks_and_answers_each_by_cli(repo, tmp_path):
     planned(repo, tmp_path)
-    assert person("plan", "accept").exit_code == 0
     took = person("board", "take", "int-ids")
-    assert took.exit_code == 0 and took.stdout == "taken int-ids: ids are integers\n"
+    assert took.exit_code == 0 and took.stdout == "taken int-ids\n"  # one short line: it was just read
     picked = person("board", "pick", "which-id", "1")
-    assert picked.stdout.splitlines() == [
-        "picked which-id: which id: the row id or a new uuid? → a uuid column, added to schema.py",
-        "  changed: users: scope + schema.py",
-    ]
+    assert picked.stdout.splitlines() == ["picked which-id: option 1", "  changed: users: scope + schema.py"]
     assert person("board", "drop", "paging").exit_code == 0
     assert person("board", "park", "empty-check").exit_code == 0
     assert person("board", "answer", "shape", "keep", "it", "a", "list").exit_code == 0
     noted = person("board", "note", "no", "new", "dependency", "--about", "users")
-    assert noted.exit_code == 0 and noted.stdout.startswith("noted no-new-dependency: no new dependency")
+    assert noted.exit_code == 0 and noted.stdout == "noted no-new-dependency\n"
+    assert person("plan", "accept").exit_code == 0  # nothing left open has a default: nothing is taken
     with Store.open(repo) as store:
         states = {it["id"]: (it["state"], it["answer"]) for it in B.items(store)}
         assert states == {
@@ -131,9 +135,11 @@ def test_the_person_takes_picks_drops_parks_and_answers_each_by_cli(repo, tmp_pa
     assert wrong.exit_code == 1
     unknown = person("board", "park", "nothing")
     assert unknown.exit_code == 1 and "no item nothing on the board" in unknown.stderr
-    shown = person("board").stdout.splitlines()
+    no_zero = person("board").stdout.splitlines()[0]
+    assert no_zero == "the board: 1 parked, 4 settled, 1 dropped"  # never "0 open"
+    shown = person("board", "--all").stdout.splitlines()
     # walk 2026-09-28: the dropped item vanished here while watch counted it: it is listed, last
-    assert shown[0] == "the board: 0 open, 1 parked, 4 settled, 1 dropped"
+    assert shown[0] == "the board: 1 parked, 4 settled, 1 dropped"
     assert [line for line in shown[:-1] if not line.startswith(" ")][1:] == ["parked", "settled", "dropped"]
     assert any(" paging " in line and line.endswith("dropped") for line in shown)
 
@@ -168,10 +174,12 @@ pathlib.Path("api.py").write_text("def users():\\n    return ids\\n")
 
 def test_an_answer_reaches_the_executors_contract(repo, tmp_path, monkeypatch):
     planned(repo, tmp_path)
-    person("plan", "accept")
     person("board", "pick", "which-id", "1")
     person("board", "take", "int-ids")
     person("board", "note", "keep", "it", "short")
+    person("board", "park", "empty-check")
+    person("board", "drop", "paging")
+    person("plan", "accept")  # nothing it could take is left open: every answer here is the person's
     shown = person("node", "show", "users").stdout
     assert (
         "  goal:   users returns ids\n"
@@ -465,7 +473,7 @@ def test_wide_characters_keep_the_boards_columns_and_a_note_with_no_ascii_is_cal
         wide = B.note(store, "日本語のメモ", ALEX)
         B.note(store, "plain words", ALEX)
         assert wide["id"] == "note"  # not "node", which reads as the plan's
-        shown = rows(store)
+        shown = rows(store, everything=True)  # the person's notes are settled: listed with --all
     at = [
         cell_len(ln[: ln.index(f" {i} ")])
         for i in ("note", "plain-words")
@@ -510,7 +518,8 @@ def test_the_board_fits_80_columns_with_the_longest_id_an_agents_note_and_a_long
         T.apply(store, LONG + "question: a question whose id is long?  [abcdefghijklmnopqrstuvwxyz012345]\n"
                 "    default: yes\n", PLANNER, None)  # fmt: skip
         B.note(store, "the tests are slow on this machine", P.Caller("planner:script", False, "s1"))
-        shown = rows(store)
+        short, shown = rows(store), rows(store, everything=True)
+    assert max(cell_len(line) for line in short) <= 80, "\n".join(short)
     assert max(cell_len(line) for line in shown) <= 80, "\n".join(shown)
     assert any(
         line.rstrip().endswith("  abcdefghijklmnopqrstuvwxyz012345  open") for line in shown
@@ -549,7 +558,7 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
     took = person("board", "take", "vendor")
     said = "  changed: no leaf may write vendor/** (read-only, as `graphene config` shows)"
     assert took.stdout.splitlines()[1:] == [said]
-    assert "      changed: no leaf may write vendor/**" in person("board").stdout
+    assert "      changed: no leaf may write vendor/**" in person("board", "--all").stdout
     with Store.open(repo) as store:
         assert B.conditions(store) == ["vendor/**"] == S.readonly(store)
         assert S.for_screen(store)["readonly"] == ["vendor/**"]
@@ -600,7 +609,7 @@ def test_unpark_opens_a_parked_item_again_and_is_one_undoable_command(repo):
         T.apply(store, "assume: ids are integers  [int-ids]\n", PLANNER, None)
     person("board", "park", "int-ids")
     back = person("board", "unpark", "int-ids")
-    assert back.exit_code == 0 and back.stdout == "open int-ids: ids are integers\n"
+    assert back.exit_code == 0 and back.stdout == "open int-ids\n"
     again = person("board", "unpark", "int-ids")
     assert again.exit_code == 1 and "int-ids is open, not parked" in again.stderr
     assert person("plan", "undo").stdout == "undid: board unpark int-ids\n"
@@ -767,7 +776,7 @@ def test_an_item_about_a_node_that_left_the_plan_is_not_answered_and_the_pane_sa
         assert refused.exit_code == 1 and "which-id is about users, which has left the plan" in refused.stderr
     assert person("board", "drop", "which-id").exit_code == 0  # dropping it is still the person's
     with Store.open(repo) as store:
-        board = BR.read(store)
+        board = BR.read(store, shown=True)  # the fold on a screen that showed the board: nothing is open now
         pane = str(BR.pane(board, BR.Row("item", "which-docs"), {n.id: n for n in P.nodes(store)}, 80))
     assert "to no one: docs has left the plan" in pane and "the executors of docs" not in pane
 
@@ -824,3 +833,45 @@ def test_dropping_an_answered_item_says_the_read_only_glob_it_lifts_and_the_edit
         start = text.index("risk: again")
         said = T.apply(store, text[:start] + text[text.index("\n- ", start) :], ALEX, opened)
     assert any("no longer read-only: schema.py" in line for line in said), said
+
+
+def test_a_person_who_agrees_with_every_default_answers_nothing_and_accept_takes_them(repo, tmp_path):
+    planned(repo, tmp_path)
+    accepted = person("plan", "accept").stdout.splitlines()
+    assert accepted[0] == (
+        "accepted users; took the defaults of which-id, int-ids, empty-check, paging, left open on the "
+        "board (`graphene plan undo` takes them back)"
+    )  # one line, the first, which the screen's bottom line shows; the agent's note has no default
+    with Store.open(repo) as store:
+        states = {it["id"]: it["state"] for it in B.items(store)}
+        assert states == {"which-id": "taken", "int-ids": "taken", "empty-check": "taken", "paging": "taken",
+                          "shape": "open"}  # fmt: skip
+        took = [e for e in store.node_log(None, ("board",)) if e["detail"]["act"] == "took"]
+        assert len(took) == 4 and all(e["detail"].get("unchanged") for e in took)
+        accepted_by = {e["actor"] for e in store.node_log(None, ("accepted",))}
+        assert {e["actor"] for e in took} == accepted_by  # as the person
+        assert "sample-user-api" in {n.id for n in P.nodes(store)}  # the risk's default, applied
+    assert person("plan", "undo").exit_code == 0  # one act: the acceptance, and the defaults with it
+    with Store.open(repo) as store:
+        assert {it["state"] for it in B.items(store)} == {"open"}
+        assert P.get(store, "users").state == P.PROPOSED
+
+
+def test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_open(repo, tmp_path):
+    planned(repo, tmp_path)
+    assert person("board", "pick", "which-id", "1").exit_code == 0
+    refused = agent("board", "take")
+    assert refused.exit_code == 1 and "answering the board is the person's" in refused.stderr
+    took = person("board", "take")
+    assert took.stdout.startswith("took the defaults of int-ids, empty-check, paging, left open")
+    assert person("board", "take").stdout == "nothing open on the board has a default to take\n"
+    assert person("plan", "undo").exit_code == 0
+    with Store.open(repo) as store:
+        P.accept(store, ["users"], ALEX)  # as the store is, without the command: what is open stays open
+        assert [it["id"] for it in B.items(store) if it["state"] == "open"] == [
+            "int-ids", "empty-check", "paging", "shape"
+        ]  # fmt: skip
+    ran = person("run", "--with", "true", "--node", "users")
+    assert "took the defaults of int-ids, empty-check, paging, left open" in ran.stdout
+    with Store.open(repo) as store:
+        assert B.get(store, "which-id")["state"] == "picked"  # the person's own answer stays theirs

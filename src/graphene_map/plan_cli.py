@@ -686,12 +686,17 @@ def register(cli: typer.Typer, root, open_store, fail):
     def accept(ids: list[str] = typer.Argument(None, help="Node ids; none means every proposal.")) -> None:
         """Accept proposals into the plan, and say what an unattended run will and will not reach."""
 
+        files = tracked()  # asked before the plan's write lock, as `write` says
+
         def go(store):
             by_id = {n.id: n for n in P.nodes(store)}
             goal_was = P.goal(store)
             accepted = P.accept(store, ids or [], P.caller())
-            if accepted:  # first, in a line: what the screen's bottom line gives of it
-                out(f"accepted {', '.join(n.id for n in accepted)}")
+            took = None
+            if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
+                took = B.took(B.defaults(store, P.caller(), files))  # open on the board takes its default
+            if accepted:  # first, in a line: what the screen's bottom line gives of it, the defaults too
+                out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
                 out(one_row(store, n, len(P.above(n, by_id))))
             if P.goal(store) != goal_was:
@@ -839,6 +844,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 fail("nothing to run: the plan has no open leaf", 1)
             said_where()  # first: a run changes the plan for as long as it goes
+            who = P.caller()
+            if who.person and any(B.has_default(it) for it in B.items(store)):  # R takes what was left open
+                files = P.tracked(r)  # before the write lock, never under it
+                with P.undoable(store, who, "board take"):
+                    took = B.took(B.defaults(store, who, files))
+                if took:
+                    out(took)
             logs = r / ".graphene" / "runs"
             template = named(executor or store.meta("executor"))  # --with, else the repo's (`graphene init`)
             since = len(store.node_log())  # what this run did is what the log says after this

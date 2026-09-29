@@ -93,7 +93,13 @@ def standing(store) -> str | None:
     return "conditions: " + " · ".join(said) if said else None
 
 
-def read(store) -> Board:
+def read(store, shown: bool = False) -> Board:
+    """The board as the screen shows it. When it asks nothing (``board.asks``: nothing open, or with
+    `board: auto` no question open) there is no board at all, only the standing conditions, unless its
+    rows are ``shown`` already: then what was answered here folds, so a key pressed once too often
+    lands on the fold and not on a node."""
+    if not (shown or B.asks(store)):
+        return Board(standing=standing(store))
     groups = B.groups(store)
     folds = ("parked", "settled", "dropped")
     return Board(
