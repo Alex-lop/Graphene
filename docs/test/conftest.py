@@ -1,7 +1,17 @@
-"""The keychain is off here as in tests/: nothing in docs/test reads a developer's real key, or counts on
-the real night's bill."""
+"""The keychain is off here as in tests/, and tests/keyguard.py guards it: nothing in docs/test reaches a
+developer's real keychain, or counts on the real night's bill."""
+
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / "tests"))
+import keyguard  # noqa: E402
+
+
+def pytest_configure(config):
+    keyguard.install(config)
 
 
 @pytest.fixture(autouse=True)
