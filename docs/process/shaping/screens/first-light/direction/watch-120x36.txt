@@ -1,0 +1,36 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-uju_dtbn
+ ? Graphene is the shared plan between a person and…       graphene     proposed  · you 11 · 12 running · next: accept…
+   ? Graphene runs live on Nemotron and Token Factory      live         proposed  · you 4 · 8 running · next: accept…
+     ? first contact: the ladder's rungs pass live, and…   first-light  proposed  · you 1 · 8 running · next: lane-a
+▼ ○ first light: Graphene meets a real model for the first…    0/10 done │ first light: Graphene meets a real model
+├   ○ A. first light: rungs 2 to 5 live, and the…    lane-a    ready     │ for the first time, as practice, under $10
+├   ○ B. the rough cut, in real time                 lane-b    ready     │ the goal · 0/10 done
+├ ▼ ○ C. what the shaping run left broken            lane-c    0/5 done  │
+│ ├   ○ the board earns its place                    board     ready     │ ○ A. first light: rungs…   lane-a  ready
+│ ├   ○ nothing Graphene starts outlives what…       teardown  ready     │ ○ B. the rough cut, in…    lane-b  ready
+│ ├   ○ no test reaches the keychain                 keychain  ready     │ ○ C. what the shaping…     lane-c  0/5 done
+│ ├   ○ the hook's time under load                   hook      ready     │ ○ D. the direction, with…  lane-d  ready
+│ └   ○ walks.md's rough edges                       walks     ready     │ ○ E. ready for the…        lane-e  ready
+├   ○ D. the direction, with everything attached     lane-d    ready     │ ◌ F. polish and the…       lane-f  waiting
+├   ○ E. ready for the session with Alex             lane-e    ready     │
+└   ◌ F. polish and the closing review               lane-f    waiting   │ waiting  lane-f on lane-a (ready), lane-b
+                                                                         │          (ready), lane-c (0/5 done), lane-d
+                                                                         │          (ready), lane-e (ready)
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 0 · executors: none · R runs 9 ready · 0/10 done · plan first: on (P)
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help · q quit

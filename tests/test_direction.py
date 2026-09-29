@@ -150,6 +150,9 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         _event(store, repo, "UserPromptSubmit", other, _stamp(now, 600), prompt="fix the readme\nplease")
         _event(store, repo, "PostToolUse", other, _stamp(now, 590), tool_name="Write",
                tool_input={"file_path": str(repo / "README.md")}, tool_response={})  # fmt: skip
+        helper = "b0b0b0b0b0b0b0b0"  # its session's turn ended after its last call: it ended too
+        _event(store, repo, "SubagentStart", other, _stamp(now, 595), agent_id=helper)
+        _event(store, repo, "PostToolUse", other, _stamp(now, 594), tool_name="Grep", agent_id=helper)
         _event(store, repo, "Stop", other, _stamp(now, 580))
         _event(store, repo, "UserPromptSubmit", "01d00000-0000", _stamp(now, 2 * D.DAY), prompt="old")
         _event(store, repo, "UserPromptSubmit", "1d1e0000-0000", _stamp(now, D.IDLE + 60), prompt="quiet")
@@ -174,7 +177,7 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
     assert (loose["node"], loose["word"], loose["label"]) == (
         None,
         "your turn",
-        "a Claude Code session: fix the readme",
+        "session: fix the readme",
     )
     live = next(n for n in st["nodes"] if n["id"] == "live")
     assert (live["word"], live["running"], live["you"]) == ("running", 2, 0)  # the leaf and the session

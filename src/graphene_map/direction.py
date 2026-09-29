@@ -418,7 +418,7 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
                 Worker(
                     f"{sid}/{aid}",
                     aid[:8],
-                    tasks.get(aid) or f"a {aid[:8]} subagent",
+                    tasks.get(aid) or "a subagent",
                     word,
                     did(*row[2:]),
                     a_end or row[1],
@@ -433,13 +433,14 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             word = "running"  # its turn may be over, or it waits on a subagent: its subagents work
         elif turn_over:
             word = "your turn"
+            agents = [a for a in agents if a.word != "idle"]  # its turn ended after them: they did too
         else:
             word = "running" if _age(heard, now) <= ALIVE else "idle"
         if word == "idle" and _age(heard, now) > IDLE:
             older += 1
             continue
         first = said.strip().splitlines()[0] if said.strip() else ""
-        label = f"a Claude Code session: {first}" if first else "a Claude Code session"
+        label = f"session: {first}" if first else "a session"
         last_line = did(*mine[2:]) if mine else "nothing yet"
         if running and (turn_over or _age(heard, now) > ALIVE):
             last_line = f"{running} of its subagents running"

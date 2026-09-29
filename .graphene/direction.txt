@@ -1,0 +1,15 @@
+# Graphene's direction. Proposed by the agent that ran the first-light directive (2026-09-29), from
+# docs/DIRECTION.md, the directives and the briefs: every node is "?", a proposal until Alex accepts
+# it (make the "?" a "-", or `graphene direction accept ID`). `graphene direction` shows it live.
+? Graphene is the shared plan between a person and their coding agents  [graphene]
+    the person shapes it, the agents are held to it, and every node has a record
+  ? Graphene runs live on Nemotron and Token Factory  [live]
+    ? first contact: the ladder's rungs pass live, and every number comes from the ledger  [first-light]
+    ? Sandboxes: a leaf runs in a forked checkpoint once the project has access  [sandboxes]
+    ? the registered runs, rung 6 and the shaping study, with me there  [with-alex]
+  ? the board earns its place, or stays out of the way  [board]
+  ? the direction: my goals above the plans, with every session attached  [direction]
+  ? nothing Graphene starts outlives what started it  [teardown]
+  ? the submission by 30 October  [submission]
+    ? the rough cut, from live footage only  [rough-cut]
+    ? the video, the demo page and HACKATHON.md in my words  [video]
