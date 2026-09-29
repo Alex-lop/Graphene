@@ -171,3 +171,34 @@ def test_whoami_says_before_any_leaf_whether_the_project_is_refused(monkeypatch)
     assert sandbox.refused() == REFUSED.format(sandbox.NO_GRANT)
     monkeypatch.setattr(contree_sdk, "ContreeSync", asking(OSError("offline")))
     assert sandbox.refused() is None
+
+
+def test_a_contree_error_whose_body_echoes_the_key_or_the_project_is_said_without_them(monkeypatch):
+    """A gateway page that echoes the request's headers comes back from contree-sdk as its own error, whose
+    message is the page. It is said as ConTree's error, with the key, the project id and anything shaped
+    like a key taken out before it is cut, as Token Factory's is (tokenfactory._request): that message is
+    a leaf's reason, the run's output, the pane and the log. The SDK's time limit still reaches _run as it
+    is. Stubs only; the key and the project are made up."""
+    from contree_sdk.sdk.exceptions import ApiStatusCodeError
+    from fake_faults import persons_shell
+
+    key, project = "Kq7" + "w" * 30, "proj-planted-0042"
+    page = f"Bad Gateway. Request headers: Authorization: Bearer {key}; Project: {project}; " + "x" * 400
+
+    class Image:
+        def run(self, **_):
+            raise ApiStatusCodeError(status=502, error=page)
+
+    class Sdk:
+        images = type("Images", (), {"oci": lambda self, ref: Image(), "use": lambda self, ref: Image()})()
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", project)
+    with pytest.raises(RuntimeError) as no:
+        sandbox.Contree().run("img-1", "true", {}, 5)
+    said = str(no.value)
+    assert key not in said and project not in said and "Kq7" not in said, said
+    assert said.startswith("ConTree answered with an error (ApiStatusCodeError): ") and "status=502" in said
+    assert "Authorization: Bearer …" in said and len(said) <= 400

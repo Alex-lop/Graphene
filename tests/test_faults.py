@@ -330,6 +330,27 @@ def test_a_project_sandboxes_refuse_brings_each_leaf_back_saying_what_it_means_a
     assert "Traceback" not in logs and "ForbiddenError" not in logs
 
 
+def test_a_contree_error_page_that_echoes_the_key_reaches_no_reason_pane_or_log(
+    repo, fake, monkeypatch, tmp_path
+):
+    """A gateway in front of ConTree answers 502 with a page echoing the request's headers (a stub SDK
+    raising its own ApiStatusCodeError; nothing sent). Each leaf comes back with ConTree's error, and
+    neither the key nor the project id is in its reason, the run's output, the pane or the executor's log,
+    as Token Factory's same echo is kept out (tokenfactory._request)."""
+    pytest.importorskip("contree_sdk")
+    project = "proj-planted-0042"
+    persons_shell(monkeypatch)
+    everywhere(monkeypatch, tmp_path, FAULTS_SDK="echoing", NEBIUS_PROJECT_ID=project)
+    monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
+    _, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    with Store.open(repo) as store:
+        whys = [store.node_log(n, ("released",))[-1]["detail"]["why"] for n in ("greet", "farewell")]
+    logs = "".join(p.read_text() for p in (repo / ".graphene" / "runs").glob("*.txt"))
+    seen = " ".join([*whys, *said, pane(repo, "greet"), logs])
+    assert all("ConTree answered with an error (ApiStatusCodeError)" in w and "502" in w for w in whys), whys
+    assert "fake-key" not in seen and project not in seen and "Authorization: Bearer …" in seen
+
+
 def test_a_command_the_box_stopped_for_time_says_so_and_brings_nothing_back(repo, monkeypatch, tmp_path):
     """The box's own time limit hands back the image it was given: its list of files was the last
     command's, and was read as this one's (exit 0)."""
