@@ -1,116 +1,143 @@
-# morning.md — 2026-09-28 — the shaping directive
+# morning.md — 2026-09-29 — the first-light directive
 
 ## The brief
 
-**Do first**
-1. (10 s) Remove a fake key a test left in your keychain: `security delete-generic-password -s graphene -a token-factory`
-2. (2 min) The key in `~/.zshenv`: `export NEBIUS_API_KEY=… NEBIUS_PROJECT_ID=…`, then a new shell.
-3. (10 min) In a terminal of your own, not Claude Code: `docs/test/practice.sh`, rungs 1-3 (`docs/test/PRACTICE.md`).
+**Watch first**
+- No rough cut: its takes are live, and nothing live ran (below). The same cut on the stand-ins, REHEARSAL on every frame: `open ~/graphene-first-light/rehearsal.mp4` (2 min 26 s; subtitles: View > Subtitles). The real one: `docs/demo/build.sh`.
+
+**What ran live** — $0.0029 of $10, all yours (12 ledger rows: three access checks and one leaf)
+- Rung 1 PASS 01:14, rung 2 PASS 01:16: Graphene has made a runtime call to Token Factory. Sandboxes answered 403 (ForbiddenError).
+- Rungs 3-7: not run. `GRAPHENE_AGENT_LIVE_USD` was not in this session's environment, so I ran nothing live; your commands are under "Your commands".
 
 **New tonight**
-- The planner asks, you answer with a key: `graphene board` (rows under the goal in `graphene watch`)
-- The plan as a tree and a graph of what waits: `graphene plan --view dag` (Tab in `watch`)
-- Settings you state once: `graphene config`, `graphene key check`
-- Talking on the tree: `?` on a node in `graphene watch`; `graphene plan changes`
-- Ready for the key: `docs/test/practice.sh --dry` climbs all seven rungs on stand-ins (3 min)
+- An agent practises live only in a session you start with `GRAPHENE_AGENT_LIVE_USD` set, on one locked night's bill: `docs/test/practice.sh night`
+- The board asks only while a question is open; accepting takes the defaults you left, one that drops a leaf waits for you (`board: auto`, study 4): `graphene board`
+- The direction: Graphene's goals above its plans, sessions hung from them: `graphene direction` (`D` in watch)
+- A closed terminal now ends `watch`, `demo` and a run's executors and checks: `tests/test_teardown.py`
+- What waits on you live, in order, with commands, costs and times, on one screen: `docs/test/LIVE_SESSION.md`
 
 **Decide**
-- Keep the board on by default though it cost more attention than the outline? Default: yes (DIRECTION 98-99).
-- Run the full study (with executors) inside the live run, `graphene run` starting them? Default: yes.
-- Re-asking with `+`/`-` moves your answers about dropped leaves to the whole plan. Default: keep.
+- The branch has 150 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
+- Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
+- In the registered runs a stand-in's `as_me` drops Claude Code's marks, so `arm_a.py` spends your key under `GRAPHENE_SPEND_CAP_USD` only, not the night's cap. Default: allow it, set that cap by hand, and start `arm_bprime.py` from your own terminal (`docs/test/LIVE_SESSION.md`).
 
 **Broken or risky**
-- The board does not yet save attention: about twice the modelled seconds (study 2), less with 1-2 items (study 3).
-- 15 `graphene demo` replays from a test loop kept spinning after their terminals were gone; not yet explained.
-- The keychain item in step 1. Every test now runs with the keychain off.
+- Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
+- Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
+- Other harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); shells that read `~/.zshenv` gave stand-ins your key (only the local stand-in saw it); Playwright files in your git-ignored `.playwright-mcp/`, removed; my integration worktree deleted twice (03:04, 05:22), cause unknown, the branch intact.
 
 ---
 
 (Everything below the brief: what was decided, the evidence, the screens, the state of every branch.
-The winning run's morning is `morning-2026-09-26.md`.)
+The shaping run's morning is `morning-2026-09-28.md`.)
 
-## What was decided, and why
+## What I found at the start (01:30 EDT)
 
-Every decision is in `docs/DIRECTION.md`, 81 to 99, each with its evidence. Read 84, 98 and 99 first.
+- `GRAPHENE_AGENT_LIVE_USD` is unset in this session (`env | grep -c GRAPHENE_AGENT_LIVE_USD` gave 0).
+  I did not set it. A desktop notification went to you at 01:40 in case you were still up.
+- Your checkout was on `fix-replay-teardown` with uncommitted edits to `README.md` and
+  `docs/process/morning.md` (a formatting pass, and a new opening for the README), not to
+  `tests/test_demo.py`: the replay-teardown commits were already merged as PR #33. I carried the
+  README's new opening into `first-light` as your edit, and left the rest of your checkout untouched.
 
-- **81-84, the board.** The planner puts up questions (each with the default it would assume),
-  options, risks and what it would leave out, before the tree; you answer each with one key (`y`
-  take, `1`..`9` pick, `d` drop, `p` park, Enter your words). An answer reaches the executors as a
-  `decided:` line, and an option's `then:` lines change the tree (scope, check, goal, drop, a leaf, a
-  condition) as your edit, undone by `u`. On the screen it is rows of the outline under the goal. Two
-  screens were built and tried by three stand-ins; they tied, and rows won the tie
-  (`docs/process/shaping/evaluation.md`).
-- **85-87, the views.** Tab cycles the outline, a top-down tree and a left-to-right graph of `needs`
-  with the critical path; `auto` picks one only where it shows more than the outline. The outline
-  stays the default: in the trials it answered most questions on the first screen.
-- **88, talking on the tree.** `?` on a node: why, split, merge, another way, answered by the planner
-  onto the board; `+`/`~` mark what someone else changed since you pressed `m`.
-- **89-92, settings you state once.** Keys (environment, then the keychain, never a file; person
-  only), standing conditions (protected, read-only, never propose; held at propose, edit, start,
-  every write and done), plan size (`+`/`-` re-ask finer or coarser), one text form in `graphene
-  config`. No keymap setting: nobody needs one yet.
-- **93, the ladder.** Seven rungs, each with its cap, PASS or FAIL, the bill and the next command.
-- **94, Nemotron while you shape.** Twenty ideas ranked (`docs/process/ideas.md`); three prototypes
-  (cover, note, precheck) behind `GRAPHENE_SHAPE`, each also a command, run only against the stand-in.
-- **95-99, how the night ran and what the evidence says.** Lane B went through Graphene itself
-  (`docs/process/shaping/as-the-person.md`: ten leaves in 29 minutes, and the planner's questions
-  scrolling away as prose were the board's case); the keychain incident; the pinned study build; the
-  board's cost; prompt version 4.
+## Your commands
+
+Nothing live ran in this session. These are the commands for what the directive meant to run:
+
+- **Sandboxes first.** Rung 1 met `ForbiddenError` (403). What the key lacks, a read that spends
+  nothing: `uv run --frozen --extra sandbox python -c "from graphene_map import sandbox; print(sandbox.refused() or 'Sandboxes do not refuse this project')"`.
+  Access is asked at tokenfactory.nebius.com/sandboxes/about. A made-up key also gets a 403, so check
+  `NEBIUS_PROJECT_ID` names the key's project.
+- **An agent practising, as tonight meant to:** in your terminal `export GRAPHENE_AGENT_LIVE_USD=10`,
+  then `claude` in a checkout of `first-light`; the agent (or you, with `!`) runs
+  `docs/test/practice.sh 5` (no Sandbox needed), then `3`, `4` and `7` once Sandboxes let the project
+  in, `docs/test/practice.sh prototypes`, and `docs/test/practice.sh night` for the bill (at most $10,
+  nothing new past $8). The opening only opens the ladder; `ask`, `talk` and the prototypes' own
+  commands stay yours.
+- **From your own terminal** the same commands work; with the export they go on the same night's bill.
+  Unset it before any registered run: `evidence.py` refuses whatever was made under it.
+- **Rung 5's recording into CI:** `cp .graphene/practice/leaf.jsonl tests/recordings/first-light-rung-5.jsonl`, commit; CI replays it and counts it for secrets.
+- **The rough cut:** `caffeinate -i env EXECUTOR='nemotron --placement local' docs/demo/build.sh`
+  (15 to 35 minutes, up to $3), then `open docs/demo/rough.mp4`; drop `EXECUTOR` once rung 3 passes.
+- **The session with Alex** (the registered arms, rung 6, the shaping study with executors, the final
+  recording): `docs/test/LIVE_SESSION.md`.
+
+## What was decided
+
+`docs/DIRECTION.md` 101 to 131, each with its evidence. Read 101-103 (the opening, the night's bill,
+spending as your act), 108 (the board's default, by study 4), 112-115 (the direction and its study)
+and 109 (the teardown) first.
 
 ## The evidence
 
-- **The suite:** 1359 passed, 2 skipped at `ba7701a` (the full suite, 29 min); the three 60 ms hook
-  time-budget tests failed under a load of about 30 and pass on the final head once it is quiet (4
-  passed). The race fixes merged after it (`g-flaky`, four files) were run on their own: 85 passed.
-  ruff clean.
-- **CI: green on all seven jobs for this code** (Linux and macOS, Python 3.12, 3.13 and 3.14, and the
-  page). It ran before the reshaping, as `71e0e17`; `172bd1d` is the same tree, the last commit that
-  changes code, and CI runs again on the new head.
-- **The ladder, dry, on the final head:** all seven rungs PASS in 1 min 43 s, bill $0.0049 against
-  the stand-ins; the fake key given to it appears in nothing it wrote.
-- **The evaluation:** 12 board trials and 3 graph trials by three stand-ins in a logged tmux seat, at
-  80x24 and 120x36, on feeds, tonight's plan and the thirty-leaf plan (`evaluation.md`, `screens/`).
-- **The shaping studies** (`docs/test/results-2026-09-28-shaping.md`, each registered before its
-  runs): study 1 never ran (the classifier); study 2, shaping only, eight runs; study 3, exploratory.
-- **The live pre-registration** (`docs/test/results-2026-09-28-live-prereg.md`), the sealed
-  paragraphs, arm A's harness, the B′ harness, and `docs/test/evidence.py` for the table and chart.
-- **The next run's directive, a draft for you to edit:** `docs/process/directives/LIVE_DIRECTIVE_DRAFT.md`.
-- **Screens** before and after every changed view: `docs/process/shaping/screens/{before,after}/`.
-- **Not verified:** anything on Token Factory or in a Sandbox (no key tonight); the board on a real
-  person; the prototypes' cost and use live.
+- **The suite and CI:** 1,588 passed, 5 skipped, with every extra, at `8f450a5` (the last code commit;
+  21 min, the machine loaded); CI green on all seven jobs at `8f450a5` and again at `1212ea3`,
+  after which only this line changed.
+- **The ladder, dry, on the final code:** all seven rungs PASS in 1 min 45 s (bill $0.0049, the
+  fake's), each "no file holds the key". The wheel installs and `graphene demo --once` replays with no key.
+- **The closing review:** six adversaries and a skeptic per finding, 35 findings, all reproduced, all
+  fixed with a test that failed before (DIRECTION 131).
+- **Studies on stand-ins** (Claude sub-agents, not people; n = 1 a cell): study 4, the board after
+  tonight's changes against the outline, registered and its build pinned before any run
+  (`docs/test/results-2026-09-29-board.md`): as faithful or more on 4 of 4 tasks, more modelled
+  attention on 3 of 4, so `board: auto`. The direction against `morning.md`
+  (`docs/test/results-2026-09-29-direction.md`, 12 runs): no advantage shown (143.9 against 105.4
+  modelled person-seconds, all right); after the naming fix, an exploratory pass: 104.1 against 107.4.
+- **The walks:** the 72 findings of 28 September all fixed or closed with a reason
+  (`docs/process/shaping/walks.md`, "First light's verdicts"); 46 new ones from tonight's three
+  walkers, 38 about the product, each fixed with a test or closed with a reason (DIRECTION 119-127).
+- **Screens:** `docs/process/shaping/screens/first-light/` (the terminal before and after at 80x24 and
+  120x36, the page at 1280 and 390, the direction), and the rehearsal video at
+  `~/graphene-first-light/rehearsal.mp4`.
 
-## The closing review
+## What went wrong in the harness (none of it spent, and no key of yours left the machine)
 
-Five adversaries (the board, the views, settings and keys, the ladder, the claims) went over
-`cb2ce54..125fc7c`, each finding reproduced from scratch by a skeptic before any fix: 48 findings,
-45 confirmed, 3 refuted. Six were blockers, all fixed with a test each (DIRECTION 100): a re-ask that
-lost the tree when the planner failed, a re-ask that took a split's proposals with it, a crash on a
-joined emoji, a shell write to a git-ignored protected path that nothing saw, a key echoed back in a
-Token Factory error, and `HACKATHON.md` hiding the studies' result. Before it, three walkers of the
-whole path filed 72 rough edges (`docs/process/shaping/walks.md`); 18 were fixed and 3 in part (lane F).
+- `GRAPHENE_AGENT_LIVE_USD` did not reach this session, so the night's live half did not happen.
+- About 02:00, a lane's test ran `docs/proof/nemotron.sh` against the fake with a made-up project id
+  and the sandbox extra: its leaves called the real ConTree with the fake's key "fake-key" (403). The
+  chokepoint now refuses ConTree to any process with an agent's mark and no opening.
+- The rehearsal's tmux stage and the walkers' seats started shells that read `~/.zshenv`, so your key
+  was in their environment: the rehearsal sent it to the local stand-in on 127.0.0.1 (which keeps no
+  headers); no walker chose Nemotron or ran a live command. The stage now starts `/bin/bash` directly.
+- Playwright MCP wrote three snapshot and console files into your checkout's git-ignored
+  `.playwright-mcp/`; I removed exactly those three.
+- At 03:04 my integration worktree was deleted, all but part of `src/` and `tests/`, during a test run;
+  the same files rerun one by one deleted nothing, and the cause is not known. The branch was intact.
+  The closing review had an adversary on it.
+- At 04:45:51 your main repository's `core.bare` became `true`. I had run `git bisect run` over a test
+  in one of my worktrees; git exports GIT_DIR there, and before the guard (`499a6da`, both conftests
+  now drop git's location variables) a test's `git -C tmp init` re-initialised the shared repository.
+  Only `core.bare` changed (every other local key is as it was; no identity was written). The fix,
+  `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`, was refused to me by the
+  classifier, so it is yours. The closing review's destructive-operations adversary found the same
+  hazard independently (finding 34) and reproduced it in a throwaway clone.
+- At about 05:22 my second integration worktree was deleted as the first had been (all but part of
+  `src/`), just after a commit; the branch was intact, and I moved to a worktree whose local branch has
+  another name (`coord-integ`, pushed as `first-light`). The agents running then each said they
+  removed nothing outside their own worktrees; the cause is not known.
+- The direction's screens (`docs/process/shaping/screens/first-light/direction/direction-{80,120}.txt`)
+  showed three of your other sessions from this repository's store as rows: the first words of a
+  prompt and a tool call's description each. They are left out at the head (labelled so); the
+  commits before it on `first-light` still hold them, and a reshape of the history (the first
+  question) would drop them.
+- The stash list is shared by every worktree: two lanes' `git stash push`/`pop` swapped each other's
+  uncommitted work at about 05:25. Both put their own work back from patches; every commit was checked
+  to hold only its lane's files, and no agent used the stash after.
+- This session's classifier refused one stand-in's commands in study 4 (rerun under its rule, the
+  failed run kept) and my own look at a process's environment (I did not pursue it).
 
 ## State of every branch
 
-- **`shaping`:** this run, pushed; draft PR #31.
-- **The history was reshaped** on the morning of 28 September, at your request: 333 commits became
-  46, one per feature or step, each a state the branch really passed through, and the last one's tree
-  identical to what CI passed. Every hash in this file and in `DIRECTION.md` is in the new history, except where one says it is the old one.
-  The old 333 are on `shaping-full-history` (`git push --force origin shaping-full-history:shaping`
-  puts them back).
-- **Merged into `shaping`** and kept (`git branch -d` drops them): every lane, fix and study branch
-  tonight (`lane-*`, `integ`, `a-final*`, `f-*`, `g-*`, `study3`, `scribe`, `cover-fix`, `note-fix`,
-  `precheck-fix`, `worktree-*`), and `lane-b` from `~/graphene-night`.
-- **Not merged, deleted by decision 84:** `lane-a-board-view` (its screens stay in `screens/view-*`).
-- **`main` (GitHub):** `cb2ce54`, untouched. Local `main`: behind, untouched.
-- **Outside the repo:** `~/graphene-night` (lane B's run), `~/graphene-shaping-runs`,
-  `~/graphene-shaping3-runs` and their venvs (the studies' run directories, which hold the cards'
-  briefs: do not publish them).
+- **`first-light`:** this run, pushed; draft PR #34. Its lanes were cherry-picked onto it
+  (`fl-open`, `fl-a`, `fl-b`, `fl-board`, `fl-teardown`, `fl-keyguard`, `fl-hook`, `fl-walks-tui`,
+  `fl-walks-page`, `fl-dir`, `fl-e`, `fl-docs`: local only, `git branch -D` drops them).
+- **`main`:** `cbfbe0f`, untouched. Your checkout: on `fix-replay-teardown`, its uncommitted edits
+  as you left them.
+- **Outside the repo:** `~/graphene-board4-runs` and `~/graphene-board4-venv` (study 4; they hold the
+  cards' briefs: do not publish), `~/graphene-direction-runs` (the direction study), and
+  `~/graphene-first-light/rehearsal.mp4`.
 
 ## Rollback
 
-Before the first change, `main` on GitHub was `cb2ce54` (your merge of PR #30). This run is the
-branch `shaping`, cut from there; nothing touches `main`.
-
-```
-git checkout main && git reset --hard cb2ce54
-```
+`first-light` was cut from `origin/main` at `cbfbe0f` (the merge of PR #33). Nothing on `main` moved.
+To drop everything this run did: close the draft PR and `git push origin --delete first-light`.

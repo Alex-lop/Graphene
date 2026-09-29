@@ -190,6 +190,7 @@ export interface PlanNode {
   waits: string[]; // why it is not moving, in sentences
   log: Entry[];
   forks: Fork[]; // its last attempt's forks, from one checkpoint: the one that passed is what landed
+  decided: string[]; // what the board decided that its executor is told, as `node show` prints it
   lane: string;
   column: number;
   row: number;
@@ -238,12 +239,35 @@ export interface Waiting {
   why: string;
 }
 
+// One item on the board, as the terminal's row reads it (board_rows.py): its kind as a verb while it is
+// open (asks, assumes, risk, leaves out, note), else its state (taken, picked, parked, dropped, …).
+export interface BoardItem {
+  id: string;
+  word: string;
+  text: string;
+  default: string | null;
+  options: string[];
+  about: string | null;
+  by: string; // who put it up, in a person's words
+  said: string; // as the executors are told it, with the answer
+}
+
+// The board, which the page shows and never answers: open items, the rest folded into the terminal's
+// one count, and the standing conditions' one line (null when there are none).
+export interface Board {
+  open: BoardItem[];
+  folded: BoardItem[];
+  counts: string;
+  standing: string | null;
+}
+
 export type Hole = "scope" | "check" | "stop" | "person";
 
 export interface Plan {
   version: number;
   repo: string; // the checkout, by name: a plan exists before any run has been recorded in it
   goal: string; // the root of the tree: why any of this is being done, in the person's words
+  goal_proposed: string; // while there is no goal: the planner's sentence, which accepting the tree accepts
   person: string;
   paused: boolean;
   width: number;
@@ -266,11 +290,66 @@ export interface Plan {
   tree_goal: number[]; // the goal's box, at the top of the tree
   tree_links: PlanEdge[]; // parent to child; the goal is ""
   view: string; // the repository's view setting, the one graphene watch opens in: auto, outline, tree or dag
+  board: Board;
 }
 
 // What the server answers on GET /api/graph?sessions=… and what an exported file carries inline.
 export interface Payload {
   runs: Run[];
+  direction?: Direction | null; // null with no .graphene/direction.txt; absent from a page older than it
   plan: Plan;
   graph: Graph;
+}
+
+// -- the direction: a mirror of direction.status in src/graphene_map/direction.py ------------------
+
+export interface DirectionNode {
+  id: string;
+  title: string;
+  proposed: boolean; // its own mark is "?"
+  parent: string | null;
+  about: string[];
+  word: string; // proposed, yours, running or quiet: whose move it is below it
+  you: number; // what waits on the person at or below it
+  running: number;
+  next: string | null; // the leaf `graphene run` starts next below it
+  earlier: string[]; // the goals of earlier plans hung from it
+}
+
+export interface DirectionSession {
+  key: string;
+  short: string;
+  label: string;
+  word: string; // running, idle, your turn, finished
+  last: string;
+  at: string;
+  node: string | null; // "plan": through the plan, wherever it hangs
+  how: string;
+  holds?: string | null; // the running leaf it holds: it is named beside that leaf
+}
+
+export interface DirectionItem {
+  id: string; // what the person acts on: a leaf, a board item, a proposal
+  title: string;
+  word: string;
+  do: string;
+}
+
+export interface Direction {
+  file: string;
+  refused?: string; // the file cannot be read: why, by line
+  nodes: DirectionNode[];
+  plan: {
+    goal: string;
+    node: string | null;
+    done: number;
+    leaves: number;
+    you: number;
+    running: number;
+    next: string | null;
+    waiting?: DirectionItem[];
+    leaves_running?: { id: string; title: string; by: string; last?: string }[];
+  } | null;
+  sessions: DirectionSession[]; // none in an exported file: sessions stay on the machine
+  older: number;
 }

@@ -1,0 +1,42 @@
+you: 14 · 3 running · next: lane-a · the direction of …T/direction-demo-19bqpor0
+? Graphene is the…        graphene     proposed   · you 11 · 3 running · next:
+                                                    lane-a
+  ? Graphene runs live…   live         proposed   · you 4 · 2 running · next:
+                                                    lane-a
+    ? first contact…      first-light  proposed   · you 1 · 2 running · next:
+                                                    lane-a
+      ○ the plan: first…  plan         0/10 done  · next: lane-a
+        ○ next:           lane-a       ready      · A. first light: rungs 2 to 5
+                                                    live, and the fixes first
+                                                    contact forces · `graphene
+                                                    run` starts it
+        ● session…        0feb67e8     running    · 2 of its subagents running ·
+                                                    now
+        ● Docs: README…   aac976c0     running    · Read hooks.gated and gate's
+                                                    .graphene handling · now
+        ✓ 12 finished                  finished   · a116b8e2, acb24c7a, af0ab3d9
+                                                    and 9 more
+    ? Sandboxes: a leaf…  sandboxes    proposed   · you 1
+      ✓ 1 finished                     finished   · adf0d971
+    ? the registered…     with-alex    proposed   · you 1
+  ? the board earns its…  board        proposed   · you 1
+    ✓ 1 finished                       finished   · a339830e
+  ? the direction: my…    direction    proposed   · you 1
+    ✓ 1 finished                       finished   · a640f5b2
+  ? nothing Graphene…     teardown     proposed   · you 1
+    ✓ 1 finished                       finished   · a01fb98a
+  ? the submission by…    submission   proposed   · you 3 · 1 running
+    ● Re-record the…      a6625279     running    · Find where the board setting
+                                                    gates the rows · now
+    ✓ 2 finished                       finished   · a576dfe8, a942024c
+    ? the rough cut…      rough-cut    proposed   · you 1
+      ✓ 1 finished                     finished   · acf08603
+    ? the video, the…     video        proposed   · you 1
+◌ not in the direction                            · `graphene direction attach
+                                                    SESSION NODE`
+  ◇ session: [another session's words, left out]  1c0ec47e  your turn  · [left out]
+  ◇ session: [another session's words, left out]  d3d5effe  your turn  · [left out]
+  ◇ session: [another session's words, left out]  403e4cef  your turn  · [left out]
+  1 older session left out: quiet for a day
+graphene direction accept ID · drop ID · plan NODE · attach SESSION NODE|none ·
+edit · propose -

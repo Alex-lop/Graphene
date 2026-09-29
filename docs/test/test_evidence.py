@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "tests"))
@@ -191,6 +193,24 @@ def test_rows_that_are_not_live_are_refused_unless_stand_in_and_then_the_chart_s
     assert "C, Claude Code, is a reference point" in drawn and "<title>C · " not in drawn
 
 
+def test_practice_is_refused_whatever_the_flags(tmp_path, capsys):
+    """A run made under the person's opening is live and is practice: STAND-IN would be false, and no
+    registered table takes it. Its usage rows say so, or the ledger's rows in its window do."""
+    rows, ledger = tmp_path / "rows.jsonl", tmp_path / "ledger.jsonl"
+    argv = ["report", "--rows", str(rows), "--ledger", str(ledger), "--svg", str(tmp_path / "e.svg")]
+    rows.write_text(json.dumps(row("feeds", "A", 1, 1000, 4, practice=True)) + "\n"
+                    + json.dumps(row("feeds", "B′", 1, 3000, 5)) + "\n")  # fmt: skip
+    ledger.write_text(json.dumps({"at": 3010, "dollars": 0.1, "practice": True}) + "\n")
+    for flags in ([], ["--stand-in"]):
+        assert evidence.main([*argv, *flags]) == 2 and not (tmp_path / "e.svg").exists()
+        out = capsys.readouterr().out
+        assert "these runs are practice" in out and "feeds A feeds-A-1: its usage rows say practice" in out
+        assert "feeds B′ feeds-B′-1: the ledger's rows in its window say practice" in out
+    ledger.write_text(json.dumps({"at": 9000, "dollars": 0.1, "practice": True}) + "\n")  # in no run's window
+    rows.write_text(json.dumps(row("feeds", "B′", 1, 3000, 5)) + "\n")
+    assert evidence.main(argv) == 0
+
+
 def test_a_tree_row_with_leaves_no_usage_row_holds_and_a_c_row_with_no_total_are_not_live(tmp_path, capsys):
     """The planner's usage row alone came from Token Factory; three leaf attempts wrote none (a Claude Code or
     scripted executor), and a C row whose run log holds no Claude Code total: neither is drawn as live."""
@@ -215,7 +235,14 @@ print(json.dumps({"passed": int(ok), "failed": int(not ok), "details": []}))
 """
 
 
-def test_an_arm_a_run_is_counted_from_its_run_log_its_bill_and_the_ledger(tmp_path, monkeypatch):
+@pytest.mark.parametrize("opened", [False, True])
+def test_an_arm_a_run_is_counted_from_its_run_log_its_bill_and_the_ledger(
+    tmp_path, monkeypatch, capsys, opened
+):
+    """And under the person's opening (GRAPHENE_AGENT_LIVE_USD, set here as the person sets it) the run is
+    practice: its bill and its ledger rows say so, its calls are on the night's bill, and `add` refuses it."""
+    if opened:
+        monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
     run, repo = tmp_path / "feeds-sealed-nano-1", tmp_path / "feeds-sealed-nano-1" / "repo"
     repo.mkdir(parents=True)
 
@@ -274,6 +301,14 @@ def test_an_arm_a_run_is_counted_from_its_run_log_its_bill_and_the_ledger(tmp_pa
         "--tasks",
         str(tmp_path / "tasks"),
     ]
+    if opened:
+        assert json.loads((run / "arm-a.json").read_text())["practice"] is True
+        assert all(e["practice"] for e in evidence.read_jsonl(ledger))
+        night = evidence.read_jsonl(tmp_path / "night.jsonl")  # the conftest's night, not the real one
+        assert sum(e["kind"] == "settle" for e in night) == 2
+        assert evidence.main(argv) == 2 and not rows.exists()
+        assert "not added: feeds-sealed-nano-1 is practice" in capsys.readouterr().out
+        return
     assert evidence.main(argv) == 0
     [r] = evidence.read_jsonl(rows)
     assert (r["arm"], r["accept"], r["quality"]) == ("A", {"passed": 1, "failed": 0, "error": False}, None)

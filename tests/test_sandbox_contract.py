@@ -12,7 +12,7 @@ from contree_sdk import ContreeSync  # noqa: E402
 from contree_sdk.sdk.managers.images import ImagesManagerSync  # noqa: E402
 from contree_sdk.sdk.objects.image import ContreeImageSync  # noqa: E402
 
-from graphene_map import sandbox  # noqa: E402
+from graphene_map import night, sandbox  # noqa: E402
 
 
 def test_every_call_binds_to_the_pinned_sdk():
@@ -60,6 +60,8 @@ def test_its_answers_are_read_as_the_sdk_gives_them(monkeypatch):
         images = Images()
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    for mark in night.MARKS:  # ConTree is the real service, stub or not: this is the person's shell
+        monkeypatch.delenv(mark, raising=False)
     monkeypatch.setenv("NEBIUS_API_KEY", "k")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
     box = sandbox.Contree()
@@ -79,3 +81,124 @@ def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path))  # no saved profile
     with pytest.raises(RuntimeError, match="ConTree needs a key .* and NEBIUS_PROJECT_ID"):
         sandbox.Contree()
+
+
+REFUSED = ("Sandboxes refused this project (403): {}; request access at "
+           "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+
+
+def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_do(monkeypatch):
+    """Rung 1 met it live (2026-09-29): ConTree answered 403 to the project. The SDK's own ForbiddenError,
+    from a stub (nothing is sent), becomes one refusal naming what the key lacks (whoami), and it is
+    Token Factory's kind of refusal, which every caller says as it is. Without whoami's grants, the project
+    id is the other suspect: ConTree answers a made-up key and project with a 403 too."""
+    from fake_faults import Forbidding, persons_shell
+
+    from graphene_map import tokenfactory as tf
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == REFUSED.format("its key lacks import, spawn there")
+    assert isinstance(no.value, tf.Unreachable)
+
+    class Blind(Forbidding):
+        def __init__(self, token=None):
+            super().__init__(token)
+            self.get_token_info = lambda refresh=False: 1 / 0
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Blind)
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == REFUSED.format(sandbox.NO_GRANT)
+    assert "or NEBIUS_PROJECT_ID is not its project" in str(no.value)
+
+
+def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkeypatch):
+    """The SDK stops waiting at the time limit, cancels the operation and raises OperationTimedOutError:
+    that is the box's own time limit, which Docker says as exit 124 on the image it was given, and
+    Sandbox.run then brings nothing back (decision 73), instead of ending the leaf."""
+    import uuid
+
+    from contree_sdk.sdk.exceptions import OperationTimedOutError
+
+    class Image:
+        def run(self, **_):
+            return self
+
+        def wait(self):
+            raise OperationTimedOutError(operation_uuid=uuid.uuid4())
+
+    class Sdk:
+        images = type("Images", (), {"oci": lambda self, ref: Image(), "use": lambda self, ref: Image()})()
+
+    from fake_faults import persons_shell
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    assert sandbox.Contree().run("img-1", "sleep 999", {}, 5) == ("img-1", 124, sandbox.TIMED_OUT)
+
+
+def test_whoami_says_before_any_leaf_whether_the_project_is_refused(monkeypatch):
+    """sandbox.refused, which `graphene init` asks: whoami's 403 or a grant a leaf uses listed as not
+    given is the refusal a leaf would meet; anything else (grants all given, offline, an SDK that answers
+    otherwise) is None, and the leaf's own refusal says it if it comes. Stubs only; nothing is sent."""
+    from contree_sdk.sdk.exceptions import ForbiddenError
+    from fake_faults import Forbidding
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    assert sandbox.refused() == REFUSED.format("its key lacks import, spawn there")
+    monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True, "spawn": True, "cancel": False})
+    assert sandbox.refused() is None  # a grant no leaf uses
+
+    def asking(error):
+        def sdk(token=None):
+            def whoami(refresh=False):
+                raise error
+
+            return type("Sdk", (), {"get_token_info": staticmethod(whoami)})()
+
+        return sdk
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(ForbiddenError()))
+    assert sandbox.refused() == REFUSED.format(sandbox.NO_GRANT)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", asking(OSError("offline")))
+    assert sandbox.refused() is None
+
+
+def test_a_contree_error_whose_body_echoes_the_key_or_the_project_is_said_without_them(monkeypatch):
+    """A gateway page that echoes the request's headers comes back from contree-sdk as its own error, whose
+    message is the page. It is said as ConTree's error, with the key, the project id and anything shaped
+    like a key taken out before it is cut, as Token Factory's is (tokenfactory._request): that message is
+    a leaf's reason, the run's output, the pane and the log. The SDK's time limit still reaches _run as it
+    is. Stubs only; the key and the project are made up."""
+    from contree_sdk.sdk.exceptions import ApiStatusCodeError
+    from fake_faults import persons_shell
+
+    key, project = "Kq7" + "w" * 30, "proj-planted-0042"
+    page = f"Bad Gateway. Request headers: Authorization: Bearer {key}; Project: {project}; " + "x" * 400
+
+    class Image:
+        def run(self, **_):
+            raise ApiStatusCodeError(status=502, error=page)
+
+    class Sdk:
+        images = type("Images", (), {"oci": lambda self, ref: Image(), "use": lambda self, ref: Image()})()
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", project)
+    with pytest.raises(RuntimeError) as no:
+        sandbox.Contree().run("img-1", "true", {}, 5)
+    said = str(no.value)
+    assert key not in said and project not in said and "Kq7" not in said, said
+    assert said.startswith("ConTree answered with an error (ApiStatusCodeError): ") and "status=502" in said
+    assert "Authorization: Bearer …" in said and len(said) <= 400

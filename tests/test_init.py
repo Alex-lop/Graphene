@@ -222,10 +222,10 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
     assert [line for line in said.output.splitlines() if "not chosen:" in line] == [
         "the planner and the executor are not chosen: Claude Code and Nemotron on Token Factory are found "
         "here; `graphene init` at a terminal asks, or --planner and --executor name one, and until then "
-        "`run` and `ask` start Claude Code"
+        "`run` and `ask` refuse"
     ]
     assert "planner: not chosen · executor: not chosen" in said.output
-    assert "next Claude Code session" in said.output  # what `run` starts is Claude Code, and the hooks say so
+    assert "next Claude Code session" in said.output  # none chosen: a person's own Claude Code session
     monkeypatch.delenv("NEBIUS_API_KEY")
     tf._listed.cache_clear()
     on_path()  # nothing found
@@ -290,6 +290,7 @@ def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, mon
     assert not sandbox.configured()  # a key and no project, and no profile
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
     assert sandbox.configured()
+    monkeypatch.setattr(sandbox, "refused", lambda: None)  # ConTree's whoami, never asked from a test
     assert person("init").exit_code == 0
     assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement sandbox"
     monkeypatch.delenv("NEBIUS_PROJECT_ID")
@@ -297,6 +298,31 @@ def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, mon
     (tmp_path / "contree").mkdir()
     (tmp_path / "contree" / "auth.ini").write_text("[default]\n")  # a profile `contree auth` saved
     assert sandbox.configured()
+
+
+def test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line_saying_why(
+    repo, fake, monkeypatch, on_path
+):
+    """What rung 2's init did live (2026-09-29): ConTree set up, the project refused by Sandboxes (rung 1's
+    403), and the leaves placed in Sandboxes anyway, where each would come back refused. Asked first
+    (whoami, a read: a stub SDK here, nothing sent), the offer places them on this machine and says why
+    once, and how to place them in Sandboxes when access comes."""
+    contree_sdk = pytest.importorskip("contree_sdk")
+    from fake_faults import Forbidding
+
+    on_path()
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
+    said = person("init", "--executor", "nemotron")
+    assert said.exit_code == 0, said.output
+    assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement local"
+    line = ("Sandboxes refused this project (403): its key lacks import, spawn there; request access at "
+            "tokenfactory.nebius.com/sandboxes/about; until it is granted the leaves run on this machine, "
+            "and `graphene init --executor nemotron` then places them in Sandboxes")  # fmt: skip
+    assert said.output.count(line) == 1, said.output
+    monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True, "spawn": True})
+    assert person("init", "--executor", "nemotron").exit_code == 0
+    assert chosen(repo)["executor"].endswith("--placement sandbox")
 
 
 def test_an_agent_does_not_choose_what_the_person_runs(repo, on_path):
@@ -353,6 +379,40 @@ def test_run_ask_and_split_start_what_init_chose_and_with_overrides_one_command(
     ]  # fmt: skip
     with Store.open(repo) as store:
         assert store.meta("executor") == command("chosen")  # --with changed one command, not the repo
+
+
+def test_with_nothing_chosen_ask_run_split_and_talk_refuse_and_start_nothing_until_with_names_one(
+    repo, tmp_path_factory, monkeypatch
+):
+    """The first walker's `graphene ask`, in a repo where no planner was ever chosen, started `claude -p`
+    from the PATH and spent their usage. Nothing chosen and nothing named: one line, and nothing starts.
+    `--with claude` is a choice, and starts it."""
+    bin, seen = tmp_path_factory.mktemp("bin"), tmp_path_factory.mktemp("seen") / "claude.txt"
+    (bin / "git").symlink_to(shutil.which("git"))
+    plan = "```plan\\n? users carry ids  [ids-users]\\n    scope: api.py\\n    check: false\\n```\\n"
+    (bin / "claude").write_text(f'#!/bin/sh\necho "claude $1" >> {seen}\nprintf \'{plan}\'\n')
+    (bin / "claude").chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin))
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "false")
+    for args, who in (
+        (["ask", "users should have ids"], "planner"),
+        (["node", "split", "ids"], "planner"),
+        (["talk", "why", "ids"], "planner"),
+        (["run", "--attempts", "1"], "executor"),
+    ):
+        said = person(*args)
+        assert said.exit_code == 1, (args, said.output)
+        assert said.stderr.splitlines()[0] == (
+            f"no {who} is chosen for this repo, so nothing was started: `graphene init` chooses one, or "
+            "`--with claude` (or `--with codex`, `--with nemotron`, a command) names one for this command"
+        )
+        assert not seen.exists(), args  # nothing was started
+    asked = person("ask", "users should have ids", "--with", "claude")
+    assert asked.exit_code == 0 and "ids-users" in asked.stdout, asked.output
+    person("run", "--attempts", "1", "--with", "claude")
+    assert seen.read_text().splitlines() == ["claude -p", "claude -p"]  # the planner, then the executor
+    with Store.open(repo) as store:
+        assert store.meta("planner") is None and store.meta("executor") is None  # --with chose one command
 
 
 def test_the_status_line_says_what_r_starts_when_init_chose_it(repo):

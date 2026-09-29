@@ -214,9 +214,22 @@ const MINUTE = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-di
 const DAY = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
 
 /** A recorded moment in this machine's local time; `zone` says which time that is. */
-export const stamp = (t: string | null): string => (t ? `${DAY.format(new Date(t))} ${CLOCK.format(new Date(t))}` : "?");
+/** A recorded moment, or null when there is none or it is not a time: one bad value is a "?", where
+ * Intl's RangeError blanked the whole page. */
+const moment = (t: string | null): Date | null => {
+  const at = t ? new Date(t) : null;
+  return at && !Number.isNaN(at.getTime()) ? at : null;
+};
 
-export const clock = (t: string | null): string => (t ? MINUTE.format(new Date(t)) : "?");
+export const stamp = (t: string | null): string => {
+  const at = moment(t);
+  return at ? `${DAY.format(at)} ${CLOCK.format(at)}` : "?";
+};
+
+export const clock = (t: string | null): string => {
+  const at = moment(t);
+  return at ? MINUTE.format(at) : "?";
+};
 
 /** Two moments, with the second one's date dropped when it is the same day. */
 export const between = (t0: string | null, t1: string | null): string =>
@@ -312,7 +325,9 @@ const SETTING: Record<string, Layout> = { outline: "outline", tree: "tree", dag:
 export const shownLayout = (plan: Plan, mode: Mode, room: number): { layout: Layout; mode: "auto" | Layout; why: string } => {
   const [auto, because] = layoutFor(plan, room);
   const set = SETTING[plan.view];
-  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${plan.view}` };
+  // the terminal calls the graph `dag` (graphene watch --view dag): said once, beside the page's word
+  const named = set === "graph" && plan.view !== "graph" ? `the graph (${plan.view} in graphene watch)` : plan.view;
+  if (mode === null && set) return { layout: set, mode: set, why: `this repo's view setting: ${named}` };
   if (mode === null || mode === "auto") return { layout: auto, mode: "auto", why: `auto chose the ${auto}: ${because}` };
   return { layout: mode, mode, why: "your choice, on this page only" };
 };

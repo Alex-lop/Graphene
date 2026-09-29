@@ -175,6 +175,24 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
         assert summary(store, mark) == "run: n2 released by you, ready again"
 
 
+def test_a_leaf_that_came_back_waits_on_the_person_and_runs_again_only_when_named(repo):
+    """Walk 2026-09-28 (judge 7): the screen said "none ready" beside a leaf that came back, and R and
+    `graphene run` both ran it again. It waits on the person: a run not told which leaves leaves it
+    alone and says how to run it again; named (`r` on it, `--node`), it runs."""
+    said = []
+    with Store.open(repo) as store:
+        docs = users_node(title="docs", scope=["docs.md"], check="test -s docs.md")
+        plan.propose(store, [users_node(), docs], ALEX)
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
+        assert plan.came_back(store, plan.get(store, "n2"))
+        said.clear()
+        assert run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append) == []
+        assert said == ["n2 came back and waits on you: `graphene run --node n2` runs it again"]
+        assert len(store.node_log("n2", ("started",))) == 1  # not started again
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, only=["n2"], say=said.append)
+        assert len(store.node_log("n2", ("started",))) == 2
+
+
 def test_a_hand_back_tells_the_person_the_refusal_not_the_executors_instruction_and_a_crash(repo):
     """Walk 2026-09-28: the came-back reason carried `or say why: graphene node release …`, an
     instruction to the executor, and hid that the executor itself had crashed (exit 1)."""
@@ -188,3 +206,18 @@ def test_a_hand_back_tells_the_person_the_refusal_not_the_executors_instruction_
     assert why.startswith("1 attempt, the last one refused: n1 is not done") and "schema.py" in why
     assert "graphene node release" not in why and "say why" not in why
     assert why.endswith("; the executor itself exited 1")
+
+
+def test_a_script_is_named_by_its_script_not_by_the_interpreter_that_runs_it():
+    """walks.md alex 21, judge 17: with `python3 bin/planner.py` the board read `planner:python3's` and
+    the page `run:python3 · finished`. The name is the command's, never where it lives."""
+    from graphene_map import ask, run
+
+    assert run.label("python3 /home/me/bin/executor.py --fast") == "executor.py"
+    assert run.label(f"{sys.executable} -u /x/exec.py") == "exec.py"
+    assert run.label("node ./agents/run.js") == "run.js"
+    assert run.label("/usr/local/bin/myagent --model m") == "myagent"
+    assert run.label("claude -p --permission-mode acceptEdits") == "claude"
+    assert run.label(f"{sys.executable} -m graphene_map.executor --model m") == "nemotron"
+    assert ask.label("python3 /home/me/bin/planner.py") == "planner.py"
+    assert ask.label(f"{sys.executable} -m graphene_map.planner") == "nemotron"

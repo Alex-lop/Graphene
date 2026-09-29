@@ -75,7 +75,7 @@ def test_a_failure_says_why_without_the_key(keychain, monkeypatch):
     assert done.exit_code == 1 and "keychain is off" in done.output
 
 
-@pytest.mark.parametrize("mark", ["GRAPHENE_NODE", "GRAPHENE_PLANNER"])
+@pytest.mark.parametrize("mark", ["GRAPHENE_NODE", "GRAPHENE_PLANNER", "CLAUDECODE", "CODEX_SESSION_ID"])
 @pytest.mark.parametrize("cmd", ["set", "check", "remove"])
 def test_an_agent_is_refused(keychain, mark, cmd):
     keychain["key"] = SECRET

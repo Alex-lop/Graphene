@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from graphene_map import sandbox
+from graphene_map import night, sandbox
 
 SITE = "try:\n    import fake_faults\nexcept ImportError:  # a python that is not the test's\n    pass\n" \
        "else:\n    fake_faults.install(setattr)\n"  # fmt: skip
@@ -52,6 +52,52 @@ def install(put) -> None:
     if os.environ.get("FAULTS_BOX"):
         box = Killed if os.environ["FAULTS_BOX"] == "killed" else Box
         put(sandbox, "choose", lambda name=None, image=None: box())
+    if os.environ.get("FAULTS_SDK") in ("forbidden", "echoing"):  # ConTree itself, through sandbox.Contree
+        import contree_sdk
+
+        put(contree_sdk, "ContreeSync", Forbidding if os.environ["FAULTS_SDK"] == "forbidden" else Echoing)
+
+
+def persons_shell(monkeypatch) -> None:
+    """The person's shell, as CI's is: no vendor's agent mark. A stub SDK stands in for ConTree, and
+    sandbox.Contree still treats it as the real service (night.person_only), so a test that drives it
+    runs as the person, whatever shell the suite was started from."""
+    for mark in night.MARKS:
+        monkeypatch.delenv(mark, raising=False)
+
+
+class Forbidding:
+    """contree-sdk's ContreeSync for a project Sandboxes refuse, as rung 1 met it live (2026-09-29): every
+    call raises the SDK's own ForbiddenError, ConTree's 403, and the key's grants (whoami) lack spawn and
+    import. Nothing is sent anywhere."""
+
+    GRANTS = {"list": True, "spawn": False, "import": False}
+
+    def __init__(self, token: str | None = None):
+        from contree_sdk.sdk.exceptions import ForbiddenError
+
+        def refuse(*_, **__):
+            raise ForbiddenError()
+
+        self.images = SimpleNamespace(oci=refuse, use=refuse)
+        self.get_token_info = lambda refresh=False: SimpleNamespace(permissions=dict(self.GRANTS))
+
+
+class Echoing:
+    """contree-sdk's ContreeSync behind a gateway that answers 502 with a page echoing the request's
+    headers: every call raises the SDK's own ApiStatusCodeError, whose message is that page, key and
+    project in it. Nothing is sent anywhere."""
+
+    def __init__(self, token: str | None = None):
+        from contree_sdk.sdk.exceptions import ApiStatusCodeError
+
+        page = (f"Bad Gateway. Request headers: Authorization: Bearer {os.environ.get('NEBIUS_API_KEY')}; "
+                f"Project: {os.environ.get('NEBIUS_PROJECT_ID')}")  # fmt: skip
+
+        def echo(*_, **__):
+            raise ApiStatusCodeError(status=502, error=page)
+
+        self.images = SimpleNamespace(oci=echo, use=echo)
 
 
 def _holds(script: str, name: str) -> bool:

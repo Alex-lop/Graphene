@@ -1,7 +1,10 @@
 # The Nemotron path on screen, as the storyboard has it (docs/demo/STORYBOARD.md): a paragraph to the
 # Nemotron Ultra planner on the left, its tree appearing in `graphene watch` on the right, a prune that
 # goes too far, R with Nemotron executors, the leaf that comes back with its fix, w, R, the history
-# reading as the tree, and the bill. Real calls to Token Factory; the waits for them are cut.
+# reading as the tree, and the bill. Real calls to Token Factory; the waits for them are cut, each one only
+# once the screen shows what it waited for (Wait+Screen), and nothing on screen says how long was cut: this
+# is the README's GIF. The video is docs/demo/build.sh, which films the same run scene by scene in real
+# time and labels every cut with its length (docs/demo/STORYBOARD.md).
 #
 #   vhs docs/proof/nemotron.tape        (writes docs/assets/nemotron.gif; spends real tokens)
 #
@@ -35,7 +38,7 @@ Sleep 1s
 Enter
 Sleep 4s
 Hide
-Sleep 90s
+Wait+Screen@20m /proposed/
 Show
 Sleep 4s
 
@@ -54,7 +57,7 @@ Sleep 3s
 Type "R"
 Sleep 10s
 Hide
-Sleep 180s
+Wait+Screen@40m /run: \d+ done/
 Show
 Type "/came back"
 Sleep 1s
@@ -68,7 +71,7 @@ Sleep 3s
 Type "R"
 Sleep 8s
 Hide
-Sleep 120s
+Wait+Screen@40m /run: \d+ done/
 Show
 Sleep 4s
 Type "gg"

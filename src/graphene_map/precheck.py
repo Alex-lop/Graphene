@@ -137,6 +137,8 @@ def _forks(root: Path, prepare: str | None):
         tar = S.pack(root)
         box = S.Capped(S.choose(name))
         image, code, out = box.start(tar, S.base(prepare), 1800)
+    except S.Refused as no:  # the project may not use Sandboxes: said whole, with the other sandbox
+        return None, f"{no}, or GRAPHENE_SANDBOX=docker"
     except Exception as no:  # an SDK, a network, a docker that is not running
         return None, f"the sandbox could not be made: {no}"
     finally:

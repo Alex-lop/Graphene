@@ -26,7 +26,9 @@ from graphene_map.tui import Watch
 
 # one script for every kind: it answers what the prompt asks, as a model would
 TALKER = r"""
-import json, os, re, sys
+import json, os, re, sys, time
+while os.environ.get("GATE") and not os.path.exists(os.environ["GATE"]):  # held until the test has looked
+    time.sleep(0.02)
 prompt = sys.argv[-1]
 open(os.environ["SEEN"], "a").write(json.dumps({"prompt": prompt}) + "\n")
 said = re.search(r"The person said: (.*)", prompt)[1]
@@ -81,14 +83,14 @@ def test_why_lands_on_the_board_as_the_planners_note_about_the_node(repo, talker
     with Store.open(repo) as store:
         [note] = B.items(store)
         assert (note["id"], note["kind"], note["about"], note["by"], note["state"]) == (
-            "why-ids", "note", "ids", "planner:python", "open"
+            "why-ids", "note", "ids", "planner:talker.py", "open"
         )  # fmt: skip
         assert B.decided(store, P.get(store, "ids")) == []  # the planner's words bind nobody until taken
     board = person("board").stdout  # in the store, visible later, and whole
     assert (
         "why-ids" in board
         and "ids is there so the API returns ids before" in board
-        and "\n    the docs describe them" in board  # wrapped whole under its row
+        and "\n    them" in board  # wrapped whole under its row, at the terminal's 80 columns
     )
     again = person("talk", "why", "ids", "--with", talker)  # a second answer is a second note, not refused
     assert again.exit_code == 0 and "why-ids-2" in again.stdout
@@ -114,7 +116,7 @@ def test_merge_proposes_one_leaf_and_the_board_asks_taking_it_drops_them_as_one_
             "drop ids",
         ]  # docs needs ids: it goes first, or that drop is refused
         assert q["options"] == [{"text": "keep them apart", "then": ["drop both"]}]
-        assert (q["about"], q["by"], P.get(store, "both").state) == ("both", "planner:python", P.PROPOSED)
+        assert (q["about"], q["by"], P.get(store, "both").state) == ("both", "planner:talker.py", P.PROPOSED)
         before = [P.to_dict(n) for n in P.nodes(store)]
     taken = person("board", "take", "merge-ids-docs")
     assert taken.exit_code == 0, taken.output
@@ -194,9 +196,9 @@ def test_changes_since_seen_are_others_and_only_after_the_mark(repo, talker):
     said = person("plan", "changes").stdout.splitlines()
     assert said[0] == "2 changed since you last looked (graphene plan seen marks them seen):"
     assert re.fullmatch(
-        r"  \d\d:\d\d  both: proposed by planner:python: users return ids, documented", said[1]
+        r"  \d\d:\d\d  both: proposed by planner:talker.py: users return ids, documented", said[1]
     )
-    assert said[2].endswith("both: the board by planner:python: put up merge-ids-docs: merge ids and docs "
+    assert said[2].endswith("both: the board by planner:talker.py: put up merge-ids-docs: merge ids and docs "
                             "into both?")  # fmt: skip
     with Store.open(repo) as store:
         assert talk.marks(store, "alex") == ({"both": "+"}, 2)
@@ -229,7 +231,7 @@ def test_a_row_changed_since_the_person_looked_is_marked_until_m(repo, size):
     assert paging.rindex("paging") == schema.rindex("schema")  # the id column, where it always is
     assert sum("+" in r or "~" in r for r in rows) == 1
     top = seen["status"].splitlines()[0]
-    assert top.startswith("1 changed since you last looked · graphene plan changes · m seen · you: 1")
+    assert top.startswith("1 changed since you last looked · graphene plan changes · m seen · 1 on you")
     assert len(top) <= size[0] - 2
     folded, _ = watch(repo, ["j", "z", "c"], size)  # api folded: the change inside it is not hidden
     [api] = [r for r in folded["tree"] if " api " in r or "~api" in r]
@@ -284,15 +286,34 @@ def test_the_chooser_says_its_choices_at_80_columns(repo):
     watch(repo, [], (80, 24), before=before)
 
 
-def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker):
+def test_the_chooser_on_a_selection_names_it_and_every_choice_whole_at_80_columns(repo):
+    """Walks 2026-09-28 (alex 7, first 6, judge 9): with a longer id, or several, the line was cut at
+    80 columns (`… a another way · ? help · or your`). What it is about goes on its border then."""
+    accepted(repo)
+
+    async def before(app, pilot):
+        await pilot.press("j", "j", "V", "j", "question_mark")
+        await pilot.pause()
+        line = "\n".join(shown(app, app.screen.query_one("#ask").region))
+        assert "w why · s split · m merge · a another way · ? help · or your words" in line, line
+        assert "ids, docs" in line, line
+
+    watch(repo, [], (80, 24), before=before)
+
+
+def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker, tmp_path, monkeypatch):
     accepted(repo)
     with Store.open(repo) as store:
         store.set_meta("planner", talker)
+    gate = tmp_path / "gate"
+    monkeypatch.setenv("GATE", str(gate))  # the planner answers only once "started" has been read: on a fast
+    # runner it used to finish first, and "ended" had replaced "started" before the test looked
 
     async def before(app, pilot):
         await pilot.press("j", "j", "question_mark", "w", "enter")
         await pilot.pause()
         assert "graphene talk why ids: started" in str(app.query_one("#status").render())
+        gate.touch()
         await asyncio.to_thread(app.runs[0].wait, 60)
         await pilot.pause(0.3)
 

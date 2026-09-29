@@ -4,17 +4,7 @@
 
 Paragraph in, tree out, prune, run.
 
-You tell your coding agent what you want, the way you always have: a paragraph. Before it writes a
-line of code it shows you what it understood, as a tree. The goal sits at the top, then the
-pieces of work under it, each with the files it may change and the command that shows it is done.
-You read that, cut what you did not mean, and press `R`. Agents do the leaves in parallel, each in a
-worktree of its own. A leaf that finds it needs more than you gave it comes back with the fix
-already written: one key to take it.
-
-I let agents work on my repos for hours. However many tokens you give an agent, it still has to
-guess what you meant, and I found out what it guessed from the diff at the end. Graphene is where I
-see the guess before anything is spent, and correct it with a keystroke instead of a restart.
-Agent work gets cheaper every few months. My attention does not.
+I let agents work on my repos for hours, however many tokens you give an agent, it still has to guess what you meant, and I found out what it guessed from the diff at the end. Graphene is where I see the guess before anything is spent, and correct it with a keystroke instead of a restart. Agent work gets cheaper every few months. My attention does not.
 
 Two kinds of agent are involved. The **planner** is the session you talk to (or `graphene ask`); it
 proposes the tree and writes no code. The **executors** are what `graphene run` starts, one per leaf;
@@ -26,17 +16,19 @@ each is held to its leaf's files and its check.
 
 The claim: **Graphene makes a cheap open model safe to hand real work.**
 
-The chart that tests it goes here: the same paragraph and the same model, with the tree and without
-it, measured in correctness, the person's attention and dollars. It comes from the evidence run,
-which has not happened yet, so there is no number here.
+It is not tested yet. The evidence run that tests it sends the same paragraph to the same model, with
+the tree and without it, and measures correctness, the person's attention and dollars. That run has
+not happened, so there is no chart here and no number.
 
 Nemotron 3 Ultra plans the tree through Nebius Token Factory. Nemotron Nano does the leaves, each in
 a Token Factory Sandbox forked from one checkpoint of your repository, and Super takes a second
 attempt. The check, which Graphene runs itself, decides what lands.
 
-So far this path has run only against a scripted stand-in for Token Factory and a Docker stand-in for
-Sandboxes. [docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory,
-Sandboxes and Nemotron, and how to test it.
+So far Graphene has made a runtime call to Token Factory, as practice (rung 2 of the ladder:
+[docs/test/first-light.md](docs/test/first-light.md)). Past that call, this path has run only against
+a scripted stand-in for Token Factory and a Docker stand-in for Sandboxes.
+[docs/HACKATHON.md](docs/HACKATHON.md) is the submission: how Graphene uses Token Factory, Sandboxes
+and Nemotron, and how to test it.
 
 Three prototypes put Nemotron Nano to work while you shape the tree. Each is a command, and
 `GRAPHENE_SHAPE=cover,note,precheck` runs them on their own:
@@ -48,7 +40,8 @@ Three prototypes put Nemotron Nano to work while you shape the tree. Each is a c
   and marks one that passes already or cannot run.
 
 They have run only against a scripted stand-in for Token Factory. [docs/process/ideas.md](docs/process/ideas.md)
-ranks them against seventeen other ideas.
+ranks them against seventeen other ideas. `graphene board lookup` puts Nano to work on the board the
+same way (below).
 
 ## For judges
 
@@ -56,13 +49,14 @@ No key, no Docker, and no model is called:
 
 ```
 uv tool install git+https://github.com/Alex-lop/Graphene
-graphene demo              # a recorded run, replayed in graphene watch
+graphene demo              # a recorded run, replayed in graphene watch: space pauses, . steps, r again
 graphene demo --once       # its last state, printed
 git clone https://github.com/Alex-lop/Graphene && cd Graphene
 SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
 ```
 
-With a key for Token Factory (it spends at list price, and prints the bill at the end):
+With a key for Token Factory (it spends at list price, and prints the bill at the end), in a terminal
+of your own:
 
 ```
 export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
@@ -71,14 +65,20 @@ docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git l
 
 To get there one rung at a time, each with its own spend cap, follow
 [docs/test/PRACTICE.md](docs/test/PRACTICE.md). `docs/test/practice.sh --dry` climbs the whole ladder
-on the stand-ins.
+on the stand-ins. Spending is yours: a process that carries an agent's mark (Claude Code's
+`CLAUDECODE`, for one) is refused a Token Factory call and a Sandbox before anything is sent, unless
+you started that agent's session from a shell with `GRAPHENE_AGENT_LIVE_USD` set. That figure is the
+night's cap in dollars (at most $10), on one ledger every process shares; `docs/test/practice.sh
+night` prints its bill.
 
 ## You are here
 
 ```
+graphene init                once per repository: which planner and which executor
 graphene                     where the work stands in this repository, and what waits on you
 graphene watch               the tree on one screen: j k to move, y accept, d drop, R run, ? for the rest
 graphene board               what the planner asks you before the tree, and what you answered
+graphene direction           the goals above your plans: what waits on you, what runs, what is next
 graphene run --parallel 4    what is ready, at once, a worktree each, landed here as each passes
 graphene node show <id>      why a leaf failed or came back, and what was really done for it
 graphene plan edit           the whole plan as text, in your editor
@@ -115,8 +115,9 @@ graphene init
 
 Nemotron 3 Ultra plans the tree. A Nemotron Nano does each leaf, and a Super takes over when Nano's
 attempt is refused. Each leaf runs in a Token Factory Sandbox forked from the same checkpoint of
-your repository (in a worktree of its own when Sandboxes are not set up), and the leaf's check
-decides. Ask for what you want with `:ask` in `graphene watch` or `graphene ask "…"` at the shell.
+your repository (in a worktree of its own when Sandboxes are not set up, or refuse your project:
+`graphene init` asks them first and says why in one line), and the leaf's check decides. Ask for
+what you want with `:ask` in `graphene watch` or `graphene ask "…"` at the shell.
 
 ### Then, on either path
 
@@ -185,14 +186,28 @@ the plan instead of taking the screen.
 
 ### The board
 
-With the tree, the planner puts up what your words leave open and the repository cannot answer, and
-only what changes the tree, at most three items: a question with the default it would assume (and
-options, when there is more than one way), or a risk with what it would do about it. An assumption it
-is sure of is a sentence in the goal of the leaf it bears on. They are the first rows under the goal,
-and the screen opens on the first. On one, `y` takes the default, `1` to `9` picks an option,
+With the tree, the planner is told to put up what your words leave open and the repository cannot
+answer, and only what changes the tree, at most three items: a question with the default it would
+assume (and options, when there is more than one way), or a risk with what it would do about it. An
+assumption it is sure of is a sentence in the goal of the leaf it bears on. Graphene does not count
+the items: all that a planner puts up are on the board. The board is shown only while a question on
+it is open (`board: auto`, under the settings below). Its items are then the first rows under the
+goal, and the screen opens on the first. On one, `y` takes the default, `1` to `9` picks an option,
 `Enter` answers in your own words, `p` parks it (again: brings it back), `d` drops it, and `a` puts up
-a note of yours. Each is `graphene board take|pick|answer|park|unpark|drop|note`, and `graphene
-board` prints the board.
+a note of yours. Each is `graphene board take|pick|answer|park|unpark|drop|note`. `graphene board`
+prints what answering needs, and `--all` lists what is settled too.
+
+You need not answer at all. What you leave open takes its default when you accept the whole plan or
+press `R` and it starts something, said in one line; `graphene board take` with no id does it by hand,
+and `graphene plan undo` takes them back. A planner's note is then taken as written; another agent's note waits for you. A default that
+drops a node is never taken that way: it waits for its own `y`, and the line says so (`left for you:
+ID (its default drops NODE)`).
+
+`graphene board lookup` asks Nano which open questions a file in the repository already answers, and
+settles each one whose quoted line is in the file it names, marked `from the repo: FILE:LINE`; `p` or
+`graphene board unpark ID` gives it back to you. It spends one call, never sends a protected file,
+and has run only against the scripted stand-in. `GRAPHENE_SHAPE=lookup` runs it after each
+`graphene ask`.
 
 What you decide is told to every executor it is about, as `decided:` lines in its contract. A default
 or an option can also carry `then:` lines that change the tree when you choose it: `scope LEAF +
@@ -203,6 +218,10 @@ changed, and `plan edit` has the board at the top of the plan's text.
 A stand-in study on 28 September found that answering the board cost more modelled attention than
 pruning the outline alone, on all four tasks, for a plan at least as faithful to what was asked (one
 run each, model stand-ins, nothing run: [docs/test/results-2026-09-28-shaping.md](docs/test/results-2026-09-28-shaping.md)).
+Study 4, on 29 September, measured the board as it is now: it read fewer words than before on all four
+tasks and gave a plan as faithful or more on all four, but still cost more modelled attention than
+the outline on three of the four. By the rule registered before it ran, that makes the default
+`board: auto` (one run each, model stand-ins, nothing run: [docs/test/results-2026-09-29-board.md](docs/test/results-2026-09-29-board.md)).
 
 ### Other views and talking on the tree
 
@@ -219,6 +238,27 @@ Each is `graphene talk why|split|merge|another ID`, and your own words are
 else added or changed since you last looked shows `+` or `~` before its id (a folded row, `~` when
 anything inside it did). `graphene plan changes` lists them, and `m` marks them seen
 (`graphene plan seen`).
+
+### The direction
+
+Above the plans is the direction: a small tree of goals, one line a node, in
+`.graphene/direction.txt`. Git tracks that one file, so you can commit it and another machine's
+Graphene reads the same direction; the store beside it stays on this machine. An agent proposes nodes
+(`graphene direction propose -`), and only you accept or drop them. `graphene direction plan NODE`
+hangs the plan from a node. A Claude Code session hangs from the plan's node when it held or proposed
+one of the plan's nodes, from the node you attach it to (`graphene direction attach SESSION NODE`,
+typed at `:` in `graphene watch` too), or from nothing, and is then shown as not in the direction.
+`graphene direction` prints the tree with what waits on you, what runs and what is next, read from
+what the hooks already record; `D` in `graphene watch` shows it under the tree. `graphene plan`,
+`graphene watch` and the page show the path from its top to the plan's node above the plan.
+
+A stand-in study on 29 September asked whether a person finds what waits on them, what runs and what
+is next faster in the direction than in a hand-written brief of the same state. Every run in both
+arms got all eight items right, and the direction took longer (median 143.9 against 105.4 modelled
+person-seconds), so it showed no advantage. An exploratory pass, after the print was changed to name
+every item that waits or runs, gave 104.1 against 107.4: registered after the fact, it can show which
+way the change moved and cannot confirm it (six runs an arm on one state, model stand-ins:
+[docs/test/results-2026-09-29-direction.md](docs/test/results-2026-09-29-direction.md)).
 
 ### Settings you state once
 
@@ -240,6 +280,9 @@ Each of these is yours: an agent (or a planner, or an executor) that runs them i
   lines and test layout and the directories your ask names, and a number of leaves from them.
   `graphene ask "…" --finer` (or `--coarser`) sizes one ask and replaces the planner's last
   proposal still waiting on you. `+` and `-` in `graphene watch` do that for the last ask.
+- **When the board shows.** `board: auto` (unset) shows it only while a question on it is open;
+  `board: on` shows it while any item is open. Either way, what is open takes its default when you
+  accept the whole plan or press `R`, except a default that drops a node.
 
 `graphene config` prints them all, with the planner, the executor, plan first and where the key was
 found. `graphene config edit` edits them the way `plan edit` edits the plan: a line it cannot read is
@@ -268,19 +311,26 @@ tests of Graphene's own:
 - **`graphene ask "<what you want>"`** plans without a session. The planner has read-only tools and
   none of your MCP servers, and what it prints becomes the proposal. On the same paragraph: 44 seconds, seven nodes, first try.
 - **Ctrl-C hands back what the run started**, in place and in worktrees, and stops its executors
-  and their checks; a leaf that had already passed waits in review, and says so. A closed terminal
-  does the same. The next run takes those leaves again.
+  and their checks; a leaf that had already passed waits in review, and says so. The next run takes
+  those leaves again.
 - **Hand-backs offer their fix** (`w`, `b`, and waiting on the leaves the reason names).
 - **The plan as text round-trips.** `graphene plan edit` applies what you changed and nothing else,
   in one transaction. A line it cannot read is refused by its number, with what to do. 54 adversarial
   agents tried to break it: what they found is fixed, and each finding has a test.
 
-What it is not yet: the Nemotron planner and executor have run only against a scripted stand-in for
-Token Factory and a Docker stand-in for Sandboxes, not against the services themselves (the tests in
-`tests/test_executor.py` and `tests/test_escape.py` are that evidence). The hooks are for Claude Code
-only (the plan, `run` and the worktrees work with any executor that has a shell); the page
-(`graphene ui`) draws the plan as an outline, a tree or a graph with its critical path, and does not
-show the board.
+What it is not yet: Graphene has made a runtime call to Token Factory, as practice
+([docs/test/first-light.md](docs/test/first-light.md)). Past that call, the Nemotron planner and
+executor have run only against a scripted stand-in for Token Factory and a Docker stand-in for
+Sandboxes, not against the services themselves (the tests in `tests/test_executor.py` and
+`tests/test_escape.py` are that evidence). The hooks are for Claude Code only (the plan, `run` and the
+worktrees work with any executor that has a shell); the page (`graphene ui`) draws the plan as an
+outline, a tree or a graph with its critical path, with the direction, the board and the standing
+conditions, and answers nothing on the board, which is answered in the terminal.
+
+Tested, and not run on the feeds task: a closed terminal ends a run as Ctrl-C does, whether or not
+it sends the hangup, and `graphene watch` and `graphene demo` leave with their terminal
+(`tests/test_teardown.py`, with a script for the executor and `sleep` for the check); a run started
+from `watch` goes on, as after `q`.
 [docs/DIRECTION.md](docs/DIRECTION.md) has what was decided, why, and what comes next.
 
 ## What does not bind
@@ -322,6 +372,11 @@ before a write, and how:
   carries none is taken for you. An agent that strips its marks, or one from a vendor that sets none,
   passes for a person; the log marks every act made with no terminal (except the commands you type
   in `graphene watch`, which it vouches for).
+- The opening for spending rests on the environment too. An agent that sets
+  `GRAPHENE_AGENT_LIVE_USD` itself is taken as opened by you, and one that strips its own marks is
+  taken for you. The night's ledger is a file of your user, so any process of
+  yours can edit it, and its cap binds only Graphene's own calls. A person working in Claude Code
+  carries its marks too: a `!` line spends only in a session started with the opening set.
 - A request typed into a session is taken as yours. An agent that starts another agent, a subagent
   included, writes its prompt; the log names every leaf made or accepted by a prompt. With plan
   first off, a leaf made from a one-line prompt with no `--scope` may touch anything (never the
@@ -349,6 +404,11 @@ before a write, and how:
   like any other, and only your pruning catches it.
 - The plan's store is a file in your repo that git ignores. The hook refuses commands that name it;
   a script that opens it directly is neither stopped nor noticed.
+- The direction is a file beside it that git tracks. The hook refuses an agent's write tools
+  anywhere in `.graphene/`, plan or no plan, and its shell writes there while a plan is in force or
+  plan first is on; a script that opens the file is not stopped. An agent in a worktree that proposes a node writes into the
+  main checkout's file. A plan is known by its goal's words: rewording the goal unhangs it until
+  `graphene direction plan NODE` is run again.
 
 ## Install
 
@@ -361,8 +421,9 @@ worktrees on your machine. `uv tool install graphene-map` installs the last rele
 which is the record only: no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
 Graphene's hook to `.claude/settings.local.json` (yours, not the team's `settings.json`) and keeps
 the file out of `git add` through `.git/info/exclude`. The hook holds agents to the plan and keeps
-the record; the agent waits about 40 ms for it on each tool call. Graphene never edits your own
-`~/.claude/settings.json`.
+the record; the agent waits for it on each tool call, up to about 30 ms of CPU to record the call and
+35 ms to answer it on the author's machine (`tests/test_hook_budget.py` holds both under 60).
+Graphene never edits your own `~/.claude/settings.json`.
 
 ## The record
 
@@ -389,12 +450,15 @@ only; how each number is computed is in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS
   `graphene ask`) are the exception, whatever the planner: `plan cover` and `plan note` ask Nano, and
   `plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set (to Docker on
   this machine with `GRAPHENE_SANDBOX=docker`) to run each check, and asks Nano only about a failing
-  check whose exit code does not say why.
+  check whose exit code does not say why. `graphene board lookup` (and `GRAPHENE_SHAPE=lookup`) sends
+  Nano the open questions and the repository's tracked text files that fit, never a protected one.
 - What a Nemotron leaf cost is Token Factory's own token count at its list price: in the leaf's
   record, on `graphene watch`'s status line, and on the run's last line.
 - Graphene reads no Claude Code transcript. What it knows of a session is what its hooks recorded
   while the session ran, in `.graphene/`.
-- The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git.
+- The store is `.graphene/` inside the repo: local, created `0700`, and it ignores itself in git,
+  all but `.graphene/direction.txt`, the direction, which is yours to commit: it holds goals, and
+  nothing about a session.
   Graphene never pushes. It commits and merges only in `graphene run --parallel`, on
   `graphene/<leaf>` branches of its own, merged into the checkout you started it from when the merge
   is clean.

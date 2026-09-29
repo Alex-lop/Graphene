@@ -1,5 +1,5 @@
-"""`graphene demo`: a recorded run, replayed in `graphene watch` exactly as it happened, and the recorder
-that makes one.
+"""`graphene demo`: a recorded run, replayed in `graphene watch` change by change as it happened, and the
+recorder that makes one.
 
 A recording is the plan's store over a run, not the model's calls: replaying the calls would run their
 tools, which is model-written code. Its first line says what was recorded, when, by which Graphene, and
@@ -12,9 +12,10 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 25 September 2026, when no
-Token Factory key existed, by docs/proof/nemotron.sh on a tiny repository against the scripted fake
-(tests/fake_tokenfactory.py), and its first line says it is a scripted stand-in, which the screen shows.
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
+docs/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
+planner that puts up a board and a key taking each item, and its first line says it is a scripted
+stand-in, which the screen shows.
 It is made again from the fake with
 
     RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
@@ -33,6 +34,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import signal
 import sqlite3
 import subprocess
@@ -41,13 +43,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from textual.widgets import Static
+from textual.binding import Binding
+from textual.widgets import Input, Static
 
 from . import __version__, keys
 from . import plan as P
 from . import tokenfactory as tf
 from .store import Store
-from .tui import Help, Watch, fit
+from .tui import Help, Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
@@ -56,9 +59,19 @@ LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what 
 NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
+HOLD = 2.0  # seconds each change stays on the screen at least, so a first look can read it
+ENDING = "the end of the run's log"  # `--once`'s heading over the last rows: the run's, not the reader's now
+# In a replay of a stand-in, the names the recording gives the model and its planner and executor are the
+# stand-in's: `run:stand-in`, `stand-in-Nano`. The recording keeps them as the run wrote them.
+# ponytail: the whole recording's text, so a title that says Nemotron reads stand-in too in such a replay
+STAND_IN_NAMES = ((re.compile(r"(?:nvidia/)?Nemotron-3-(\w+?)-fake"), r"stand-in-\1"),
+                  (re.compile(r"nemotron", re.IGNORECASE), "stand-in"))  # fmt: skip
+KEYS = ["space pause", ". next", "r again"]  # the replay's own keys, first on the bottom line
+WORK = ("j ", "gg", "Enter", "l ", "za", "Tab", "? ", "q ", "ctrl-d", "Esc", "/")  # watch's that work here
 # the plan_meta keys the screen reads: the board's and the person's standing settings included
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
-        "settings:protected", "settings:readonly", "settings:never", "settings:size")  # read  # fmt: skip
+        "settings:protected", "settings:readonly", "settings:never", "settings:size",
+        "settings:board")  # read  # fmt: skip
 KEY, WORD, BASE64, REMOVED = tf.SHAPED, tf.WORD, tf.BASE64, tf.REMOVED  # shaped like a key: see there
 
 
@@ -86,6 +99,21 @@ def hider(root: Path) -> tuple:
 
 
 unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
+HOMES = re.compile(r"/(?:Users|home)/")  # a path under a home directory, anyone's
+
+
+def leaks(text: str) -> dict[str, int]:
+    """What a recording must not hold, counted, never shown: the key and the project in the environment (and
+    the keychain's key), the home directory, a path under anyone's, and words shaped like a key. The ladder's
+    rung 5 counts its live recording with it, and CI every recording in tests/recordings/."""
+    home = str(Path.home())
+    secrets = {"the key": {os.getenv(tf.KEY, ""), keys.find() or ""},
+               "the project": {os.getenv("NEBIUS_PROJECT_ID", "")}}  # fmt: skip
+    counts = {what: sum(text.count(v) for v in values if len(v) > 7) for what, values in secrets.items()}
+    shaped = sum(1 for w in WORD.findall(text) if KEY.search(w)) + len(BASE64.findall(text))
+    return counts | {"the home directory": text.count(home) if len(home) > 1 else 0,
+                     "a path under a home directory": len(HOMES.findall(text)),
+                     "words shaped like a key": shaped}  # fmt: skip
 
 
 def record(root: Path, out: Path, every: float = EVERY) -> int:
@@ -168,12 +196,13 @@ def _snapshot(conn: sqlite3.Connection, after: int) -> tuple[dict, list[dict], d
         conn.execute("COMMIT")
 
 
-def load(path: Path) -> tuple[dict, list[dict]]:
+def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
     """A recording's first line, with ``day``: the day it was recorded, local as the screen's clocks are;
     and its changes, each with ``at``: when the replay applies it (the first at once, each wait after it
-    as recorded, or LONG seconds for a longer one) and ``cut``: how many times faster that wait is played
-    (0 when it is not cut); ``shown``, what made it, is decided from the run. A file that is not a
-    recording is a ValueError."""
+    as recorded but at least HOLD seconds, or LONG seconds for a longer one, all divided by ``speed``)
+    and ``cut``: how many times faster that wait is played (0 when it is not cut); ``shown``, what made
+    it, is decided from the run, and a stand-in's changes name it so (STAND_IN_NAMES). A file that is not
+    a recording is a ValueError."""
     head, *lines = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
     if not isinstance(head, dict) or not {"graphene demo", "recorded", "shown", "repository"} <= head.keys():
         raise ValueError("it is not a recording `graphene demo --record` made")
@@ -184,11 +213,16 @@ def load(path: Path) -> tuple[dict, list[dict]]:
              if r["kind"] == "usage"]  # fmt: skip
     live = not head.get("stand_in", True) and all(c.get("endpoint") == "token factory" for c in calls)
     head["shown"] = NO_CALLS if not calls else LIVE if live else STAND_IN
+    if head["shown"] == STAND_IN:
+        text = json.dumps(lines)
+        for word, instead in STAND_IN_NAMES:
+            text = word.sub(instead, text)
+        lines = json.loads(text)
     at, was = 0.0, lines[0]["t"] if lines else 0.0
-    for line in lines:
+    for k, line in enumerate(lines):
         gap, was = line["t"] - was, line["t"]
-        at += min(gap, LONG)
-        line["at"], line["cut"] = at, gap / LONG if gap > LONG else 0
+        at += min(max(gap, HOLD), LONG) if k else 0
+        line["at"], line["cut"] = at / speed, gap / LONG if gap > LONG else 0
     return head, lines
 
 
@@ -240,6 +274,20 @@ def banner(head: dict, state: str = "") -> list[tuple[str, str]]:
     return [(first, "bold"), *([(state, "")] if state else []), (whose, "dim")]
 
 
+def what(line: dict) -> str:
+    """One recorded change in words, for the bottom line: the rows the plan's log gained, else the nodes
+    that changed and their state, else an executor's output; so a step never looks like nothing."""
+
+    def row(r: dict) -> str:
+        detail = json.loads(r.get("detail") or "{}") if r["kind"] == "board" else {}
+        said = f"{r['node_id']} {r['kind']}".removeprefix("* ")
+        return f"{said}: {detail.get('act', '')} {detail.get('item', '')}".strip() if detail else said
+
+    said = [row(r) for r in line.get("node_log") or []]
+    said = said or [f"{i} {row['state'] if row else 'gone'}" for i, row in (line.get("nodes") or {}).items()]
+    return " · ".join(said) or ("an executor's output" if line.get("runs") else "the plan's settings")
+
+
 def last_frame(repo: Path, lines: list[dict]) -> None:
     """Every change at once: the replay's store as the run left it."""
     with Store.open(repo) as store:
@@ -249,12 +297,24 @@ def last_frame(repo: Path, lines: list[dict]) -> None:
 
 class Replay(Watch):
     """`graphene watch` over a recording: its changes applied to the replay's own store on the recorded
-    clock, the top line saying what it is, and every key that would change the plan or start anything
-    answered with one line, nothing done. Moving, folding, the record, the output and the help work."""
+    clock (each held HOLD seconds at least, a wait over LONG cut), the top line saying what it is and
+    which change it is at, and every key that would change the plan or start anything answered with one
+    line, nothing done. Moving, folding, the record, the output and the help work, and the replay's own
+    keys: space pauses and plays on, `.` applies the next change and stays paused, `r` plays it again from
+    the start."""
+
+    BINDINGS = [
+        Binding("space", "pause", show=False, priority=True),  # before the tree's own space (a fold)
+        Binding("full_stop", "step", show=False),
+        Binding("r", "again", show=False),
+    ]
+    HELP_END = "A key that would change the plan or start anything says so here, and does nothing."
+    RUNS_HERE = False  # the status line offers neither R nor P, and keeps one form
 
     def __init__(self, repo: Path, head: dict, lines: list[dict]) -> None:
         super().__init__(repo, lambda: Store.open(repo), every=1.0)
         self.head, self.lines, self.next, self.began = head, lines, 0, 0.0
+        self.paused: float | None = None  # when it was paused, on the replay's clock's terms; None: playing
         self.files, self.files_at = [], math.inf  # what git tracked is the recording's, never asked here
 
     def on_mount(self) -> None:
@@ -270,24 +330,61 @@ class Replay(Watch):
         once the app has stopped running: the last change opens every fold, and the tree may be gone."""
         if not self.is_running:
             return
-        due = time.monotonic() - self.began
+        due = (self.paused or time.monotonic()) - self.began
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return
+        said = []
         with Store.open(self.root_path) as store:
             while self.next < len(self.lines) and self.lines[self.next]["at"] <= due:
                 apply(store, self.lines[self.next], self.root_path)
+                said.append(what(self.lines[self.next]))
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
+        self.message = " · ".join(filter(None, said))  # what changed, in place of a key refused before it
         self.refresh_plan()
         if self.next == len(self.lines):  # the end: every fold open (zR), so the last frame shows every leaf
             self.tree.action_open_all()
+
+    def action_pause(self) -> None:
+        """Space: paused, the replay's clock stops where it is; again, it goes on from there. In the search
+        line it is a space."""
+        line = self.query_one("#line", Input)
+        if line.has_focus:
+            return line.insert_text_at_cursor(" ")
+        now = time.monotonic()
+        if self.paused is None:
+            self.paused = now
+        else:
+            self.began, self.paused = self.began + now - self.paused, None
+        self.refresh_plan()
+
+    def action_step(self) -> None:
+        """`.`: the next change, now, and the replay stays paused there."""
+        if self.next < len(self.lines):
+            self.paused = self.paused or time.monotonic()
+            self.began = self.paused - self.lines[self.next]["at"]
+        self.play()
+        self.refresh_plan()
+
+    def action_again(self) -> None:
+        """`r`: the replay's store emptied, and the recording played from its first change."""
+        with Store.open(self.root_path) as store, store.transaction():
+            for table in ("nodes", "node_log"):
+                store.conn.execute(f"DELETE FROM {table}")
+            store.conn.execute(f"DELETE FROM plan_meta WHERE key IN ({', '.join('?' * len(META))})", META)
+        for output in (self.root_path / ".graphene" / "runs").glob("*"):
+            output.unlink()
+        self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
+        self.play()
 
     def draw(self, store) -> None:
         """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short
         and by how much, or its end, then which run and when."""
         super().draw(store)
         cut = self.lines[self.next]["cut"] if self.next < len(self.lines) else 0
-        state = ENDED if self.next == len(self.lines) else f"×{round(cut, 1):g}: a wait, cut" if cut else ""
+        at = f"{self.next} of {len(self.lines)}"
+        state = (ENDED if self.next == len(self.lines) else f"paused at {at}" if self.paused
+                 else f"×{round(cut, 1):g}: a wait, cut" if cut else at)  # fmt: skip
         self.query_one("#where", Static).update(fit(banner(self.head, state), max(self.size.width - 2, 20)))
 
     def refuse(self, *_, **__) -> None:
@@ -314,8 +411,31 @@ class Replay(Watch):
     def action_help_or_ask(self) -> None:
         self.push_screen(Help())  # the help everywhere: on a leaf that came back it would start a planner
 
+    def show_detail(self, store) -> None:
+        """Before the plan has a row: what the person asked for, where watch would say nothing is planned
+        and to `:ask` (which a replay refuses)."""
+        if self.nodes or self.tree.show_root or self.view == "direction":  # D shows the replay's direction
+            return super().show_detail(store)
+        asked = store.node_log(kinds=("asked",))[-1:]
+        pane = Pane(self.pane_room()[0])
+        if asked:
+            who, said = P.said_by(asked[0]["actor"]), asked[0]["detail"].get("note") or ""
+            pane.text(f"{who} asked the planner: “{said}”. What it proposes is next.")
+        else:
+            pane.text("Nothing is planned yet in this recording. What is planned is next.")
+        self.query_one("#detail", Static).update(pane.render())
+
+    def help_groups(self, settings: list[str]) -> tuple:
+        """The help's groups: the replay's keys first, then only watch's that work here."""
+        mine = ("replay", (("space", "pause; play on from there"), (".", "the next change, paused"),
+                           ("r", "again, from the start"), ("q", "quit")))  # fmt: skip
+        works = ("move", "fold", "see", "settings")
+        return (mine, *(group for group in help_groups(settings) if group[0] in works))
+
     def keys(self) -> list[str]:
-        """What the keys do here, for the bottom line: only those that work in a replay."""
+        """What the keys do here, for the bottom line: the replay's own, then those of watch's that work."""
+        playing = self.next < len(self.lines)
+        mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
         if self.view == "contract":
-            return ["j k move", "Enter record", "l output", "za fold", "? help", "q quit"]
-        return ["? help" if k[0] == "?" else k for k in super().keys() if k[:2] not in ("w ", "b ", "n ")]
+            return [*mine, "Enter record", "l output", "? help", "q quit", "j k move", "za fold"]
+        return [*mine, *("? help" if k[0] == "?" else k for k in super().keys() if k.startswith(WORK))]

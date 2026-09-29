@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
-import subprocess
 from pathlib import Path
 
 from . import plan as P
@@ -80,6 +78,8 @@ def _ignored(root: Path, rels: list[str]) -> set[str]:
     asked 250 times and passed the vendor's hook timeout. Asked only on the way to a refusal."""
     if not rels:
         return set()
+    import subprocess  # here: the hook imports this module, and most events never ask git
+
     argv = ["git", "-C", str(root), "check-ignore", "-z", "--stdin"]
     try:
         out = subprocess.run(argv, input="\0".join(rels) + "\0", capture_output=True, text=True, timeout=2)
@@ -96,6 +96,8 @@ def _how_out(store, sid: object, held: list[P.Node], paths: list[str]) -> str:
     """The way out of a scope refusal. Why (do not work around it; only the person widens a scope) is
     said the first time a session meets it in a hold of that node, and a short line after that: the
     same lecture read twice is noise. TODO: one row a hold that met a refusal, never pruned."""
+    import shlex
+
     n = held[0]
     told = f"told:{sid}:{n.id}:{n.started_at}:scope"
     if store.meta(told):
@@ -356,6 +358,8 @@ def _context(event: str, text: str) -> dict:
 
 def _close(store, node: P.Node, sid: str) -> str | None:
     """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails."""
+    import subprocess
+
     try:
         P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
     except P.Refused as no:
@@ -371,6 +375,8 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
     Its scope and check are what they wrote after `--scope` and `--check`, when they wrote any; else it
     may touch anything and is done when the turn ends, and its record says what it did touch. The
     scope is never guessed from the prose."""
+    import subprocess
+
     text = store.meta(f"prompt:{sid}")
     if not text or os.environ.get("GRAPHENE_NODE") or _strict(store):
         return None
@@ -399,7 +405,7 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
 def _check_write(
     store, held: list[P.Node], rel: str, event: dict, how: str, root: Path | None = None
 ) -> dict | None:
-    if rel.split("/", 1)[0] in OURS:
+    if rel.split("/", 1)[0].casefold() in OURS:  # a disk that ignores case writes .GRAPHENE/ there too
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
     if not held and root is not None:
@@ -461,7 +467,7 @@ def _guard_command(event: dict) -> dict | None:
             "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
             "not an agent's to run"
         )
-    if ".graphene" in command and not re.match(r"\s*graphene\s", command):
+    if ".graphene" in command.casefold() and not re.match(r"\s*graphene\s", command):
         return _deny(
             "the plan's own store (.graphene/) is not an agent's to read around or write: use "
             "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
@@ -613,8 +619,12 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 continue  # `echo hi > "\n"`: the parser's artefact, not a path anyone can write
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
+            from .hooks import ours
+
+            if ours(written, cwd, root):  # the store or the direction, however it is spelled
+                return _deny(f"{written} is the plan's own store; no node's scope covers it")
             rel = _rel(written, root, cwd)
-            if rel is not None and (rel.split("/", 1)[0] in OURS or rel in HOOKS):
+            if rel is not None and (rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
             bound = held and any(P.binds(rel, n, standing) for n in held)
@@ -639,7 +649,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         standing = P.standing(store)
-        stray = [r for r in changed if r and not any(P.binds(r, n, standing) for n in held)]
+        # Graphene's own directory is written by `graphene` (a proposal to the direction): never a stray
+        stray = [r for r in changed if r and r.split("/", 1)[0] not in OURS]
+        stray = [r for r in stray if not any(P.binds(r, n, standing) for n in held)]
         ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:

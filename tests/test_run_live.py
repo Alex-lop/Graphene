@@ -115,7 +115,9 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     assert set(states(repo).values()) == {OPEN}  # nothing left running, nothing said done
     with Store.open(repo) as store:
         whys = [e["detail"]["why"] for e in store.node_log(kinds=("released",))]
-    assert whys and all("stopped (Ctrl-C)" in w for w in whys)
+    assert whys and all("the run was stopped before" in w for w in whys)
+    with Store.open(repo) as store:  # ready again, as the run said, and taken by the next plain run
+        assert not any(plan.came_back(store, n) for n in plan.nodes(store))
     assert wait_for(lambda: not any(R._alive(p) for p in pids), 15)  # the executors are gone too
 
 
@@ -155,6 +157,7 @@ def test_a_run_that_died_is_swept_and_its_leaf_is_ready_again(repo):
         said = []
         R.sweep(store, said.append)
         assert plan.get(store, "a").state == OPEN and "handed back, and it is ready again" in said[0]
+        assert not plan.came_back(store, plan.get(store, "a"))  # ready again, as it says: not the person's
 
 
 def test_a_leaf_whose_need_is_done_but_not_committed_waits_until_it_is(repo):
@@ -406,10 +409,14 @@ def test_a_run_lock_is_known_by_its_runs_pid_and_start_so_a_reused_pid_holds_not
         bystander.wait()
 
 
-@pytest.mark.parametrize("sig, parallel", [(signal.SIGTERM, "1"), (signal.SIGHUP, "2")])
+STOPS = [(signal.SIGTERM, "1"), (signal.SIGHUP, "2"), (signal.SIGQUIT, "1"), (signal.SIGQUIT, "2")]
+
+
+@pytest.mark.parametrize("sig, parallel", STOPS)
 def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, parallel):
     """Recheck: SIGHUP and SIGTERM had no handler: the run died where it stood, its executor worked
-    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind."""
+    on unattended, the leaf stayed `running`, and a parallel run left run.lock behind. Review 23: so
+    did Ctrl-\\ (SIGQUIT), the key a person reaches for while the run waits out its executor."""
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
     run = graphene_run(repo, "--with", executor(repo, SLOW), "--parallel", parallel)
@@ -427,6 +434,31 @@ def test_a_closed_terminal_or_a_kill_stops_the_run_as_ctrl_c_does(repo, sig, par
         if pid and not ended(pid):
             os.killpg(pid, signal.SIGKILL)
 
+
+
+def test_ctrl_backslash_while_the_run_waits_out_its_executor_is_held_off_as_ctrl_c_is(repo):
+    """Review 23: after a Ctrl-C the run gives its executor its grace, holding off more Ctrl-Cs, and
+    that silence is when a person presses Ctrl-\\. It ended the run on the spot: the executor (this one
+    ignores TERM) worked on, and its leaf stayed `running`."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    run = graphene_run(repo, "--with", executor(repo, KEPT))
+    pid = None
+    try:
+        assert wait_for(lambda: len(R_attempts(repo)) == 1)
+        attempt = R_attempts(repo)[0]["detail"]
+        pid, log = attempt["pid"], Path(attempt["log"])
+        assert wait_for(lambda: "up" in log.read_text())  # it ignores TERM from here on
+        run.send_signal(signal.SIGINT)
+        time.sleep(1)  # the run is in its stop, waiting out the executor's grace
+        run.send_signal(signal.SIGQUIT)
+        run.communicate(timeout=30)
+        assert run.returncode == 130 and states(repo) == {"a": OPEN}
+        assert wait_for(lambda: ended(pid), 15)  # killed once its grace was up
+    finally:
+        run.kill()
+        if pid and not ended(pid):
+            os.killpg(pid, signal.SIGKILL)
 
 def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
     """Recheck: a leaf whose last attempt was an earlier, dead run's was swept in the milliseconds
@@ -446,6 +478,33 @@ def test_the_sweep_leaves_a_leaf_a_live_run_has_just_taken_again(repo):
         R.sweep(store, said.append, repo)
         assert plan.get(store, "a").state == RUNNING and len(said) == 1
 
+
+
+def test_a_leaf_a_dead_parallel_run_left_done_in_its_worktree_is_committed_and_waits_in_review(repo):
+    """Review 22: a parallel run killed outright (kill -9, Force Quit, Ctrl-\\ before it was held) never
+    stops its executors, which run in sessions of their own. They finished in their worktrees and ran
+    `done`, so the leaves read done and the plan finished, while the work was only uncommitted in
+    .graphene/worktrees and nothing in the checkout; the next run said "nothing to run". The next run
+    now commits it on the leaf's branch and leaves it in review, as a stopped run's `park` does."""
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    tree = repo / ".graphene" / "worktrees" / "a"
+    git(repo, "worktree", "add", "-q", "-b", "graphene/a", str(tree), "HEAD")
+    run = Caller("run:claude", False, "s1")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, tree)
+        attempt = {"attempt": 1, "run_pid": dead.pid}  # written by a run that is gone
+        store.log_node("a", plan._now(), "attempt", run.label, "s1", None, attempt)
+        (tree / "a.txt").write_text("a, by its executor\n")
+        plan.finish(store, "a", run)  # its executor's `done`, after the run was killed
+        assert plan.get(store, "a").state == DONE
+    said = graphene_run(repo, "--parallel", "2", "--with", "true").communicate(timeout=60)[0]
+    assert "a passed; the run was stopped before it landed" in said, said
+    with Store.open(repo) as store:
+        assert plan.get(store, "a").state == REVIEW
+    assert git(repo, "show", "graphene/a:a.txt") == "a, by its executor\n"
+    assert (repo / "a.txt").read_text() == "a\n"  # the checkout is the person's until they merge
 
 def test_a_run_started_in_a_linked_worktree_sees_the_parallel_runs_lock(repo, tmp_path):
     """Recheck: `graphene run` in a second worktree swept with that worktree as the root, found no
@@ -797,8 +856,8 @@ def test_two_runs_of_one_leaf_in_the_same_second_keep_both_logs(repo, monkeypatc
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
         quiet = executor(repo, "import os; print('executor', os.getpid())")
-        for _ in range(2):
-            R.run_plan(store, repo, quiet, 1, None, lambda _: None, repo / ".graphene" / "runs")
+        for _ in range(2):  # the second by name, as `r` runs a leaf that came back again
+            R.run_plan(store, repo, quiet, 1, ["a"], lambda _: None, repo / ".graphene" / "runs")
         logs = [e["detail"]["log"] for e in store.node_log("a", ("attempt",))]
     assert len(logs) == 2 and len(set(logs)) == 2
     assert len({Path(p).read_text() for p in logs}) == 2
@@ -891,6 +950,22 @@ def test_a_sibling_once_taken_is_offered_no_more(repo):
         assert plan.offers(store, plan.get(store, "a")) == []
 
 
+def test_undoing_a_sibling_or_a_widen_puts_back_the_leaf_that_came_back_with_its_offers(repo):
+    """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and w and b
+    were no longer offered. The undo put back its row, but its log still ended with the edit."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        for act in (plan.sibling, plan.widen):  # the second is undone after the first was
+            with plan.undoable(store, ALEX, act.__name__):
+                act(store, "a", [], ALEX)
+            assert not plan.came_back(store, plan.get(store, "a"))
+            plan.undo(store, ALEX)
+            a = plan.get(store, "a")
+            assert plan.came_back(store, a) and [k for k, _, _ in plan.offers(store, a)] == ["w", "b"]
+
+
 # Recheck 59 (fixed)
 def test_a_check_naming_a_file_git_does_not_track_is_warned_about(repo):
     """A worktree cut for --parallel has no untracked file, so that check could never pass there."""
@@ -941,3 +1016,52 @@ def test_a_siblings_goal_ends_the_reason_with_a_full_stop(repo):
         made = plan.sibling(store, "a", [], ALEX)
     goal = " ".join(made.goal.split())
     assert goal.startswith("a (leaf a) came back: it needs src/util.py. This leaf makes")
+
+
+def test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer(repo):
+    """Walk 2026-09-28 (alex 5): `b` on cli made cli-defaults (config/defaults.py, check true); it wrote
+    cli/main.py, came back, and `b` offered a sibling for cli/main.py, which cli's scope already had: a
+    chain of three leaves, two of them writers of one file. A path belongs to the live leaf whose scope
+    has it, so it is offered to no other: the offer is to wait on its owner, or nothing when the owner
+    already waits on this leaf, and the command that takes it names the owner."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("cli", "cli/main.py"), leaf("other", "c.txt")], ALEX)
+        plan.start(store, "cli", BOT, repo)
+        why = "USAGE is built from config/defaults.py"
+        plan.release(store, "cli", BOT, why, wants=["config/defaults.py"])
+        [_widen, b] = plan.offers(store, plan.get(store, "cli"))
+        assert b[1] == "a sibling leaf for config/defaults.py (its check: true); cli waits on it"
+        # a check that proves nothing is never offered silently: the leaf's own check, after it, decides
+        made = plan.sibling(store, "cli", [], ALEX)
+        plan.start(store, made.id, BOT, repo)
+        plan.release(store, made.id, BOT, "USAGE lives in cli/main.py too", wants=["cli/main.py", "c.txt"])
+        offers = plan.offers(store, plan.get(store, made.id))
+        assert [(k, what) for k, what, _ in offers] == [
+            ("n", f"make {made.id} wait on other, whose scope has c.txt")
+        ]  # cli/main.py is cli's, and cli waits on this leaf: nothing takes it here
+        with pytest.raises(Refused, match=r"cli/main\.py is cli's and c\.txt is other's"):
+            plan.sibling(store, made.id, [], ALEX)
+        said = "not offered: cli/main.py is cli's and c.txt is other's (a path has one leaf that writes it)"
+        assert plan.not_offered(store, plan.get(store, made.id)) == said
+
+
+def test_the_forecast_says_a_leaf_that_came_back_waits_on_the_person_as_r_leaves_it(repo):
+    """R and plain `graphene run` leave a leaf that came back to the person, but `plan accept` and the
+    page's forecast still listed it, and what needs it, under "left alone, agents can reach"."""
+    from graphene_map.plan_view import build_plan_view
+
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        forecast = build_plan_view(store)["forecast"]
+    assert forecast["runs"] == []
+    assert forecast["waits"] == [
+        {"id": "a", "why": ["a came back to you"]},
+        {"id": "b", "why": ["a came back to you"]},
+    ]
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("c", "c.txt")], BOT)  # an agent's proposal, for the person to accept
+    said, _ = graphene(repo, "plan", "accept").communicate(timeout=60)
+    assert "left alone, agents can reach: c\n" in said, said
+    assert "  a will wait: a came back to you" in said

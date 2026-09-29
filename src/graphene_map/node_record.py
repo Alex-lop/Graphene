@@ -675,8 +675,9 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
                 f"    {label}: "
                 + ", ".join(f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items()))
             )
-    for stray in refusals.done:
-        lines.append(f"    `done` refused over: {', '.join(stray) or 'a failing check'}")
+    # the same paths refused again (each attempt's own `done`, then the run's) are one line, counted
+    for stray, n in Counter(", ".join(stray) or "a failing check" for stray in refusals.done).items():
+        lines.append(f"    `done` refused {f'{n} times ' if n > 1 else ''}over: {stray}")
     return lines  # the last check is a coverage line: it is what verifies the change set
 
 

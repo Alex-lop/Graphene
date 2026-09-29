@@ -1,0 +1,76 @@
+$ graphene ask 'the Northwind XML feed loads like csv and json' --with 'python3 bin/planner.py'
+asking the planner (planner.py)…
+the planner says:
+  I read ingest/, cli/main.py, config/defaults.py and the README.
+  config/defaults.py names the sources, so I asked where xml goes.
+goal (proposed): the Northwind XML feed loads like csv and json
+proposed xml-src: the xml source
+proposed xml: an xml reader
+proposed cli: the cli takes --source xml
+put up where: where does the xml reader register?
+put up shape: the XML has the shape of samples/prices.xml
+put up legacy: legacy/priceimport.py skips the zero-price rule
+put up vendor: vendor/tinydec.py; it is vendored
+put up cents: prices in the XML are already cents
+the board waits on you (5): `graphene board`, or `graphene watch`
+prune it: `graphene watch` (y accepts, d drops), or `graphene plan edit`
+  (the plan of /tmp/walk/feeds)
+
+$ graphene board pick where 1
+picked where: where does the xml reader register? → a sources list in config/defaults.py
+  changed: xml: scope + config/defaults.py
+  (the plan of /tmp/walk/feeds)
+
+$ graphene ask 'the Northwind XML feed loads like csv and json' --with 'python3 bin/planner.py' --finer
+asking the planner (planner.py)…
+xml is dropped; xml-reader is the same node in the new tree, so where is carried to it
+carried: xml-reader: scope + config/defaults.py (from where)
+the planner says:
+  I read ingest/, cli/main.py, config/defaults.py and the README.
+  config/defaults.py names the sources, so I asked where xml goes.
+goal (proposed): the Northwind XML feed loads like csv and json
+proposed xml-source: the xml source
+proposed xml-reader: an xml reader
+proposed cli-takes-source: the cli takes --source xml
+the board waits on you (4): `graphene board`, or `graphene watch`
+prune it: `graphene watch` (y accepts, d drops), or `graphene plan edit`
+  (the plan of /tmp/walk/feeds)
+
+$ graphene node show xml-reader
+xml-reader (revision 2): an xml reader
+  why:    the xml source (xml-source)
+  goal:   an xml reader
+  decided:
+          where does the xml reader register? → a sources list in config/defaults.py
+  scope:  ingest/xmlfeed.py, ingest/__init__.py, config/defaults.py   (a write anywhere else is refused, and blocks `done`)
+  done:   `python3 -c "import ingest.xmlfeed"` passes
+  finish: graphene node done xml-reader   (runs the check and asks git what changed)
+  stuck:  graphene node release xml-reader --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+xml-reader  an xml reader
+  state: proposed · owner agent
+  nobody has held this node yet, so no window and nothing changed under it
+  coverage: not computed — nobody has held this node, so there is no window for git to answer for
+  refused: nothing
+  what people did to it:
+    2026-09-29T05:58:38.606Z  edited  alex (no terminal)  scope: ['ingest/xmlfeed.py', 'ingest/__init__.py'] -> ['ingest/xmlfeed.py', 'ingest/__init__.py', 'config/defaults.py'] (revision 2)
+  every entry, check runs included: `graphene plan log` (3 for xml-reader)
+
+$ graphene board
+the board: 4 open, 1 settled
+assumptions
+  ◇ the XML has the shape of samples/prices.xml   shape   open
+risks
+  ◇ legacy/priceimport.py skips the zero-price    legacy  open
+    rule
+      default: leave legacy alone
+         then: condition legacy/**
+left out
+  ◇ vendor/tinydec.py; it is vendored             vendor  open
+notes
+  ◇ prices in the XML are already cents ·         cents   open
+    planner:planner.py's
+settled
+  ✓ where does the xml reader register?           where   picked
+      → a sources list in config/defaults.py
+      changed: xml-reader: scope + config/defaults.py
+graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT
