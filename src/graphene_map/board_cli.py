@@ -51,7 +51,8 @@ def rows(store, everything: bool = False) -> list[str]:
     # state are whole (an id is what a command takes); the words take what is left of 80 columns, and
     # wrap under the row rather than being cut
     wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
-    wt = min(max(cell_len(_words(it)) for it in listed) + 4, _wide() - 4 - wid - ww)
+    # the words keep 12 columns however long the id: the row runs past a narrow terminal rather than lose them
+    wt = max(16, min(max(cell_len(_words(it)) for it in listed) + 4, _wide() - 4 - wid - ww))
     for name, group in shown:
         out.append(name)
         for item in group:

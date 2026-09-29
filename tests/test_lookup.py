@@ -211,3 +211,39 @@ def test_a_question_with_no_default_is_not_taken_by_a_default_from_the_repo(repo
     assert person("board", "lookup").exit_code == 0
     with Store.open(repo) as store:
         assert B.get(store, "level")["state"] == "open"
+
+
+def test_an_answer_that_drops_a_node_is_left_for_the_person(repo, fake):
+    """Review 2026-09-29 (6): lookup took a default that drops a leaf, which accept and R leave for
+    the person's key, and neither unpark nor undo brought the leaf back."""
+    planned(repo)
+    with Store.open(repo) as store:
+        B.add(store, "question", "should prices stay?", P.Caller("planner:nemotron", False, "s"),
+              default="no, drop it", then=["drop prices"], item_id="stay")  # fmt: skip
+    fake([nano({"answers": [{**CENTS, "id": "stay"}]})])
+    assert person("board", "lookup").exit_code == 0
+    with Store.open(repo) as store:
+        assert B.get(store, "stay")["state"] == "open" and P.get(store, "prices").state == P.PROPOSED
+
+
+def test_a_form_feed_does_not_move_the_line_it_cites(repo, fake):
+    """Review 2026-09-29 (12): lines were numbered by str.splitlines, which also breaks on a form feed,
+    so the citation pointed one line past the quoted one."""
+    (repo / "app.py").write_text("import os\n\x0c\ndef load():\n    return int(price * 100)  # cents\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    planned(repo)
+    fake([nano({"answers": [CENTS]})])
+    assert person("board", "lookup").exit_code == 0
+    with Store.open(repo) as store:
+        assert B.get(store, "units")["from"] == "app.py:4"  # as `grep -n cents app.py` says
+
+
+@pytest.mark.parametrize("odd", [{"id": ["units"]}, {"file": ["app.py"]}, {"choice": 1}, {"line": {"a": 1}}])
+def test_an_answer_of_the_wrong_shape_is_passed_over_not_a_crash(repo, fake, odd):
+    """Review 2026-09-29 (13): a list for an id or a file raised TypeError after the bill was written."""
+    planned(repo)
+    fake([nano({"answers": [{**CENTS, **odd}]})])
+    said = person("board", "lookup")
+    assert said.exit_code == 0 and "from the repo: 0 of 2 open questions settled" in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert {it["state"] for it in B.items(store)} == {"open"}

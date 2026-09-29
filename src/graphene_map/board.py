@@ -125,8 +125,16 @@ def asks(store) -> bool:
     a question is. When it does not, no screen shows it and `graphene plan` says nothing of it."""
     from . import settings as S
 
-    kinds = ("question",) if S.board(store) == "auto" else KINDS
-    return any(it["kind"] in kinds and reads(it) == "open" for it in items(store))
+    auto = S.board(store) == "auto"
+    return any(reads(it) == "open" and (not auto or waits(it)) for it in items(store))
+
+
+def waits(item: dict) -> bool:
+    """Is the item one only the person can settle, so `board: auto` shows it? A question, and a note
+    an agent other than a planner put up (an executor's): no default takes its words for the person."""
+    return item["kind"] == "question" or (
+        item["kind"] == "note" and item["agent"] and not item["by"].startswith("planner:")
+    )
 
 
 def waiting(store) -> tuple[int, str | None]:
@@ -449,12 +457,11 @@ def settle(
 
 def has_default(item: dict) -> bool:
     """Can the item be taken without a word from the person? A default (or its `then:` lines), or a
-    kind whose take is a yes: an assumption confirmed, a risk noted, a leave-out agreed, an agent's
+    kind whose take is a yes: an assumption confirmed, a risk noted, a leave-out agreed, a planner's
     note taken (then told to its executors as written). A question with no default waits for the
-    person, and so does a default that drops a node (``drops``)."""
-    return reads(item) == "open" and not drops(item) and bool(
-        item["default"] or item["then"] or item["kind"] in ("assume", "risk", "leave out", "note")
-    )
+    person, and so do another agent's note (``waits``) and a default that drops a node (``drops``)."""
+    yes = item["kind"] in ("assume", "risk", "leave out") or (item["kind"] == "note" and not waits(item))
+    return reads(item) == "open" and not drops(item) and bool(item["default"] or item["then"] or yes)
 
 
 def drops(item: dict) -> list[str]:
@@ -469,10 +476,13 @@ def defaults(store, who: P.Caller, files: list[str] | None = None) -> list[dict]
     a node (``left``). Returns what was taken."""
     taken = []
     for item in [it for it in items(store) if has_default(it)]:
+        store.conn.execute("SAVEPOINT take")  # each take all or none, inside the act that takes them all
         try:
             taken.append(settle(store, item["id"], "taken", who, files=files, unchanged=True))
         except P.Refused:
-            continue
+            store.conn.execute("ROLLBACK TO take")  # its state and whatever of its effects was made
+        finally:
+            store.conn.execute("RELEASE take")
     return taken
 
 

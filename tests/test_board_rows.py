@@ -227,7 +227,8 @@ def test_a_board_that_asks_nothing_has_no_rows_no_line_and_no_count(repo, size):
 
 def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
     planned(repo, BOARD.replace("question: which id", "assume: which id").replace(
-        "    option: a uuid column, added to schema.py\n    then: scope ids + schema.py\n", ""))
+        "    option: a uuid column, added to schema.py\n    then: scope ids + schema.py\n", "").replace(
+        "note: keep the response shape  [shape]\n", ""))  # a session's note would ask (see below)
     with Store.open(repo) as store:
         S.apply(store, "board: auto\n", ALEX)
         assert not B.asks(store) and B.waiting(store) == (0, None)
@@ -235,12 +236,15 @@ def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
     assert seen["at"] is None and not any(" int-ids " in r for r in seen["tree"])
     assert "the board" not in person("plan").stdout
     accepted = person("plan", "accept").stdout  # what was not shown takes its default, in one line
-    assert "took the defaults of which-id, int-ids, empty-check, paging, shape, left open" in accepted
-    agent("board", "note", "is the id a string?")  # a note is no question: auto still shows nothing
+    assert "took the defaults of which-id, int-ids, empty-check, paging, left open" in accepted
     with Store.open(repo) as store:
-        assert not B.asks(store)
+        B.note(store, "is the id a string?", P.Caller("planner:script", False, "s1"))
+        assert not B.asks(store)  # a planner's note is no question: accept takes it, as written
+    agent("board", "note", "rewrite the tests too")  # a session's note is not a planner's: it waits for you
+    with Store.open(repo) as store:
+        assert B.asks(store) and B.waiting(store)[0] == 2
         B.add(store, "question", "strings or ints?", P.Caller("planner:script", False, "s1"), default="ints")
-        assert B.asks(store) and B.waiting(store)[0] == 2  # a question: the board shows all that is open
+        assert B.asks(store) and B.waiting(store)[0] == 3  # the board shows all that is open
     [seen] = drive(repo, [[]], (80, 24))
     assert seen["at"] == "strings-or-ints"
 
@@ -249,7 +253,7 @@ def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
 def test_under_auto_answering_the_last_question_leaves_what_a_fresh_screen_shows(repo, size):
     """Walk 2026-09-29 (4): after the last question the live screen kept the other items and `+ 4 on
     the board`, which a fresh screen did not show."""
-    planned(repo)
+    planned(repo, BOARD.replace("note: keep the response shape  [shape]\n", ""))  # a session's note asks
     live, fresh = drive(repo, [[], ["y"]], size)[1], drive(repo, [[]], size)[0]
     rows = lambda seen: [r for r in seen["tree"] if any(f" {i} " in r for i in OPEN)]  # noqa: E731
     assert rows(live) == [] and rows(fresh) == []
