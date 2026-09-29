@@ -116,7 +116,7 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     with Store.open(replay) as store:
         assert {n.id: n.state for n in plan.nodes(store)} == ended
         tail = run.live(store, plan.get(store, "greet"))["log"]
-    assert tail.startswith(str(replay)) and "nemotron executor" in Path(tail).read_text()  # `l`, replayed
+    assert tail.startswith(str(replay)) and "stand-in executor" in Path(tail).read_text()  # `l`, replayed
     assert str(tmp_path) not in recorded and "{repo}/.graphene/worktrees/greet" in recorded
     if ship:  # RECORD_DEMO=src/graphene_map/demo.jsonl: the recording `graphene demo` ships, made again
         shutil.copy(tmp_path / "demo.jsonl", ship)

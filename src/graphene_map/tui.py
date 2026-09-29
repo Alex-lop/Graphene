@@ -402,7 +402,7 @@ class Help(ModalScreen[None]):
 
         width = self.app.size.width
         said = self.app.read(lines_for_screen, []) if hasattr(self.app, "read") else []
-        groups = help_groups(said)
+        groups = getattr(self.app, "help_groups", help_groups)(said)  # a replay's: its own keys first
         two = width >= 2 * HELP_WIDE + 10
         column = HELP_WIDE if two else max(width - 8, 30)
         with VerticalScroll():
@@ -413,7 +413,8 @@ class Help(ModalScreen[None]):
                     yield Static(help_text(groups[5:], column))
                 else:
                     yield Static(help_text(groups, column))
-            end = f"{HELP_END} {said[-1]}." if said else HELP_END
+            end = getattr(self.app, "HELP_END", HELP_END)
+            end = f"{end} {said[-1]}." if said else end
             yield Static(Text("\n".join(textwrap.wrap(end, column * (2 if two else 1)))), id="end")
 
     def action_scroll(self, lines: int) -> None:
@@ -852,8 +853,9 @@ class Watch(App):
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
         }
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
-        if self.counts["finished"]:  # what `graphene` says: the status line's, not the goal row's
+        if self.counts["finished"]:  # what `graphene` says; the goal row reads done, as a sub-goal does
             self.counts["done"] += ", finished"
+            goal_word = "done"
         shape = [(n.id, n.parent, n.state, n.title, n.rev, n.id in self.back) for n in nodes]
         shape += [(i, f["fork"]) for i, mine in self.forks.items() for f in mine] + self.board.shape()
         tree = self.tree
