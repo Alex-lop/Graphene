@@ -340,4 +340,38 @@ outline arm's. If both hold, the default is `board: on`; otherwise `board: auto`
 
 ### Deviations, written before the first run
 
+**02:25, the build and the pre-run checks, done by lane C before any run.**
+`~/graphene-board4-runs/build.txt`:
+
+```
+commit 4acc6ea4f6567f65ea322bae0c06539702a14bc2
+wheel graphene_map-0.5.0-py3-none-any.whl
+sha256 f79f7102c7c53ee6c31b7386819ba431f786226357442c5cf3d346fab1dbbbef
+stand-ins: claude-opus-5-5, judges the same
+```
+
+The wheel is of `4acc6ea`, the lane's last code commit, made after this registration's commit
+(`f304da0`): lookup no longer sends a protected file to Nano. Lookup does not run in this study, so
+the arms are as registered. The coordinator corrects the stand-ins' line if they run on another
+model, here and in `build.txt`, before the first run. The pre-run checks in `board-study.md` passed:
+`graphene` is the venv's (0.5.0); `graphene board --help` lists take, pick, drop, park, unpark,
+answer, note and lookup; each of the four copies is `diff -r` identical to study 3's planned
+directory; in a throwaway copy of each, `graphene plan`, `plan --text`, `board --all` and `graphene
+config` run on this build and no copy sets `board: auto`; four `paragraph.md` are listed, none
+opened, and the eight task blobs are the ones registered above; `GRAPHENE_SHAPE` is unset. No run
+directory (`TASK-shape-ARM-1`) exists yet.
+
+**02:50, the coordinator, before the first run.** Two changes to how the runs are made, none to what
+they measure:
+- **`G` is a checkout of `first-light` at `5ab0dca`** (at `…/scratchpad/study4`), not the lane's
+  worktree. The files a run's `env.sh` and the table use (`docs/test/logline.py`, `shape_only.py`,
+  `attention.py`, `newrun.sh` and `docs/test/tasks/`) are byte-identical between the two
+  (`git diff --stat fl-board 5ab0dca -- …` is empty). The build every stand-in runs is the pinned
+  wheel above, whatever `G` holds.
+- **The four tasks run at once, not one after another.** All eight stand-ins start together, and each
+  judge starts when its run ends. Every stand-in and every judge is a fresh sub-agent with no memory of
+  any other run, so no order can carry over from one task to the next; the order was there for a
+  person's fatigue, which a stand-in does not have. The stand-ins and the judges are
+  claude-opus-5-5, as `build.txt` says.
+
 ### Study 4 results
