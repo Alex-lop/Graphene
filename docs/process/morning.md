@@ -17,14 +17,14 @@
 - The video, filmed scene by scene and refused unless the run was live: `docs/demo/build.sh --rehearsal`
 
 **Decide**
-- The branch has about 70 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
+- The branch has 110 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
 - Rungs 3-7 by an agent: start Claude Code from a shell with `export GRAPHENE_AGENT_LIVE_USD=10` once Sandboxes let the project in? Default: yes.
 - A run started from `watch` goes on after the watch's terminal closes, as after `q`. Default: keep.
 
 **Broken or risky**
+- Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
 - Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
-- Harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); a rehearsal and the walkers' tmux seats could read your `~/.zshenv` key (it reached only the local stand-in); Playwright left three files in your git-ignored `.playwright-mcp/`, removed.
-- My integration worktree was deleted during a test run at 03:04; the same test files, rerun one by one, deleted nothing. Cause unknown.
+- Other harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); shells that read `~/.zshenv` gave stand-ins your key (only the local stand-in saw it); Playwright files in your git-ignored `.playwright-mcp/`, removed; my integration worktree deleted at 03:04, cause unknown.
 
 ---
 
@@ -70,6 +70,8 @@ and 109 (the teardown) first.
 
 ## The evidence
 
+- **The suite and CI:** 1,543 passed, 3 skipped, with every extra, at `f68c0a3` (21 min, the machine
+  loaded); CI green on all seven jobs at `f68c0a3`. Later commits are said where they land.
 - **Studies on stand-ins** (Claude sub-agents, not people; n = 1 a cell): study 4, the board after
   tonight's changes against the outline, registered and its build pinned before any run
   (`docs/test/results-2026-09-29-board.md`): as faithful or more on 4 of 4 tasks, more modelled
@@ -98,6 +100,13 @@ and 109 (the teardown) first.
 - At 03:04 my integration worktree was deleted, all but part of `src/` and `tests/`, during a test run;
   the same files rerun one by one deleted nothing, and the cause is not known. The branch was intact.
   The closing review had an adversary on it.
+- At 04:45:51 your main repository's `core.bare` became `true`. I had run `git bisect run` over a test
+  in one of my worktrees; git exports GIT_DIR there, and before the guard (`499a6da`, both conftests
+  now drop git's location variables) a test's `git -C tmp init` re-initialised the shared repository.
+  Only `core.bare` changed (every other local key is as it was; no identity was written). The fix,
+  `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`, was refused to me by the
+  classifier, so it is yours. The closing review's destructive-operations adversary found the same
+  hazard independently (finding 34) and reproduced it in a throwaway clone.
 - This session's classifier refused one stand-in's commands in study 4 (rerun under its rule, the
   failed run kept) and my own look at a process's environment (I did not pursue it).
 

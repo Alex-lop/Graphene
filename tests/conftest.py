@@ -9,6 +9,7 @@ import pytest
 
 def pytest_configure(config):
     keyguard.install(config)  # no test reaches the real keychain (decision 96)
+    keyguard.no_git_location()  # nor acts on the repository running the suite
 
 
 @pytest.fixture(autouse=True)

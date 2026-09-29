@@ -12,6 +12,7 @@ import keyguard  # noqa: E402
 
 def pytest_configure(config):
     keyguard.install(config)
+    keyguard.no_git_location()
 
 
 @pytest.fixture(autouse=True)

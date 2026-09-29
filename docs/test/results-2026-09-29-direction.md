@@ -252,7 +252,8 @@ By the registered rule (8 items): the direction answered faster, as correctly.
 
 After the fact, on one fixture its author wrote: with every waiting and running item named, the
 direction's runs took a median 104.1 modelled person-seconds against morning.md's 107.4,
-with every run in both arms right on all eight items. Four of the six direction stand-ins answered from
-one `graphene direction`; what they still stopped on was that `next: email` names a leaf that has no
+with every run in both arms right on all eight items. Two of the six direction stand-ins answered from
+one `graphene direction` (the acts column: 1, 1, 2, 3, 2, 2); the other four also ran `graphene plan`,
+and what they stopped on was that `next: email` names a leaf that has no
 row of its own, and whether running work is named by its leaf or its session. This can show which way
 the change moved, and cannot confirm it.

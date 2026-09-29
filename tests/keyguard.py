@@ -126,3 +126,14 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     if said:
         print("\n" + "\n".join(said), file=sys.stderr)
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+# where git finds the repository, as `git bisect run`, a hook or `rebase --exec` export it: a test's git
+# would act on the repository running the suite (a task repo's commit landed there), so no test gets them
+GIT_LOCATION = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")  # fmt: skip
+
+
+def no_git_location() -> None:
+    for name in GIT_LOCATION:
+        os.environ.pop(name, None)
