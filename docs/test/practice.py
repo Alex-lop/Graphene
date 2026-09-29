@@ -100,6 +100,16 @@ def mask(text: str) -> str:
     return tf.unkeyed(text)  # the whole word, not its first twenty characters
 
 
+def counted(r: Rung) -> int:
+    """How many times the key or the project is in a file this rung wrote or added to (its log, the ledger,
+    the access report, the recordings): counted, never shown. Every line is masked on its way out; this is
+    the check, live, that none got through."""
+    values = [v for name in SECRETS if len(v := os.environ.get(name) or "") >= 6]
+    files = [r.log, LEDGER, PROGRESS, STATE / "access.json", STATE / "leaf.jsonl", STATE / "demo.jsonl"]
+    texts = [p.read_text(encoding="utf-8", errors="replace") for p in files if p.exists()]
+    return sum(text.count(v) for text in texts for v in values)
+
+
 def spent() -> float:
     """The ladder's ledger in dollars at list price, read as tokenfactory.spent() reads it."""
     total = 0.0
@@ -240,6 +250,13 @@ def leaves(repo: Path) -> dict[str, str]:
         return {n.id: n.state for n in P.leaves(P.nodes(store))}
 
 
+def placed(repo: Path) -> str:
+    """Where the executor `graphene init` wrote puts the leaves, in words."""
+    with Store.open(repo) as store:
+        boxed = (store.meta("executor") or "").endswith("sandbox")
+    return ("in Docker, the stand-in" if DRY else "in Sandboxes") if boxed else "on this machine"
+
+
 def one_leaf(r: Rung, repo: Path, executor: str) -> str:
     """The practice leaf proposed, accepted and run; PASS needs it landed."""
     r.propose(repo, [LEAF])
@@ -335,6 +352,27 @@ FAILS = {
 }
 MADE = {"new file beside": "echo 'import os' > tests/conftest.py", "new link": "ln -s /etc/passwd leak"}
 INS = ["sed -i s/hi/hello/ app.py", "printf 'def test_new():\\n    pass\\n' > tests/test_new.py"]  # fmt: skip
+LIMIT = 5  # seconds rung 4 gives a `sleep 600` in the sandbox: it must come back as exit 124, soon after
+
+
+def past_its_time(r: Rung, place) -> str:
+    """A sandbox operation past its time comes back as exit 124 within a minute of its limit, and the
+    sandbox takes the next command: what a leaf's hung command meets (the fake and Docker show it; this
+    is ConTree's own time limit, live)."""
+    began = time.monotonic()
+    try:
+        _, code, said = place.box.run(place.image, "sleep 600", {}, LIMIT)
+    except Exception as no:  # noqa: BLE001 (what ConTree does here is the finding)
+        code, said = None, f"{type(no).__name__}: {no}"
+    took = time.monotonic() - began
+    r.note(f"[past its time] exit {code} after {took:.1f} s: {said.strip()[-300:]}")
+    if code != 124 or took > LIMIT + 60:
+        raise Failed(f"a command past its {LIMIT} s did not come back as exit 124 within a minute: exit "
+                     f"{code} after {took:.0f} s: {last(said)}")  # fmt: skip
+    code, out = place.run("true")
+    if code:
+        raise Failed(f"after a command past its time, the sandbox did not take the next one: {last(out)}")
+    return f"a command past its {LIMIT} s came back as exit 124 in {took:.0f} s, and the next one ran"
 
 
 def escape(r: Rung) -> str:
@@ -351,7 +389,7 @@ def escape(r: Rung) -> str:
                  ["-c", "user.name=p", "-c", "user.email=p@e", "commit", "-qm", "start"]):  # fmt: skip
         subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
     box = S.choose("docker" if DRY else "contree")
-    escaped = []
+    escaped, late = [], None
     try:  # a stop while the sandbox is being made cleans up too
         place = S.Sandbox(root, ["app.py", "tests/test_new.py"], box)
         for name, command in {**FAILS, **MADE, **dict.fromkeys(INS)}.items():
@@ -361,6 +399,10 @@ def escape(r: Rung) -> str:
                 escaped.append(name)
             if command is None and code != 0:
                 raise Failed(f"a write inside the scope failed in the sandbox: {name}: {last(out)}")
+        try:  # said after the escape test's own verdict, which comes first
+            timed = past_its_time(r, place)
+        except Failed as no:
+            timed, late = "", no
     finally:
         if hasattr(box, "forget"):  # every checkpoint the rung made, the sandbox's first ones too
             box.forget()
@@ -373,12 +415,18 @@ def escape(r: Rung) -> str:
         raise Failed(f"ESCAPED: a way out of the scope held in the sandbox: {', '.join(escaped)}")
     if "hello" not in (root / "app.py").read_text() or not (root / "tests/test_new.py").exists():
         raise Failed("the writes inside the scope did not come back from the sandbox")
-    return (f"{len(FAILS) + len(MADE)} ways out failed or were refused, {len(INS)} ways in came back; "
-            f"{'docker' if DRY else 'contree'}: {box.ops} operations")  # fmt: skip
+    held = f"{len(FAILS) + len(MADE)} ways out failed or were refused, {len(INS)} ways in came back"
+    if late:
+        raise Failed(f"{held}; but {late}")
+    return f"{held}; {timed}; {'docker' if DRY else 'contree'}: {box.ops} operations"
+
+
+KEPT = ROOT / "tests" / "recordings"  # CI replays every recording here (tests/test_recordings.py)
 
 
 def recorded(r: Rung) -> str:
-    """Rung 5: the practice leaf, recorded with `graphene demo --record`, and the recording replayed."""
+    """Rung 5: the practice leaf, recorded with `graphene demo --record`, the recording counted for what it
+    must not hold (the key, the project, a home path, anything shaped like a key), and replayed."""
     rec = STATE / "leaf.jsonl"
     repo, recorder = r.feeds("recorded", recorder=rec)
     try:
@@ -386,12 +434,21 @@ def recorded(r: Rung) -> str:
     finally:
         os.killpg(recorder.pid, signal.SIGTERM)
         r.note(recorder.communicate(timeout=60)[0] or "")
+    from graphene_map import demo
+
+    held = {what: n for what, n in demo.leaks(rec.read_text(encoding="utf-8")).items() if n}
+    if held:  # counts only: the recording stays where it is, and is not to be shared
+        counted = ", ".join(f"{k} ({n})" for k, n in held.items())
+        raise Failed(f"the recording holds what it must not: {counted}; {rel(rec)} is not to be shared")
     code, out = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     shown = "a scripted stand-in" if DRY else "as it ran, live"
     top = out.strip().splitlines()[0] if out.strip() else ""
     if code or shown not in top or not re.search(r"hello\s+done", out):
         raise Failed(f"the replay does not end with the leaf done, shown as {shown!r}: {top or last(out)}")
-    return f"{said}; the replay of {rec.name} ends with it done: {top}"
+    kept = f"\nCI replays it from {rel(KEPT)}: cp {rel(rec)} {rel(KEPT / 'first-light-rung-5.jsonl')}"
+    kept = "" if DRY else kept
+    clean = "it holds no key, project, home path or key-shaped word"
+    return f"{said}; {clean}; its replay ends with it done: {top}{kept}"
 
 
 def arms(r: Rung) -> str:
@@ -437,8 +494,9 @@ def arms(r: Rung) -> str:
 def demo_run(r: Rung) -> str:
     """Rung 7: docs/proof/nemotron.sh, the demo run on feeds, recorded, and the recording replayed."""
     rec = STATE / "demo.jsonl"
-    # live, `graphene init` puts the leaves in Sandboxes when ConTree is configured (rung 3 showed it is);
-    # the dry run's init sees no ConTree SDK, so the Docker sandbox is named, to run the same path
+    # live, `graphene init` puts the leaves in Sandboxes when ConTree is configured and does not refuse the
+    # project, and on this machine when it does (the line says where); the dry run's init sees no ConTree
+    # SDK, so the Docker sandbox is named, to run the same path
     more = {"EXECUTOR": "nemotron --placement sandbox"} if DRY else {}
     if DRY and not docker_runs():
         raise Failed(NO_DOCKER)
@@ -451,11 +509,12 @@ def demo_run(r: Rung) -> str:
     landed = sum(s == P.DONE for s in states.values())
     if not landed:
         raise Failed(f"the demo ran to the bill, and nothing landed: {len(states)} leaves, in {repo}")
+    where = placed(repo)
     back, shown = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     if back:
         raise Failed(f"the recording does not replay: {last(shown)}")
     bills = [ln.strip() for ln in out.splitlines() if "bill: $" in ln]
-    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed"
+    ran = f"the demo ran to the bill, {landed} of {len(states)} leaves landed, {where}"
     return f"{ran}; {rel(rec)} replays (`graphene demo {rel(rec)}`)\n" + "\n".join(bills)
 
 
@@ -539,6 +598,12 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
      "the night's cap (the lower of GRAPHENE_AGENT_LIVE_USD and $10), or its 80%, is reached: a rerun does "
      "not reset it",
      f"`{ME} night` shows the bill; nothing more is spent tonight"),
+    (r"holds the key or the project",
+     "a secret got past the masking into a file the ladder wrote",
+     f"share nothing from {rel(STATE)}; find the write that did not go through mask() before any rung again"),
+    (r"did not come back as exit 124",
+     "ConTree's own time limit ends an operation differently from Docker's (exit 124, the image unchanged)",
+     "rung-4.log's [past its time] line has what ConTree said; containment is in the line before it"),
     (r"an agent's mark",
      "a live rung is yours to run: an agent's shell may not spend your key or be recorded as you",
      "type the line above in a terminal where no agent's mark is set, or start the agent's session from a "
@@ -677,13 +742,18 @@ def climb(n: int) -> str:
             said += "\nleft running, maybe: a ConTree operation already sent runs on to its own time limit"
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the rung's record is written whole
     said, took = r.seal(said), time.monotonic() - began
+    leaked = counted(r)
+    if leaked and not refused:
+        said, result = (f"{said}\na file this rung wrote holds the key or the project (counted: {leaked}): "
+                        f"nothing in {rel(STATE)} is to be shared"), "FAIL"  # fmt: skip
     rows = progress() | {str(n): {"result": result, "at": time.strftime("%Y-%m-%d %H:%M"),
                                    "seconds": round(took, 1),
                                    "dollars": round(spent() - before, 6)}}  # fmt: skip
     if not refused:  # a rung that ran nothing leaves the record as it was
         PROGRESS.write_text(json.dumps(rows, indent=1) + "\n", encoding="utf-8")
+    clean = "" if leaked else " · no file holds the key"
     say(f"{result} · {called} · {took:.1f} s · this {'rung' if n in RUNGS else 'step'} "
-        f"${spent() - before:.4f} · bill so far ${spent():.4f}")  # fmt: skip
+        f"${spent() - before:.4f} · bill so far ${spent():.4f}{clean}")  # fmt: skip
     for line in said.splitlines():
         say(f"  {line}")
     if result == "FAIL":
@@ -714,7 +784,8 @@ def status() -> None:
         seen = f"{row['result']} {row['at']}, {row['seconds']} s, ${row['dollars']:.4f}" if row else "not run"
         say(f"{n}. {name:40} {seen}  (cap ${cap:.2f}, live {takes})")
     say(
-        f"bill so far ${spent():.4f} at list price, Token Factory only (Sandboxes are billed apart); "
+        f"bill so far ${spent():.4f} at list price, Token Factory only (Sandboxes: free in the beta, by "
+        f"Nebius's page; each sandbox rung counts its operations); "
         f"{rel(LEDGER)}"
     )
 

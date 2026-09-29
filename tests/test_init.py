@@ -290,6 +290,7 @@ def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, mon
     assert not sandbox.configured()  # a key and no project, and no profile
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
     assert sandbox.configured()
+    monkeypatch.setattr(sandbox, "refused", lambda: None)  # ConTree's whoami, never asked from a test
     assert person("init").exit_code == 0
     assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement sandbox"
     monkeypatch.delenv("NEBIUS_PROJECT_ID")
@@ -297,6 +298,31 @@ def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, mon
     (tmp_path / "contree").mkdir()
     (tmp_path / "contree" / "auth.ini").write_text("[default]\n")  # a profile `contree auth` saved
     assert sandbox.configured()
+
+
+def test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line_saying_why(
+    repo, fake, monkeypatch, on_path
+):
+    """What rung 2's init did live (2026-09-29): ConTree set up, the project refused by Sandboxes (rung 1's
+    403), and the leaves placed in Sandboxes anyway, where each would come back refused. Asked first
+    (whoami, a read: a stub SDK here, nothing sent), the offer places them on this machine and says why
+    once, and how to place them in Sandboxes when access comes."""
+    contree_sdk = pytest.importorskip("contree_sdk")
+    from fake_faults import Forbidding
+
+    on_path()
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
+    said = person("init", "--executor", "nemotron")
+    assert said.exit_code == 0, said.output
+    assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement local"
+    line = ("Sandboxes refused this project (403): its key lacks import, spawn there; request access at "
+            "tokenfactory.nebius.com/sandboxes/about; until it is granted the leaves run on this machine, "
+            "and `graphene init --executor nemotron` then places them in Sandboxes")  # fmt: skip
+    assert said.output.count(line) == 1, said.output
+    monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True, "spawn": True})
+    assert person("init", "--executor", "nemotron").exit_code == 0
+    assert chosen(repo)["executor"].endswith("--placement sandbox")
 
 
 def test_an_agent_does_not_choose_what_the_person_runs(repo, on_path):

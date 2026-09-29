@@ -18,6 +18,7 @@ from fake_tokenfactory import Fake, call
 from graphene_map import demo, plan, run
 from graphene_map.store import Store
 
+NANO = "nvidia/Nemotron-3-Nano-fake"
 SCRIPT = Path(__file__).resolve().parents[1] / "docs" / "proof" / "nemotron.sh"
 MAKE = textwrap.dedent('''\
     import pathlib, subprocess, sys
@@ -147,3 +148,32 @@ def test_a_leaf_back_without_asking_for_paths_still_ends_with_the_graph_and_the_
     assert "$ graphene node widen farewell" in said and "farewell asked for no path" in said
     assert said.count("$ graphene run --parallel 4") == 1  # nothing was widened: nothing new to run
     assert "$ git log --graph --oneline" in said and "bill: $" in said
+
+
+@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
+def test_a_recording_made_with_a_planted_key_and_project_counts_none_of_them(tmp_path, monkeypatch):
+    """The sanitiser end to end, as rung 5 will count its live recording: nemotron.sh recorded against the
+    fake, with the key (the fake's own, planted) and a project in the environment, and a model that writes
+    both and a word shaped like a key into a command, which reaches the run's output. The recording holds
+    none of them, counted by demo.leaks, and says where each was taken out."""
+    project, shaped = "proj-planted-0042", "Pl4ntedSecretTokenABCDEFGH123456"
+    for k, v in {"NEBIUS_API_KEY": "fake-key", "NEBIUS_PROJECT_ID": project, "HOME": str(tmp_path)}.items():
+        monkeypatch.setenv(k, v)  # what demo.leaks counts here is what the run's environment held
+    leak = f"echo fake-key {project} {shaped}; echo $HOME"
+    steps = [call("run", command=leak), *SCRIPTS["farewell (revision"]]
+
+    def answer(body):
+        first = body["messages"][1]["content"] if len(body["messages"]) > 1 else ""
+        if "farewell (revision" not in first:
+            return reply(body, IN_ONE_GO)
+        k = sum(1 for m in body["messages"] if m["role"] == "assistant")
+        return steps[k] if k < len(steps) else {"content": "nothing more"}
+
+    # local: with a project id and the sandbox extra, init would place the leaves in ConTree, live
+    done, said, _ = script(tmp_path, answer, "true", RECORD=str(tmp_path / "demo.jsonl"),
+                           NEBIUS_PROJECT_ID=project, EXECUTOR=f"nemotron --model {NANO} --placement local")
+    assert done.returncode == 0, said
+    text = (tmp_path / "demo.jsonl").read_text()
+    assert demo.leaks(text) == dict.fromkeys(demo.leaks(""), 0), demo.leaks(text)
+    assert "echo [removed] [removed] [removed: shaped like a key]; echo $HOME" in text
+    assert '"kind": "placement"' not in text and "Sandboxes refused" not in text  # no leaf went near ConTree

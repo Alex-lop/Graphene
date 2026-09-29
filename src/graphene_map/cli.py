@@ -249,13 +249,14 @@ def build():
             return f"{command!r} cannot be read as a command: {no}"
         return None
 
-    def nemotron() -> tuple[dict[str, str], str, str | None]:
-        """Nemotron on Token Factory as a new repo is offered it, what that is in words, and what could
-        not be reached, in one line, or None. The ids are the live list's, so a run is reproducible and
-        nothing is guessed: the largest of Ultra and Super plans (as planner.py picks when it runs), and
-        the two smallest listed do the leaves, the second on a second attempt; in a Sandbox when ConTree
-        is set up here, on this machine otherwise. Out of reach it is plain `nemotron`, which finds its
-        models when it runs. Asked once: offline, init must not wait."""
+    def nemotron() -> tuple[dict[str, str], str, str | None, str | None]:
+        """Nemotron on Token Factory as a new repo is offered it, what that is in words, what could not
+        be reached, in one line, or None, and why the leaves are not in Sandboxes though ConTree is set
+        up here, or None. The ids are the live list's, so a run is reproducible and nothing is guessed:
+        the largest of Ultra and Super plans (as planner.py picks when it runs), and the two smallest
+        listed do the leaves, the second on a second attempt; in a Sandbox when ConTree is set up here
+        and does not refuse the project, on this machine otherwise. Out of reach it is plain `nemotron`,
+        which finds its models when it runs. Asked once: offline, init must not wait."""
         from . import sandbox
         from . import tokenfactory as tf
 
@@ -267,12 +268,16 @@ def build():
         def models(sizes: list[str]) -> str:
             return "".join(f" --model {shlex.quote(found[s])}" for s in sizes)
 
-        place = "sandbox" if sandbox.configured() else "local"
+        refused = sandbox.refused() if sandbox.configured() else None  # whoami: a read, no operation
+        place = "sandbox" if sandbox.configured() and not refused else "local"
         ladder = f"nemotron{models(leaves)} --placement {place}"
         planner = plans[0].title() if plans else "largest"
         does = " then ".join(s.title() for s in leaves) or "smallest"
         said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
-        return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached
+        if refused:
+            refused += ("; until it is granted the leaves run on this machine, and `graphene init --executor "
+                        "nemotron` then places them in Sandboxes")  # fmt: skip
+        return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached, refused
 
     def asked_once(offer: dict[str, str], said: str, now: dict, found: list, key: bool) -> dict[str, str]:
         """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
@@ -320,10 +325,10 @@ def build():
         Returns what is set, in one line."""
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
-        offer, said, unreached, found = {}, "", None, []
+        offer, said, unreached, found, placed = {}, "", None, [], None
         key = keys.find() is not None  # the environment's, or the keychain's
         if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
-            offer, said, unreached = nemotron()
+            offer, said, unreached, placed = nemotron()
             if unreached and key:  # a key that did not answer: before the choice
                 say(unreached)
             found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
@@ -344,6 +349,8 @@ def build():
         if unreached and not key:
             if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
                 say(unreached)
+        if placed and offer and given.get("executor") == offer["executor"]:  # the offer, placed here: why
+            say(placed)
         for k, v in given.items():
             store.set_meta(k, v)
         told = " · ".join(f"{k}: {store.meta(k) or 'not chosen'}" for k in WHO)

@@ -40,6 +40,20 @@ IMAGE = "python:3.12"  # Debian with git and setpriv; any OCI image with bash, g
 OUTPUT = 200_000  # characters of a command's output kept from the sandbox
 MARK = "::graphene::"
 
+# ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
+# Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
+# and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
+FORBIDDEN = ("Sandboxes refused this project (403): {why}; request access at "
+             "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+NO_GRANT = "its key may not use them there, or NEBIUS_PROJECT_ID is not its project"
+USED = ("import", "list", "spawn")  # the grants a leaf's sandbox uses, as Nebius's docs name them
+TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
+
+
+class Refused(tf.Unreachable):
+    """Sandboxes said no to this project: the message says what that means and what to do, whole, and
+    every caller that says Token Factory's refusals says it as it is (a leaf's reason, a precheck's)."""
+
 
 def configured() -> bool:
     """Can a sandbox be made here? The SDK imports, and ConTree has credentials: a key and a project
@@ -58,6 +72,36 @@ def credentials() -> bool:
     from . import keys  # the environment's key, else the keychain's
 
     return bool(keys.find() and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
+
+
+def _client():
+    """contree-sdk's client, signed in as ConTree reads its credentials, with a keychain key it cannot
+    see handed to it."""
+    from contree_sdk import ContreeSync
+
+    from . import keys
+
+    token = None if os.environ.get(keys.KEY) else keys.find()
+    return ContreeSync(token=token) if token else ContreeSync()
+
+
+def refused() -> str | None:
+    """The refusal a leaf would meet, asked before any is placed (`graphene init`): ConTree's whoami, a
+    read and no operation, answering 403, or saying the key lacks one of the grants a leaf uses. None when
+    it may, or when that cannot be told (no SDK, no network, grants named otherwise): a leaf's own
+    refusal then says it."""
+    try:
+        from contree_sdk.sdk.exceptions import ForbiddenError
+
+        grants = _client().get_token_info().permissions
+    except ImportError:
+        return None
+    except ForbiddenError:
+        return FORBIDDEN.format(why=NO_GRANT)
+    except Exception:  # noqa: BLE001 (offline, or an SDK that answers otherwise: not a refusal)
+        return None
+    lacks = sorted(g for g in USED if grants.get(g) is False)
+    return FORBIDDEN.format(why=f"its key lacks {', '.join(lacks)} there") if lacks else None
 
 
 def _fixed(glob: str) -> str:
@@ -177,20 +221,6 @@ def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
     return Path(name)
 
 
-# ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
-# Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
-# and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
-FORBIDDEN = ("Sandboxes refused this project (403): {why}; request access at "
-             "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
-NO_GRANT = "its key may not use them there, or NEBIUS_PROJECT_ID is not its project"
-TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
-
-
-class Refused(tf.Unreachable):
-    """Sandboxes said no to this project: the message says what that means and what to do, whole, and
-    every caller that says Token Factory's refusals says it as it is (a leaf's reason, a precheck's)."""
-
-
 class Contree:
     """ConTree, through contree-sdk 0.3.6: an image per checkpoint, a run from any image, a file read
     from any image. The credentials are the SDK's own (NEBIUS_API_KEY and NEBIUS_PROJECT_ID, or the
@@ -198,18 +228,13 @@ class Contree:
     person's opening, each operation and its seconds go to the night's ledger (``night.sandbox``)."""
 
     def __init__(self, image: str = IMAGE):
-        from contree_sdk import ContreeSync
-
         self.image = image
         if not credentials():  # else the SDK sends the variable's name as the token, and gets a 401
             raise RuntimeError("ConTree needs a key (NEBIUS_API_KEY or `graphene key set`) and "
                                "NEBIUS_PROJECT_ID, or a profile saved by `contree auth`")
-        from . import keys
-
         night.person_only("a ConTree sandbox")  # ConTree is always the real service
         night.first("a ConTree sandbox")  # past 80% of the night's cap, no sandbox is made
-        token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
-        self.sdk = ContreeSync(token=token) if token else ContreeSync()
+        self.sdk = _client()
         with self._counted("image"):
             self.base = self._asked(lambda: self.sdk.images.oci(image))
         self.ops = 1
