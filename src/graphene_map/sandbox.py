@@ -43,10 +43,21 @@ MARK = "::graphene::"
 # ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
 # Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
 # and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
-FORBIDDEN = ("Sandboxes refused this project (403): {why}; request access at "
-             "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+ABOUT = "tokenfactory.nebius.com/sandboxes/about"
+FORBIDDEN = "Sandboxes refused this project (403): {why}; request access at " + ABOUT
 NO_GRANT = "its key may not use them there, or NEBIUS_PROJECT_ID is not its project"
 USED = ("import", "list", "spawn")  # the grants a leaf's sandbox uses, as Nebius's docs name them
+# `graphene key check`'s line for each state whoami() tells apart
+SAYS = {
+    "work": "work (import, list and spawn granted)",
+    "lacks": "this project lacks {} (request access at " + ABOUT + ")",
+    "403": ("refused the key and project together (403): check NEBIUS_PROJECT_ID is this key's project "
+            "(Project settings, Copy project ID), or access is not granted yet (" + ABOUT + ")"),
+    "401": "the key was not accepted (401)",
+    "unreached": "could not be reached ({})",
+    "unset": "not configured (no NEBIUS_PROJECT_ID and no contree auth profile)",
+    "no sdk": "the SDK is not installed (uv sync --extra sandbox)",
+}  # fmt: skip
 TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
 
 
@@ -98,36 +109,82 @@ def _sdk_error(name: str) -> type[Exception]:
 
 
 def _unkeyed(said) -> str:
-    """ConTree's words with the key and the project id taken out, as set and as sent, then anything shaped
-    like a key, then cut: a gateway's page may echo the request's headers, and the cut must not halve a key
-    first (tokenfactory._request does the same for Token Factory's)."""
+    """ConTree's words with the key and the project id taken out, as set and as sent (the environment's, or
+    a `contree auth` profile's), then anything shaped like a key, then cut: a gateway's page may echo the
+    request's headers, and the cut must not halve a key first (tokenfactory._request does the same for
+    Token Factory's)."""
     from . import keys
 
     text = " ".join(str(said).split())
     raw = [os.environ.get(n) or "" for n in (keys.KEY, "NEBIUS_PROJECT_ID")]
+    try:  # the pinned SDK's own reader of the profile it signs in with
+        from contree_sdk._internals.utils.auth_ini import read_ini_profile
+
+        profile = read_ini_profile()
+        raw += [profile.token or "", profile.project or ""] if profile else []
+    except Exception:  # noqa: BLE001 (no SDK, or a profile it cannot read: nothing of it to take out)
+        pass
     for secret in sorted({*raw, *(v.strip() for v in raw), keys.find() or ""}, key=len, reverse=True):
         if len(secret) >= 6:
             text = text.replace(secret, "…")
     return tf.unkeyed(text)[:300]
 
 
-def refused() -> str | None:
-    """The refusal a leaf would meet, asked before any is placed (`graphene init`): ConTree's whoami, a
-    read and no operation, answering 403, or saying the key lacks one of the grants a leaf uses. None when
-    it may, or when that cannot be told (no SDK, no network, grants named otherwise): a leaf's own
-    refusal then says it."""
+def whoami(sdk=None) -> tuple[str, str]:
+    """ConTree's whoami, a read that spends nothing, as one of ``SAYS``'s states and what goes with it:
+    the grants a leaf uses that the key lacks there, a 403's reason, or what stood in the way. Every word
+    of ConTree's is masked (``_said``). ``sdk`` is a client already made, whose credentials were found."""
     try:
-        from contree_sdk.sdk.exceptions import ForbiddenError
-
-        grants = _client().get_token_info().permissions
+        import contree_sdk  # noqa: F401
     except ImportError:
+        return "no sdk", ""
+    if sdk is None and not credentials():
+        return "unset", ""
+    try:
+        grants = (sdk or _client()).get_token_info().permissions
+    except _sdk_error("ForbiddenError") as no:
+        return "403", _said(no)
+    except Exception as no:  # noqa: BLE001 (offline, a gateway's error, an SDK that answers otherwise)
+        status = getattr(no, "status", None)
+        if status == 401:  # contree-sdk 0.3.6 has no class of its own for it
+            return "401", ""
+        what = f"{type(no).__name__} {status}" if status else type(no).__name__
+        detail = getattr(no, "error", None) or getattr(no, "timeout_type", None) or str(no)
+        return "unreached", _unkeyed(f"{what}: {detail}" if detail else what)
+    lacks = [g for g in USED if grants.get(g) is not True]  # a grant not named is not given
+    return ("lacks", ", ".join(lacks)) if lacks else ("work", "")
+
+
+def says(state: str, detail: str) -> str:
+    """`graphene key check`'s line for a state of ``whoami``."""
+    line = "Sandboxes: " + SAYS[state].format(detail)
+    return f"{line}; ConTree said: {detail}" if state == "403" and detail else line
+
+
+def _said(no) -> str:
+    """What a ConTree error carries beyond the SDK's fixed words for its kind (the server's own reason,
+    ``error``, and any other message), masked (``_unkeyed``), in one line; empty when it carries none."""
+    fixed = getattr(type(no), "_template", None)
+    words = (w for w in (getattr(no, "error", None), str(no)) if w and w != fixed)
+    return _unkeyed("; ".join(dict.fromkeys(words)))
+
+
+def _forbidden(lacks: str = "", said: str = "") -> str:
+    """Sandboxes' refusal as a leaf, `plan precheck` and access.py say it."""
+    why = f"its key lacks {lacks} there" if lacks else NO_GRANT
+    return FORBIDDEN.format(why=why) + (f"; ConTree said: {said}" if said else "")
+
+
+def refused() -> str | None:
+    """Why a leaf would not work in Sandboxes, asked before any is placed (`graphene init`), from whoami:
+    None only when it grants what a leaf uses. A 403 or a lacking grant is the refusal a leaf would meet;
+    a 401, no answer, no SDK or no credentials are said as `graphene key check` says them."""
+    state, detail = whoami()
+    if state == "work":
         return None
-    except ForbiddenError:
-        return FORBIDDEN.format(why=NO_GRANT)
-    except Exception:  # noqa: BLE001 (offline, or an SDK that answers otherwise: not a refusal)
-        return None
-    lacks = sorted(g for g in USED if grants.get(g) is False)
-    return FORBIDDEN.format(why=f"its key lacks {', '.join(lacks)} there") if lacks else None
+    if state in ("lacks", "403"):
+        return _forbidden(lacks=detail) if state == "lacks" else _forbidden(said=detail)
+    return says(state, detail)
 
 
 def _fixed(glob: str) -> str:
@@ -275,19 +332,15 @@ class Contree:
 
     def _asked(self, call):
         """One call to the SDK, its 403 said as ``Refused``, with what the key lacks when ConTree's whoami
-        says, and any other error of its own said without the key or the project (``_unkeyed``); its time
-        limit reaches ``_run`` as it is."""
+        says and ConTree's own reason, and any other error of its own said without the key or the project
+        (``_unkeyed``); its time limit reaches ``_run`` as it is."""
         try:
             return call()
         except _sdk_error("OperationTimedOutError"):
             raise
-        except _sdk_error("ForbiddenError"):
-            try:  # a read of the key's grants, no operation: which of them this project does not give
-                lacks = sorted(k for k, v in self.sdk.get_token_info().permissions.items() if not v)
-            except Exception:  # noqa: BLE001 (the refusal is said either way)
-                lacks = []
-            why = f"its key lacks {', '.join(lacks)} there" if lacks else NO_GRANT
-            raise Refused(FORBIDDEN.format(why=why)) from None
+        except _sdk_error("ForbiddenError") as no:
+            state, lacks = whoami(self.sdk)  # a read of the key's grants, no operation
+            raise Refused(_forbidden(lacks if state == "lacks" else "", _said(no))) from None
         except _sdk_error("ContreeError") as no:  # its message is the response's body: it may echo a header
             said = f"ConTree answered with an error ({type(no).__name__}): {_unkeyed(no)}"
             raise RuntimeError(said) from None
