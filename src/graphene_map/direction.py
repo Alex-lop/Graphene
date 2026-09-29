@@ -330,6 +330,7 @@ class Worker:
     at: str  # when
     node: str | None = None  # the direction node it attaches to; "plan": through the plan, wherever it hangs
     how: str = ""  # why it attaches there
+    parent: str | None = None  # the subagent that started this one, when a subagent did
 
 
 def _stamp(at: datetime) -> str:
@@ -407,30 +408,35 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
             older += 1  # asked of the index alone: an old session's calls are never read
             continue
 
-        tasks = dict(
-            store.conn.execute(
-                "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description') FROM "
-                "tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task')",
+        # the Agent call that started a subagent names it, its task, and who made the call (a call
+        # still running, a foreground subagent's, is recorded only when it ends)
+        started_by = {
+            r[0]: (r[1], r[2])
+            for r in store.conn.execute(
+                "SELECT json_extract(response, '$.agentId'), json_extract(input, '$.description'), agent_id "
+                "FROM tool_events WHERE session_id = ? AND tool IN ('Agent', 'Task')",
                 (sid,),
-            ).fetchall()
-        )
+            )
+        }
         agents = []
-        for aid, _start, a_end in store.conn.execute(
-            "SELECT id, started_at, ended_at FROM agents WHERE session_id = ? ORDER BY started_at", (sid,)
+        for aid, _start, a_end, kind in store.conn.execute(
+            "SELECT id, started_at, ended_at, type FROM agents WHERE session_id = ? ORDER BY started_at",
+            (sid,),
         ):
+            task, caller = started_by.get(aid, (None, None))
+            label = task or (f"a subagent ({kind})" if kind else "a subagent")
+            parent = f"{sid}/{caller}" if caller else None
             if a_end:  # finished: counted when a call started it (the vendor's own helpers are not)
-                if aid in tasks:
+                if aid in started_by:
                     agents.append(
-                        Worker(f"{sid}/{aid}", aid[:8], tasks[aid] or "a subagent", "finished", "", a_end)
+                        Worker(f"{sid}/{aid}", aid[:8], label, "finished", "", a_end, parent=parent)
                     )
                 continue
             row = _last_call(store, sid, aid, now - timedelta(seconds=IDLE))
             if row is None:
                 continue  # an hour with nothing and no end: gone without its end recorded, most likely
             word = "running" if _age(row[0], now) <= ALIVE else "idle"
-            agents.append(
-                Worker(f"{sid}/{aid}", aid[:8], tasks.get(aid) or "a subagent", word, did(*row[1:]), row[0])
-            )
+            agents.append(Worker(f"{sid}/{aid}", aid[:8], label, word, did(*row[1:]), row[0], parent=parent))
         mine = _last_call(store, sid, None, now - timedelta(seconds=DAY))
         said = next((t for _, t in prompts if not _vendor_made(t.strip())), "")
         heard = max([s for s in (mine and mine[0], prompts[0][0] if prompts else None) if s], default=started)
@@ -457,9 +463,9 @@ def workers(store, now: datetime | None = None) -> tuple[list[Worker], int]:
 
 
 def place(store, ws: list[Worker]) -> None:
-    """Where each worker attaches: where the person attached it (or its session); else through the
-    plan's node, when it held, finished or handed back one of the plan's nodes, or proposed one (a
-    subagent of a session that did goes with its session); else nowhere."""
+    """Where each worker attaches: where the person attached it; else through the plan's node, when it
+    held, finished or handed back one of the plan's nodes, or proposed one; else with the subagent that
+    started it, or with its session; else nowhere."""
     said = links(store)
     alive = [n for n in P.nodes(store) if n.state not in P.GONE]
     if alive:
@@ -473,21 +479,22 @@ def place(store, ws: list[Worker]) -> None:
         rows = []
     worked = {(s, a) for s, a in rows} | {(n.session_id, n.agent_id) for n in alive if n.session_id}
     proposers = {n.proposed_by.split(":", 1)[1] for n in alive if (n.proposed_by or "").startswith("claude:")}
-    by_session: dict[str, tuple[str | None, str]] = {}
+    placed: dict[str, str | None] = {}  # a session or subagent, as placed so far: a parent comes first
     for w in ws:
         sid, _, aid = w.key.partition("/")
         if w.key in said["attach"]:
             w.node, w.how = said["attach"][w.key], "attached by you"
-        elif aid and sid in said["attach"]:
-            w.node, w.how = said["attach"][sid], "with its session, attached by you"
         elif (sid, aid or None) in worked:
             w.node, w.how = "plan", "worked on the plan"
         elif not aid and sid[:8] in proposers:
             w.node, w.how = "plan", "proposed in the plan"
-        elif aid and by_session.get(sid, (None, ""))[0]:
-            w.node, w.how = by_session[sid][0], "with its session"
-        if not aid:
-            by_session[sid] = (w.node, w.how)
+        elif placed.get(w.parent or ""):
+            w.node, w.how = placed[w.parent or ""], "with the subagent that started it"
+        elif aid and sid in said["attach"]:
+            w.node, w.how = said["attach"][sid], "with its session, attached by you"
+        elif aid and placed.get(sid):
+            w.node, w.how = placed[sid], "with its session"
+        placed[w.key] = w.node
 
 
 def plan_status(store) -> dict | None:

@@ -148,6 +148,11 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 799), agent_id=lane)
         _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 700), tool_name="Edit", agent_id=lane,
                tool_input={"file_path": str(repo / "api.py")}, tool_response={})  # fmt: skip
+        nested = "c0c0c0c0c0c0c0c0"  # started by the lane, not by its session: it goes with the lane
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 650), tool_name="Agent", agent_id=lane,
+               tool_input={"description": "a nested helper"}, tool_response={"agentId": nested})  # fmt: skip
+        _event(store, repo, "SubagentStart", AGENT_SID, _stamp(now, 649), agent_id=nested)
+        _event(store, repo, "PostToolUse", AGENT_SID, _stamp(now, 20), tool_name="Read", agent_id=nested)
         other = "0ther000-0000-4000-8000-000000000002"
         _event(store, repo, "UserPromptSubmit", other, _stamp(now, 600), prompt="fix the readme\nplease")
         _event(store, repo, "PostToolUse", other, _stamp(now, 590), tool_name="Write",
@@ -160,7 +165,12 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         _event(store, repo, "UserPromptSubmit", "1d1e0000-0000", _stamp(now, D.IDLE + 60), prompt="quiet")
         st = D.status(store, D.read(repo), now)
     by = {w["short"]: w for w in st["sessions"]}
-    assert set(by) == {AGENT_SID[:8], "a640f5b2", other[:8]}
+    assert set(by) == {AGENT_SID[:8], "a640f5b2", "c0c0c0c0", other[:8]}
+    assert (by["c0c0c0c0"]["node"], by["c0c0c0c0"]["how"], by["c0c0c0c0"]["label"]) == (
+        "plan",
+        "with the subagent that started it",
+        "a nested helper",
+    )
     assert st["older"] == 2  # a day's quiet, and an hour idle
     me, lane, loose = by[AGENT_SID[:8]], by["a640f5b2"], by[other[:8]]
     assert (me["node"], me["how"], me["word"], me["last"]) == (
@@ -175,19 +185,23 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         "idle",
         "Lane D: the direction",
     )
-    assert lane["last"] == "edited api.py"
+    assert lane["last"] == "started a nested helper"  # its own last call: the Agent call
     assert (loose["node"], loose["word"], loose["label"]) == (
         None,
         "your turn",
         "session: fix the readme",
     )
     live = next(n for n in st["nodes"] if n["id"] == "live")
-    assert (live["word"], live["running"], live["you"]) == ("running", 1, 0)  # the leaf; its session is it
+    assert (live["word"], live["running"], live["you"]) == (
+        "running",
+        2,
+        0,
+    )  # the leaf (its session is it), nested
     top = next(n for n in st["nodes"] if n["id"] == "product")
-    assert top["running"] == 1 and top["next"] is None
+    assert top["running"] == 2 and top["next"] is None
     shown = person("direction", "--width", "120").stdout.splitlines()
     narrow = person("direction", "--width", "60").stdout.splitlines()[0]
-    assert narrow.startswith("you: 1 · 1 running · the direction of …") and len(narrow) == 60
+    assert narrow.startswith("you: 1 · 2 running · the direction of …") and len(narrow) == 60
     assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines()[:-1])
     assert any("the plan: users come back with ids" in line and "0/1 done" in line for line in shown)
     assert any("not in the direction" in line for line in shown)
@@ -197,6 +211,10 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
         == f"{other[:8]} attached to submission\n"
     )
     assert agent("direction", "attach", other[:8], "live").exit_code == 1
+    assert person("direction", "attach", "a640f5b2", "board").exit_code == 0
+    with Store.open(repo) as store:
+        placed = {w["short"]: w["node"] for w in D.status(store, D.read(repo), now)["sessions"]}
+    assert (placed["a640f5b2"], placed["c0c0c0c0"]) == ("board", "board")  # what it started goes with it
     with Store.open(repo) as store:
         st = D.status(store, D.read(repo), now)
     from graphene_map import server

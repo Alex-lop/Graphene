@@ -1,6 +1,6 @@
 ? Graphene is the shared plan between a person and…       graphene     proposed  · you 11 · 8 running · next: lane-a
-  ? Graphene runs live on Nemotron and Token Factory      live         proposed  · you 4 · 3 running · next: lane-a
-    ? first contact: the ladder's rungs pass live, and…   first-light  proposed  · you 1 · 3 running · next: lane-a
+  ? Graphene runs live on Nemotron and Token Factory      live         proposed  · you 4 · 2 running · next: lane-a
+    ? first contact: the ladder's rungs pass live, and…   first-light  proposed  · you 1 · 2 running · next: lane-a
                  first light: Graphene meets a real model for the first time, as practice, under $10
          ┌──────────┬────────────────────────────────┬────┴───────────────────────────┬──────────┬──────────┐
      ○ lane-a   ○ lane-b                         ○ lane-c                         ○ lane-d   ○ lane-e   ◌ lane-f
