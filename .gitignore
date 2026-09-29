@@ -8,8 +8,9 @@ node_modules/
 .DS_Store
 .env
 
-# Graphene's own local store
-.graphene/
+# Graphene's own local store; its direction is committed (.graphene/direction.txt)
+.graphene/*
+!.graphene/direction.txt
 
 # Editor and agent state, private working material
 .claude/

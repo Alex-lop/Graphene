@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import board as B
 from . import board_rows as R
+from . import direction as D
 from . import plan as P
 from . import settings
 from .commits import refresh_commits
@@ -130,12 +131,28 @@ def payload(
     return (
         '{"runs": '
         + json.dumps(rail)
+        + ', "direction": '
+        + json.dumps(direction(store, only), ensure_ascii=False)
         + ', "plan": '
         + json.dumps(plan_view, ensure_ascii=False)
         + ', "graph": '
         + to_json(build_graph(store, ids))
         + "}"
     )
+
+
+def direction(store: Store, only: bool = False) -> dict | None:
+    """The direction with the plan and the sessions attached (`direction.status`); None with no file,
+    and the refusal when it cannot be read. A file that leaves the machine carries the rolled-up counts
+    and not the sessions: they stay on this machine."""
+    try:
+        d = D.read(store.path.parent.parent)
+    except P.Refused as no:
+        return {"refused": str(no)}
+    if d is None:
+        return None
+    said = D.status(store, d)
+    return said | {"sessions": []} if only else said
 
 
 def export_html(store: Store, session_ids: list[str]) -> str:
