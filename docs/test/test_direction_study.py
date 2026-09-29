@@ -84,3 +84,22 @@ def test_only_reads_of_the_arms_own_material_pass_the_wrapper(tmp_path):
                  ["sed", "1,5p", "morning.md"], ["graphene", "direction"]):  # fmt: skip
         assert not S._allowed(tmp_path, "morning", argv), argv
     assert '[["render"], ["q-paper"]' not in Path(S.__file__).read_text()  # the key is not in the file named
+
+
+def test_the_direction_print_alone_names_every_waiting_and_running_item_inside_80_columns(tmp_path, capsys):
+    """Study of 29 September, after the fact: every direction stand-in read "you 4" and found two of
+    the four ids, then ran `graphene plan` and `graphene board` for the rest. The print now names each
+    item that waits on the person, and each piece of running work once, by the id they act on; at 80
+    columns and at the wrapper's default 100 no line is wider and no id is cut."""
+    run = tmp_path / "d"
+    S.fixture(run, "direction")
+    for width in ("80", "100"):
+        S.run(run, ["graphene", "direction", "--width", width])
+        said = capsys.readouterr().out
+        lines = said.splitlines()
+        assert all(len(line) <= int(width) for line in lines[:-1]), width  # the last is the commands line
+        words = {w.strip("`·,():") for w in said.split()}
+        for question in ("waiting", "running"):
+            for item in S.KEY[question]:
+                assert any(i in words for i in item), (width, question, item)
+        assert "next: email" in said

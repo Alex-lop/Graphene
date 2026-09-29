@@ -36,6 +36,19 @@ test("the path to the plan's node is drawn root first, each row with its id, its
   expect(html).toContain("you 2 · 1 running · next: ids");
 });
 
+test("what waits on the person and what runs are named by the id they act on, not only counted", () => {
+  const d = direction("live");
+  d.nodes.push(node("mobile", "product", { proposed: true, word: "proposed" }));
+  d.plan = { ...d.plan!, waiting: [{ id: "render", title: "render it", word: "review", do: "" }], leaves_running: [{ id: "template", title: "t", by: "5a1e0c3b" }] };
+  d.sessions = [
+    { key: "b7", short: "b7c24d1e", label: "", word: "your turn", last: "", at: "", node: null, how: "" },
+    { key: "5a", short: "5a1e0c3b", label: "", word: "running", last: "", at: "", node: "plan", how: "", holds: "template" },
+    { key: "c3", short: "c3d4e5f6", label: "", word: "running", last: "", at: "", node: "billing", how: "" },
+  ];
+  const html = renderToStaticMarkup(<DirectionPath direction={d} />);
+  expect(html).toContain("waits on you: render (review), mobile (proposed), b7c24d1e (your turn) · running: template (5a1e0c3b), c3d4e5f6");
+});
+
 test("a plan that hangs from no node says how to hang it, and no direction draws nothing", () => {
   expect(renderToStaticMarkup(<DirectionPath direction={direction(null)} />)).toContain("graphene direction plan NODE");
   expect(renderToStaticMarkup(<DirectionPath direction={null} />)).toBe("");
